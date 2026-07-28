@@ -291,7 +291,7 @@ where
                 edge_path_cache,
                 render_edges,
                 ctx.config,
-                ctx.resource_limits,
+                ctx.work_meter,
             )?;
 
             // Line hops are a render-time replacement of the original path. Rebuild edge bounds

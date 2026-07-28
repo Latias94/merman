@@ -8,7 +8,9 @@ use super::direction::geometry::{
     EPSILON as GEOMETRY_EPSILON, orthogonal_segments_strictly_cross, simplify_polyline,
 };
 use super::geometry::{Rect, segment_blocked};
+use super::work_budget::{LayoutWorkBudget, sorting_work_units};
 use super::working::{WorkingLayout, WorkingNodeKind};
+use crate::Result;
 use crate::model::LayoutPoint;
 use indexmap::IndexMap;
 use std::cmp::Ordering;
@@ -340,13 +342,43 @@ fn state_key(x_index: usize, y_index: usize, axis: Axis) -> (usize, usize, Axis)
     (x_index, y_index, axis)
 }
 
+fn a_star_grid_upper_bound(obstacle_count: usize) -> usize {
+    let axis_coordinates = obstacle_count.saturating_mul(2).saturating_add(4);
+    axis_coordinates.saturating_mul(axis_coordinates)
+}
+
+fn a_star_grid_setup_work_units(obstacle_count: usize) -> usize {
+    let axis_coordinates = obstacle_count.saturating_mul(2).saturating_add(4);
+    axis_coordinates
+        .saturating_mul(2)
+        .saturating_add(sorting_work_units(axis_coordinates).saturating_mul(2))
+}
+
+fn a_star_preflight_work_units(obstacle_count: usize) -> usize {
+    a_star_grid_upper_bound(obstacle_count)
+        .saturating_add(a_star_grid_setup_work_units(obstacle_count))
+}
+
 fn a_star_path(
     start: &LayoutPoint,
     end: &LayoutPoint,
     obstacles: &[(String, Rect)],
     excluded: &[&str],
     routed: &[Vec<LayoutPoint>],
-) -> Option<Vec<LayoutPoint>> {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<Option<Vec<LayoutPoint>>> {
+    let obstacle_count = obstacles
+        .iter()
+        .filter(|(id, _)| !excluded.contains(&id.as_str()))
+        .count();
+    work_budget.preflight(a_star_preflight_work_units(obstacle_count))?;
+    let routed_segment_count = routed
+        .iter()
+        .map(|points| points.len().saturating_sub(1))
+        .fold(0usize, usize::saturating_add);
+
+    // Charge coordinate storage and both stable sorts before allocating either axis vector.
+    work_budget.charge(a_star_grid_setup_work_units(obstacle_count))?;
     let mut x_values = vec![start.x, end.x];
     let mut y_values = vec![start.y, end.y];
     for (id, obstacle) in obstacles {
@@ -373,10 +405,18 @@ fn a_star_path(
     x_values.dedup_by(|left, right| (*left - *right).abs() <= EPSILON);
     y_values.dedup_by(|left, right| (*left - *right).abs() <= EPSILON);
 
-    let start_x = coordinate_index(&x_values, start.x)?;
-    let start_y = coordinate_index(&y_values, start.y)?;
-    let end_x = coordinate_index(&x_values, end.x)?;
-    let end_y = coordinate_index(&y_values, end.y)?;
+    let Some(start_x) = coordinate_index(&x_values, start.x) else {
+        return Ok(None);
+    };
+    let Some(start_y) = coordinate_index(&y_values, start.y) else {
+        return Ok(None);
+    };
+    let Some(end_x) = coordinate_index(&x_values, end.x) else {
+        return Ok(None);
+    };
+    let Some(end_y) = coordinate_index(&y_values, end.y) else {
+        return Ok(None);
+    };
     let start_key = state_key(start_x, start_y, Axis::None);
     let mut open = BinaryHeap::new();
     open.push(QueueState {
@@ -392,6 +432,7 @@ fn a_star_path(
     let mut goal = None;
 
     while let Some(current) = open.pop() {
+        work_budget.charge(1)?;
         let key = state_key(current.x_index, current.y_index, current.axis);
         if current.cost > score.get(&key).copied().unwrap_or(f64::INFINITY) + EPSILON {
             continue;
@@ -423,6 +464,7 @@ fn a_star_path(
                 x: x_values[next_x],
                 y: y_values[next_y],
             };
+            work_budget.charge(obstacle_count.saturating_mul(2))?;
             if obstacles.iter().any(|(id, rect)| {
                 !excluded.contains(&id.as_str()) && rect.contains_point(&next_point, 0.0)
             }) || segment_blocked(&current_point, &next_point, obstacles, excluded)
@@ -450,6 +492,7 @@ fn a_star_path(
                 0.0
             };
             let distance = move_x.abs() + move_y.abs();
+            work_budget.charge(routed_segment_count)?;
             let next_cost = current.cost
                 + distance
                 + bend_penalty
@@ -472,7 +515,9 @@ fn a_star_path(
         }
     }
 
-    let mut current = goal?;
+    let Some(mut current) = goal else {
+        return Ok(None);
+    };
     let mut reversed = Vec::new();
     loop {
         reversed.push(LayoutPoint {
@@ -482,10 +527,13 @@ fn a_star_path(
         if current == start_key {
             break;
         }
-        current = *previous.get(&current)?;
+        let Some(previous) = previous.get(&current) else {
+            return Ok(None);
+        };
+        current = *previous;
     }
     reversed.reverse();
-    Some(simplify_polyline(&reversed))
+    Ok(Some(simplify_polyline(&reversed)))
 }
 
 fn self_loop_route(node: &NodeGeometry) -> Vec<LayoutPoint> {
@@ -514,7 +562,13 @@ fn self_loop_route(node: &NodeGeometry) -> Vec<LayoutPoint> {
     ]
 }
 
-pub(super) fn route(layout: &mut WorkingLayout) {
+pub(super) fn route(layout: &mut WorkingLayout, work_budget: &mut LayoutWorkBudget) -> Result<()> {
+    work_budget.charge(
+        layout
+            .nodes
+            .len()
+            .saturating_add(layout.original_edges.len()),
+    )?;
     let geometries: HashMap<String, NodeGeometry> = layout
         .nodes
         .values()
@@ -781,6 +835,7 @@ pub(super) fn route(layout: &mut WorkingLayout) {
         let mut source_anchor = anchor_for_port(&source_port, source, source_side);
         let mut target_anchor = anchor_for_port(&target_port, target, target_side);
         let excluded = [edge.from.as_str(), edge.to.as_str()];
+        work_budget.charge(obstacles.len().saturating_mul(6))?;
         let source_handle = buried_anchor_handle(
             &source_port,
             &source_anchor,
@@ -803,26 +858,29 @@ pub(super) fn route(layout: &mut WorkingLayout) {
         if let Some(handle) = &target_handle {
             target_anchor = handle.anchor.clone();
         }
-        let middle = direct_path(&source_anchor, &target_anchor, &obstacles, &excluded)
-            .or_else(|| {
-                a_star_path(
-                    &source_anchor,
-                    &target_anchor,
-                    &obstacles,
-                    &excluded,
-                    &routed,
-                )
-            })
-            .unwrap_or_else(|| {
-                vec![
-                    source_anchor.clone(),
-                    LayoutPoint {
-                        x: source_anchor.x,
-                        y: target_anchor.y,
-                    },
-                    target_anchor.clone(),
-                ]
-            });
+        let middle = if let Some(path) =
+            direct_path(&source_anchor, &target_anchor, &obstacles, &excluded)
+        {
+            path
+        } else if let Some(path) = a_star_path(
+            &source_anchor,
+            &target_anchor,
+            &obstacles,
+            &excluded,
+            &routed,
+            work_budget,
+        )? {
+            path
+        } else {
+            vec![
+                source_anchor.clone(),
+                LayoutPoint {
+                    x: source_anchor.x,
+                    y: target_anchor.y,
+                },
+                target_anchor.clone(),
+            ]
+        };
         let handle_capacity = source_handle
             .as_ref()
             .map_or(0, |handle| handle.waypoints_from_port.len())
@@ -854,20 +912,32 @@ pub(super) fn route(layout: &mut WorkingLayout) {
         results.insert(index, points);
     }
 
+    let staging_work = layout
+        .original_edges
+        .iter()
+        .fold(layout.original_edges.len(), |work, edge| {
+            work.saturating_add(edge.points.len())
+        });
+    work_budget.charge(staging_work)?;
+    let mut staged_edges = layout.original_edges.clone();
     for (index, points) in results {
-        layout.original_edges[index].points = points;
+        staged_edges[index].points = points;
     }
     tracks::assign_tracks(
-        &mut layout.original_edges,
+        &mut staged_edges,
         &routing_order,
         &centered_straight_edges,
-    );
+        work_budget,
+    )?;
+    layout.original_edges = staged_edges;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::SwimlaneDirection;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use crate::swimlane::working::{WorkingEdge, WorkingNode};
     use indexmap::IndexMap;
 
@@ -920,6 +990,109 @@ mod tests {
         }
     }
 
+    fn route_unbounded(layout: &mut WorkingLayout) {
+        route(layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .expect("unbounded routing must succeed");
+    }
+
+    #[test]
+    fn a_star_grid_is_rejected_before_search_allocation() {
+        let obstacles = (0..32)
+            .map(|index| {
+                (
+                    format!("obstacle-{index}"),
+                    Rect {
+                        left: index as f64 * 2.0,
+                        right: index as f64 * 2.0 + 1.0,
+                        top: 0.0,
+                        bottom: 1.0,
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 100)
+            .unwrap();
+        let mut budget = LayoutWorkBudget::new(policy, 0).unwrap();
+
+        let error = a_star_path(
+            &LayoutPoint { x: -10.0, y: 0.5 },
+            &LayoutPoint { x: 100.0, y: 0.5 },
+            &obstacles,
+            &[],
+            &[],
+            &mut budget,
+        )
+        .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected max_layout_work_units resource limit error");
+        };
+        assert_eq!(error.actual, 5_712);
+        assert_eq!(error.max, 100);
+        assert_eq!(budget.used(), 0);
+    }
+
+    #[test]
+    fn repeated_a_star_setup_consumes_one_cumulative_budget() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 65)
+            .unwrap();
+        let mut budget = LayoutWorkBudget::new(policy, 0).unwrap();
+        let point = LayoutPoint { x: 0.0, y: 0.0 };
+
+        assert!(
+            a_star_path(&point, &point, &[], &[], &[], &mut budget)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            a_star_path(&point, &point, &[], &[], &[], &mut budget)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(budget.used(), 50);
+
+        let error = a_star_path(&point, &point, &[], &[], &[], &mut budget).unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected max_layout_work_units resource limit error");
+        };
+        assert_eq!(error.actual, 90);
+        assert_eq!(error.max, 65);
+        assert_eq!(budget.used(), 50);
+    }
+
+    #[test]
+    fn track_budget_failure_does_not_commit_routed_points() {
+        let mut layout = layout(
+            vec![
+                node("source", 0.0, 0.0, 40.0, 40.0),
+                node("target", 0.0, 200.0, 40.0, 40.0),
+            ],
+            vec![
+                edge("first", "source", "target"),
+                edge("second", "source", "target"),
+            ],
+        );
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 30)
+            .unwrap();
+        let mut budget = LayoutWorkBudget::new(policy, 0).unwrap();
+
+        let error = route(&mut layout, &mut budget).unwrap_err();
+
+        assert!(
+            error.to_string().contains("max_layout_work_units"),
+            "{error}"
+        );
+        assert!(
+            layout
+                .original_edges
+                .iter()
+                .all(|edge| edge.points.is_empty()),
+            "routing must commit only after track assignment succeeds"
+        );
+    }
+
     #[test]
     fn detours_an_anchor_that_starts_inside_a_foreign_obstacle() {
         let source = node("source", 0.0, 0.0, 40.0, 40.0);
@@ -932,7 +1105,7 @@ mod tests {
             vec![edge("edge", "source", "target")],
         );
 
-        route(&mut layout);
+        route_unbounded(&mut layout);
 
         let points = &layout.original_edges[0].points;
         assert!(
@@ -970,7 +1143,7 @@ mod tests {
             vec![edge("edge", "source", "target")],
         );
 
-        route(&mut layout);
+        route_unbounded(&mut layout);
 
         let points = &layout.original_edges[0].points;
         assert!(
@@ -1008,7 +1181,7 @@ mod tests {
             vec![edge("edge", "source", "target")],
         );
 
-        route(&mut layout);
+        route_unbounded(&mut layout);
 
         let points = &layout.original_edges[0].points;
         assert!(

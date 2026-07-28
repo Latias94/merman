@@ -147,6 +147,19 @@ pie title Body pie
 }
 
 #[test]
+fn pie_frontmatter_title_preserves_common_db_boundary_whitespace() {
+    for title in ["  Frontmatter pie  ", "\u{a0}Frontmatter pie\u{a0}"] {
+        let source = format!("---\ntitle: \"{title}\"\n---\npie\n  \"A\" : 1\n");
+        let svg = render_pie_from_text(&source);
+
+        assert!(
+            svg.contains(&format!(r#"class="pieTitleText">{title}</text>"#)),
+            "frontmatter title should be emitted exactly: {svg}"
+        );
+    }
+}
+
+#[test]
 fn pie_hidden_slices_still_reserve_color_domain_slots() {
     let layout = layout_pie_from_text(
         r#"pie

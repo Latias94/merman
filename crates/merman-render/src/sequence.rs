@@ -160,6 +160,7 @@ pub(crate) fn layout_sequence_diagram_typed_with_title_and_resource_policy(
     let SequenceLayoutGraph {
         mut nodes,
         edges,
+        block_layouts_by_id,
         bottom_box_top_y,
         bounds_start_x,
         bounds_stop_x,
@@ -246,6 +247,7 @@ pub(crate) fn layout_sequence_diagram_typed_with_title_and_resource_policy(
         edges,
         clusters,
         bounds,
+        block_layouts_by_id,
     })
 }
 

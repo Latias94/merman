@@ -1,7 +1,7 @@
 //! Operation-owned render services and deterministic policy.
 
 use crate::math::MathRenderer;
-use crate::resources::RenderResourcePolicy;
+use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
 use crate::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
@@ -1106,6 +1106,15 @@ impl RenderEnvironment {
         self
     }
 
+    /// Installs the math renderer compiled into this renderer, if present.
+    ///
+    /// Facades use this to select the canonical compiled capability instead of duplicating Cargo
+    /// feature checks in each transport layer.
+    pub fn with_compiled_math_renderer(mut self) -> Self {
+        self.math_renderer = default_math_renderer();
+        self
+    }
+
     pub fn with_math_renderer(mut self, renderer: Arc<dyn MathRenderer + Send + Sync>) -> Self {
         self.math_renderer = Some(renderer);
         self
@@ -1140,11 +1149,12 @@ impl RenderEnvironment {
         let operation_context = self.runtime_policy.begin_operation()?;
         Ok(RenderSession {
             text_measurement: self.text_measurement.clone(),
-            measurement_recorder: TextMeasurementRecorder::default(),
+            measurement_recorder: Box::default(),
             math_renderer: self.math_renderer.clone(),
             icon_registry: self.icon_registry.clone(),
             operation_context,
             resource_policy: self.resource_policy,
+            work_meter: Arc::new(OperationWorkMeter::new(self.resource_policy)),
         })
     }
 }
@@ -1158,11 +1168,13 @@ impl Default for RenderEnvironment {
 /// Opaque operation session. Family code receives only the narrow projection it needs.
 pub struct RenderSession {
     text_measurement: TextMeasurementPolicy,
-    measurement_recorder: TextMeasurementRecorder,
+    // Keep movable family artifacts compact for bounded worker stacks.
+    measurement_recorder: Box<TextMeasurementRecorder>,
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
     icon_registry: Option<Arc<IconRegistry>>,
     operation_context: OperationContext,
     resource_policy: RenderResourcePolicy,
+    work_meter: Arc<OperationWorkMeter>,
 }
 
 impl RenderSession {
@@ -1208,6 +1220,10 @@ impl RenderSession {
 
     pub const fn resource_policy(&self) -> RenderResourcePolicy {
         self.resource_policy
+    }
+
+    pub(crate) fn work_meter(&self) -> &Arc<OperationWorkMeter> {
+        &self.work_meter
     }
 
     pub fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {

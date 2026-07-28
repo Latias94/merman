@@ -1,4 +1,6 @@
 use super::common::*;
+use crate::Result;
+use crate::swimlane::direction::LayoutWorkBudget;
 use indexmap::IndexSet;
 
 const BUFFER: f64 = 2.0;
@@ -94,11 +96,20 @@ fn candidate_is_safe(
     current_crossings: usize,
     real_node_rects: &[RectEntry],
     label_rects: &[RectEntry],
-) -> bool {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<bool> {
     let edge = &layout.original_edges[edge_index];
     let endpoint_rects = endpoint_rects_for(layout, edge);
     let candidate_segments = segments_for(candidate);
     let excluded = endpoint_id_slices(edge);
+    work_budget.charge(
+        candidate_segments.len().saturating_mul(
+            real_node_rects
+                .len()
+                .saturating_add(label_rects.len())
+                .saturating_add(endpoint_rects.len()),
+        ),
+    )?;
     for segment in &candidate_segments {
         if segment_hits_any_rect(&segment.a, &segment.b, real_node_rects, &excluded, -BUFFER)
             || segment_hits_any_rect(&segment.a, &segment.b, label_rects, &[], -BUFFER)
@@ -106,35 +117,45 @@ fn candidate_is_safe(
                 .iter()
                 .any(|rect| segment_runs_along_rect_border(segment, *rect))
         {
-            return false;
+            return Ok(false);
         }
     }
+    work_budget.charge(layout.original_edges.len().saturating_sub(1))?;
     for (other_index, other) in layout.original_edges.iter().enumerate() {
         if other_index == edge_index {
             continue;
         }
         let other_segments = segments_for(&dedupe_consecutive_points(&other.points, EPSILON));
         if shared_track_conflicts(&candidate_segments, &other_segments) {
-            return false;
+            return Ok(false);
         }
     }
     let replacements = ReplacementMap::from_iter([(edge_index, candidate.to_vec())]);
-    strict_crossing_count(&layout.original_edges, &replacements) <= current_crossings
+    Ok(
+        checked_strict_crossing_count(&layout.original_edges, &replacements, work_budget)?
+            <= current_crossings,
+    )
 }
 
 pub(in crate::swimlane::direction) fn shortcut_redundant_orthogonal_jogs(
     layout: &mut WorkingLayout,
-) {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
+    work_budget.charge(layout.nodes.len())?;
     let (real_node_rects, label_rects) = collect_node_rect_entries(layout);
     for _ in 0..MAX_ITERATIONS {
-        let current_crossings =
-            strict_crossing_count(&layout.original_edges, &ReplacementMap::new());
+        let current_crossings = checked_strict_crossing_count(
+            &layout.original_edges,
+            &ReplacementMap::new(),
+            work_budget,
+        )?;
         let mut best_edge = None;
         let mut best_path = None;
         let mut best_crossings = current_crossings;
         let mut best_bends = usize::MAX;
         let mut best_length = f64::INFINITY;
 
+        work_budget.charge(layout.original_edges.len())?;
         for (edge_index, edge) in layout.original_edges.iter().enumerate() {
             let current_points = dedupe_consecutive_points(&edge.points, EPSILON);
             let current_bends = count_orthogonal_bends(&current_points, EPSILON);
@@ -144,26 +165,32 @@ pub(in crate::swimlane::direction) fn shortcut_redundant_orthogonal_jogs(
             }
             for index in 0..=current_points.len() - 4 {
                 for candidate in shortcut_candidates_at(&current_points, index) {
+                    work_budget.charge(1)?;
                     let candidate_bends = count_orthogonal_bends(&candidate, EPSILON);
                     let candidate_length = euclidean_path_length(&candidate);
                     let improves_shape = candidate_bends < current_bends
                         || (candidate_bends == current_bends
                             && candidate_length < current_length - EPSILON);
-                    if !improves_shape
-                        || !candidate_is_safe(
-                            layout,
-                            edge_index,
-                            &candidate,
-                            current_crossings,
-                            &real_node_rects,
-                            &label_rects,
-                        )
-                    {
+                    if !improves_shape {
+                        continue;
+                    }
+                    if !candidate_is_safe(
+                        layout,
+                        edge_index,
+                        &candidate,
+                        current_crossings,
+                        &real_node_rects,
+                        &label_rects,
+                        work_budget,
+                    )? {
                         continue;
                     }
                     let replacements = ReplacementMap::from_iter([(edge_index, candidate.clone())]);
-                    let candidate_crossings =
-                        strict_crossing_count(&layout.original_edges, &replacements);
+                    let candidate_crossings = checked_strict_crossing_count(
+                        &layout.original_edges,
+                        &replacements,
+                        work_budget,
+                    )?;
                     if candidate_crossings > best_crossings
                         || (candidate_crossings == best_crossings
                             && (candidate_bends > best_bends
@@ -181,8 +208,9 @@ pub(in crate::swimlane::direction) fn shortcut_redundant_orthogonal_jogs(
             }
         }
         let (Some(edge_index), Some(points)) = (best_edge, best_path) else {
-            return;
+            return Ok(());
         };
         layout.original_edges[edge_index].points = points;
     }
+    Ok(())
 }

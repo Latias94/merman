@@ -221,7 +221,7 @@ fn render_flowchart_svg_model(
         measurer,
         config: effective_config,
         hand_drawn_seed,
-        resource_limits: options.resource_policy(),
+        work_meter: options.work_meter(),
         math_renderer: options.math_renderer(),
         icon_registry: options.icon_registry(),
         node_html_labels,

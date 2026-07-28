@@ -1,4 +1,6 @@
 use super::common::*;
+use crate::Result;
+use crate::swimlane::direction::{LayoutWorkBudget, unordered_pair_count};
 use indexmap::{IndexMap, IndexSet};
 
 const ANCHOR: f64 = 20.0;
@@ -167,10 +169,12 @@ fn crossing_count_with_replacements(
     edges: &[WorkingEdge],
     current: &CrossingSnapshot,
     replacements: &ReplacementMap,
-) -> usize {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<usize> {
     if replacements.is_empty() {
-        return current.count;
+        return Ok(current.count);
     }
+    work_budget.charge(current.pairs.len())?;
     let current_affected: usize = current
         .pairs
         .iter()
@@ -179,6 +183,7 @@ fn crossing_count_with_replacements(
         })
         .map(|pair| pair.count)
         .sum();
+    work_budget.charge(unordered_pair_count(edges.len()))?;
     let mut replacement_affected = 0;
     for first in 0..edges.len() {
         let first_changed = replacements.contains_key(&first);
@@ -193,7 +198,7 @@ fn crossing_count_with_replacements(
             );
         }
     }
-    current.count - current_affected + replacement_affected
+    Ok(current.count - current_affected + replacement_affected)
 }
 
 fn crossing_components(snapshot: &CrossingSnapshot) -> Vec<Vec<usize>> {
@@ -229,15 +234,28 @@ fn crossing_components(snapshot: &CrossingSnapshot) -> Vec<Vec<usize>> {
     components
 }
 
-fn pair_search_groups(edges: &[WorkingEdge], snapshot: &CrossingSnapshot) -> Vec<Vec<usize>> {
+fn pair_search_groups(
+    edges: &[WorkingEdge],
+    snapshot: &CrossingSnapshot,
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<Vec<Vec<usize>>> {
+    work_budget.charge(
+        snapshot
+            .pairs
+            .len()
+            .saturating_mul(3)
+            .saturating_add(snapshot.edges.len()),
+    )?;
     let mut groups = Vec::new();
     for component in crossing_components(snapshot) {
+        work_budget.charge(component.len().saturating_mul(3))?;
         let component_set: IndexSet<_> = component.iter().copied().collect();
         let endpoint_ids: IndexSet<_> = component
             .iter()
             .flat_map(|&edge_index| [edges[edge_index].from.clone(), edges[edge_index].to.clone()])
             .collect();
         let mut group = component;
+        work_budget.charge(edges.len())?;
         for (edge_index, edge) in edges.iter().enumerate() {
             if !component_set.contains(&edge_index)
                 && (endpoint_ids.contains(&edge.from) || endpoint_ids.contains(&edge.to))
@@ -248,7 +266,7 @@ fn pair_search_groups(edges: &[WorkingEdge], snapshot: &CrossingSnapshot) -> Vec
         group.sort_unstable();
         groups.push(group);
     }
-    groups
+    Ok(groups)
 }
 
 fn current_crossings_by_edge(snapshot: &CrossingSnapshot) -> IndexMap<usize, usize> {
@@ -265,22 +283,31 @@ fn path_has_segment_conflict(
     edge_index: usize,
     path: &[LayoutPoint],
     replacements: &ReplacementMap,
-) -> bool {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<bool> {
     let candidate_segments = segments_for(path);
-    (0..edges.len()).any(|other_index| {
+    work_budget.charge(edges.len().saturating_sub(1))?;
+    Ok((0..edges.len()).any(|other_index| {
         other_index != edge_index
             && shared_track_conflicts(
                 &candidate_segments,
                 &segments_for(&points_for(edges, other_index, replacements)),
             )
-    })
+    }))
 }
 
-fn path_hits_node(edge: &WorkingEdge, path: &[LayoutPoint], real_node_rects: &[RectEntry]) -> bool {
+fn path_hits_node(
+    edge: &WorkingEdge,
+    path: &[LayoutPoint],
+    real_node_rects: &[RectEntry],
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<bool> {
     let excluded = endpoint_id_slices(edge);
-    segments_for(path).iter().any(|segment| {
+    let segments = segments_for(path);
+    work_budget.charge(segments.len().saturating_mul(real_node_rects.len()))?;
+    Ok(segments.iter().any(|segment| {
         segment_hits_any_rect(&segment.a, &segment.b, real_node_rects, &excluded, -2.0)
-    })
+    }))
 }
 
 fn side_is_horizontal(side: RectSide) -> bool {
@@ -762,7 +789,9 @@ fn shared_track_conflicts_for(
     edge_index: usize,
     candidate_segments: &[OrthogonalSegment],
     base_segments: &IndexMap<usize, Vec<OrthogonalSegment>>,
-) -> IndexSet<usize> {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<IndexSet<usize>> {
+    work_budget.charge(edges.len().saturating_sub(1))?;
     let mut conflicts = IndexSet::new();
     for (other_index, other_edge) in edges.iter().enumerate() {
         if other_index == edge_index {
@@ -779,10 +808,14 @@ fn shared_track_conflicts_for(
             conflicts.insert(other_index);
         }
     }
-    conflicts
+    Ok(conflicts)
 }
 
-fn pair_candidates_for(search: &PairCandidateSearch<'_>, edge_index: usize) -> Vec<PairCandidate> {
+fn pair_candidates_for(
+    search: &PairCandidateSearch<'_>,
+    edge_index: usize,
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<Vec<PairCandidate>> {
     struct ScoredCandidate {
         path: Vec<LayoutPoint>,
         segments: Vec<OrthogonalSegment>,
@@ -798,14 +831,20 @@ fn pair_candidates_for(search: &PairCandidateSearch<'_>, edge_index: usize) -> V
     for raw_candidate in
         candidate_paths_for(&edges[edge_index], search.node_info_by_id, search.outside)
     {
+        work_budget.charge(1)?;
         let candidate = simplify_polyline(&dedupe_consecutive_points(&raw_candidate, EPSILON));
-        if path_hits_node(&edges[edge_index], &candidate, search.real_node_rects)
-            || candidate.len() < 2
+        if path_hits_node(
+            &edges[edge_index],
+            &candidate,
+            search.real_node_rects,
+            work_budget,
+        )? || candidate.len() < 2
             || !seen.insert(candidate_key(&candidate))
         {
             continue;
         }
         let candidate_segments = segments_for(&candidate);
+        work_budget.charge(edges.len().saturating_sub(1))?;
         let replacement_affected: usize = (0..edges.len())
             .filter(|&other_index| other_index != edge_index)
             .map(|other_index| {
@@ -840,34 +879,36 @@ fn pair_candidates_for(search: &PairCandidateSearch<'_>, edge_index: usize) -> V
             .then_with(|| first.bends.cmp(&second.bends))
             .then_with(|| first.length.total_cmp(&second.length))
     });
-    candidates
-        .into_iter()
-        .take(MAX_PAIR_CANDIDATES_PER_EDGE)
-        .map(|candidate| PairCandidate {
+    let mut retained = Vec::new();
+    for candidate in candidates.into_iter().take(MAX_PAIR_CANDIDATES_PER_EDGE) {
+        retained.push(PairCandidate {
             shared_track_conflicts: shared_track_conflicts_for(
                 edges,
                 edge_index,
                 &candidate.segments,
                 search.base_segments,
-            ),
+                work_budget,
+            )?,
             path: candidate.path,
             segments: candidate.segments,
             total_bends: candidate.total_bends,
             length: candidate.length,
-        })
-        .collect()
+        });
+    }
+    Ok(retained)
 }
 
 fn pair_crossing_count(
-    edges: &[WorkingEdge],
-    current: &CrossingSnapshot,
+    context: &PairScoringContext<'_>,
     first_edge: usize,
     first_candidate: &PairCandidate,
     second_edge: usize,
     second_candidate: &PairCandidate,
-    base_segments: &IndexMap<usize, Vec<OrthogonalSegment>>,
-) -> usize {
-    let current_affected: usize = current
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<usize> {
+    work_budget.charge(context.current.pairs.len())?;
+    let current_affected: usize = context
+        .current
         .pairs
         .iter()
         .filter(|pair| {
@@ -878,21 +919,23 @@ fn pair_crossing_count(
         })
         .map(|pair| pair.count)
         .sum();
+    work_budget
+        .charge(1usize.saturating_add(context.edges.len().saturating_sub(2).saturating_mul(2)))?;
     let mut replacement_affected =
         crossing_count_between_segments(&first_candidate.segments, &second_candidate.segments);
-    for other_index in 0..edges.len() {
+    for other_index in 0..context.edges.len() {
         if other_index == first_edge || other_index == second_edge {
             continue;
         }
         replacement_affected += crossing_count_between_segments(
             &first_candidate.segments,
-            &base_segments[&other_index],
+            &context.base_segments[&other_index],
         ) + crossing_count_between_segments(
             &second_candidate.segments,
-            &base_segments[&other_index],
+            &context.base_segments[&other_index],
         );
     }
-    current.count - current_affected + replacement_affected
+    Ok(context.current.count - current_affected + replacement_affected)
 }
 
 fn conflicts_only_with(candidate: &PairCandidate, edge_index: usize) -> bool {
@@ -923,20 +966,20 @@ fn score_pair_replacement(
     first_candidate: &PairCandidate,
     second: &PairOption,
     second_candidate: &PairCandidate,
-) -> Option<PairReplacementScore> {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<Option<PairReplacementScore>> {
     let crossings = pair_crossing_count(
-        context.edges,
-        context.current,
+        context,
         first.edge_index,
         first_candidate,
         second.edge_index,
         second_candidate,
-        context.base_segments,
-    );
+        work_budget,
+    )?;
     if crossings >= context.current.count {
-        return None;
+        return Ok(None);
     }
-    Some(PairReplacementScore {
+    Ok(Some(PairReplacementScore {
         replacements: ReplacementMap::from_iter([
             (first.edge_index, first_candidate.path.clone()),
             (second.edge_index, second_candidate.path.clone()),
@@ -952,7 +995,7 @@ fn score_pair_replacement(
             - context.base_lengths[&second.edge_index]
             + first_candidate.length
             + second_candidate.length,
-    })
+    }))
 }
 
 fn pair_score_is_better(candidate: &PairReplacementScore, best: &PairReplacementScore) -> bool {
@@ -967,14 +1010,22 @@ fn best_score_for_option_pair(
     first: &PairOption,
     second: &PairOption,
     mut best: PairReplacementScore,
-) -> PairReplacementScore {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<PairReplacementScore> {
     for first_candidate in &first.candidates {
         for second_candidate in &second.candidates {
+            work_budget.charge(1)?;
             if !pair_candidates_are_compatible(first, first_candidate, second, second_candidate) {
                 continue;
             }
-            let Some(score) =
-                score_pair_replacement(context, first, first_candidate, second, second_candidate)
+            let Some(score) = score_pair_replacement(
+                context,
+                first,
+                first_candidate,
+                second,
+                second_candidate,
+                work_budget,
+            )?
             else {
                 continue;
             };
@@ -983,7 +1034,7 @@ fn best_score_for_option_pair(
             }
         }
     }
-    best
+    Ok(best)
 }
 
 fn best_paired_replacement(
@@ -992,14 +1043,19 @@ fn best_paired_replacement(
     node_info_by_id: &IndexMap<String, NodeBoundsInfo>,
     real_node_rects: &[RectEntry],
     outside: OutsideTracks,
-) -> Option<ReplacementMap> {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<Option<ReplacementMap>> {
     let empty = ReplacementMap::new();
-    let current_bends = total_bends(edges, &empty);
+    let current_bends = checked_total_bends(edges, &empty, work_budget)?;
+    work_budget.charge(edges.len())?;
     let current_length: f64 = (0..edges.len())
         .map(|edge_index| manhattan_path_length(&points_for(edges, edge_index, &empty)))
         .sum();
+    work_budget.charge(edges.len())?;
     let base_segments = current_segments_by_edge(edges);
+    work_budget.charge(current.pairs.len())?;
     let crossing_count_by_edge = current_crossings_by_edge(current);
+    work_budget.charge(edges.len())?;
     let base_bends: IndexMap<_, _> = (0..edges.len())
         .map(|edge_index| {
             (
@@ -1008,6 +1064,7 @@ fn best_paired_replacement(
             )
         })
         .collect();
+    work_budget.charge(edges.len())?;
     let base_lengths: IndexMap<_, _> = (0..edges.len())
         .map(|edge_index| {
             (
@@ -1025,14 +1082,14 @@ fn best_paired_replacement(
         real_node_rects,
         outside,
     };
-    let groups = pair_search_groups(edges, current);
+    let groups = pair_search_groups(edges, current, work_budget)?;
     let mut options_by_edge = IndexMap::new();
     for group in &groups {
         for &edge_index in group {
             if options_by_edge.contains_key(&edge_index) {
                 continue;
             }
-            let candidates = pair_candidates_for(&candidate_search, edge_index);
+            let candidates = pair_candidates_for(&candidate_search, edge_index, work_budget)?;
             if !candidates.is_empty() {
                 options_by_edge.insert(
                     edge_index,
@@ -1073,6 +1130,7 @@ fn best_paired_replacement(
             .collect();
         for first_index in 0..options.len() {
             for second_index in first_index + 1..options.len() {
+                work_budget.charge(1)?;
                 let first = options[first_index];
                 let second = options[second_index];
                 if !crossing_edge_set.contains(&first.edge_index)
@@ -1080,25 +1138,29 @@ fn best_paired_replacement(
                 {
                     continue;
                 }
-                best = best_score_for_option_pair(&scoring, first, second, best);
+                best = best_score_for_option_pair(&scoring, first, second, best, work_budget)?;
             }
         }
     }
-    (!best.replacements.is_empty()).then_some(best.replacements)
+    Ok((!best.replacements.is_empty()).then_some(best.replacements))
 }
 
 pub(in crate::swimlane::direction) fn resolve_rendered_orthogonal_crossings(
     layout: &mut WorkingLayout,
-) {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
+    work_budget.charge(layout.nodes.len())?;
     let (node_info_by_id, real_node_rects) = collect_real_node_bounds(layout);
+    work_budget.charge(node_info_by_id.len().saturating_mul(4))?;
     let Some(outside) = outside_tracks(&node_info_by_id) else {
-        return;
+        return Ok(());
     };
 
     for _ in 0..MAX_ITERATIONS {
+        work_budget.charge(unordered_pair_count(layout.original_edges.len()))?;
         let current = crossing_snapshot(&layout.original_edges, &ReplacementMap::new());
         if current.count == 0 {
-            return;
+            return Ok(());
         }
         let mut best_edge = None;
         let mut best_path = None;
@@ -1115,24 +1177,31 @@ pub(in crate::swimlane::direction) fn resolve_rendered_orthogonal_crossings(
                 &node_info_by_id,
                 outside,
             ) {
+                work_budget.charge(1)?;
                 let candidate_hits_node = path_hits_node(
                     &layout.original_edges[edge_index],
                     &candidate,
                     &real_node_rects,
-                );
-                let candidate_has_segment_conflict = !candidate_hits_node
-                    && path_has_segment_conflict(
+                    work_budget,
+                )?;
+                let candidate_has_segment_conflict = if candidate_hits_node {
+                    false
+                } else {
+                    path_has_segment_conflict(
                         &layout.original_edges,
                         edge_index,
                         &candidate,
                         &ReplacementMap::new(),
-                    );
+                        work_budget,
+                    )?
+                };
                 let replacements = ReplacementMap::from_iter([(edge_index, candidate.clone())]);
                 let candidate_crossings = crossing_count_with_replacements(
                     &layout.original_edges,
                     &current,
                     &replacements,
-                );
+                    work_budget,
+                )?;
                 let candidate_bends = count_orthogonal_bends(&candidate, EPSILON);
                 if candidate_hits_node || candidate_has_segment_conflict {
                     continue;
@@ -1163,9 +1232,91 @@ pub(in crate::swimlane::direction) fn resolve_rendered_orthogonal_crossings(
             &node_info_by_id,
             &real_node_rects,
             outside,
-        ) else {
-            return;
+            work_budget,
+        )?
+        else {
+            return Ok(());
         };
         apply_replacements(&mut layout.original_edges, replacements);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+
+    fn edge(id: &str, y: f64) -> WorkingEdge {
+        WorkingEdge {
+            id: id.to_string(),
+            from: format!("{id}-from"),
+            to: format!("{id}-to"),
+            reference_id: id.to_string(),
+            label_node_id: None,
+            reversed_for_layout: false,
+            points: vec![LayoutPoint { x: 0.0, y }, LayoutPoint { x: 20.0, y }],
+        }
+    }
+
+    fn pair_candidate(y: f64) -> PairCandidate {
+        let path = vec![LayoutPoint { x: 0.0, y }, LayoutPoint { x: 20.0, y }];
+        PairCandidate {
+            segments: segments_for(&path),
+            path,
+            shared_track_conflicts: IndexSet::new(),
+            total_bends: 0,
+            length: 20.0,
+        }
+    }
+
+    #[test]
+    fn paired_candidate_unit_can_pass_before_internal_edge_pair_scoring_is_rejected() {
+        let edges = vec![
+            edge("first", 0.0),
+            edge("second", 10.0),
+            edge("third", 20.0),
+            edge("fourth", 30.0),
+        ];
+        let current = crossing_snapshot(&edges, &ReplacementMap::new());
+        let base_segments = current_segments_by_edge(&edges);
+        let base_bends = (0..edges.len()).map(|index| (index, 0)).collect();
+        let base_lengths = (0..edges.len()).map(|index| (index, 20.0)).collect();
+        let context = PairScoringContext {
+            edges: &edges,
+            current: &current,
+            current_bends: 0,
+            current_length: 80.0,
+            base_bends: &base_bends,
+            base_lengths: &base_lengths,
+            base_segments: &base_segments,
+        };
+        let first = PairOption {
+            edge_index: 0,
+            candidates: vec![pair_candidate(0.0)],
+        };
+        let second = PairOption {
+            edge_index: 1,
+            candidates: vec![pair_candidate(10.0)],
+        };
+        let best = PairReplacementScore {
+            replacements: ReplacementMap::new(),
+            crossings: 1,
+            bends: 0,
+            length: 80.0,
+        };
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let mut budget = LayoutWorkBudget::new(policy, 0).unwrap();
+
+        let error =
+            best_score_for_option_pair(&context, &first, &second, best, &mut budget).unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected max_layout_work_units resource limit error");
+        };
+        assert_eq!(error.actual, 6);
+        assert_eq!(error.max, 1);
+        assert_eq!(budget.used(), 1);
     }
 }

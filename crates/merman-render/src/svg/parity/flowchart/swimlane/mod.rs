@@ -158,7 +158,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     edge_path_cache: &mut FxHashMap<&str, FlowchartEdgePathCacheEntry>,
     render_edges: &[Cow<'_, crate::flowchart::FlowEdge>],
     effective_config: &merman_core::MermaidConfig,
-    resource_limits: crate::resources::RenderResourcePolicy,
+    work_meter: &crate::resources::OperationWorkMeter,
 ) -> Result<()> {
     use line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
 
@@ -181,6 +181,16 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         arrow_type_start: Option<&'static str>,
         arrow_type_end: Option<&'static str>,
     }
+
+    let clone_work_units = render_edges
+        .iter()
+        .filter_map(|edge| {
+            edge_path_cache
+                .get(edge.as_ref().id.as_str())
+                .map(|entry| entry.geom.data_points.len().saturating_add(1))
+        })
+        .fold(0usize, usize::saturating_add);
+    work_meter.charge(clone_work_units)?;
 
     let owned_edges: Vec<_> = render_edges
         .iter()
@@ -215,7 +225,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
             jump_radius: 6.0,
             jump_style,
         },
-        resource_limits,
+        work_meter,
     )?;
 
     for path in paths {
@@ -334,14 +344,18 @@ mod tests {
                 horizontal_points.clone(),
             ),
         );
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
 
         apply_line_hops_to_edge_geometries(
             &mut cache,
             &render_edges,
             &merman_core::MermaidConfig::default(),
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            &work_meter,
         )
         .expect("apply line hops");
+        assert_eq!(work_meter.used(), 17);
 
         let vertical = &cache["vertical"].geom;
         assert!(!vertical.line_hop_applied);
@@ -391,16 +405,15 @@ mod tests {
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({
             "swimlane": { "lineHops": false }
         }));
-
-        apply_line_hops_to_edge_geometries(
-            &mut cache,
-            &render_edges,
-            &config,
+        let work_meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        )
-        .expect("disabled line hops");
+        );
+
+        apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config, &work_meter)
+            .expect("disabled line hops");
 
         assert_eq!(cache["horizontal"].geom.d, "M-10,0L10,0");
         assert!(!cache["horizontal"].geom.line_hop_applied);
+        assert_eq!(work_meter.used(), 0);
     }
 }

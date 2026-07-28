@@ -381,8 +381,8 @@ impl<'a> SvgExecution<'a> {
         self.timing
     }
 
-    pub(crate) const fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
-        self.session.resource_policy()
+    pub(crate) fn work_meter(&self) -> &crate::resources::OperationWorkMeter {
+        self.session.work_meter().as_ref()
     }
 }
 
@@ -426,6 +426,31 @@ pub(crate) fn render_builtin_family_artifact(
         &execution,
     )?;
     let svg = rooted_svg.into_string_for(family.kind())?;
+    apply_theme_css(svg, effective_config.as_value(), session)
+}
+
+#[cfg(feature = "layout-cytoscape")]
+#[inline(never)]
+pub(crate) fn render_architecture_family_artifact(
+    pair: &crate::family::FamilyPair<
+        merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
+        ArchitectureDiagramLayout,
+    >,
+    effective_config: &merman_core::MermaidConfig,
+    session: &RenderSession,
+    options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
+) -> Result<String> {
+    // Keep the deep-group Architecture path out of the heterogeneous dispatcher so it fits in
+    // the renderer's supported low-stack worker budget.
+    let execution = SvgExecution::new(options, debug, session)?;
+    let rooted_svg = architecture::render_architecture_diagram_svg_typed_with_config(
+        pair.layout(),
+        pair.semantic(),
+        effective_config,
+        &execution,
+    )?;
+    let svg = rooted_svg.into_string_for(crate::family::RenderFamilyKind::Architecture)?;
     apply_theme_css(svg, effective_config.as_value(), session)
 }
 
@@ -556,7 +581,6 @@ fn render_builtin_family_artifact_raw(
             pair.layout(),
             pair.semantic(),
             effective_config_value,
-            title,
             options,
         ),
         BuiltinFamilyArtifact::Packet(pair) => packet::render_packet_diagram_svg_model(

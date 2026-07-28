@@ -1,8 +1,10 @@
 use super::super::working::{WorkingEdge, WorkingLayout, WorkingNodeKind};
+use super::LayoutWorkBudget;
 use super::geometry::{
     classify_three_segment_route, collect_real_node_bounds, get_node_pair_geometry,
     segment_conflicts_with_any_edge, segment_hits_any_rect,
 };
+use crate::Result;
 use crate::model::LayoutPoint;
 use crate::swimlane::config::EPSILON;
 use std::collections::HashMap;
@@ -38,9 +40,11 @@ fn label_clearance_for(
     source_id: &str,
     destination_id: &str,
     axis: ShiftAxis,
-) -> f64 {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<f64> {
     let target_pair = pair_key(source_id, destination_id);
     let mut maximum_half_extent: f64 = 0.0;
+    work_budget.charge(edges.len())?;
     for (other_index, edge) in edges.iter().enumerate() {
         if other_index != edge_index && pair_key(&edge.from, &edge.to) != target_pair {
             continue;
@@ -58,15 +62,20 @@ fn label_clearance_for(
         maximum_half_extent = maximum_half_extent.max(half_extent);
     }
     if maximum_half_extent > 0.0 {
-        maximum_half_extent + LABEL_CLEARANCE_BUFFER
+        Ok(maximum_half_extent + LABEL_CLEARANCE_BUFFER)
     } else {
-        0.0
+        Ok(0.0)
     }
 }
 
 /// Replaces an eligible four-point sibling detour with a clear straight route.
-pub(super) fn straighten_collinear_sibling_detours(layout: &mut WorkingLayout) {
+pub(super) fn straighten_collinear_sibling_detours(
+    layout: &mut WorkingLayout,
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
+    work_budget.charge(layout.nodes.len())?;
     let (node_info_by_id, real_node_rects) = collect_real_node_bounds(layout);
+    work_budget.charge(layout.nodes.len())?;
     let label_dimensions_by_id = layout
         .nodes
         .values()
@@ -82,6 +91,7 @@ pub(super) fn straighten_collinear_sibling_detours(layout: &mut WorkingLayout) {
         })
         .collect::<HashMap<_, _>>();
 
+    work_budget.charge(layout.original_edges.len())?;
     for edge_index in 0..layout.original_edges.len() {
         let edge = layout.original_edges[edge_index].clone();
         if classify_three_segment_route(&edge.points, EPSILON).is_none() {
@@ -138,6 +148,7 @@ pub(super) fn straighten_collinear_sibling_detours(layout: &mut WorkingLayout) {
             )
         };
         let excluded_node_ids = [node_pair.src_id.as_str(), node_pair.dst_id.as_str()];
+        work_budget.charge(real_node_rects.len())?;
         if segment_hits_any_rect(
             &target_source,
             &target_destination,
@@ -155,7 +166,8 @@ pub(super) fn straighten_collinear_sibling_detours(layout: &mut WorkingLayout) {
             &node_pair.src_id,
             &node_pair.dst_id,
             shift_axis,
-        );
+            work_budget,
+        )?;
         let effective_shift = label_shift.max(PORT_SHIFT);
         for delta in [0.0, effective_shift, -effective_shift] {
             let mut shifted_source = target_source.clone();
@@ -185,13 +197,19 @@ pub(super) fn straighten_collinear_sibling_detours(layout: &mut WorkingLayout) {
                 }
             }
 
+            work_budget.charge(1)?;
+            work_budget.charge(real_node_rects.len())?;
             if segment_hits_any_rect(
                 &shifted_source,
                 &shifted_destination,
                 &real_node_rects,
                 &excluded_node_ids,
                 1.0,
-            ) || segment_conflicts_with_any_edge(
+            ) {
+                continue;
+            }
+            work_budget.charge(layout.original_edges.len())?;
+            if segment_conflicts_with_any_edge(
                 &shifted_source,
                 &shifted_destination,
                 &layout.original_edges,
@@ -206,6 +224,7 @@ pub(super) fn straighten_collinear_sibling_detours(layout: &mut WorkingLayout) {
             break;
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -336,7 +355,11 @@ mod tests {
             vec![edge("A_B", "A", "B", None, vertical_detour())],
         );
 
-        straighten_collinear_sibling_detours(&mut layout);
+        straighten_collinear_sibling_detours(
+            &mut layout,
+            &mut LayoutWorkBudget::unbounded_for_tests(),
+        )
+        .unwrap();
 
         assert_points(
             &layout.original_edges[0].points,
@@ -360,7 +383,11 @@ mod tests {
             ],
         );
 
-        straighten_collinear_sibling_detours(&mut layout);
+        straighten_collinear_sibling_detours(
+            &mut layout,
+            &mut LayoutWorkBudget::unbounded_for_tests(),
+        )
+        .unwrap();
 
         assert_points(
             &layout.original_edges[1].points,
@@ -388,7 +415,11 @@ mod tests {
             ],
         );
 
-        straighten_collinear_sibling_detours(&mut layout);
+        straighten_collinear_sibling_detours(
+            &mut layout,
+            &mut LayoutWorkBudget::unbounded_for_tests(),
+        )
+        .unwrap();
 
         assert_points(
             &layout.original_edges[1].points,
@@ -416,7 +447,11 @@ mod tests {
             ],
         );
 
-        straighten_collinear_sibling_detours(&mut layout);
+        straighten_collinear_sibling_detours(
+            &mut layout,
+            &mut LayoutWorkBudget::unbounded_for_tests(),
+        )
+        .unwrap();
 
         assert_points(
             &layout.original_edges[1].points,
@@ -447,7 +482,11 @@ mod tests {
             ],
         );
 
-        straighten_collinear_sibling_detours(&mut layout);
+        straighten_collinear_sibling_detours(
+            &mut layout,
+            &mut LayoutWorkBudget::unbounded_for_tests(),
+        )
+        .unwrap();
 
         assert_points(
             &layout.original_edges[2].points,
@@ -467,7 +506,11 @@ mod tests {
             vec![edge("detour", "A", "B", None, original.clone())],
         );
 
-        straighten_collinear_sibling_detours(&mut layout);
+        straighten_collinear_sibling_detours(
+            &mut layout,
+            &mut LayoutWorkBudget::unbounded_for_tests(),
+        )
+        .unwrap();
 
         assert_unchanged(&layout.original_edges[0].points, &original);
     }
@@ -493,7 +536,11 @@ mod tests {
             ],
         );
 
-        straighten_collinear_sibling_detours(&mut layout);
+        straighten_collinear_sibling_detours(
+            &mut layout,
+            &mut LayoutWorkBudget::unbounded_for_tests(),
+        )
+        .unwrap();
 
         assert_unchanged(&layout.original_edges[1].points, &original);
     }
@@ -511,7 +558,11 @@ mod tests {
             vec![edge("detour", "A", "B", None, original.clone())],
         );
 
-        straighten_collinear_sibling_detours(&mut layout);
+        straighten_collinear_sibling_detours(
+            &mut layout,
+            &mut LayoutWorkBudget::unbounded_for_tests(),
+        )
+        .unwrap();
 
         assert_unchanged(&layout.original_edges[0].points, &original);
     }
@@ -531,7 +582,11 @@ mod tests {
             vec![edge("detour", "A", "B", None, original.clone())],
         );
 
-        straighten_collinear_sibling_detours(&mut layout);
+        straighten_collinear_sibling_detours(
+            &mut layout,
+            &mut LayoutWorkBudget::unbounded_for_tests(),
+        )
+        .unwrap();
 
         assert_unchanged(&layout.original_edges[0].points, &original);
     }

@@ -725,12 +725,24 @@ pub struct ErDiagramLayout {
     pub bounds: Option<Bounds>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SequenceBlockLayout {
+    pub start_y: f64,
+    pub stop_y: f64,
+    pub section_ys_by_id: FxHashMap<String, f64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
+    /// Canonical vertical geometry captured while replaying Mermaid's sequence layout cursor.
+    ///
+    /// This remains outside compatibility layout JSON because it is renderer-owned phase data.
+    #[serde(skip)]
+    pub block_layouts_by_id: FxHashMap<String, SequenceBlockLayout>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -793,6 +805,8 @@ pub struct PieLegendItemLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PieDiagramLayout {
     pub bounds: Option<Bounds>,
+    #[serde(default)]
+    pub title: Option<String>,
     pub center_x: f64,
     pub center_y: f64,
     pub radius: f64,

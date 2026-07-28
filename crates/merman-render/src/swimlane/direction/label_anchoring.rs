@@ -3,6 +3,8 @@ use super::geometry::{
     EPSILON, RectBounds, dedupe_consecutive_points, rect_contains_rect, rect_of_node_bounds,
     rects_overlap, segment_bounds_overlap_rect,
 };
+use super::{LayoutWorkBudget, unordered_pair_count};
+use crate::Result;
 use crate::model::LayoutPoint;
 use std::cmp::Ordering;
 
@@ -217,33 +219,47 @@ impl AnchorSearch<'_> {
         }
     }
 
-    fn find_containing_lane(&self, rect: RectBounds) -> Option<&RectEntry> {
-        self.lane_groups
+    fn find_containing_lane(
+        &self,
+        rect: RectBounds,
+        work_budget: &mut LayoutWorkBudget,
+    ) -> Result<Option<&RectEntry>> {
+        work_budget.charge(self.lane_groups.len())?;
+        Ok(self
+            .lane_groups
             .iter()
-            .find(|lane| rect_contains_rect(lane.rect, rect))
+            .find(|lane| rect_contains_rect(lane.rect, rect)))
     }
 
-    fn placement_for_anchor(&self, anchor: Anchor) -> Option<Placement> {
+    fn placement_for_anchor(
+        &self,
+        anchor: Anchor,
+        work_budget: &mut LayoutWorkBudget,
+    ) -> Result<Option<Placement>> {
         let centered_rect =
             RectBounds::from_center(anchor.x, anchor.y, self.label_width, self.label_height);
-        if let Some(lane) = self.find_containing_lane(centered_rect) {
-            return Some(Placement {
+        if let Some(lane) = self.find_containing_lane(centered_rect, work_budget)? {
+            return Ok(Some(Placement {
                 lane_id: lane.id.clone(),
                 anchor,
                 rect: centered_rect,
-            });
+            }));
         }
 
-        let containing_lane = self
+        work_budget.charge(self.lane_groups.len())?;
+        let Some(containing_lane) = self
             .lane_groups
             .iter()
-            .find(|lane| point_inside_rect_inclusive(anchor, lane.rect))?;
+            .find(|lane| point_inside_rect_inclusive(anchor, lane.rect))
+        else {
+            return Ok(None);
+        };
         let minimum_x = containing_lane.rect.left + self.label_width / 2.0 + LABEL_LANE_MARGIN;
         let maximum_x = containing_lane.rect.right - self.label_width / 2.0 - LABEL_LANE_MARGIN;
         let minimum_y = containing_lane.rect.top + self.label_height / 2.0 + LABEL_LANE_MARGIN;
         let maximum_y = containing_lane.rect.bottom - self.label_height / 2.0 - LABEL_LANE_MARGIN;
         if minimum_x > maximum_x || minimum_y > maximum_y {
-            return None;
+            return Ok(None);
         }
 
         let clamped_anchor = Anchor {
@@ -256,11 +272,13 @@ impl AnchorSearch<'_> {
             self.label_width,
             self.label_height,
         );
-        point_inside_rect_inclusive(anchor, clamped_rect).then(|| Placement {
-            lane_id: containing_lane.id.clone(),
-            anchor: clamped_anchor,
-            rect: clamped_rect,
-        })
+        Ok(
+            point_inside_rect_inclusive(anchor, clamped_rect).then(|| Placement {
+                lane_id: containing_lane.id.clone(),
+                anchor: clamped_anchor,
+                rect: clamped_rect,
+            }),
+        )
     }
 
     fn distance_along_segment(
@@ -299,28 +317,50 @@ impl AnchorSearch<'_> {
         true
     }
 
-    fn label_overlaps_foreign_node(&self, rect: RectBounds) -> bool {
+    fn label_overlaps_foreign_node(
+        &self,
+        rect: RectBounds,
+        work_budget: &mut LayoutWorkBudget,
+    ) -> Result<bool> {
         let buffered = rect.inflated(LABEL_PLACEMENT_BUFFER);
-        self.foreign_node_rects
+        work_budget.charge(self.foreign_node_rects.len())?;
+        Ok(self
+            .foreign_node_rects
             .iter()
-            .any(|node| node.id != self.label_id && rects_overlap(buffered, node.rect))
+            .any(|node| node.id != self.label_id && rects_overlap(buffered, node.rect)))
     }
 
-    fn label_overlaps_foreign_edge(&self, rect: RectBounds) -> bool {
+    fn label_overlaps_foreign_edge(
+        &self,
+        rect: RectBounds,
+        work_budget: &mut LayoutWorkBudget,
+    ) -> Result<bool> {
         let buffered = rect.inflated(LABEL_PLACEMENT_BUFFER);
-        self.all_edge_segments.iter().any(|segment| {
+        work_budget.charge(self.all_edge_segments.len())?;
+        Ok(self.all_edge_segments.iter().any(|segment| {
             segment.edge_id != self.edge_id
                 && segment_bounds_overlap_rect(&segment.start, &segment.end, buffered, 0.0)
-        })
+        }))
     }
 
-    fn overlaps_placed_label(&self, rect: RectBounds) -> bool {
-        self.placed_label_rects
+    fn overlaps_placed_label(
+        &self,
+        rect: RectBounds,
+        work_budget: &mut LayoutWorkBudget,
+    ) -> Result<bool> {
+        work_budget.charge(self.placed_label_rects.len())?;
+        Ok(self
+            .placed_label_rects
             .iter()
-            .any(|placed| placed.id != self.label_id && rects_overlap(rect, placed.rect))
+            .any(|placed| placed.id != self.label_id && rects_overlap(rect, placed.rect)))
     }
 
-    fn try_pool(&self, pool: &[SegmentCandidate]) -> Option<Choice> {
+    fn try_pool(
+        &self,
+        pool: &[SegmentCandidate],
+        work_budget: &mut LayoutWorkBudget,
+    ) -> Result<Option<Choice>> {
+        work_budget.charge(pool.len().saturating_add(unordered_pair_count(pool.len())))?;
         let ranked = rank_segments(
             pool,
             self.label_long_axis,
@@ -329,27 +369,34 @@ impl AnchorSearch<'_> {
         );
         for segment in ranked {
             for parameter in ALONG_SEGMENT_PARAMETERS {
+                work_budget.charge(1)?;
                 let anchor = self.anchor_at_parameter(segment, parameter);
                 if !self.label_clears_terminal_endpoints(segment, anchor) {
                     continue;
                 }
-                let Some(placement) = self.placement_for_anchor(anchor) else {
+                let Some(placement) = self.placement_for_anchor(anchor, work_budget)? else {
                     continue;
                 };
-                if label_overlaps_own_marker(placement.rect, self.points)
-                    || self.overlaps_placed_label(placement.rect)
-                    || self.label_overlaps_foreign_node(placement.rect)
-                    || self.label_overlaps_foreign_edge(placement.rect)
-                {
+                work_budget.charge(self.points.len())?;
+                if label_overlaps_own_marker(placement.rect, self.points) {
                     continue;
                 }
-                return Some(Choice {
+                if self.overlaps_placed_label(placement.rect, work_budget)? {
+                    continue;
+                }
+                if self.label_overlaps_foreign_node(placement.rect, work_budget)? {
+                    continue;
+                }
+                if self.label_overlaps_foreign_edge(placement.rect, work_budget)? {
+                    continue;
+                }
+                return Ok(Some(Choice {
                     lane_id: placement.lane_id,
                     anchor: placement.anchor,
-                });
+                }));
             }
         }
-        None
+        Ok(None)
     }
 
     fn find_lane_containing_fallback(
@@ -357,7 +404,9 @@ impl AnchorSearch<'_> {
         pool: &[SegmentCandidate],
         require_endpoint_clearance: bool,
         allow_foreign_edge_overlap: bool,
-    ) -> Option<Choice> {
+        work_budget: &mut LayoutWorkBudget,
+    ) -> Result<Option<Choice>> {
+        work_budget.charge(pool.len().saturating_add(unordered_pair_count(pool.len())))?;
         let ranked = rank_segments(
             pool,
             self.label_long_axis,
@@ -365,44 +414,77 @@ impl AnchorSearch<'_> {
             self.label_height,
         );
         for segment in ranked {
+            work_budget.charge(1)?;
             let anchor = segment.midpoint;
             if require_endpoint_clearance && !self.label_clears_terminal_endpoints(segment, anchor)
             {
                 continue;
             }
-            let Some(placement) = self.placement_for_anchor(anchor) else {
+            let Some(placement) = self.placement_for_anchor(anchor, work_budget)? else {
                 continue;
             };
-            if label_overlaps_own_marker(placement.rect, self.points)
-                || self.overlaps_placed_label(placement.rect)
-                || self.label_overlaps_foreign_node(placement.rect)
-                || (!allow_foreign_edge_overlap && self.label_overlaps_foreign_edge(placement.rect))
+            work_budget.charge(self.points.len())?;
+            if label_overlaps_own_marker(placement.rect, self.points) {
+                continue;
+            }
+            if self.overlaps_placed_label(placement.rect, work_budget)? {
+                continue;
+            }
+            if self.label_overlaps_foreign_node(placement.rect, work_budget)? {
+                continue;
+            }
+            if !allow_foreign_edge_overlap
+                && self.label_overlaps_foreign_edge(placement.rect, work_budget)?
             {
                 continue;
             }
-            return Some(Choice {
+            return Ok(Some(Choice {
                 lane_id: placement.lane_id,
                 anchor: placement.anchor,
-            });
+            }));
         }
-        None
+        Ok(None)
     }
 
-    fn find_choice(&self, middle_pool: &[SegmentCandidate]) -> Option<Choice> {
-        self.try_pool(middle_pool)
-            .or_else(|| {
-                (middle_pool.len() < self.segments.len())
-                    .then(|| self.try_pool(self.segments))
-                    .flatten()
-            })
-            .or_else(|| self.find_lane_containing_fallback(self.segments, true, false))
-            .or_else(|| self.find_lane_containing_fallback(self.segments, false, false))
-            .or_else(|| self.find_lane_containing_fallback(self.segments, false, true))
+    fn find_choice(
+        &self,
+        middle_pool: &[SegmentCandidate],
+        work_budget: &mut LayoutWorkBudget,
+    ) -> Result<Option<Choice>> {
+        if let Some(choice) = self.try_pool(middle_pool, work_budget)? {
+            return Ok(Some(choice));
+        }
+        if middle_pool.len() < self.segments.len()
+            && let Some(choice) = self.try_pool(self.segments, work_budget)?
+        {
+            return Ok(Some(choice));
+        }
+        for (require_endpoint_clearance, allow_foreign_edge_overlap) in
+            [(true, false), (false, false), (false, true)]
+        {
+            if let Some(choice) = self.find_lane_containing_fallback(
+                self.segments,
+                require_endpoint_clearance,
+                allow_foreign_edge_overlap,
+                work_budget,
+            )? {
+                return Ok(Some(choice));
+            }
+        }
+        Ok(None)
     }
 }
 
-pub(super) fn anchor_labels_to_polyline(layout: &mut WorkingLayout) {
+pub(super) fn anchor_labels_to_polyline(
+    layout: &mut WorkingLayout,
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
     // `original_edges` is the renderable edge set; layout-only split edges live in `graph_edges`.
+    work_budget.charge(layout.original_edges.len())?;
+    let edge_segment_work = layout.original_edges.iter().fold(0usize, |total, edge| {
+        total.saturating_add(edge.points.len().saturating_sub(1))
+    });
+    work_budget.charge(edge_segment_work)?;
     let all_edge_segments = layout
         .original_edges
         .iter()
@@ -417,6 +499,7 @@ pub(super) fn anchor_labels_to_polyline(layout: &mut WorkingLayout) {
 
     let mut foreign_node_rects = Vec::new();
     let mut lane_groups = Vec::new();
+    work_budget.charge(layout.nodes.len())?;
     for node in layout.nodes.values() {
         if node.kind == WorkingNodeKind::Group && node.parent_id.is_none() {
             if let Some(rect) = rect_of_node_bounds(node) {
@@ -439,6 +522,7 @@ pub(super) fn anchor_labels_to_polyline(layout: &mut WorkingLayout) {
     }
 
     let mut placed_label_rects = Vec::<RectEntry>::new();
+    work_budget.charge(layout.original_edges.len())?;
     for edge in &layout.original_edges {
         let Some(label_id) = edge.label_node_id.as_deref() else {
             continue;
@@ -451,12 +535,14 @@ pub(super) fn anchor_labels_to_polyline(layout: &mut WorkingLayout) {
         }
         let label_width = label_node.width;
         let label_height = label_node.height;
+        work_budget.charge(edge.points.len().saturating_sub(1))?;
         let segments = collect_segments(&edge.points);
         if segments.is_empty() {
             continue;
         }
 
         let middle_segments = if segments.len() >= 3 {
+            work_budget.charge(segments.len())?;
             segments
                 .iter()
                 .copied()
@@ -487,10 +573,11 @@ pub(super) fn anchor_labels_to_polyline(layout: &mut WorkingLayout) {
                 SegmentOrientation::Vertical
             },
         };
-        let Some(choice) = search.find_choice(middle_pool) else {
+        let Some(choice) = search.find_choice(middle_pool, work_budget)? else {
             continue;
         };
 
+        work_budget.charge(placed_label_rects.len())?;
         if let Some(label_node) = layout.nodes.get_mut(label_id) {
             label_node.x = choice.anchor.x;
             label_node.y = choice.anchor.y;
@@ -511,6 +598,7 @@ pub(super) fn anchor_labels_to_polyline(layout: &mut WorkingLayout) {
             });
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -605,11 +693,46 @@ mod tests {
             )],
         );
 
-        anchor_labels_to_polyline(&mut layout);
+        anchor_labels_to_polyline(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         assert_position(&layout, "label", 85.0, 50.0);
         assert_eq!(layout.nodes["label"].parent_id.as_deref(), Some("lane"));
         assert_eq!(layout.nodes["label"].top_lane_id.as_deref(), Some("lane"));
+    }
+
+    #[test]
+    fn anchor_candidate_is_rejected_before_scanning_all_edge_segments() {
+        let mut layout = layout(
+            vec![
+                node("lane", WorkingNodeKind::Group, 100.0, 100.0, 200.0, 200.0),
+                node("label", WorkingNodeKind::EdgeLabel, 0.0, 0.0, 30.0, 10.0),
+            ],
+            vec![edge(
+                "edge",
+                vec![
+                    point(20.0, 10.0),
+                    point(20.0, 50.0),
+                    point(150.0, 50.0),
+                    point(150.0, 90.0),
+                ],
+                Some("label"),
+            )],
+        );
+        let policy = crate::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, 20)
+            .unwrap();
+        let mut budget = LayoutWorkBudget::new(policy, 0).unwrap();
+
+        let error = anchor_labels_to_polyline(&mut layout, &mut budget).unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected max_layout_work_units resource limit error");
+        };
+        assert_eq!(error.actual, 23);
+        assert_eq!(error.max, 20);
+        assert_position(&layout, "label", 0.0, 0.0);
+        assert_eq!(layout.nodes["label"].parent_id, None);
+        assert_eq!(layout.nodes["label"].top_lane_id, None);
     }
 
     #[test]
@@ -638,7 +761,8 @@ mod tests {
             ],
         );
 
-        anchor_labels_to_polyline(&mut layout);
+        anchor_labels_to_polyline(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         assert_position(&layout, "label", 60.0, 100.0);
     }
@@ -662,7 +786,8 @@ mod tests {
             )],
         );
 
-        anchor_labels_to_polyline(&mut layout);
+        anchor_labels_to_polyline(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         assert_position(&layout, "label", 100.0, 11.0);
     }
@@ -695,7 +820,8 @@ mod tests {
             )],
         );
 
-        anchor_labels_to_polyline(&mut layout);
+        anchor_labels_to_polyline(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         assert_position(&layout, "label", 50.0, 50.0);
         assert_eq!(layout.nodes["label"].parent_id.as_deref(), Some("top"));
@@ -715,7 +841,8 @@ mod tests {
             )],
         );
 
-        anchor_labels_to_polyline(&mut layout);
+        anchor_labels_to_polyline(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         assert_position(&layout, "label", 100.0, 50.0);
     }
@@ -741,7 +868,8 @@ mod tests {
             )],
         );
 
-        anchor_labels_to_polyline(&mut layout);
+        anchor_labels_to_polyline(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         assert_position(&layout, "label", -20.0, -20.0);
         assert_eq!(layout.nodes["label"].parent_id, None);

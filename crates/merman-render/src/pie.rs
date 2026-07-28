@@ -118,16 +118,7 @@ pub(crate) fn layout_pie_diagram_typed(
     let radius: f64 = 185.0;
     let outer_radius = radius + 1.0;
     let cfg = PieConfigView::new(effective_config).layout_settings();
-    let title = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .or_else(|| {
-            diagram_title
-                .map(str::trim)
-                .filter(|title| !title.is_empty())
-        });
+    let title = model.title.as_deref().or(diagram_title);
     let label_radius = radius.max(0.0) * cfg.text_position;
     let legend_step_y: f64 = legend_rect_size + legend_spacing;
     let legend_position = cfg.legend_position;
@@ -308,6 +299,7 @@ pub(crate) fn layout_pie_diagram_typed(
             max_x,
             max_y: height,
         }),
+        title: title.map(str::to_owned),
         center_x: center,
         center_y: center,
         radius,
@@ -352,6 +344,8 @@ mod tests {
             match text {
                 "Legend" => 123.456_789,
                 "Title" => 1_000.123_456,
+                "  Title  " => 1_100.123_456,
+                "\u{a0}Title\u{a0}" => 1_200.123_456,
                 other => panic!("unexpected measurement: {other}"),
             }
         }
@@ -392,5 +386,30 @@ mod tests {
             *measurer.calls.lock().expect("measurement calls"),
             ["Legend".to_string(), "Title".to_string()]
         );
+    }
+
+    #[test]
+    fn pie_frontmatter_title_preserves_boundary_whitespace_for_layout_measurement() {
+        for (title, expected_max_x) in [
+            ("  Title  ", 225.0 + 1_100.123_456 / 2.0),
+            ("\u{a0}Title\u{a0}", 225.0 + 1_200.123_456 / 2.0),
+        ] {
+            let measurer = RecordingBoundingClientRectMeasurer::default();
+            let layout = super::layout_pie_diagram_typed(
+                &PieDiagramRenderModel::default(),
+                Some(title),
+                &serde_json::json!({"pie": {"legendPosition": "top"}}),
+                &measurer,
+            )
+            .expect("title layout");
+
+            assert_eq!(layout.title.as_deref(), Some(title));
+            let max_x = layout.bounds.expect("title bounds").max_x;
+            assert!((max_x - expected_max_x).abs() < 1e-12);
+            assert_eq!(
+                *measurer.calls.lock().expect("measurement calls"),
+                [title.to_string()]
+            );
+        }
     }
 }

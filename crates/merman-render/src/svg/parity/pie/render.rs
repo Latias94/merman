@@ -58,7 +58,6 @@ pub(crate) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramRenderModel,
     effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
@@ -255,17 +254,7 @@ pub(crate) fn render_pie_diagram_svg_model(
 
     out.push_str("</g>");
 
-    let title = model
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .or_else(|| {
-            diagram_title
-                .map(str::trim)
-                .filter(|title| !title.is_empty())
-        });
-    match title {
+    match layout.title.as_deref() {
         Some(t) => {
             let _ = write!(
                 &mut out,
@@ -379,6 +368,7 @@ mod tests {
                 max_x: 490.0,
                 max_y: 450.0,
             }),
+            title: None,
             center_x: 225.0,
             center_y: 225.0,
             radius: 185.0,
@@ -403,7 +393,6 @@ mod tests {
             &layout,
             &PieDiagramRenderModel::default(),
             &serde_json::json!({"pie": {"useMaxWidth": false}}),
-            None,
             &execution,
         )
         .unwrap();

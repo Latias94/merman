@@ -5,9 +5,9 @@
 //! directly once the caller has applied the source-backed curve eligibility rule.
 
 use crate::model::LayoutPoint;
-use crate::resources::RenderResourcePolicy;
+use crate::resources::OperationWorkMeter;
 #[cfg(test)]
-use crate::resources::ResourceLimitId;
+use crate::resources::{RenderResourcePolicy, ResourceLimitId};
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, BinaryHeap, HashMap};
 
@@ -134,10 +134,33 @@ struct RoundedCorner {
     cut_length: f64,
 }
 
+fn sorting_work_units(items: usize) -> usize {
+    if items <= 1 {
+        return 0;
+    }
+    let passes = (usize::BITS - items.saturating_sub(1).leading_zeros()) as usize;
+    items.saturating_mul(passes)
+}
+
+fn segment_count(edges: &[LineHopEdge<'_>]) -> usize {
+    edges
+        .iter()
+        .map(|edge| edge.points.len().saturating_sub(1))
+        .fold(0usize, usize::saturating_add)
+}
+
+fn path_emission_work_units(edges: &[LineHopEdge<'_>]) -> usize {
+    edges.iter().fold(0usize, |work, edge| {
+        work.saturating_add(1).saturating_add(edge.points.len())
+    })
+}
+
 pub(in crate::svg::parity::flowchart) fn find_edge_intersections<'a>(
     edges: &[LineHopEdge<'a>],
-    resource_limits: RenderResourcePolicy,
+    work_meter: &OperationWorkMeter,
 ) -> crate::Result<Vec<LineHopCrossing<'a>>> {
+    let segment_count = segment_count(edges);
+    work_meter.charge(segment_count.saturating_add(sorting_work_units(segment_count)))?;
     let mut segments = Vec::new();
     for (edge_index, edge) in edges.iter().enumerate() {
         for (segment_index, pair) in edge.points.windows(2).enumerate() {
@@ -175,8 +198,6 @@ pub(in crate::svg::parity::flowchart) fn find_edge_intersections<'a>(
     let mut active_edges: BTreeSet<usize> = BTreeSet::new();
     let mut expirations: BinaryHeap<SegmentExpiry> = BinaryHeap::new();
     let mut candidate_pairs = Vec::new();
-    let mut inspected_pairs = 0usize;
-
     for segment_index in by_min_x {
         let current = segments[segment_index];
         while expirations
@@ -195,10 +216,8 @@ pub(in crate::svg::parity::flowchart) fn find_edge_intersections<'a>(
             if other_edge_index == current.edge_index {
                 continue;
             }
+            work_meter.charge(active_by_edge[other_edge_index].len())?;
             for &other_segment_index in &active_by_edge[other_edge_index] {
-                inspected_pairs = inspected_pairs.saturating_add(1);
-                resource_limits.check_layout_work_units(inspected_pairs)?;
-
                 let other = segments[other_segment_index];
                 if other.max_y <= current.min_y || current.max_y <= other.min_y {
                     continue;
@@ -223,6 +242,7 @@ pub(in crate::svg::parity::flowchart) fn find_edge_intersections<'a>(
         });
     }
 
+    work_meter.charge(sorting_work_units(candidate_pairs.len()))?;
     candidate_pairs.sort_by_key(|candidate| {
         let a = segments[candidate.segment_a];
         let b = segments[candidate.segment_b];
@@ -268,8 +288,9 @@ pub(in crate::svg::parity::flowchart) fn find_edge_intersections<'a>(
 pub(in crate::svg::parity::flowchart) fn process_edges_with_line_hops<'a>(
     edges: &[LineHopEdge<'a>],
     config: LineHopConfig,
-    resource_limits: RenderResourcePolicy,
+    work_meter: &OperationWorkMeter,
 ) -> crate::Result<Vec<LineHopPath<'a>>> {
+    work_meter.charge(path_emission_work_units(edges))?;
     if !config.enabled {
         return Ok(edges
             .iter()
@@ -282,7 +303,7 @@ pub(in crate::svg::parity::flowchart) fn process_edges_with_line_hops<'a>(
     }
 
     let mut jumps_by_edge: HashMap<&'a str, Vec<LineHopCrossing<'a>>> = HashMap::new();
-    for crossing in find_edge_intersections(edges, resource_limits)? {
+    for crossing in find_edge_intersections(edges, work_meter)? {
         debug_assert_ne!(crossing.jump_edge_id, crossing.other_edge_id);
         jumps_by_edge
             .entry(crossing.jump_edge_id)
@@ -665,20 +686,17 @@ mod tests {
     use super::*;
 
     fn find_edge_intersections<'a>(edges: &[LineHopEdge<'a>]) -> Vec<LineHopCrossing<'a>> {
-        super::find_edge_intersections(edges, RenderResourcePolicy::unbounded_for_trusted_input())
-            .expect("unbounded line-hop intersection scan")
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        super::find_edge_intersections(edges, &meter).expect("unbounded line-hop intersection scan")
     }
 
     fn process_edges_with_line_hops<'a>(
         edges: &[LineHopEdge<'a>],
         config: LineHopConfig,
     ) -> Vec<LineHopPath<'a>> {
-        super::process_edges_with_line_hops(
-            edges,
-            config,
-            RenderResourcePolicy::unbounded_for_trusted_input(),
-        )
-        .expect("unbounded line-hop processing")
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        super::process_edges_with_line_hops(edges, config, &meter)
+            .expect("unbounded line-hop processing")
     }
 
     fn brute_force_edge_intersections<'a>(edges: &[LineHopEdge<'a>]) -> Vec<LineHopCrossing<'a>> {
@@ -838,16 +856,18 @@ mod tests {
             .map(|(id, points)| edge(id, points))
             .collect::<Vec<_>>();
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 32)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 850)
             .unwrap();
+        let meter = OperationWorkMeter::new(limits);
 
-        let error = super::find_edge_intersections(&edges, limits).unwrap_err();
+        let error = super::find_edge_intersections(&edges, &meter).unwrap_err();
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected line-hop segment-pair resource limit");
         };
         assert_eq!(error.limit, "max_layout_work_units");
-        assert_eq!(error.actual, 33);
-        assert_eq!(error.max, 32);
+        assert_eq!(error.actual, 851);
+        assert_eq!(error.max, 850);
+        assert_eq!(meter.used(), 850);
     }
 
     #[test]
@@ -864,26 +884,56 @@ mod tests {
             .map(|(id, points)| edge(id, points))
             .collect::<Vec<_>>();
         let exact_limits = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 3)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 18)
             .unwrap();
+        let exact_meter = OperationWorkMeter::new(exact_limits);
 
-        super::find_edge_intersections(&edges, exact_limits)
+        super::find_edge_intersections(&edges, &exact_meter)
             .expect("three segments have exactly three cross-edge candidate pairs");
 
         let narrow_limits = RenderResourcePolicy::unbounded_for_trusted_input()
-            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 2)
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 17)
             .unwrap();
-        let error = super::find_edge_intersections(&edges, narrow_limits).unwrap_err();
+        let narrow_meter = OperationWorkMeter::new(narrow_limits);
+        let error = super::find_edge_intersections(&edges, &narrow_meter).unwrap_err();
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected line-hop segment-pair resource limit");
         };
         assert_eq!(error.limit, "max_layout_work_units");
-        assert_eq!(error.actual, 3);
-        assert_eq!(error.max, 2);
+        assert_eq!(error.actual, 18);
+        assert_eq!(error.max, 17);
     }
 
     #[test]
-    fn sweep_discards_spatially_separate_edges_without_consuming_pair_budget() {
+    fn segment_pairs_share_work_already_consumed_by_layout() {
+        let point_sets = (0..3)
+            .map(|index| vec![point(0.0, index as f64), point(10.0, 3.0 - index as f64)])
+            .collect::<Vec<_>>();
+        let ids = (0..point_sets.len())
+            .map(|index| format!("edge-{index}"))
+            .collect::<Vec<_>>();
+        let edges = ids
+            .iter()
+            .zip(&point_sets)
+            .map(|(id, points)| edge(id, points))
+            .collect::<Vec<_>>();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 19)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        meter.charge(2).unwrap();
+
+        let error = super::find_edge_intersections(&edges, &meter).unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected cumulative line-hop resource limit");
+        };
+        assert_eq!(error.actual, 20);
+        assert_eq!(error.max, 19);
+        assert_eq!(meter.used(), 14);
+    }
+
+    #[test]
+    fn spatially_separate_edges_still_pay_index_and_sort_cost() {
         let point_sets = (0..2_000)
             .map(|index| {
                 let x = index as f64 * 2.0;
@@ -901,10 +951,15 @@ mod tests {
         let limits = RenderResourcePolicy::unbounded_for_trusted_input()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
+        let meter = OperationWorkMeter::new(limits);
 
-        let crossings = super::find_edge_intersections(&edges, limits)
-            .expect("disjoint x intervals require no segment-pair inspections");
-        assert!(crossings.is_empty());
+        let error = super::find_edge_intersections(&edges, &meter).unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected line-hop index resource limit");
+        };
+        assert_eq!(error.actual, 24_000);
+        assert_eq!(error.max, 1);
+        assert_eq!(meter.used(), 0);
     }
 
     #[test]
@@ -933,11 +988,8 @@ mod tests {
             .collect::<Vec<_>>();
 
         let expected = brute_force_edge_intersections(&edges);
-        let actual = super::find_edge_intersections(
-            &edges,
-            RenderResourcePolicy::unbounded_for_trusted_input(),
-        )
-        .expect("unbounded sweep");
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let actual = super::find_edge_intersections(&edges, &meter).expect("unbounded sweep");
         assert_crossings_equal(&actual, &expected);
     }
 

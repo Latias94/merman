@@ -553,7 +553,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             lx = fmt(-w / 2.0),
             ly = fmt(-h / 2.0),
         );
-        let label_html = mermaid_markdown_to_html(&label_text, sanitize_config);
+        let label_html = mermaid_markdown_to_html(label_text, sanitize_config);
         mk_label_foreign_object(
             &mut out,
             LabelForeignObject {

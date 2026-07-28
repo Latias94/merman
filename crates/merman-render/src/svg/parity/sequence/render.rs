@@ -151,6 +151,7 @@ fn render_sequence_diagram_svg_inner(
     let interaction_ctx = SequenceInteractionRenderContext {
         model,
         block_widths_by_id: &block_widths_by_id,
+        block_layouts_by_id: &layout.block_layouts_by_id,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         sanitize_config,

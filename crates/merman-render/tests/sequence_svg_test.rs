@@ -945,8 +945,8 @@ fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
     let y0 = attr_f64(dashed_separators[0], "y1").expect("sep y1");
     let y1 = attr_f64(dashed_separators[1], "y1").expect("sep y1");
     assert!(
-        (y0 - y1).abs() > 0.0001,
-        "expected separators to have distinct y"
+        y0 < y1,
+        "expected section separators to increase monotonically, got {y0} then {y1}"
     );
 
     let mut frame_min_x = f64::INFINITY;
@@ -977,6 +977,131 @@ fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
             "expected separator x2 ({x2}) to touch frame right edge ({frame_max_x})"
         );
     }
+}
+
+#[test]
+fn sequence_zed_59651_nested_frame_headers_follow_the_preceding_note() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+    participant S as Server
+    participant C as Client
+
+    Note over S: ① Initialize connection
+    loop for each request
+        alt request is valid
+            S->>C: process normally
+        else
+            S-->>C: return error
+        end
+    end
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+
+    let note = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "rect"
+                && node.attribute("class") == Some("note")
+        })
+        .expect("issue fixture note");
+    let note_bottom = note
+        .attribute("y")
+        .expect("note y")
+        .parse::<f64>()
+        .expect("numeric note y")
+        + note
+            .attribute("height")
+            .expect("note height")
+            .parse::<f64>()
+            .expect("numeric note height");
+
+    let control_group = |title: &str| {
+        document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node.attribute("data-et") == Some("control-structure")
+                    && node
+                        .descendants()
+                        .filter(|descendant| descendant.is_text())
+                        .filter_map(|descendant| descendant.text())
+                        .any(|text| text.contains(title))
+            })
+            .unwrap_or_else(|| panic!("control structure containing {title:?}"))
+    };
+    let frame_bounds = |group: roxmltree::Node<'_, '_>| {
+        let mut horizontal_ys = group
+            .children()
+            .filter(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "line"
+                    && node.attribute("class") == Some("loopLine")
+                    && node.attribute("style").is_none()
+            })
+            .filter_map(|node| {
+                let y1 = node.attribute("y1")?.parse::<f64>().ok()?;
+                let y2 = node.attribute("y2")?.parse::<f64>().ok()?;
+                ((y1 - y2).abs() < 0.0001).then_some(y1)
+            });
+        let top = horizontal_ys.next().expect("frame top");
+        let bottom = horizontal_ys.next().expect("frame bottom");
+        (top.min(bottom), top.max(bottom))
+    };
+    let title_y = |group: roxmltree::Node<'_, '_>| {
+        group
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "text"
+                    && node.attribute("class") == Some("loopText")
+            })
+            .and_then(|node| node.attribute("y"))
+            .and_then(|value| value.parse::<f64>().ok())
+            .expect("numeric loop title y")
+    };
+
+    let outer_loop = control_group("for each request");
+    let inner_alt = control_group("request is valid");
+    let (outer_top, outer_bottom) = frame_bounds(outer_loop);
+    let (inner_top, inner_bottom) = frame_bounds(inner_alt);
+    let outer_title_y = title_y(outer_loop);
+    let inner_title_y = title_y(inner_alt);
+    const LABEL_BOX_HEIGHT: f64 = 20.0;
+
+    assert!(
+        note_bottom < outer_top && outer_top < inner_top,
+        "expected note.bottom < outer loop.top < inner alt.top, got \
+         {note_bottom} < {outer_top} < {inner_top}: {svg}"
+    );
+    assert!(
+        outer_top < outer_title_y
+            && outer_top + LABEL_BOX_HEIGHT < inner_top
+            && outer_title_y + LABEL_BOX_HEIGHT < inner_top
+            && inner_top < inner_title_y
+            && inner_title_y < inner_bottom
+            && inner_bottom < outer_bottom,
+        "expected nested frames and labels to occupy distinct vertical bands: {svg}"
+    );
+
+    let separator_y = inner_alt
+        .children()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "line"
+                && node.attribute("style") == Some("stroke-dasharray: 3, 3;")
+        })
+        .and_then(|node| node.attribute("y1"))
+        .and_then(|value| value.parse::<f64>().ok())
+        .expect("numeric alt separator y");
+    assert!(
+        inner_top + LABEL_BOX_HEIGHT < separator_y
+            && inner_title_y + LABEL_BOX_HEIGHT < separator_y
+            && separator_y < inner_bottom,
+        "expected the alt section separator to advance below its title and stay inside the frame"
+    );
 }
 
 #[test]

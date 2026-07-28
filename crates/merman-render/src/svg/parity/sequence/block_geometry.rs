@@ -53,8 +53,6 @@ pub(super) struct SequenceBlockGeometry<'a> {
     min_actor_left_x: f64,
     frame_min_y: f64,
     frame_max_y: f64,
-    separator_min_y: f64,
-    separator_max_y: f64,
     self_only_actor: SelfOnlyActor<'a>,
 }
 
@@ -68,8 +66,6 @@ impl<'a> SequenceBlockGeometry<'a> {
             min_actor_left_x: f64::INFINITY,
             frame_min_y: f64::INFINITY,
             frame_max_y: f64::NEG_INFINITY,
-            separator_min_y: f64::INFINITY,
-            separator_max_y: f64::NEG_INFINITY,
             self_only_actor: SelfOnlyActor::None,
         }
     }
@@ -91,7 +87,6 @@ impl<'a> SequenceBlockGeometry<'a> {
 
         let mut frame_y_range =
             note.map(|note| (note.y - note.height / 2.0, note.y + note.height / 2.0));
-        let mut separator_y_range = frame_y_range;
 
         if let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) {
             geometry.self_only_actor = if from == to {
@@ -130,13 +125,7 @@ impl<'a> SequenceBlockGeometry<'a> {
                     } else {
                         0.0
                     };
-                    let separator_extra = if from == to {
-                        SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX / 2.0
-                    } else {
-                        0.0
-                    };
                     frame_y_range = Some((line_y, line_y + frame_extra));
-                    separator_y_range = Some((line_y, line_y + separator_extra));
                 }
             }
         }
@@ -144,10 +133,6 @@ impl<'a> SequenceBlockGeometry<'a> {
         if let Some((min_y, max_y)) = frame_y_range {
             geometry.frame_min_y = min_y;
             geometry.frame_max_y = max_y;
-        }
-        if let Some((min_y, max_y)) = separator_y_range {
-            geometry.separator_min_y = min_y;
-            geometry.separator_max_y = max_y;
         }
         geometry
     }
@@ -160,8 +145,6 @@ impl<'a> SequenceBlockGeometry<'a> {
         self.min_actor_left_x = self.min_actor_left_x.min(other.min_actor_left_x);
         self.frame_min_y = self.frame_min_y.min(other.frame_min_y);
         self.frame_max_y = self.frame_max_y.max(other.frame_max_y);
-        self.separator_min_y = self.separator_min_y.min(other.separator_min_y);
-        self.separator_max_y = self.separator_max_y.max(other.separator_max_y);
         self.self_only_actor = self.self_only_actor.merge(other.self_only_actor);
     }
 
@@ -208,18 +191,11 @@ impl<'a> SequenceBlockGeometry<'a> {
             .then_some((self.frame_min_y, self.frame_max_y))
     }
 
-    pub(super) fn separator_y_range(self) -> Option<(f64, f64)> {
-        (self.separator_min_y.is_finite() && self.separator_max_y.is_finite())
-            .then_some((self.separator_min_y, self.separator_max_y))
-    }
-
     #[cfg(test)]
     pub(super) fn test_y_range(min_y: f64, max_y: f64) -> Self {
         Self {
             frame_min_y: min_y,
             frame_max_y: max_y,
-            separator_min_y: min_y,
-            separator_max_y: max_y,
             ..Self::empty()
         }
     }

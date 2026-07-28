@@ -14,6 +14,8 @@ mod pipeline;
 pub(crate) mod scanner;
 mod theme_profile;
 
+#[cfg(feature = "layout-cytoscape")]
+pub(crate) use parity::render_architecture_family_artifact;
 pub(crate) use parity::render_builtin_family_artifact;
 pub(crate) use parity::theme as render_theme;
 

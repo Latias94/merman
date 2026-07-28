@@ -1,9 +1,11 @@
 use super::super::working::WorkingLayout;
+use super::LayoutWorkBudget;
 use super::geometry::{
     ThreeSegmentRouteKind, classify_three_segment_route, collect_real_node_bounds,
     dedupe_consecutive_points, get_node_pair_geometry, same_point, segment_conflicts_with_any_edge,
     segment_hits_any_rect,
 };
+use crate::Result;
 use crate::model::LayoutPoint;
 use crate::swimlane::config::EPSILON;
 
@@ -17,9 +19,14 @@ const TRY_DELTAS: [f64; 5] = [
     -2.0 * PORT_SHIFT,
 ];
 
-pub(super) fn port_swap_to_l_shape(layout: &mut WorkingLayout) {
+pub(super) fn port_swap_to_l_shape(
+    layout: &mut WorkingLayout,
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
+    work_budget.charge(layout.nodes.len())?;
     let (node_info_by_id, real_node_rects) = collect_real_node_bounds(layout);
 
+    work_budget.charge(layout.original_edges.len())?;
     for edge_index in 0..layout.original_edges.len() {
         let edge = layout.original_edges[edge_index].clone();
         if edge.points.len() < 4 {
@@ -96,47 +103,58 @@ pub(super) fn port_swap_to_l_shape(layout: &mut WorkingLayout) {
                 continue;
             }
 
-            if !first_segment_degenerate
-                && segment_hits_any_rect(
+            work_budget.charge(1)?;
+            if !first_segment_degenerate {
+                work_budget.charge(real_node_rects.len())?;
+                if segment_hits_any_rect(
                     &first,
                     &corner,
                     &real_node_rects,
                     &[node_pair.src_id.as_str()],
                     1.0,
-                )
-            {
-                continue;
+                ) {
+                    continue;
+                }
             }
-            if !second_segment_degenerate
-                && segment_hits_any_rect(
+            if !second_segment_degenerate {
+                work_budget.charge(real_node_rects.len())?;
+                if segment_hits_any_rect(
                     &corner,
                     &destination,
                     &real_node_rects,
                     &[node_pair.dst_id.as_str()],
                     1.0,
-                )
-            {
-                continue;
+                ) {
+                    continue;
+                }
             }
 
-            let first_segment_conflicts = !first_segment_degenerate
-                && segment_conflicts_with_any_edge(
+            let first_segment_conflicts = if first_segment_degenerate {
+                false
+            } else {
+                work_budget.charge(layout.original_edges.len())?;
+                segment_conflicts_with_any_edge(
                     &first,
                     &corner,
                     &layout.original_edges,
                     Some(edge.id.as_str()),
                     EPSILON,
                     true,
-                );
-            let second_segment_conflicts = !second_segment_degenerate
-                && segment_conflicts_with_any_edge(
+                )
+            };
+            let second_segment_conflicts = if second_segment_degenerate {
+                false
+            } else {
+                work_budget.charge(layout.original_edges.len())?;
+                segment_conflicts_with_any_edge(
                     &corner,
                     &destination,
                     &layout.original_edges,
                     Some(edge.id.as_str()),
                     EPSILON,
                     true,
-                );
+                )
+            };
             if first_segment_conflicts || second_segment_conflicts {
                 continue;
             }
@@ -155,6 +173,7 @@ pub(super) fn port_swap_to_l_shape(layout: &mut WorkingLayout) {
             layout.original_edges[edge_index].points = points;
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -244,7 +263,7 @@ mod tests {
             edge(detour()),
         );
 
-        port_swap_to_l_shape(&mut layout);
+        port_swap_to_l_shape(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests()).unwrap();
 
         assert_points(
             &layout.original_edges[0].points,
@@ -264,7 +283,7 @@ mod tests {
             edge(original.clone()),
         );
 
-        port_swap_to_l_shape(&mut layout);
+        port_swap_to_l_shape(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests()).unwrap();
 
         assert_points(
             &layout.original_edges[0].points,

@@ -1,3 +1,4 @@
+use crate::Result;
 pub(super) use crate::model::LayoutPoint;
 pub(super) use crate::swimlane::direction::geometry::{
     EPSILON, NodeBoundsInfo, OrthogonalSegment, RectBounds, RectEntry, RectSide,
@@ -8,6 +9,7 @@ pub(super) use crate::swimlane::direction::geometry::{
     same_axis_segment_overlap_length, same_point, same_x, same_y, segment_hits_any_rect,
     simplify_polyline,
 };
+use crate::swimlane::direction::{LayoutWorkBudget, unordered_pair_count};
 pub(super) use crate::swimlane::working::{
     WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind,
 };
@@ -72,12 +74,30 @@ pub(super) fn strict_crossing_count(edges: &[WorkingEdge], replacements: &Replac
     count
 }
 
+pub(super) fn checked_strict_crossing_count(
+    edges: &[WorkingEdge],
+    replacements: &ReplacementMap,
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<usize> {
+    work_budget.charge(unordered_pair_count(edges.len()))?;
+    Ok(strict_crossing_count(edges, replacements))
+}
+
 pub(super) fn total_bends(edges: &[WorkingEdge], replacements: &ReplacementMap) -> usize {
     (0..edges.len())
         .map(|edge_index| {
             count_orthogonal_bends(&points_for(edges, edge_index, replacements), EPSILON)
         })
         .sum()
+}
+
+pub(super) fn checked_total_bends(
+    edges: &[WorkingEdge],
+    replacements: &ReplacementMap,
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<usize> {
+    work_budget.charge(edges.len())?;
+    Ok(total_bends(edges, replacements))
 }
 
 pub(super) fn euclidean_path_length(points: &[LayoutPoint]) -> f64 {

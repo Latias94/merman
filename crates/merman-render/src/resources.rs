@@ -176,7 +176,7 @@ const RENDER_RESOURCE_LIMIT_DESCRIPTORS: [ResourceLimitDescriptor; RENDER_RESOUR
         id: ResourceLimitId::MaxLayoutWorkUnits,
         stable_id: "max_layout_work_units",
         phase: ResourceLimitPhase::LayoutModel,
-        description: "Maximum family-accounted layout work units before SVG generation",
+        description: "Maximum family-accounted derived layout and render geometry work units",
         overridable: true,
         hard_cap: false,
     },
@@ -525,6 +525,51 @@ impl RenderResourcePolicy {
     }
 }
 
+/// One cumulative derived-geometry budget shared by layout and SVG emission.
+pub(crate) struct OperationWorkMeter {
+    policy: RenderResourcePolicy,
+    used: std::sync::atomic::AtomicUsize,
+}
+
+impl OperationWorkMeter {
+    pub(crate) fn new(policy: RenderResourcePolicy) -> Self {
+        Self {
+            policy,
+            used: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    /// Checks whether a phase estimate fits without reserving or consuming the estimate.
+    pub(crate) fn preflight(&self, additional: usize) -> Result<(), ResourceLimitExceeded> {
+        let used = self.used.load(std::sync::atomic::Ordering::Relaxed);
+        self.policy
+            .check_layout_work_units(used.saturating_add(additional))
+    }
+
+    /// Charges work atomically. A rejected charge leaves the cumulative usage unchanged.
+    pub(crate) fn charge(&self, additional: usize) -> Result<(), ResourceLimitExceeded> {
+        let mut used = self.used.load(std::sync::atomic::Ordering::Relaxed);
+        loop {
+            let next = used.saturating_add(additional);
+            self.policy.check_layout_work_units(next)?;
+            match self.used.compare_exchange_weak(
+                used,
+                next,
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+            ) {
+                Ok(_) => return Ok(()),
+                Err(actual) => used = actual,
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn used(&self) -> usize {
+        self.used.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("resource limit exceeded during {phase}: {limit} actual={actual} max={max}")]
 pub struct ResourceLimitExceeded {
@@ -677,6 +722,36 @@ mod tests {
         assert_eq!(error.limit, "max_layout_work_units");
         assert_eq!(error.actual, 8);
         assert_eq!(error.max, 7);
+    }
+
+    #[test]
+    fn operation_work_meter_preflight_does_not_consume_budget() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 7)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+
+        meter.preflight(7).unwrap();
+        meter.preflight(7).unwrap();
+        assert_eq!(meter.used(), 0);
+        meter.charge(7).unwrap();
+        assert_eq!(meter.used(), 7);
+    }
+
+    #[test]
+    fn operation_work_meter_rejected_charge_does_not_advance() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 10)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        meter.charge(8).unwrap();
+
+        let error = meter.charge(usize::MAX).unwrap_err();
+        assert_eq!(error.actual, usize::MAX);
+        assert_eq!(error.max, 10);
+        assert_eq!(meter.used(), 8);
+        meter.charge(2).unwrap();
+        assert_eq!(meter.used(), 10);
     }
 
     #[test]

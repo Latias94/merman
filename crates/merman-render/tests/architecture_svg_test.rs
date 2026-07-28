@@ -98,6 +98,17 @@ fn render_architecture_text_with_engine_and_options(
     text: &str,
     options: &SvgRenderOptions,
 ) -> String {
+    prepare_architecture_text_with_engine(engine, text)
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render SVG")
+        .svg()
+        .to_owned()
+}
+
+fn prepare_architecture_text_with_engine(
+    engine: &Engine,
+    text: &str,
+) -> family::FamilyRenderArtifact {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
@@ -106,13 +117,7 @@ fn render_architecture_text_with_engine_and_options(
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("begin render session");
-    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
-
-    artifact
-        .render_svg(options, &SvgDebugOptions::default())
-        .expect("render SVG")
-        .svg()
-        .to_owned()
+    family::prepare(parsed, &layout_options, session).expect("layout ok")
 }
 
 fn render_architecture_fixture(fixture_name: &str) -> String {
@@ -249,37 +254,41 @@ fn assert_close(actual: f64, expected: f64, message: &str) {
 #[test]
 fn architecture_svg_handles_deep_group_chain() {
     const DEPTH: usize = 64;
-    let source = deep_group_chain_diagram(DEPTH);
     let engine = Engine::new();
-    let handle = std::thread::Builder::new()
-        .name("architecture-deep-group-svg".to_string())
-        .stack_size(128 * 1024)
-        .spawn(move || {
-            render_architecture_text_with_engine_and_options(
-                &engine,
-                &source,
-                &SvgRenderOptions {
-                    diagram_id: Some("architecture-deep-groups".to_string()),
-                    ..Default::default()
-                },
-            )
-        })
-        .expect("spawn architecture deep group SVG test");
-    let svg = handle
-        .join()
-        .expect("architecture deep group SVG should finish without stack overflow");
+    for depth in [1, DEPTH] {
+        let source = deep_group_chain_diagram(depth);
+        let artifact = prepare_architecture_text_with_engine(&engine, &source);
+        let options = SvgRenderOptions {
+            diagram_id: Some("architecture-deep-groups".to_string()),
+            ..Default::default()
+        };
+        let handle = std::thread::Builder::new()
+            .name("architecture-deep-group-svg".to_string())
+            .stack_size(128 * 1024)
+            .spawn(move || {
+                artifact
+                    .render_svg(&options, &SvgDebugOptions::default())
+                    .expect("render SVG")
+                    .svg()
+                    .to_owned()
+            })
+            .expect("spawn architecture deep group SVG test");
+        let svg = handle
+            .join()
+            .expect("architecture deep group SVG should finish without stack overflow");
 
-    assert!(
-        svg.contains(r#"id="architecture-deep-groups-service-leaf""#),
-        "expected deepest service to render"
-    );
-    assert!(
-        svg.contains(&format!(
-            r#"id="architecture-deep-groups-group-g{}""#,
-            DEPTH - 1
-        )),
-        "expected deepest group to render"
-    );
+        assert!(
+            svg.contains(r#"id="architecture-deep-groups-service-leaf""#),
+            "expected deepest service to render"
+        );
+        assert!(
+            svg.contains(&format!(
+                r#"id="architecture-deep-groups-group-g{}""#,
+                depth - 1
+            )),
+            "expected deepest group to render"
+        );
+    }
 }
 
 #[test]

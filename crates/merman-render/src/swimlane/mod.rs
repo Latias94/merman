@@ -5,6 +5,7 @@ mod geometry;
 mod prepare;
 mod routing;
 mod sugiyama;
+mod work_budget;
 mod working;
 
 use crate::Result;
@@ -13,13 +14,14 @@ use crate::math::MathRenderer;
 use crate::model::{
     Bounds, SwimlaneEdgeLayout, SwimlaneLaneLayout, SwimlaneLayout, SwimlaneNodeLayout,
 };
+use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use icu_collator::{Collator, options::CollatorOptions};
 use icu_locale_core::Locale;
 use merman_core::MermaidConfig;
 use merman_core::diagrams::flowchart::FlowchartModel;
 use std::cmp::Ordering;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 /// Locale used by the pinned Mermaid/Puppeteer evidence and by the browser's default `localeCompare`.
 pub(crate) const MERMAID_LAYOUT_COLLATION_LOCALE: &str = "en-US";
@@ -69,12 +71,21 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
     Bounds::from_points(points)
 }
 
-pub(crate) fn layout_swimlane_typed(
+/// Lays out a Swimlane model under the resource policy owned by the render operation.
+pub(crate) fn layout_swimlane_typed_with_work_meter(
     model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SwimlaneLayout> {
+    let source_nodes = model.nodes.len().saturating_add(model.subgraphs.len());
+    let source_edges = model.edges.len();
+    work_meter.preflight(swimlane_layout_preflight_work_units(
+        source_nodes,
+        source_edges,
+    ))?;
+    work_meter.charge(swimlane_core_layout_work_units(source_nodes, source_edges))?;
     let config = config::SwimlaneConfig::from_config(effective_config);
     let mut working = prepare::prepare(model, effective_config, measurer, math_renderer);
     let reversed = sugiyama::run(&mut working, config);
@@ -82,8 +93,9 @@ pub(crate) fn layout_swimlane_typed(
         edge.reversed_for_layout = reversed.contains(&edge.id);
     }
     bounds::assign_canonical_group_bounds(&mut working);
-    routing::route(&mut working);
-    direction::post_process(&mut working);
+    let mut work_budget = work_budget::LayoutWorkBudget::for_operation(work_meter);
+    routing::route(&mut working, &mut work_budget)?;
+    direction::post_process(&mut working, &mut work_budget)?;
 
     // Mermaid's swimlane core only normalizes the implicit `basis` curve to
     // `rounded`; an explicit edge/default/config curve remains authoritative.
@@ -189,9 +201,32 @@ pub(crate) fn layout_swimlane_typed(
     })
 }
 
+fn swimlane_core_layout_work_units(nodes: usize, edges: usize) -> usize {
+    let baseline = nodes.saturating_add(edges).saturating_mul(4);
+
+    // This is the stable, family-accounted cost for prepare, Sugiyama, and routing. The linear
+    // baseline covers their source-item passes. Routing adds edges incrementally and can compare
+    // each new route with every earlier route, so charge one conservative unit per unordered
+    // source-edge pair. Direction post-processing and SVG line hops charge the shared meter
+    // independently and must not be included here.
+    baseline.saturating_add(work_budget::unordered_pair_count(edges))
+}
+
+fn swimlane_layout_preflight_work_units(nodes: usize, edges: usize) -> usize {
+    // Keep preflight as a pure fail-fast estimate. In addition to the core-layout cost, reserve
+    // one unordered-pair allowance for the direction post-processing that follows. That phase
+    // charges its inspected candidates precisely, so this allowance is intentionally not charged
+    // by `swimlane_core_layout_work_units`.
+    swimlane_core_layout_work_units(nodes, edges)
+        .saturating_add(work_budget::unordered_pair_count(edges))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::mermaid_identifier_locale_cmp;
+    use super::{
+        mermaid_identifier_locale_cmp, swimlane_core_layout_work_units,
+        swimlane_layout_preflight_work_units,
+    };
 
     #[test]
     fn identifier_order_matches_attested_mermaid_en_us_locale_compare() {
@@ -208,6 +243,34 @@ mod tests {
                 "🧪", "😀", "a", "A", "å", "Å", "ä", "a_1", "A_1", "a-1", "A-1", "a.1", "A.1",
                 "A10", "a2", "b", "B", "e", "E", "é", "ss", "ß", "z", "Z", "中", "阿",
             ]
+        );
+    }
+
+    #[test]
+    fn core_layout_cost_accounts_routing_pairs_once() {
+        // Four nodes plus three edges consume 28 linear units; routing can inspect three
+        // unordered edge pairs.
+        assert_eq!(swimlane_core_layout_work_units(4, 3), 31);
+    }
+
+    #[test]
+    fn preflight_reserves_direction_pairs_without_charging_them_to_core() {
+        let core = swimlane_core_layout_work_units(4, 3);
+        let preflight = swimlane_layout_preflight_work_units(4, 3);
+
+        assert_eq!(core, 31);
+        assert_eq!(preflight, 34);
+    }
+
+    #[test]
+    fn swimlane_layout_work_estimates_saturate() {
+        assert_eq!(
+            swimlane_core_layout_work_units(usize::MAX, usize::MAX),
+            usize::MAX
+        );
+        assert_eq!(
+            swimlane_layout_preflight_work_units(usize::MAX, usize::MAX),
+            usize::MAX
         );
     }
 }

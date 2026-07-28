@@ -220,6 +220,10 @@ impl<'a> LayoutExecution<'a> {
         self.session.resource_policy()
     }
 
+    pub(crate) fn work_meter(&self) -> std::sync::Arc<crate::resources::OperationWorkMeter> {
+        std::sync::Arc::clone(self.session.work_meter())
+    }
+
     pub(crate) fn local_time_zone(&self) -> &merman_core::time::LocalTimeZone {
         self.session.local_time_zone()
     }

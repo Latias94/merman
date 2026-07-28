@@ -1,5 +1,7 @@
 use super::common::*;
+use crate::Result;
 use crate::model::SwimlaneTitleRect;
+use crate::swimlane::direction::LayoutWorkBudget;
 
 const CLEARANCE: f64 = 4.0;
 
@@ -80,20 +82,22 @@ fn vertical_segment_intersects_title(segment: &OrthogonalSegment, rect: RectBoun
 
 pub(in crate::swimlane::direction) fn lift_top_lane_title_bands_above_rails(
     layout: &mut WorkingLayout,
-) {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
     let lanes: Vec<_> = layout
         .nodes
         .values()
         .filter_map(top_lane_title_for)
         .collect();
     if lanes.is_empty() {
-        return;
+        return Ok(());
     }
 
     let mut top_delta: f64 = 0.0;
     for edge in &layout.original_edges {
         let points = dedupe_consecutive_points(&edge.points, EPSILON);
         for segment in segments_for(&points) {
+            work_budget.charge(lanes.len())?;
             for lane in &lanes {
                 if horizontal_segment_intersects_title(&segment, lane.rect) {
                     top_delta = top_delta.max(lane.rect.bottom - segment.a.y + CLEARANCE);
@@ -102,7 +106,7 @@ pub(in crate::swimlane::direction) fn lift_top_lane_title_bands_above_rails(
         }
     }
     if top_delta <= EPSILON {
-        return;
+        return Ok(());
     }
 
     for lane in lanes {
@@ -121,24 +125,27 @@ pub(in crate::swimlane::direction) fn lift_top_lane_title_bands_above_rails(
             bottom: lane.rect.bottom - top_delta,
         });
     }
+    Ok(())
 }
 
 pub(in crate::swimlane::direction) fn shift_left_lane_title_bands_left_of_rails(
     layout: &mut WorkingLayout,
-) {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
     let lanes: Vec<_> = layout
         .nodes
         .values()
         .filter_map(left_lane_title_for)
         .collect();
     if lanes.is_empty() {
-        return;
+        return Ok(());
     }
 
     let mut left_delta: f64 = 0.0;
     for edge in &layout.original_edges {
         let points = dedupe_consecutive_points(&edge.points, EPSILON);
         for segment in segments_for(&points) {
+            work_budget.charge(lanes.len())?;
             for lane in &lanes {
                 if vertical_segment_intersects_title(&segment, lane.rect) {
                     left_delta = left_delta.max(lane.rect.right - segment.a.x + CLEARANCE);
@@ -150,7 +157,7 @@ pub(in crate::swimlane::direction) fn shift_left_lane_title_bands_left_of_rails(
         }
     }
     if left_delta <= EPSILON {
-        return;
+        return Ok(());
     }
 
     for lane in lanes {
@@ -169,4 +176,5 @@ pub(in crate::swimlane::direction) fn shift_left_lane_title_bands_left_of_rails(
             bottom: lane.rect.bottom,
         });
     }
+    Ok(())
 }

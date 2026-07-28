@@ -1,9 +1,11 @@
 use super::super::working::{WorkingEdge, WorkingLayout};
+use super::LayoutWorkBudget;
 use super::geometry::{
     EPSILON, OrthogonalSegment, RectBounds, RectEntry, collect_node_rect_entries,
     dedupe_consecutive_points, orthogonal_segments_for_points, orthogonal_segments_strictly_cross,
     overlap_length, rect_of_node_bounds, segment_hits_any_rect,
 };
+use crate::Result;
 use crate::model::LayoutPoint;
 
 const MINIMUM_SHARED_LENGTH: f64 = 8.0;
@@ -88,10 +90,11 @@ fn candidate_is_safe(
     candidate: &[LayoutPoint],
     real_node_rects: &[RectEntry],
     label_rects: &[RectEntry],
-) -> bool {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<bool> {
     let candidate_segments = segments_for(edge_index, candidate);
-    if candidate_segments.len() != candidate.len() - 1 {
-        return false;
+    if candidate_segments.len() != candidate.len().saturating_sub(1) {
+        return Ok(false);
     }
 
     let edge = &layout.original_edges[edge_index];
@@ -102,23 +105,29 @@ fn candidate_is_safe(
         .into_iter()
         .collect::<Vec<_>>();
     for segment in &candidate_segments {
+        work_budget.charge(real_node_rects.len())?;
         if segment_hits_any_rect(
             &segment.geometry.a,
             &segment.geometry.b,
             real_node_rects,
             &endpoint_ids,
             -OBSTACLE_BUFFER,
-        ) || segment_hits_any_rect(
+        ) {
+            return Ok(false);
+        }
+        work_budget.charge(label_rects.len())?;
+        if segment_hits_any_rect(
             &segment.geometry.a,
             &segment.geometry.b,
             label_rects,
             &own_label_ids,
             -OBSTACLE_BUFFER,
         ) {
-            return false;
+            return Ok(false);
         }
     }
 
+    work_budget.charge(layout.original_edges.len().saturating_sub(1))?;
     for (other_index, other) in layout.original_edges.iter().enumerate() {
         if other_index == edge_index || other.points.len() < 2 {
             continue;
@@ -136,12 +145,12 @@ fn candidate_is_safe(
                         EPSILON,
                     )
                 {
-                    return false;
+                    return Ok(false);
                 }
             }
         }
     }
-    true
+    Ok(true)
 }
 
 fn shifted_candidate(
@@ -316,9 +325,11 @@ fn first_safe_rewrite(
     segments: &[Segment],
     real_node_rects: &[RectEntry],
     label_rects: &[RectEntry],
-) -> Option<(usize, Vec<LayoutPoint>)> {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<Option<(usize, Vec<LayoutPoint>)>> {
     for (first_index, first) in segments.iter().enumerate() {
         for second in &segments[first_index + 1..] {
+            work_budget.charge(1)?;
             if first.edge_index == second.edge_index || !has_crowded_parallel_track(first, second) {
                 continue;
             }
@@ -328,46 +339,67 @@ fn first_safe_rewrite(
                 .filter(|segment| segment.interior)
             {
                 for shift in SHIFTS {
-                    if let Some(candidate) = shifted_candidate(layout, segment, shift)
-                        && candidate_is_safe(
+                    work_budget.charge(layout.original_edges[segment.edge_index].points.len())?;
+                    if let Some(candidate) = shifted_candidate(layout, segment, shift) {
+                        work_budget.charge(1)?;
+                        if candidate_is_safe(
                             layout,
                             segment.edge_index,
                             &candidate,
                             real_node_rects,
                             label_rects,
-                        )
-                    {
-                        return Some((segment.edge_index, candidate));
+                            work_budget,
+                        )? {
+                            return Ok(Some((segment.edge_index, candidate)));
+                        }
                     }
-                    if let Some(candidate) = source_detour_candidate(layout, segment, shift)
-                        && candidate_is_safe(
+                    work_budget.charge(layout.original_edges[segment.edge_index].points.len())?;
+                    if let Some(candidate) = source_detour_candidate(layout, segment, shift) {
+                        work_budget.charge(1)?;
+                        if candidate_is_safe(
                             layout,
                             segment.edge_index,
                             &candidate,
                             real_node_rects,
                             label_rects,
-                        )
-                    {
-                        return Some((segment.edge_index, candidate));
+                            work_budget,
+                        )? {
+                            return Ok(Some((segment.edge_index, candidate)));
+                        }
                     }
                 }
             }
         }
     }
-    None
+    Ok(None)
 }
 
-pub(super) fn nudge_shared_interior_subpaths(layout: &mut WorkingLayout) {
+pub(super) fn nudge_shared_interior_subpaths(
+    layout: &mut WorkingLayout,
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
+    work_budget.charge(layout.nodes.len())?;
     let (real_node_rects, label_rects) = collect_node_rect_entries(layout);
     for _ in 0..MAXIMUM_ITERATIONS {
+        work_budget.charge(layout.original_edges.len())?;
+        let edge_point_work = layout.original_edges.iter().fold(0usize, |total, edge| {
+            total.saturating_add(edge.points.len())
+        });
+        work_budget.charge(edge_point_work)?;
         let segments = all_segments(layout);
-        let Some((edge_index, points)) =
-            first_safe_rewrite(layout, &segments, &real_node_rects, &label_rects)
+        let Some((edge_index, points)) = first_safe_rewrite(
+            layout,
+            &segments,
+            &real_node_rects,
+            &label_rects,
+            work_budget,
+        )?
         else {
-            return;
+            return Ok(());
         };
         layout.original_edges[edge_index].points = points;
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -493,7 +525,8 @@ mod tests {
             ],
         );
 
-        nudge_shared_interior_subpaths(&mut layout);
+        nudge_shared_interior_subpaths(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         let detoured_x = vertical_segment_x(&layout.original_edges[0].points, 80.0).unwrap();
         assert!((detoured_x - 52.0).abs() >= 7.0);
@@ -568,7 +601,8 @@ mod tests {
             ],
         );
 
-        nudge_shared_interior_subpaths(&mut layout);
+        nudge_shared_interior_subpaths(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         let first_x = vertical_segment_x_overlapping_y(
             &layout.original_edges[0].points,
@@ -626,7 +660,8 @@ mod tests {
             ],
         );
 
-        nudge_shared_interior_subpaths(&mut layout);
+        nudge_shared_interior_subpaths(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         let labelled_x = vertical_segment_x(&layout.original_edges[0].points, 80.0).unwrap();
         assert!((labelled_x - 50.0).abs() >= 7.0);
@@ -666,7 +701,8 @@ mod tests {
             ],
         );
 
-        nudge_shared_interior_subpaths(&mut layout);
+        nudge_shared_interior_subpaths(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         assert_eq!(
             vertical_segment_x(&layout.original_edges[0].points, 80.0),
@@ -697,12 +733,89 @@ mod tests {
         );
         let before = layout.original_edges[0].points.clone();
 
-        nudge_shared_interior_subpaths(&mut layout);
+        nudge_shared_interior_subpaths(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
 
         assert_eq!(layout.original_edges[0].points.len(), before.len());
         for (actual, expected) in layout.original_edges[0].points.iter().zip(before) {
             assert!((actual.x - expected.x).abs() < 1e-9);
             assert!((actual.y - expected.y).abs() < 1e-9);
         }
+    }
+
+    #[test]
+    fn candidate_safety_rejects_before_the_full_edge_scan() {
+        let edges = (0..100)
+            .map(|index| {
+                edge(
+                    &format!("edge-{index}"),
+                    "",
+                    "",
+                    vec![
+                        point(1_000.0 + index as f64 * 20.0, 0.0),
+                        point(1_000.0 + index as f64 * 20.0, 10.0),
+                    ],
+                    None,
+                )
+            })
+            .collect::<Vec<_>>();
+        let layout = layout(
+            vec![node(
+                "far-node",
+                WorkingNodeKind::Content,
+                -1_000.0,
+                -1_000.0,
+                10.0,
+                10.0,
+            )],
+            edges,
+        );
+        let before = layout
+            .original_edges
+            .iter()
+            .map(|edge| {
+                edge.points
+                    .iter()
+                    .map(|point| (point.x, point.y))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let (real_node_rects, label_rects) = collect_node_rect_entries(&layout);
+        assert_eq!(real_node_rects.len(), 1);
+        assert!(label_rects.is_empty());
+        let policy = crate::RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let mut budget = LayoutWorkBudget::new(policy, 0).unwrap();
+
+        let error = candidate_is_safe(
+            &layout,
+            0,
+            &[point(0.0, 0.0), point(10.0, 0.0)],
+            &real_node_rects,
+            &label_rects,
+            &mut budget,
+        )
+        .unwrap_err();
+        let crate::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected max_layout_work_units resource limit error");
+        };
+        // The segment-vs-node scan consumes the exact boundary before the 99-edge scan.
+        assert_eq!(budget.used(), 1);
+        assert_eq!(error.actual, 100);
+        assert_eq!(error.max, 1);
+        assert_eq!(
+            layout
+                .original_edges
+                .iter()
+                .map(|edge| {
+                    edge.points
+                        .iter()
+                        .map(|point| (point.x, point.y))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>(),
+            before
+        );
     }
 }

@@ -3,8 +3,8 @@ use super::activation::{build_sequence_activation_plan, render_sequence_activati
 use super::block_collection::{SequenceBlock, collect_sequence_blocks};
 use super::block_geometry::frame_x_from_actors;
 use super::blocks::{
-    SequenceBlockRenderContext, render_critical_sequence_block, render_sectioned_sequence_block,
-    render_simple_sequence_block,
+    SequenceBlockRenderContext, SimpleSequenceBlock, render_critical_sequence_block,
+    render_sectioned_sequence_block, render_simple_sequence_block,
 };
 use super::model::*;
 use super::notes::{SequenceNoteRenderContext, render_sequence_note};
@@ -14,6 +14,7 @@ use rustc_hash::FxHashMap;
 pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
+    pub(super) block_layouts_by_id: &'a FxHashMap<String, crate::model::SequenceBlockLayout>,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
@@ -55,6 +56,7 @@ pub(super) fn render_sequence_interaction_overlays(
         &actor_nodes_by_id,
         ctx.edges_by_id,
         ctx.nodes_by_id,
+        ctx.block_layouts_by_id,
     );
 
     let block_ctx = SequenceBlockRenderContext {
@@ -62,9 +64,7 @@ pub(super) fn render_sequence_interaction_overlays(
         default_frame_x2: frame_x2,
         block_widths_by_id: ctx.block_widths_by_id,
         actor_nodes_by_id: &actor_nodes_by_id,
-        label_box_height: ctx.settings.label_box_height,
         label_box_width: ctx.settings.label_box_width,
-        box_text_margin: ctx.settings.box_text_margin,
         wrap_padding: ctx.settings.wrap_padding,
         measurer: ctx.measurer,
         loop_text_style: &ctx.settings.loop_text_style,
@@ -95,15 +95,19 @@ pub(super) fn render_sequence_interaction_overlays(
             SequenceBlock::Alt {
                 control_id,
                 sections,
+                layout,
             } => {
-                render_sectioned_sequence_block(out, control_id, "alt", sections, true, &block_ctx);
+                render_sectioned_sequence_block(
+                    out, control_id, "alt", sections, *layout, &block_ctx,
+                );
             }
             SequenceBlock::Par {
                 control_id,
                 sections,
+                layout,
             } => {
                 render_sectioned_sequence_block(
-                    out, control_id, "par", sections, false, &block_ctx,
+                    out, control_id, "par", sections, *layout, &block_ctx,
                 );
             }
             SequenceBlock::Loop {
@@ -111,9 +115,19 @@ pub(super) fn render_sequence_interaction_overlays(
                 label_id,
                 raw_label,
                 geometry,
+                layout,
             } => {
                 render_simple_sequence_block(
-                    out, control_id, label_id, "loop", raw_label, *geometry, &block_ctx,
+                    out,
+                    SimpleSequenceBlock {
+                        control_id,
+                        label_id,
+                        block_label: "loop",
+                        raw_label,
+                        geometry: *geometry,
+                        layout: *layout,
+                    },
+                    &block_ctx,
                 );
             }
             SequenceBlock::Opt {
@@ -121,9 +135,19 @@ pub(super) fn render_sequence_interaction_overlays(
                 label_id,
                 raw_label,
                 geometry,
+                layout,
             } => {
                 render_simple_sequence_block(
-                    out, control_id, label_id, "opt", raw_label, *geometry, &block_ctx,
+                    out,
+                    SimpleSequenceBlock {
+                        control_id,
+                        label_id,
+                        block_label: "opt",
+                        raw_label,
+                        geometry: *geometry,
+                        layout: *layout,
+                    },
+                    &block_ctx,
                 );
             }
             SequenceBlock::Break {
@@ -131,16 +155,27 @@ pub(super) fn render_sequence_interaction_overlays(
                 label_id,
                 raw_label,
                 geometry,
+                layout,
             } => {
                 render_simple_sequence_block(
-                    out, control_id, label_id, "break", raw_label, *geometry, &block_ctx,
+                    out,
+                    SimpleSequenceBlock {
+                        control_id,
+                        label_id,
+                        block_label: "break",
+                        raw_label,
+                        geometry: *geometry,
+                        layout: *layout,
+                    },
+                    &block_ctx,
                 );
             }
             SequenceBlock::Critical {
                 control_id,
                 sections,
+                layout,
             } => {
-                render_critical_sequence_block(out, control_id, sections, &block_ctx);
+                render_critical_sequence_block(out, control_id, sections, *layout, &block_ctx);
             }
         }
     }

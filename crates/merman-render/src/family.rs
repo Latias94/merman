@@ -767,33 +767,53 @@ impl FamilyRenderArtifact {
         options: &SvgRenderOptions,
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
+        let svg = render_family_artifact_svg(&self, options, debug)?;
+        self.session
+            .resource_policy()
+            .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)?;
+        let family_kind = self.family.kind();
         let Self {
             metadata,
             compatibility_projection: _,
-            family,
+            family: _,
             session,
         } = self;
-        let options = options.normalized();
-        let svg = crate::svg::render_builtin_family_artifact(
-            &family,
-            &metadata.effective_config,
-            &metadata.diagram_type,
-            metadata.title.as_deref(),
-            &session,
-            &options,
-            debug,
-        )?;
-        session
-            .resource_policy()
-            .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)?;
 
         Ok(RenderedFamilySvg {
             svg,
-            family_kind: family.kind(),
+            family_kind,
             metadata,
             session,
         })
     }
+}
+
+#[inline(never)]
+fn render_family_artifact_svg(
+    artifact: &FamilyRenderArtifact,
+    request: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
+) -> Result<String> {
+    let options = request.normalized();
+    #[cfg(feature = "layout-cytoscape")]
+    if let BuiltinFamilyArtifact::Architecture(pair) = &artifact.family {
+        return crate::svg::render_architecture_family_artifact(
+            pair,
+            &artifact.metadata.effective_config,
+            &artifact.session,
+            &options,
+            debug,
+        );
+    }
+    crate::svg::render_builtin_family_artifact(
+        &artifact.family,
+        &artifact.metadata.effective_config,
+        &artifact.metadata.diagram_type,
+        artifact.metadata.title.as_deref(),
+        &artifact.session,
+        &options,
+        debug,
+    )
 }
 
 #[inline(never)]
@@ -1071,11 +1091,12 @@ fn prepare_non_class_render(
             if meta.effective_config.get_str("layout") == Some("swimlane") =>
         {
             BuiltinFamilyArtifact::Swimlane(prepare_pair(model, |model| {
-                crate::swimlane::layout_swimlane_typed(
+                crate::swimlane::layout_swimlane_typed_with_work_meter(
                     model,
                     &meta.effective_config,
                     execution.text_measurer(),
                     execution.math_renderer(),
+                    execution.work_meter(),
                 )
             })?)
         }
@@ -1415,6 +1436,28 @@ mod tests {
         prepare(parsed, &LayoutOptions::default(), session)
     }
 
+    fn prepare_with_layout_work_limit(
+        source: &str,
+        max_layout_work_units: usize,
+    ) -> Result<FamilyRenderArtifact> {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(
+                        crate::resources::ResourceLimitId::MaxLayoutWorkUnits,
+                        max_layout_work_units,
+                    )
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+        prepare(parsed, &LayoutOptions::default(), session)
+    }
+
     fn assert_model_item_limit(error: Error, actual: usize, max: usize) {
         let Error::ResourceLimitExceeded(limit) = error else {
             panic!("expected max_model_items resource limit error")
@@ -1491,6 +1534,25 @@ system - satisfies -> req1
             Ok(_) => panic!("swimlane above the node limit unexpectedly rendered"),
         };
         assert_model_item_limit(error, 3, 2);
+    }
+
+    #[test]
+    fn swimlane_rejects_pairwise_routing_work_before_layout() {
+        let source = "swimlane-beta LR\nA --> B\nB --> C";
+        let artifact = prepare_with_layout_work_limit(source, 1_000).unwrap();
+        assert_eq!(artifact.family_kind(), RenderFamilyKind::Swimlane);
+
+        let error = match prepare_with_layout_work_limit(source, 1) {
+            Err(error) => error,
+            Ok(_) => panic!("swimlane above the layout work limit unexpectedly rendered"),
+        };
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected max_layout_work_units resource limit error");
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(limit.limit, "max_layout_work_units");
+        assert!(limit.actual > limit.max);
+        assert_eq!(limit.max, 1);
     }
 
     #[test]

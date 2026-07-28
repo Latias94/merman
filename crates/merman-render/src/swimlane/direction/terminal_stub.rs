@@ -1,9 +1,11 @@
 use super::super::working::WorkingLayout;
+use super::LayoutWorkBudget;
 use super::geometry::{
     EPSILON, RectEntry, collect_node_rect_entries, dedupe_consecutive_points,
     is_horizontal_segment, is_vertical_segment, orthogonal_segments_strictly_cross,
     rect_of_node_bounds, same_x, same_y, segment_hits_any_rect,
 };
+use crate::Result;
 use crate::model::LayoutPoint;
 use std::collections::HashSet;
 
@@ -26,8 +28,10 @@ fn segment_crosses_other_edge(
     start: &LayoutPoint,
     end: &LayoutPoint,
     own_segments: &HashSet<String>,
-) -> bool {
-    layout
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<bool> {
+    work_budget.charge(layout.original_edges.len().saturating_sub(1))?;
+    Ok(layout
         .original_edges
         .iter()
         .enumerate()
@@ -36,24 +40,30 @@ fn segment_crosses_other_edge(
         .any(|segment| {
             !own_segments.contains(&own_segment_key(&segment[0], &segment[1]))
                 && orthogonal_segments_strictly_cross(start, end, &segment[0], &segment[1], EPSILON)
-        })
+        }))
 }
 
 fn label_anchor_for_rewrite(
     layout: &WorkingLayout,
     label_node_id: Option<&str>,
     points: &[LayoutPoint],
-) -> Option<(String, LayoutPoint)> {
-    let label_node_id = label_node_id?;
-    let label = layout.nodes.get(label_node_id)?;
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<Option<(String, LayoutPoint)>> {
+    let Some(label_node_id) = label_node_id else {
+        return Ok(None);
+    };
+    let Some(label) = layout.nodes.get(label_node_id) else {
+        return Ok(None);
+    };
     let label_width = label.width;
     let label_height = label.height;
     if label_width <= 0.0 || label_height <= 0.0 {
-        return None;
+        return Ok(None);
     }
 
     let mut best = None;
     let mut best_length = -1.0;
+    work_budget.charge(points.len().saturating_sub(1))?;
     for segment in points.windows(2) {
         let start = &segment[0];
         let end = &segment[1];
@@ -70,7 +80,7 @@ fn label_anchor_for_rewrite(
             });
         }
     }
-    best.map(|anchor| (label_node_id.to_string(), anchor))
+    Ok(best.map(|anchor| (label_node_id.to_string(), anchor)))
 }
 
 fn rewrite_for_edge(
@@ -78,14 +88,15 @@ fn rewrite_for_edge(
     edge_index: usize,
     real_node_rects: &[RectEntry],
     label_rects: &[RectEntry],
-) -> Option<StubRewrite> {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<Option<StubRewrite>> {
     let edge = &layout.original_edges[edge_index];
     if edge.points.len() < 4 {
-        return None;
+        return Ok(None);
     }
     let points = dedupe_consecutive_points(&edge.points, EPSILON);
     if points.len() < 4 {
-        return None;
+        return Ok(None);
     }
 
     let last = points.len() - 1;
@@ -96,13 +107,13 @@ fn rewrite_for_edge(
     let last_delta_y = end.y - penultimate.y;
     let last_length = last_delta_x.hypot(last_delta_y);
     if !(EPSILON..MINIMUM_STUB_LENGTH).contains(&last_length) {
-        return None;
+        return Ok(None);
     }
 
     let penultimate_delta_x = penultimate.x - previous.x;
     let penultimate_delta_y = penultimate.y - previous.y;
     if penultimate_delta_x.hypot(penultimate_delta_y) < EPSILON {
-        return None;
+        return Ok(None);
     }
 
     let last_horizontal = is_horizontal_segment(penultimate, end, EPSILON);
@@ -110,11 +121,15 @@ fn rewrite_for_edge(
     let penultimate_horizontal = is_horizontal_segment(previous, penultimate, EPSILON);
     let penultimate_vertical = is_vertical_segment(previous, penultimate, EPSILON);
     if !((last_horizontal && penultimate_vertical) || (last_vertical && penultimate_horizontal)) {
-        return None;
+        return Ok(None);
     }
 
-    let destination = layout.nodes.get(&edge.to)?;
-    let destination_rect = rect_of_node_bounds(destination)?;
+    let Some(destination) = layout.nodes.get(&edge.to) else {
+        return Ok(None);
+    };
+    let Some(destination_rect) = rect_of_node_bounds(destination) else {
+        return Ok(None);
+    };
     let (new_previous, new_end) = if penultimate_vertical {
         let approach_from_below = penultimate_delta_y < 0.0;
         (
@@ -149,64 +164,98 @@ fn rewrite_for_edge(
         )
     };
 
+    work_budget.charge(1)?;
+    work_budget.charge(real_node_rects.len())?;
     if segment_hits_any_rect(
         &new_previous,
         &new_end,
         real_node_rects,
         &[edge.to.as_str()],
         -OBSTACLE_BUFFER,
-    ) || segment_hits_any_rect(&new_previous, &new_end, label_rects, &[], -OBSTACLE_BUFFER)
-    {
-        return None;
+    ) {
+        return Ok(None);
+    }
+    work_budget.charge(label_rects.len())?;
+    if segment_hits_any_rect(&new_previous, &new_end, label_rects, &[], -OBSTACLE_BUFFER) {
+        return Ok(None);
     }
 
     if let Some(source) = layout.nodes.get(&edge.from)
         && let Some(source_rect) = rect_of_node_bounds(source)
         && source_rect.contains_point(&new_previous, OBSTACLE_BUFFER)
     {
-        return None;
+        return Ok(None);
     }
 
+    work_budget.charge(points.len().saturating_sub(1))?;
     let own_segments = points
         .windows(2)
         .map(|segment| own_segment_key(&segment[0], &segment[1]))
         .collect::<HashSet<_>>();
-    if segment_crosses_other_edge(layout, edge_index, &new_previous, &new_end, &own_segments) {
-        return None;
+    if segment_crosses_other_edge(
+        layout,
+        edge_index,
+        &new_previous,
+        &new_end,
+        &own_segments,
+        work_budget,
+    )? {
+        return Ok(None);
     }
 
     let before_previous = &points[last - 3];
     let endpoint_ids = [edge.from.as_str(), edge.to.as_str()];
+    work_budget.charge(real_node_rects.len())?;
     if segment_hits_any_rect(
         before_previous,
         &new_previous,
         real_node_rects,
         &endpoint_ids,
         -OBSTACLE_BUFFER,
-    ) || segment_crosses_other_edge(
+    ) {
+        return Ok(None);
+    }
+    if segment_crosses_other_edge(
         layout,
         edge_index,
         before_previous,
         &new_previous,
         &own_segments,
-    ) {
-        return None;
+        work_budget,
+    )? {
+        return Ok(None);
     }
 
     let mut rewritten = points[..last - 2].to_vec();
     rewritten.push(new_previous);
     rewritten.push(new_end);
-    let label_anchor = label_anchor_for_rewrite(layout, edge.label_node_id.as_deref(), &rewritten);
-    Some(StubRewrite {
+    let label_anchor = label_anchor_for_rewrite(
+        layout,
+        edge.label_node_id.as_deref(),
+        &rewritten,
+        work_budget,
+    )?;
+    Ok(Some(StubRewrite {
         points: rewritten,
         label_anchor,
-    })
+    }))
 }
 
-pub(super) fn collapse_short_terminal_stub(layout: &mut WorkingLayout) {
+pub(super) fn collapse_short_terminal_stub(
+    layout: &mut WorkingLayout,
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
+    work_budget.charge(layout.nodes.len())?;
     let (real_node_rects, label_rects) = collect_node_rect_entries(layout);
+    work_budget.charge(layout.original_edges.len())?;
     for edge_index in 0..layout.original_edges.len() {
-        let Some(rewrite) = rewrite_for_edge(layout, edge_index, &real_node_rects, &label_rects)
+        let Some(rewrite) = rewrite_for_edge(
+            layout,
+            edge_index,
+            &real_node_rects,
+            &label_rects,
+            work_budget,
+        )?
         else {
             continue;
         };
@@ -218,6 +267,7 @@ pub(super) fn collapse_short_terminal_stub(layout: &mut WorkingLayout) {
             label.y = anchor.y;
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -317,7 +367,8 @@ mod tests {
             )],
             vec![edge("A_B", "A", "B", candidate_points())],
         );
-        collapse_short_terminal_stub(&mut layout);
+        collapse_short_terminal_stub(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
         assert_points(
             &layout.original_edges[0].points,
             &[(0.0, 120.0), (100.0, 120.0), (100.0, 130.0)],
@@ -334,7 +385,8 @@ mod tests {
             ],
             vec![edge("A_B", "A", "B", original.clone())],
         );
-        collapse_short_terminal_stub(&mut layout);
+        collapse_short_terminal_stub(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
         assert_points(
             &layout.original_edges[0].points,
             &original
@@ -366,7 +418,8 @@ mod tests {
                 ),
             ],
         );
-        collapse_short_terminal_stub(&mut layout);
+        collapse_short_terminal_stub(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
         assert_points(
             &layout.original_edges[0].points,
             &original
@@ -394,7 +447,8 @@ mod tests {
             ],
             vec![labeled_edge],
         );
-        collapse_short_terminal_stub(&mut layout);
+        collapse_short_terminal_stub(&mut layout, &mut LayoutWorkBudget::unbounded_for_tests())
+            .unwrap();
         let label = &layout.nodes["label"];
         assert!((label.x - 50.0).abs() < EPSILON);
         assert!((label.y - 120.0).abs() < EPSILON);

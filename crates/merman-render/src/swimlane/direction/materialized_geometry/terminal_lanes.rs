@@ -1,4 +1,6 @@
 use super::common::*;
+use crate::Result;
+use crate::swimlane::direction::LayoutWorkBudget;
 
 const MINIMUM_FACE_CLEARANCE: f64 = 16.0;
 const TRACK_SHIFT: f64 = 7.0;
@@ -276,7 +278,8 @@ fn lane_is_straight_collinear_connector(
 
 pub(in crate::swimlane::direction) fn separate_shared_rendered_terminal_lanes(
     layout: &mut WorkingLayout,
-) {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
     const SHIFTS: [f64; 6] = [
         -TRACK_SHIFT,
         TRACK_SHIFT,
@@ -287,6 +290,7 @@ pub(in crate::swimlane::direction) fn separate_shared_rendered_terminal_lanes(
     ];
 
     for _ in 0..MAX_ITERATIONS {
+        work_budget.charge(layout.original_edges.len().saturating_mul(2))?;
         let lanes: Vec<_> = (0..layout.original_edges.len())
             .flat_map(|edge_index| {
                 [
@@ -312,6 +316,7 @@ pub(in crate::swimlane::direction) fn separate_shared_rendered_terminal_lanes(
         let mut replacement = None;
         'pairs: for first_index in 0..lanes.len() {
             for second_index in first_index + 1..lanes.len() {
+                work_budget.charge(1)?;
                 let first = &lanes[first_index];
                 let second = &lanes[second_index];
                 let exact_conflict = exact_terminal_lane_conflict(first, second);
@@ -334,11 +339,13 @@ pub(in crate::swimlane::direction) fn separate_shared_rendered_terminal_lanes(
                 });
                 for lane in candidates {
                     for shift in SHIFTS {
+                        work_budget.charge(layout.original_edges[lane.edge_index].points.len())?;
                         let Some(candidate) =
                             shifted_candidate(lane, &layout.original_edges, shift)
                         else {
                             continue;
                         };
+                        work_budget.charge(1)?;
                         let Some(next_lane) = terminal_lane_for(
                             &layout.original_edges,
                             &layout.nodes,
@@ -348,6 +355,7 @@ pub(in crate::swimlane::direction) fn separate_shared_rendered_terminal_lanes(
                         ) else {
                             continue;
                         };
+                        work_budget.charge(lanes.len().saturating_sub(1))?;
                         let conflicts = lanes.iter().any(|other| {
                             other.edge_index != lane.edge_index
                                 && (exact_terminal_lane_conflict(&next_lane, other)
@@ -363,8 +371,9 @@ pub(in crate::swimlane::direction) fn separate_shared_rendered_terminal_lanes(
             }
         }
         let Some((edge_index, points)) = replacement else {
-            return;
+            return Ok(());
         };
         layout.original_edges[edge_index].points = points;
     }
+    Ok(())
 }

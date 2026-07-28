@@ -1,4 +1,6 @@
 use super::common::*;
+use crate::Result;
+use crate::swimlane::direction::LayoutWorkBudget;
 
 const BUFFER: f64 = 2.0;
 const MAX_ITERATIONS: usize = 8;
@@ -9,20 +11,28 @@ fn candidate_is_safe(
     candidate: &[LayoutPoint],
     real_node_rects: &[RectEntry],
     label_rects: &[RectEntry],
-) -> bool {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<bool> {
     let candidate_segments = segments_for(candidate);
-    if candidate_segments.len() != candidate.len().saturating_sub(1)
-        || path_hits_rects(
-            &edges[edge_index],
-            candidate,
-            real_node_rects,
-            label_rects,
-            BUFFER,
-        )
-    {
-        return false;
+    if candidate_segments.len() != candidate.len().saturating_sub(1) {
+        return Ok(false);
+    }
+    work_budget.charge(
+        candidate_segments
+            .len()
+            .saturating_mul(real_node_rects.len().saturating_add(label_rects.len())),
+    )?;
+    if path_hits_rects(
+        &edges[edge_index],
+        candidate,
+        real_node_rects,
+        label_rects,
+        BUFFER,
+    ) {
+        return Ok(false);
     }
 
+    work_budget.charge(edges.len().saturating_sub(1))?;
     for (other_index, other) in edges.iter().enumerate() {
         if other_index == edge_index || other.points.len() < 2 {
             continue;
@@ -41,12 +51,12 @@ fn candidate_is_safe(
                         EPSILON,
                     )
                 {
-                    return false;
+                    return Ok(false);
                 }
             }
         }
     }
-    true
+    Ok(true)
 }
 
 fn without_dogleg(points: &[LayoutPoint], index: usize) -> Option<Vec<LayoutPoint>> {
@@ -116,10 +126,13 @@ fn without_dogleg(points: &[LayoutPoint], index: usize) -> Option<Vec<LayoutPoin
 
 pub(in crate::swimlane::direction) fn collapse_redundant_rectangular_doglegs(
     layout: &mut WorkingLayout,
-) {
+    work_budget: &mut LayoutWorkBudget,
+) -> Result<()> {
+    work_budget.charge(layout.nodes.len())?;
     let (real_node_rects, label_rects) = collect_node_rect_entries(layout);
     for _ in 0..MAX_ITERATIONS {
         let mut replacement = None;
+        work_budget.charge(layout.original_edges.len())?;
         for (edge_index, edge) in layout.original_edges.iter().enumerate() {
             let points = dedupe_consecutive_points(&edge.points, EPSILON);
             if points.len() < 5 {
@@ -129,13 +142,15 @@ pub(in crate::swimlane::direction) fn collapse_redundant_rectangular_doglegs(
                 let Some(candidate) = without_dogleg(&points, index) else {
                     continue;
                 };
+                work_budget.charge(1)?;
                 if candidate_is_safe(
                     &layout.original_edges,
                     edge_index,
                     &candidate,
                     &real_node_rects,
                     &label_rects,
-                ) {
+                    work_budget,
+                )? {
                     replacement = Some((edge_index, candidate));
                     break;
                 }
@@ -145,8 +160,9 @@ pub(in crate::swimlane::direction) fn collapse_redundant_rectangular_doglegs(
             }
         }
         let Some((edge_index, points)) = replacement else {
-            return;
+            return Ok(());
         };
         layout.original_edges[edge_index].points = points;
     }
+    Ok(())
 }
