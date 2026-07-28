@@ -19,10 +19,13 @@ import os
 import platform
 import random
 import re
+import shutil
+import stat
 import statistics
 import subprocess
 import sys
 import tomllib
+import uuid
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -76,6 +79,12 @@ class PairCount:
     required_pairs: int
     scheduled_pairs: int
     exceeds_cap: bool
+
+
+@dataclass(frozen=True)
+class SharedTargetFreezePlan:
+    target_dir: Path
+    context: str
 
 
 def cargo_prebuild_command(recipe: RunnerRecipe) -> list[str]:
@@ -421,6 +430,7 @@ class PreparedRunner:
     skipped: dict[str, list[str]]
     provenance: dict[str, Any]
     env: dict[str, str]
+    frozen: bool = False
 
 
 def criterion_list_command(executable: Path) -> list[str]:
@@ -505,6 +515,153 @@ def _describe_required_file(
     }
 
 
+_FREEZE_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_GIT_OBJECT_ID = re.compile(r"^[0-9a-fA-F]{40,64}$")
+
+
+def _validate_freeze_component(value: str, *, field: str) -> str:
+    if not _FREEZE_COMPONENT.fullmatch(value):
+        raise ContractViolation(f"invalid shared-target freeze {field}: {value!r}")
+    return value
+
+
+def _path_is_within(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+def _freeze_bench_executable(
+    source: Path,
+    *,
+    recipe: RunnerRecipe,
+    git: dict[str, Any],
+    plan: SharedTargetFreezePlan,
+    build_sequence: int,
+) -> tuple[Path, dict[str, Any]]:
+    if build_sequence not in (1, 2):
+        raise ContractViolation("shared-target freeze build sequence must be 1 or 2")
+
+    target_dir = recipe.target_dir.resolve()
+    if target_dir != plan.target_dir.resolve():
+        raise ContractViolation("shared-target freeze recipe escaped its declared target root")
+    source = source.resolve()
+    if not _path_is_within(source, target_dir):
+        raise ContractViolation(
+            f"Cargo bench executable is outside the shared target root: {source}"
+        )
+
+    context = _validate_freeze_component(plan.context, field="context")
+    label = _validate_freeze_component(recipe.label, field="side")
+    revision = _validate_freeze_component(str(git.get("revision", "")), field="commit")
+    tree = _validate_freeze_component(str(git.get("tree", "")), field="tree")
+    if not _GIT_OBJECT_ID.fullmatch(revision) or not _GIT_OBJECT_ID.fullmatch(tree):
+        raise ContractViolation("shared-target freeze requires full Git commit and tree IDs")
+    source_sha256 = _path_sha256(source)
+    source_bytes = source.stat().st_size
+    freeze_root = target_dir / "perf-frozen" / context
+    if _path_is_within(source, target_dir / "perf-frozen"):
+        raise ContractViolation("Cargo reported an already-frozen executable as compiler output")
+
+    if build_sequence == 1:
+        try:
+            freeze_root.mkdir(parents=True, exist_ok=False)
+        except FileExistsError as error:
+            raise ContractViolation(
+                f"shared-target freeze context already exists: {freeze_root}"
+            ) from error
+    elif not freeze_root.is_dir() or freeze_root.is_symlink():
+        raise ContractViolation(
+            f"shared-target freeze context is missing or invalid: {freeze_root}"
+        )
+
+    destination_dir = freeze_root / f"{label}-{revision}-{source_sha256}"
+    try:
+        destination_dir.mkdir(exist_ok=False)
+    except FileExistsError as error:
+        raise ContractViolation(
+            f"shared-target frozen executable destination already exists: {destination_dir}"
+        ) from error
+
+    destination = destination_dir / source.name
+    temporary = destination_dir / f".{source.name}.{uuid.uuid4().hex}.tmp"
+    published = False
+    try:
+        with source.open("rb") as source_handle, temporary.open("xb") as target_handle:
+            shutil.copyfileobj(source_handle, target_handle, length=1024 * 1024)
+            target_handle.flush()
+            os.fsync(target_handle.fileno())
+
+        source_after_sha256 = _path_sha256(source)
+        if source_after_sha256 != source_sha256 or source.stat().st_size != source_bytes:
+            raise ContractViolation(
+                f"Cargo bench executable changed while freezing {recipe.label}"
+            )
+        temporary_sha256 = _path_sha256(temporary)
+        if temporary_sha256 != source_sha256:
+            raise ContractViolation(
+                f"frozen executable copy digest differs for {recipe.label}"
+            )
+
+        read_only_executable = (
+            stat.S_IRUSR
+            | stat.S_IXUSR
+            | stat.S_IRGRP
+            | stat.S_IXGRP
+            | stat.S_IROTH
+            | stat.S_IXOTH
+        )
+        temporary.chmod(read_only_executable)
+        try:
+            os.link(temporary, destination)
+        except FileExistsError as error:
+            raise ContractViolation(
+                f"shared-target frozen executable path already exists: {destination}"
+            ) from error
+        published = True
+        temporary.unlink()
+
+        frozen_sha256 = _path_sha256(destination)
+        if frozen_sha256 != source_sha256:
+            raise ContractViolation(
+                f"published frozen executable digest differs for {recipe.label}"
+            )
+        if not os.access(destination, os.X_OK):
+            raise ContractViolation(f"frozen executable is not executable: {destination}")
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        if published:
+            destination.unlink(missing_ok=True)
+        try:
+            destination_dir.rmdir()
+        except OSError:
+            pass
+        raise
+
+    freeze = {
+        "enabled": True,
+        "context": context,
+        "target_dir": str(target_dir),
+        "build_sequence": build_sequence,
+        "commit": revision,
+        "tree": tree,
+        "source_executable": {
+            "path": str(source),
+            "bytes": source_bytes,
+            "sha256": source_sha256,
+            "executable": True,
+        },
+        "frozen_executable": {
+            **_describe_required_file(destination, sha256=source_sha256),
+            "executable": True,
+            "mode": "0555",
+        },
+    }
+    return destination, freeze
+
+
 def _find_package_manifest(checkout: Path, package: str) -> Path:
     candidates = [checkout / "Cargo.toml"]
     for parent in (checkout / "crates", checkout / "platforms"):
@@ -532,6 +689,14 @@ def _git_provenance(
     revision = git_head(checkout)
     if not revision:
         raise ContractViolation(f"could not resolve git revision in {checkout}")
+    if not _GIT_OBJECT_ID.fullmatch(revision):
+        raise ContractViolation(f"could not resolve full git commit in {checkout}")
+    tree_command = ["git", "rev-parse", "HEAD^{tree}"]
+    tree_result = _run_process(tree_command, cwd=checkout, timeout_seconds=timeout_seconds)
+    _require_success(tree_result, command=tree_command, cwd=checkout)
+    tree = tree_result.stdout.strip()
+    if not _GIT_OBJECT_ID.fullmatch(tree):
+        raise ContractViolation(f"could not resolve git tree in {checkout}")
     command = ["git", "status", "--porcelain=v1", "--untracked-files=normal"]
     result = _run_process(command, cwd=checkout, timeout_seconds=timeout_seconds)
     _require_success(result, command=command, cwd=checkout)
@@ -543,6 +708,7 @@ def _git_provenance(
         )
     return {
         "revision": revision,
+        "tree": tree,
         "dirty": bool(dirty_entries),
         "dirty_disposition": "explicitly_allowed" if dirty_entries else "clean",
         "dirty_entries": dirty_entries[:100],
@@ -594,6 +760,8 @@ def _prepare_runner(
     *,
     allow_dirty: bool,
     timeout_seconds: int,
+    freeze_plan: SharedTargetFreezePlan | None = None,
+    build_sequence: int | None = None,
 ) -> tuple[PreparedRunner | None, dict[str, Any], list[str]]:
     provenance: dict[str, Any] = {"recipe": _recipe_report(recipe)}
     errors: list[str] = []
@@ -621,20 +789,26 @@ def _prepare_runner(
             "rustc_verbose": _toolchain_version(recipe, timeout_seconds=timeout_seconds),
             "cargo_verbose": _cargo_version(recipe, timeout_seconds=timeout_seconds),
         }
+        if (freeze_plan is None) != (build_sequence is None):
+            raise ContractViolation(
+                "shared-target freeze plan and build sequence must be provided together"
+            )
+        env = {
+            "CARGO_INCREMENTAL": "0",
+            "CARGO_PROFILE_BENCH_DEBUG": "0",
+        }
+        if freeze_plan is not None:
+            env["CARGO_BUILD_JOBS"] = "1"
         provenance["build_environment"] = {
-            key: os.environ.get(key)
+            key: env.get(key, os.environ.get(key))
             for key in (
                 "RUSTFLAGS",
                 "CARGO_ENCODED_RUSTFLAGS",
+                "CARGO_BUILD_JOBS",
                 "CARGO_PROFILE_BENCH_LTO",
                 "CARGO_PROFILE_BENCH_CODEGEN_UNITS",
                 "CARGO_PROFILE_BENCH_OPT_LEVEL",
             )
-        }
-
-        env = {
-            "CARGO_INCREMENTAL": "0",
-            "CARGO_PROFILE_BENCH_DEBUG": "0",
         }
         command = cargo_prebuild_command(recipe)
         provenance["prebuild_command"] = command
@@ -654,10 +828,27 @@ def _prepare_runner(
             raise ContractViolation(f"Cargo reported a missing bench executable: {executable}")
         if not os.access(executable, os.X_OK):
             raise ContractViolation(f"bench executable is not executable: {executable}")
+        source_executable_sha256 = _path_sha256(executable)
+        provenance["source_executable"] = {
+            **_describe_required_file(executable, sha256=source_executable_sha256),
+            "executable": True,
+        }
+        if freeze_plan is not None:
+            assert build_sequence is not None
+            executable, freeze = _freeze_bench_executable(
+                executable,
+                recipe=recipe,
+                git=provenance["git"],
+                plan=freeze_plan,
+                build_sequence=build_sequence,
+            )
+            provenance["shared_target_freeze"] = freeze
+            provenance["frozen_executable"] = freeze["frozen_executable"]
         executable_sha256 = _path_sha256(executable)
         provenance["executable"] = {
             **_describe_required_file(executable, sha256=executable_sha256),
             "executable": True,
+            "role": "frozen" if freeze_plan is not None else "cargo-artifact",
         }
 
         list_command = criterion_list_command(executable)
@@ -702,6 +893,7 @@ def _prepare_runner(
                 skipped=skipped,
                 provenance=provenance,
                 env=env,
+                frozen=freeze_plan is not None,
             ),
             provenance,
             errors,
@@ -1014,6 +1206,58 @@ def _measure_once(
     }
 
 
+def _verify_runner_executable(runner: PreparedRunner, *, phase: str) -> dict[str, Any]:
+    current = _path_sha256(runner.executable)
+    if current != runner.executable_sha256:
+        raise ContractViolation(
+            f"{runner.recipe.label} executable digest changed during {phase}"
+        )
+    verification = {
+        "path": str(runner.executable),
+        "sha256": current,
+        "status": "verified",
+    }
+    if runner.frozen is True:
+        mode = stat.S_IMODE(runner.executable.stat().st_mode)
+        verification["mode"] = f"{mode:04o}"
+        if mode != 0o555:
+            raise ContractViolation(
+                f"{runner.recipe.label} frozen executable mode changed during {phase}: "
+                f"expected 0555, observed {mode:04o}"
+            )
+        if not os.access(runner.executable, os.X_OK):
+            raise ContractViolation(
+                f"{runner.recipe.label} frozen executable is not executable during {phase}"
+            )
+    return verification
+
+
+def _round_executable_verification(
+    runners: Sequence[PreparedRunner], *, phase: str
+) -> dict[str, Any] | None:
+    frozen = [runner for runner in runners if getattr(runner, "frozen", False) is True]
+    if not frozen:
+        return None
+    return {
+        runner.recipe.label: _verify_runner_executable(runner, phase=phase)
+        for runner in frozen
+    }
+
+
+def _fail_schedule_rows(
+    contracts: Sequence[dict[str, Any]],
+    *,
+    error: Exception,
+    errors: dict[str, str],
+    failed: set[str],
+) -> None:
+    message = str(error)
+    for contract in contracts:
+        name = contract["name"]
+        errors[name] = message
+        failed.add(name)
+
+
 def _run_aa_schedule(
     runner: PreparedRunner,
     *,
@@ -1037,6 +1281,17 @@ def _run_aa_schedule(
             "order": "AB" if roles[0] == "a" else "BA",
             "benchmarks": {},
         }
+        try:
+            before = _round_executable_verification(
+                [runner], phase=f"A/A pair {pair_index} before sampling"
+            )
+            if before is not None:
+                round_record["executable_verification"] = {"before": before}
+        except Exception as error:
+            round_record["executable_verification"] = {"error": str(error)}
+            _fail_schedule_rows(contracts, error=error, errors=errors, failed=failed)
+            rounds.append(round_record)
+            break
         for contract in contracts:
             name = contract["name"]
             if name in failed:
@@ -1066,7 +1321,20 @@ def _run_aa_schedule(
                 errors[name] = str(error)
                 failed.add(name)
             round_record["benchmarks"][name] = record
+        integrity_failed = False
+        try:
+            after = _round_executable_verification(
+                [runner], phase=f"A/A pair {pair_index} after sampling"
+            )
+            if after is not None:
+                round_record.setdefault("executable_verification", {})["after"] = after
+        except Exception as error:
+            round_record.setdefault("executable_verification", {})["error"] = str(error)
+            _fail_schedule_rows(contracts, error=error, errors=errors, failed=failed)
+            integrity_failed = True
         rounds.append(round_record)
+        if integrity_failed:
+            break
     return {"pair_count": pair_count, "rounds": rounds, "rows": rows, "errors": errors}
 
 
@@ -1097,6 +1365,17 @@ def _run_ab_schedule(
             "order": "AB" if order == ("base", "head") else "BA",
             "benchmarks": {},
         }
+        try:
+            before = _round_executable_verification(
+                [base, head], phase=f"A/B pair {pair_index} before sampling"
+            )
+            if before is not None:
+                round_record["executable_verification"] = {"before": before}
+        except Exception as error:
+            round_record["executable_verification"] = {"error": str(error)}
+            _fail_schedule_rows(contracts, error=error, errors=errors, failed=failed)
+            rounds.append(round_record)
+            break
         for contract in contracts:
             name = contract["name"]
             if name in failed:
@@ -1123,7 +1402,20 @@ def _run_ab_schedule(
                 errors[name] = str(error)
                 failed.add(name)
             round_record["benchmarks"][name] = record
+        integrity_failed = False
+        try:
+            after = _round_executable_verification(
+                [base, head], phase=f"A/B pair {pair_index} after sampling"
+            )
+            if after is not None:
+                round_record.setdefault("executable_verification", {})["after"] = after
+        except Exception as error:
+            round_record.setdefault("executable_verification", {})["error"] = str(error)
+            _fail_schedule_rows(contracts, error=error, errors=errors, failed=failed)
+            integrity_failed = True
         rounds.append(round_record)
+        if integrity_failed:
+            break
     return {"pair_count": pair_count, "rounds": rounds, "rows": rows, "errors": errors}
 
 
@@ -1277,10 +1569,17 @@ def _verification_errors(
     errors: list[str] = []
     verification: dict[str, Any] = {"files": {}}
     try:
-        current = _path_sha256(runner.executable)
-        verification["executable_sha256"] = current
-        if current != runner.executable_sha256:
-            errors.append(f"{runner.recipe.label} executable digest changed during sampling")
+        executable = _verify_runner_executable(runner, phase="final verification")
+        verification["executable"] = executable
+        verification["executable_sha256"] = executable["sha256"]
+        if runner.frozen is True:
+            frozen_path = Path(
+                runner.provenance["shared_target_freeze"]["frozen_executable"]["path"]
+            ).resolve()
+            if frozen_path != runner.executable.resolve():
+                errors.append(
+                    f"{runner.recipe.label} runner no longer references its frozen executable"
+                )
     except Exception as error:
         errors.append(str(error))
     for key in ("manifest", "workspace_manifest", "lockfile", "corpus", "bench_source"):
@@ -1304,6 +1603,8 @@ def _verification_errors(
         verification["git"] = current_git
         if current_git["revision"] != frozen_git["revision"]:
             errors.append(f"{runner.recipe.label} git revision changed during sampling")
+        if current_git.get("tree") != frozen_git.get("tree"):
+            errors.append(f"{runner.recipe.label} git tree changed during sampling")
         if current_git["dirty_entries"] != frozen_git["dirty_entries"]:
             errors.append(f"{runner.recipe.label} dirty tree changed during sampling")
     except Exception as error:
@@ -1852,6 +2153,17 @@ def _empty_report(args: argparse.Namespace, absolute_threshold_ns: float) -> dic
                     "deterministic paired bootstrap two-sided equivalence intervals"
                 ),
             },
+            "shared_target_freeze": {
+                "enabled": bool(getattr(args, "freeze_shared_target", False)),
+                "target_dir": None,
+                "context": None,
+                "build_order": ["base", "head"]
+                if getattr(args, "freeze_shared_target", False)
+                else None,
+                "cargo_build_jobs": "1"
+                if getattr(args, "freeze_shared_target", False)
+                else None,
+            },
         },
         "environment": {
             "os": platform.platform(),
@@ -1870,6 +2182,30 @@ def _empty_report(args: argparse.Namespace, absolute_threshold_ns: float) -> dic
     }
 
 
+def _shared_target_freeze_plan(
+    base: RunnerRecipe,
+    head: RunnerRecipe,
+    *,
+    enabled: bool,
+    context: str | None = None,
+) -> SharedTargetFreezePlan | None:
+    base_target = base.target_dir.resolve()
+    head_target = head.target_dir.resolve()
+    if not enabled:
+        if base_target == head_target:
+            raise ContractViolation("base and head must use distinct Cargo target directories")
+        return None
+    if base_target != head_target:
+        raise ContractViolation(
+            "--freeze-shared-target requires base and head to use the same Cargo target directory"
+        )
+    if context is None:
+        timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        context = f"{timestamp}-{os.getpid()}-{uuid.uuid4().hex[:12]}"
+    _validate_freeze_component(context, field="context")
+    return SharedTargetFreezePlan(target_dir=base_target, context=context)
+
+
 def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> None:
     sample_size = report["method"]["sample_size"]
     warm_up = report["method"]["warm_up_seconds"]
@@ -1882,8 +2218,18 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         "base": _recipe_report(base_recipe),
         "head": _recipe_report(head_recipe),
     }
-    if base_recipe.target_dir.resolve() == head_recipe.target_dir.resolve():
-        raise ContractViolation("base and head must use distinct Cargo target directories")
+    freeze_plan = _shared_target_freeze_plan(
+        base_recipe,
+        head_recipe,
+        enabled=args.freeze_shared_target,
+    )
+    report["method"]["shared_target_freeze"] = {
+        "enabled": freeze_plan is not None,
+        "target_dir": str(freeze_plan.target_dir) if freeze_plan is not None else None,
+        "context": freeze_plan.context if freeze_plan is not None else None,
+        "build_order": ["base", "head"] if freeze_plan is not None else None,
+        "cargo_build_jobs": "1" if freeze_plan is not None else None,
+    }
 
     contracts, selection, operation_lanes = _load_fixture_contracts(
         base_recipe=base_recipe,
@@ -1933,17 +2279,21 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             )
 
     prepared: dict[str, PreparedRunner] = {}
-    for recipe in (base_recipe, head_recipe):
+    for build_sequence, recipe in enumerate((base_recipe, head_recipe), start=1):
         runner, provenance, errors = _prepare_runner(
             recipe,
             allow_dirty=args.allow_dirty,
             timeout_seconds=args.timeout_seconds,
+            freeze_plan=freeze_plan,
+            build_sequence=build_sequence if freeze_plan is not None else None,
         )
         report["runners"][recipe.label] = provenance
         for error in errors:
             _append_contract_error(report, f"prepare_{recipe.label}", error)
         if runner is not None:
             prepared[recipe.label] = runner
+        elif freeze_plan is not None:
+            break
     if len(prepared) != 2:
         return
     base = prepared["base"]
@@ -2239,6 +2589,14 @@ def decision_grade_main(argv: list[str]) -> int:
     parser.add_argument("--head-label", default="head")
     parser.add_argument("--base-target-dir", default="")
     parser.add_argument("--head-target-dir", default="")
+    parser.add_argument(
+        "--freeze-shared-target",
+        action="store_true",
+        help=(
+            "Allow one shared Cargo target by serially copying each compiler artifact into an "
+            "immutable target/perf-frozen context before discovery and sampling."
+        ),
+    )
     parser.add_argument("--base-package", default="merman")
     parser.add_argument("--head-package", default="merman")
     parser.add_argument("--base-bench", default="pipeline")

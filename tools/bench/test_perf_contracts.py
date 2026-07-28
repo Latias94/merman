@@ -8,10 +8,11 @@ import io
 import json
 import math
 import os
+import stat
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -19,6 +20,7 @@ import perf_runner
 import compare_self
 import compare_mermaid_renderers
 import render_perf_comment
+import run_native_memory
 import stage_spotcheck
 import verify_pipeline_bench_list
 from corpus_utils import (
@@ -129,6 +131,76 @@ class CorpusContractsTest(unittest.TestCase):
 
         self.assertEqual(select_corpus_fixtures(corpus, "full"), list(corpus.fixtures))
 
+    def test_flowchart_adapter_memory_lanes_match_candidate_contract_identities(self) -> None:
+        corpus = load_corpus(CORPUS_PATH)
+        lanes = {lane.id: lane for lane in corpus.lanes}
+        expected = {
+            "flowchart-adapter-low-cluster-memory": {
+                "selector": "memory/adapter_low_clusters/{fixture}",
+                "workload": "flowchart-adapter-low-cluster-generator-v1",
+                "contract": (
+                    "docs/performance/contracts/"
+                    "flowchart-u4-adapter-low-cluster-memory-v1.json"
+                ),
+            },
+            "flowchart-adapter-high-cluster-memory": {
+                "selector": "memory/adapter_high_clusters/{fixture}",
+                "workload": "flowchart-adapter-high-cluster-generator-v1",
+                "contract": (
+                    "docs/performance/contracts/"
+                    "flowchart-u4-adapter-high-cluster-memory-v1.json"
+                ),
+            },
+        }
+        metrics = ("allocation_count", "allocated_bytes", "peak_growth_bytes")
+        semantic_dimensions = (
+            "input_nodes",
+            "input_edges",
+            "svg_sha256",
+            "svg_viewbox_width",
+            "svg_viewbox_height",
+        )
+
+        for lane_id, identity in expected.items():
+            with self.subTest(lane=lane_id):
+                lane = lanes[lane_id]
+                self.assertEqual(lane.kind, "public")
+                self.assertEqual(lane.public_operation, "render-svg")
+                self.assertEqual(lane.process_lifecycle, "fresh-process")
+                self.assertEqual(lane.engine_lifecycle, "reused-engine")
+                self.assertEqual(lane.transport, "native-system-allocator-subprocess")
+                self.assertEqual(lane.logical_operations_per_estimate, 1)
+                self.assertEqual(lane.selector, identity["selector"])
+                self.assertEqual(lane.size_vector, (1, 2, 4, 10, 32, 100))
+                self.assertEqual(lane.workload, identity["workload"])
+                self.assertEqual(lane.evidence_contract, identity["contract"])
+                self.assertEqual(lane.measurement_metrics, metrics)
+                self.assertEqual(lane.semantic_output_dimensions, semantic_dimensions)
+
+                contract_path = ROOT / str(lane.evidence_contract)
+                contract = json.loads(contract_path.read_text(encoding="utf-8"))
+                self.assertEqual(contract["schema_version"], 1)
+                self.assertEqual(contract["lane_id"], lane.id)
+                self.assertEqual(contract["workload"], lane.workload)
+                self.assertEqual(contract["evidence_class"], "candidate-bound")
+                self.assertIs(contract["candidate_admission"], True)
+                self.assertEqual(
+                    contract["generator"],
+                    {
+                        "id": lane.workload,
+                        "nodes_per_scale": 4,
+                        "edges_per_scale": 4,
+                    },
+                )
+                self.assertEqual(tuple(contract["metrics"]), metrics)
+                for metric in metrics:
+                    self.assertEqual(
+                        set(contract["metrics"][metric]),
+                        {"slope_cap", "max_scale_cap"},
+                    )
+                    self.assertGreater(contract["metrics"][metric]["slope_cap"], 0)
+                    self.assertGreater(contract["metrics"][metric]["max_scale_cap"], 0)
+
 
 class PerfRunnerContractsTest(unittest.TestCase):
     def test_canary_dry_run_uses_corpus_suite_for_comparison(self) -> None:
@@ -226,6 +298,82 @@ class PerfRunnerContractsTest(unittest.TestCase):
             f"target/bench/perf-runner/{perf_runner.today_stamp()}_triage_native_memory.json",
             out,
         )
+
+
+class NativeMemoryDriverSelectionContractsTest(unittest.TestCase):
+    @staticmethod
+    def _dry_run_driver(*, lane: str, corpus: Path = CORPUS_PATH) -> tuple[int, str, str]:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        source = {
+            "commit": "a" * 40,
+            "tree": "b" * 40,
+            "clean": True,
+            "dirty_status_sha256": "c" * 64,
+            "dirty_disposition": "clean",
+        }
+        with (
+            mock.patch.object(run_native_memory, "_git_provenance", return_value=source),
+            mock.patch.object(run_native_memory, "best_effort_cpu_model", return_value="test-cpu"),
+            redirect_stdout(stdout),
+            redirect_stderr(stderr),
+        ):
+            result = run_native_memory.main(
+                ["--corpus", str(corpus), "--lane", lane, "--dry-run"]
+            )
+        return result, stdout.getvalue(), stderr.getvalue()
+
+    def test_registered_adapter_memory_lanes_accept_only_their_registered_workloads(self) -> None:
+        expected = {
+            "flowchart-adapter-low-cluster-memory": "flowchart-adapter-low-cluster-generator-v1",
+            "flowchart-adapter-high-cluster-memory": "flowchart-adapter-high-cluster-generator-v1",
+        }
+        self.assertEqual(
+            {
+                lane: run_native_memory._SUPPORTED_LANE_WORKLOADS[lane]
+                for lane in expected
+            },
+            expected,
+        )
+
+        for lane in expected:
+            with self.subTest(lane=lane):
+                result, stdout, stderr = self._dry_run_driver(lane=lane)
+                self.assertEqual(result, 0)
+                self.assertIn("$ cargo bench", stdout)
+                self.assertEqual(stderr, "")
+
+    def test_native_memory_driver_rejects_unknown_or_mismatched_adapter_lane_workloads(self) -> None:
+        unknown_result, _stdout, unknown_stderr = self._dry_run_driver(
+            lane="flowchart-adapter-unregistered-memory"
+        )
+        self.assertEqual(unknown_result, 2)
+        self.assertIn("unknown lane selector", unknown_stderr)
+
+        source_corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
+        mismatches = {
+            "flowchart-adapter-low-cluster-memory": (
+                "flowchart-adapter-high-cluster-generator-v1"
+            ),
+            "flowchart-adapter-high-cluster-memory": (
+                "flowchart-adapter-low-cluster-generator-v1"
+            ),
+        }
+        for lane_id, wrong_workload in mismatches.items():
+            with self.subTest(lane=lane_id, workload=wrong_workload):
+                corpus = copy.deepcopy(source_corpus)
+                lane = next(item for item in corpus["lanes"] if item["id"] == lane_id)
+                lane["workload"] = wrong_workload
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    mismatched_corpus = Path(temp_dir) / "corpus.json"
+                    mismatched_corpus.write_text(json.dumps(corpus), encoding="utf-8")
+                    result, _stdout, stderr = self._dry_run_driver(
+                        lane=lane_id,
+                        corpus=mismatched_corpus,
+                    )
+
+                self.assertEqual(result, 2)
+                self.assertIn("selected lane semantics are unsupported", stderr)
 
 
 class CompareSelfContractsTest(unittest.TestCase):
@@ -1006,6 +1154,325 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 compare_self.cargo_prebuild_command(unlocked)
             with self.assertRaisesRegex(FileNotFoundError, "Cargo.lock"):
                 compare_self.cargo_prebuild_command(locked_without_file)
+
+    def test_shared_target_requires_explicit_freeze_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            shared_target = root / "target"
+            base = self._recipe(
+                label="base",
+                checkout=root / "base",
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=shared_target,
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            head = self._recipe(
+                label="head",
+                checkout=root / "head",
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=shared_target,
+                corpus=Path("tools/bench/corpus.json"),
+            )
+
+            with self.assertRaisesRegex(compare_self.ContractViolation, "distinct Cargo target"):
+                compare_self._shared_target_freeze_plan(base, head, enabled=False)
+
+            plan = compare_self._shared_target_freeze_plan(
+                base,
+                head,
+                enabled=True,
+                context="u4-shared-target-test",
+            )
+            self.assertIsNotNone(plan)
+            assert plan is not None
+            self.assertEqual(plan.target_dir, shared_target.resolve())
+
+            distinct_head = compare_self.RunnerRecipe(
+                **{
+                    **head.__dict__,
+                    "target_dir": root / "other-target",
+                }
+            )
+            with self.assertRaisesRegex(compare_self.ContractViolation, "same Cargo target"):
+                compare_self._shared_target_freeze_plan(
+                    base,
+                    distinct_head,
+                    enabled=True,
+                    context="u4-shared-target-test",
+                )
+
+    def test_shared_target_freeze_survives_cargo_artifact_overwrite_and_rejects_collision(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target_dir = root / "target"
+            artifact = target_dir / "debug" / "deps" / "pipeline-deadbeef"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_bytes(b"base executable")
+            artifact.chmod(0o755)
+            base = self._recipe(
+                label="base",
+                checkout=root / "base",
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=target_dir,
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            head = compare_self.RunnerRecipe(**{**base.__dict__, "label": "head"})
+            plan = compare_self.SharedTargetFreezePlan(
+                target_dir=target_dir,
+                context="overwrite-test",
+            )
+            base_git = {"revision": "a" * 40, "tree": "b" * 40}
+            head_git = {"revision": "c" * 40, "tree": "d" * 40}
+
+            frozen_base, base_freeze = compare_self._freeze_bench_executable(
+                artifact,
+                recipe=base,
+                git=base_git,
+                plan=plan,
+                build_sequence=1,
+            )
+            artifact.write_bytes(b"head executable")
+            frozen_head, head_freeze = compare_self._freeze_bench_executable(
+                artifact,
+                recipe=head,
+                git=head_git,
+                plan=plan,
+                build_sequence=2,
+            )
+
+            self.assertEqual(frozen_base.read_bytes(), b"base executable")
+            self.assertEqual(frozen_head.read_bytes(), b"head executable")
+            self.assertNotEqual(frozen_base, frozen_head)
+            self.assertEqual(stat.S_IMODE(frozen_base.stat().st_mode), 0o555)
+            self.assertEqual(base_freeze["build_sequence"], 1)
+            self.assertEqual(head_freeze["build_sequence"], 2)
+            self.assertEqual(base_freeze["commit"], "a" * 40)
+            self.assertEqual(base_freeze["tree"], "b" * 40)
+
+            with self.assertRaisesRegex(compare_self.ContractViolation, "already exists"):
+                compare_self._freeze_bench_executable(
+                    artifact,
+                    recipe=head,
+                    git=head_git,
+                    plan=plan,
+                    build_sequence=2,
+                )
+
+    def test_prepare_shared_target_uses_only_the_frozen_executable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            checkout = root / "checkout"
+            checkout.mkdir()
+            (checkout / "Cargo.toml").write_text(
+                '[package]\nname = "merman"\nversion = "0.0.0"\n',
+                encoding="utf-8",
+            )
+            (checkout / "Cargo.lock").write_text("# lock\n", encoding="utf-8")
+            corpus = checkout / "tools" / "bench" / "corpus.json"
+            corpus.parent.mkdir(parents=True)
+            corpus.write_text("{}\n", encoding="utf-8")
+            bench_source = checkout / "benches" / "pipeline.rs"
+            bench_source.parent.mkdir()
+            bench_source.write_text("fn main() {}\n", encoding="utf-8")
+            target_dir = root / "target"
+            cargo_artifact = target_dir / "debug" / "deps" / "pipeline-deadbeef"
+            cargo_artifact.parent.mkdir(parents=True)
+            cargo_artifact.write_bytes(b"bench executable")
+            cargo_artifact.chmod(0o755)
+            recipe = self._recipe(
+                label="base",
+                checkout=checkout,
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=target_dir,
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            cargo_stdout = json.dumps(
+                {
+                    "reason": "compiler-artifact",
+                    "target": {"kind": ["bench"], "name": "pipeline"},
+                    "executable": str(cargo_artifact),
+                }
+            )
+            cargo_result = mock.Mock(returncode=0, stdout=cargo_stdout, stderr="")
+            discovery_result = mock.Mock(
+                returncode=0,
+                stdout="end_to_end/flowchart_medium: benchmark\n",
+                stderr="",
+            )
+            git = {
+                "revision": "a" * 40,
+                "tree": "b" * 40,
+                "dirty": False,
+                "dirty_disposition": "clean",
+                "dirty_entries": [],
+                "dirty_entries_truncated": False,
+            }
+            plan = compare_self.SharedTargetFreezePlan(
+                target_dir=target_dir,
+                context="prepare-test",
+            )
+
+            with (
+                mock.patch.object(compare_self, "_git_provenance", return_value=git),
+                mock.patch.object(compare_self, "_toolchain_version", return_value="rustc"),
+                mock.patch.object(compare_self, "_cargo_version", return_value="cargo"),
+                mock.patch.object(
+                    compare_self,
+                    "_run_process",
+                    side_effect=[cargo_result, discovery_result],
+                ) as run_process,
+            ):
+                runner, provenance, errors = compare_self._prepare_runner(
+                    recipe,
+                    allow_dirty=False,
+                    timeout_seconds=1,
+                    freeze_plan=plan,
+                    build_sequence=1,
+                )
+
+            self.assertFalse(errors)
+            self.assertIsNotNone(runner)
+            assert runner is not None
+            self.assertTrue(runner.frozen)
+            self.assertTrue(
+                runner.executable.is_relative_to(
+                    (target_dir / "perf-frozen" / "prepare-test").resolve()
+                )
+            )
+            self.assertEqual(provenance["build_environment"]["CARGO_BUILD_JOBS"], "1")
+            self.assertEqual(provenance["shared_target_freeze"]["build_sequence"], 1)
+            self.assertEqual(
+                Path(provenance["source_executable"]["path"]).resolve(),
+                cargo_artifact.resolve(),
+            )
+            self.assertEqual(provenance["discovery_command"][0], str(runner.executable))
+            self.assertEqual(
+                compare_self.criterion_command(
+                    executable=runner.executable,
+                    exact_bench="end_to_end/flowchart_medium",
+                    sample_size=10,
+                    warm_up_seconds=1,
+                    measurement_seconds=1,
+                )[0],
+                str(runner.executable),
+            )
+            self.assertEqual(run_process.call_args_list[0].kwargs["env"]["CARGO_BUILD_JOBS"], "1")
+
+    def test_shared_target_freeze_rejects_source_digest_drift_during_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            target_dir = root / "target"
+            artifact = target_dir / "debug" / "deps" / "pipeline-deadbeef"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_bytes(b"original executable")
+            artifact.chmod(0o755)
+            recipe = self._recipe(
+                label="base",
+                checkout=root / "base",
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=target_dir,
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            plan = compare_self.SharedTargetFreezePlan(
+                target_dir=target_dir,
+                context="source-drift-test",
+            )
+            copyfileobj = compare_self.shutil.copyfileobj
+
+            def copy_then_mutate(source, destination, *, length):
+                copyfileobj(source, destination, length=length)
+                artifact.write_bytes(b"mutated executable")
+
+            with (
+                mock.patch.object(
+                    compare_self.shutil,
+                    "copyfileobj",
+                    side_effect=copy_then_mutate,
+                ),
+                self.assertRaisesRegex(compare_self.ContractViolation, "changed while freezing"),
+            ):
+                compare_self._freeze_bench_executable(
+                    artifact,
+                    recipe=recipe,
+                    git={"revision": "a" * 40, "tree": "b" * 40},
+                    plan=plan,
+                    build_sequence=1,
+                )
+
+            frozen_files = list((target_dir / "perf-frozen").rglob("pipeline-deadbeef"))
+            self.assertEqual(frozen_files, [])
+
+    def test_frozen_digest_drift_fails_before_round_sampling(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            executable = root / "pipeline"
+            executable.write_bytes(b"frozen")
+            executable.chmod(0o555)
+            recipe = self._recipe(
+                label="base",
+                checkout=root,
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=root / "target",
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            runner = compare_self.PreparedRunner(
+                recipe=recipe,
+                executable=executable,
+                executable_sha256=compare_self._path_sha256(executable),
+                benches={"end_to_end/flowchart_medium"},
+                skipped={},
+                provenance={},
+                env={},
+                frozen=True,
+            )
+            executable.chmod(0o755)
+            executable.write_bytes(b"drifted")
+
+            with mock.patch.object(compare_self, "_measure_once") as measure:
+                schedule = compare_self._run_aa_schedule(
+                    runner,
+                    contracts=[
+                        {
+                            "name": "flowchart_medium",
+                            "base_benchmark": "end_to_end/flowchart_medium",
+                        }
+                    ],
+                    pair_count=1,
+                    sample_size=10,
+                    warm_up_seconds=1,
+                    measurement_seconds=1,
+                    timeout_seconds=1,
+                )
+
+            measure.assert_not_called()
+            self.assertIn("digest changed", schedule["errors"]["flowchart_medium"])
+            self.assertIn("error", schedule["rounds"][0]["executable_verification"])
 
     def test_prepare_checks_git_before_creating_an_in_checkout_target_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

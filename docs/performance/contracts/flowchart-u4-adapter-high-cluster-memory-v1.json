@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "lane_id": "flowchart-adapter-high-cluster-memory",
+  "workload": "flowchart-adapter-high-cluster-generator-v1",
+  "evidence_class": "candidate-bound",
+  "candidate_admission": true,
+  "generator": {
+    "id": "flowchart-adapter-high-cluster-generator-v1",
+    "nodes_per_scale": 4,
+    "edges_per_scale": 4
+  },
+  "metrics": {
+    "allocation_count": {
+      "slope_cap": 1.4,
+      "max_scale_cap": 1200000
+    },
+    "allocated_bytes": {
+      "slope_cap": 1.4,
+      "max_scale_cap": 167772160
+    },
+    "peak_growth_bytes": {
+      "slope_cap": 1.4,
+      "max_scale_cap": 16777216
+    }
+  }
+}
