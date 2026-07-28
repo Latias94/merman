@@ -1048,37 +1048,44 @@ _REUSABLE_DISCOVERY_METHOD_FIELDS = (
 )
 
 
-def _json_semantic_value(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: _json_semantic_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_semantic_value(item) for item in value]
-    return value
+def _json_contract_values_equal(current: Any, origin: Any) -> bool:
+    if isinstance(current, dict) and isinstance(origin, dict):
+        return set(current) == set(origin) and all(
+            _json_contract_values_equal(current[key], origin[key]) for key in current
+        )
+    if isinstance(current, (list, tuple)) and isinstance(origin, (list, tuple)):
+        return len(current) == len(origin) and all(
+            _json_contract_values_equal(current_item, origin_item)
+            for current_item, origin_item in zip(current, origin, strict=True)
+        )
+    return type(current) is type(origin) and current == origin
 
 
 def _require_equal_reuse_value(label: str, current: Any, origin: Any) -> None:
-    if _json_semantic_value(current) != _json_semantic_value(origin):
+    if not _json_contract_values_equal(current, origin):
         raise ContractViolation(
             f"reusable discovery {label} differs from the current comparison contract"
         )
 
 
 def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
-    if source.get("schema_version") != 2:
+    if type(source.get("schema_version")) is not int or source["schema_version"] != 2:
         raise ContractViolation("reusable discovery report must use schema_version 2")
     method = source.get("method")
     if not isinstance(method, dict):
         raise ContractViolation("reusable discovery report method must be an object")
-    required_method = {
-        "evidence_mode": "confirmation",
-        "evidence_quality": "discovery_only",
-        "discovery_only": True,
-    }
-    for field, expected in required_method.items():
-        if method.get(field) != expected:
-            raise ContractViolation(
-                f"reusable discovery method.{field} must be {expected!r}"
-            )
+    if method.get("evidence_mode") != "confirmation":
+        raise ContractViolation(
+            "reusable discovery method.evidence_mode must be 'confirmation'"
+        )
+    if method.get("evidence_quality") != "discovery_only":
+        raise ContractViolation(
+            "reusable discovery method.evidence_quality must be 'discovery_only'"
+        )
+    if method.get("discovery_only") is not True:
+        raise ContractViolation(
+            "reusable discovery method.discovery_only must be true"
+        )
     freeze = method.get("shared_target_freeze")
     if not isinstance(freeze, dict) or freeze.get("enabled") is not True:
         raise ContractViolation(
@@ -1101,7 +1108,7 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
         raise ContractViolation("reusable discovery harness schema differs")
     if not isinstance(harness.get("path"), str):
         raise ContractViolation("reusable discovery harness path is missing")
-    if not isinstance(harness.get("bytes"), int) or harness["bytes"] <= 0:
+    if type(harness.get("bytes")) is not int or harness["bytes"] <= 0:
         raise ContractViolation("reusable discovery harness byte count is invalid")
     if not isinstance(harness.get("sha256"), str) or not re.fullmatch(
         r"[0-9a-f]{64}", harness["sha256"]
@@ -1117,9 +1124,16 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
     summary = source.get("summary")
     if not isinstance(summary, dict):
         raise ContractViolation("reusable discovery summary must be an object")
-    if summary.get("exit_code") != 0 or summary.get("outcome") != "diagnostic_advisory":
+    if (
+        type(summary.get("exit_code")) is not int
+        or summary["exit_code"] != 0
+        or summary.get("outcome") != "diagnostic_advisory"
+    ):
         raise ContractViolation("reusable discovery report did not complete successfully")
-    if summary.get("contract_failures") != 0:
+    if (
+        type(summary.get("contract_failures")) is not int
+        or summary["contract_failures"] != 0
+    ):
         raise ContractViolation("reusable discovery report contains contract failures")
 
     fixtures = source.get("fixtures")
@@ -1128,7 +1142,10 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
         raise ContractViolation("reusable discovery report has no fixtures")
     if not isinstance(rows, list) or len(rows) != len(fixtures):
         raise ContractViolation("reusable discovery rows do not cover every fixture")
-    if summary.get("comparable") != len(fixtures):
+    if (
+        type(summary.get("comparable")) is not int
+        or summary["comparable"] != len(fixtures)
+    ):
         raise ContractViolation("reusable discovery comparable count differs")
     if any(
         not isinstance(row, dict) or row.get("outcome") != "diagnostic_advisory"
@@ -1208,7 +1225,11 @@ def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
             raise ContractViolation(
                 f"reusable discovery {side} runner target directory differs"
             )
-        if runner_freeze.get("build_sequence") != (1 if side == "base" else 2):
+        expected_sequence = 1 if side == "base" else 2
+        if (
+            type(runner_freeze.get("build_sequence")) is not int
+            or runner_freeze["build_sequence"] != expected_sequence
+        ):
             raise ContractViolation(
                 f"reusable discovery {side} runner build sequence differs"
             )

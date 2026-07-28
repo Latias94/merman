@@ -1260,6 +1260,35 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
         with self.assertRaisesRegex(compare_self.ContractViolation, "build sequence"):
             compare_self._validate_reusable_discovery_report(wrong_order)
 
+        type_confusions = (
+            ("schema_version", lambda report: report.__setitem__("schema_version", 2.0)),
+            (
+                "discovery_only",
+                lambda report: report["method"].__setitem__("discovery_only", 1),
+            ),
+            (
+                "complete successfully",
+                lambda report: report["summary"].__setitem__("exit_code", False),
+            ),
+            (
+                "contract failures",
+                lambda report: report["summary"].__setitem__(
+                    "contract_failures", False
+                ),
+            ),
+            (
+                "comparable count",
+                lambda report: report["summary"].__setitem__("comparable", 1.0),
+            ),
+        )
+        for message, mutate in type_confusions:
+            confused = copy.deepcopy(valid)
+            mutate(confused)
+            with self.subTest(message=message), self.assertRaisesRegex(
+                compare_self.ContractViolation, message
+            ):
+                compare_self._validate_reusable_discovery_report(confused)
+
     def test_prepare_reused_runner_revalidates_every_frozen_input_without_cargo_build(
         self,
     ) -> None:
@@ -1467,6 +1496,123 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             self.assertIsNone(swapped_runner)
             self.assertIn("destination identity differs", swapped_errors[0])
             swapped_run.assert_not_called()
+
+    def test_reuse_comparison_contract_rejects_every_sampling_identity_drift(
+        self,
+    ) -> None:
+        root = Path("/tmp/reuse-contract")
+        recipes = {
+            side: self._recipe(
+                label=side,
+                checkout=root / side,
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain="1.95.0",
+                target_dir=root / f"target-{side}",
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            for side in ("base", "head")
+        }
+        method = {
+            "preset": "long",
+            "sample_size": 30,
+            "warm_up_seconds": 2,
+            "measurement_seconds": 3,
+            "diagnostic_pairs": 2,
+            "calibration_pairs": 8,
+            "max_pairs": 32,
+            "start_side": "base",
+            "relative_threshold_percent": 10.0,
+            "relative_threshold_log": math.log1p(0.10),
+            "absolute_threshold_ns": 50_000.0,
+            "absolute_threshold_us": 50.0,
+            "confidence_level": 0.95,
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 10_000,
+            "interval_contract": {"confirmation": "paired"},
+        }
+        report = {
+            "comparison": {"base_label": "base", "head_label": "head"},
+            "environment": {"machine": "test"},
+            "method": method,
+        }
+        selection = {
+            "kind": "filter",
+            "groups": {"base": "end_to_end", "head": "end_to_end"},
+            "lane_contracts": {"effective": ("render-svg",)},
+        }
+        contracts = [
+            {
+                "name": "flowchart_medium",
+                "family": "flowchart",
+                "base_benchmark": "end_to_end/flowchart_medium",
+                "head_benchmark": "end_to_end/flowchart_medium",
+                "selected": {"base": True, "head": True},
+                "metadata": {"base": None, "head": None},
+                "bytes": {
+                    "status": "identical",
+                    "base": {"sha256": "a" * 64},
+                    "head": {"sha256": "a" * 64},
+                },
+            }
+        ]
+        source = json.loads(
+            json.dumps(
+                {
+                    "comparison": report["comparison"],
+                    "environment": report["environment"],
+                    "method": method,
+                    "recipes": {
+                        side: compare_self._recipe_report(recipe)
+                        for side, recipe in recipes.items()
+                    },
+                    "selection": selection,
+                    "fixtures": contracts,
+                }
+            )
+        )
+
+        compare_self._validate_reuse_comparison_contract(
+            source=source,
+            report=report,
+            recipes=recipes,
+            selection=selection,
+            contracts=contracts,
+        )
+
+        mutations = {
+            "comparison labels": lambda value: value["comparison"].__setitem__(
+                "head_label", "other"
+            ),
+            "environment": lambda value: value["environment"].__setitem__(
+                "machine", "other"
+            ),
+            "method": lambda value: value["method"].__setitem__("sample_size", 31),
+            "recipes": lambda value: value["recipes"]["head"].__setitem__(
+                "bench", "other"
+            ),
+            "selection": lambda value: value["selection"]["groups"].__setitem__(
+                "head", "other"
+            ),
+            "fixture": lambda value: value["fixtures"][0]["bytes"]["head"].__setitem__(
+                "sha256", "b" * 64
+            ),
+        }
+        for label, mutate in mutations.items():
+            changed = copy.deepcopy(source)
+            mutate(changed)
+            with self.subTest(label=label), self.assertRaisesRegex(
+                compare_self.ContractViolation, "differs"
+            ):
+                compare_self._validate_reuse_comparison_contract(
+                    source=changed,
+                    report=report,
+                    recipes=recipes,
+                    selection=selection,
+                    contracts=contracts,
+                )
 
     def test_runner_recipes_build_each_side_with_its_own_cargo_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
