@@ -14,6 +14,11 @@ import tomllib
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
+try:
+    from scripts import strict_json
+except ModuleNotFoundError:
+    import strict_json
+
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "THIRD_PARTY_LICENSES" / "rust-cargo-dependencies.json"
@@ -81,6 +86,18 @@ NATIVE_REPORT_SPECS = (
 
 class RustLicenseReportError(Exception):
     pass
+
+
+STRICT_JSON = strict_json.StrictJsonContract(
+    RustLicenseReportError,
+    read_error_prefix="could not read JSON",
+)
+load_json_strict = STRICT_JSON.load
+require_object = STRICT_JSON.object
+require_array = STRICT_JSON.array
+require_exact_fields = STRICT_JSON.exact_fields
+expect_string = STRICT_JSON.string
+sha256_json = strict_json.canonical_sha256
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -482,18 +499,24 @@ def generate_native_report(
     root: Path,
     spec: NativeReportSpec,
     all_recipes: dict[str, dict[str, Any]],
+    *,
+    normalized_report_cache: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> bytes:
     recipes = {profile_id: all_recipes[profile_id] for profile_id in spec.profile_ids}
     observations = native_target_observations(spec, recipes)
+    cache = {} if normalized_report_cache is None else normalized_report_cache
     observation_licenses: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for observation in observations:
         profile_id = observation["artifact_profile_id"]
         target = observation["target"]
-        normalized = generate_normalized_report_for_profile(
-            root,
-            recipes[profile_id],
-            target=target,
-        )
+        key = (profile_id, target)
+        if key not in cache:
+            cache[key] = generate_normalized_report_for_profile(
+                root,
+                recipes[profile_id],
+                target=target,
+            )
+        normalized = cache[key]
         observation_licenses[(profile_id, target)] = normalized["licenses"]
     report = build_native_report(
         root,
@@ -502,6 +525,23 @@ def generate_native_report(
         observation_licenses,
     )
     return (json.dumps(report, indent=2, ensure_ascii=True) + "\n").encode()
+
+
+def generate_native_outputs(
+    root: Path,
+    specs: tuple[NativeReportSpec, ...],
+    all_recipes: dict[str, dict[str, Any]],
+) -> dict[Path, bytes]:
+    normalized_report_cache: dict[tuple[str, str], dict[str, Any]] = {}
+    outputs: dict[Path, bytes] = {}
+    for spec in specs:
+        outputs[root / spec.output] = generate_native_report(
+            root,
+            spec,
+            all_recipes,
+            normalized_report_cache=normalized_report_cache,
+        )
+    return outputs
 
 
 def native_target_observations(
@@ -747,54 +787,6 @@ def require_string(value: dict[str, Any], key: str) -> str:
     return result
 
 
-def load_json_strict(path: Path) -> Any:
-    def without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in result:
-                raise RustLicenseReportError(f"duplicate JSON key in {path}: {key}")
-            result[key] = value
-        return result
-
-    try:
-        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=without_duplicates)
-    except RustLicenseReportError:
-        raise
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise RustLicenseReportError(f"could not read JSON {path}: {error}") from error
-
-
-def require_object(value: Any, context: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise RustLicenseReportError(f"{context} must be an object")
-    return value
-
-
-def require_array(value: Any, context: str) -> list[Any]:
-    if not isinstance(value, list):
-        raise RustLicenseReportError(f"{context} must be an array")
-    return value
-
-
-def require_exact_fields(value: dict[str, Any], fields: set[str], context: str) -> None:
-    missing = fields - value.keys()
-    unknown = value.keys() - fields
-    if missing:
-        raise RustLicenseReportError(
-            f"{context} is missing fields: {', '.join(sorted(missing))}"
-        )
-    if unknown:
-        raise RustLicenseReportError(
-            f"{context} has unknown fields: {', '.join(sorted(unknown))}"
-        )
-
-
-def expect_string(value: Any, context: str) -> str:
-    if not isinstance(value, str) or not value or value.strip() != value:
-        raise RustLicenseReportError(f"{context} must be a non-empty, trimmed string")
-    return value
-
-
 def expect_string_array(value: Any, context: str) -> list[str]:
     return [
         expect_string(item, f"{context}[{index}]")
@@ -823,16 +815,6 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def sha256_json(value: Any) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
-    return hashlib.sha256(encoded).hexdigest()
-
-
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     try:
@@ -848,15 +830,14 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 for profile_id, recipe in web_recipes.items()
             },
-            **{
-                ROOT / spec.output: generate_native_report(
-                    ROOT,
-                    spec,
-                    native_recipes,
-                )
-                for spec in native_specs
-            },
         }
+        generated_outputs.update(
+            generate_native_outputs(
+                ROOT,
+                native_specs,
+                native_recipes,
+            )
+        )
         if args.write:
             for output, generated in generated_outputs.items():
                 output.parent.mkdir(parents=True, exist_ok=True)

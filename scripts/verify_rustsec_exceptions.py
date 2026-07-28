@@ -6,12 +6,16 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
-import json
 from pathlib import Path
 import re
 import sys
 import tomllib
 from typing import Any
+
+try:
+    from scripts import strict_json
+except ModuleNotFoundError:
+    import strict_json
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +33,17 @@ UPSTREAM_ISSUE_RE = re.compile(
 
 class RustSecExceptionError(RuntimeError):
     """The RustSec exception ledger is incomplete or inconsistent."""
+
+
+STRICT_JSON = strict_json.StrictJsonContract(
+    RustSecExceptionError,
+    read_error_prefix="could not read",
+)
+load_json_strict = STRICT_JSON.load
+require_object = STRICT_JSON.object
+require_array = STRICT_JSON.array
+require_exact_fields = STRICT_JSON.exact_fields
+expect_string = STRICT_JSON.string
 
 
 @dataclass(frozen=True)
@@ -203,7 +218,7 @@ def validate_profile_coverage(
     records: Sequence[RustSecException],
     profile_packages: Mapping[str, frozenset[tuple[str, str]]],
 ) -> None:
-    """Require each ledger profile list to equal the observed exact closure coverage."""
+    """Require each ledger profile list to equal target-scoped closure coverage."""
     if not profile_packages:
         raise RustSecExceptionError("artifact profile package observations must not be empty")
     failures: list[str] = []
@@ -364,54 +379,6 @@ def parse_date(value: Any, context: str) -> date:
     if parsed.isoformat() != raw:
         raise RustSecExceptionError(f"{context} must be a canonical ISO 8601 date")
     return parsed
-
-
-def load_json_strict(path: Path) -> Any:
-    def without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in result:
-                raise RustSecExceptionError(f"duplicate JSON key in {path}: {key}")
-            result[key] = value
-        return result
-
-    try:
-        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=without_duplicates)
-    except RustSecExceptionError:
-        raise
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise RustSecExceptionError(f"could not read {path}: {error}") from error
-
-
-def require_object(value: Any, context: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise RustSecExceptionError(f"{context} must be an object")
-    return value
-
-
-def require_array(value: Any, context: str) -> list[Any]:
-    if not isinstance(value, list):
-        raise RustSecExceptionError(f"{context} must be an array")
-    return value
-
-
-def require_exact_fields(value: dict[str, Any], fields: set[str], context: str) -> None:
-    missing = fields - value.keys()
-    unknown = value.keys() - fields
-    if missing:
-        raise RustSecExceptionError(
-            f"{context} is missing fields: {', '.join(sorted(missing))}"
-        )
-    if unknown:
-        raise RustSecExceptionError(
-            f"{context} has unknown fields: {', '.join(sorted(unknown))}"
-        )
-
-
-def expect_string(value: Any, context: str) -> str:
-    if not isinstance(value, str) or not value or value.strip() != value:
-        raise RustSecExceptionError(f"{context} must be a non-empty, trimmed string")
-    return value
 
 
 def expect_sorted_string_array(value: Any, context: str) -> tuple[str, ...]:

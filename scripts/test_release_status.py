@@ -162,6 +162,46 @@ class ReleaseStatusVersionTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
 
 
+class RepositoryViewTests(unittest.TestCase):
+    def test_parsed_documents_are_cached_without_exposing_cached_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "Cargo.toml").write_text(
+                '[workspace]\nmembers = ["crates/merman"]\n',
+                encoding="utf-8",
+            )
+            (root / "surface.json").write_text(
+                '{"package": {"name": "merman"}}\n',
+                encoding="utf-8",
+            )
+            view = release_projection.RepositoryView(root)
+
+            with mock.patch.object(
+                release_projection.tomllib,
+                "loads",
+                wraps=release_projection.tomllib.loads,
+            ) as toml_loads, mock.patch.object(
+                release_projection.json,
+                "loads",
+                wraps=release_projection.json.loads,
+            ) as json_loads:
+                first_toml = view.toml("Cargo.toml")
+                first_json = view.json("surface.json")
+                first_toml["workspace"]["members"].append("mutated")
+                first_json["package"]["name"] = "mutated"
+
+                second_toml = view.toml("./Cargo.toml")
+                second_json = view.json("./surface.json")
+
+            self.assertEqual(toml_loads.call_count, 1)
+            self.assertEqual(json_loads.call_count, 1)
+            self.assertEqual(
+                second_toml["workspace"]["members"],
+                ["crates/merman"],
+            )
+            self.assertEqual(second_json["package"]["name"], "merman")
+
+
 class ReleaseProjectionTests(unittest.TestCase):
     ROOT = Path(__file__).resolve().parents[1]
 
@@ -509,8 +549,22 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn(release_projection.FLUTTER_PACKAGE_VERSION, updates)
         self.assertIn(release_projection.FLUTTER_IOS_BUILD, updates)
         self.assertIn(release_projection.README, updates)
+        self.assertIn(Path("docs/rendering/RASTER_OUTPUT.md"), updates)
         self.assertNotIn(Path("tools/vscode-extension/package.json"), updates)
         self.assertNotIn(Path("packages/typst/merman/typst.toml"), updates)
+
+        registry = release_projection.plan_readme_install_mode(
+            self.ROOT,
+            next_version,
+            release_readme.REGISTRY_MODE,
+            overrides=updates,
+        )
+        flutter_readme = Path("platforms/flutter/README.md")
+        self.assertIn(flutter_readme, registry)
+        self.assertIn(
+            f"dependencies:\n  merman: {next_version}",
+            registry[flutter_readme],
+        )
 
     def test_node_candidate_verification_fails_closed_on_each_version_projection(
         self,
@@ -1555,11 +1609,11 @@ class ReleaseStatusContractTests(unittest.TestCase):
             release_status.probe_npm = original_probe_npm
 
         self.assertEqual(
-            checked,
+            sorted(checked),
             [
-                "@mermanjs/web@1.0.0-alpha.1",
                 "@mermanjs/web-analysis@1.0.0-alpha.1",
                 "@mermanjs/web-editor@1.0.0-alpha.1",
+                "@mermanjs/web@1.0.0-alpha.1",
             ],
         )
         self.assertEqual(row["state"], "missing")

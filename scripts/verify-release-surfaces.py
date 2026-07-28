@@ -134,22 +134,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def load_contract(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        raise CheckFailure(f"missing surface contract: {path}")
-
-    try:
-        data = json.loads(
-            path.read_text(encoding="utf-8"),
-            object_pairs_hook=reject_duplicate_json_keys,
-        )
-    except (OSError, json.JSONDecodeError) as error:
-        raise CheckFailure(f"invalid surface contract {path}: {error}") from error
     release_status = load_release_status_module()
     try:
-        release_status.validate_contract(data)
+        return release_status.load_contract(path)
     except release_status.SurfaceError as error:
         raise CheckFailure(str(error)) from error
-    return data
 
 
 def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -1216,10 +1205,14 @@ def check_ci_wiring(root: Path) -> None:
         if not condition_is_always_false(step.get("if"))
         and isinstance(step.get("run"), str)
     ]
-    verifier = ("python3", "scripts/verify-release-surfaces.py")
-    if not any(shell_run_invokes(step["run"], verifier) for step in active_steps):
-        fail(workflow_path, f"CI does not execute {' '.join(verifier)}")
+    for verifier in [
+        ("python3", "scripts/release-version.py"),
+        ("python3", "scripts/verify-release-surfaces.py"),
+    ]:
+        if not any(shell_run_invokes(step["run"], verifier) for step in active_steps):
+            fail(workflow_path, f"CI does not execute {' '.join(verifier)}")
     for test_script in [
+        "scripts/test_release_readme.py",
         "scripts/test_release_status.py",
         "scripts/test_verify_release_surfaces.py",
         "scripts/test_web_package_group.py",

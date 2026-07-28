@@ -15,6 +15,11 @@ from collections.abc import Iterable
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
+try:
+    from scripts import strict_json
+except ModuleNotFoundError:
+    import strict_json
+
 
 CONTRACT_PATH = Path("docs/release/THIRD_PARTY_COMPONENTS.json")
 NOTICE_PATH = Path("THIRD_PARTY_NOTICES.md")
@@ -44,50 +49,30 @@ class ContractError(RuntimeError):
     """A fail-closed contract violation."""
 
 
-def _pairs_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ContractError(f"duplicate JSON key: {key}")
-        result[key] = value
-    return result
-
-
-def load_json(path: Path) -> Any:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_pairs_without_duplicates)
-    except ContractError:
-        raise
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise ContractError(f"cannot read JSON {path}: {error}") from error
-
-
-def require_object(value: Any, context: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise ContractError(f"{context} must be an object")
-    return value
-
-
-def require_list(value: Any, context: str) -> list[Any]:
-    if not isinstance(value, list):
-        raise ContractError(f"{context} must be an array")
-    return value
+STRICT_JSON = strict_json.StrictJsonContract(
+    ContractError,
+    read_error_prefix="cannot read JSON",
+    include_path_in_duplicate_key=False,
+)
+load_json = STRICT_JSON.load
+require_object = STRICT_JSON.object
+require_list = STRICT_JSON.array
+sha256_json = strict_json.canonical_sha256
 
 
 def require_exact_keys(
     value: dict[str, Any], required: set[str], optional: set[str], context: str
 ) -> None:
-    missing = required - value.keys()
-    unknown = value.keys() - required - optional
-    if missing:
-        raise ContractError(f"{context} is missing fields: {', '.join(sorted(missing))}")
-    if unknown:
-        raise ContractError(f"{context} has unknown fields: {', '.join(sorted(unknown))}")
+    STRICT_JSON.exact_fields(
+        value,
+        required,
+        context,
+        optional=optional,
+    )
 
 
 def require_string(value: Any, context: str) -> str:
-    if not isinstance(value, str) or not value or value.strip() != value:
-        raise ContractError(f"{context} must be a non-empty, trimmed string")
+    value = STRICT_JSON.string(value, context)
     if any(ord(char) < 0x20 for char in value):
         raise ContractError(f"{context} must not contain control characters")
     return value
@@ -125,16 +110,6 @@ def sha256(path: Path) -> str:
     except OSError as error:
         raise ContractError(f"cannot hash {path}: {error}") from error
     return digest.hexdigest()
-
-
-def sha256_json(value: Any) -> str:
-    encoded = json.dumps(
-        value,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode()
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def require_regular_file(root: Path, relative: Path, context: str) -> Path:

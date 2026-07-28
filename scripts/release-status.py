@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import fnmatch
 import json
 import os
@@ -114,9 +115,9 @@ def load_contract(path: Path = SURFACES_PATH) -> dict[str, Any]:
             path.read_text(encoding="utf-8"),
             object_pairs_hook=reject_duplicate_json_keys,
         )
-    except FileNotFoundError as exc:
-        raise SurfaceError(f"surface contract not found: {path}") from exc
-    except json.JSONDecodeError as exc:
+    except SurfaceError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise SurfaceError(f"invalid JSON in {path}: {exc}") from exc
     validate_contract(data)
     return data
@@ -460,7 +461,18 @@ def artifact_package_version(surface: dict[str, Any], target: ReleaseVersion) ->
 
 
 def probe_many(packages: list[tuple[str, str]], probe: Any) -> dict[str, str]:
-    results = [(package, version, probe(package, version)) for package, version in packages]
+    if len(packages) < 2:
+        results = [(package, version, probe(package, version)) for package, version in packages]
+    else:
+        with ThreadPoolExecutor(max_workers=min(4, len(packages))) as executor:
+            probe_results = executor.map(
+                lambda item: probe(item[0], item[1]),
+                packages,
+            )
+            results = [
+                (package, version, result)
+                for (package, version), result in zip(packages, probe_results, strict=True)
+            ]
     invalid = [
         (package, result)
         for package, _version, result in results

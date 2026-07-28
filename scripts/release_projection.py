@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -134,6 +135,8 @@ class RepositoryView:
             self._relative(Path(path)): text for path, text in (overrides or {}).items()
         }
         self._cache: dict[Path, str] = {}
+        self._toml_cache: dict[Path, tuple[str, Mapping[str, Any]]] = {}
+        self._json_cache: dict[Path, tuple[str, Mapping[str, Any]]] = {}
 
     def _relative(self, path: Path) -> Path:
         if path.is_absolute():
@@ -165,23 +168,33 @@ class RepositoryView:
 
     def toml(self, path: Path | str) -> Mapping[str, Any]:
         relative = self._relative(Path(path))
+        text = self.text(relative)
+        cached = self._toml_cache.get(relative)
+        if cached is not None and cached[0] == text:
+            return copy.deepcopy(cached[1])
         try:
-            value = tomllib.loads(self.text(relative))
+            value = tomllib.loads(text)
         except tomllib.TOMLDecodeError as exc:
             raise ReleaseProjectionError(f"invalid TOML in {relative}: {exc}") from exc
         if not isinstance(value, dict):
             raise ReleaseProjectionError(f"expected a TOML document in {relative}")
-        return value
+        self._toml_cache[relative] = (text, value)
+        return copy.deepcopy(value)
 
     def json(self, path: Path | str) -> Mapping[str, Any]:
         relative = self._relative(Path(path))
+        text = self.text(relative)
+        cached = self._json_cache.get(relative)
+        if cached is not None and cached[0] == text:
+            return copy.deepcopy(cached[1])
         try:
-            value = json.loads(self.text(relative), object_pairs_hook=_reject_duplicate_keys)
+            value = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
         except json.JSONDecodeError as exc:
             raise ReleaseProjectionError(f"invalid JSON in {relative}: {exc}") from exc
         if not isinstance(value, dict):
             raise ReleaseProjectionError(f"expected a JSON object in {relative}")
-        return value
+        self._json_cache[relative] = (text, value)
+        return copy.deepcopy(value)
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -374,10 +387,7 @@ def _collect_workspace_dependency_versions(
     dependencies = _mapping(
         workspace.get("dependencies"), "Cargo.toml [workspace.dependencies]"
     )
-    coupled_dirs = {
-        (view.root / member).resolve(): name
-        for name, member in catalog.coupled_packages.items()
-    }
+    coupled_dirs = _coupled_package_dirs(view, catalog)
     inherited_by_package: dict[str, str] = {}
 
     for dependency_key, raw_spec in dependencies.items():
@@ -454,15 +464,22 @@ def _dependency_specs(
     return result
 
 
+def _coupled_package_dirs(
+    view: RepositoryView,
+    catalog: WorkspaceCatalog,
+) -> dict[Path, str]:
+    return {
+        (view.root / member).resolve(): name
+        for name, member in catalog.coupled_packages.items()
+    }
+
+
 def _collect_member_dependency_policy(
     view: RepositoryView,
     catalog: WorkspaceCatalog,
     errors: list[str],
 ) -> None:
-    coupled_dirs = {
-        (view.root / member).resolve(): name
-        for name, member in catalog.coupled_packages.items()
-    }
+    coupled_dirs = _coupled_package_dirs(view, catalog)
     for manifest_path in catalog.member_manifests:
         manifest = view.toml(manifest_path)
         package = _mapping(manifest.get("package"), f"{manifest_path} [package]")
@@ -550,10 +567,7 @@ def _collect_fuzz_lock_versions(
     errors: list[str],
 ) -> None:
     manifest = view.toml(FUZZ_MANIFEST)
-    coupled_dirs = {
-        (view.root / member).resolve(): name
-        for name, member in catalog.coupled_packages.items()
-    }
+    coupled_dirs = _coupled_package_dirs(view, catalog)
     manifest_dir = (view.root / FUZZ_MANIFEST).parent
     required: set[str] = set()
     for _kind, _dependency_key, raw_spec in _dependency_specs(manifest):
@@ -1231,10 +1245,7 @@ def _plan_version_update(
         ),
         "Cargo.toml [workspace.dependencies]",
     )
-    coupled_dirs = {
-        (view.root / member).resolve()
-        for member in catalog.coupled_packages.values()
-    }
+    coupled_dirs = _coupled_package_dirs(view, catalog)
     for dependency_key, spec in workspace_dependencies.items():
         if not isinstance(spec, dict) or not isinstance(spec.get("path"), str):
             continue

@@ -170,14 +170,27 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
                     runs-on: ubuntu-latest
                     steps:
                       - run: |
+                          python3 scripts/release-version.py
                           python3 scripts/verify-release-surfaces.py
                           python3 -m unittest \\
+                            scripts/test_release_readme.py \\
                             scripts/test_release_status.py \\
                             scripts/test_verify_release_surfaces.py \\
                             scripts/test_web_package_group.py
             """
             write(root, ".github/workflows/ci.yml", textwrap.dedent(workflow))
             verify_release_surfaces.check_ci_wiring(root)
+
+            commented_version = workflow.replace(
+                "python3 scripts/release-version.py",
+                "# python3 scripts/release-version.py",
+            )
+            write(root, ".github/workflows/ci.yml", textwrap.dedent(commented_version))
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "does not execute python3 scripts/release-version.py",
+            ):
+                verify_release_surfaces.check_ci_wiring(root)
 
             commented = workflow.replace(
                 "python3 scripts/verify-release-surfaces.py",

@@ -102,6 +102,30 @@ class RustSecExceptionTests(unittest.TestCase):
                 },
             )
 
+    def test_strict_json_rejects_duplicate_keys_with_rustsec_error(self) -> None:
+        ledger_path = self.root / verify.LEDGER_PATH
+        ledger_path.write_text(
+            '{"schema_version":1,"schema_version":1}\n',
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            verify.RustSecExceptionError,
+            "duplicate JSON key",
+        ):
+            verify.load_exception_records(self.root, today=date(2026, 7, 26))
+
+    def test_unknown_ledger_field_is_rejected(self) -> None:
+        ledger = read_ledger(self.root)
+        ledger["unexpected"] = True
+        write_ledger(self.root, ledger)
+
+        with self.assertRaisesRegex(
+            verify.RustSecExceptionError,
+            "unknown fields: unexpected",
+        ):
+            verify.load_exception_records(self.root, today=date(2026, 7, 26))
+
 
 def seed_repository(root: Path) -> None:
     (root / verify.DENY_PATH).write_text(

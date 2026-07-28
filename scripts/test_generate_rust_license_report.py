@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("generate-rust-license-report.py")
@@ -20,6 +21,17 @@ SPEC.loader.exec_module(report)
 
 
 class RustLicenseReportTests(unittest.TestCase):
+    def test_strict_json_rejects_duplicate_keys_with_report_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "duplicate.json"
+            path.write_text('{"schema_version": 1, "schema_version": 1}\n', encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                report.RustLicenseReportError,
+                "duplicate JSON key",
+            ):
+                report.load_json_strict(path)
+
     def test_normalization_removes_host_paths_and_private_workspace_crates(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -113,6 +125,19 @@ class RustLicenseReportTests(unittest.TestCase):
             ]
             write_json(root / report.ARTIFACT_PROFILES_PATH, profiles)
             with self.assertRaisesRegex(report.RustLicenseReportError, "wasm32-unknown-unknown"):
+                report.load_web_profile_recipes(root)
+
+    def test_web_recipe_rejects_unknown_cargo_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            profiles = write_web_profile_fixture(root)
+            profiles["profiles"][0]["cargo"]["unexpected"] = True
+            write_json(root / report.ARTIFACT_PROFILES_PATH, profiles)
+
+            with self.assertRaisesRegex(
+                report.RustLicenseReportError,
+                "unknown fields: unexpected",
+            ):
                 report.load_web_profile_recipes(root)
 
     def test_web_recipe_rejects_non_normalized_manifest_paths(self) -> None:
@@ -261,6 +286,40 @@ class RustLicenseReportTests(unittest.TestCase):
                 ((report.PYTHON_ARTIFACT_PROFILE_ID, ("target-b",)),),
             ],
         )
+
+    def test_native_outputs_generate_each_shared_observation_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "Cargo.lock").write_text("lock", encoding="utf-8")
+            (root / "about.toml").write_text("accepted = []", encoding="utf-8")
+            profile = artifact_profile_fixture(
+                report.PYTHON_ARTIFACT_PROFILE_ID,
+                build_target={
+                    "kind": "target-set",
+                    "triples": ["target-a", "target-b"],
+                },
+            )
+            recipes = {report.PYTHON_ARTIFACT_PROFILE_ID: profile}
+            union = report.NativeReportSpec(
+                bundle_id="python-native-sdk",
+                output=Path("platforms/python/union.json"),
+                profile_ids=(report.PYTHON_ARTIFACT_PROFILE_ID,),
+            )
+            specs = (union, *report.python_target_report_specs(recipes))
+
+            with mock.patch.object(
+                report,
+                "generate_normalized_report_for_profile",
+                return_value={"licenses": [normalized_license("shared")]},
+            ) as generate:
+                outputs = report.generate_native_outputs(root, specs, recipes)
+
+            self.assertEqual(len(outputs), 3)
+            self.assertEqual(generate.call_count, 2)
+            self.assertEqual(
+                [call.kwargs["target"] for call in generate.call_args_list],
+                ["target-a", "target-b"],
+            )
 
     def test_native_report_merges_target_licenses_and_keeps_target_closures(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

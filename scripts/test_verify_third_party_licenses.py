@@ -204,6 +204,13 @@ class ThirdPartyContractTests(unittest.TestCase):
         with self.assertRaisesRegex(verify.ContractError, "duplicate JSON key"):
             verify.verify_repository(self.root)
 
+    def test_unknown_contract_field_is_rejected(self) -> None:
+        self.fixture.contract["unexpected"] = True
+        self.fixture.write_contract()
+
+        with self.assertRaisesRegex(verify.ContractError, "unknown fields: unexpected"):
+            verify.verify_repository(self.root)
+
     def test_non_normalized_repository_path_is_rejected(self) -> None:
         self.fixture.contract["generated_notice"] = "./THIRD_PARTY_NOTICES.md"
         self.fixture.write_contract()
