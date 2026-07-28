@@ -10,13 +10,22 @@ import json
 import subprocess
 import sys
 import tempfile
-import tomllib
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 from typing import Any
 
 try:
+    from scripts.artifact_profile_recipe import (
+        ArtifactProfileError,
+        load_artifact_profiles,
+        validate_artifact_profile_manifest,
+    )
     from scripts import strict_json
 except ModuleNotFoundError:
+    from artifact_profile_recipe import (
+        ArtifactProfileError,
+        load_artifact_profiles,
+        validate_artifact_profile_manifest,
+    )
     import strict_json
 
 
@@ -94,8 +103,6 @@ STRICT_JSON = strict_json.StrictJsonContract(
 )
 load_json_strict = STRICT_JSON.load
 require_object = STRICT_JSON.object
-require_array = STRICT_JSON.array
-require_exact_fields = STRICT_JSON.exact_fields
 expect_string = STRICT_JSON.string
 sha256_json = strict_json.canonical_sha256
 
@@ -266,162 +273,39 @@ def load_selected_profile_recipes(
     *,
     semantic_target: str,
 ) -> dict[str, dict[str, Any]]:
-    document = require_object(
-        load_json_strict(root / ARTIFACT_PROFILES_PATH),
-        "artifact profile authority",
-    )
-    if document.get("schema_version") != 1:
-        raise RustLicenseReportError("artifact profile authority schema_version must be 1")
-    profiles = require_array(document.get("profiles"), "artifact profile authority profiles")
-    selected: dict[str, dict[str, Any]] = {}
-    for index, raw in enumerate(profiles):
-        profile = require_object(raw, f"artifact profile[{index}]")
-        profile_id = profile.get("id")
-        if profile_id not in profile_ids:
-            continue
-        if profile_id in selected:
-            raise RustLicenseReportError(f"artifact profile authority repeats {profile_id}")
-        selected[profile_id] = normalize_artifact_profile(
-            root,
-            profile,
-            semantic_target=semantic_target,
-        )
-    missing = sorted(set(profile_ids) - selected.keys())
+    if len(profile_ids) != len(set(profile_ids)):
+        raise RustLicenseReportError("selected artifact profiles must be unique")
+    try:
+        profiles = load_artifact_profiles(root / ARTIFACT_PROFILES_PATH)
+    except ArtifactProfileError as error:
+        raise RustLicenseReportError(str(error)) from error
+    by_id = {profile.profile_id: profile for profile in profiles}
+    missing = sorted(set(profile_ids) - by_id.keys())
     if missing:
         raise RustLicenseReportError(
             "artifact profile authority is missing selected profiles: " + ", ".join(missing)
         )
-    return {profile_id: selected[profile_id] for profile_id in profile_ids}
-
-
-def normalize_artifact_profile(
-    root: Path,
-    profile: dict[str, Any],
-    *,
-    semantic_target: str,
-) -> dict[str, Any]:
-    profile_id = expect_string(profile.get("id"), "artifact profile id")
-    if profile.get("semantic_target") != semantic_target:
-        raise RustLicenseReportError(
-            f"artifact profile {profile_id} must target {semantic_target}"
-        )
-    cargo = require_object(profile.get("cargo"), f"artifact profile {profile_id} cargo")
-    require_exact_fields(
-        cargo,
-        {
-            "package",
-            "manifest",
-            "profile",
-            "default_features",
-            "features",
-            "target",
-            "build_target",
-        },
-        f"artifact profile {profile_id} cargo",
-    )
-    package = expect_string(cargo.get("package"), f"artifact profile {profile_id} package")
-    manifest = expect_repo_path(cargo.get("manifest"), f"artifact profile {profile_id} manifest")
-    cargo_profile = expect_string(cargo.get("profile"), f"artifact profile {profile_id} profile")
-    if cargo.get("default_features") is not False:
-        raise RustLicenseReportError(
-            f"artifact profile {profile_id} must declare default_features=false"
-        )
-    features = expect_string_array(
-        cargo.get("features"), f"artifact profile {profile_id} features"
-    )
-    if not features or features != sorted(set(features)):
-        raise RustLicenseReportError(
-            f"artifact profile {profile_id} features must be non-empty, unique, and sorted"
-        )
-    target = require_object(cargo.get("target"), f"artifact profile {profile_id} target")
-    require_exact_fields(
-        target,
-        {"name", "kinds", "crate_types", "required_features"},
-        f"artifact profile {profile_id} target",
-    )
-    normalized_target = {
-        "name": expect_string(target.get("name"), f"artifact profile {profile_id} target name"),
-        "kinds": expect_string_array(target.get("kinds"), f"artifact profile {profile_id} target kinds"),
-        "crate_types": expect_string_array(
-            target.get("crate_types"), f"artifact profile {profile_id} target crate types"
-        ),
-        "required_features": expect_string_array(
-            target.get("required_features"),
-            f"artifact profile {profile_id} target required features",
-        ),
-    }
-    build_target = require_object(
-        cargo.get("build_target"), f"artifact profile {profile_id} build target"
-    )
-    kind = build_target.get("kind")
-    if kind == "host":
-        require_exact_fields(
-            build_target,
-            {"kind"},
-            f"artifact profile {profile_id} build target",
-        )
-        normalized_build_target = {"kind": "host"}
-    elif kind == "target-set":
-        require_exact_fields(
-            build_target,
-            {"kind", "triples"},
-            f"artifact profile {profile_id} build target",
-        )
-        triples = expect_string_array(
-            build_target.get("triples"),
-            f"artifact profile {profile_id} build target triples",
-        )
-        if not triples or triples != sorted(set(triples)):
+    selected: dict[str, dict[str, Any]] = {}
+    for profile_id in profile_ids:
+        profile = by_id[profile_id]
+        if profile.semantic_target != semantic_target:
             raise RustLicenseReportError(
-                f"artifact profile {profile_id} build target triples must be non-empty, "
-                "unique, and sorted"
+                f"artifact profile {profile_id} must target {semantic_target}"
             )
-        normalized_build_target = {"kind": "target-set", "triples": triples}
-    else:
-        raise RustLicenseReportError(
-            f"artifact profile {profile_id} has unsupported build target kind {kind!r}"
-        )
-    validate_manifest_recipe(root, manifest, package, features, profile_id)
-    return {
-        "id": profile_id,
-        "semantic_target": semantic_target,
-        "cargo": {
-            "package": package,
-            "manifest": manifest,
-            "profile": cargo_profile,
-            "default_features": False,
-            "features": features,
-            "target": normalized_target,
-            "build_target": normalized_build_target,
-        },
-    }
-
-
-def validate_manifest_recipe(
-    root: Path,
-    manifest: str,
-    package: str,
-    features: list[str],
-    profile_id: str,
-) -> None:
-    manifest_path = root / manifest
-    try:
-        document = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
-        raise RustLicenseReportError(
-            f"could not read artifact profile {profile_id} manifest {manifest}: {error}"
-        ) from error
-    package_table = require_object(document.get("package"), f"manifest {manifest} package")
-    if package_table.get("name") != package:
-        raise RustLicenseReportError(
-            f"artifact profile {profile_id} package does not match {manifest}"
-        )
-    manifest_features = require_object(document.get("features"), f"manifest {manifest} features")
-    missing = sorted(set(features) - manifest_features.keys())
-    if missing:
-        raise RustLicenseReportError(
-            f"artifact profile {profile_id} references missing Cargo features: {', '.join(missing)}"
-        )
+        if profile.cargo.default_features:
+            raise RustLicenseReportError(
+                f"artifact profile {profile_id} must declare default_features=false"
+            )
+        if not profile.cargo.features:
+            raise RustLicenseReportError(
+                f"artifact profile {profile_id} must select at least one Cargo feature"
+            )
+        try:
+            validate_artifact_profile_manifest(root, profile)
+        except ArtifactProfileError as error:
+            raise RustLicenseReportError(str(error)) from error
+        selected[profile_id] = profile.report_projection()
+    return selected
 
 
 def verify_cargo_about_version(root: Path) -> None:
@@ -785,28 +669,6 @@ def require_string(value: dict[str, Any], key: str) -> str:
     if not isinstance(result, str) or not result:
         raise RustLicenseReportError(f"cargo-about output field {key!r} is not a string")
     return result
-
-
-def expect_string_array(value: Any, context: str) -> list[str]:
-    return [
-        expect_string(item, f"{context}[{index}]")
-        for index, item in enumerate(require_array(value, context))
-    ]
-
-
-def expect_repo_path(value: Any, context: str) -> str:
-    raw = expect_string(value, context)
-    path = PurePosixPath(raw)
-    if (
-        path.is_absolute()
-        or bool(PureWindowsPath(raw).drive)
-        or "\\" in raw
-        or path.as_posix() != raw
-        or not path.parts
-        or any(part in {"", ".", ".."} for part in path.parts)
-    ):
-        raise RustLicenseReportError(f"{context} must be a normalized repository-relative path")
-    return raw
 
 
 def sha256_file(path: Path) -> str:

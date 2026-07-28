@@ -8,8 +8,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
+import re
 import subprocess
+import tomllib
 from typing import Any, Literal
 
 
@@ -17,6 +19,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DESCRIPTOR = REPO_ROOT / "capabilities" / "artifact-profiles-v1.json"
 CargoBuildTool = Literal["cargo", "cargo-zigbuild"]
 NATIVE_SDK_CARGO_PROFILE = "native-sdk"
+PROFILE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+
+
+class ArtifactProfileError(RuntimeError):
+    """A fail-closed artifact profile descriptor violation."""
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -41,6 +48,7 @@ class CargoArtifactRecipe:
     crate_types: tuple[str, ...]
     build_target_kind: str
     build_targets: tuple[str, ...]
+    required_features: tuple[str, ...] = ()
 
     @property
     def feature_argument(self) -> str:
@@ -53,6 +61,36 @@ class CargoArtifactRecipe:
     @property
     def build_target_argument(self) -> str:
         return ",".join(self.build_targets)
+
+
+@dataclass(frozen=True)
+class ArtifactProfile:
+    profile_id: str
+    semantic_target: str
+    cargo: CargoArtifactRecipe
+
+    def report_projection(self) -> dict[str, Any]:
+        build_target: dict[str, Any] = {"kind": self.cargo.build_target_kind}
+        if self.cargo.build_target_kind == "target-set":
+            build_target["triples"] = list(self.cargo.build_targets)
+        return {
+            "id": self.profile_id,
+            "semantic_target": self.semantic_target,
+            "cargo": {
+                "package": self.cargo.package,
+                "manifest": self.cargo.manifest,
+                "profile": self.cargo.cargo_profile,
+                "default_features": self.cargo.default_features,
+                "features": list(self.cargo.features),
+                "target": {
+                    "name": self.cargo.target_name,
+                    "kinds": list(self.cargo.target_kinds),
+                    "crate_types": list(self.cargo.crate_types),
+                    "required_features": list(self.cargo.required_features),
+                },
+                "build_target": build_target,
+            },
+        }
 
 
 def reject_cargo_profile_environment_overrides(
@@ -188,74 +226,190 @@ def load_artifact_profile(
     profile_id: str,
     descriptor_path: Path = DEFAULT_DESCRIPTOR,
 ) -> CargoArtifactRecipe:
+    matches = [
+        profile
+        for profile in load_artifact_profiles(descriptor_path)
+        if profile.profile_id == profile_id
+    ]
+    if len(matches) != 1:
+        raise ArtifactProfileError(
+            f"artifact profile {profile_id!r} must occur exactly once; found {len(matches)}"
+        )
+    return matches[0].cargo
+
+
+def load_artifact_profiles(
+    descriptor_path: Path = DEFAULT_DESCRIPTOR,
+) -> tuple[ArtifactProfile, ...]:
     try:
         document = json.loads(
             descriptor_path.read_text(encoding="utf-8"),
             object_pairs_hook=_reject_duplicate_keys,
         )
     except (OSError, json.JSONDecodeError, ValueError) as error:
-        raise RuntimeError(
+        raise ArtifactProfileError(
             f"cannot read artifact profile descriptor {descriptor_path}: {error}"
         ) from error
 
     if not isinstance(document, dict):
-        raise RuntimeError("artifact profile descriptor must be a JSON object")
+        raise ArtifactProfileError("artifact profile descriptor must be a JSON object")
+    if document.get("schema_version") != 1:
+        raise ArtifactProfileError("artifact profile descriptor schema_version must be 1")
 
     profiles = document.get("profiles")
     if not isinstance(profiles, list):
-        raise RuntimeError("artifact profile descriptor must contain a profiles array")
+        raise ArtifactProfileError(
+            "artifact profile descriptor must contain a profiles array"
+        )
     if not all(isinstance(profile, dict) for profile in profiles):
-        raise RuntimeError("artifact profile descriptor profiles must be JSON objects")
-    matches = [profile for profile in profiles if profile.get("id") == profile_id]
-    if len(matches) != 1:
-        raise RuntimeError(
-            f"artifact profile {profile_id!r} must occur exactly once; found {len(matches)}"
+        raise ArtifactProfileError(
+            "artifact profile descriptor profiles must be JSON objects"
         )
 
-    cargo = matches[0].get("cargo")
+    parsed: list[ArtifactProfile] = []
+    seen: set[str] = set()
+    for index, profile in enumerate(profiles):
+        profile_id = _required_string(profile, "id", f"profile[{index}]")
+        if not PROFILE_ID.fullmatch(profile_id):
+            raise ArtifactProfileError(
+                f"artifact profile id must be a lowercase slug: {profile_id!r}"
+            )
+        if profile_id in seen:
+            raise ArtifactProfileError(
+                f"artifact profile {profile_id!r} must occur exactly once; found more than one"
+            )
+        seen.add(profile_id)
+        semantic_target = _required_string(
+            profile, "semantic_target", profile_id
+        )
+        parsed.append(
+            ArtifactProfile(
+                profile_id=profile_id,
+                semantic_target=semantic_target,
+                cargo=_parse_cargo_recipe(profile, profile_id),
+            )
+        )
+    return tuple(parsed)
+
+
+def validate_artifact_profile_manifest(
+    root: Path,
+    profile: ArtifactProfile,
+) -> None:
+    recipe = profile.cargo
+    manifest_path = root / recipe.manifest
+    try:
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise ArtifactProfileError(
+                f"artifact profile {profile.profile_id} manifest must be a regular, "
+                f"non-symlink file: {recipe.manifest}"
+            )
+        document = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    except ArtifactProfileError:
+        raise
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
+        raise ArtifactProfileError(
+            f"cannot read artifact profile {profile.profile_id} manifest "
+            f"{recipe.manifest}: {error}"
+        ) from error
+    package = document.get("package")
+    if not isinstance(package, dict) or package.get("name") != recipe.package:
+        raise ArtifactProfileError(
+            f"artifact profile {profile.profile_id} package does not match "
+            f"{recipe.manifest}"
+        )
+    manifest_features = document.get("features")
+    if not isinstance(manifest_features, dict):
+        raise ArtifactProfileError(
+            f"artifact profile {profile.profile_id} manifest has no features table"
+        )
+    referenced_features = set((*recipe.features, *recipe.required_features))
+    missing = sorted(referenced_features - manifest_features.keys())
+    if missing:
+        raise ArtifactProfileError(
+            f"artifact profile {profile.profile_id} references missing Cargo features: "
+            + ", ".join(missing)
+        )
+
+
+def _parse_cargo_recipe(
+    profile: dict[str, Any],
+    profile_id: str,
+) -> CargoArtifactRecipe:
+    cargo = profile.get("cargo")
     if not isinstance(cargo, dict):
-        raise RuntimeError(f"artifact profile {profile_id!r} has no Cargo recipe")
+        raise ArtifactProfileError(
+            f"artifact profile {profile_id!r} has no Cargo recipe"
+        )
+    _require_exact_fields(
+        cargo,
+        {
+            "package",
+            "manifest",
+            "profile",
+            "default_features",
+            "features",
+            "target",
+            "build_target",
+        },
+        f"artifact profile {profile_id!r} Cargo recipe",
+    )
     package = _required_string(cargo, "package", profile_id)
-    manifest = _required_string(cargo, "manifest", profile_id)
+    manifest = _required_repo_path(cargo, "manifest", profile_id)
     cargo_profile = _required_string(cargo, "profile", profile_id)
     default_features = cargo.get("default_features")
     if not isinstance(default_features, bool):
-        raise RuntimeError(
+        raise ArtifactProfileError(
             f"artifact profile {profile_id!r} default_features must be boolean"
         )
-    features_value = cargo.get("features")
-    if not isinstance(features_value, list) or not all(
-        isinstance(feature, str) and feature for feature in features_value
-    ):
-        raise RuntimeError(
-            f"artifact profile {profile_id!r} features must be non-empty strings"
-        )
-    features = tuple(features_value)
-    if list(features) != sorted(set(features)):
-        raise RuntimeError(
-            f"artifact profile {profile_id!r} features must be sorted and unique"
-        )
+    features = _required_string_list(
+        cargo,
+        "features",
+        profile_id,
+        allow_empty=True,
+    )
     target = cargo.get("target")
     if not isinstance(target, dict):
-        raise RuntimeError(f"artifact profile {profile_id!r} has no Cargo target")
+        raise ArtifactProfileError(
+            f"artifact profile {profile_id!r} has no Cargo target"
+        )
+    _require_exact_fields(
+        target,
+        {"name", "kinds", "crate_types", "required_features"},
+        f"artifact profile {profile_id!r} Cargo target",
+    )
     target_name = _required_string(target, "name", profile_id)
     target_kinds = _required_string_list(target, "kinds", profile_id)
     crate_types = _required_string_list(target, "crate_types", profile_id)
+    required_features = _required_string_list(
+        target,
+        "required_features",
+        profile_id,
+        allow_empty=True,
+    )
 
     build_target = cargo.get("build_target")
     if not isinstance(build_target, dict):
-        raise RuntimeError(f"artifact profile {profile_id!r} has no build_target")
+        raise ArtifactProfileError(
+            f"artifact profile {profile_id!r} has no build_target"
+        )
     build_target_kind = _required_string(build_target, "kind", profile_id)
     if build_target_kind == "host":
-        if "triples" in build_target:
-            raise RuntimeError(
-                f"artifact profile {profile_id!r} host build_target must not declare triples"
-            )
+        _require_exact_fields(
+            build_target,
+            {"kind"},
+            f"artifact profile {profile_id!r} build_target",
+        )
         build_targets: tuple[str, ...] = ()
     elif build_target_kind == "target-set":
+        _require_exact_fields(
+            build_target,
+            {"kind", "triples"},
+            f"artifact profile {profile_id!r} build_target",
+        )
         build_targets = _required_string_list(build_target, "triples", profile_id)
     else:
-        raise RuntimeError(
+        raise ArtifactProfileError(
             f"artifact profile {profile_id!r} has unsupported build_target kind "
             f"{build_target_kind!r}"
         )
@@ -272,32 +426,79 @@ def load_artifact_profile(
         crate_types=crate_types,
         build_target_kind=build_target_kind,
         build_targets=build_targets,
+        required_features=required_features,
     )
 
 
-def _required_string(cargo: dict[str, Any], field: str, profile_id: str) -> str:
-    value = cargo.get(field)
-    if not isinstance(value, str) or not value:
-        raise RuntimeError(
+def _require_exact_fields(
+    value: dict[str, Any],
+    expected: set[str],
+    context: str,
+) -> None:
+    missing = sorted(expected - value.keys())
+    unknown = sorted(value.keys() - expected)
+    if missing:
+        raise ArtifactProfileError(
+            f"{context} is missing fields: {', '.join(missing)}"
+        )
+    if unknown:
+        raise ArtifactProfileError(
+            f"{context} has unknown fields: {', '.join(unknown)}"
+        )
+
+
+def _required_string(value: dict[str, Any], field: str, profile_id: str) -> str:
+    raw = value.get(field)
+    if not isinstance(raw, str) or not raw:
+        raise ArtifactProfileError(
             f"artifact profile {profile_id!r} Cargo field {field!r} must be a string"
         )
-    return value
+    return raw
+
+
+def _required_repo_path(
+    value: dict[str, Any],
+    field: str,
+    profile_id: str,
+) -> str:
+    raw = _required_string(value, field, profile_id)
+    path = PurePosixPath(raw)
+    if (
+        path.is_absolute()
+        or bool(PureWindowsPath(raw).drive)
+        or "\\" in raw
+        or path.as_posix() != raw
+        or not path.parts
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
+        raise ArtifactProfileError(
+            f"artifact profile {profile_id!r} Cargo field {field!r} must be a "
+            "normalized repository-relative path"
+        )
+    return raw
 
 
 def _required_string_list(
-    cargo: dict[str, Any], field: str, profile_id: str
+    cargo: dict[str, Any],
+    field: str,
+    profile_id: str,
+    *,
+    allow_empty: bool = False,
 ) -> tuple[str, ...]:
     value = cargo.get(field)
-    if not isinstance(value, list) or not value or not all(
-        isinstance(item, str) and item for item in value
+    if (
+        not isinstance(value, list)
+        or (not allow_empty and not value)
+        or not all(isinstance(item, str) and item for item in value)
     ):
-        raise RuntimeError(
+        qualifier = "" if allow_empty else "non-empty "
+        raise ArtifactProfileError(
             f"artifact profile {profile_id!r} Cargo field {field!r} must be "
-            "a non-empty list of strings"
+            f"a {qualifier}list of strings"
         )
     values = tuple(value)
     if list(values) != sorted(set(values)):
-        raise RuntimeError(
+        raise ArtifactProfileError(
             f"artifact profile {profile_id!r} Cargo field {field!r} must be sorted and unique"
         )
     return values

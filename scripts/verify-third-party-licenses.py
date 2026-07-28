@@ -16,8 +16,18 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 try:
+    from scripts.artifact_profile_recipe import (
+        ArtifactProfileError,
+        load_artifact_profiles,
+        validate_artifact_profile_manifest,
+    )
     from scripts import strict_json
 except ModuleNotFoundError:
+    from artifact_profile_recipe import (
+        ArtifactProfileError,
+        load_artifact_profiles,
+        validate_artifact_profile_manifest,
+    )
     import strict_json
 
 
@@ -329,119 +339,41 @@ def validate_scoped_external_materials(
 
 
 def load_web_artifact_profiles(root: Path) -> dict[str, dict[str, Any]]:
-    authority = require_object(
-        load_json(require_regular_file(root, ARTIFACT_PROFILES_PATH, "artifact profiles")),
-        "artifact profiles",
+    descriptor_path = require_regular_file(
+        root, ARTIFACT_PROFILES_PATH, "artifact profiles"
     )
-    if authority.get("schema_version") != 1:
-        raise ContractError("artifact profile authority schema_version must be 1")
+    try:
+        authority_profiles = load_artifact_profiles(descriptor_path)
+    except ArtifactProfileError as error:
+        raise ContractError(str(error)) from error
     profiles: dict[str, dict[str, Any]] = {}
-    for index, raw in enumerate(require_list(authority.get("profiles"), "artifact profiles")):
-        profile = require_object(raw, f"artifact profiles[{index}]")
-        profile_id = profile.get("id")
-        if not isinstance(profile_id, str) or profile.get("semantic_target") != "web":
+    for profile in authority_profiles:
+        if profile.semantic_target != "web":
             continue
-        if not SLUG.fullmatch(profile_id):
-            raise ContractError(f"Web artifact profile id must be a lowercase slug: {profile_id!r}")
-        if profile_id in profiles:
-            raise ContractError(f"artifact profile authority repeats {profile_id}")
-        cargo = require_object(profile.get("cargo"), f"artifact profile {profile_id} cargo")
-        require_exact_keys(
-            cargo,
-            {
-                "package",
-                "manifest",
-                "profile",
-                "default_features",
-                "features",
-                "target",
-                "build_target",
-            },
-            set(),
-            f"artifact profile {profile_id} cargo",
-        )
-        package = require_string(cargo["package"], f"artifact profile {profile_id} package")
-        manifest = require_repo_path(
-            cargo["manifest"], f"artifact profile {profile_id} manifest"
-        )
-        require_string(cargo["profile"], f"artifact profile {profile_id} profile")
-        if cargo.get("default_features") is not False:
-            raise ContractError(f"artifact profile {profile_id} must disable default features")
-        features = require_string_list(
-            cargo["features"], f"artifact profile {profile_id} features"
-        )
-        if not features or features != sorted(features):
+        profile_id = profile.profile_id
+        if profile.cargo.default_features:
             raise ContractError(
-                f"artifact profile {profile_id} features must be non-empty and sorted"
+                f"artifact profile {profile_id} must disable default features"
             )
-        target = require_object(cargo["target"], f"artifact profile {profile_id} target")
-        require_exact_keys(
-            target,
-            {"name", "kinds", "crate_types", "required_features"},
-            set(),
-            f"artifact profile {profile_id} target",
-        )
-        require_string(target["name"], f"artifact profile {profile_id} target name")
-        for field in ("kinds", "crate_types", "required_features"):
-            require_string_list(
-                target[field], f"artifact profile {profile_id} target {field}"
+        if not profile.cargo.features:
+            raise ContractError(
+                f"artifact profile {profile_id} must select at least one Cargo feature"
             )
-        build_target = require_object(
-            cargo.get("build_target"), f"artifact profile {profile_id} build target"
-        )
-        require_exact_keys(
-            build_target,
-            {"kind", "triples"},
-            set(),
-            f"artifact profile {profile_id} build target",
-        )
-        if build_target.get("kind") != "target-set" or build_target.get("triples") != [
-            "wasm32-unknown-unknown"
-        ]:
-            raise ContractError(f"artifact profile {profile_id} must target wasm32-unknown-unknown")
-        validate_web_profile_manifest(root, manifest, package, features, profile_id)
-        profiles[profile_id] = {
-            "id": profile_id,
-            "semantic_target": "web",
-            "cargo": cargo,
-        }
+        if (
+            profile.cargo.build_target_kind != "target-set"
+            or profile.cargo.build_targets != ("wasm32-unknown-unknown",)
+        ):
+            raise ContractError(
+                f"artifact profile {profile_id} must target wasm32-unknown-unknown"
+            )
+        try:
+            validate_artifact_profile_manifest(root, profile)
+        except ArtifactProfileError as error:
+            raise ContractError(str(error)) from error
+        profiles[profile_id] = profile.report_projection()
     if not profiles:
         raise ContractError("artifact profile authority defines no Web profiles")
     return profiles
-
-
-def validate_web_profile_manifest(
-    root: Path,
-    manifest: Path,
-    package: str,
-    features: list[str],
-    profile_id: str,
-) -> None:
-    manifest_path = require_regular_file(
-        root, manifest, f"artifact profile {profile_id} manifest"
-    )
-    try:
-        document = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as error:
-        raise ContractError(
-            f"cannot read artifact profile {profile_id} manifest {manifest}: {error}"
-        ) from error
-    package_table = require_object(
-        document.get("package"), f"artifact profile {profile_id} manifest package"
-    )
-    if package_table.get("name") != package:
-        raise ContractError(
-            f"artifact profile {profile_id} package does not match {manifest}"
-        )
-    manifest_features = require_object(
-        document.get("features"), f"artifact profile {profile_id} manifest features"
-    )
-    missing = sorted(set(features) - manifest_features.keys())
-    if missing:
-        raise ContractError(
-            f"artifact profile {profile_id} references missing Cargo features: "
-            + ", ".join(missing)
-        )
 
 
 def validate_web_rust_report(

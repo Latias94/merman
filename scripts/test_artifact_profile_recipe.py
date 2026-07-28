@@ -549,6 +549,49 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             {"aarch64-linux-android", "wasm32-unknown-unknown"},
         )
 
+    def test_ci_proves_external_runtime_feature_unification(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
+        job = workflow_job(workflow, "build-test")
+        step = workflow_step(
+            job,
+            name="Test external Cargo feature unification contract",
+        )
+
+        self.assertIn(
+            "cargo nextest run --locked -p merman-bindings-core "
+            "--no-default-features",
+            step["run"],
+        )
+        self.assertIn(
+            "merman-bindings-core/svg,merman/math,merman/system-timing",
+            step["run"],
+        )
+        self.assertIn(
+            'features="$(python3 scripts/artifact_profile_recipe.py '
+            'apple-uniffi-native)"',
+            step["run"],
+        )
+        self.assertIn(
+            'qualified_features="merman-uniffi/${features//,/,merman-uniffi/}"',
+            step["run"],
+        )
+        self.assertIn(
+            "cargo nextest run --locked -p merman-uniffi -p merman "
+            "--no-default-features",
+            step["run"],
+        )
+        self.assertIn(
+            '--features "$qualified_features,merman/system-timing"',
+            step["run"],
+        )
+        self.assertIn(
+            "-E 'package(merman-uniffi) & test(engine_exposes_metadata)'",
+            step["run"],
+        )
+        self.assertNotIn("merman-bindings-core/math", step["run"])
+        self.assertNotIn("merman-bindings-core/system-timing", step["run"])
+
     def test_native_ci_smokes_resolve_the_recipe_owned_output_directory(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
@@ -610,15 +653,24 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             descriptor.write_text(
                 json.dumps(
                     {
+                        "schema_version": 1,
                         "profiles": [
                             {
                                 "id": "native",
+                                "semantic_target": "native",
                                 "cargo": {
                                     "package": "merman-ffi",
                                     "manifest": "crates/merman-ffi/Cargo.toml",
                                     "profile": "release",
                                     "default_features": False,
                                     "features": ["svg", "analysis", "svg"],
+                                    "target": {
+                                        "name": "merman_ffi",
+                                        "kinds": ["cdylib"],
+                                        "crate_types": ["cdylib"],
+                                        "required_features": [],
+                                    },
+                                    "build_target": {"kind": "host"},
                                 },
                             }
                         ]
@@ -635,9 +687,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             descriptor.write_text(
                 json.dumps(
                     {
+                        "schema_version": 1,
                         "profiles": [
                             {
                                 "id": "native",
+                                "semantic_target": "native",
                                 "cargo": {
                                     "package": "merman-ffi",
                                     "manifest": "crates/merman-ffi/Cargo.toml",
