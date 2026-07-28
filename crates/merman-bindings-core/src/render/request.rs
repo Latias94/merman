@@ -142,18 +142,13 @@ fn build_renderer(
                     environment = environment.without_math_renderer();
                 }
                 "ratex" => {
-                    #[cfg(feature = "math")]
-                    {
-                        environment = environment
-                            .with_math_renderer(Arc::new(merman::svg::RatexMathRenderer));
-                    }
-                    #[cfg(not(feature = "math"))]
-                    {
+                    if !merman::svg::math_available() {
                         return Err(BindingError::missing_capability(
                             "math",
-                            "environment.math_renderer=ratex requires the math feature",
+                            "environment.math_renderer=ratex requires the compiled math capability",
                         ));
                     }
+                    environment = environment.with_compiled_math_renderer();
                 }
                 other => {
                     return Err(BindingError::new(
