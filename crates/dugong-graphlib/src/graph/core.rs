@@ -1053,6 +1053,95 @@ where
         true
     }
 
+    /// Removes a set of nodes with one graph-wide incident-edge pass.
+    ///
+    /// Missing and duplicate IDs are ignored, and the return value is the number of unique live
+    /// nodes removed. Surviving nodes, edges, and compound children retain their relative order;
+    /// surviving children of a removed parent become roots. The target iterator is consumed before
+    /// the mutation is committed, so an iterator panic cannot leave a partially updated graph.
+    ///
+    /// For `T` requested IDs, this operation takes `O(T + V + E)` time and `O(V)` temporary space.
+    /// It does not allocate graph-sized storage when no live target exists. Sequential `remove_node`
+    /// calls remain preferable for isolated mutations because they use the adjacency cache to touch
+    /// only incident edges after at most one cache build. Layout phases that retire many temporary
+    /// nodes should use this method to avoid rebuilding that cache between removals.
+    pub fn remove_nodes<'a, I>(&mut self, ids: I) -> usize
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        if self.node_len == 0 {
+            return 0;
+        }
+
+        let mut removed_indices: HashSet<usize> = HashSet::default();
+        for id in ids {
+            let Some(&idx) = self.node_index.get(id) else {
+                continue;
+            };
+            removed_indices.insert(idx);
+        }
+        let removed_count = removed_indices.len();
+        if removed_count == 0 {
+            return 0;
+        }
+
+        let mut removed_by_ix = vec![false; self.nodes.len()];
+        for idx in removed_indices {
+            removed_by_ix[idx] = true;
+        }
+
+        // Consume the caller's iterator completely before committing any mutation. This keeps the
+        // graph internally consistent even if a custom iterator panics and the caller catches it.
+        self.node_index.retain(|_, idx| !removed_by_ix[*idx]);
+        self.invalidate_adj();
+        for (idx, removed) in removed_by_ix.iter().copied().enumerate() {
+            if !removed {
+                continue;
+            }
+            if self.nodes.get_mut(idx).and_then(Option::take).is_some() {
+                self.node_len = self.node_len.saturating_sub(1);
+            }
+        }
+
+        for slot in &mut self.edges {
+            let should_remove = slot
+                .as_ref()
+                .is_some_and(|edge| removed_by_ix[edge.v_ix] || removed_by_ix[edge.w_ix]);
+            if !should_remove {
+                continue;
+            }
+            let Some(edge) = slot.take() else {
+                continue;
+            };
+            let _ = self.edge_index.remove_entry(&edge.key);
+            self.edge_len = self.edge_len.saturating_sub(1);
+        }
+
+        if self.options.compound {
+            for (child_ix, parent) in self.parent_ix.iter_mut().enumerate() {
+                if removed_by_ix[child_ix]
+                    || parent.is_some_and(|parent_ix| {
+                        removed_by_ix.get(parent_ix).copied().unwrap_or(true)
+                    })
+                {
+                    *parent = None;
+                }
+            }
+            for (parent_ix, children) in self.children_ix.iter_mut().enumerate() {
+                if removed_by_ix[parent_ix] {
+                    children.clear();
+                } else {
+                    children
+                        .retain(|&child_ix| !removed_by_ix.get(child_ix).copied().unwrap_or(true));
+                }
+            }
+        }
+
+        self.trim_trailing_edge_tombstones();
+        self.trim_trailing_node_tombstones();
+        removed_count
+    }
+
     pub fn successors(&self, v: &str) -> Vec<&str> {
         if !self.options.directed {
             return self.adjacent_nodes(v);
@@ -1521,7 +1610,9 @@ where
         if !self.options.compound {
             return self;
         }
-        if child_ix >= self.nodes.len() || parent_ix >= self.nodes.len() {
+        if self.nodes.get(child_ix).and_then(Option::as_ref).is_none()
+            || self.nodes.get(parent_ix).and_then(Option::as_ref).is_none()
+        {
             return self;
         }
         assert!(

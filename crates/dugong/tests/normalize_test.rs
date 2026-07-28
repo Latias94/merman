@@ -513,3 +513,84 @@ fn normalize_undo_restores_multi_edges() {
         vec![Point { x: 15.0, y: 20.0 }]
     );
 }
+
+#[test]
+fn normalize_undo_batches_dummy_removal_without_changing_edge_order() {
+    let mut g = new_graph();
+    for (id, rank) in [("a", 0), ("b", 3), ("c", 0), ("d", 2), ("x", 0), ("y", 1)] {
+        g.set_node(
+            id,
+            NodeLabel {
+                rank: Some(rank),
+                ..Default::default()
+            },
+        );
+    }
+    g.set_edge_named("a", "b", Some("ab"), Some(EdgeLabel::default()));
+    g.set_edge_named("x", "y", Some("xy"), Some(EdgeLabel::default()));
+    g.set_edge_named("c", "d", Some("cd"), Some(EdgeLabel::default()));
+
+    normalize::run(&mut g);
+    normalize::undo(&mut g);
+
+    assert_eq!(
+        edge_incident_nodes(&g),
+        vec![
+            ("x".to_string(), "y".to_string(), Some("xy".to_string())),
+            ("a".to_string(), "b".to_string(), Some("ab".to_string())),
+            ("c".to_string(), "d".to_string(), Some("cd".to_string())),
+        ]
+    );
+}
+
+#[test]
+fn normalize_undo_preserves_an_original_dummy_source_node() {
+    let mut g = new_graph();
+    g.set_node(
+        "a",
+        NodeLabel {
+            rank: Some(0),
+            dummy: Some("custom".to_string()),
+            ..Default::default()
+        },
+    );
+    g.set_node(
+        "b",
+        NodeLabel {
+            rank: Some(2),
+            ..Default::default()
+        },
+    );
+    g.set_edge_with_label("a", "b", EdgeLabel::default());
+
+    normalize::run(&mut g);
+    normalize::undo(&mut g);
+
+    assert_eq!(
+        g.node("a").and_then(|node| node.dummy.as_deref()),
+        Some("custom")
+    );
+    assert!(g.has_edge("a", "b", None));
+}
+
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "normalize::undo requires single-successor dummy chains")]
+fn normalize_undo_rejects_corrupt_dummy_chains() {
+    let mut g = new_graph();
+    for (id, rank) in [("a", 0), ("b", 3), ("extra", 3)] {
+        g.set_node(
+            id,
+            NodeLabel {
+                rank: Some(rank),
+                ..Default::default()
+            },
+        );
+    }
+    g.set_edge_with_label("a", "b", EdgeLabel::default());
+    normalize::run(&mut g);
+    let first = g.graph().dummy_chains[0].clone();
+    g.set_edge_with_label(first, "extra", EdgeLabel::default());
+
+    normalize::undo(&mut g);
+}
