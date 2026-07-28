@@ -859,12 +859,14 @@ mod tests {
 
         assert_eq!(json["version"], 1);
         assert_eq!(json["ok"], false);
-        if cfg!(feature = "svg") {
-            assert_eq!(json["code_name"], "MERMAN_OPTIONS_JSON_ERROR");
-            assert_eq!(json["kind"], "generic");
-            assert!(json["capability_id"].is_null());
-            assert!(json["message"].as_str().unwrap().contains("options_json"));
-        } else {
+        assert_eq!(json["code_name"], "MERMAN_OPTIONS_JSON_ERROR");
+        assert_eq!(json["kind"], "generic");
+        assert!(json["capability_id"].is_null());
+        assert!(json["message"].as_str().unwrap().contains("options_json"));
+
+        if !cfg!(feature = "svg") {
+            let err = merman_bindings_core::render_svg(b"flowchart TD\nA", b"{}").unwrap_err();
+            let json = serde_json::to_value(wasm_error_payload(&err)).unwrap();
             assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_OPERATION");
             assert_eq!(json["kind"], "missing-capability");
             assert_eq!(json["capability_id"], "svg");

@@ -117,7 +117,7 @@ pub fn semantic_tokens_delta_result(
 
 pub fn semantic_tokens_result_id(snapshot: &DocumentSnapshot, tokens: &[SemanticToken]) -> String {
     let mut hasher = DefaultHasher::new();
-    snapshot.version.hash(&mut hasher);
+    snapshot.version().hash(&mut hasher);
     for token in tokens {
         token.delta_line.hash(&mut hasher);
         token.delta_start.hash(&mut hasher);
@@ -127,7 +127,7 @@ pub fn semantic_tokens_result_id(snapshot: &DocumentSnapshot, tokens: &[Semantic
     }
     format!(
         "{}:{}:{:016x}",
-        snapshot.version,
+        snapshot.version(),
         SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
         hasher.finish()
     )

@@ -110,7 +110,12 @@ pub(crate) async fn ensure_snapshot_current(
     kind: SnapshotContextKind,
 ) -> Result<()> {
     let store = store.lock().await;
-    if store.is_snapshot_context_current(context) {
+    let is_current = if kind.requires_analysis_payload() {
+        store.is_analysis_context_current(context)
+    } else {
+        store.is_snapshot_context_current(context)
+    };
+    if is_current {
         Ok(())
     } else {
         Err(kind.stale_error())

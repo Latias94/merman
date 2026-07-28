@@ -333,7 +333,10 @@ fn recovered_mindmap_editor_diagnostic_is_merged_into_the_primary_error() {
 #[test]
 fn analyze_result_exposes_complete_parser_syntax_facts() {
     let source = "flowchart TD\nA-->B\n";
-    let result = Analyzer::new().analyze_result(source);
+    let result = Analyzer::new()
+        .analyze_result(source)
+        .into_ready()
+        .expect("source is within the analysis limit");
 
     assert!(result.payload().valid);
     assert!(result.diagnostics().is_empty());
@@ -388,7 +391,10 @@ fn analyze_result_preserves_exact_spans_through_entity_normalization() {
 #[test]
 fn analyze_result_exposes_expected_syntax_facts_for_invalid_input() {
     let source = "flowchart TD\nA@{\n  shape: rou\n}\n";
-    let result = Analyzer::new().analyze_result(source);
+    let result = Analyzer::new()
+        .analyze_result(source)
+        .into_ready()
+        .expect("source is within the analysis limit");
 
     assert!(!result.payload().valid);
     assert_eq!(result.diagrams().len(), 1);
@@ -424,7 +430,9 @@ fn document_analysis_result_keeps_local_fence_syntax_facts() {
         source,
         &analyzer,
         source_descriptor_for_markdown_path(Some("doc.md")),
-    );
+    )
+    .into_ready()
+    .expect("source is within the analysis limit");
 
     assert!(!result.payload().valid);
     assert_eq!(result.diagrams().len(), 1);
@@ -900,17 +908,19 @@ fn source_byte_limit_does_not_scan_syntax_facts() {
 }
 
 #[test]
-fn plain_source_byte_limit_applies_before_result_source_map() {
+fn plain_source_byte_limit_rejects_without_constructing_a_source_map() {
     let source = format!("flowchart TD\nA-->B\n{}", "x".repeat(64));
     let analyzer =
         Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
 
-    let result = analyzer.analyze_result(&source);
+    let rejection = analyzer
+        .analyze_result(&source)
+        .into_ready()
+        .expect_err("source must be rejected before rich facts are constructed");
 
-    assert_eq!(result.source_map().source_len(), 0);
-    assert!(result.diagrams().is_empty());
-    assert_eq!(result.diagnostics().len(), 1);
-    let diagnostic = &result.diagnostics()[0];
+    assert_eq!(rejection.source_len(), source.len());
+    assert_eq!(rejection.max_source_bytes(), 8);
+    let diagnostic = &rejection.payload().diagnostics[0];
     assert_eq!(diagnostic.id, "merman.resource.source_bytes_exceeded");
     let span = diagnostic.span.as_ref().unwrap();
     assert_eq!(span.byte_start, 0);
@@ -927,10 +937,13 @@ fn markdown_document_source_byte_limit_applies_before_fence_analysis() {
         Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
 
-    let result = analyze_document_result(&source, &analyzer, descriptor.clone());
-    assert_eq!(result.source_map().source_len(), 0);
+    let rejection = analyze_document_result(&source, &analyzer, descriptor.clone())
+        .into_ready()
+        .expect_err("document source must be rejected before fence analysis");
+    assert_eq!(rejection.source_len(), source.len());
+    assert_eq!(rejection.max_source_bytes(), 8);
 
-    let payload = result.payload();
+    let payload = rejection.payload();
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);
@@ -977,7 +990,9 @@ fn markdown_document_source_byte_limit_allows_exact_boundary() {
     );
     let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
 
-    let result = analyze_document_result(source, &analyzer, descriptor);
+    let result = analyze_document_result(source, &analyzer, descriptor)
+        .into_ready()
+        .expect("source at the limit remains analyzable");
 
     assert_eq!(result.diagnostics().len(), 0);
     assert_eq!(result.diagrams().len(), 1);
@@ -990,14 +1005,17 @@ fn mdx_document_source_byte_limit_applies_before_fence_analysis() {
         Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     let descriptor = source_descriptor_for_markdown_path(Some("doc.mdx"));
 
-    let result = analyze_document_result(&source, &analyzer, descriptor);
+    let rejection = analyze_document_result(&source, &analyzer, descriptor)
+        .into_ready()
+        .expect_err("document source must be rejected before fence analysis");
 
-    assert_eq!(result.diagnostics().len(), 1);
+    assert_eq!(rejection.payload().diagnostics.len(), 1);
     assert_eq!(
-        result.diagnostics()[0].id,
+        rejection.payload().diagnostics[0].id,
         "merman.resource.source_bytes_exceeded"
     );
-    assert!(result.diagrams().is_empty());
+    assert_eq!(rejection.source_len(), source.len());
+    assert_eq!(rejection.max_source_bytes(), 8);
 }
 
 #[test]

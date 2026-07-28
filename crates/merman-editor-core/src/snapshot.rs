@@ -3,36 +3,90 @@ use merman_analysis::{
     FenceDelimiter, FenceDelimiterSpans, FenceTextIndex, SharedTextSlice, SourceDescriptor,
     SourceMap,
 };
+use std::ops::Range;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct DocumentSnapshot {
-    pub uri: DocumentUri,
-    pub version: i32,
-    pub kind: DocumentKind,
-    pub source: SourceDescriptor,
-    pub text: Arc<str>,
-    pub source_map: SourceMap,
-    pub fences: Vec<FenceSnapshot>,
+    uri: DocumentUri,
+    version: i32,
+    kind: DocumentKind,
+    source: SourceDescriptor,
+    text: Arc<str>,
+    source_map: SourceMap,
+    fences: Vec<FenceSnapshot>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FenceSnapshot {
-    pub source_id: String,
-    pub index: usize,
-    pub source: SourceDescriptor,
-    pub start: usize,
-    pub body_start: usize,
-    pub body_end: usize,
-    pub end: usize,
-    pub text: SharedTextSlice,
-    pub fence_delimiter: Option<FenceDelimiter>,
-    pub fence_delimiter_spans: Option<FenceDelimiterSpans>,
-    pub diagram_type: Option<String>,
-    pub text_index: FenceTextIndex,
+    source_id: String,
+    index: usize,
+    source: SourceDescriptor,
+    start: usize,
+    body_start: usize,
+    body_end: usize,
+    end: usize,
+    text: SharedTextSlice,
+    fence_delimiter: Option<FenceDelimiter>,
+    fence_delimiter_spans: Option<FenceDelimiterSpans>,
+    diagram_type: Option<String>,
+    text_index: FenceTextIndex,
 }
 
 impl DocumentSnapshot {
+    pub(crate) fn new(
+        uri: DocumentUri,
+        version: i32,
+        kind: DocumentKind,
+        source: SourceDescriptor,
+        text: Arc<str>,
+        source_map: SourceMap,
+        fences: Vec<FenceSnapshot>,
+    ) -> Self {
+        debug_assert_eq!(source_map.source(), text.as_ref());
+        Self {
+            uri,
+            version,
+            kind,
+            source,
+            text,
+            source_map,
+            fences,
+        }
+    }
+
+    pub fn uri(&self) -> &DocumentUri {
+        &self.uri
+    }
+
+    pub const fn version(&self) -> i32 {
+        self.version
+    }
+
+    pub const fn kind(&self) -> DocumentKind {
+        self.kind
+    }
+
+    pub fn source(&self) -> &SourceDescriptor {
+        &self.source
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn shared_text(&self) -> &Arc<str> {
+        &self.text
+    }
+
+    pub fn source_map(&self) -> &SourceMap {
+        &self.source_map
+    }
+
+    pub fn fences(&self) -> &[FenceSnapshot] {
+        &self.fences
+    }
+
     pub fn byte_offset_for_position(&self, position: Position) -> Option<usize> {
         self.source_map
             .byte_offset_for_utf16_position(merman_analysis::Utf16Position {
@@ -51,6 +105,83 @@ impl DocumentSnapshot {
 }
 
 impl FenceSnapshot {
+    pub(crate) fn new(
+        source_id: String,
+        index: usize,
+        source: SourceDescriptor,
+        start: usize,
+        body_start: usize,
+        body_end: usize,
+        end: usize,
+        text: SharedTextSlice,
+        fence_delimiter: Option<FenceDelimiter>,
+        fence_delimiter_spans: Option<FenceDelimiterSpans>,
+        diagram_type: Option<String>,
+        text_index: FenceTextIndex,
+    ) -> Self {
+        debug_assert!(start <= body_start);
+        debug_assert!(body_start <= body_end);
+        debug_assert!(body_end <= end);
+        Self {
+            source_id,
+            index,
+            source,
+            start,
+            body_start,
+            body_end,
+            end,
+            text,
+            fence_delimiter,
+            fence_delimiter_spans,
+            diagram_type,
+            text_index,
+        }
+    }
+
+    pub fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+
+    pub fn source(&self) -> &SourceDescriptor {
+        &self.source
+    }
+
+    pub fn document_range(&self) -> Range<usize> {
+        self.start..self.end
+    }
+
+    pub fn body_range(&self) -> Range<usize> {
+        self.body_start..self.body_end
+    }
+
+    pub fn text(&self) -> &str {
+        self.text.as_str()
+    }
+
+    pub fn shared_text(&self) -> &SharedTextSlice {
+        &self.text
+    }
+
+    pub const fn fence_delimiter(&self) -> Option<FenceDelimiter> {
+        self.fence_delimiter
+    }
+
+    pub fn fence_delimiter_spans(&self) -> Option<&FenceDelimiterSpans> {
+        self.fence_delimiter_spans.as_ref()
+    }
+
+    pub fn diagram_type(&self) -> Option<&str> {
+        self.diagram_type.as_deref()
+    }
+
+    pub fn text_index(&self) -> &FenceTextIndex {
+        &self.text_index
+    }
+
     fn includes_document_offset(&self, offset: usize) -> bool {
         if offset < self.start {
             return false;

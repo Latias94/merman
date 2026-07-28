@@ -1,6 +1,6 @@
 use crate::{
-    AnalysisDiagnostic, AnalysisPayload, AnalysisResult, Analyzer, DiagnosticRelated,
-    DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap,
+    AnalysisDiagnostic, AnalysisOutcome, AnalysisPayload, AnalysisResult, Analyzer,
+    DiagnosticRelated, DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -189,46 +189,65 @@ impl DocumentSource {
     pub fn remap_diagnostic_to_document(
         &self,
         diagram: &DocumentDiagram,
-        mut diagnostic: AnalysisDiagnostic,
+        diagnostic: AnalysisDiagnostic,
     ) -> AnalysisDiagnostic {
-        let fence_span = diagram
-            .is_fence()
-            .then(|| self.source_map.span(diagram.start, diagram.end).ok())
-            .flatten();
-
-        diagnostic.span = diagnostic
-            .span
-            .and_then(|span| self.remap_span_to_document(diagram, span))
-            .or(fence_span.clone());
-
-        for related in &mut diagnostic.related {
-            related.span = related
-                .span
-                .take()
-                .and_then(|span| self.remap_span_to_document(diagram, span));
-        }
-
-        for fix in &mut diagnostic.fixes {
-            fix.edits = fix
-                .edits
-                .drain(..)
-                .filter_map(|mut edit| {
-                    edit.span = self.remap_span_to_document(diagram, edit.span)?;
-                    Some(edit)
-                })
-                .collect();
-        }
-        diagnostic.fixes.retain(|fix| !fix.edits.is_empty());
-
-        if let Some(span) = fence_span {
-            diagnostic.related.push(DiagnosticRelated {
-                message: format!("Mermaid fence {}", diagram.index + 1),
-                span: Some(span),
-            });
-        }
-
-        diagnostic
+        remap_diagnostic(
+            &self.source_map,
+            diagram.start,
+            diagram.body_start,
+            diagram.end,
+            diagram.index,
+            diagram.is_fence(),
+            diagnostic,
+        )
     }
+}
+
+fn remap_diagnostic(
+    source_map: &SourceMap,
+    diagram_start: usize,
+    body_start: usize,
+    diagram_end: usize,
+    diagram_index: usize,
+    is_fence: bool,
+    mut diagnostic: AnalysisDiagnostic,
+) -> AnalysisDiagnostic {
+    let remap_span = |span: DiagnosticSpan| {
+        let start = body_start.checked_add(span.byte_start)?;
+        let end = body_start.checked_add(span.byte_end)?;
+        source_map.span(start, end).ok()
+    };
+    let fence_span = is_fence
+        .then(|| source_map.span(diagram_start, diagram_end).ok())
+        .flatten();
+
+    diagnostic.span = diagnostic.span.and_then(&remap_span).or(fence_span.clone());
+
+    for related in &mut diagnostic.related {
+        related.span = related.span.take().and_then(&remap_span);
+    }
+
+    for fix in &mut diagnostic.fixes {
+        let remapped = fix
+            .edits
+            .drain(..)
+            .map(|mut edit| {
+                edit.span = remap_span(edit.span)?;
+                Some(edit)
+            })
+            .collect::<Option<Vec<_>>>();
+        fix.edits = remapped.unwrap_or_default();
+    }
+    diagnostic.fixes.retain(|fix| !fix.edits.is_empty());
+
+    if let Some(span) = fence_span {
+        diagnostic.related.push(DiagnosticRelated {
+            message: format!("Mermaid fence {}", diagram_index + 1),
+            span: Some(span),
+        });
+    }
+
+    diagnostic
 }
 
 impl DocumentDiagram {
@@ -284,8 +303,8 @@ pub fn analyze_document(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisPayload {
-    if let Some(result) = analyzer.source_limit_result(text, source.clone()) {
-        return result.into_payload();
+    if let Some(rejection) = analyzer.source_limit_rejection(text, source.clone()) {
+        return rejection.into_payload();
     }
 
     match source.kind {
@@ -311,7 +330,7 @@ pub fn analyze_document_result(
     text: &str,
     analyzer: &Analyzer,
     source: SourceDescriptor,
-) -> AnalysisResult {
+) -> AnalysisOutcome {
     analyze_document_result_shared(Arc::from(text), analyzer, source)
 }
 
@@ -319,7 +338,7 @@ pub fn analyze_document_result_shared(
     text: Arc<str>,
     analyzer: &Analyzer,
     source: SourceDescriptor,
-) -> AnalysisResult {
+) -> AnalysisOutcome {
     match analyze_document_result_shared_inner(text, analyzer, source, || {
         Ok::<(), std::convert::Infallible>(())
     }) {
@@ -333,7 +352,7 @@ pub fn analyze_document_result_shared_cancellable(
     analyzer: &Analyzer,
     source: SourceDescriptor,
     cancellation: &crate::AnalysisCancellationToken,
-) -> Result<AnalysisResult, crate::AnalysisCancelled> {
+) -> Result<AnalysisOutcome, crate::AnalysisCancelled> {
     analyze_document_result_shared_inner(text, analyzer, source, || cancellation.checkpoint())
 }
 
@@ -342,31 +361,43 @@ fn analyze_document_result_shared_inner<E>(
     analyzer: &Analyzer,
     source: SourceDescriptor,
     mut checkpoint: impl FnMut() -> Result<(), E>,
-) -> Result<AnalysisResult, E> {
+) -> Result<AnalysisOutcome, E> {
     checkpoint()?;
-    if let Some(result) = analyzer.source_limit_result(text.as_ref(), source.clone()) {
-        return Ok(result);
+    if let Some(rejection) = analyzer.source_limit_rejection(text.as_ref(), source.clone()) {
+        return Ok(AnalysisOutcome::Rejected(rejection));
     }
 
     let document = DocumentSource::new(text, source.clone());
     checkpoint()?;
 
     if document.diagrams().is_empty() {
-        return Ok(AnalysisResult::new(
+        return Ok(AnalysisOutcome::Ready(AnalysisResult::new(
             source,
             document.source_map().clone(),
             Vec::new(),
             Vec::new(),
-        ));
+        )));
     }
     let operation_analyzer = match analyzer.try_for_operation() {
         Ok(analyzer) => analyzer,
         Err(error) => {
-            return Ok(AnalysisResult::new(
-                source,
-                document.source_map().clone(),
-                analyzer.runtime_policy_diagnostics(error, document.source_map()),
-                Vec::new(),
+            let error = Arc::new(merman_core::Error::from(error));
+            let diagnostics = crate::diagnostic_projection::core_error_diagnostic(
+                error.as_ref(),
+                document.source_map(),
+                &analyzer.options().rule_config,
+            )
+            .diagnostic
+            .into_iter()
+            .collect();
+            return Ok(AnalysisOutcome::Ready(
+                AnalysisResult::new(
+                    source,
+                    document.source_map().clone(),
+                    diagnostics,
+                    Vec::new(),
+                )
+                .with_document_error(error),
             ));
         }
     };
@@ -387,12 +418,12 @@ fn analyze_document_result_shared_inner<E>(
         analyzed_diagrams.push(analyzed);
     }
     checkpoint()?;
-    Ok(AnalysisResult::new(
+    Ok(AnalysisOutcome::Ready(AnalysisResult::new(
         source,
         document.source_map().clone(),
         diagnostics,
         analyzed_diagrams,
-    ))
+    )))
 }
 
 fn analyze_document_diagnostics(
@@ -431,6 +462,31 @@ fn extend_document_diagnostics(
                 .into_iter()
                 .map(|diagnostic| document.remap_diagnostic_to_document(diagram, diagnostic)),
         ),
+    }
+}
+
+pub(crate) fn remap_analyzed_diagnostics(
+    source_map: &SourceMap,
+    source_kind: SourceKind,
+    diagram: &crate::AnalyzedDiagram,
+    diagnostics: Vec<AnalysisDiagnostic>,
+) -> Vec<AnalysisDiagnostic> {
+    match source_kind {
+        SourceKind::Diagram => diagnostics,
+        SourceKind::Markdown | SourceKind::Mdx => diagnostics
+            .into_iter()
+            .map(|diagnostic| {
+                remap_diagnostic(
+                    source_map,
+                    diagram.start,
+                    diagram.body_start,
+                    diagram.end,
+                    diagram.index,
+                    diagram.kind == DocumentDiagramKind::MermaidFence,
+                    diagnostic,
+                )
+            })
+            .collect(),
     }
 }
 
@@ -743,7 +799,9 @@ mod tests {
             "```mermaid\nflowchart TD\nA-->B\n```\n```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
             &analyzer,
             source,
-        );
+        )
+        .into_ready()
+        .expect("runtime failure is still a complete analysis generation");
 
         assert!(result.diagrams().is_empty());
         assert_eq!(result.diagnostics().len(), 1);
@@ -751,6 +809,10 @@ mod tests {
             result.diagnostics()[0]
                 .message
                 .contains("outside the supported")
+        );
+        assert_eq!(
+            analyzer.reproject_payload(&result),
+            result.payload().clone()
         );
     }
 
@@ -1043,5 +1105,73 @@ mod tests {
         );
         assert_eq!(edit_span.line, 3);
         assert_eq!(remapped.fixes[0].edits[0].replacement, "init");
+    }
+
+    #[test]
+    fn diagnostic_reprojection_preserves_markdown_spans_and_fixes() {
+        let text = "before\n```mermaid\n%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter";
+        let source = source_descriptor_for_markdown_path(Some("example.md"));
+        let result = analyze_document_result(text, &Analyzer::new(), source.clone())
+            .into_ready()
+            .expect("source is within the analysis limit");
+        let analyzer = Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                crate::AnalysisRuleConfig::default()
+                    .with_profile(crate::AnalysisRuleProfile::Recommended)
+                    .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
+            ),
+        );
+
+        let reprojected = analyzer.reproject_payload(&result);
+        let freshly_parsed = analyze_document(text, &analyzer, source);
+
+        assert_eq!(reprojected, freshly_parsed);
+        let diagnostic = reprojected
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.id == crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID)
+            .expect("reprojected init directive diagnostic");
+        let span = diagnostic.span.as_ref().expect("diagnostic span");
+        assert_eq!(&text[span.byte_start..span.byte_end], "initialize");
+        let edit = &diagnostic.fixes[0].edits[0];
+        assert_eq!(
+            &text[edit.span.byte_start..edit.span.byte_end],
+            "initialize"
+        );
+        assert_eq!(edit.replacement, "init");
+    }
+
+    #[test]
+    fn rejects_an_entire_fix_when_any_edit_cannot_be_remapped() {
+        let source = "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter";
+        let document = DocumentSource::new(
+            source,
+            source_descriptor_for_markdown_path(Some("example.md")),
+        );
+        let diagram = &document.diagrams()[0];
+        let local_map = SourceMap::new(diagram.text.as_str());
+        let valid_span = local_map.span(0, "flowchart".len()).unwrap();
+        let mut invalid_span = valid_span.clone();
+        invalid_span.byte_start = usize::MAX;
+        invalid_span.byte_end = usize::MAX;
+        let diagnostic = AnalysisDiagnostic::error(
+            crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
+            DiagnosticCategory::Config,
+            "atomic fix",
+        )
+        .with_fix(DiagnosticFix::new(
+            "Apply both edits",
+            vec![
+                DiagnosticFixEdit::new(valid_span, "graph"),
+                DiagnosticFixEdit::new(invalid_span, "invalid"),
+            ],
+        ));
+
+        let remapped = document.remap_diagnostic_to_document(diagram, diagnostic);
+
+        assert!(
+            remapped.fixes.is_empty(),
+            "a multi-edit fix must not survive partial coordinate mapping"
+        );
     }
 }

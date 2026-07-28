@@ -1,19 +1,20 @@
 use crate::rules::{
     RESOURCE_LIMIT_RULE_ID, internal_rule_registry_gap_diagnostic, rule_descriptor,
 };
-use crate::{AnalysisDiagnostic, AnalysisResult, AnalysisStatus, SourceDescriptor, SourceMap};
+use crate::{AnalysisDiagnostic, AnalysisRejection, AnalysisStatus, SourceDescriptor};
 
-pub(crate) fn source_limit_result(
+pub(crate) fn source_limit_rejection(
     source: &str,
     descriptor: SourceDescriptor,
     max_source_bytes: Option<usize>,
-) -> Option<AnalysisResult> {
+) -> Option<AnalysisRejection> {
+    let limit = max_source_bytes?;
     let diagnostics = source_limit_diagnostics(source, max_source_bytes)?;
-    Some(AnalysisResult::new(
+    Some(AnalysisRejection::source_limit(
         descriptor,
-        SourceMap::new(""),
         diagnostics,
-        Vec::new(),
+        source.len(),
+        limit,
     ))
 }
 

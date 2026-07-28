@@ -74,21 +74,23 @@ fn analysis_facts_payload_matches_v1_schema_shape() {
         source_descriptor.clone(),
         SourceMap::new(Arc::clone(&source)),
         Vec::new(),
-        vec![AnalyzedDiagram {
-            source_id: "document".to_string(),
-            index: 0,
-            kind: DocumentDiagramKind::WholeDocument,
-            source: source_descriptor,
-            start: 0,
-            body_start: 0,
-            body_end: 0,
-            end: 0,
-            text: SharedTextSlice::whole(source),
-            fence_delimiter: None,
-            fence_delimiter_spans: None,
-            diagnostics: Vec::new(),
-            syntax: AnalysisSyntaxFacts::unavailable(None),
-        }],
+        vec![AnalyzedDiagram::from_document_diagram(
+            &merman_analysis::DocumentDiagram {
+                id: "document".to_string(),
+                index: 0,
+                kind: DocumentDiagramKind::WholeDocument,
+                source: source_descriptor,
+                start: 0,
+                body_start: 0,
+                body_end: 0,
+                end: 0,
+                text: SharedTextSlice::whole(source),
+                fence_delimiter: None,
+                fence_delimiter_spans: None,
+            },
+            Vec::new(),
+            AnalysisSyntaxFacts::unavailable(None),
+        )],
     );
 
     assert_eq!(

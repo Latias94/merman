@@ -45,7 +45,7 @@ fn eventmodeling_plan_projects_parser_lexemes_semantics_and_multiline_utf16() {
     let block_comment_line = "   第二行 🤓 */";
     let block_comment_start = source.find(block_comment_line).unwrap();
     let block_comment_position = snapshot
-        .source_map
+        .source_map()
         .utf16_position(block_comment_start)
         .expect("block comment UTF-16 position");
     assert!(plan.tokens().iter().any(|token| {
@@ -81,7 +81,7 @@ fn eventmodeling_plan_projects_parser_lexemes_semantics_and_multiline_utf16() {
     let body_line = "  \"🤓 数量\": 7";
     let body_start = source.find(body_line).expect("multiline data body");
     let position = snapshot
-        .source_map
+        .source_map()
         .utf16_position(body_start)
         .expect("body UTF-16 position");
     let body = plan
@@ -143,7 +143,7 @@ fn eventmodeling_recovery_plan_keeps_number_literal_and_tokens_after_error() {
     for text in ["After", "后来"] {
         let offset = source.find(text).expect("recovery token offset");
         let position = snapshot
-            .source_map
+            .source_map()
             .utf16_position(offset)
             .expect("recovery UTF-16 position");
         assert!(
@@ -160,12 +160,14 @@ fn eventmodeling_recovery_plan_keeps_number_literal_and_tokens_after_error() {
 
 fn plan(source: &str, suffix: &str) -> (DocumentSnapshot, SemanticTokenPlan) {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        format!("file:///tmp/eventmodeling-{suffix}.mmd"),
-        1,
-        source.to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            format!("file:///tmp/eventmodeling-{suffix}.mmd"),
+            1,
+            source.to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let plan =
         plan_semantic_tokens_for_snapshot(&snapshot).expect("eventmodeling semantic token plan");
     (snapshot, plan)
@@ -185,11 +187,11 @@ fn exact_token(
         .unwrap_or_else(|| panic!("missing occurrence {occurrence} of {needle:?}"));
     let end = start + needle.len();
     let start = snapshot
-        .source_map
+        .source_map()
         .utf16_position(start)
         .expect("token start UTF-16 position");
     let end = snapshot
-        .source_map
+        .source_map()
         .utf16_position(end)
         .expect("token end UTF-16 position");
     assert_eq!(start.line, end.line, "test token must stay on one line");

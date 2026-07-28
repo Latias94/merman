@@ -1108,13 +1108,21 @@ fn token_equivalence_case(
     fixture: Option<String>,
     source: String,
 ) -> Result<TokenEquivalenceCase, XtaskError> {
-    let analyzed = DocumentWorkspace::build_analyzed_snapshot_with_shared_text(
+    let analyzed = DocumentWorkspace::build_analysis_context_with_shared_text(
         analyzer,
         DocumentUri::new(format!("file:///editor-language/{id}.mmd")),
         1,
         Arc::from(source.as_str()),
         DocumentKind::Diagram,
-    );
+    )
+    .into_ready()
+    .map_err(|rejection| {
+        descriptor_error(format!(
+            "token equivalence case `{id}` was rejected at {} bytes (limit {})",
+            rejection.source_len(),
+            rejection.max_source_bytes()
+        ))
+    })?;
     let detection = analyzed.detection().ok_or_else(|| {
         descriptor_error(format!(
             "token equivalence case `{id}` has no diagram detection"
@@ -1126,7 +1134,7 @@ fn token_equivalence_case(
             detection.diagram_type
         )));
     }
-    let plan = plan_semantic_tokens_for_snapshot(analyzed.document()).map_err(|error| {
+    let plan = plan_semantic_tokens_for_snapshot(analyzed.snapshot()).map_err(|error| {
         descriptor_error(format!(
             "token equivalence case `{id}` failed semantic-token planning: {error}"
         ))

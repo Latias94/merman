@@ -118,12 +118,14 @@ fn railroad_recovery_plan_keeps_invalid_token_and_later_rule() {
 
 fn plan(source: &str, suffix: &str) -> (DocumentSnapshot, SemanticTokenPlan) {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        format!("file:///tmp/railroad-{suffix}.mmd"),
-        1,
-        source.to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            format!("file:///tmp/railroad-{suffix}.mmd"),
+            1,
+            source.to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("Railroad semantic token plan");
     (snapshot, plan)
 }
@@ -142,11 +144,11 @@ fn exact_token(
         .unwrap_or_else(|| panic!("missing occurrence {occurrence} of {needle:?}"));
     let end = start + needle.len();
     let start = snapshot
-        .source_map
+        .source_map()
         .utf16_position(start)
         .expect("token start UTF-16 position");
     let end = snapshot
-        .source_map
+        .source_map()
         .utf16_position(end)
         .expect("token end UTF-16 position");
     assert_eq!(start.line, end.line, "test token must stay on one line");

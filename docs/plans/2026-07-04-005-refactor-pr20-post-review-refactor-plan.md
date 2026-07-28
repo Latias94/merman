@@ -227,15 +227,15 @@ U5 and U6 may share `SourceMap` and editor-core call sites; if implementation re
 
 ### U5. Close Editor Analysis Contract Drift
 
-- **Goal:** Make editor semantic facts and flowchart analysis accept every runtime value produced by Rust/WASM and expose matching TypeScript contracts.
+- **Goal:** Keep editor semantic facts and flowchart analysis aligned across Rust, WASM, and TypeScript without exposing parser-input coordinate modes.
 - **Requirements:** R7, R8, R13; covers AE6.
 - **Dependencies:** None.
 - **Files:** `platforms/web/src/index.ts`, `platforms/web/test` contract tests, `crates/merman-analysis/src/result.rs`, `crates/merman-analysis/tests`, `crates/merman-wasm` tests, `crates/merman-ffi/include/merman.h`, `crates/merman-ffi/tests/c_consumer_smoke.c`, `crates/merman-uniffi/src/lib.rs`, `crates/merman-uniffi/tests` or bindgen smoke tests, Python UniFFI shim files, host wrapper docs under `docs/platforms` or `docs/bindings`.
-- **Approach:** Complete the TypeScript `EditorSemanticFactSource` union for parser recovery/degradation values emitted by Rust. Accept legacy `flowchart` structured facts where current parser configuration can still produce them. Refresh no-render and render-gated shims/tests so public docs match current behavior rather than historical contract fragments.
-- **Execution note:** Add contract tests that assert the missing runtime strings and legacy `flowchart` variant fail before production edits where practical.
+- **Approach:** ADR 0073 superseded the earlier degraded-coordinate proposal. Parser facts are either mapped back to original-source coordinates and reported as `parser_complete` or `parser_recovered`, or unavailable; there is no document-wide parser-input/degraded state. Accept legacy `flowchart` structured facts only where current parser configuration can still produce them. Refresh no-render and render-gated shims/tests so public docs match current behavior rather than historical contract fragments.
+- **Execution note:** Add contract tests for the three admitted fact-source states and the legacy `flowchart` variant before production edits where practical.
 - **Patterns to follow:** Existing web contract checker style, `AnalysisFlowchartFacts::try_from_model`, WASM no-render validation tests, and UniFFI generated-surface expectations.
-- **Test scenarios:** Web TypeScript accepts `parser_complete_degraded_spans` and `parser_recovered_degraded_spans`. Analysis converts a structured-facts payload with diagram family `flowchart` into flowchart facts when dagre-d3 is selected. No-render WASM validation exposes the expected non-render contract and does not import render-only symbols. Python/UniFFI shims do not expose render-gated imports in no-render mode. C and UniFFI smoke tests prove document-analysis/facts surfaces remain exported where the plan says they are public.
-- **Verification:** Focused Rust analysis tests, WASM/web contract checks, C/UniFFI smoke coverage, and docs/API examples agree on the same source strings and flowchart fact family set.
+- **Test scenarios:** Web TypeScript accepts `unavailable`, `parser_complete`, and `parser_recovered`, while parser-input coordinate states remain unrepresentable. Analysis converts a structured-facts payload with diagram family `flowchart` into flowchart facts when dagre-d3 is selected. No-render WASM validation exposes the expected non-render contract and does not import render-only symbols. Python/UniFFI shims do not expose render-gated imports in no-render mode. C and UniFFI smoke tests prove document-analysis/facts surfaces remain exported where the plan says they are public.
+- **Verification:** Focused Rust analysis tests, WASM/web contract checks, C/UniFFI smoke coverage, and docs/API examples agree on the same three source strings and flowchart fact family set.
 
 ### U6. Refactor SourceMap and Snapshot Ownership for Dense Documents
 

@@ -63,7 +63,7 @@ use tower_lsp_server::ls_types::{
     UnchangedDocumentDiagnosticReport, WorkspaceEdit, WorkspaceSymbolParams,
     WorkspaceSymbolResponse,
 };
-use tower_lsp_server::{Client, ClientSocket, LanguageServer, LspService};
+use tower_lsp_server::{Client, LanguageServer, LspService};
 
 const MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS: usize = 3;
 
@@ -76,46 +76,44 @@ pub struct MermanLanguageServer {
 }
 
 impl MermanLanguageServer {
-    /// Creates a language server for hosts that construct the `tower-lsp-server` transport.
-    pub fn new(client: Client) -> Self {
-        let refresh_coordinator = RefreshCoordinator::from_tower_client(client.clone());
-        Self::with_refresh_coordinator(client, refresh_coordinator)
-    }
-
-    fn new_with_refresh(client: Client, refresh_client: RefreshClient) -> Self {
-        let refresh_coordinator = RefreshCoordinator::new(refresh_client);
-        Self::with_refresh_coordinator(client, refresh_coordinator)
-    }
-
-    fn with_refresh_coordinator(client: Client, refresh_coordinator: RefreshCoordinator) -> Self {
+    fn new(client: Client, refresh_client: RefreshClient) -> Self {
         Self {
             client,
             store: Arc::new(Mutex::new(DocumentStore::new())),
             client_profile: OnceLock::new(),
-            refresh_coordinator,
+            refresh_coordinator: RefreshCoordinator::new(refresh_client),
         }
     }
 
-    /// Builds the `tower-lsp-server` service and client socket.
-    pub fn service() -> (LspService<Self>, ClientSocket) {
-        LspService::build(Self::new)
-            .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
-            .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
-            .finish()
+    /// Builds the service with a cancellation-safe, supervised client socket.
+    pub fn service() -> (LspService<Self>, MermanClientSocket) {
+        let (service, socket, _) = Self::service_components();
+        (service, socket)
     }
 
-    /// Builds the production service with cancellation-safe, supervised refresh requests.
-    pub fn service_with_refresh() -> (LspService<Self>, MermanClientSocket) {
+    fn service_components() -> (LspService<Self>, MermanClientSocket, RefreshClient) {
         let (refresh_client, refresh_requests, refresh_responses) = RefreshClient::channel();
-        let (service, socket) =
-            LspService::build(move |client| Self::new_with_refresh(client, refresh_client))
-                .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
-                .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
-                .finish();
+        let refresh_handle = refresh_client.clone();
+        let (service, socket) = LspService::build(move |client| Self::new(client, refresh_client))
+            .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
+            .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
+            .finish();
         (
             service,
             MermanClientSocket::new(socket, refresh_requests, refresh_responses),
+            refresh_handle,
         )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn service_with_refresh_client()
+    -> (LspService<Self>, MermanClientSocket, RefreshClient) {
+        Self::service_components()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn client_for_tests(&self) -> Client {
+        self.client.clone()
     }
 
     /// Returns the server's full capability envelope without client-side negotiation.
@@ -338,7 +336,7 @@ impl MermanLanguageServer {
     async fn diagnostics_for_current_context(
         &self,
         context: &DiagnosticContext,
-    ) -> Option<Vec<tower_lsp_server::ls_types::Diagnostic>> {
+    ) -> Result<Option<Vec<tower_lsp_server::ls_types::Diagnostic>>> {
         let profile = self.client_profile();
         let (diagnostics, analysis_context) =
             match Self::unavailable_document_diagnostics_with_profile(&context.document, profile) {
@@ -349,10 +347,13 @@ impl MermanLanguageServer {
                         &context.document.uri,
                         SnapshotContextKind::Diagnostics,
                     )
-                    .await
-                    .ok()
-                    .flatten()?;
-                    let payload = analysis_context.analysis_payload()?;
+                    .await?;
+                    let Some(analysis_context) = analysis_context else {
+                        return Ok(None);
+                    };
+                    let Some(payload) = analysis_context.analysis_payload() else {
+                        return Ok(None);
+                    };
                     let diagnostics = Self::analysis_payload_diagnostics_with_profile(
                         &context.document,
                         payload,
@@ -362,11 +363,11 @@ impl MermanLanguageServer {
                 }
             };
         let store = self.store.lock().await;
-        (store.is_diagnostic_context_current(context)
+        Ok((store.is_diagnostic_context_current(context)
             && analysis_context
                 .as_ref()
                 .is_none_or(|context| store.is_analysis_context_current(context)))
-        .then_some(diagnostics)
+        .then_some(diagnostics))
     }
 
     async fn diagnostics_or_recompute_latest(
@@ -377,7 +378,7 @@ impl MermanLanguageServer {
         Vec<tower_lsp_server::ls_types::Diagnostic>,
     )> {
         for _ in 0..MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS {
-            if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
+            if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await? {
                 return Ok((context, diagnostics));
             }
 
@@ -424,18 +425,29 @@ impl MermanLanguageServer {
     }
 
     async fn publish_current_diagnostics(&self, context: &DiagnosticContext) {
-        if let Some(diagnostics) = self.diagnostics_for_current_context(context).await {
-            let profile = self.client_profile();
-            self.client
-                .publish_diagnostics(
-                    context.document.uri.clone(),
-                    diagnostics,
-                    profile
-                        .diagnostics
-                        .version
-                        .then_some(context.document.version),
-                )
-                .await;
+        match self.diagnostics_for_current_context(context).await {
+            Ok(Some(diagnostics)) => {
+                let profile = self.client_profile();
+                self.client
+                    .publish_diagnostics(
+                        context.document.uri.clone(),
+                        diagnostics,
+                        profile
+                            .diagnostics
+                            .version
+                            .then_some(context.document.version),
+                    )
+                    .await;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::error!(
+                    uri = %context.document.uri.as_str(),
+                    code = ?error.code,
+                    message = %error.message,
+                    "failed to compute push diagnostics"
+                );
+            }
         }
     }
 
@@ -971,9 +983,13 @@ fn semantic_token_planning_error(
     snapshot: &DocumentSnapshot,
     error: TokenPlanError,
 ) -> tower_lsp_server::jsonrpc::Error {
+    if error.is_invalid_range() {
+        return tower_lsp_server::jsonrpc::Error::invalid_params(error.to_string());
+    }
+
     tracing::error!(
-        uri = snapshot.uri.as_str(),
-        version = snapshot.version,
+        uri = snapshot.uri().as_str(),
+        version = snapshot.version(),
         %error,
         "semantic token planning failed"
     );

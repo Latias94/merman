@@ -1,9 +1,13 @@
 use std::{
     convert::Infallible,
     future::Future,
-    io::{Read, Write},
+    io::{self, Read, Write},
     pin::Pin,
     process::{Child, Command, Output, Stdio},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     task::{Context, Poll},
     thread,
     time::Instant,
@@ -12,7 +16,7 @@ use std::{
 use futures::{StreamExt, channel::mpsc, sink, stream};
 use merman_lsp::{LSP_HANDLER_CONCURRENCY, StdioTermination, serve_stdio, stdio_server};
 use serde_json::json;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::oneshot;
 use tokio::time::{Duration, timeout};
 use tower::Service;
@@ -275,6 +279,32 @@ impl Service<Request> for LoopbackOnlyService {
     }
 }
 
+struct WriteFailureWithPendingShutdown {
+    shutdown_polled: Arc<AtomicBool>,
+}
+
+impl AsyncWrite for WriteFailureWithPendingShutdown {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        _buffer: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Poll::Ready(Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "synthetic output failure",
+        )))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.shutdown_polled.store(true, Ordering::Release);
+        Poll::Pending
+    }
+}
+
 struct OverlapService {
     unblock: Option<oneshot::Receiver<()>>,
 }
@@ -509,6 +539,68 @@ async fn stdio_server_routes_loopback_requests_and_responses() {
         .await
         .expect("stdio server should stop after stdin closes")
         .expect("stdio server task should not panic");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stdio_server_stops_when_output_closes_while_input_remains_open() {
+    let (client_stdin, server_stdin) = tokio::io::duplex(4096);
+    let (server_stdout, client_stdout) = tokio::io::duplex(4096);
+    drop(client_stdout);
+    let (responses_tx, _responses_rx) = mpsc::unbounded();
+    let client_request = Request::build("client/test").id(42).finish();
+
+    let server_task = tokio::spawn(async move {
+        serve_stdio(
+            server_stdin,
+            server_stdout,
+            TestLoopback {
+                requests: vec![client_request],
+                responses: responses_tx,
+            },
+            LoopbackOnlyService,
+        )
+        .await
+    });
+
+    let termination = timeout(Duration::from_secs(2), server_task)
+        .await
+        .expect("closed output should cancel the blocked input reader")
+        .expect("stdio server task should not panic");
+    assert_eq!(termination, StdioTermination::OutputClosed);
+    drop(client_stdin);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stdio_write_failure_cancels_input_without_waiting_for_shutdown() {
+    let (client_stdin, server_stdin) = tokio::io::duplex(4096);
+    let shutdown_polled = Arc::new(AtomicBool::new(false));
+    let stdout = WriteFailureWithPendingShutdown {
+        shutdown_polled: Arc::clone(&shutdown_polled),
+    };
+    let (responses_tx, _responses_rx) = mpsc::unbounded();
+    let client_request = Request::build("client/test").id(42).finish();
+
+    let termination = timeout(
+        Duration::from_secs(2),
+        serve_stdio(
+            server_stdin,
+            stdout,
+            TestLoopback {
+                requests: vec![client_request],
+                responses: responses_tx,
+            },
+            LoopbackOnlyService,
+        ),
+    )
+    .await
+    .expect("write failure should cancel the blocked input reader");
+
+    assert_eq!(termination, StdioTermination::OutputClosed);
+    assert!(
+        !shutdown_polled.load(Ordering::Acquire),
+        "a failed writer must not block session cancellation in shutdown"
+    );
+    drop(client_stdin);
 }
 
 #[tokio::test(flavor = "current_thread")]

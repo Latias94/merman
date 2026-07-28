@@ -57,7 +57,7 @@ fn mindmap_complete_plan_merges_multiline_parser_lexemes_and_semantics() {
     }
     let emoji_offset = source.find('🌳').expect("emoji offset");
     let emoji_position = snapshot
-        .source_map
+        .source_map()
         .utf16_position(emoji_offset)
         .expect("emoji UTF-16 position");
     assert!(plan.tokens().iter().any(|token| {
@@ -104,12 +104,14 @@ fn mindmap_recovery_plan_keeps_confirmed_prefix_and_later_overlay() {
 
 fn plan(source: &str, suffix: &str) -> (DocumentSnapshot, SemanticTokenPlan) {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        format!("file:///tmp/mindmap-{suffix}.mmd"),
-        1,
-        source.to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            format!("file:///tmp/mindmap-{suffix}.mmd"),
+            1,
+            source.to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("mindmap semantic token plan");
     (snapshot, plan)
 }
@@ -128,11 +130,11 @@ fn exact_token(
         .unwrap_or_else(|| panic!("missing occurrence {occurrence} of {needle:?}"));
     let end = start + needle.len();
     let start = snapshot
-        .source_map
+        .source_map()
         .utf16_position(start)
         .expect("token start UTF-16 position");
     let end = snapshot
-        .source_map
+        .source_map()
         .utf16_position(end)
         .expect("token end UTF-16 position");
     assert_eq!(start.line, end.line, "test token must stay on one line");
@@ -160,7 +162,7 @@ fn assert_token_covers(
 ) {
     let offset = source.find(text).expect("covered text offset");
     let position = snapshot
-        .source_map
+        .source_map()
         .utf16_position(offset)
         .expect("covered text UTF-16 position");
     assert!(plan.tokens().iter().any(|token| {

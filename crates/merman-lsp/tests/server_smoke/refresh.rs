@@ -2,7 +2,7 @@ use super::prelude::*;
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change() {
-    let (mut service, mut socket) = MermanLanguageServer::service_with_refresh();
+    let (mut service, mut socket) = MermanLanguageServer::service();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -74,7 +74,7 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
-    let (mut service, mut socket) = MermanLanguageServer::service_with_refresh();
+    let (mut service, mut socket) = MermanLanguageServer::service();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -191,7 +191,7 @@ async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn pending_semantic_refresh_does_not_block_diagnostic_refresh() {
-    let (mut service, mut socket) = MermanLanguageServer::service_with_refresh();
+    let (mut service, mut socket) = MermanLanguageServer::service();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({

@@ -31,12 +31,14 @@ fn requirement_parser_tokens_plan_across_crlf_unicode_and_recovery() {
 
     for (index, source) in cases.into_iter().enumerate() {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            format!("file:///tmp/requirement-{index}.mmd"),
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/requirement-{index}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let plan =
             plan_semantic_tokens_for_snapshot(&snapshot).expect("requirement semantic token plan");
 
@@ -57,7 +59,7 @@ fn requirement_parser_tokens_plan_across_crlf_unicode_and_recovery() {
         };
         let offset = source.find(target).expect("test token offset");
         let position = snapshot
-            .source_map
+            .source_map()
             .utf16_position(offset)
             .expect("test token UTF-16 position");
         assert!(

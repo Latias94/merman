@@ -22,12 +22,14 @@ fn architecture_parser_lexemes_project_to_utf16_without_overlap() {
 
     for (index, source) in cases.into_iter().enumerate() {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            format!("file:///tmp/architecture-{index}.mmd"),
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/architecture-{index}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let plan =
             plan_semantic_tokens_for_snapshot(&snapshot).expect("architecture semantic token plan");
 

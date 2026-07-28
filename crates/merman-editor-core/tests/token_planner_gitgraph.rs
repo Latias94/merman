@@ -21,12 +21,14 @@ fn gitgraph_parser_tokens_plan_across_crlf_unicode_and_recovery() {
 
     for (index, source) in cases.into_iter().enumerate() {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            format!("file:///tmp/gitgraph-{index}.mmd"),
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/gitgraph-{index}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let plan =
             plan_semantic_tokens_for_snapshot(&snapshot).expect("gitGraph semantic token plan");
 
@@ -43,7 +45,7 @@ fn gitgraph_parser_tokens_plan_across_crlf_unicode_and_recovery() {
         let target = if index == 0 { "开始" } else { "后来" };
         let offset = source.find(target).expect("test token offset");
         let position = snapshot
-            .source_map
+            .source_map()
             .utf16_position(offset)
             .expect("test token UTF-16 position");
         assert!(

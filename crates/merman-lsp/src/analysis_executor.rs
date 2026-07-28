@@ -1,4 +1,6 @@
-use crate::analysis_request::{AnalysisBuildKey, AnalysisBuildRequest, AnalysisGeneration};
+use crate::analysis_request::{
+    AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, AnalysisGeneration,
+};
 use crate::snapshot::DocumentAnalysisContext;
 use crate::sync::lock_recovering_poison;
 use merman_analysis::AnalysisCancellationToken;
@@ -186,33 +188,56 @@ impl Drop for AnalysisWaiter {
 #[derive(Debug, Clone)]
 pub(crate) struct AnalysisExecutionError {
     message: Arc<str>,
-    stale: bool,
+    kind: AnalysisExecutionErrorKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AnalysisExecutionErrorKind {
+    Internal,
+    Stale,
+    Cancelled,
+    ResourceRejected,
 }
 
 impl AnalysisExecutionError {
     fn new(message: impl Into<Arc<str>>) -> Self {
         Self {
             message: message.into(),
-            stale: false,
+            kind: AnalysisExecutionErrorKind::Internal,
         }
     }
 
     fn stale() -> Self {
         Self {
             message: "document analysis request was superseded".into(),
-            stale: true,
+            kind: AnalysisExecutionErrorKind::Stale,
         }
     }
 
     fn cancelled() -> Self {
         Self {
             message: "document analysis request no longer has a waiter".into(),
-            stale: true,
+            kind: AnalysisExecutionErrorKind::Cancelled,
+        }
+    }
+
+    fn resource_rejected(rejection: merman_analysis::AnalysisRejection) -> Self {
+        Self {
+            message: format!(
+                "document analysis rejected after LSP preflight: source is {} bytes, exceeding max_source_bytes {}",
+                rejection.source_len(),
+                rejection.max_source_bytes()
+            )
+            .into(),
+            kind: AnalysisExecutionErrorKind::ResourceRejected,
         }
     }
 
     pub(crate) fn is_stale(&self) -> bool {
-        self.stale
+        matches!(
+            self.kind,
+            AnalysisExecutionErrorKind::Stale | AnalysisExecutionErrorKind::Cancelled
+        )
     }
 }
 
@@ -323,7 +348,15 @@ impl AnalysisExecutor {
                             "document analysis worker failed: {error}"
                         ))
                     })
-                    .and_then(|result| result.map_err(|_| AnalysisExecutionError::cancelled()))
+                    .and_then(|result| match result {
+                        Ok(context) => Ok(context),
+                        Err(AnalysisBuildError::Cancelled(_)) => {
+                            Err(AnalysisExecutionError::cancelled())
+                        }
+                        Err(AnalysisBuildError::Rejected(rejection)) => {
+                            Err(AnalysisExecutionError::resource_rejected(rejection))
+                        }
+                    })
                 }
                 Ok(_) => Err(AnalysisExecutionError::cancelled()),
                 Err(error) => Err(AnalysisExecutionError::new(format!(

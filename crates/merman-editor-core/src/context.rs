@@ -26,20 +26,22 @@ impl<'a> CompletionContext<'a> {
     pub fn from_snapshot(snapshot: &'a DocumentSnapshot, position: Position) -> Option<Self> {
         let fence = snapshot.fence_at_position(position)?;
         let cursor_offset = snapshot.byte_offset_for_position(position)?;
-        if cursor_offset < fence.body_start
-            || cursor_offset > fence.body_end
-            || (cursor_offset == fence.body_end && fence.end > fence.body_end)
+        let body_range = fence.body_range();
+        let document_range = fence.document_range();
+        if cursor_offset < body_range.start
+            || cursor_offset > body_range.end
+            || (cursor_offset == body_range.end && document_range.end > body_range.end)
         {
             return None;
         }
         let relative_cursor = cursor_offset
-            .saturating_sub(fence.body_start)
-            .min(fence.text.len());
+            .saturating_sub(body_range.start)
+            .min(fence.text().len());
         let cursor_context = fence
-            .text_index
-            .cursor_context(&fence.text, relative_cursor);
-        let prefix_start_offset = fence.body_start + cursor_context.prefix_start();
-        let cursor_offset = fence.body_start + cursor_context.cursor();
+            .text_index()
+            .cursor_context(fence.text(), relative_cursor);
+        let prefix_start_offset = body_range.start + cursor_context.prefix_start();
+        let cursor_offset = body_range.start + cursor_context.cursor();
 
         Some(Self {
             snapshot,
@@ -54,7 +56,7 @@ impl<'a> CompletionContext<'a> {
             expected_syntax: cursor_context.expected_syntax(),
             expected_syntax_span: cursor_context
                 .expected_syntax_span()
-                .map(|span| (fence.body_start + span.start, fence.body_start + span.end)),
+                .map(|span| (body_range.start + span.start, body_range.start + span.end)),
             completion_kinds: cursor_context.completion_kinds().to_vec(),
         })
     }
@@ -68,7 +70,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn document_uri(&self) -> &str {
-        self.snapshot.uri.as_str()
+        self.snapshot.uri().as_str()
     }
 
     pub fn has_parser_backed_facts(&self) -> bool {
@@ -100,7 +102,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn is_block_diagram(&self) -> bool {
-        self.fence.diagram_type.as_deref() == Some("block")
+        self.fence.diagram_type() == Some("block")
     }
 
     pub fn operator_range(&self) -> Option<Range> {
@@ -163,7 +165,6 @@ impl<'a> CompletionContext<'a> {
 
     pub fn offer_operator_items(&self) -> bool {
         self.offers(FenceCursorCompletionKind::Operator)
-            && !self.degraded_flowchart_payload_context()
     }
 
     pub fn offer_directive_items(&self) -> bool {
@@ -190,12 +191,6 @@ impl<'a> CompletionContext<'a> {
             );
         }
 
-        if self.degraded_flowchart_payload_context()
-            && !flowchart_top_level_shape_completion_context(&self.prefix)
-        {
-            return false;
-        }
-
         self.offers(FenceCursorCompletionKind::Shape)
     }
 
@@ -205,10 +200,6 @@ impl<'a> CompletionContext<'a> {
                 expected,
                 FenceExpectedSyntaxKind::NodeIdentifier | FenceExpectedSyntaxKind::IdList
             );
-        }
-
-        if self.degraded_flowchart_target_range().is_some() {
-            return true;
         }
 
         if self.has_parser_backed_facts() && self.offer_directive_target_node_items() {
@@ -233,10 +224,10 @@ impl<'a> CompletionContext<'a> {
     pub fn offer_frontmatter_items(&self) -> bool {
         let relative_cursor = self
             .cursor_offset
-            .saturating_sub(self.fence.body_start)
-            .min(self.fence.text.len());
+            .saturating_sub(self.fence.body_range().start)
+            .min(self.fence.text().len());
         is_frontmatter_authoring_position(
-            &self.fence.text,
+            self.fence.text(),
             relative_cursor,
             &self.prefix,
             self.source_start,
@@ -301,10 +292,6 @@ impl<'a> CompletionContext<'a> {
             return self.current_token_range(is_directive_target_delimiter);
         }
 
-        if let Some(range) = self.degraded_flowchart_target_range() {
-            return Some(range);
-        }
-
         if self.offer_operator_items() {
             None
         } else {
@@ -329,7 +316,7 @@ impl<'a> CompletionContext<'a> {
     }
 
     fn range_for_offsets(&self, start: usize, end: usize) -> Option<Range> {
-        let span = self.snapshot.source_map.span(start, end).ok()?;
+        let span = self.snapshot.source_map().span(start, end).ok()?;
         Some(Range {
             start: Position {
                 line: span.lsp_range.start.line,
@@ -373,7 +360,7 @@ impl<'a> CompletionContext<'a> {
     fn shape_value_edit_parts_from_expected_span(&self) -> Option<(Range, bool, bool)> {
         let (start, end) = self.expected_syntax_span?;
         let range = self.range_for_offsets(start, end)?;
-        let has_separator_space = self.snapshot.text[..start]
+        let has_separator_space = self.snapshot.text()[..start]
             .chars()
             .next_back()
             .is_some_and(|ch| ch.is_whitespace());
@@ -383,7 +370,11 @@ impl<'a> CompletionContext<'a> {
     }
 
     fn should_append_shape_closing_brace(&self, offset: usize) -> bool {
-        let Some(suffix) = self.snapshot.text.get(offset..self.fence.body_end) else {
+        let Some(suffix) = self
+            .snapshot
+            .text()
+            .get(offset..self.fence.body_range().end)
+        else {
             return false;
         };
         !matches!(
@@ -401,30 +392,8 @@ impl<'a> CompletionContext<'a> {
             == DirectiveCompletionSlot::Target
     }
 
-    fn degraded_flowchart_target_range(&self) -> Option<Range> {
-        if self.expected_syntax.is_some()
-            || self.comment_or_directive_line
-            || !self.source.is_parser_backed()
-            || self.source.has_source_mapped_spans()
-            || !is_flowchart_diagram_type(self.fence.diagram_type.as_deref())
-        {
-            return None;
-        }
-
-        let token_start = flowchart_target_token_start(&self.prefix)?;
-        self.range_for_offsets(self.prefix_start_offset + token_start, self.cursor_offset)
-    }
-
-    fn degraded_flowchart_payload_context(&self) -> bool {
-        self.expected_syntax.is_none()
-            && self.source.is_parser_backed()
-            && !self.source.has_source_mapped_spans()
-            && is_flowchart_diagram_type(self.fence.diagram_type.as_deref())
-            && flowchart_scan_line(&self.prefix).inside_payload
-    }
-
     fn payload_completion_context(&self) -> bool {
-        self.is_parser_controlled_payload() || self.degraded_flowchart_payload_context()
+        self.is_parser_controlled_payload()
     }
 
     fn current_token_range(&self, is_delimiter: fn(char) -> bool) -> Option<Range> {
@@ -459,448 +428,6 @@ fn operator_suffix_start(prefix: &str) -> Option<usize> {
     }
 
     seen_operator.then_some(start)
-}
-
-fn is_flowchart_diagram_type(diagram_type: Option<&str>) -> bool {
-    diagram_type.is_some_and(|diagram_type| diagram_type.starts_with("flowchart"))
-}
-
-fn flowchart_target_token_start(prefix: &str) -> Option<usize> {
-    let trimmed_end = prefix.trim_end().len();
-    let trimmed = &prefix[..trimmed_end];
-    let (_, operator_end) = last_flowchart_operator(trimmed)?;
-    let mut target_start = operator_end;
-
-    target_start += leading_whitespace_len(&prefix[target_start..]);
-    let mut replacement_start = target_start;
-    let operator_tail = prefix.get(target_start..)?;
-    if operator_tail.starts_with('|') {
-        target_start += flowchart_edge_label_len(operator_tail)?;
-        replacement_start = target_start;
-        target_start += leading_whitespace_len(&prefix[target_start..]);
-    }
-
-    let target = &prefix[target_start..];
-    if target.chars().any(char::is_whitespace) {
-        return None;
-    }
-    if !target.chars().all(is_flowchart_target_fragment_char) {
-        return None;
-    }
-
-    Some(replacement_start)
-}
-
-fn last_flowchart_operator(prefix: &str) -> Option<(usize, usize)> {
-    let scan = flowchart_scan_line(prefix);
-    if scan.inside_payload {
-        return None;
-    }
-    scan.last_operator
-}
-
-fn flowchart_top_level_shape_completion_context(prefix: &str) -> bool {
-    flowchart_top_level_shape_trigger(prefix) || flowchart_top_level_shape_object_value(prefix)
-}
-
-fn flowchart_top_level_shape_trigger(prefix: &str) -> bool {
-    let prefix = prefix.trim_end();
-    let trigger_len = if prefix.ends_with("((")
-        || prefix.ends_with("{{")
-        || prefix.ends_with("[/")
-        || prefix.ends_with("[\\")
-    {
-        2
-    } else if prefix.ends_with('[') || prefix.ends_with('>') {
-        1
-    } else {
-        return false;
-    };
-    let trigger_start = prefix.len().saturating_sub(trigger_len);
-
-    !flowchart_scan_line(&prefix[..trigger_start]).inside_payload
-}
-
-fn flowchart_top_level_shape_object_value(prefix: &str) -> bool {
-    let prefix = prefix.trim_end();
-    let mut search_end = prefix.len();
-
-    while let Some(marker) = prefix[..search_end].rfind("@{") {
-        if shape_object_value_prefix(&prefix[marker..search_end]).is_some()
-            && !flowchart_scan_line(&prefix[..marker]).inside_payload
-        {
-            return true;
-        }
-        search_end = marker;
-    }
-
-    false
-}
-
-#[derive(Debug, Default)]
-struct FlowchartLineScan {
-    last_operator: Option<(usize, usize)>,
-    inside_payload: bool,
-}
-
-fn flowchart_scan_line(prefix: &str) -> FlowchartLineScan {
-    let mut scan = FlowchartLineScan::default();
-    let mut state = FlowchartOperatorScanState::default();
-    let mut cursor = 0usize;
-
-    while cursor < prefix.len() {
-        if state.is_operator_site()
-            && let Some(operator) = flowchart_operator_at(prefix, cursor)
-        {
-            let start = cursor;
-            cursor = operator.end;
-            scan.last_operator = Some((start, cursor));
-
-            if operator.inside_payload {
-                scan.inside_payload = true;
-                return scan;
-            }
-
-            let label_start = cursor + leading_whitespace_len(&prefix[cursor..]);
-            if prefix[label_start..].starts_with('|') {
-                let Some(label_len) = flowchart_edge_label_len(&prefix[label_start..]) else {
-                    scan.inside_payload = true;
-                    return scan;
-                };
-                cursor = label_start + label_len;
-            }
-            continue;
-        }
-
-        let Some(ch) = prefix[cursor..].chars().next() else {
-            break;
-        };
-        state.accept(ch);
-        cursor += ch.len_utf8();
-    }
-
-    scan.inside_payload = !state.is_operator_site();
-    scan
-}
-
-#[derive(Debug, Default)]
-struct FlowchartOperatorScanState {
-    bracket_depth: usize,
-    paren_depth: usize,
-    brace_depth: usize,
-    quote: Option<char>,
-    escaped: bool,
-}
-
-impl FlowchartOperatorScanState {
-    fn is_operator_site(&self) -> bool {
-        self.quote.is_none()
-            && self.bracket_depth == 0
-            && self.paren_depth == 0
-            && self.brace_depth == 0
-    }
-
-    fn accept(&mut self, ch: char) {
-        if let Some(quote) = self.quote {
-            if self.escaped {
-                self.escaped = false;
-                return;
-            }
-            if ch == '\\' {
-                self.escaped = true;
-                return;
-            }
-            if ch == quote {
-                self.quote = None;
-            }
-            return;
-        }
-
-        match ch {
-            '"' | '\'' | '`' => self.quote = Some(ch),
-            '[' => self.bracket_depth += 1,
-            ']' => self.bracket_depth = self.bracket_depth.saturating_sub(1),
-            '(' => self.paren_depth += 1,
-            ')' => self.paren_depth = self.paren_depth.saturating_sub(1),
-            '{' => self.brace_depth += 1,
-            '}' => self.brace_depth = self.brace_depth.saturating_sub(1),
-            _ => {}
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FlowchartOperatorMatch {
-    end: usize,
-    inside_payload: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FlowchartLinkFamily {
-    Normal,
-    Thick,
-    Dotted,
-    Invisible,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FlowchartLinkMarker {
-    Arrow,
-    Circle,
-    Cross,
-}
-
-fn flowchart_operator_at(prefix: &str, offset: usize) -> Option<FlowchartOperatorMatch> {
-    flowchart_full_link_at(prefix, offset)
-        .or_else(|| flowchart_new_notation_link_at(prefix, offset))
-}
-
-fn flowchart_full_link_at(prefix: &str, offset: usize) -> Option<FlowchartOperatorMatch> {
-    [
-        FlowchartLinkFamily::Invisible,
-        FlowchartLinkFamily::Thick,
-        FlowchartLinkFamily::Normal,
-        FlowchartLinkFamily::Dotted,
-    ]
-    .into_iter()
-    .find_map(|family| {
-        let link = flowchart_link_end_at(prefix, offset, family, false, true)?;
-        Some(FlowchartOperatorMatch {
-            end: link.end,
-            inside_payload: false,
-        })
-    })
-}
-
-fn flowchart_new_notation_link_at(prefix: &str, offset: usize) -> Option<FlowchartOperatorMatch> {
-    let start = flowchart_start_link_at(prefix, offset)?;
-    let mut cursor = start.end;
-    while cursor < prefix.len() {
-        if let Some(link) = flowchart_link_end_at(prefix, cursor, start.family, true, false)
-            && flowchart_new_notation_markers_match(start.marker, link.marker)
-        {
-            return Some(FlowchartOperatorMatch {
-                end: link.end,
-                inside_payload: false,
-            });
-        }
-        cursor += prefix[cursor..].chars().next()?.len_utf8();
-    }
-
-    Some(FlowchartOperatorMatch {
-        end: prefix.len(),
-        inside_payload: true,
-    })
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FlowchartStartLink {
-    family: FlowchartLinkFamily,
-    marker: Option<FlowchartLinkMarker>,
-    end: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FlowchartLinkEnd {
-    marker: Option<FlowchartLinkMarker>,
-    end: usize,
-}
-
-fn flowchart_start_link_at(prefix: &str, offset: usize) -> Option<FlowchartStartLink> {
-    let bytes = prefix.as_bytes();
-    let mut cursor = offset;
-    let mut marker = None;
-    if cursor >= bytes.len() {
-        return None;
-    }
-    if let Some(next_marker) = flowchart_start_marker(bytes[cursor]) {
-        marker = Some(next_marker);
-        cursor += 1;
-        if cursor >= bytes.len() {
-            return None;
-        }
-    }
-
-    if bytes.get(cursor) == Some(&b'-') && bytes.get(cursor + 1) == Some(&b'-') {
-        return Some(FlowchartStartLink {
-            family: FlowchartLinkFamily::Normal,
-            marker,
-            end: cursor + 2,
-        });
-    }
-    if bytes.get(cursor) == Some(&b'=') && bytes.get(cursor + 1) == Some(&b'=') {
-        return Some(FlowchartStartLink {
-            family: FlowchartLinkFamily::Thick,
-            marker,
-            end: cursor + 2,
-        });
-    }
-    if bytes.get(cursor) == Some(&b'-') && bytes.get(cursor + 1) == Some(&b'.') {
-        return Some(FlowchartStartLink {
-            family: FlowchartLinkFamily::Dotted,
-            marker,
-            end: cursor + 2,
-        });
-    }
-
-    None
-}
-
-fn flowchart_link_end_at(
-    prefix: &str,
-    offset: usize,
-    family: FlowchartLinkFamily,
-    allow_leading_ws: bool,
-    allow_leading_marker: bool,
-) -> Option<FlowchartLinkEnd> {
-    let bytes = prefix.as_bytes();
-    let mut cursor = offset;
-    if allow_leading_ws {
-        while cursor < bytes.len() && is_flowchart_link_ws(bytes[cursor]) {
-            cursor += 1;
-        }
-    }
-    let token_start = cursor;
-    if token_start >= bytes.len() {
-        return None;
-    }
-
-    if allow_leading_marker && flowchart_start_marker(bytes[cursor]).is_some() {
-        cursor += 1;
-        if cursor >= bytes.len() {
-            return None;
-        }
-    }
-
-    let mut marker = None;
-    match family {
-        FlowchartLinkFamily::Invisible => {
-            cursor = token_start;
-            let tilde_start = cursor;
-            while cursor < bytes.len() && bytes[cursor] == b'~' {
-                cursor += 1;
-            }
-            if cursor - tilde_start < 3 {
-                return None;
-            }
-        }
-        FlowchartLinkFamily::Normal => {
-            let hyphen_start = cursor;
-            while cursor < bytes.len() && bytes[cursor] == b'-' {
-                cursor += 1;
-            }
-            let hyphens = cursor - hyphen_start;
-            if hyphens < 2 {
-                return None;
-            }
-            if cursor < bytes.len() {
-                match bytes[cursor] {
-                    b'x' | b'o' | b'>' => {
-                        marker = flowchart_end_marker(bytes[cursor]);
-                        cursor += 1;
-                    }
-                    _ if hyphens < 3 => return None,
-                    _ => {}
-                }
-            } else if hyphens < 3 {
-                return None;
-            }
-        }
-        FlowchartLinkFamily::Thick => {
-            let eq_start = cursor;
-            while cursor < bytes.len() && bytes[cursor] == b'=' {
-                cursor += 1;
-            }
-            let eqs = cursor - eq_start;
-            if eqs < 2 {
-                return None;
-            }
-            if cursor < bytes.len() {
-                match bytes[cursor] {
-                    b'x' | b'o' | b'>' => {
-                        marker = flowchart_end_marker(bytes[cursor]);
-                        cursor += 1;
-                    }
-                    _ if eqs < 3 => return None,
-                    _ => {}
-                }
-            } else if eqs < 3 {
-                return None;
-            }
-        }
-        FlowchartLinkFamily::Dotted => {
-            if cursor < bytes.len() && bytes[cursor] == b'-' {
-                cursor += 1;
-            }
-            let dot_start = cursor;
-            while cursor < bytes.len() && bytes[cursor] == b'.' {
-                cursor += 1;
-            }
-            if cursor == dot_start {
-                return None;
-            }
-            if cursor >= bytes.len() || bytes[cursor] != b'-' {
-                return None;
-            }
-            cursor += 1;
-            if cursor < bytes.len() && matches!(bytes[cursor], b'x' | b'o' | b'>') {
-                marker = flowchart_end_marker(bytes[cursor]);
-                cursor += 1;
-            }
-        }
-    }
-
-    Some(FlowchartLinkEnd {
-        marker,
-        end: cursor,
-    })
-}
-
-fn flowchart_start_marker(byte: u8) -> Option<FlowchartLinkMarker> {
-    match byte {
-        b'<' => Some(FlowchartLinkMarker::Arrow),
-        b'o' => Some(FlowchartLinkMarker::Circle),
-        b'x' => Some(FlowchartLinkMarker::Cross),
-        _ => None,
-    }
-}
-
-fn flowchart_end_marker(byte: u8) -> Option<FlowchartLinkMarker> {
-    match byte {
-        b'>' => Some(FlowchartLinkMarker::Arrow),
-        b'o' => Some(FlowchartLinkMarker::Circle),
-        b'x' => Some(FlowchartLinkMarker::Cross),
-        _ => None,
-    }
-}
-
-fn flowchart_new_notation_markers_match(
-    start: Option<FlowchartLinkMarker>,
-    end: Option<FlowchartLinkMarker>,
-) -> bool {
-    start.is_none_or(|start| end == Some(start))
-}
-
-fn flowchart_edge_label_len(tail: &str) -> Option<usize> {
-    let label = tail.strip_prefix('|')?;
-    let close = label.find('|')?;
-    Some(1 + close + 1)
-}
-
-fn leading_whitespace_len(input: &str) -> usize {
-    input
-        .chars()
-        .take_while(|ch| ch.is_whitespace())
-        .map(char::len_utf8)
-        .sum()
-}
-
-fn is_flowchart_link_ws(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
-}
-
-fn is_flowchart_target_fragment_char(ch: char) -> bool {
-    ch == '_' || ch == '-' || ch == '.' || ch == ':' || ch.is_alphanumeric()
 }
 
 const TEMPLATE_PREFIXES: &[&str] = &[

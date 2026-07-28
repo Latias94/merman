@@ -9,12 +9,106 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct AnalysisResult {
     payload: AnalysisPayload,
     source_map: SourceMap,
     diagrams: Vec<AnalyzedDiagram>,
+    document_error: Option<Arc<merman_core::Error>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum AnalysisOutcome {
+    Ready(AnalysisResult),
+    Rejected(AnalysisRejection),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnalysisRejection {
+    payload: AnalysisPayload,
+    source_len: usize,
+    max_source_bytes: usize,
+}
+
+impl AnalysisOutcome {
+    pub fn payload(&self) -> &AnalysisPayload {
+        match self {
+            Self::Ready(result) => result.payload(),
+            Self::Rejected(rejection) => rejection.payload(),
+        }
+    }
+
+    pub fn into_payload(self) -> AnalysisPayload {
+        match self {
+            Self::Ready(result) => result.into_payload(),
+            Self::Rejected(rejection) => rejection.into_payload(),
+        }
+    }
+
+    pub fn diagnostics(&self) -> &[AnalysisDiagnostic] {
+        &self.payload().diagnostics
+    }
+
+    pub fn as_ready(&self) -> Option<&AnalysisResult> {
+        match self {
+            Self::Ready(result) => Some(result),
+            Self::Rejected(_) => None,
+        }
+    }
+
+    pub fn into_ready(self) -> Result<AnalysisResult, AnalysisRejection> {
+        match self {
+            Self::Ready(result) => Ok(result),
+            Self::Rejected(rejection) => Err(rejection),
+        }
+    }
+
+    pub fn rejection(&self) -> Option<&AnalysisRejection> {
+        match self {
+            Self::Ready(_) => None,
+            Self::Rejected(rejection) => Some(rejection),
+        }
+    }
+
+    pub fn to_facts_payload(&self) -> AnalysisFactsPayload {
+        match self {
+            Self::Ready(result) => result.to_facts_payload(),
+            Self::Rejected(rejection) => AnalysisFactsPayload::from_rejection(rejection),
+        }
+    }
+}
+
+impl AnalysisRejection {
+    pub(crate) fn source_limit(
+        source: SourceDescriptor,
+        diagnostics: Vec<AnalysisDiagnostic>,
+        source_len: usize,
+        max_source_bytes: usize,
+    ) -> Self {
+        Self {
+            payload: AnalysisPayload::new(source, diagnostics),
+            source_len,
+            max_source_bytes,
+        }
+    }
+
+    pub fn payload(&self) -> &AnalysisPayload {
+        &self.payload
+    }
+
+    pub fn into_payload(self) -> AnalysisPayload {
+        self.payload
+    }
+
+    pub const fn source_len(&self) -> usize {
+        self.source_len
+    }
+
+    pub const fn max_source_bytes(&self) -> usize {
+        self.max_source_bytes
+    }
 }
 
 impl AnalysisResult {
@@ -28,7 +122,17 @@ impl AnalysisResult {
             payload: AnalysisPayload::new(source, diagnostics),
             source_map,
             diagrams,
+            document_error: None,
         }
+    }
+
+    pub(crate) fn with_document_error(mut self, error: Arc<merman_core::Error>) -> Self {
+        self.document_error = Some(error);
+        self
+    }
+
+    pub(crate) fn document_error(&self) -> Option<&merman_core::Error> {
+        self.document_error.as_deref()
     }
 
     pub fn payload(&self) -> &AnalysisPayload {
@@ -75,6 +179,7 @@ pub struct AnalyzedDiagram {
     pub fence_delimiter_spans: Option<FenceDelimiterSpans>,
     pub diagnostics: Vec<AnalysisDiagnostic>,
     pub syntax: AnalysisSyntaxFacts,
+    pub(crate) evidence: Arc<DiagramAnalysisEvidence>,
 }
 
 impl AnalyzedDiagram {
@@ -82,6 +187,20 @@ impl AnalyzedDiagram {
         diagram: &DocumentDiagram,
         diagnostics: Vec<AnalysisDiagnostic>,
         syntax: AnalysisSyntaxFacts,
+    ) -> Self {
+        Self::from_document_diagram_with_evidence(
+            diagram,
+            diagnostics,
+            syntax,
+            Arc::new(DiagramAnalysisEvidence::NoSnapshot),
+        )
+    }
+
+    pub(crate) fn from_document_diagram_with_evidence(
+        diagram: &DocumentDiagram,
+        diagnostics: Vec<AnalysisDiagnostic>,
+        syntax: AnalysisSyntaxFacts,
+        evidence: Arc<DiagramAnalysisEvidence>,
     ) -> Self {
         Self {
             source_id: diagram.id.clone(),
@@ -97,8 +216,32 @@ impl AnalyzedDiagram {
             fence_delimiter_spans: diagram.fence_delimiter_spans.clone(),
             diagnostics,
             syntax,
+            evidence,
         }
     }
+}
+
+#[derive(Debug)]
+pub(crate) enum DiagramAnalysisEvidence {
+    SourceLimit,
+    EmptySource,
+    Panic {
+        message: String,
+    },
+    NoSnapshot,
+    OperationError {
+        error: Arc<merman_core::Error>,
+    },
+    Parsed {
+        metadata: merman_core::ParseMetadata,
+        model: Arc<Value>,
+        editor_facts: Option<Arc<merman_core::EditorSemanticFacts>>,
+    },
+    ParseFailed {
+        metadata: merman_core::ParseMetadata,
+        error: Arc<merman_core::Error>,
+        editor_facts: Option<Arc<merman_core::EditorSemanticFacts>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -209,6 +352,18 @@ impl AnalysisFactsPayload {
                 .iter()
                 .map(|diagram| AnalysisDiagramFacts::from_diagram(diagram, &result.source_map))
                 .collect(),
+        }
+    }
+
+    pub fn from_rejection(rejection: &AnalysisRejection) -> Self {
+        let payload = rejection.payload();
+        Self {
+            version: ANALYSIS_FACTS_PAYLOAD_VERSION,
+            valid: payload.valid,
+            summary: payload.summary,
+            source: payload.source.clone(),
+            diagnostics: payload.diagnostics.clone(),
+            diagrams: Vec::new(),
         }
     }
 

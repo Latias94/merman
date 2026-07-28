@@ -71,7 +71,7 @@ async fn lsp_service_smoke_serves_semantic_tokens_range() {
                 text_document: TextDocumentIdentifier { uri },
                 range: Range {
                     start: Position::new(0, 0),
-                    end: Position::new(10, 0),
+                    end: Position::new(2, 0),
                 },
                 work_done_progress_params: Default::default(),
                 partial_result_params: Default::default(),
@@ -86,6 +86,75 @@ async fn lsp_service_smoke_serves_semantic_tokens_range() {
         .and_then(|response| response.result().cloned())
         .expect("expected semantic tokens range result");
     let _: SemanticTokensRangeResult = serde_json::from_value(value.clone()).unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_rejects_invalid_semantic_token_ranges() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/invalid-range.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(semantic_tokens_initialize_params())
+        .id(1)
+        .finish();
+    service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap()
+        .expect("initialize response");
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let request = Request::build("textDocument/semanticTokens/range")
+        .params(
+            serde_json::to_value(SemanticTokensRangeParams {
+                text_document: TextDocumentIdentifier { uri },
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(10, 0),
+                },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("semantic token range response");
+    let error = response.error().expect("invalid range error");
+
+    assert_eq!(error.code, ErrorCode::InvalidParams);
+    assert!(
+        error
+            .message
+            .contains("semantic token range end line 10 is outside")
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

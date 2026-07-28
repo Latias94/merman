@@ -215,6 +215,29 @@ test("browser editor session owns one native analyzed document", () => {
   }
 });
 
+test("browser editor session forwards resource profiles and source-limit overrides", () => {
+  const session = webApi.createEditorSession(
+    "flowchart TD\nA-->B",
+    1,
+    "file:///workspace/constrained.mmd",
+    {
+      resources: {
+        profile: "constrained",
+        limits: { max_source_bytes: 4096 },
+      },
+    },
+  );
+  const native = nativeSessions.at(-1);
+
+  assert.deepEqual(JSON.parse(native.optionsJson), {
+    resources: {
+      profile: "constrained",
+      limits: { max_source_bytes: 4096 },
+    },
+  });
+  session.dispose();
+});
+
 function editorCapabilities() {
   return {
     capability_ids: ["analysis", "editor"],

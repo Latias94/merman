@@ -1,5 +1,5 @@
 use merman_editor_core::{
-    DocumentKind, DocumentWorkspace, PlannedTokenKind, Position, Range,
+    DocumentKind, DocumentWorkspace, PlannedTokenKind, Position, Range, TokenPlanError,
     plan_semantic_tokens_for_snapshot, plan_semantic_tokens_for_snapshot_range,
 };
 
@@ -14,12 +14,14 @@ fn planner_emits_sorted_non_overlapping_utf16_tokens_and_packed_words() {
         "%% trailing comment\n",
     );
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/unicode.mmd",
-        1,
-        source.to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/unicode.mmd",
+            1,
+            source.to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
 
     let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("valid token plan");
     assert_eq!(plan.packed().len(), plan.tokens().len() * 5);
@@ -45,12 +47,14 @@ fn planner_emits_sorted_non_overlapping_utf16_tokens_and_packed_words() {
 #[test]
 fn markdown_fences_are_preprocessor_owned_delimiter_tokens() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.md",
-        1,
-        "before\n```mermaid\nflowchart TD\nA --> B\n```\nafter\n".to_string(),
-        DocumentKind::Markdown,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.md",
+            1,
+            "before\n```mermaid\nflowchart TD\nA --> B\n```\nafter\n".to_string(),
+            DocumentKind::Markdown,
+        )
+        .expect("test source should be accepted");
     let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("valid token plan");
 
     assert_eq!(
@@ -66,23 +70,25 @@ fn markdown_fences_are_preprocessor_owned_delimiter_tokens() {
 #[test]
 fn range_planner_visits_only_overlapping_markdown_fences() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/range.md",
-        1,
-        concat!(
-            "```mermaid\n",
-            "flowchart TD\n",
-            "first --> hidden\n",
-            "```\n",
-            "between\n",
-            "```mermaid\n",
-            "sequenceDiagram\n",
-            "Alice->>Bob: visible\n",
-            "```\n",
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/range.md",
+            1,
+            concat!(
+                "```mermaid\n",
+                "flowchart TD\n",
+                "first --> hidden\n",
+                "```\n",
+                "between\n",
+                "```mermaid\n",
+                "sequenceDiagram\n",
+                "Alice->>Bob: visible\n",
+                "```\n",
+            )
+            .to_string(),
+            DocumentKind::Markdown,
         )
-        .to_string(),
-        DocumentKind::Markdown,
-    );
+        .expect("test source should be accepted");
     let range = Range::new(Position::new(5, 0), Position::new(9, 0));
 
     let plan =
@@ -105,12 +111,14 @@ fn range_planner_prunes_candidates_inside_one_large_fence() {
         source.push_str(&format!("node{index} --> node{}\n", index + 1));
     }
     source.push_str("```\n");
-    let snapshot = workspace.upsert(
-        "file:///tmp/large-range.md",
-        1,
-        source,
-        DocumentKind::Markdown,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/large-range.md",
+            1,
+            source,
+            DocumentKind::Markdown,
+        )
+        .expect("test source should be accepted");
     let range = Range::new(Position::new(64, 0), Position::new(65, 0));
 
     let plan = plan_semantic_tokens_for_snapshot_range(&snapshot, range)
@@ -121,24 +129,129 @@ fn range_planner_prunes_candidates_inside_one_large_fence() {
 }
 
 #[test]
+fn range_planner_distinguishes_empty_ranges_from_invalid_ranges() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/range-validation.mmd",
+            1,
+            "flowchart TD\nA[🤓] --> B\nC --> D\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
+
+    let empty = plan_semantic_tokens_for_snapshot_range(
+        &snapshot,
+        Range::new(Position::new(1, 2), Position::new(1, 2)),
+    )
+    .expect("an in-bounds empty range should be valid");
+    assert!(empty.tokens().is_empty());
+    assert!(empty.packed().is_empty());
+
+    let reversed = plan_semantic_tokens_for_snapshot_range(
+        &snapshot,
+        Range::new(Position::new(1, 4), Position::new(1, 2)),
+    );
+    assert!(matches!(
+        reversed,
+        Err(TokenPlanError::ReversedRange { .. })
+    ));
+
+    let invalid_start_line = plan_semantic_tokens_for_snapshot_range(
+        &snapshot,
+        Range::new(Position::new(20, 0), Position::new(20, 0)),
+    );
+    assert!(matches!(
+        invalid_start_line,
+        Err(TokenPlanError::RangeStartLineOutOfBounds { .. })
+    ));
+
+    let invalid_end_line = plan_semantic_tokens_for_snapshot_range(
+        &snapshot,
+        Range::new(Position::new(0, 0), Position::new(20, 0)),
+    );
+    assert!(matches!(
+        invalid_end_line,
+        Err(TokenPlanError::RangeEndLineOutOfBounds { .. })
+    ));
+}
+
+#[test]
+fn range_planner_validates_utf16_columns_without_clamping() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/range-utf16.mmd",
+            1,
+            "flowchart TD\nA[🤓] --> B\nC --> D\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
+
+    plan_semantic_tokens_for_snapshot_range(
+        &snapshot,
+        Range::new(Position::new(1, 4), Position::new(1, 5)),
+    )
+    .expect("positions after a surrogate pair should use UTF-16 columns");
+
+    let invalid_start_column = plan_semantic_tokens_for_snapshot_range(
+        &snapshot,
+        Range::new(Position::new(1, 100), Position::new(2, 0)),
+    );
+    assert!(matches!(
+        invalid_start_column,
+        Err(TokenPlanError::RangeStartCharacterOutOfBounds { .. })
+    ));
+
+    let invalid_end_column = plan_semantic_tokens_for_snapshot_range(
+        &snapshot,
+        Range::new(Position::new(1, 0), Position::new(1, 100)),
+    );
+    assert!(matches!(
+        invalid_end_column,
+        Err(TokenPlanError::RangeEndCharacterOutOfBounds { .. })
+    ));
+
+    let split_start_surrogate = plan_semantic_tokens_for_snapshot_range(
+        &snapshot,
+        Range::new(Position::new(1, 3), Position::new(1, 4)),
+    );
+    assert!(matches!(
+        split_start_surrogate,
+        Err(TokenPlanError::RangeStartCharacterNotBoundary { .. })
+    ));
+
+    let split_end_surrogate = plan_semantic_tokens_for_snapshot_range(
+        &snapshot,
+        Range::new(Position::new(1, 2), Position::new(1, 3)),
+    );
+    assert!(matches!(
+        split_end_surrogate,
+        Err(TokenPlanError::RangeEndCharacterNotBoundary { .. })
+    ));
+}
+
+#[test]
 fn planner_uses_exact_structured_marker_spans_for_all_fence_forms() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/fences.md",
-        1,
-        concat!(
-            "  ````mermaid\n",
-            "flowchart TD\n",
-            "A --> B\n",
-            "   ``````\n",
-            ":::mermaid\n",
-            "pie title Work\n",
-            "  \"Done\" : 1\n",
-            ":::::\n",
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/fences.md",
+            1,
+            concat!(
+                "  ````mermaid\n",
+                "flowchart TD\n",
+                "A --> B\n",
+                "   ``````\n",
+                ":::mermaid\n",
+                "pie title Work\n",
+                "  \"Done\" : 1\n",
+                ":::::\n",
+            )
+            .to_string(),
+            DocumentKind::Markdown,
         )
-        .to_string(),
-        DocumentKind::Markdown,
-    );
+        .expect("test source should be accepted");
     let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("valid fence marker plan");
 
     assert_eq!(
@@ -156,19 +269,21 @@ fn planner_uses_exact_structured_marker_spans_for_all_fence_forms() {
 #[test]
 fn zenuml_recovery_does_not_emit_overlapping_tokens() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/recovered.mmd",
-        1,
-        concat!(
-            "zenuml\n",
-            "@Actor Client #FFEBE6\n",
-            "Client->Service: first\n",
-            "if (broken {\n",
-            "Service->Client: after 中文\n",
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/recovered.mmd",
+            1,
+            concat!(
+                "zenuml\n",
+                "@Actor Client #FFEBE6\n",
+                "Client->Service: first\n",
+                "if (broken {\n",
+                "Service->Client: after 中文\n",
+            )
+            .to_string(),
+            DocumentKind::Diagram,
         )
-        .to_string(),
-        DocumentKind::Diagram,
-    );
+        .expect("test source should be accepted");
 
     let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("recovered facts remain valid");
     assert!(plan.tokens().windows(2).all(|pair| {
@@ -260,12 +375,14 @@ fn lexer_backed_family_plans_merge_grammar_lexemes_with_semantic_overlays() {
 
     for (name, source, expected_kinds) in cases {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            format!("file:///tmp/{name}.mmd"),
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{name}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("valid family token plan");
         assert_plan_is_non_overlapping(plan.tokens());
         for expected in expected_kinds {
@@ -314,18 +431,20 @@ fn lexer_backed_family_recovery_plans_cover_tokens_before_and_after_the_error() 
 
     for (name, source) in cases {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            format!("file:///tmp/{name}-recovery.mmd"),
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{name}-recovery.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("recoverable token plan");
         assert_plan_is_non_overlapping(plan.tokens());
         for text in ["Before", "After"] {
             let offset = source.find(text).expect("identifier offset");
             let position = snapshot
-                .source_map
+                .source_map()
                 .utf16_position(offset)
                 .expect("identifier position");
             assert!(

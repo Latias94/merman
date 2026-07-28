@@ -41,7 +41,7 @@ pub fn document_symbols_with_hierarchy_support(
     let symbols = core_document_symbols(snapshot.as_editor());
     if !hierarchical_supported {
         let mut flat = Vec::new();
-        flatten_document_symbols(symbols, &snapshot.uri, None, &mut flat);
+        flatten_document_symbols(symbols, snapshot.uri(), None, &mut flat);
         return DocumentSymbolResponse::Flat(flat);
     }
 
@@ -53,7 +53,7 @@ pub fn document_symbols_with_hierarchy_support(
 pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<SymbolInformation> {
     core_workspace_symbols(snapshot.as_editor(), query)
         .into_iter()
-        .filter_map(|symbol| symbol_information_to_lsp(symbol, Some(&snapshot.uri)))
+        .filter_map(|symbol| symbol_information_to_lsp(symbol, Some(snapshot.uri())))
         .collect()
 }
 
@@ -63,7 +63,7 @@ pub fn workspace_symbols_for_snapshots(
 ) -> Vec<SymbolInformation> {
     let uri_lookup = snapshots
         .iter()
-        .map(|snapshot| (snapshot.uri.as_str().to_string(), snapshot.uri.clone()))
+        .map(|snapshot| (snapshot.uri().as_str().to_string(), snapshot.uri().clone()))
         .collect::<HashMap<_, _>>();
 
     core_workspace_symbols_for_snapshots(
@@ -129,7 +129,7 @@ pub fn goto_definition(
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
     core_goto_definition(snapshot.as_editor(), core_position_from_lsp(position))
-        .map(|location| location_to_lsp(location, &snapshot.uri))
+        .map(|location| location_to_lsp(location, snapshot.uri()))
         .map(Into::into)
 }
 
@@ -146,7 +146,7 @@ pub fn references(
     .map(|locations| {
         locations
             .into_iter()
-            .map(|location| location_to_lsp(location, &snapshot.uri))
+            .map(|location| location_to_lsp(location, snapshot.uri()))
             .collect()
     })
 }
@@ -178,8 +178,8 @@ pub fn rename_with_workspace_edit_encoding(
         edit.and_then(|edit| {
             workspace_edit_to_lsp(
                 edit,
-                &snapshot.uri,
-                snapshot.version,
+                snapshot.uri(),
+                snapshot.version(),
                 workspace_edit_encoding,
             )
         })
@@ -525,7 +525,7 @@ mod tests {
             RenameParams {
                 text_document_position: TextDocumentPositionParams::new(
                     TextDocumentIdentifier {
-                        uri: snapshot.uri.clone(),
+                        uri: snapshot.uri().clone(),
                     },
                     position,
                 ),
@@ -541,7 +541,7 @@ mod tests {
             other => panic!("unexpected document changes: {other:?}"),
         };
         assert_eq!(document_changes.len(), 1);
-        assert_eq!(document_changes[0].text_document.uri, snapshot.uri);
+        assert_eq!(&document_changes[0].text_document.uri, snapshot.uri());
         assert_eq!(document_changes[0].text_document.version, Some(1));
         assert_eq!(document_changes[0].edits.len(), 2);
 

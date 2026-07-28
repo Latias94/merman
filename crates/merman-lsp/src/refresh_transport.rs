@@ -139,6 +139,10 @@ impl RefreshResponseRouter {
         None
     }
 
+    fn cancel_all(&self) {
+        lock_recovering_poison(&self.pending).clear();
+    }
+
     #[cfg(test)]
     pub(crate) fn pending_count(&self) -> usize {
         lock_recovering_poison(&self.pending).len()
@@ -150,6 +154,8 @@ pub struct MermanClientSocket {
     inner: ClientSocket,
     refresh_requests: mpsc::Receiver<Request>,
     refresh_responses: RefreshResponseRouter,
+    pending_inner_request: Option<Request>,
+    prefer_refresh: bool,
 }
 
 impl fmt::Debug for MermanClientSocket {
@@ -172,7 +178,20 @@ impl MermanClientSocket {
             inner,
             refresh_requests,
             refresh_responses,
+            pending_inner_request: None,
+            prefer_refresh: true,
         }
+    }
+
+    fn close_refresh_transport(&mut self) {
+        self.refresh_requests.close();
+        self.refresh_responses.cancel_all();
+    }
+}
+
+impl Drop for MermanClientSocket {
+    fn drop(&mut self) {
+        self.close_refresh_transport();
     }
 }
 
@@ -181,13 +200,35 @@ impl Stream for MermanClientSocket {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        match Pin::new(&mut this.inner).poll_next(cx) {
-            Poll::Ready(Some(request)) => Poll::Ready(Some(request)),
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => match Pin::new(&mut this.refresh_requests).poll_next(cx) {
-                Poll::Ready(Some(request)) => Poll::Ready(Some(request)),
-                Poll::Ready(None) | Poll::Pending => Poll::Pending,
-            },
+        if this.pending_inner_request.is_none() {
+            match Pin::new(&mut this.inner).poll_next(cx) {
+                Poll::Ready(Some(request)) => this.pending_inner_request = Some(request),
+                Poll::Ready(None) => {
+                    this.close_refresh_transport();
+                    return Poll::Ready(None);
+                }
+                Poll::Pending => {}
+            }
+        }
+
+        if this.prefer_refresh
+            && let Poll::Ready(Some(request)) = Pin::new(&mut this.refresh_requests).poll_next(cx)
+        {
+            this.prefer_refresh = false;
+            return Poll::Ready(Some(request));
+        }
+
+        if let Some(request) = this.pending_inner_request.take() {
+            this.prefer_refresh = true;
+            return Poll::Ready(Some(request));
+        }
+
+        match Pin::new(&mut this.refresh_requests).poll_next(cx) {
+            Poll::Ready(Some(request)) => {
+                this.prefer_refresh = false;
+                Poll::Ready(Some(request))
+            }
+            Poll::Ready(None) | Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -240,7 +281,11 @@ fn internal_error(message: &'static str) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MermanLanguageServer;
+    use futures::SinkExt;
     use std::time::Duration;
+    use tower::Service;
+    use tower_lsp_server::ls_types::MessageType;
 
     #[tokio::test]
     async fn cancelled_request_removes_waiter_and_ignores_late_response() {
@@ -269,5 +314,68 @@ mod tests {
                 .is_none()
         );
         assert_eq!(responses.pending_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn refresh_and_inner_requests_take_fair_turns() {
+        let (service, mut socket, refresh_client) =
+            MermanLanguageServer::service_with_refresh_client();
+        let client = service.inner().client_for_tests();
+        client
+            .log_message(MessageType::INFO, "ordinary client message")
+            .await;
+
+        let first_refresh_client = refresh_client.clone();
+        let first_refresh = tokio::spawn(async move {
+            first_refresh_client
+                .request(RefreshKind::SemanticTokens)
+                .await
+        });
+        tokio::task::yield_now().await;
+        let second_refresh =
+            tokio::spawn(async move { refresh_client.request(RefreshKind::Diagnostics).await });
+        tokio::task::yield_now().await;
+
+        let first = socket.next().await.expect("first socket request");
+        assert_eq!(first.method(), "workspace/semanticTokens/refresh");
+        let ordinary = socket.next().await.expect("ordinary socket request");
+        assert_eq!(ordinary.method(), "window/logMessage");
+        let second = socket.next().await.expect("second socket request");
+        assert_eq!(second.method(), "workspace/diagnostic/refresh");
+
+        for request in [&first, &second] {
+            socket
+                .send(Response::from_ok(
+                    request.id().cloned().expect("refresh request id"),
+                    serde_json::Value::Null,
+                ))
+                .await
+                .expect("route refresh response");
+        }
+        first_refresh.await.unwrap().unwrap();
+        second_refresh.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn exited_inner_socket_discards_queued_refresh_requests() {
+        let (mut service, mut socket, refresh_client) =
+            MermanLanguageServer::service_with_refresh_client();
+        let refresh =
+            tokio::spawn(async move { refresh_client.request(RefreshKind::Diagnostics).await });
+        tokio::task::yield_now().await;
+        assert!(
+            service
+                .call(Request::build("exit").finish())
+                .await
+                .expect("exit notification should be handled")
+                .is_none()
+        );
+
+        assert!(
+            socket.next().await.is_none(),
+            "the Tower client socket owns protocol termination"
+        );
+        drop(socket);
+        assert!(refresh.await.unwrap().is_err());
     }
 }

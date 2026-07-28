@@ -51,8 +51,8 @@ pub use result::{
     AnalysisFactSpan, AnalysisFactsPayload, AnalysisFenceDelimiterFacts,
     AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts, AnalysisFlowchartFacts,
     AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts, AnalysisLineItemFacts,
-    AnalysisReferenceFacts, AnalysisResult, AnalysisSemanticItemFacts, AnalysisSyntaxFacts,
-    AnalyzedDiagram,
+    AnalysisOutcome, AnalysisReferenceFacts, AnalysisRejection, AnalysisResult,
+    AnalysisSemanticItemFacts, AnalysisSyntaxFacts, AnalyzedDiagram,
 };
 pub use rules::{
     AnalysisRuleConfig, AnalysisRuleProfile, RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry,

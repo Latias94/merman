@@ -2,12 +2,11 @@ use crate::diagnostics::{EditorDiagnostic, analysis_payload_to_diagnostics};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentKind, DocumentUri};
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisPayload, AnalyzedDiagram, Analyzer,
-    SourceDescriptor, SourceKind, analyze_document_result_shared,
-    analyze_document_result_shared_cancellable,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisOutcome, AnalysisPayload,
+    AnalysisRejection, AnalysisResult, AnalyzedDiagram, Analyzer, SourceDescriptor, SourceKind,
+    analyze_document_result_shared, analyze_document_result_shared_cancellable,
 };
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,9 +33,38 @@ pub struct DocumentWorkspace {
 #[derive(Debug, Clone)]
 pub struct DocumentAnalysisContext {
     snapshot: DocumentSnapshot,
-    payload: AnalysisPayload,
+    analysis: Arc<AnalysisResult>,
     diagnostics: Arc<[EditorDiagnostic]>,
     detection: Option<EditorDiagramDetection>,
+}
+
+#[derive(Debug, Clone)]
+pub enum DocumentAnalysisOutcome {
+    Ready(DocumentAnalysisContext),
+    Rejected(AnalysisRejection),
+}
+
+impl DocumentAnalysisOutcome {
+    pub fn as_ready(&self) -> Option<&DocumentAnalysisContext> {
+        match self {
+            Self::Ready(context) => Some(context),
+            Self::Rejected(_) => None,
+        }
+    }
+
+    pub fn into_ready(self) -> Result<DocumentAnalysisContext, AnalysisRejection> {
+        match self {
+            Self::Ready(context) => Ok(context),
+            Self::Rejected(rejection) => Err(rejection),
+        }
+    }
+
+    pub fn rejection(&self) -> Option<&AnalysisRejection> {
+        match self {
+            Self::Ready(_) => None,
+            Self::Rejected(rejection) => Some(rejection),
+        }
+    }
 }
 
 impl DocumentAnalysisContext {
@@ -44,13 +72,8 @@ impl DocumentAnalysisContext {
         &self.snapshot
     }
 
-    /// Compatibility name for consumers that treat this as an analyzed snapshot.
-    pub fn document(&self) -> &DocumentSnapshot {
-        self.snapshot()
-    }
-
     pub fn payload(&self) -> &AnalysisPayload {
-        &self.payload
+        self.analysis.payload()
     }
 
     pub fn diagnostics(&self) -> &[EditorDiagnostic] {
@@ -61,25 +84,30 @@ impl DocumentAnalysisContext {
         self.detection.as_ref()
     }
 
-    pub fn into_document(self) -> DocumentSnapshot {
-        self.snapshot
+    pub fn analysis_result(&self) -> &AnalysisResult {
+        &self.analysis
+    }
+
+    pub fn shared_analysis_result(&self) -> Arc<AnalysisResult> {
+        Arc::clone(&self.analysis)
+    }
+
+    pub fn reproject_payload(&self, analyzer: &Analyzer) -> AnalysisPayload {
+        analyzer.reproject_payload(&self.analysis)
+    }
+
+    pub fn reproject_diagnostics(&self, analyzer: &Analyzer) -> Arc<[EditorDiagnostic]> {
+        analysis_payload_to_diagnostics(&self.reproject_payload(analyzer)).into()
     }
 
     pub fn into_parts(self) -> (DocumentSnapshot, AnalysisPayload) {
-        (self.snapshot, self.payload)
+        (self.snapshot, self.analysis.payload().clone())
+    }
+
+    pub fn into_canonical_parts(self) -> (DocumentSnapshot, Arc<AnalysisResult>) {
+        (self.snapshot, self.analysis)
     }
 }
-
-impl Deref for DocumentAnalysisContext {
-    type Target = DocumentSnapshot;
-
-    fn deref(&self) -> &Self::Target {
-        self.snapshot()
-    }
-}
-
-/// Backwards-compatible name for the canonical analysis context.
-pub type AnalyzedDocumentSnapshot = DocumentAnalysisContext;
 
 impl Default for DocumentWorkspace {
     fn default() -> Self {
@@ -110,11 +138,20 @@ impl DocumentWorkspace {
         version: i32,
         text: String,
         kind: DocumentKind,
-    ) -> DocumentSnapshot {
+    ) -> Result<DocumentSnapshot, AnalysisRejection> {
         let uri = uri.into();
-        let snapshot = self.build_snapshot(uri.clone(), version, text, kind);
+        let snapshot = Self::build_analysis_context_with_shared_text(
+            &self.analyzer,
+            uri.clone(),
+            version,
+            Arc::from(text),
+            kind,
+        )
+        .into_ready()?
+        .into_parts()
+        .0;
         self.documents.insert(uri, snapshot.clone());
-        snapshot
+        Ok(snapshot)
     }
 
     pub fn build_snapshot(
@@ -123,7 +160,7 @@ impl DocumentWorkspace {
         version: i32,
         text: String,
         kind: DocumentKind,
-    ) -> DocumentSnapshot {
+    ) -> Result<DocumentSnapshot, AnalysisRejection> {
         Self::build_snapshot_with_analyzer(&self.analyzer, uri, version, text, kind)
     }
 
@@ -133,7 +170,7 @@ impl DocumentWorkspace {
         version: i32,
         text: String,
         kind: DocumentKind,
-    ) -> DocumentSnapshot {
+    ) -> Result<DocumentSnapshot, AnalysisRejection> {
         Self::build_snapshot_with_shared_text(analyzer, uri, version, Arc::from(text), kind)
     }
 
@@ -143,20 +180,10 @@ impl DocumentWorkspace {
         version: i32,
         text: Arc<str>,
         kind: DocumentKind,
-    ) -> DocumentSnapshot {
+    ) -> Result<DocumentSnapshot, AnalysisRejection> {
         Self::build_analysis_context_with_shared_text(analyzer, uri, version, text, kind)
-            .into_parts()
-            .0
-    }
-
-    pub fn build_analyzed_snapshot_with_shared_text(
-        analyzer: &Analyzer,
-        uri: impl Into<DocumentUri>,
-        version: i32,
-        text: Arc<str>,
-        kind: DocumentKind,
-    ) -> AnalyzedDocumentSnapshot {
-        Self::build_analysis_context_with_shared_text(analyzer, uri, version, text, kind)
+            .into_ready()
+            .map(|context| context.into_parts().0)
     }
 
     pub fn build_analysis_context_with_shared_text(
@@ -165,7 +192,7 @@ impl DocumentWorkspace {
         version: i32,
         text: Arc<str>,
         kind: DocumentKind,
-    ) -> DocumentAnalysisContext {
+    ) -> DocumentAnalysisOutcome {
         let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
         let analysis = analyze_document_result_shared(Arc::clone(&text), analyzer, source.clone());
@@ -179,7 +206,7 @@ impl DocumentWorkspace {
         text: Arc<str>,
         kind: DocumentKind,
         cancellation: &AnalysisCancellationToken,
-    ) -> Result<DocumentAnalysisContext, AnalysisCancelled> {
+    ) -> Result<DocumentAnalysisOutcome, AnalysisCancelled> {
         let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
         let analysis = analyze_document_result_shared_cancellable(
@@ -199,7 +226,23 @@ impl DocumentWorkspace {
         text: Arc<str>,
         kind: DocumentKind,
         source: SourceDescriptor,
-        analysis: merman_analysis::AnalysisResult,
+        analysis: AnalysisOutcome,
+    ) -> DocumentAnalysisOutcome {
+        match analysis {
+            AnalysisOutcome::Ready(analysis) => DocumentAnalysisOutcome::Ready(
+                Self::analysis_context_ready(uri, version, text, kind, source, analysis),
+            ),
+            AnalysisOutcome::Rejected(rejection) => DocumentAnalysisOutcome::Rejected(rejection),
+        }
+    }
+
+    fn analysis_context_ready(
+        uri: DocumentUri,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+        source: SourceDescriptor,
+        analysis: AnalysisResult,
     ) -> DocumentAnalysisContext {
         let diagnostics = analysis_payload_to_diagnostics(analysis.payload()).into();
         let detection = detection_for_analysis(&analysis);
@@ -209,18 +252,10 @@ impl DocumentWorkspace {
             .map(Self::fence_snapshot)
             .collect::<Vec<_>>();
         let source_map = analysis.source_map().clone();
-        let payload = analysis.into_payload();
+        let analysis = Arc::new(analysis);
         DocumentAnalysisContext {
-            snapshot: DocumentSnapshot {
-                uri,
-                version,
-                kind,
-                source,
-                text,
-                source_map,
-                fences,
-            },
-            payload,
+            snapshot: DocumentSnapshot::new(uri, version, kind, source, text, source_map, fences),
+            analysis,
             diagnostics,
             detection,
         }
@@ -239,20 +274,20 @@ impl DocumentWorkspace {
     }
 
     fn fence_snapshot(diagram: &AnalyzedDiagram) -> FenceSnapshot {
-        FenceSnapshot {
-            source_id: diagram.source_id.clone(),
-            index: diagram.index,
-            source: diagram.source.clone(),
-            start: diagram.start,
-            body_start: diagram.body_start,
-            body_end: diagram.body_end,
-            end: diagram.end,
-            text: diagram.text.clone(),
-            fence_delimiter: diagram.fence_delimiter,
-            fence_delimiter_spans: diagram.fence_delimiter_spans.clone(),
-            diagram_type: diagram.syntax.diagram_type.clone(),
-            text_index: diagram.syntax.text_index.clone(),
-        }
+        FenceSnapshot::new(
+            diagram.source_id.clone(),
+            diagram.index,
+            diagram.source.clone(),
+            diagram.start,
+            diagram.body_start,
+            diagram.body_end,
+            diagram.end,
+            diagram.text.clone(),
+            diagram.fence_delimiter,
+            diagram.fence_delimiter_spans.clone(),
+            diagram.syntax.diagram_type.clone(),
+            diagram.syntax.text_index.clone(),
+        )
     }
 }
 
@@ -288,4 +323,40 @@ fn source_descriptor_for_document(uri: &DocumentUri, kind: DocumentKind) -> Sour
         DocumentKind::Mdx => SourceKind::Mdx,
     };
     merman_analysis::source_descriptor_for_kind(Some(uri.as_str()), source_kind)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman_analysis::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile};
+
+    #[test]
+    fn diagnostic_reprojection_keeps_the_canonical_snapshot_generation() {
+        let context = DocumentWorkspace::build_analysis_context_with_shared_text(
+            &Analyzer::new(),
+            "file:///tmp/example.mmd",
+            7,
+            Arc::from("%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n"),
+            DocumentKind::Diagram,
+        )
+        .into_ready()
+        .expect("source is within the analysis limit");
+        let snapshot = context.snapshot() as *const DocumentSnapshot;
+        let analysis = context.analysis_result() as *const AnalysisResult;
+        let analyzer = Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_profile(AnalysisRuleProfile::Recommended)
+                    .with_rule_disabled("merman.authoring.config.prefer_frontmatter_config"),
+            ),
+        );
+
+        let diagnostics = context.reproject_diagnostics(&analyzer);
+
+        assert_eq!(context.snapshot() as *const DocumentSnapshot, snapshot);
+        assert_eq!(context.analysis_result() as *const AnalysisResult, analysis);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "merman.authoring.config.prefer_init_directive"
+        }));
+    }
 }

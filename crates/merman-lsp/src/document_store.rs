@@ -2,11 +2,13 @@ use crate::analysis_executor::AnalysisExecutor;
 use crate::analysis_request::{
     AnalysisBuildKey, AnalysisBuildRequest, SnapshotBatchCommit, WorkspaceSnapshotBuildPlan,
 };
+#[cfg(test)]
+use crate::snapshot::DocumentSnapshot;
 use crate::snapshot::{
-    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
-    SnapshotContext, SnapshotGeneration,
+    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotContext,
+    SnapshotGeneration,
 };
-use merman_analysis::{AnalysisOptions, AnalysisPayload, Analyzer};
+use merman_analysis::{AnalysisOptions, Analyzer};
 use merman_editor_core::DocumentKind;
 use ropey::{Rope, RopeSlice};
 use std::collections::HashMap;
@@ -39,8 +41,7 @@ pub struct DocumentStore {
     diagnostic_generation: DiagnosticGeneration,
     next_document_epoch: u64,
     documents: HashMap<Uri, DocumentRecord>,
-    snapshots: HashMap<Uri, Arc<DocumentSnapshot>>,
-    analysis_payloads: HashMap<Uri, Arc<AnalysisPayload>>,
+    analysis_generations: HashMap<Uri, Arc<DocumentAnalysisContext>>,
     diagnostic_state: HashMap<Uri, StoredDiagnosticState>,
     semantic_tokens_state: HashMap<Uri, StoredSemanticTokensState>,
 }
@@ -150,8 +151,7 @@ impl DocumentStore {
             diagnostic_generation: DiagnosticGeneration::default(),
             next_document_epoch: 0,
             documents: HashMap::new(),
-            snapshots: HashMap::new(),
-            analysis_payloads: HashMap::new(),
+            analysis_generations: HashMap::new(),
             diagnostic_state: HashMap::new(),
             semantic_tokens_state: HashMap::new(),
         }
@@ -178,16 +178,18 @@ impl DocumentStore {
     fn set_diagnostic_analyzer(&mut self, analyzer: Analyzer) {
         self.analyzer = analyzer;
         self.advance_diagnostic_generation();
-        self.analysis_payloads.clear();
+        for generation in self.analysis_generations.values_mut() {
+            *generation = Arc::new(generation.reproject(&self.analyzer));
+        }
         self.analysis_executor.invalidate_all();
     }
+
     fn replace_analyzer(&mut self, analyzer: Analyzer) {
         self.analyzer = analyzer;
-        self.reclassify_unavailable_documents_for_current_limit();
+        self.reclassify_documents_for_current_limit();
         self.advance_snapshot_generation();
         self.advance_diagnostic_generation();
-        self.snapshots.clear();
-        self.analysis_payloads.clear();
+        self.analysis_generations.clear();
         self.semantic_tokens_state.clear();
         self.analysis_executor.invalidate_all();
     }
@@ -304,8 +306,7 @@ impl DocumentStore {
 
     fn upsert_document(&mut self, uri: Uri, document: StoredDocument) -> StoredDocument {
         self.analysis_executor.invalidate(&uri);
-        self.snapshots.remove(&uri);
-        self.analysis_payloads.remove(&uri);
+        self.analysis_generations.remove(&uri);
         self.diagnostic_state.remove(&uri);
         let epoch = self.next_document_epoch();
         self.documents.insert(
@@ -326,30 +327,41 @@ impl DocumentStore {
         })
     }
 
-    fn reclassify_unavailable_documents_for_current_limit(&mut self) {
+    fn reclassify_documents_for_current_limit(&mut self) {
         let current_limit = self.analyzer.options().max_source_bytes;
         for record in self.documents.values_mut() {
-            let Some((source_len, previous_max_source_bytes)) =
+            if let Some((source_len, previous_max_source_bytes)) =
                 resource_state_source_len_and_previous_limit(&record.document)
-            else {
+            {
+                match current_limit {
+                    Some(max_source_bytes) if source_len > max_source_bytes => {
+                        record.document.resource_limit = Some(DocumentResourceLimit {
+                            source_len,
+                            max_source_bytes,
+                        });
+                        record.document.discarded_source = None;
+                    }
+                    _ => {
+                        record.document.resource_limit = None;
+                        record.document.discarded_source = Some(DocumentDiscardedSource {
+                            source_len,
+                            previous_max_source_bytes,
+                        });
+                    }
+                }
+                continue;
+            }
+
+            let Some(max_source_bytes) = current_limit else {
                 continue;
             };
-
-            match current_limit {
-                Some(max_source_bytes) if source_len > max_source_bytes => {
-                    record.document.resource_limit = Some(DocumentResourceLimit {
-                        source_len,
-                        max_source_bytes,
-                    });
-                    record.document.discarded_source = None;
-                }
-                _ => {
-                    record.document.resource_limit = None;
-                    record.document.discarded_source = Some(DocumentDiscardedSource {
-                        source_len,
-                        previous_max_source_bytes,
-                    });
-                }
+            let source_len = record.document.text.len();
+            if record.document.sync_error.is_none() && source_len > max_source_bytes {
+                record.document.text = Arc::<str>::from("");
+                record.document.resource_limit = Some(DocumentResourceLimit {
+                    source_len,
+                    max_source_bytes,
+                });
             }
         }
     }
@@ -489,16 +501,27 @@ impl DocumentStore {
     }
 
     pub fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
-        if let Some(snapshot) = self.snapshots.get(uri) {
-            return Some(self.cached_snapshot_context(
-                uri,
-                snapshot,
-                self.documents.get(uri)?.epoch,
-            ));
+        if let Some(generation) = self.analysis_generations.get(uri) {
+            return Some(self.cached_snapshot_context(generation, self.documents.get(uri)?.epoch));
         }
 
         let request = self.snapshot_build_request(uri)?;
-        let analysis = request.build();
+        let analysis = match request.build() {
+            Ok(analysis) => analysis,
+            Err(rejection) => {
+                let document = self.documents.get(uri)?.document.clone();
+                self.upsert_resource_limited(
+                    document.uri,
+                    document.version,
+                    document.kind,
+                    DocumentResourceLimit {
+                        source_len: rejection.source_len(),
+                        max_source_bytes: rejection.max_source_bytes(),
+                    },
+                );
+                return None;
+            }
+        };
         self.insert_built_analysis(&request, analysis)
     }
 
@@ -536,15 +559,10 @@ impl DocumentStore {
             return None;
         }
 
-        let snapshot = self
-            .snapshots
-            .entry(request.uri().clone())
-            .or_insert_with(|| Arc::clone(&analysis.snapshot))
-            .clone();
-        self.analysis_payloads
-            .insert(request.uri().clone(), Arc::clone(&analysis.payload));
+        self.analysis_generations
+            .insert(request.uri().clone(), Arc::clone(&analysis));
         Some(SnapshotContext::with_analysis(
-            snapshot,
+            Arc::clone(&analysis.snapshot),
             Arc::clone(&analysis.payload),
             request.snapshot_generation(),
             request.diagnostic_generation(),
@@ -554,7 +572,7 @@ impl DocumentStore {
 
     pub fn is_snapshot_context_current(&self, context: &SnapshotContext) -> bool {
         self.snapshot_generation == context.generation
-            && self.is_document_epoch_current(&context.snapshot.uri, context.document_epoch)
+            && self.is_document_epoch_current(context.snapshot.uri(), context.document_epoch)
     }
 
     pub fn is_analysis_context_current(&self, context: &SnapshotContext) -> bool {
@@ -575,11 +593,19 @@ impl DocumentStore {
     }
 
     pub fn has_snapshot(&self, uri: &Uri) -> bool {
-        self.snapshots.contains_key(uri)
+        self.analysis_generations.contains_key(uri)
     }
 
     pub fn has_analysis_payload(&self, uri: &Uri) -> bool {
-        self.analysis_payloads.contains_key(uri)
+        self.analysis_generations.contains_key(uri)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cached_analysis_generation(
+        &self,
+        uri: &Uri,
+    ) -> Option<&Arc<DocumentAnalysisContext>> {
+        self.analysis_generations.get(uri)
     }
 
     pub(crate) fn analysis_executor(&self) -> AnalysisExecutor {
@@ -589,8 +615,7 @@ impl DocumentStore {
     pub fn remove(&mut self, uri: &Uri) {
         self.analysis_executor.forget(uri);
         self.documents.remove(uri);
-        self.snapshots.remove(uri);
-        self.analysis_payloads.remove(uri);
+        self.analysis_generations.remove(uri);
         self.diagnostic_state.remove(uri);
         self.semantic_tokens_state.remove(uri);
     }
@@ -614,8 +639,8 @@ impl DocumentStore {
         let mut requests = Vec::new();
 
         for (uri, record) in &self.documents {
-            if let Some(snapshot) = self.snapshots.get(uri) {
-                contexts.push(self.cached_snapshot_context(uri, snapshot, record.epoch));
+            if let Some(generation) = self.analysis_generations.get(uri) {
+                contexts.push(self.cached_snapshot_context(generation, record.epoch));
             } else if let Some(request) = self.snapshot_build_request(uri) {
                 requests.push(request);
             }
@@ -634,8 +659,8 @@ impl DocumentStore {
         documents.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
 
         for (uri, record) in documents {
-            if let Some(snapshot) = self.snapshots.get(uri) {
-                contexts.push(self.cached_snapshot_context(uri, snapshot, record.epoch));
+            if let Some(generation) = self.analysis_generations.get(uri) {
+                contexts.push(self.cached_snapshot_context(generation, record.epoch));
             } else if let Some(request) = self.snapshot_build_request(uri) {
                 requests.push(request);
             }
@@ -669,24 +694,16 @@ impl DocumentStore {
 
     fn cached_snapshot_context(
         &self,
-        uri: &Uri,
-        snapshot: &Arc<DocumentSnapshot>,
+        analysis: &Arc<DocumentAnalysisContext>,
         document_epoch: DocumentEpoch,
     ) -> SnapshotContext {
-        match self.analysis_payloads.get(uri) {
-            Some(payload) => SnapshotContext::with_analysis(
-                Arc::clone(snapshot),
-                Arc::clone(payload),
-                self.snapshot_generation,
-                self.diagnostic_generation,
-                document_epoch,
-            ),
-            None => SnapshotContext::new(
-                Arc::clone(snapshot),
-                self.snapshot_generation,
-                document_epoch,
-            ),
-        }
+        SnapshotContext::with_analysis(
+            Arc::clone(&analysis.snapshot),
+            Arc::clone(&analysis.payload),
+            self.snapshot_generation,
+            self.diagnostic_generation,
+            document_epoch,
+        )
     }
 
     pub fn snapshot_contexts_for_requests(
@@ -744,7 +761,7 @@ impl DocumentStore {
         }
 
         self.semantic_tokens_state.insert(
-            context.snapshot.uri.clone(),
+            context.snapshot.uri().clone(),
             StoredSemanticTokensState {
                 snapshot_generation: context.generation,
                 state,

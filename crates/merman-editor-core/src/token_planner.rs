@@ -40,6 +40,31 @@ impl SemanticTokenPlan {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenPlanError {
+    ReversedRange {
+        range: Range,
+    },
+    RangeStartLineOutOfBounds {
+        range: Range,
+        line_count: usize,
+    },
+    RangeEndLineOutOfBounds {
+        range: Range,
+        line_count: usize,
+    },
+    RangeStartCharacterOutOfBounds {
+        range: Range,
+        line_length_utf16: usize,
+    },
+    RangeEndCharacterOutOfBounds {
+        range: Range,
+        line_length_utf16: usize,
+    },
+    RangeStartCharacterNotBoundary {
+        range: Range,
+    },
+    RangeEndCharacterNotBoundary {
+        range: Range,
+    },
     UpstreamLexemeFailure {
         fence_index: usize,
         failure: FenceLexemeFailure,
@@ -77,6 +102,47 @@ pub enum TokenPlanError {
 impl fmt::Display for TokenPlanError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ReversedRange { range } => write!(
+                formatter,
+                "semantic token range start {}:{} is after end {}:{}",
+                range.start.line, range.start.character, range.end.line, range.end.character
+            ),
+            Self::RangeStartLineOutOfBounds { range, line_count } => write!(
+                formatter,
+                "semantic token range start line {} is outside the document's {line_count} lines",
+                range.start.line
+            ),
+            Self::RangeEndLineOutOfBounds { range, line_count } => write!(
+                formatter,
+                "semantic token range end line {} is outside the document's {line_count} lines",
+                range.end.line
+            ),
+            Self::RangeStartCharacterOutOfBounds {
+                range,
+                line_length_utf16,
+            } => write!(
+                formatter,
+                "semantic token range start character {} is outside line {}'s UTF-16 length {line_length_utf16}",
+                range.start.character, range.start.line
+            ),
+            Self::RangeEndCharacterOutOfBounds {
+                range,
+                line_length_utf16,
+            } => write!(
+                formatter,
+                "semantic token range end character {} is outside line {}'s UTF-16 length {line_length_utf16}",
+                range.end.character, range.end.line
+            ),
+            Self::RangeStartCharacterNotBoundary { range } => write!(
+                formatter,
+                "semantic token range start character {} is not a Unicode scalar boundary on line {}",
+                range.start.character, range.start.line
+            ),
+            Self::RangeEndCharacterNotBoundary { range } => write!(
+                formatter,
+                "semantic token range end character {} is not a Unicode scalar boundary on line {}",
+                range.end.character, range.end.line
+            ),
             Self::UpstreamLexemeFailure {
                 fence_index,
                 failure,
@@ -126,6 +192,21 @@ impl fmt::Display for TokenPlanError {
 
 impl std::error::Error for TokenPlanError {}
 
+impl TokenPlanError {
+    pub const fn is_invalid_range(&self) -> bool {
+        matches!(
+            self,
+            Self::ReversedRange { .. }
+                | Self::RangeStartLineOutOfBounds { .. }
+                | Self::RangeEndLineOutOfBounds { .. }
+                | Self::RangeStartCharacterOutOfBounds { .. }
+                | Self::RangeEndCharacterOutOfBounds { .. }
+                | Self::RangeStartCharacterNotBoundary { .. }
+                | Self::RangeEndCharacterNotBoundary { .. }
+        )
+    }
+}
+
 pub fn plan_semantic_tokens_for_snapshot(
     snapshot: &DocumentSnapshot,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
@@ -148,23 +229,26 @@ fn plan_semantic_tokens(
     snapshot: &DocumentSnapshot,
     range: Option<Range>,
 ) -> Result<SemanticTokenPlan, TokenPlanError> {
-    let requested = range.and_then(|range| RequestedTokenRange::new(&snapshot.source_map, range));
+    let requested = match range {
+        Some(range) => RequestedTokenRange::new(snapshot.source_map(), range)?,
+        None => None,
+    };
     let mut candidates = Vec::new();
-    for fence in &snapshot.fences {
+    for fence in snapshot.fences() {
         if range.is_some() && requested.is_none() {
             break;
         }
         if let Some(requested) = requested
             && !requested.overlaps(ByteSpan {
-                start: fence.start,
-                end: fence.end,
+                start: fence.document_range().start,
+                end: fence.document_range().end,
             })
         {
             continue;
         }
         collect_fence_candidates(snapshot, fence, requested, &mut candidates)?;
     }
-    let mut plan = plan_candidates(&snapshot.source_map, candidates)?;
+    let mut plan = plan_candidates(snapshot.source_map(), candidates)?;
     if let Some(range) = range {
         plan.tokens
             .retain(|token| token_overlaps_range(*token, range));
@@ -179,25 +263,96 @@ struct RequestedTokenRange {
 }
 
 impl RequestedTokenRange {
-    fn new(source_map: &SourceMap, range: Range) -> Option<Self> {
-        if (range.start.line, range.start.character) >= (range.end.line, range.end.character) {
-            return None;
+    fn new(source_map: &SourceMap, range: Range) -> Result<Option<Self>, TokenPlanError> {
+        if (range.start.line, range.start.character) > (range.end.line, range.end.character) {
+            return Err(TokenPlanError::ReversedRange { range });
         }
+
         let line_count = source_map.line_starts().len();
-        if line_count == 0 || range.start.line >= line_count {
-            return None;
+        let start_line =
+            validate_range_position(source_map, range, RangeEndpoint::Start, line_count)?;
+        let end_line = validate_range_position(source_map, range, RangeEndpoint::End, line_count)?;
+        if range.start == range.end {
+            return Ok(None);
         }
-        let end_line = range.end.line.min(line_count - 1);
-        let (start, _) = source_map.line_bounds(range.start.line)?;
-        let (_, end) = source_map.line_bounds(end_line)?;
-        Some(Self {
-            byte_span: ByteSpan { start, end },
-        })
+
+        Ok(Some(Self {
+            byte_span: ByteSpan {
+                start: start_line.0,
+                end: end_line.1,
+            },
+        }))
     }
 
     const fn overlaps(self, span: ByteSpan) -> bool {
         span.start < self.byte_span.end && span.end > self.byte_span.start
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RangeEndpoint {
+    Start,
+    End,
+}
+
+fn validate_range_position(
+    source_map: &SourceMap,
+    range: Range,
+    endpoint: RangeEndpoint,
+    line_count: usize,
+) -> Result<(usize, usize), TokenPlanError> {
+    let position = match endpoint {
+        RangeEndpoint::Start => range.start,
+        RangeEndpoint::End => range.end,
+    };
+    let Some((line_start, line_end)) = source_map.line_bounds(position.line) else {
+        let error = match endpoint {
+            RangeEndpoint::Start => TokenPlanError::RangeStartLineOutOfBounds { range, line_count },
+            RangeEndpoint::End => TokenPlanError::RangeEndLineOutOfBounds { range, line_count },
+        };
+        return Err(error);
+    };
+
+    let line_length_utf16 = source_map
+        .utf16_position(line_end)
+        .map_err(|_| TokenPlanError::InvalidSpan {
+            span: ByteSpan {
+                start: line_end,
+                end: line_end,
+            },
+            source_len: source_map.source_len(),
+        })?
+        .character;
+    if position.character > line_length_utf16 {
+        let error = match endpoint {
+            RangeEndpoint::Start => TokenPlanError::RangeStartCharacterOutOfBounds {
+                range,
+                line_length_utf16,
+            },
+            RangeEndpoint::End => TokenPlanError::RangeEndCharacterOutOfBounds {
+                range,
+                line_length_utf16,
+            },
+        };
+        return Err(error);
+    }
+
+    let position = merman_analysis::Utf16Position {
+        line: position.line,
+        character: position.character,
+    };
+    if source_map
+        .byte_offset_for_utf16_position(position)
+        .is_none()
+    {
+        let error = match endpoint {
+            RangeEndpoint::Start => TokenPlanError::RangeStartCharacterNotBoundary { range },
+            RangeEndpoint::End => TokenPlanError::RangeEndCharacterNotBoundary { range },
+        };
+        return Err(error);
+    }
+
+    Ok((line_start, line_end))
 }
 
 fn token_overlaps_range(token: PlannedToken, range: Range) -> bool {
@@ -251,10 +406,10 @@ fn collect_fence_candidates(
     requested: Option<RequestedTokenRange>,
     candidates: &mut Vec<TokenCandidate>,
 ) -> Result<(), TokenPlanError> {
-    reject_upstream_lexeme_failure(fence.index, fence.text_index.lexeme_failure())?;
+    reject_upstream_lexeme_failure(fence.index(), fence.text_index().lexeme_failure())?;
 
     let mut previous_lexeme: Option<ByteSpan> = None;
-    for lexeme in fence.text_index.lexemes() {
+    for lexeme in fence.text_index().lexemes() {
         let span = absolute_fence_span(snapshot, fence, lexeme.span)?;
         if requested.is_some_and(|requested| !requested.overlaps(span)) {
             continue;
@@ -287,7 +442,7 @@ fn collect_fence_candidates(
         });
     }
 
-    for item in fence.text_index.semantic_items() {
+    for item in fence.text_index().semantic_items() {
         let span = absolute_fence_span(snapshot, fence, item.selection)?;
         if requested.is_some_and(|requested| !requested.overlaps(span)) {
             continue;
@@ -321,7 +476,7 @@ fn absolute_fence_span(
     fence: &FenceSnapshot,
     relative: ByteSpan,
 ) -> Result<ByteSpan, TokenPlanError> {
-    let body = fence.text.as_str();
+    let body = fence.text();
     if relative.start >= relative.end
         || relative.end > body.len()
         || !body.is_char_boundary(relative.start)
@@ -332,22 +487,19 @@ fn absolute_fence_span(
             source_len: body.len(),
         });
     }
-    let start =
-        fence
-            .body_start
-            .checked_add(relative.start)
-            .ok_or(TokenPlanError::PositionOverflow {
-                value: relative.start,
-            })?;
-    let end =
-        fence
-            .body_start
-            .checked_add(relative.end)
-            .ok_or(TokenPlanError::PositionOverflow {
-                value: relative.end,
-            })?;
+    let body_start = fence.body_range().start;
+    let start = body_start
+        .checked_add(relative.start)
+        .ok_or(TokenPlanError::PositionOverflow {
+            value: relative.start,
+        })?;
+    let end = body_start
+        .checked_add(relative.end)
+        .ok_or(TokenPlanError::PositionOverflow {
+            value: relative.end,
+        })?;
     let span = ByteSpan { start, end };
-    validate_span(snapshot.source_map.source(), span)?;
+    validate_span(snapshot.source_map().source(), span)?;
     Ok(span)
 }
 
@@ -357,28 +509,30 @@ fn collect_fence_delimiters(
     requested: Option<RequestedTokenRange>,
     candidates: &mut Vec<TokenCandidate>,
 ) -> Result<(), TokenPlanError> {
-    let (delimiter, spans) = match (fence.fence_delimiter, &fence.fence_delimiter_spans) {
+    let (delimiter, spans) = match (fence.fence_delimiter(), fence.fence_delimiter_spans()) {
         (None, None) => return Ok(()),
         (Some(delimiter), Some(spans)) => (delimiter, spans),
         _ => {
             return Err(TokenPlanError::InvalidFenceDelimiter {
-                fence_index: fence.index,
+                fence_index: fence.index(),
             });
         }
     };
-    if spans.opening.start < fence.start
-        || spans.opening.end > fence.body_start
+    let document_range = fence.document_range();
+    let body_range = fence.body_range();
+    if spans.opening.start < document_range.start
+        || spans.opening.end > body_range.start
         || spans.opening.end.checked_sub(spans.opening.start) != Some(delimiter.marker_len())
     {
         return Err(TokenPlanError::InvalidFenceDelimiter {
-            fence_index: fence.index,
+            fence_index: fence.index(),
         });
     }
     let opening = ByteSpan {
         start: spans.opening.start,
         end: spans.opening.end,
     };
-    validate_span(snapshot.text.as_ref(), opening)?;
+    validate_span(snapshot.text(), opening)?;
     if requested.is_none_or(|requested| requested.overlaps(opening)) {
         candidates.push(TokenCandidate {
             span: opening,
@@ -390,8 +544,8 @@ fn collect_fence_delimiters(
 
     match &spans.closing {
         Some(closing)
-            if closing.start >= fence.body_end
-                && closing.end <= fence.end
+            if closing.start >= body_range.end
+                && closing.end <= document_range.end
                 && closing
                     .end
                     .checked_sub(closing.start)
@@ -401,7 +555,7 @@ fn collect_fence_delimiters(
                 start: closing.start,
                 end: closing.end,
             };
-            validate_span(snapshot.text.as_ref(), closing)?;
+            validate_span(snapshot.text(), closing)?;
             if requested.is_none_or(|requested| requested.overlaps(closing)) {
                 candidates.push(TokenCandidate {
                     span: closing,
@@ -411,10 +565,10 @@ fn collect_fence_delimiters(
                 });
             }
         }
-        None if fence.body_end == fence.end => {}
+        None if body_range.end == document_range.end => {}
         _ => {
             return Err(TokenPlanError::InvalidFenceDelimiter {
-                fence_index: fence.index,
+                fence_index: fence.index(),
             });
         }
     }

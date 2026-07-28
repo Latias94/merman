@@ -158,7 +158,7 @@ fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
     let range = context.prefix_range();
     let has_directives = context
         .fence()
-        .text_index
+        .text_index()
         .directive_prefixes()
         .any(|prefix| is_directive_helper_prefix(prefix.as_str()));
     let directive_label = if has_directives {
@@ -270,7 +270,7 @@ fn node_items(
     range: Option<Range>,
 ) -> Vec<CompletionItem> {
     fence
-        .text_index
+        .text_index()
         .node_ids()
         .map(|id| CompletionItem {
             label: id.clone(),
@@ -288,7 +288,7 @@ fn node_items(
             }),
             label_details: Some(CompletionItemLabelDetails {
                 description: Some(document_uri.to_string()),
-                detail: Some(format!("fence {}", fence.index + 1)),
+                detail: Some(format!("fence {}", fence.index() + 1)),
             }),
         })
         .collect()
@@ -300,7 +300,7 @@ fn class_name_items(
     range: Option<Range>,
 ) -> Vec<CompletionItem> {
     fence
-        .text_index
+        .text_index()
         .class_names()
         .map(|name| CompletionItem {
             label: name.clone(),
@@ -318,7 +318,7 @@ fn class_name_items(
             }),
             label_details: Some(CompletionItemLabelDetails {
                 description: Some(document_uri.to_string()),
-                detail: Some(format!("fence {}", fence.index + 1)),
+                detail: Some(format!("fence {}", fence.index() + 1)),
             }),
         })
         .collect()
@@ -640,26 +640,20 @@ pub struct CompletionResolveData {
 #[cfg(test)]
 mod tests {
     use super::{CompletionDataKind, completion_for_snapshot};
-    use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
-    use crate::types::{DocumentKind, DocumentUri, Position};
+    use crate::types::{DocumentKind, Position};
     use crate::workspace::DocumentWorkspace;
-    use merman_analysis::{FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceMap};
-    use merman_core::{
-        EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind,
-        EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, EditorSpanCoordinateSpace,
-        SourceSpan,
-    };
-    use std::sync::Arc;
 
     #[test]
     fn markdown_outside_mermaid_fence_returns_no_completion() {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            "file:///tmp/readme.md",
-            1,
-            "# Notes\n\nplain prose\n".to_string(),
-            DocumentKind::Markdown,
-        );
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/readme.md",
+                1,
+                "# Notes\n\nplain prose\n".to_string(),
+                DocumentKind::Markdown,
+            )
+            .expect("test source should be accepted");
 
         let completion = completion_for_snapshot(&snapshot, Position::new(2, 3));
 
@@ -669,12 +663,14 @@ mod tests {
     #[test]
     fn source_start_offers_headers_and_templates() {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            "file:///tmp/example.mmd",
-            1,
-            "flow".to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                "flow".to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
 
         let completion = completion_for_snapshot(&snapshot, Position::new(0, 4));
 
@@ -700,12 +696,14 @@ mod tests {
     #[test]
     fn unsupported_diagram_body_context_returns_no_completion() {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            "file:///tmp/example.mmd",
-            1,
-            "flowchart TD\nunsupported".to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                "flowchart TD\nunsupported".to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
 
         let completion = completion_for_snapshot(&snapshot, Position::new(1, "unsupported".len()));
 
@@ -714,16 +712,15 @@ mod tests {
 
     #[test]
     fn parser_payload_context_returns_no_completion() {
-        let mut facts = EditorSemanticFacts::new();
-        facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::Payload,
-            SourceSpan::new(28, 33),
-        ));
-        let snapshot = snapshot_with_facts(
-            "sequenceDiagram\nAlice->Bob: Hello",
-            Some("sequence"),
-            facts,
-        );
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                "sequenceDiagram\nAlice->Bob: Hello".to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
 
         let completion = completion_for_snapshot(&snapshot, Position::new(1, 18));
 
@@ -732,19 +729,15 @@ mod tests {
 
     #[test]
     fn parser_expected_node_slot_reuses_known_entity_ids() {
-        let mut facts = EditorSemanticFacts::new();
-        facts.push_symbol(EditorSemanticSymbol::new(
-            "A",
-            Some("flowchart node".to_string()),
-            EditorSemanticKind::Module,
-            SourceSpan::new(13, 14),
-            SourceSpan::new(13, 14),
-        ));
-        facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::NodeIdentifier,
-            SourceSpan::new(18, 18),
-        ));
-        let snapshot = snapshot_with_facts("flowchart TD\nA--> ", Some("flowchart-v2"), facts);
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                "flowchart TD\nA--> ".to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
 
         let completion = completion_for_snapshot(&snapshot, Position::new(1, 5));
 
@@ -764,14 +757,16 @@ mod tests {
 
     #[test]
     fn parser_expected_flowchart_direction_edits_only_direction_value() {
-        let mut facts = EditorSemanticFacts::new();
         let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";
-        let value_start = text.find("LR").unwrap();
-        facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::DirectionValue,
-            SourceSpan::new(value_start, value_start + "LR".len()),
-        ));
-        let snapshot = snapshot_with_facts(text, Some("flowchart-v2"), facts);
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                text.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
 
         let completion = completion_for_snapshot(&snapshot, Position::new(2, "direction L".len()));
 
@@ -802,14 +797,16 @@ mod tests {
 
     #[test]
     fn parser_expected_block_arrow_direction_uses_block_values() {
-        let mut facts = EditorSemanticFacts::new();
         let text = "block\n  blockArrow<[\"&nbsp;\"]>(right)\n";
-        let value_start = text.find("right").unwrap();
-        facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::DirectionValue,
-            SourceSpan::new(value_start, value_start + "right".len()),
-        ));
-        let snapshot = snapshot_with_facts(text, Some("block"), facts);
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                text.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
 
         let completion = completion_for_snapshot(
             &snapshot,
@@ -847,494 +844,5 @@ mod tests {
             edit.range.end.character,
             "  blockArrow<[\"&nbsp;\"]>(right".len()
         );
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_target_reuses_known_entity_ids() {
-        let mut facts = EditorSemanticFacts::new();
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        facts.push_symbol(EditorSemanticSymbol::new(
-            "A",
-            Some("flowchart node".to_string()),
-            EditorSemanticKind::Module,
-            SourceSpan::new(13, 14),
-            SourceSpan::new(13, 14),
-        ));
-        facts.push_symbol(EditorSemanticSymbol::new(
-            "B",
-            Some("flowchart node".to_string()),
-            EditorSemanticKind::Module,
-            SourceSpan::new(18, 19),
-            SourceSpan::new(18, 19),
-        ));
-        let snapshot =
-            snapshot_with_facts("flowchart TD\nA-->B\nC-->", Some("flowchart-v2"), facts);
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(2, 4));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        assert_eq!(
-            completion
-                .items
-                .iter()
-                .filter(|item| item
-                    .data
-                    .as_ref()
-                    .is_some_and(|data| data.kind == CompletionDataKind::NodeIdentifier))
-                .map(|item| item.label.as_str())
-                .collect::<Vec<_>>(),
-            vec!["A", "B"]
-        );
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_extended_links_reuse_known_entity_ids() {
-        let cases = [
-            "C--->",
-            "C~~~",
-            "C<==>",
-            "C-- label -->",
-            "C x-- label --x",
-            "C o== label ==o",
-            "C x-. label .-x",
-            "C <-- label -->",
-        ];
-
-        for line in cases {
-            let mut facts = EditorSemanticFacts::new();
-            facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-            facts.push_symbol(EditorSemanticSymbol::new(
-                "A",
-                Some("flowchart node".to_string()),
-                EditorSemanticKind::Module,
-                SourceSpan::new(13, 14),
-                SourceSpan::new(13, 14),
-            ));
-            facts.push_symbol(EditorSemanticSymbol::new(
-                "B",
-                Some("flowchart node".to_string()),
-                EditorSemanticKind::Module,
-                SourceSpan::new(18, 19),
-                SourceSpan::new(18, 19),
-            ));
-            let snapshot = snapshot_with_facts(
-                &format!("flowchart TD\nA-->B\n{line}"),
-                Some("flowchart-v2"),
-                facts,
-            );
-
-            let completion = completion_for_snapshot(&snapshot, Position::new(2, line.len()));
-
-            assert_eq!(
-                completion.fact_source,
-                Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-            );
-            assert!(
-                completion.items.iter().any(|item| item.label == "B"),
-                "expected known node completions after {line:?}, got {:?}",
-                completion
-                    .items
-                    .iter()
-                    .map(|item| item.label.as_str())
-                    .collect::<Vec<_>>()
-            );
-        }
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_payload_suppresses_operator_items() {
-        let mut facts = EditorSemanticFacts::new();
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        facts.push_symbol(EditorSemanticSymbol::new(
-            "A",
-            Some("flowchart node".to_string()),
-            EditorSemanticKind::Module,
-            SourceSpan::new(13, 14),
-            SourceSpan::new(13, 14),
-        ));
-        let snapshot = snapshot_with_facts("flowchart TD\nA[\"Start", Some("flowchart-v2"), facts);
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(1, 5));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        assert!(
-            completion.items.is_empty(),
-            "degraded parser payload context must not offer body completions: {:?}",
-            completion
-                .items
-                .iter()
-                .map(|item| item.label.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_new_notation_label_payload_returns_no_completion() {
-        for line in ["C-- label [", "C x-- label [", "C x-. label ["] {
-            let mut facts = EditorSemanticFacts::new();
-            facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-            facts.push_symbol(EditorSemanticSymbol::new(
-                "A",
-                Some("flowchart node".to_string()),
-                EditorSemanticKind::Module,
-                SourceSpan::new(13, 14),
-                SourceSpan::new(13, 14),
-            ));
-            let snapshot = snapshot_with_facts(
-                &format!("flowchart TD\nA-->B\n{line}"),
-                Some("flowchart-v2"),
-                facts,
-            );
-
-            let completion = completion_for_snapshot(&snapshot, Position::new(2, line.len()));
-
-            assert_eq!(
-                completion.fact_source,
-                Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-            );
-            assert!(
-                completion.items.is_empty(),
-                "degraded parser new-notation label payload must not offer completions for {line:?}: {:?}",
-                completion
-                    .items
-                    .iter()
-                    .map(|item| item.label.as_str())
-                    .collect::<Vec<_>>()
-            );
-        }
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_new_notation_mismatched_markers_return_no_completion() {
-        for line in ["C x-- label -->", "C o== label ==x", "C <-. label .-o"] {
-            let mut facts = EditorSemanticFacts::new();
-            facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-            facts.push_symbol(EditorSemanticSymbol::new(
-                "A",
-                Some("flowchart node".to_string()),
-                EditorSemanticKind::Module,
-                SourceSpan::new(13, 14),
-                SourceSpan::new(13, 14),
-            ));
-            let snapshot = snapshot_with_facts(
-                &format!("flowchart TD\nA-->B\n{line}"),
-                Some("flowchart-v2"),
-                facts,
-            );
-
-            let completion = completion_for_snapshot(&snapshot, Position::new(2, line.len()));
-
-            assert_eq!(
-                completion.fact_source,
-                Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-            );
-            assert!(
-                completion.items.is_empty(),
-                "mismatched flowchart markers must not complete targets for {line:?}: {:?}",
-                completion
-                    .items
-                    .iter()
-                    .map(|item| item.label.as_str())
-                    .collect::<Vec<_>>()
-            );
-        }
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_spaced_pipe_label_payload_returns_no_completion() {
-        let mut facts = EditorSemanticFacts::new();
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        facts.push_symbol(EditorSemanticSymbol::new(
-            "A",
-            Some("flowchart node".to_string()),
-            EditorSemanticKind::Module,
-            SourceSpan::new(13, 14),
-            SourceSpan::new(13, 14),
-        ));
-        let line = "C --> |go --";
-        let snapshot = snapshot_with_facts(
-            &format!("flowchart TD\nA-->B\n{line}"),
-            Some("flowchart-v2"),
-            facts,
-        );
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(2, line.len()));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        assert!(
-            completion.items.is_empty(),
-            "degraded parser pipe-label payload must not offer completions: {:?}",
-            completion
-                .items
-                .iter()
-                .map(|item| item.label.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_spaced_pipe_label_target_reuses_known_entity_ids() {
-        let mut facts = EditorSemanticFacts::new();
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        facts.push_symbol(EditorSemanticSymbol::new(
-            "A",
-            Some("flowchart node".to_string()),
-            EditorSemanticKind::Module,
-            SourceSpan::new(13, 14),
-            SourceSpan::new(13, 14),
-        ));
-        facts.push_symbol(EditorSemanticSymbol::new(
-            "B",
-            Some("flowchart node".to_string()),
-            EditorSemanticKind::Module,
-            SourceSpan::new(18, 19),
-            SourceSpan::new(18, 19),
-        ));
-        let line = "C --> |go|   ";
-        let snapshot = snapshot_with_facts(
-            &format!("flowchart TD\nA-->B\n{line}"),
-            Some("flowchart-v2"),
-            facts,
-        );
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(2, line.len()));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        let item = completion
-            .items
-            .iter()
-            .find(|item| item.label == "B")
-            .expect("known node id completion");
-        let edit = item.text_edit.as_ref().expect("completion text edit");
-        assert_eq!(edit.new_text, "B");
-        assert_eq!(edit.range.start.line, 2);
-        assert_eq!(edit.range.start.character, "C --> |go|".len());
-        assert_eq!(edit.range.end.line, 2);
-        assert_eq!(edit.range.end.character, line.len());
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_payload_shape_trigger_returns_no_completion() {
-        let mut facts = EditorSemanticFacts::new();
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        let line = "A[\"Start [";
-        let snapshot = snapshot_with_facts(
-            &format!("flowchart TD\n{line}"),
-            Some("flowchart-v2"),
-            facts,
-        );
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        assert!(
-            completion.items.is_empty(),
-            "degraded parser payload shape trigger must not offer completions: {:?}",
-            completion
-                .items
-                .iter()
-                .map(|item| item.label.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_top_level_shape_trigger_still_completes_shapes() {
-        let mut facts =
-            EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart);
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        let line = "A((";
-        let snapshot = snapshot_with_facts(
-            &format!("flowchart TD\n{line}"),
-            Some("flowchart-v2"),
-            facts,
-        );
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        assert!(
-            completion.items.iter().any(|item| item
-                .data
-                .as_ref()
-                .is_some_and(|data| data.kind == CompletionDataKind::Shape)),
-            "degraded parser top-level shape trigger should offer shape completions: {:?}",
-            completion
-                .items
-                .iter()
-                .map(|item| item.label.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_shape_object_later_field_returns_no_completion() {
-        let mut facts = EditorSemanticFacts::new();
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        let line = "A@{ shape: rect, label: rou }";
-        let cursor = line.find("rou").unwrap() + "rou".len();
-        let snapshot = snapshot_with_facts(
-            &format!("flowchart TD\n{line}"),
-            Some("flowchart-v2"),
-            facts,
-        );
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(1, cursor));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        assert!(
-            completion.items.iter().all(|item| item
-                .data
-                .as_ref()
-                .is_none_or(|data| data.kind != CompletionDataKind::Shape)),
-            "shape completion must not cross shape-data fields: {:?}",
-            completion
-                .items
-                .iter()
-                .map(|item| item.label.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_payload_shape_object_text_returns_no_completion() {
-        let mut facts = EditorSemanticFacts::new();
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        let line = "A[\"docs @{ shape: rou";
-        let snapshot = snapshot_with_facts(
-            &format!("flowchart TD\n{line}"),
-            Some("flowchart-v2"),
-            facts,
-        );
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        assert!(
-            completion.items.is_empty(),
-            "degraded parser payload shape-object text must not offer completions: {:?}",
-            completion
-                .items
-                .iter()
-                .map(|item| item.label.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_payload_shape_object_text_after_top_level_marker_returns_no_completion()
-     {
-        let mut facts = EditorSemanticFacts::new();
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        let line = "A@{ icon: \"home\" } B[\"docs @{ shape: rou";
-        let snapshot = snapshot_with_facts(
-            &format!("flowchart TD\n{line}"),
-            Some("flowchart-v2"),
-            facts,
-        );
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        assert!(
-            completion.items.is_empty(),
-            "degraded parser payload shape-object text after top-level marker must not offer completions: {:?}",
-            completion
-                .items
-                .iter()
-                .map(|item| item.label.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[test]
-    fn degraded_parser_flowchart_shape_object_value_still_completes_shapes() {
-        let mut facts =
-            EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart);
-        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
-        let line = "A@{ shape: rou";
-        let snapshot = snapshot_with_facts(
-            &format!("flowchart TD\n{line}"),
-            Some("flowchart-v2"),
-            facts,
-        );
-
-        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
-
-        assert_eq!(
-            completion.fact_source,
-            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
-        );
-        assert!(
-            completion.items.iter().any(|item| item
-                .data
-                .as_ref()
-                .is_some_and(|data| data.kind == CompletionDataKind::Shape)),
-            "degraded parser shape object value should offer shape completions: {:?}",
-            completion
-                .items
-                .iter()
-                .map(|item| item.label.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    fn snapshot_with_facts(
-        text: &str,
-        diagram_type: Option<&str>,
-        facts: EditorSemanticFacts,
-    ) -> DocumentSnapshot {
-        let shared_text = Arc::<str>::from(text);
-        DocumentSnapshot {
-            uri: DocumentUri::from("file:///tmp/example.mmd"),
-            version: 1,
-            kind: DocumentKind::Diagram,
-            source: merman_analysis::SourceDescriptor::diagram()
-                .with_path("file:///tmp/example.mmd"),
-            text: Arc::clone(&shared_text),
-            source_map: SourceMap::new(Arc::clone(&shared_text)),
-            fences: vec![FenceSnapshot {
-                source_id: "document".to_string(),
-                index: 0,
-                source: merman_analysis::SourceDescriptor::diagram()
-                    .with_path("file:///tmp/example.mmd"),
-                start: 0,
-                body_start: 0,
-                body_end: text.len(),
-                end: text.len(),
-                text: SharedTextSlice::whole(Arc::clone(&shared_text)),
-                fence_delimiter: None,
-                fence_delimiter_spans: None,
-                diagram_type: diagram_type.map(str::to_string),
-                text_index: FenceTextIndex::from_core_facts(facts),
-            }],
-        }
     }
 }

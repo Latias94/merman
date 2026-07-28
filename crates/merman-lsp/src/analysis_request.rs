@@ -4,8 +4,8 @@ use crate::snapshot::{
 };
 #[cfg(test)]
 use crate::sync::{lock_recovering_poison, recover_poison};
-use merman_analysis::{AnalysisCancellationToken, AnalysisCancelled, Analyzer};
-use merman_editor_core::{DocumentKind, DocumentWorkspace};
+use merman_analysis::{AnalysisCancellationToken, AnalysisCancelled, AnalysisRejection, Analyzer};
+use merman_editor_core::{DocumentAnalysisOutcome, DocumentKind, DocumentWorkspace};
 use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 
@@ -30,6 +30,12 @@ pub(crate) struct AnalysisBuildKey {
     snapshot_generation: SnapshotGeneration,
     diagnostic_generation: DiagnosticGeneration,
     document_epoch: DocumentEpoch,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum AnalysisBuildError {
+    Cancelled(AnalysisCancelled),
+    Rejected(AnalysisRejection),
 }
 
 impl AnalysisBuildKey {
@@ -97,7 +103,7 @@ impl AnalysisBuildRequest {
         self.key.document_epoch
     }
 
-    pub(crate) fn build(&self) -> Arc<DocumentAnalysisContext> {
+    pub(crate) fn build(&self) -> Result<Arc<DocumentAnalysisContext>, AnalysisRejection> {
         let context = DocumentWorkspace::build_analysis_context_with_shared_text(
             &self.analyzer,
             self.key.uri.as_str(),
@@ -105,20 +111,20 @@ impl AnalysisBuildRequest {
             Arc::clone(&self.text),
             self.kind,
         );
-        Arc::new(DocumentAnalysisContext::from_editor(
-            context,
-            self.key.uri.clone(),
-        ))
+        document_analysis_context(context, self.key.uri.clone())
     }
 
     pub(crate) fn build_cancellable(
         &self,
         cancellation: &AnalysisCancellationToken,
-    ) -> Result<Arc<DocumentAnalysisContext>, AnalysisCancelled> {
-        cancellation.checkpoint()?;
+    ) -> Result<Arc<DocumentAnalysisContext>, AnalysisBuildError> {
+        cancellation
+            .checkpoint()
+            .map_err(AnalysisBuildError::Cancelled)?;
         #[cfg(test)]
         if let Some(gate) = &self.test_gate {
-            gate.wait(cancellation)?;
+            gate.wait(cancellation)
+                .map_err(AnalysisBuildError::Cancelled)?;
         }
         let context = DocumentWorkspace::build_analysis_context_with_shared_text_cancellable(
             &self.analyzer,
@@ -127,18 +133,31 @@ impl AnalysisBuildRequest {
             Arc::clone(&self.text),
             self.kind,
             cancellation,
-        )?;
-        cancellation.checkpoint()?;
-        Ok(Arc::new(DocumentAnalysisContext::from_editor(
-            context,
-            self.key.uri.clone(),
-        )))
+        )
+        .map_err(AnalysisBuildError::Cancelled)?;
+        cancellation
+            .checkpoint()
+            .map_err(AnalysisBuildError::Cancelled)?;
+        document_analysis_context(context, self.key.uri.clone())
+            .map_err(AnalysisBuildError::Rejected)
     }
 
     #[cfg(test)]
     pub(crate) fn with_test_gate(mut self, gate: Arc<TestAnalysisGate>) -> Self {
         self.test_gate = Some(gate);
         self
+    }
+}
+
+fn document_analysis_context(
+    outcome: DocumentAnalysisOutcome,
+    uri: Uri,
+) -> Result<Arc<DocumentAnalysisContext>, AnalysisRejection> {
+    match outcome {
+        DocumentAnalysisOutcome::Ready(context) => {
+            Ok(Arc::new(DocumentAnalysisContext::from_editor(context, uri)))
+        }
+        DocumentAnalysisOutcome::Rejected(rejection) => Err(rejection),
     }
 }
 

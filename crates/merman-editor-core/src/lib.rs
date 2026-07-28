@@ -52,6 +52,6 @@ pub use token_planner::{
 
 pub use types::{DocumentKind, DocumentUri, Position, Range};
 pub use workspace::{
-    AnalyzedDocumentSnapshot, DiagramDetectionValidity, DocumentAnalysisContext, DocumentWorkspace,
+    DiagramDetectionValidity, DocumentAnalysisContext, DocumentAnalysisOutcome, DocumentWorkspace,
     EditorDiagramDetection,
 };

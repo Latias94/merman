@@ -250,13 +250,15 @@ fn product_families_are_parser_backed_and_role_aware() {
 
     for case in cases {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            "file:///tmp/example.mmd",
-            1,
-            case.snippet.to_string(),
-            DocumentKind::Diagram,
-        );
-        let index = &snapshot.fences[0].text_index;
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                case.snippet.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+        let index = snapshot.fences()[0].text_index();
 
         assert_eq!(
             index.source(),
@@ -380,26 +382,30 @@ fn capability_matrix_families_are_parser_backed_in_editor_core() {
         ),
         ("venn", "venn-beta\nset A\nset B\nunion A,B\n"),
     ] {
-        let snapshot = workspace.upsert(
-            "file:///tmp/capability-matrix.mmd",
-            1,
-            snippet.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/capability-matrix.mmd",
+                1,
+                snippet.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         assert_eq!(
-            snapshot.fences[0].text_index.source(),
+            snapshot.fences()[0].text_index().source(),
             FenceTextIndexSource::ParserComplete,
             "unexpected parser provenance for {label}"
         );
     }
 
-    let snapshot = workspace.upsert(
-        "file:///tmp/capability-matrix.mmd",
-        1,
-        "flowchart TD\nA-->B\n".to_string(),
-        DocumentKind::Diagram,
-    );
-    let index = &snapshot.fences[0].text_index;
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/capability-matrix.mmd",
+            1,
+            "flowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
+    let index = snapshot.fences()[0].text_index();
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "A"));
     assert!(index.node_ids().any(|id| id == "B"));

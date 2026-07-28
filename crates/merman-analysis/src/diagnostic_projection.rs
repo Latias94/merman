@@ -28,7 +28,7 @@ struct ParseDiagnosticProjection {
 }
 
 pub(crate) fn core_error_diagnostic(
-    error: CoreError,
+    error: &CoreError,
     source_map: &SourceMap,
     rule_config: &crate::rules::AnalysisRuleConfig,
 ) -> CoreErrorDiagnostic {
@@ -68,7 +68,7 @@ pub(crate) fn core_error_diagnostic(
                 rule_config,
             )
             .map(|diagnostic| diagnostic.with_diagram_type(diagram_type.clone())),
-            diagram_type: Some(diagram_type),
+            diagram_type: Some(diagram_type.clone()),
             parse_location: None,
         },
         CoreError::DiagramParse {
@@ -76,13 +76,13 @@ pub(crate) fn core_error_diagnostic(
             diagnostic,
         } => {
             let (diagnostic, parse_location) =
-                match parse_diagnostic(diagnostic, &diagram_type, source_map, rule_config) {
+                match parse_diagnostic(diagnostic, diagram_type, source_map, rule_config) {
                     Some(projection) => (Some(projection.diagnostic), Some(projection.location)),
                     None => (None, None),
                 };
             CoreErrorDiagnostic {
                 diagnostic,
-                diagram_type: Some(diagram_type),
+                diagram_type: Some(diagram_type.clone()),
                 parse_location,
             }
         }
@@ -123,7 +123,7 @@ pub(crate) fn core_error_diagnostic(
 }
 
 fn parse_diagnostic(
-    diagnostic: ParseDiagnostic,
+    diagnostic: &ParseDiagnostic,
     diagram_type: &str,
     source_map: &SourceMap,
     rule_config: &crate::rules::AnalysisRuleConfig,
@@ -180,16 +180,10 @@ fn parse_diagnostic(
 }
 
 pub(crate) fn panic_diagnostic(
-    panic_payload: Box<dyn std::any::Any + Send>,
+    message: &str,
     source_map: &SourceMap,
     rule_config: &crate::rules::AnalysisRuleConfig,
 ) -> Option<AnalysisDiagnostic> {
-    let message = panic_payload
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| panic_payload.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("panic while analyzing Mermaid source");
-
     rule_diagnostic(
         PANIC_RULE_ID,
         AnalysisStatus::Panic,
@@ -291,7 +285,7 @@ mod tests {
     #[test]
     fn theme_color_errors_are_config_diagnostics_without_fabricated_source_ownership() {
         let projection = core_error_diagnostic(
-            CoreError::ThemeColor(ColorError::UnsupportedFormat {
+            &CoreError::ThemeColor(ColorError::UnsupportedFormat {
                 input: "not-a-color".to_string(),
             }),
             &SourceMap::new("flowchart TD\nA-->B\n"),

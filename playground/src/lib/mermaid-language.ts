@@ -324,9 +324,12 @@ export function registerMermaidLanguage(
         );
       }
       managedModel = model;
-      await client.openDocument(snapshot);
-      if (disposed || model.isDisposed()) {
-        throw new Error("Mermaid editor model was disposed while opening.");
+      let opening: Promise<void>;
+      try {
+        opening = client.openDocument(snapshot);
+      } catch (error) {
+        managedModel = null;
+        throw error;
       }
 
       let diagnosticTimer: ReturnType<typeof setTimeout> | null = null;
@@ -378,9 +381,18 @@ export function registerMermaidLanguage(
         },
       };
       modelBindings.add(binding);
-      for (const listener of semanticListeners) listener();
-      void publishDiagnostics().catch(notifyUnavailable);
-      return binding;
+      try {
+        await opening;
+        if (disposed || bindingDisposed || model.isDisposed()) {
+          throw new Error("Mermaid editor model was disposed while opening.");
+        }
+        for (const listener of semanticListeners) listener();
+        void publishDiagnostics().catch(notifyUnavailable);
+        return binding;
+      } catch (error) {
+        binding.dispose();
+        throw error;
+      }
     },
     dispose() {
       if (disposed) return;

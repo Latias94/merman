@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tower_lsp_server::Client;
 
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -17,13 +16,7 @@ pub(crate) struct RefreshCoordinator {
 struct RefreshCoordinatorInner {
     semantic_tokens: RefreshLane,
     diagnostics: RefreshLane,
-    transport: RefreshTransport,
-}
-
-#[derive(Clone)]
-enum RefreshTransport {
-    Managed(RefreshClient),
-    Tower(Client),
+    client: RefreshClient,
 }
 
 struct RefreshLane {
@@ -71,19 +64,11 @@ impl fmt::Debug for RefreshCoordinator {
 
 impl RefreshCoordinator {
     pub(crate) fn new(client: RefreshClient) -> Self {
-        Self::with_transport(RefreshTransport::Managed(client))
-    }
-
-    pub(crate) fn from_tower_client(client: Client) -> Self {
-        Self::with_transport(RefreshTransport::Tower(client))
-    }
-
-    fn with_transport(transport: RefreshTransport) -> Self {
         Self {
             inner: Arc::new(RefreshCoordinatorInner {
                 semantic_tokens: RefreshLane::new(),
                 diagnostics: RefreshLane::new(),
-                transport,
+                client,
             }),
         }
     }
@@ -138,15 +123,15 @@ impl RefreshCoordinator {
             return;
         };
         let pending = Arc::clone(&lane.pending);
-        let transport = self.inner.transport.clone();
-        runtime.spawn(run_worker(receiver, pending, transport, kind));
+        let client = self.inner.client.clone();
+        runtime.spawn(run_worker(receiver, pending, client, kind));
     }
 }
 
 async fn run_worker(
     mut receiver: mpsc::Receiver<()>,
     pending: Arc<AtomicBool>,
-    transport: RefreshTransport,
+    client: RefreshClient,
     kind: RefreshKind,
 ) {
     while receiver.recv().await.is_some() {
@@ -155,29 +140,10 @@ async fn run_worker(
                 break;
             }
 
-            transport.request(kind).await;
+            supervise_refresh(kind.label(), client.request(kind)).await;
 
             if !pending.load(Ordering::Acquire) {
                 break;
-            }
-        }
-    }
-}
-
-impl RefreshTransport {
-    async fn request(&self, kind: RefreshKind) {
-        match self {
-            Self::Managed(client) => {
-                supervise_refresh(kind.label(), client.request(kind)).await;
-            }
-            Self::Tower(client) => {
-                let result = match kind {
-                    RefreshKind::SemanticTokens => client.semantic_tokens_refresh().await,
-                    RefreshKind::Diagnostics => client.workspace_diagnostic_refresh().await,
-                };
-                if let Err(error) = result {
-                    tracing::warn!(%error, refresh_kind = kind.label(), "client refresh failed");
-                }
             }
         }
     }

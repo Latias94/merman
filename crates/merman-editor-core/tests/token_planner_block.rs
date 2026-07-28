@@ -27,12 +27,14 @@ fn block_parser_lexemes_project_to_utf16_tokens_without_overlap() {
 
     for (index, source) in cases.into_iter().enumerate() {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            format!("file:///tmp/block-{index}.mmd"),
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/block-{index}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("block semantic token plan");
 
         assert_eq!(plan.packed().len(), plan.tokens().len() * 5);
@@ -52,7 +54,7 @@ fn block_parser_lexemes_project_to_utf16_tokens_without_overlap() {
         let target = if index == 0 { "接口" } else { "完成" };
         let offset = source.find(target).expect("test token offset");
         let position = snapshot
-            .source_map
+            .source_map()
             .utf16_position(offset)
             .expect("test token UTF-16 position");
         assert!(

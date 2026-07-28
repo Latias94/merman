@@ -6,10 +6,9 @@ use merman_editor_core::semantic_token_descriptor;
 
 #[test]
 fn published_server_constructors_use_tower_lsp_server_types() {
-    let _: fn(tower_lsp_server::Client) -> MermanLanguageServer = MermanLanguageServer::new;
     let _: fn() -> (
         tower_lsp_server::LspService<MermanLanguageServer>,
-        tower_lsp_server::ClientSocket,
+        merman_lsp::MermanClientSocket,
     ) = MermanLanguageServer::service;
 }
 

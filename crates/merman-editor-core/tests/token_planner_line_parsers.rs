@@ -37,12 +37,14 @@ fn line_parser_families_produce_non_overlapping_semantic_token_plans() {
 
     for (family, source, distinctive_kind) in cases {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            format!("file:///tmp/{family}-line-parser.mmd"),
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{family}-line-parser.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let plan = plan_semantic_tokens_for_snapshot(&snapshot)
             .unwrap_or_else(|error| panic!("{family} token plan failed: {error}"));
 
@@ -95,12 +97,14 @@ fn line_parser_recovery_plans_cover_tokens_before_and_after_the_error() {
 
     for (family, source) in cases {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            format!("file:///tmp/{family}-line-recovery.mmd"),
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/{family}-line-recovery.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let plan = plan_semantic_tokens_for_snapshot(&snapshot)
             .unwrap_or_else(|error| panic!("{family} recovery token plan failed: {error}"));
         assert_non_overlapping(plan.tokens());
@@ -108,7 +112,7 @@ fn line_parser_recovery_plans_cover_tokens_before_and_after_the_error() {
         for text in ["Before", "After"] {
             let offset = source.find(text).expect("test token offset");
             let position = snapshot
-                .source_map
+                .source_map()
                 .utf16_position(offset)
                 .expect("test token UTF-16 position");
             assert!(

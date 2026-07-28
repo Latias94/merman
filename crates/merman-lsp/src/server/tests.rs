@@ -47,21 +47,19 @@ async fn assert_cached_snapshot_identity(
         .await
         .expect("expected cached snapshot");
     assert!(std::sync::Arc::ptr_eq(expected, &actual));
-    assert_eq!(actual.version, expected.version);
+    assert_eq!(actual.version(), expected.version());
 }
 
 #[test]
 fn service_can_be_constructed_without_a_tokio_runtime() {
     let (_service, _socket) = MermanLanguageServer::service();
-    let (_service, _socket) = MermanLanguageServer::service_with_refresh();
 }
 
 #[test]
 fn published_server_constructor_signatures_use_tower_lsp_server_types() {
-    let _: fn(tower_lsp_server::Client) -> MermanLanguageServer = MermanLanguageServer::new;
     let _: fn() -> (
         tower_lsp_server::LspService<MermanLanguageServer>,
-        tower_lsp_server::ClientSocket,
+        crate::MermanClientSocket,
     ) = MermanLanguageServer::service;
 }
 
@@ -111,6 +109,34 @@ fn semantic_token_planner_failures_are_typed_internal_errors() {
             "detail": format!("token position {} exceeds the packed u32 contract", usize::MAX),
         }))
     );
+}
+
+#[test]
+fn invalid_semantic_token_ranges_are_invalid_params() {
+    let mut store = DocumentStore::new();
+    let snapshot = store.upsert(
+        Uri::from_str("file:///tmp/token-range-error.mmd").unwrap(),
+        7,
+        "flowchart TD\nA --> B\n".to_string(),
+    );
+    let range = merman_editor_core::Range::new(
+        merman_editor_core::Position::new(1, 4),
+        merman_editor_core::Position::new(1, 2),
+    );
+    let error = semantic_token_planning_error(
+        &snapshot,
+        merman_editor_core::TokenPlanError::ReversedRange { range },
+    );
+
+    assert_eq!(
+        error.code,
+        tower_lsp_server::jsonrpc::ErrorCode::InvalidParams
+    );
+    assert_eq!(
+        error.message,
+        "semantic token range start 1:4 is after end 1:2"
+    );
+    assert!(error.data.is_none());
 }
 
 #[test]
@@ -568,7 +594,7 @@ async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
         .snapshot_for_uri(&uri)
         .await
         .expect("diagnostics should cache the shared snapshot");
-    assert_eq!(shared.version, version);
+    assert_eq!(shared.version(), version);
 
     let detection = shared
         .detection()
@@ -702,6 +728,10 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         .snapshot_for_uri(&uri)
         .await
         .expect("expected initial snapshot");
+    let execution_count = {
+        let store = server.store.lock().await;
+        store.analysis_executor().execution_count()
+    };
 
     {
         let mut store = server.store.lock().await;
@@ -716,7 +746,12 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
             crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
         );
         assert!(store.has_snapshot(&uri));
-        assert!(!store.has_analysis_payload(&uri));
+        assert!(store.has_analysis_payload(&uri));
+        assert_eq!(
+            store.analysis_executor().execution_count(),
+            execution_count,
+            "diagnostic reprojection must not schedule another analysis"
+        );
     }
 
     let context = {
@@ -728,6 +763,7 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
     let diagnostic = server
         .diagnostics_for_current_context(&context)
         .await
+        .expect("diagnostic analysis should succeed")
         .expect("expected current diagnostics")
         .into_iter()
         .find(|diagnostic| {
@@ -761,6 +797,16 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         )
     }));
     assert_cached_snapshot_identity(server, &uri, &original_snapshot).await;
+    assert_eq!(
+        server
+            .store
+            .lock()
+            .await
+            .analysis_executor()
+            .execution_count(),
+        execution_count,
+        "diagnostics and code actions must consume the reprojected generation"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -784,12 +830,9 @@ async fn did_open_uses_language_id_and_change_preserves_document_kind() {
         .snapshot_for_uri(&uri)
         .await
         .expect("expected markdown snapshot");
-    assert_eq!(snapshot.kind, DocumentKind::Markdown);
-    assert_eq!(snapshot.fences.len(), 1);
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
+    assert_eq!(snapshot.kind(), DocumentKind::Markdown);
+    assert_eq!(snapshot.fences().len(), 1);
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
 
     server
         .did_change(DidChangeTextDocumentParams {
@@ -809,9 +852,9 @@ async fn did_open_uses_language_id_and_change_preserves_document_kind() {
         .snapshot_for_uri(&uri)
         .await
         .expect("expected changed markdown snapshot");
-    assert_eq!(snapshot.kind, DocumentKind::Markdown);
-    assert_eq!(snapshot.fences.len(), 1);
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("sequence"));
+    assert_eq!(snapshot.kind(), DocumentKind::Markdown);
+    assert_eq!(snapshot.fences().len(), 1);
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("sequence"));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -871,8 +914,8 @@ async fn did_change_rejects_stale_document_versions() {
         .snapshot_for_uri(&uri)
         .await
         .expect("expected current snapshot");
-    assert_eq!(snapshot.version, 3);
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("sequence"));
+    assert_eq!(snapshot.version(), 3);
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("sequence"));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -924,10 +967,7 @@ async fn did_change_applies_incremental_changes_in_order() {
         .snapshot_for_uri(&uri)
         .await
         .expect("expected changed snapshot");
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -964,6 +1004,7 @@ async fn stale_diagnostic_context_returns_content_modified_error() {
     let error = server
         .diagnostics_for_current_context(&context)
         .await
+        .expect("diagnostic analysis should succeed")
         .ok_or_else(stale_diagnostic_recompute_error)
         .expect_err("stale context should fail");
 
@@ -1463,7 +1504,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
             range: Range {
                 start: Position::new(1, 0),
-                end: Position::new(2, 7),
+                end: Position::new(2, 5),
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1484,6 +1525,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
     let diagnostic = server
         .diagnostics_for_current_context(&context)
         .await
+        .expect("diagnostic analysis should succeed")
         .expect("expected current diagnostics")
         .into_iter()
         .find(|diagnostic| {

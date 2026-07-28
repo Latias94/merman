@@ -341,6 +341,48 @@ test("managed document changes explicitly refresh semantic tokens after didChang
   registration.dispose();
 });
 
+test("managed document changes are queued while didOpen is pending", async () => {
+  const { registerMermaidLanguage } = loadTypeScriptModule(
+    "src/lib/mermaid-language.ts",
+  );
+  let resolveOpen;
+  const changes = [];
+  const client = {
+    openDocument() {
+      return new Promise((resolve) => {
+        resolveOpen = resolve;
+      });
+    },
+    async changeDocument(document) {
+      changes.push(document);
+    },
+    async query(_snapshot, query) {
+      return query.kind === "diagnostics" ? { diagnostics: [] } : [];
+    },
+    dispose() {},
+  };
+  const model = reactiveModel("flowchart TD", 1);
+  const registration = registerMermaidLanguage(
+    fakeMonaco(),
+    client,
+    TEST_LANGUAGE_IDENTITY,
+  );
+
+  const bindingPromise = registration.bindModel(model);
+  model.change("flowchart TD\nA-->B");
+  await Promise.resolve();
+
+  assert.deepEqual(
+    changes.map(({ version, source }) => ({ version, source })),
+    [{ version: 2, source: "flowchart TD\nA-->B" }],
+  );
+
+  resolveOpen();
+  const binding = await bindingPromise;
+  binding.dispose();
+  registration.dispose();
+});
+
 test("rename rejects a workspace edit targeting an unmanaged URI", async () => {
   const { registerMermaidLanguage } = loadTypeScriptModule(
     "src/lib/mermaid-language.ts",

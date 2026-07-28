@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::document_store::{
     DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiscardedSource, DocumentResourceLimit, DocumentStore,
@@ -23,19 +24,16 @@ fn plain_mermaid_documents_create_single_snapshot_fence() {
         "flowchart TD\nclassDef highlight fill:#f00\nA-->B\n".to_string(),
     );
 
-    assert_eq!(snapshot.fences.len(), 1);
-    assert_eq!(snapshot.fences[0].body_start, 0);
+    assert_eq!(snapshot.fences().len(), 1);
+    assert_eq!(snapshot.fences()[0].body_range().start, 0);
     assert_eq!(
-        snapshot.fences[0].text.as_ref(),
+        snapshot.fences()[0].text(),
         "flowchart TD\nclassDef highlight fill:#f00\nA-->B\n"
     );
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
     assert!(
-        snapshot.fences[0]
-            .text_index
+        snapshot.fences()[0]
+            .text_index()
             .has_directive_prefix("classDef")
     );
 }
@@ -61,14 +59,20 @@ fn markdown_documents_create_fences_for_markdown_extensions() {
             .to_string(),
     );
 
-    assert_eq!(snapshot.fences.len(), 1);
-    assert!(snapshot.fences[0].text.contains("flowchart TD"));
-    assert!(snapshot.fences[0].text_index.node_ids().any(|id| id == "A"));
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
+    assert_eq!(snapshot.fences().len(), 1);
+    assert!(snapshot.fences()[0].text().contains("flowchart TD"));
+    assert!(
+        snapshot.fences()[0]
+            .text_index()
+            .node_ids()
+            .any(|id| id == "A")
     );
-    assert!(snapshot.fences[0].text_index.has_directive_prefix("init"));
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
+    assert!(
+        snapshot.fences()[0]
+            .text_index()
+            .has_directive_prefix("init")
+    );
 }
 
 #[test]
@@ -94,31 +98,38 @@ fn markdown_documents_create_multiple_mermaid_fences() {
         .to_string(),
     );
 
-    assert_eq!(snapshot.fences.len(), 2);
+    assert_eq!(snapshot.fences().len(), 2);
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
+    assert_eq!(snapshot.fences()[1].diagram_type(), Some("sequence"));
     assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
-    assert_eq!(snapshot.fences[1].diagram_type.as_deref(), Some("sequence"));
-    assert_eq!(
-        snapshot.fences[0].text_index.source(),
+        snapshot.fences()[0].text_index().source(),
         FenceTextIndexSource::ParserComplete
     );
     assert_eq!(
-        snapshot.fences[1].text_index.source(),
+        snapshot.fences()[1].text_index().source(),
         FenceTextIndexSource::ParserComplete
     );
-    assert!(snapshot.fences[0].text_index.node_ids().any(|id| id == "A"));
-    assert!(snapshot.fences[0].text_index.node_ids().any(|id| id == "B"));
     assert!(
-        snapshot.fences[1]
-            .text_index
+        snapshot.fences()[0]
+            .text_index()
+            .node_ids()
+            .any(|id| id == "A")
+    );
+    assert!(
+        snapshot.fences()[0]
+            .text_index()
+            .node_ids()
+            .any(|id| id == "B")
+    );
+    assert!(
+        snapshot.fences()[1]
+            .text_index()
             .node_ids()
             .any(|id| id == "Alice")
     );
     assert!(
-        snapshot.fences[1]
-            .text_index
+        snapshot.fences()[1]
+            .text_index()
             .node_ids()
             .any(|id| id == "Bob")
     );
@@ -136,8 +147,8 @@ fn newer_versions_replace_the_stored_snapshot() {
         "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
     );
 
-    assert_eq!(first.version, 1);
-    assert_eq!(second.version, 2);
+    assert_eq!(first.version(), 1);
+    assert_eq!(second.version(), 2);
 
     let stored = store.get(&uri).unwrap();
     assert_eq!(stored.version, 2);
@@ -146,8 +157,8 @@ fn newer_versions_replace_the_stored_snapshot() {
     let stored = store
         .snapshot(&uri)
         .expect("expected stored snapshot after replacement");
-    assert_eq!(stored.fences.len(), 1);
-    assert_eq!(stored.fences[0].diagram_type.as_deref(), Some("sequence"));
+    assert_eq!(stored.fences().len(), 1);
+    assert_eq!(stored.fences()[0].diagram_type(), Some("sequence"));
 }
 
 #[test]
@@ -170,11 +181,8 @@ fn upsert_text_defers_snapshot_until_requested() {
         .snapshot(&uri)
         .expect("expected lazy snapshot for stored document");
     assert!(store.has_snapshot(&uri));
-    assert_eq!(snapshot.version, 1);
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
+    assert_eq!(snapshot.version(), 1);
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
 }
 
 #[test]
@@ -343,7 +351,7 @@ fn upsert_text_invalidates_cached_snapshot() {
     let first = store
         .snapshot(&uri)
         .expect("expected initial lazy snapshot");
-    assert_eq!(first.version, 1);
+    assert_eq!(first.version(), 1);
     assert!(store.has_snapshot(&uri));
 
     store.upsert_text(
@@ -357,8 +365,8 @@ fn upsert_text_invalidates_cached_snapshot() {
     let second = store
         .snapshot(&uri)
         .expect("expected refreshed lazy snapshot");
-    assert_eq!(second.version, 2);
-    assert_eq!(second.fences[0].diagram_type.as_deref(), Some("sequence"));
+    assert_eq!(second.version(), 2);
+    assert_eq!(second.fences()[0].diagram_type(), Some("sequence"));
 }
 
 #[test]
@@ -395,7 +403,7 @@ fn apply_text_change_rejects_stale_versions_without_invalidating_current_state()
     let snapshot = store
         .snapshot(&uri)
         .expect("expected current snapshot before stale edit");
-    assert_eq!(snapshot.version, 3);
+    assert_eq!(snapshot.version(), 3);
     assert!(store.has_snapshot(&uri));
 
     let update = store.apply_text_changes(
@@ -588,7 +596,7 @@ fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
     let snapshot = store
         .snapshot(&uri)
         .expect("expected current snapshot before invalid edit");
-    assert_eq!(snapshot.version, 1);
+    assert_eq!(snapshot.version(), 1);
     assert!(store.has_snapshot(&uri));
 
     let update = store.apply_text_changes(
@@ -864,7 +872,9 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
     assert!(snapshots.is_empty());
     assert_eq!(requests.len(), 1);
     let stale_request = requests.pop().unwrap();
-    let stale_snapshot = stale_request.build();
+    let stale_snapshot = stale_request
+        .build()
+        .expect("test source should be accepted");
 
     store.upsert_text(
         uri.clone(),
@@ -881,8 +891,8 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
     let current = store
         .snapshot(&uri)
         .expect("current snapshot should build after rejecting stale request");
-    assert_eq!(current.version, 2);
-    assert_eq!(current.fences[0].diagram_type.as_deref(), Some("sequence"));
+    assert_eq!(current.version(), 2);
+    assert_eq!(current.fences()[0].diagram_type(), Some("sequence"));
 }
 
 #[test]
@@ -910,7 +920,7 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
     let (contexts, mut requests) = store.snapshot_build_requests();
 
     assert_eq!(contexts.len(), 1);
-    assert_eq!(contexts[0].snapshot.uri, cached_uri);
+    assert_eq!(contexts[0].snapshot.uri(), &cached_uri);
     assert!(std::sync::Arc::ptr_eq(
         &contexts[0].snapshot,
         &cached_snapshot
@@ -918,10 +928,10 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
     assert!(store.is_snapshot_context_current(&contexts[0]));
     assert_eq!(requests.len(), 1);
     let request = requests.pop().unwrap();
-    let built = request.build();
+    let built = request.build().expect("test source should be accepted");
     let committed = store.snapshot_contexts_for_requests(vec![(request, built)]);
     assert_eq!(committed.contexts.len(), 1);
-    assert_eq!(committed.contexts[0].snapshot.uri, missing_uri);
+    assert_eq!(committed.contexts[0].snapshot.uri(), &missing_uri);
     assert!(!committed.stale_open_documents);
 }
 
@@ -1071,7 +1081,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
 }
 
 #[test]
-fn diagnostic_only_analyzer_update_preserves_snapshot_state_and_stales_analysis() {
+fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
     let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
@@ -1084,6 +1094,12 @@ fn diagnostic_only_analyzer_update_preserves_snapshot_state_and_stales_analysis(
     let snapshot_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
+    let canonical = Arc::clone(
+        store
+            .cached_analysis_generation(&uri)
+            .expect("expected cached analysis generation")
+            .canonical(),
+    );
     let diagnostic_context = store
         .diagnostic_context(&uri)
         .expect("expected initial diagnostic context");
@@ -1103,7 +1119,22 @@ fn diagnostic_only_analyzer_update_preserves_snapshot_state_and_stales_analysis(
     assert!(!store.is_analysis_context_current(&snapshot_context));
     assert!(!store.is_diagnostic_context_current(&diagnostic_context));
     assert!(store.has_snapshot(&uri));
-    assert!(!store.has_analysis_payload(&uri));
+    assert!(store.has_analysis_payload(&uri));
+    let current_context = store
+        .snapshot_context(&uri)
+        .expect("expected reprojected analysis context");
+    assert!(store.is_analysis_context_current(&current_context));
+    assert!(Arc::ptr_eq(
+        &snapshot_context.snapshot,
+        &current_context.snapshot
+    ));
+    assert!(Arc::ptr_eq(
+        &canonical,
+        store
+            .cached_analysis_generation(&uri)
+            .expect("expected reprojected analysis generation")
+            .canonical()
+    ));
     assert_eq!(
         store
             .semantic_tokens_state(&uri)
@@ -1299,7 +1330,7 @@ fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_conf
 }
 
 #[test]
-fn diagnostic_only_analyzer_update_reuses_snapshot_and_rebuilds_analysis_payload() {
+fn snapshot_affecting_source_limit_update_rejects_the_cached_generation() {
     let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
@@ -1312,77 +1343,7 @@ fn diagnostic_only_analyzer_update_reuses_snapshot_and_rebuilds_analysis_payload
     let snapshot = store
         .snapshot(&uri)
         .expect("expected initial lazy snapshot");
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
-    let token_context = store
-        .snapshot_context(&uri)
-        .expect("expected initial snapshot context");
-    assert!(store.set_semantic_tokens_state_if_current(
-        &token_context,
-        SemanticTokensState::new(
-            Some("tokens-1".to_string()),
-            vec![SemanticToken {
-                delta_line: 0,
-                delta_start: 0,
-                length: 4,
-                token_type: 0,
-                token_modifiers_bitset: 0,
-            }],
-        ),
-    ));
-
-    store.apply_analyzer_options(
-        default_lsp_analysis_options().with_rule_config(
-            AnalysisRuleConfig::default()
-                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
-        ),
-    );
-
-    assert!(store.has_snapshot(&uri));
-    assert!(!store.has_analysis_payload(&uri));
-    assert_eq!(
-        store
-            .semantic_tokens_state(&uri)
-            .and_then(|state| state.result_id.as_deref()),
-        Some("tokens-1")
-    );
-
-    let request = store
-        .snapshot_build_request(&uri)
-        .expect("expected analysis rebuild request");
-    let rebuilt_context = store
-        .insert_built_analysis(&request, request.build())
-        .expect("expected rebuilt analysis payload");
-    let rebuilt = std::sync::Arc::clone(&rebuilt_context.snapshot);
-    assert!(std::sync::Arc::ptr_eq(&snapshot, &rebuilt));
-    assert!(store.has_analysis_payload(&uri));
-    assert!(store.is_analysis_context_current(&rebuilt_context));
-    assert_eq!(
-        rebuilt.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
-}
-
-#[test]
-fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
-    let mut store = DocumentStore::new();
-    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-
-    store.upsert_text(
-        uri.clone(),
-        1,
-        "flowchart TD\nA-->B\n".to_string(),
-        DocumentKind::Diagram,
-    );
-    let snapshot = store
-        .snapshot(&uri)
-        .expect("expected initial lazy snapshot");
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
     let token_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
@@ -1397,10 +1358,17 @@ fn snapshot_affecting_analyzer_update_invalidates_cached_snapshot_and_tokens() {
 
     assert!(!store.has_snapshot(&uri));
     assert!(store.semantic_tokens_state(&uri).is_none());
-    let rebuilt = store
-        .snapshot(&uri)
-        .expect("expected rebuilt snapshot after analyzer replacement");
-    assert!(rebuilt.fences.is_empty());
+    let stored = store.get(&uri).expect("expected resource-limited document");
+    assert_eq!(stored.text.as_ref(), "");
+    assert_eq!(
+        stored.resource_limit,
+        Some(DocumentResourceLimit {
+            source_len: "flowchart TD\nA-->B\n".len(),
+            max_source_bytes: "flowchart TD\nA-->B\n".len() - 1,
+        })
+    );
+    assert!(store.snapshot_build_request(&uri).is_none());
+    assert!(store.snapshot(&uri).is_none());
 }
 
 #[test]
@@ -1412,7 +1380,7 @@ fn incomplete_flowchart_documents_use_recovered_parser_facts() {
         1,
         "flowchart TD\nsubgraph group\nA-->B\nC-->".to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "A"));
@@ -1434,7 +1402,7 @@ fn sequence_documents_use_parser_facts() {
         1,
         "sequenceDiagram\nparticipant Alice\nactor Bob\nAlice->>Bob: Hi\n".to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "Alice"));
@@ -1464,7 +1432,7 @@ fn sequence_payload_facts_do_not_pollute_completion_ids() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "Alice"));
@@ -1553,12 +1521,9 @@ fn architecture_documents_use_parser_facts() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("architecture")
-    );
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("architecture"));
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     for id in ["platform", "api", "hub"] {
         assert!(index.node_ids().any(|candidate| candidate == id));
@@ -1597,9 +1562,9 @@ fn radar_documents_use_parser_facts() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("radar"));
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("radar"));
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     for id in ["A", "B", "C", "mycurve"] {
         assert!(index.node_ids().any(|candidate| candidate == id));
@@ -1630,9 +1595,9 @@ fn treemap_documents_use_parser_facts() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("treemap"));
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("treemap"));
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|candidate| candidate == "Root"));
     assert!(index.node_ids().any(|candidate| candidate == "Leaf"));
@@ -1670,9 +1635,9 @@ fn block_documents_use_parser_facts() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("block"));
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("block"));
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     for id in ["group", "A", "B", "arrow"] {
         assert!(index.node_ids().any(|candidate| candidate == id));
@@ -1716,9 +1681,9 @@ fn c4_documents_use_parser_facts() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("c4"));
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("c4"));
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     for id in ["bank", "customer", "system"] {
         assert!(index.node_ids().any(|candidate| candidate == id));
@@ -1772,9 +1737,9 @@ fn zenuml_documents_use_parser_facts() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("zenuml"));
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("zenuml"));
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     for id in ["Alice", "Bob", "A", "accTitle", "accDescr", "Session"] {
         assert!(index.node_ids().any(|candidate| candidate == id));
@@ -1889,7 +1854,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
         let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 1, case.1.to_string());
-        let index = &snapshot.fences[0].text_index;
+        let index = snapshot.fences()[0].text_index();
 
         assert_eq!(
             index.source(),
@@ -1918,7 +1883,7 @@ fn incomplete_sequence_documents_use_recovered_parser_facts() {
         1,
         "sequenceDiagram\nAlice->>Bob: Hi\nBob->>".to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "Alice"));
@@ -1950,7 +1915,7 @@ fn state_documents_use_parser_facts() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "Idle"));
@@ -2022,7 +1987,7 @@ fn incomplete_state_documents_use_recovered_parser_facts() {
         1,
         "stateDiagram-v2\nIdle --> Running\nRunning -->".to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "Idle"));
@@ -2038,7 +2003,7 @@ fn class_documents_use_parser_facts() {
         1,
         "classDiagram\nclass User\nUser <|-- Admin\n".to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "User"));
@@ -2050,7 +2015,7 @@ fn incomplete_class_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "classDiagram\nclass User\nUser <|--".to_string());
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "User"));
@@ -2087,7 +2052,7 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.has_directive_prefix("classDef"));
@@ -2215,7 +2180,7 @@ fn er_documents_use_parser_facts() {
         1,
         "erDiagram\nCUSTOMER ||--o{ ORDER : places\n".to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "CUSTOMER"));
@@ -2227,7 +2192,7 @@ fn incomplete_er_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "erDiagram\nCUSTOMER ||--o{ ORDER :".to_string());
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "CUSTOMER"));
@@ -2249,7 +2214,7 @@ fn er_attribute_payload_facts_do_not_pollute_completion_ids() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "BOOK"));
@@ -2290,9 +2255,9 @@ fn gantt_documents_use_parser_facts() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("gantt"));
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("gantt"));
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "id1"));
     assert!(index.node_ids().any(|id| id == "id2"));
@@ -2375,7 +2340,7 @@ fn incomplete_gantt_documents_use_recovered_parser_facts() {
         1,
         "gantt\ndateFormat YYYY-MM-DD\nTask 1: id1,2014-01-01,1d\nTask 2".to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "id1"));
@@ -2399,7 +2364,7 @@ fn mindmap_documents_use_parser_facts() {
         )
         .to_string(),
     );
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "root"));
@@ -2416,7 +2381,7 @@ fn incomplete_mindmap_documents_use_recovered_parser_facts() {
     let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "mindmap\nroot\n child[unterminated".to_string());
-    let index = &snapshot.fences[0].text_index;
+    let index = snapshot.fences()[0].text_index();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "root"));

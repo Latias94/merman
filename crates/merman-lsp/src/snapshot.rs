@@ -1,13 +1,12 @@
-use merman_analysis::AnalysisPayload;
+use merman_analysis::{AnalysisPayload, AnalysisResult, Analyzer};
 #[cfg(test)]
 use merman_editor_core::EditorDiagramDetection;
-use std::ops::Deref;
 use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 
 #[derive(Debug, Clone)]
 pub struct DocumentSnapshot {
-    pub uri: Uri,
+    uri: Uri,
     editor: merman_editor_core::DocumentSnapshot,
     #[cfg(test)]
     detection: Option<EditorDiagramDetection>,
@@ -20,6 +19,7 @@ pub struct DocumentSnapshot {
 #[derive(Debug)]
 pub struct DocumentAnalysisContext {
     pub snapshot: Arc<DocumentSnapshot>,
+    canonical: Arc<AnalysisResult>,
     pub payload: Arc<AnalysisPayload>,
 }
 
@@ -47,19 +47,6 @@ struct SnapshotAnalysis {
 }
 
 impl SnapshotContext {
-    pub(crate) fn new(
-        snapshot: Arc<DocumentSnapshot>,
-        generation: SnapshotGeneration,
-        document_epoch: DocumentEpoch,
-    ) -> Self {
-        Self {
-            snapshot,
-            analysis: None,
-            generation,
-            document_epoch,
-        }
-    }
-
     pub(crate) fn with_analysis(
         snapshot: Arc<DocumentSnapshot>,
         payload: Arc<AnalysisPayload>,
@@ -91,9 +78,11 @@ impl SnapshotContext {
 
 impl DocumentAnalysisContext {
     pub fn from_editor(context: merman_editor_core::DocumentAnalysisContext, uri: Uri) -> Self {
+        debug_assert_eq!(context.snapshot().uri().as_str(), uri.as_str());
         #[cfg(test)]
         let detection = context.detection().cloned();
-        let (editor, payload) = context.into_parts();
+        let (editor, canonical) = context.into_canonical_parts();
+        let payload = Arc::new(canonical.payload().clone());
         Self {
             snapshot: Arc::new(DocumentSnapshot {
                 uri,
@@ -101,12 +90,44 @@ impl DocumentAnalysisContext {
                 #[cfg(test)]
                 detection,
             }),
-            payload: Arc::new(payload),
+            canonical,
+            payload,
         }
+    }
+
+    pub fn reproject(&self, analyzer: &Analyzer) -> Self {
+        Self {
+            snapshot: Arc::clone(&self.snapshot),
+            canonical: Arc::clone(&self.canonical),
+            payload: Arc::new(analyzer.reproject_payload(&self.canonical)),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn canonical(&self) -> &Arc<AnalysisResult> {
+        &self.canonical
     }
 }
 
 impl DocumentSnapshot {
+    pub fn uri(&self) -> &Uri {
+        &self.uri
+    }
+
+    pub fn version(&self) -> i32 {
+        self.editor.version()
+    }
+
+    #[cfg(test)]
+    pub fn kind(&self) -> merman_editor_core::DocumentKind {
+        self.editor.kind()
+    }
+
+    #[cfg(test)]
+    pub fn fences(&self) -> &[merman_editor_core::FenceSnapshot] {
+        self.editor.fences()
+    }
+
     pub fn as_editor(&self) -> &merman_editor_core::DocumentSnapshot {
         &self.editor
     }
@@ -122,14 +143,6 @@ impl DocumentSnapshot {
         position: tower_lsp_server::ls_types::Position,
     ) -> Option<&merman_editor_core::FenceSnapshot> {
         self.editor.fence_at_position(position_to_editor(position))
-    }
-}
-
-impl Deref for DocumentSnapshot {
-    type Target = merman_editor_core::DocumentSnapshot;
-
-    fn deref(&self) -> &Self::Target {
-        &self.editor
     }
 }
 
@@ -160,7 +173,7 @@ mod tests {
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 7, "flowchart TD\nA[unterminated\n".to_string());
 
-        assert_eq!(snapshot.version, 7);
+        assert_eq!(snapshot.version(), 7);
         assert_eq!(
             snapshot
                 .detection()

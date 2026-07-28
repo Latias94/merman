@@ -8,6 +8,7 @@ use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::task::{Context, Poll};
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::Notify;
 use tower::{BoxError, Service};
@@ -24,6 +25,7 @@ const MESSAGE_QUEUE_SIZE: usize = 100;
 const MAX_HEADER_BYTES: usize = 8 * 1024;
 // The source limit is 4 MiB. This leaves room for JSON string escaping and protocol metadata.
 const MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
+const OUTPUT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 const RUNNING: u8 = 0;
 const SHUTDOWN_COMPLETED: u8 = 1;
@@ -35,6 +37,8 @@ const EXIT_AFTER_SHUTDOWN: u8 = 3;
 pub enum StdioTermination {
     /// The client closed the input stream without sending `exit`.
     InputClosed,
+    /// The client closed the output stream before the session could end normally.
+    OutputClosed,
     /// The client sent `exit` after a successful `shutdown` response.
     ExitAfterShutdown,
     /// The client sent `exit` without a preceding `shutdown` request.
@@ -188,6 +192,7 @@ enum FrameError {
     InvalidHeader(String),
     InvalidContentLength,
     MissingContentLength,
+    EmptyBody,
     InvalidContentType,
     InvalidUtf8(std::str::Utf8Error),
     InvalidJson(serde_json::Error),
@@ -217,6 +222,7 @@ impl Display for FrameError {
             Self::MissingContentLength => {
                 formatter.write_str("missing required Content-Length header")
             }
+            Self::EmptyBody => formatter.write_str("LSP message body is empty"),
             Self::InvalidContentType => formatter
                 .write_str("Content-Type must declare the utf-8 or utf8 character encoding"),
             Self::InvalidUtf8(error) => write!(formatter, "message body is not UTF-8: {error}"),
@@ -227,7 +233,6 @@ impl Display for FrameError {
 
 enum FrameRead {
     Eof,
-    Empty,
     Message(IncomingMessage),
     Error(FrameError, Recovery),
 }
@@ -305,7 +310,7 @@ where
         }
 
         if content_length == 0 {
-            return Ok(FrameRead::Empty);
+            return Ok(FrameRead::Error(FrameError::EmptyBody, Recovery::Continue));
         }
 
         let mut body = vec![0; content_length];
@@ -539,6 +544,7 @@ fn display_sources(error: &dyn std::error::Error) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TransportStop {
     InputClosed,
+    OutputClosed,
     ExitNotification,
 }
 
@@ -565,7 +571,7 @@ where
         self
     }
 
-    /// Serves messages until stdin closes or a valid `exit` notification is dispatched.
+    /// Serves messages until an input/output stream closes or a valid `exit` is dispatched.
     pub async fn serve<S>(self, service: S)
     where
         S: Service<Request, Response = Option<Response>> + Send + 'static,
@@ -588,114 +594,138 @@ where
         let mut task_responses_tx = responses_tx.clone();
         let max_concurrency = self.max_concurrency.max(1);
 
-        let process_server_tasks = async move {
-            let mut tasks = server_tasks_rx.buffer_unordered(max_concurrency);
-            while let Some(response) = tasks.next().await {
-                if let Some(response) = response
-                    && task_responses_tx
+        let (server_tasks_abort, server_tasks_registration) = future::AbortHandle::new_pair();
+        let process_server_tasks = future::Abortable::new(
+            async move {
+                let mut tasks = server_tasks_rx.buffer_unordered(max_concurrency);
+                while let Some(response) = tasks.next().await {
+                    let Some(response) = response else {
+                        continue;
+                    };
+                    if task_responses_tx
                         .send(OutgoingMessage::Response(response))
                         .await
                         .is_err()
-                {
-                    break;
+                    {
+                        break;
+                    }
                 }
-            }
-        };
+            },
+            server_tasks_registration,
+        );
+
+        let output_client_abort = client_abort.clone();
+        let (input_abort, input_registration) = future::AbortHandle::new_pair();
+        let read_input = future::Abortable::new(
+            async move {
+                let mut reader = LspFrameReader::new(self.stdin);
+                let stop = loop {
+                    let frame = match reader.read_frame().await {
+                        Ok(frame) => frame,
+                        Err(error) => {
+                            tracing::error!(%error, "failed to read LSP message");
+                            break TransportStop::InputClosed;
+                        }
+                    };
+                    match frame {
+                        FrameRead::Eof => break TransportStop::InputClosed,
+                        FrameRead::Message(IncomingMessage::Response(response)) => {
+                            if let Err(error) = client_responses.send(response).await {
+                                tracing::error!(
+                                    error = %display_sources(&error),
+                                    "failed to route LSP client response"
+                                );
+                                break TransportStop::InputClosed;
+                            }
+                        }
+                        FrameRead::Message(IncomingMessage::Request(request)) => {
+                            if let Err(error) = future::poll_fn(|cx| service.poll_ready(cx)).await {
+                                let error: BoxError = error.into();
+                                tracing::error!(
+                                    error = %display_sources(error.as_ref()),
+                                    "LSP service was not ready"
+                                );
+                                break TransportStop::InputClosed;
+                            }
+
+                            let will_exit = request.method() == "exit" && request.id().is_none();
+                            let handler = service.call(request);
+                            let task = async move {
+                                match handler.await {
+                                    Ok(response) => response,
+                                    Err(error) => {
+                                        let error: BoxError = error.into();
+                                        tracing::error!(
+                                            error = %display_sources(error.as_ref()),
+                                            "LSP request handler failed"
+                                        );
+                                        None
+                                    }
+                                }
+                            };
+                            if server_tasks_tx.send(task).await.is_err() {
+                                break TransportStop::InputClosed;
+                            }
+                            if will_exit {
+                                break TransportStop::ExitNotification;
+                            }
+                        }
+                        FrameRead::Error(error, recovery) => {
+                            tracing::error!(%error, "failed to decode LSP message");
+                            let response = Response::from_error(Id::Null, error.jsonrpc_error());
+                            if responses_tx
+                                .send(OutgoingMessage::Response(response))
+                                .await
+                                .is_err()
+                            {
+                                break TransportStop::InputClosed;
+                            }
+                            if recovery == Recovery::Stop {
+                                break TransportStop::InputClosed;
+                            }
+                        }
+                    }
+                };
+
+                server_tasks_tx.disconnect();
+                responses_tx.disconnect();
+                client_abort.abort();
+                stop
+            },
+            input_registration,
+        );
 
         let print_output = async move {
             let mut stdout = std::pin::pin!(self.stdout);
             let mut messages =
                 stream::select(responses_rx, client_requests.map(OutgoingMessage::Request));
+            let mut output_failed = false;
             while let Some(message) = messages.next().await {
                 if let Err(error) = write_message(&mut stdout, &message).await {
                     tracing::error!(%error, "failed to write LSP message");
+                    output_failed = true;
                     break;
                 }
             }
-            if let Err(error) = stdout.shutdown().await {
-                tracing::error!(%error, "failed to close stdio output");
+            input_abort.abort();
+            server_tasks_abort.abort();
+            output_client_abort.abort();
+
+            if !output_failed {
+                match tokio::time::timeout(OUTPUT_SHUTDOWN_TIMEOUT, stdout.shutdown()).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        tracing::error!(%error, "failed to close stdio output");
+                    }
+                    Err(_) => {
+                        tracing::error!("timed out while closing stdio output");
+                    }
+                }
             }
         };
 
-        let read_input = async move {
-            let mut reader = LspFrameReader::new(self.stdin);
-            let stop = loop {
-                let frame = match reader.read_frame().await {
-                    Ok(frame) => frame,
-                    Err(error) => {
-                        tracing::error!(%error, "failed to read LSP message");
-                        break TransportStop::InputClosed;
-                    }
-                };
-                match frame {
-                    FrameRead::Eof => break TransportStop::InputClosed,
-                    FrameRead::Empty => {}
-                    FrameRead::Message(IncomingMessage::Response(response)) => {
-                        if let Err(error) = client_responses.send(response).await {
-                            tracing::error!(
-                                error = %display_sources(&error),
-                                "failed to route LSP client response"
-                            );
-                            break TransportStop::InputClosed;
-                        }
-                    }
-                    FrameRead::Message(IncomingMessage::Request(request)) => {
-                        if let Err(error) = future::poll_fn(|cx| service.poll_ready(cx)).await {
-                            let error: BoxError = error.into();
-                            tracing::error!(
-                                error = %display_sources(error.as_ref()),
-                                "LSP service was not ready"
-                            );
-                            break TransportStop::InputClosed;
-                        }
-
-                        let will_exit = request.method() == "exit" && request.id().is_none();
-                        let handler = service.call(request);
-                        let task = async move {
-                            match handler.await {
-                                Ok(response) => response,
-                                Err(error) => {
-                                    let error: BoxError = error.into();
-                                    tracing::error!(
-                                        error = %display_sources(error.as_ref()),
-                                        "LSP request handler failed"
-                                    );
-                                    None
-                                }
-                            }
-                        };
-                        if server_tasks_tx.send(task).await.is_err() {
-                            break TransportStop::InputClosed;
-                        }
-                        if will_exit {
-                            break TransportStop::ExitNotification;
-                        }
-                    }
-                    FrameRead::Error(error, recovery) => {
-                        tracing::error!(%error, "failed to decode LSP message");
-                        let response = Response::from_error(Id::Null, error.jsonrpc_error());
-                        if responses_tx
-                            .send(OutgoingMessage::Response(response))
-                            .await
-                            .is_err()
-                        {
-                            break TransportStop::InputClosed;
-                        }
-                        if recovery == Recovery::Stop {
-                            break TransportStop::InputClosed;
-                        }
-                    }
-                }
-            };
-
-            server_tasks_tx.disconnect();
-            responses_tx.disconnect();
-            client_abort.abort();
-            stop
-        };
-
         let (_, _, stop) = future::join3(process_server_tasks, print_output, read_input).await;
-        stop
+        stop.unwrap_or(TransportStop::OutputClosed)
     }
 }
 
@@ -715,7 +745,7 @@ where
     }
 }
 
-/// Serves an LSP session until stdin closes or the client sends a valid `exit` notification.
+/// Serves an LSP session until an input/output stream closes or the client sends `exit`.
 ///
 /// Framing is owned here so a rejected `exit` request cannot make an upstream buffered reader
 /// discard later frames from the same client write. A valid notification cancels in-flight handlers
@@ -735,10 +765,13 @@ where
         inner: service,
         lifecycle: Arc::clone(&lifecycle),
     };
-    let _ = stdio_server(stdin, stdout, socket)
+    let stop = stdio_server(stdin, stdout, socket)
         .serve_inner(service)
         .await;
-    lifecycle.termination()
+    match stop {
+        TransportStop::OutputClosed => StdioTermination::OutputClosed,
+        TransportStop::InputClosed | TransportStop::ExitNotification => lifecycle.termination(),
+    }
 }
 
 #[cfg(test)]
@@ -787,6 +820,27 @@ mod tests {
             reader.read_frame().await.unwrap(),
             FrameRead::Error(FrameError::InvalidJson(_), Recovery::Continue)
         ));
+        assert_eq!(request_method(reader.read_frame().await.unwrap()), "exit");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn frame_reader_reports_an_empty_body_and_recovers() {
+        let mut bytes = b"Content-Length: 0\r\n\r\n".to_vec();
+        bytes.extend(frame(br#"{"jsonrpc":"2.0","method":"exit"}"#));
+        let mut reader = LspFrameReader::new(Cursor::new(bytes));
+
+        let error = reader.read_frame().await.unwrap();
+        assert!(matches!(
+            &error,
+            FrameRead::Error(FrameError::EmptyBody, Recovery::Continue)
+        ));
+        let FrameRead::Error(error, _) = error else {
+            unreachable!("empty frame must produce an error")
+        };
+        assert_eq!(
+            error.jsonrpc_error().code,
+            tower_lsp_server::jsonrpc::ErrorCode::ParseError
+        );
         assert_eq!(request_method(reader.read_frame().await.unwrap()), "exit");
     }
 

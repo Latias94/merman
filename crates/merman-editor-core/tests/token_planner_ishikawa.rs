@@ -11,12 +11,14 @@ fn ishikawa_parser_tokens_plan_across_crlf_and_unicode() {
 
     for (index, source) in cases.into_iter().enumerate() {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            format!("file:///tmp/ishikawa-{index}.mmd"),
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                format!("file:///tmp/ishikawa-{index}.mmd"),
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let plan = plan_semantic_tokens_for_snapshot(&snapshot).expect("ishikawa token plan");
 
         assert!(

@@ -57,7 +57,7 @@ fn code_actions_for_snapshot_with_encoding_and_preferred_support(
                 editor_diagnostic,
                 lsp_diagnostic,
                 &params.text_document.uri,
-                snapshot.version,
+                snapshot.version(),
                 workspace_edit_encoding,
                 is_preferred_support,
             )
@@ -185,7 +185,7 @@ fn matching_snapshot_diagnostic<'a>(
     }
     let identity =
         serde_json::from_value::<DiagnosticIdentityData>(diagnostic.data.as_ref()?.clone()).ok()?;
-    if identity.document_version != Some(snapshot.version) {
+    if identity.document_version != Some(snapshot.version()) {
         return None;
     }
 
@@ -348,7 +348,7 @@ mod tests {
         .expect("snapshot-owned quick fix");
         let action = only_code_action(&actions);
         assert_eq!(action.title, "Insert `TB` into the flowchart header");
-        assert_eq!(versioned_edits(action, &snapshot.uri)[0].new_text, " TB");
+        assert_eq!(versioned_edits(action, snapshot.uri())[0].new_text, " TB");
     }
 
     #[test]
@@ -421,8 +421,8 @@ mod tests {
             .collect::<Vec<_>>();
         params.context.diagnostics = editor_diagnostics_to_versioned_diagnostics(
             &diagnostics,
-            &snapshot.uri,
-            snapshot.version,
+            snapshot.uri(),
+            snapshot.version(),
         );
 
         reset_snapshot_diagnostic_index_probe();

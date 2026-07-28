@@ -2,13 +2,14 @@ use crate::{binding_error_to_js, document_uri};
 #[cfg(test)]
 use merman_analysis::AnalysisPayload;
 use merman_analysis::{
-    AnalysisOptions, Analyzer, EditorSymbolKind, FenceTextIndexSource, SourceDescriptor, Summary,
+    AnalysisOptions, AnalysisRejection, Analyzer, EditorSymbolKind, FenceTextIndexSource,
+    SourceDescriptor, Summary,
 };
 use merman_bindings_core::{BindingError, BindingStatus};
 #[cfg(test)]
 use merman_editor_core::analysis_payload_to_diagnostics;
 use merman_editor_core::{
-    AnalyzedDocumentSnapshot, DiagramDetectionValidity, DocumentKind, DocumentSnapshot,
+    DiagramDetectionValidity, DocumentAnalysisContext, DocumentKind, DocumentSnapshot,
     DocumentWorkspace, EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover,
     EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, Position, Range,
     RenameError, SemanticTokenDescriptor, code_actions_from_fixes, completion_for_snapshot,
@@ -16,7 +17,11 @@ use merman_editor_core::{
     references, rename, semantic_token_descriptor, workspace_symbols,
 };
 use serde::Serialize;
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 use wasm_bindgen::prelude::*;
 
 #[derive(Debug, Serialize)]
@@ -66,13 +71,13 @@ impl From<Option<&EditorDiagramDetection>> for WasmEditorDiagramDetection {
 #[derive(Debug)]
 struct EditorDocumentContext {
     options_json: String,
-    analyzed: AnalyzedDocumentSnapshot,
+    analyzed: DocumentAnalysisContext,
 }
 
 impl EditorDocumentContext {
     fn matches(&self, source: &str, uri: &str, options_json: &str) -> bool {
-        self.analyzed.text.as_ref() == source
-            && self.analyzed.uri.as_str() == uri
+        self.analyzed.snapshot().text() == source
+            && self.analyzed.snapshot().uri().as_str() == uri
             && self.options_json == options_json
     }
 }
@@ -106,12 +111,12 @@ impl WasmEditorSession {
 
     #[wasm_bindgen(getter)]
     pub fn uri(&self) -> String {
-        self.context.analyzed.uri.as_str().to_string()
+        self.context.analyzed.snapshot().uri().as_str().to_string()
     }
 
     pub fn update(&mut self, source: &str, version: i32) -> Result<(), JsValue> {
         validate_editor_session_version(version, Some(self.version))?;
-        let uri = self.context.analyzed.uri.as_str().to_string();
+        let uri = self.context.analyzed.snapshot().uri().as_str().to_string();
         let options_json = self.context.options_json.clone();
         self.context = build_editor_document_context(
             source,
@@ -493,7 +498,7 @@ pub fn editor_code_actions(
 }
 
 fn code_actions_for_context(context: &EditorDocumentContext) -> Result<JsValue, JsValue> {
-    let uri = context.analyzed.uri.as_str();
+    let uri = context.analyzed.snapshot().uri().as_str();
     js_value(&code_actions_for_diagnostics(
         context.analyzed.diagnostics(),
         uri,
@@ -518,7 +523,7 @@ fn completions_for_context(
     character: usize,
 ) -> Result<JsValue, JsValue> {
     js_value(&completion_for_snapshot(
-        context.analyzed.document(),
+        context.analyzed.snapshot(),
         Position::new(line, character),
     ))
 }
@@ -541,7 +546,7 @@ fn hover_for_context(
     character: usize,
 ) -> Result<JsValue, JsValue> {
     js_value(
-        &hover(context.analyzed.document(), Position::new(line, character)).map(WasmHover::from),
+        &hover(context.analyzed.snapshot(), Position::new(line, character)).map(WasmHover::from),
     )
 }
 
@@ -556,7 +561,7 @@ pub fn editor_document_symbols(
 }
 
 fn document_symbols_for_context(context: &EditorDocumentContext) -> Result<JsValue, JsValue> {
-    let symbols = document_symbols(context.analyzed.document())
+    let symbols = document_symbols(context.analyzed.snapshot())
         .into_iter()
         .map(WasmDocumentSymbol::from)
         .collect::<Vec<_>>();
@@ -578,7 +583,7 @@ fn workspace_symbols_for_context(
     context: &EditorDocumentContext,
     query: &str,
 ) -> Result<JsValue, JsValue> {
-    let symbols = workspace_symbols(context.analyzed.document(), query)
+    let symbols = workspace_symbols(context.analyzed.snapshot(), query)
         .into_iter()
         .map(WasmSymbolInformation::from)
         .collect::<Vec<_>>();
@@ -603,7 +608,7 @@ fn definition_for_context(
     character: usize,
 ) -> Result<JsValue, JsValue> {
     js_value(
-        &goto_definition(context.analyzed.document(), Position::new(line, character))
+        &goto_definition(context.analyzed.snapshot(), Position::new(line, character))
             .map(WasmLocation::from),
     )
 }
@@ -628,7 +633,7 @@ fn references_for_context(
     include_declaration: bool,
 ) -> Result<JsValue, JsValue> {
     let locations = references(
-        context.analyzed.document(),
+        context.analyzed.snapshot(),
         Position::new(line, character),
         include_declaration,
     )
@@ -657,7 +662,7 @@ fn prepare_rename_for_context(
     character: usize,
 ) -> Result<JsValue, JsValue> {
     js_value(
-        &prepare_rename(context.analyzed.document(), Position::new(line, character))
+        &prepare_rename(context.analyzed.snapshot(), Position::new(line, character))
             .map(WasmPrepareRename::from),
     )
 }
@@ -682,7 +687,7 @@ fn rename_for_context(
     new_name: &str,
 ) -> Result<JsValue, JsValue> {
     match rename(
-        context.analyzed.document(),
+        context.analyzed.snapshot(),
         Position::new(line, character),
         new_name,
     ) {
@@ -709,7 +714,7 @@ pub fn editor_semantic_tokens(
 }
 
 fn semantic_tokens_for_context(context: &EditorDocumentContext) -> Result<Vec<u32>, JsValue> {
-    packed_semantic_tokens_for_snapshot(context.analyzed.document())
+    packed_semantic_tokens_for_snapshot(context.analyzed.snapshot())
 }
 
 fn packed_semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Result<Vec<u32>, JsValue> {
@@ -795,22 +800,50 @@ fn build_editor_document_context(
     version: i32,
     options_json: Option<&str>,
 ) -> Result<Arc<EditorDocumentContext>, JsValue> {
-    let options = parse_analysis_options(options_json).map_err(binding_error_to_js)?;
+    let analyzed = build_editor_document_analysis(source, uri, version, options_json)
+        .map_err(binding_error_to_js)?;
+    Ok(Arc::new(EditorDocumentContext {
+        options_json: editor_options_cache_key(options_json).to_string(),
+        analyzed,
+    }))
+}
+
+fn build_editor_document_analysis(
+    source: &str,
+    uri: &str,
+    version: i32,
+    options_json: Option<&str>,
+) -> Result<DocumentAnalysisContext, BindingError> {
+    let options = parse_analysis_options(options_json)?;
     let analyzer = Analyzer::with_options(options);
     let kind = document_kind_for_uri(uri);
     let text = Arc::<str>::from(source);
     record_editor_document_context_build();
-    let analyzed = DocumentWorkspace::build_analyzed_snapshot_with_shared_text(
+    DocumentWorkspace::build_analysis_context_with_shared_text(
         &analyzer,
         uri.to_string(),
         version,
         text,
         kind,
-    );
-    Ok(Arc::new(EditorDocumentContext {
-        options_json: editor_options_cache_key(options_json).to_string(),
-        analyzed,
-    }))
+    )
+    .into_ready()
+    .map_err(editor_rejection_to_binding_error)
+}
+
+fn editor_rejection_to_binding_error(rejection: AnalysisRejection) -> BindingError {
+    let message = rejection
+        .payload()
+        .diagnostics
+        .first()
+        .map(|diagnostic| diagnostic.message.clone())
+        .unwrap_or_else(|| {
+            format!(
+                "source is {} bytes, exceeding max_source_bytes {}",
+                rejection.source_len(),
+                rejection.max_source_bytes()
+            )
+        });
+    BindingError::new(BindingStatus::ResourceLimitExceeded, message)
 }
 
 fn editor_options_cache_key(options_json: Option<&str>) -> &str {
@@ -828,20 +861,139 @@ fn record_editor_document_context_build() {
 }
 
 fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions, BindingError> {
-    let Some(options_json) = options_json else {
-        return Ok(AnalysisOptions::default());
-    };
-    if options_json.trim().is_empty() {
-        return Ok(AnalysisOptions::default());
-    }
-    let value = serde_json::from_str::<serde_json::Value>(options_json).map_err(|err| {
+    let options_json = options_json
+        .filter(|options_json| !options_json.trim().is_empty())
+        .unwrap_or_default();
+    let ceiling = editor_resource_ceiling()?;
+    let normalized = merman_bindings_core::apply_resource_ceiling_json(
+        options_json.as_bytes(),
+        ceiling.profile_id,
+        &[],
+    )?;
+    let normalized = serde_json::from_slice::<serde_json::Value>(&normalized).map_err(|err| {
         BindingError::new(
-            BindingStatus::OptionsJsonError,
-            format!("invalid options_json: {err}"),
+            BindingStatus::InternalError,
+            format!("failed to decode normalized editor options_json: {err}"),
         )
     })?;
-    merman_analysis::analysis_options_from_json_value(&value)
-        .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))
+    let max_source_bytes = normalized_editor_max_source_bytes(&normalized, ceiling)?;
+
+    let mut analysis_value = if options_json.is_empty() {
+        serde_json::Value::Object(serde_json::Map::new())
+    } else {
+        serde_json::from_str::<serde_json::Value>(options_json).map_err(|err| {
+            BindingError::new(
+                BindingStatus::OptionsJsonError,
+                format!("invalid options_json: {err}"),
+            )
+        })?
+    };
+    remove_resource_profile_for_analysis(&mut analysis_value);
+    let options = merman_analysis::analysis_options_from_json_value(&analysis_value)
+        .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))?;
+    Ok(options.with_max_source_bytes(Some(max_source_bytes)))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EditorResourceCeiling {
+    profile_id: &'static str,
+    max_source_bytes: usize,
+}
+
+fn editor_resource_ceiling() -> Result<EditorResourceCeiling, BindingError> {
+    static CEILING: OnceLock<Option<EditorResourceCeiling>> = OnceLock::new();
+
+    CEILING
+        .get_or_init(|| {
+            let resources = crate::wasm_runtime_catalog().resources;
+            let profile_id = resources.general_binding_default_profile;
+            let max_source_bytes = resources
+                .profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)?
+                .limits
+                .get("max_source_bytes")
+                .copied()
+                .flatten()?;
+            Some(EditorResourceCeiling {
+                profile_id,
+                max_source_bytes,
+            })
+        })
+        .as_ref()
+        .copied()
+        .ok_or_else(|| {
+            BindingError::new(
+                BindingStatus::InternalError,
+                "WASM runtime catalog default resource profile must define max_source_bytes",
+            )
+        })
+}
+
+fn normalized_editor_max_source_bytes(
+    normalized: &serde_json::Value,
+    ceiling: EditorResourceCeiling,
+) -> Result<usize, BindingError> {
+    let root = normalized.as_object().ok_or_else(|| {
+        BindingError::new(
+            BindingStatus::InternalError,
+            "normalized editor options_json root must be an object",
+        )
+    })?;
+    let options = ["analysis", "merman"]
+        .into_iter()
+        .find_map(|key| root.get(key).and_then(serde_json::Value::as_object))
+        .unwrap_or(root);
+    let resources = options
+        .get("resources")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| {
+            BindingError::new(
+                BindingStatus::InternalError,
+                "normalized editor options_json omitted resources",
+            )
+        })?;
+
+    match resources
+        .get("limits")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|limits| limits.get("max_source_bytes"))
+    {
+        Some(value) => value
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .ok_or_else(|| {
+                BindingError::new(
+                    BindingStatus::InternalError,
+                    "normalized max_source_bytes must fit usize",
+                )
+            }),
+        None => Ok(ceiling.max_source_bytes),
+    }
+}
+
+fn remove_resource_profile_for_analysis(value: &mut serde_json::Value) {
+    let Some(root) = value.as_object_mut() else {
+        return;
+    };
+    remove_resource_profile(root);
+    for wrapper in ["analysis", "merman"] {
+        if let Some(options) = root
+            .get_mut(wrapper)
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            remove_resource_profile(options);
+        }
+    }
+}
+
+fn remove_resource_profile(options: &mut serde_json::Map<String, serde_json::Value>) {
+    if let Some(resources) = options
+        .get_mut("resources")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        resources.remove("profile");
+    }
 }
 
 fn code_actions_for_diagnostics(
@@ -946,6 +1098,81 @@ mod tests {
     }
 
     #[test]
+    fn editor_language_enforces_the_web_interactive_source_ceiling_by_default() {
+        let ceiling = editor_resource_ceiling().expect("WASM editor resource ceiling");
+        assert_eq!(ceiling.profile_id, "interactive");
+        assert_eq!(ceiling.max_source_bytes, 2 * 1024 * 1024);
+
+        let options = parse_analysis_options(None).expect("default editor analysis options");
+        assert_eq!(options.max_source_bytes, Some(ceiling.max_source_bytes));
+
+        let source = "x".repeat(ceiling.max_source_bytes + 1);
+        let error = build_editor_document_analysis(&source, "file:///tmp/oversized.mmd", 1, None)
+            .expect_err("oversized editor source must not create a snapshot");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(
+            error
+                .message()
+                .contains("exceeding max_source_bytes 2097152")
+        );
+    }
+
+    #[test]
+    fn editor_language_accepts_resource_profiles_and_projects_the_source_limit() {
+        let constrained =
+            parse_analysis_options(Some(r#"{"resources":{"profile":"constrained"}}"#))
+                .expect("constrained editor profile");
+        assert_eq!(constrained.max_source_bytes, Some(1024 * 1024));
+
+        let wrapped = parse_analysis_options(Some(
+            r#"{"analysis":{"resources":{"profile":"interactive"}}}"#,
+        ))
+        .expect("wrapped interactive editor profile");
+        assert_eq!(wrapped.max_source_bytes, Some(2 * 1024 * 1024));
+    }
+
+    #[test]
+    fn editor_language_resource_limits_can_only_tighten_the_transport_ceiling() {
+        let options =
+            parse_analysis_options(Some(r#"{"resources":{"limits":{"max_source_bytes":32}}}"#))
+                .expect("stricter editor source limit");
+        assert_eq!(options.max_source_bytes, Some(32));
+
+        let error = build_editor_document_analysis(
+            "flowchart TD\nA-->B\nA-->C\n",
+            "file:///tmp/tightened.mmd",
+            1,
+            Some(r#"{"resources":{"limits":{"max_source_bytes":16}}}"#),
+        )
+        .expect_err("tightened source limit must reject the editor generation");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("exceeding max_source_bytes 16"));
+
+        let error = parse_analysis_options(Some(
+            r#"{"resources":{"limits":{"max_source_bytes":2097153}}}"#,
+        ))
+        .expect_err("editor options must not loosen the Web ceiling");
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("loosen the transport ceiling"));
+    }
+
+    #[test]
+    fn editor_language_rejects_unknown_or_looser_resource_profiles() {
+        let unknown = parse_analysis_options(Some(r#"{"resources":{"profile":"future-profile"}}"#))
+            .expect_err("unknown editor resource profile");
+        assert_eq!(unknown.status(), BindingStatus::InvalidArgument);
+        assert!(unknown.message().contains("unsupported resources.profile"));
+
+        for profile in ["trusted-native", "unbounded-for-trusted-input"] {
+            let options = format!(r#"{{"resources":{{"profile":"{profile}"}}}}"#);
+            let error =
+                parse_analysis_options(Some(&options)).expect_err("looser editor resource profile");
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+            assert!(error.message().contains("loosen the transport ceiling"));
+        }
+    }
+
+    #[test]
     fn editor_language_helpers_cover_browser_editor_surface() {
         reset_editor_document_context_cache_for_tests();
 
@@ -956,7 +1183,7 @@ mod tests {
         )
         .unwrap();
         let completions =
-            completion_for_snapshot(completion_context.analyzed.document(), Position::new(2, 4));
+            completion_for_snapshot(completion_context.analyzed.snapshot(), Position::new(2, 4));
         assert!(completions.items.iter().any(|item| item.label == "B"));
 
         let reference_context = editor_document_context(
@@ -967,7 +1194,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             references(
-                reference_context.analyzed.document(),
+                reference_context.analyzed.snapshot(),
                 Position::new(1, 0),
                 true,
             )
@@ -976,7 +1203,7 @@ mod tests {
             2
         );
         assert!(
-            !plan_semantic_tokens_for_snapshot(reference_context.analyzed.document())
+            !plan_semantic_tokens_for_snapshot(reference_context.analyzed.snapshot())
                 .unwrap()
                 .packed()
                 .is_empty()
@@ -1005,7 +1232,7 @@ mod tests {
         let context = editor_document_context(source, Some(uri.to_string()), None).unwrap();
         assert_eq!(editor_document_context_builds_for_tests(), 1);
         assert!(
-            !plan_semantic_tokens_for_snapshot(context.analyzed.document())
+            !plan_semantic_tokens_for_snapshot(context.analyzed.snapshot())
                 .unwrap()
                 .packed()
                 .is_empty()
@@ -1033,14 +1260,14 @@ mod tests {
 
         let updated = editor_document_context(updated_source, Some(uri.to_string()), None).unwrap();
         assert!(!Arc::ptr_eq(&updated, &first));
-        assert_eq!(updated.analyzed.text.as_ref(), updated_source);
+        assert_eq!(updated.analyzed.snapshot().text(), updated_source);
         assert_eq!(editor_document_context_builds_for_tests(), 2);
 
         let other_uri = "file:///tmp/other.mmd";
         let other_document =
             editor_document_context(updated_source, Some(other_uri.to_string()), None)
                 .expect("uri change rebuilds cached context");
-        assert_eq!(other_document.analyzed.uri.as_str(), other_uri);
+        assert_eq!(other_document.analyzed.snapshot().uri().as_str(), other_uri);
         assert!(!Arc::ptr_eq(&other_document, &updated));
         assert_eq!(editor_document_context_builds_for_tests(), 3);
     }
@@ -1057,7 +1284,7 @@ mod tests {
         assert_eq!(session.uri(), uri);
         assert_eq!(editor_document_context_builds_for_tests(), 1);
         assert!(
-            !plan_semantic_tokens_for_snapshot(session.context.analyzed.document())
+            !plan_semantic_tokens_for_snapshot(session.context.analyzed.snapshot())
                 .expect("session semantic tokens")
                 .packed()
                 .is_empty()
@@ -1069,7 +1296,7 @@ mod tests {
             .expect("change editor session");
         assert_eq!(session.version(), 2);
         assert_eq!(
-            session.context.analyzed.text.as_ref(),
+            session.context.analyzed.snapshot().text(),
             "flowchart TD\nA-->C\n"
         );
         assert_eq!(editor_document_context_builds_for_tests(), 2);
@@ -1083,7 +1310,7 @@ mod tests {
             None,
         )
         .expect("editor snapshot");
-        let snapshot = context.analyzed.document();
+        let snapshot = context.analyzed.snapshot();
         let expected = merman_editor_core::plan_semantic_tokens_for_snapshot(snapshot)
             .expect("validated token plan");
 
@@ -1152,7 +1379,7 @@ mod tests {
             assert_eq!(detection.diagram_type, family, "{family} detection");
             let diagnostics = context.analyzed.diagnostics();
             let _ = code_actions_for_diagnostics(diagnostics, &uri);
-            let snapshot = context.analyzed.document();
+            let snapshot = context.analyzed.snapshot();
             let header_character = source
                 .lines()
                 .next()
