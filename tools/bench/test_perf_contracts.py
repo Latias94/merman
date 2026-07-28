@@ -14,6 +14,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import perf_runner
@@ -735,7 +736,7 @@ class CompareSelfContractsTest(unittest.TestCase):
         self.assertIn("bootstrap-resamples", report["contract_errors"][0]["message"])
         self.assertIn("confirmation", report["contract_errors"][0]["message"])
 
-    def test_discovery_reuse_is_confirmation_only_and_does_not_rebuild(self) -> None:
+    def test_discovery_reuse_rejects_conflicting_freeze_mode(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             base = root / "base"
@@ -773,6 +774,219 @@ class CompareSelfContractsTest(unittest.TestCase):
         self.assertEqual(result, 2)
         execute.assert_not_called()
         self.assertIn("mutually exclusive", report["contract_errors"][0]["message"])
+
+    def test_legal_discovery_reuse_never_enters_the_cargo_build_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            base_dir = root / "base"
+            head_dir = root / "head"
+            base_dir.mkdir()
+            head_dir.mkdir()
+            base_executable = root / "base-bench"
+            head_executable = root / "head-bench"
+            base_executable.write_bytes(b"base")
+            head_executable.write_bytes(b"head")
+            args = SimpleNamespace(
+                base_dir=str(base_dir),
+                head_dir=str(head_dir),
+                base_label="base",
+                head_label="head",
+                base_target_dir=str(root / "target"),
+                head_target_dir=str(root / "target"),
+                freeze_shared_target=False,
+                reuse_discovery_json=str(root / "discovery.json"),
+                reuse_discovery_sha256="a" * 64,
+                base_package="merman",
+                head_package="merman",
+                base_bench="pipeline",
+                head_bench="pipeline",
+                base_features="svg",
+                head_features="svg",
+                base_default_features=False,
+                head_default_features=False,
+                base_toolchain="1.95.0",
+                head_toolchain="1.95.0",
+                base_target="",
+                head_target="",
+                base_corpus="tools/bench/corpus.json",
+                head_corpus="tools/bench/corpus.json",
+                suite="canary",
+                group=None,
+                base_group=None,
+                head_group=None,
+                filter="end_to_end/flowchart_medium",
+                preset="long",
+                sample_size=None,
+                warm_up=None,
+                measurement=None,
+                evidence_mode="confirmation",
+                pairs=2,
+                calibration_pairs=8,
+                max_pairs=32,
+                start_side="base",
+                relative_threshold_percent=10.0,
+                absolute_threshold_ns=None,
+                absolute_threshold_us=None,
+                confidence_level=0.95,
+                bootstrap_seed=0,
+                bootstrap_resamples=10_000,
+                base_logical_operations=None,
+                head_logical_operations=None,
+                timeout_seconds=30,
+                allow_dirty=False,
+                discovery_only=False,
+            )
+            report = compare_self._empty_report(args, 50_000.0)
+            contract = {
+                "name": "flowchart_medium",
+                "family": "flowchart",
+                "base_benchmark": "end_to_end/flowchart_medium",
+                "head_benchmark": "end_to_end/flowchart_medium",
+                "selected": {"base": True, "head": True},
+                "metadata": {"base": None, "head": None},
+                "bytes": {"status": "identical", "base": {}, "head": {}},
+            }
+            source = {
+                "generated_at": "2026-07-29T00:00:00Z",
+                "harness": {"sha256": "b" * 64},
+                "method": {
+                    "shared_target_freeze": {"enabled": True},
+                    "confidence_contract": {
+                        "simultaneous_confidence_level": 0.95,
+                        "component_confidence_level": 0.975,
+                        "family_size": 2,
+                        "multiplicity_adjustment": "bonferroni",
+                        "components": "two metrics per comparable benchmark",
+                    },
+                },
+                "runners": {"base": {}, "head": {}},
+            }
+
+            def prepare_reused(recipe, **_kwargs):
+                executable = base_executable if recipe.label == "base" else head_executable
+                digest = "1" * 64 if recipe.label == "base" else "2" * 64
+                provenance = {
+                    "git": {
+                        "revision": recipe.label,
+                        "tree": recipe.label,
+                        "dirty": False,
+                    }
+                }
+                return (
+                    compare_self.PreparedRunner(
+                        recipe=recipe,
+                        executable=executable,
+                        executable_sha256=digest,
+                        benches={"end_to_end/flowchart_medium"},
+                        skipped={},
+                        provenance=provenance,
+                        env={},
+                        frozen=True,
+                    ),
+                    provenance,
+                    [],
+                )
+
+            def aa_schedule(_runner, *, contracts, pair_count, **_kwargs):
+                pairs = [
+                    {
+                        "a": {"normalized_ns": 1_000_000.0},
+                        "b": {"normalized_ns": 1_000_000.0},
+                        "first": {"normalized_ns": 1_000_000.0},
+                        "second": {"normalized_ns": 1_000_000.0},
+                    }
+                    for _ in range(pair_count)
+                ]
+                return {
+                    "rounds": [],
+                    "rows": {item["name"]: pairs for item in contracts},
+                    "errors": {},
+                }
+
+            def ab_schedule(*, contracts, pair_count, **_kwargs):
+                pairs = [
+                    {
+                        "base": {"normalized_ns": 1_000_000.0},
+                        "head": {"normalized_ns": 1_000_000.0},
+                    }
+                    for _ in range(pair_count)
+                ]
+                return {
+                    "rounds": [],
+                    "rows": {item["name"]: pairs for item in contracts},
+                    "errors": {},
+                }
+
+            with (
+                mock.patch.object(
+                    compare_self,
+                    "_load_reusable_discovery_report",
+                    return_value=(source, {"path": str(root / "discovery.json")}),
+                ),
+                mock.patch.object(compare_self, "_validate_reusable_discovery_report"),
+                mock.patch.object(
+                    compare_self,
+                    "_load_fixture_contracts",
+                    return_value=([contract], {"kind": "filter"}, (None, None)),
+                ),
+                mock.patch.object(compare_self, "_validate_reuse_comparison_contract"),
+                mock.patch.object(
+                    compare_self,
+                    "_prepare_runner",
+                    side_effect=AssertionError("Cargo build path entered"),
+                ) as cargo_prepare,
+                mock.patch.object(
+                    compare_self,
+                    "_prepare_reused_runner",
+                    side_effect=prepare_reused,
+                ) as reuse_prepare,
+                mock.patch.object(
+                    compare_self, "_run_aa_schedule", side_effect=aa_schedule
+                ) as aa,
+                mock.patch.object(
+                    compare_self, "_run_ab_schedule", side_effect=ab_schedule
+                ) as ab,
+                mock.patch.object(compare_self, "_verification_errors", return_value=[]),
+                mock.patch.object(
+                    compare_self, "_fixture_verification_errors", return_value=[]
+                ),
+                mock.patch.object(
+                    compare_self,
+                    "_discovery_reuse_verification_errors",
+                    return_value=[],
+                ),
+            ):
+                compare_self._execute_comparison(args, report)
+
+        cargo_prepare.assert_not_called()
+        self.assertEqual(reuse_prepare.call_count, 2)
+        self.assertEqual(aa.call_count, 2)
+        ab.assert_called_once()
+        self.assertEqual(report["method"]["discovery_reuse"]["status"], "verified")
+        self.assertEqual(report["rows"][0]["outcome"], "confirmed_non_regression")
+
+        invalid_reuse_modes = {
+            "preregistered lowercase": lambda value: setattr(
+                value, "reuse_discovery_sha256", "bad"
+            ),
+            "requires --reuse-discovery-json": lambda value: setattr(
+                value, "reuse_discovery_json", ""
+            ),
+            "cannot be combined": lambda value: setattr(
+                value, "discovery_only", True
+            ),
+            "only valid": lambda value: setattr(
+                value, "evidence_mode", "diagnostic"
+            ),
+            "requires clean": lambda value: setattr(value, "allow_dirty", True),
+        }
+        for message, mutate in invalid_reuse_modes.items():
+            changed = copy.copy(args)
+            mutate(changed)
+            with self.subTest(message=message), self.assertRaisesRegex(
+                compare_self.ContractViolation, message
+            ):
+                compare_self._validate_args(changed)
 
     def test_confirmation_rejects_an_unbounded_bootstrap_count(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1451,6 +1665,65 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             self.assertEqual(run.call_count, 1)
             self.assertEqual(run.call_args.args[0][0], str(executable))
             self.assertNotIn("cargo", run.call_args.args[0])
+
+            runner_mutations = {
+                "Git revision": lambda value: value["git"].__setitem__(
+                    "revision", "c" * 40
+                ),
+                "lockfile digest": lambda value: value["lockfile"].__setitem__(
+                    "sha256", "0" * 64
+                ),
+                "toolchain": lambda value: value["toolchain"].__setitem__(
+                    "cargo_verbose", "cargo other"
+                ),
+                "prebuild command": lambda value: value["prebuild_command"].append(
+                    "--forged"
+                ),
+                "frozen mode": lambda value: (
+                    value["frozen_executable"].__setitem__("mode", "0755"),
+                    value["shared_target_freeze"]["frozen_executable"].__setitem__(
+                        "mode", "0755"
+                    ),
+                ),
+                "origin verification": lambda value: value[
+                    "post_sampling_verification"
+                ]["files"].__setitem__("lockfile", "0" * 64),
+                "Criterion discovery": lambda value: value["discovery"].__setitem__(
+                    "output_sha256", "0" * 64
+                ),
+            }
+            for label, mutate in runner_mutations.items():
+                changed = copy.deepcopy(origin)
+                mutate(changed)
+                with (
+                    self.subTest(label=label),
+                    mock.patch.object(
+                        compare_self, "_git_provenance", return_value=git
+                    ),
+                    mock.patch.object(
+                        compare_self, "_toolchain_version", return_value="rustc test"
+                    ),
+                    mock.patch.object(
+                        compare_self, "_cargo_version", return_value="cargo test"
+                    ),
+                    mock.patch.object(
+                        compare_self, "_run_process", return_value=listed
+                    ),
+                ):
+                    changed_runner, _changed_provenance, changed_errors = (
+                        compare_self._prepare_reused_runner(
+                            recipe,
+                            origin=changed,
+                            source_report={
+                                "path": "/tmp/discovery.json",
+                                "sha256": "c" * 64,
+                            },
+                            timeout_seconds=1,
+                        )
+                    )
+
+                self.assertIsNone(changed_runner)
+                self.assertTrue(changed_errors)
 
             swapped_executable = (
                 target_dir
