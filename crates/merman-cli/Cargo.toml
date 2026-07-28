@@ -213,6 +213,10 @@ name = "fix_cli"
 required-features = ["analysis"]
 
 [[test]]
+name = "markdown_scanner"
+required-features = ["markdown"]
+
+[[test]]
 name = "jpeg_smoke"
 required-features = ["jpeg"]
 

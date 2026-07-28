@@ -92,7 +92,13 @@ pub(super) enum PreparedGraphicalOutput {
 }
 
 #[cfg(feature = "markdown")]
-pub(crate) struct PreparedMarkdownRender {
+pub(crate) enum PreparedMarkdownRender {
+    Native(PreparedMarkdownJob),
+    Mmdc11_16_0(PreparedMarkdownJob),
+}
+
+#[cfg(feature = "markdown")]
+pub(crate) struct PreparedMarkdownJob {
     pub(super) source: String,
     pub(super) renderer: PreparedGraphicalRender,
     pub(super) output_path: PathBuf,
@@ -150,17 +156,19 @@ pub(crate) fn prepare_render_for_batch(
     let quiet = renderer_quiet(&renderer);
 
     publications.prepare_directory(&resolved.output_root)?;
-    Ok(PreparedRender::Markdown(PreparedMarkdownRender {
-        source,
-        renderer,
-        output_path,
-        artefacts: Some(resolved.output_root),
-        resources,
-        publications,
-        #[cfg(feature = "parallel-markdown")]
-        jobs: resolved.jobs,
-        quiet,
-    }))
+    Ok(PreparedRender::Markdown(PreparedMarkdownRender::Native(
+        PreparedMarkdownJob {
+            source,
+            renderer,
+            output_path,
+            artefacts: Some(resolved.output_root),
+            resources,
+            publications,
+            #[cfg(feature = "parallel-markdown")]
+            jobs: resolved.jobs,
+            quiet,
+        },
+    )))
 }
 
 #[cfg(feature = "svg")]
@@ -254,17 +262,19 @@ fn prepare_mmdc_markdown(
     if let Some(path) = resolved.compatibility.artefacts.as_deref() {
         publications.prepare_directory(path)?;
     }
-    Ok(PreparedRender::Markdown(PreparedMarkdownRender {
-        source,
-        renderer,
-        output_path,
-        artefacts: resolved.compatibility.artefacts,
-        resources,
-        publications,
-        #[cfg(feature = "parallel-markdown")]
-        jobs: resolved.jobs,
-        quiet,
-    }))
+    Ok(PreparedRender::Markdown(
+        PreparedMarkdownRender::Mmdc11_16_0(PreparedMarkdownJob {
+            source,
+            renderer,
+            output_path,
+            artefacts: resolved.compatibility.artefacts,
+            resources,
+            publications,
+            #[cfg(feature = "parallel-markdown")]
+            jobs: resolved.jobs,
+            quiet,
+        }),
+    ))
 }
 
 fn prepare_single(

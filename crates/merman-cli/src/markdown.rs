@@ -1,13 +1,61 @@
 use crate::cli::RenderFormat;
 use crate::error::CliError;
 use std::ffi::OsString;
+use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 
+mod native;
+mod strict;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MarkdownFenceLocation {
+    pub(crate) line: usize,
+    pub(crate) column: usize,
+}
+
 #[derive(Debug, Clone)]
-pub(crate) struct MarkdownChart {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
-    pub(crate) definition: String,
+pub(crate) struct MarkdownChart<'source> {
+    source_span: Range<usize>,
+    #[cfg(test)]
+    definition_span: Range<usize>,
+    definition: &'source str,
+    location: MarkdownFenceLocation,
+}
+
+impl<'source> MarkdownChart<'source> {
+    fn new(
+        source: &'source str,
+        source_span: Range<usize>,
+        definition_span: Range<usize>,
+        location: MarkdownFenceLocation,
+    ) -> Self {
+        debug_assert!(source_span.start <= definition_span.start);
+        debug_assert!(definition_span.end <= source_span.end);
+        Self {
+            source_span,
+            definition: &source[definition_span.clone()],
+            #[cfg(test)]
+            definition_span,
+            location,
+        }
+    }
+
+    pub(crate) fn source_span(&self) -> Range<usize> {
+        self.source_span.clone()
+    }
+
+    #[cfg(test)]
+    fn definition_span(&self) -> Range<usize> {
+        self.definition_span.clone()
+    }
+
+    pub(crate) fn definition(&self) -> &'source str {
+        self.definition
+    }
+
+    pub(crate) fn location(&self) -> MarkdownFenceLocation {
+        self.location
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -21,6 +69,7 @@ pub(crate) struct MarkdownImage {
 pub(crate) struct MarkdownChartLimitExceeded {
     pub(crate) observed: u64,
     pub(crate) max: u64,
+    pub(crate) location: MarkdownFenceLocation,
 }
 
 pub(crate) fn is_markdown_path(path: &Path) -> bool {
@@ -33,162 +82,52 @@ pub(crate) fn is_markdown_path(path: &Path) -> bool {
         })
 }
 
-pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
-    extract_charts_with_spans(source)
+#[cfg(test)]
+fn scan_native(source: &str) -> Vec<MarkdownChart<'_>> {
+    scan_native_limited(source, None).expect("an unbounded scan cannot exceed its chart limit")
 }
 
-pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
-    extract_charts_limited(source, None).expect("an unbounded scan cannot exceed its chart limit")
-}
-
-pub(crate) fn extract_charts_limited(
+pub(crate) fn scan_native_limited(
     source: &str,
     max_charts: Option<u64>,
-) -> Result<Vec<MarkdownChart>, MarkdownChartLimitExceeded> {
-    let mut charts = Vec::new();
-    let mut cursor = 0;
+) -> Result<Vec<MarkdownChart<'_>>, MarkdownChartLimitExceeded> {
+    native::scan(source, max_charts)
+}
 
-    while cursor < source.len() {
-        let line_end = next_line_end(source, cursor);
-        let line = trim_line_ending(&source[cursor..line_end]);
-
-        let Some(opening) = markdown_fence_opening(line) else {
-            cursor = line_end;
-            continue;
-        };
-
-        if !opening.is_mermaid {
-            cursor = skip_markdown_fence(source, line_end, opening.delimiter);
-            continue;
-        }
-
-        let body_start = line_end;
-        let mut search_start = body_start;
-        while search_start < source.len() {
-            let closing_end = next_line_end(source, search_start);
-            let closing_line = trim_line_ending(&source[search_start..closing_end]);
-            if matching_closing_fence(closing_line, opening.delimiter) {
-                admit_chart(&charts, max_charts)?;
-                charts.push(MarkdownChart {
-                    start: cursor,
-                    end: closing_end,
-                    definition: source[body_start..search_start].to_string(),
-                });
-                cursor = closing_end;
-                break;
-            }
-            search_start = closing_end;
-        }
-
-        if search_start == source.len() {
-            admit_chart(&charts, max_charts)?;
-            charts.push(MarkdownChart {
-                start: cursor,
-                end: source.len(),
-                definition: source[body_start..].to_string(),
-            });
-            break;
-        }
-    }
-
-    Ok(charts)
+pub(crate) fn scan_mmdc_11_16_0_limited(
+    source: &str,
+    max_charts: Option<u64>,
+) -> Result<Vec<MarkdownChart<'_>>, MarkdownChartLimitExceeded> {
+    strict::scan(source, max_charts)
 }
 
 fn admit_chart(
-    charts: &[MarkdownChart],
+    current_count: usize,
     max_charts: Option<u64>,
+    location: MarkdownFenceLocation,
 ) -> Result<(), MarkdownChartLimitExceeded> {
-    let observed = u64::try_from(charts.len())
+    let observed = u64::try_from(current_count)
         .unwrap_or(u64::MAX)
         .saturating_add(1);
     if let Some(max) = max_charts
         && observed > max
     {
-        return Err(MarkdownChartLimitExceeded { observed, max });
+        return Err(MarkdownChartLimitExceeded {
+            observed,
+            max,
+            location,
+        });
     }
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy)]
-struct FenceDelimiter {
-    marker: u8,
-    len: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct MarkdownFenceOpening {
-    delimiter: FenceDelimiter,
-    is_mermaid: bool,
-}
-
-fn markdown_fence_opening(line: &str) -> Option<MarkdownFenceOpening> {
-    let trimmed = trim_fence_indent(line)?;
-    let marker = *trimmed.as_bytes().first()?;
-    if !matches!(marker, b'`' | b'~' | b':') {
-        return None;
-    }
-
-    let len = repeated_marker_len(trimmed.as_bytes(), marker);
-    if len < 3 {
-        return None;
-    }
-
-    let rest = trimmed[len..].trim_start();
-    let is_mermaid = rest
-        .get(.."mermaid".len())
-        .is_some_and(|language| language.eq_ignore_ascii_case("mermaid"))
-        && (rest.len() == "mermaid".len()
-            || rest["mermaid".len()..].starts_with(char::is_whitespace));
-
-    Some(MarkdownFenceOpening {
-        delimiter: FenceDelimiter { marker, len },
-        is_mermaid,
-    })
-}
-
-fn matching_closing_fence(line: &str, delimiter: FenceDelimiter) -> bool {
-    let Some(trimmed) = trim_fence_indent(line) else {
-        return false;
-    };
-    let len = repeated_marker_len(trimmed.as_bytes(), delimiter.marker);
-    len >= delimiter.len && trimmed[len..].chars().all(char::is_whitespace)
-}
-
-fn skip_markdown_fence(source: &str, mut cursor: usize, delimiter: FenceDelimiter) -> usize {
-    while cursor < source.len() {
-        let line_end = next_line_end(source, cursor);
-        let line = trim_line_ending(&source[cursor..line_end]);
-        if matching_closing_fence(line, delimiter) {
-            return line_end;
-        }
-        cursor = line_end;
-    }
-    source.len()
-}
-
-fn trim_fence_indent(line: &str) -> Option<&str> {
-    let mut spaces = 0;
-    for (index, byte) in line.bytes().enumerate() {
-        match byte {
-            b' ' if spaces < 3 => spaces += 1,
-            b' ' | b'\t' => return None,
-            _ => return Some(&line[index..]),
-        }
-    }
-    Some("")
-}
-
-fn repeated_marker_len(bytes: &[u8], marker: u8) -> usize {
-    bytes.iter().take_while(|byte| **byte == marker).count()
-}
-
-fn trim_line_ending(line: &str) -> &str {
+pub(super) fn trim_line_ending(line: &str) -> &str {
     line.strip_suffix('\n')
         .map(|line| line.strip_suffix('\r').unwrap_or(line))
         .unwrap_or_else(|| line.strip_suffix('\r').unwrap_or(line))
 }
 
-fn next_line_end(source: &str, start: usize) -> usize {
+pub(super) fn next_line_end(source: &str, start: usize) -> usize {
     let bytes = source.as_bytes();
     let mut index = start;
     while index < bytes.len() {
@@ -202,26 +141,30 @@ fn next_line_end(source: &str, start: usize) -> usize {
     source.len()
 }
 
-pub(crate) fn replace_charts_with_images(source: &str, images: &[MarkdownImage]) -> String {
-    let charts = extract_charts(source);
-    let capacity = rewritten_markdown_len(source, &charts, images)
-        .expect("Markdown replacement length should fit usize");
-    replace_known_charts_with_images(source, &charts, images, capacity)
-}
-
 pub(crate) fn rewritten_markdown_len(
     source: &str,
-    charts: &[MarkdownChart],
+    charts: &[MarkdownChart<'_>],
     images: &[MarkdownImage],
 ) -> Result<usize, CliError> {
-    let pair_count = charts.len().min(images.len());
+    if charts.len() != images.len() {
+        return Err(CliError::InvalidOutput(format!(
+            "Markdown rewrite expected {} images for {} charts",
+            images.len(),
+            charts.len()
+        )));
+    }
+    let pair_count = charts.len();
     let removed = charts
         .iter()
         .take(pair_count)
         .try_fold(0_usize, |total, chart| {
-            let span = chart.end.checked_sub(chart.start).ok_or_else(|| {
-                CliError::InvalidOutput("invalid Markdown chart span".to_string())
-            })?;
+            let source_span = chart.source_span();
+            let span = source_span
+                .end
+                .checked_sub(source_span.start)
+                .ok_or_else(|| {
+                    CliError::InvalidOutput("invalid Markdown chart span".to_string())
+                })?;
             total.checked_add(span).ok_or_else(|| {
                 CliError::InvalidOutput("rewritten Markdown size overflow".to_string())
             })
@@ -244,20 +187,22 @@ pub(crate) fn rewritten_markdown_len(
 
 pub(crate) fn replace_known_charts_with_images(
     source: &str,
-    charts: &[MarkdownChart],
+    charts: &[MarkdownChart<'_>],
     images: &[MarkdownImage],
     capacity: usize,
 ) -> String {
     if charts.is_empty() {
         return source.to_string();
     }
+    debug_assert_eq!(charts.len(), images.len());
 
     let mut out = String::with_capacity(capacity);
     let mut last = 0;
     for (chart, image) in charts.iter().zip(images) {
-        out.push_str(&source[last..chart.start]);
+        let source_span = chart.source_span();
+        out.push_str(&source[last..source_span.start]);
         out.push_str(&markdown_image(image));
-        last = chart.end;
+        last = source_span.end;
     }
     out.push_str(&source[last..]);
     debug_assert_eq!(out.len(), capacity);
@@ -489,22 +434,22 @@ mod tests {
     #[test]
     fn extracts_backtick_and_colon_mermaid_blocks() {
         let source = "before\n```Mermaid title=Main\nflowchart LR\nA-->B\n```\n~~~ mermaid\nsequenceDiagram\nA->>B: Hi\n~~~\n:::MERMAID extra info\npie title Work\n:::\n```mermaidx\nignored\n```\nafter";
-        let charts = extract_charts(source);
+        let charts = scan_native(source);
 
         assert_eq!(charts.len(), 3);
-        assert!(charts[0].definition.contains("flowchart LR"));
-        assert!(charts[1].definition.contains("sequenceDiagram"));
-        assert!(charts[2].definition.contains("pie title Work"));
+        assert!(charts[0].definition().contains("flowchart LR"));
+        assert!(charts[1].definition().contains("sequenceDiagram"));
+        assert!(charts[2].definition().contains("pie title Work"));
     }
 
     #[test]
     fn ignores_mermaid_looking_content_inside_another_fence() {
         let source = "````text\n```mermaid\nflowchart LR\nIgnored-->Fence\n```\n````\n\n```mermaid\nflowchart LR\nRendered-->Diagram\n```\n";
-        let charts = extract_charts(source);
+        let charts = scan_native(source);
 
         assert_eq!(charts.len(), 1);
-        assert!(charts[0].definition.contains("Rendered-->Diagram"));
-        assert!(!charts[0].definition.contains("Ignored-->Fence"));
+        assert!(charts[0].definition().contains("Rendered-->Diagram"));
+        assert!(!charts[0].definition().contains("Ignored-->Fence"));
     }
 
     #[test]
@@ -528,25 +473,26 @@ mod tests {
             "A->>B: Hi\r",
             "~~~~\r",
         );
-        let charts = extract_charts(source);
+        let charts = scan_native(source);
 
         assert_eq!(charts.len(), 2);
-        assert_eq!(charts[0].definition, "flowchart TD\nA-->B\n");
+        assert_eq!(charts[0].definition(), "flowchart TD\nA-->B\n");
         assert_eq!(
-            charts[1].definition, "sequenceDiagram\rA->>B: Hi\r",
+            charts[1].definition(),
+            "sequenceDiagram\rA->>B: Hi\r",
             "bare CR line endings must be retained in the rendered definition"
         );
     }
 
     #[test]
-    fn retains_an_unclosed_mermaid_fence_to_match_cli_conversion_behavior() {
+    fn native_dialect_retains_an_unclosed_mermaid_fence() {
         let source = "before\n~~~mermaid\nflowchart LR\nA-->B\n";
-        let charts = extract_charts(source);
+        let charts = scan_native(source);
 
         assert_eq!(charts.len(), 1);
-        assert_eq!(charts[0].start, "before\n".len());
-        assert_eq!(charts[0].end, source.len());
-        assert_eq!(charts[0].definition, "flowchart LR\nA-->B\n");
+        assert_eq!(charts[0].source_span().start, "before\n".len());
+        assert_eq!(charts[0].source_span().end, source.len());
+        assert_eq!(charts[0].definition(), "flowchart LR\nA-->B\n");
     }
 
     #[test]
@@ -557,14 +503,68 @@ mod tests {
             title: Some(r#"a "title""#.to_string()),
             alt: r"diagram [一]".to_string(),
         }];
-        let charts = extract_charts(source);
+        let charts = scan_native(source);
         let expected = r#"![diagram \[一\]](./out-1.svg "a \"title\"")"#;
+        let capacity =
+            rewritten_markdown_len(source, &charts, &images).expect("valid rewrite length");
 
+        assert_eq!(capacity, expected.len());
         assert_eq!(
-            rewritten_markdown_len(source, &charts, &images).expect("valid rewrite length"),
-            expected.len()
+            replace_known_charts_with_images(source, &charts, &images, capacity),
+            expected
         );
-        assert_eq!(replace_charts_with_images(source, &images), expected);
+    }
+
+    #[test]
+    fn rewriting_preserves_the_closing_fence_line_ending() {
+        for source in [
+            "```mermaid\nflowchart LR\nA-->B\n```\nafter\n",
+            "```mermaid\r\nflowchart LR\r\nA-->B\r\n```\r\nafter\r\n",
+        ] {
+            let charts = scan_native(source);
+            let images = [MarkdownImage {
+                url: "./out.svg".to_string(),
+                title: None,
+                alt: "diagram".to_string(),
+            }];
+            let capacity =
+                rewritten_markdown_len(source, &charts, &images).expect("valid rewrite length");
+            let rewritten = replace_known_charts_with_images(source, &charts, &images, capacity);
+
+            assert!(
+                rewritten.contains("![diagram](./out.svg)\nafter")
+                    || rewritten.contains("![diagram](./out.svg)\r\nafter"),
+                "closing line ending must remain after replacement: {rewritten:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn scanners_report_the_rejected_fence_location_at_limit_plus_one() {
+        let native = "标题\n  ```Mermaid\nflowchart LR\nA-->B\n```\n";
+        let native_error = scan_native_limited(native, Some(0)).expect_err("limit");
+        assert_eq!(
+            native_error.location,
+            MarkdownFenceLocation { line: 2, column: 3 }
+        );
+
+        let strict = concat!("```mermaid\nA\n```\n", "\u{2028}\t```mermaid\nB\n```\n",);
+        let strict_error = scan_mmdc_11_16_0_limited(strict, Some(1)).expect_err("limit");
+        assert_eq!(strict_error.observed, 2);
+        assert_eq!(
+            strict_error.location,
+            MarkdownFenceLocation { line: 5, column: 2 }
+        );
+    }
+
+    #[test]
+    fn rewrite_rejects_a_partial_image_set() {
+        let source = "```mermaid\nflowchart LR\nA-->B\n```\n";
+        let charts = scan_native(source);
+
+        let error = rewritten_markdown_len(source, &charts, &[]).expect_err("image mismatch");
+
+        assert!(error.to_string().contains("0 images for 1 charts"));
     }
 
     #[test]

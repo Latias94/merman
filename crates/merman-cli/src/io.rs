@@ -1,7 +1,9 @@
 use crate::error::CliError;
 use crate::input::{InputLimit, InputReadError, read_utf8};
 use std::fs::File;
-use std::io::{Read, Write};
+#[cfg(feature = "analysis")]
+use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 
 #[cfg(feature = "analysis")]

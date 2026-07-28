@@ -118,6 +118,15 @@ pub(crate) enum CliError {
     #[cfg(feature = "analysis")]
     #[error("invalid diagnostic fix plan: {0}")]
     InvalidFixPlan(String),
+    #[cfg(feature = "markdown")]
+    #[error("Markdown chart {index} at line {line}, column {column}: {source}")]
+    MarkdownChart {
+        index: u64,
+        line: usize,
+        column: usize,
+        #[source]
+        source: Box<CliError>,
+    },
 }
 
 impl CliError {
@@ -164,6 +173,20 @@ impl CliError {
         }
     }
 
+    #[cfg(feature = "markdown")]
+    pub(crate) fn markdown_chart(
+        index: u64,
+        location: crate::markdown::MarkdownFenceLocation,
+        source: CliError,
+    ) -> Self {
+        Self::MarkdownChart {
+            index,
+            line: location.line,
+            column: location.column,
+            source: Box::new(source),
+        }
+    }
+
     pub(crate) fn exit_code(&self) -> ExitCode {
         match self.category() {
             ErrorCategory::Success => ExitCode::SUCCESS,
@@ -187,6 +210,8 @@ impl CliError {
             Self::ConcurrentModification { .. } => ErrorCategory::Operational,
             #[cfg(feature = "analysis")]
             Self::InvalidFixPlan(_) => ErrorCategory::Content,
+            #[cfg(feature = "markdown")]
+            Self::MarkdownChart { source, .. } => source.category(),
             Self::Input { error, .. } if error.is_operational() => ErrorCategory::Operational,
             #[cfg(feature = "network-icons")]
             Self::Network(error) if error.is_operational() => ErrorCategory::Operational,

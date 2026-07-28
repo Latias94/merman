@@ -1,7 +1,7 @@
-#[cfg(feature = "markdown")]
-use super::prepare::PreparedMarkdownRender;
 #[cfg(feature = "svg")]
 use super::prepare::{PreparedGraphicalOutput, PreparedGraphicalRender, PreparedGraphicalSource};
+#[cfg(feature = "markdown")]
+use super::prepare::{PreparedMarkdownJob, PreparedMarkdownRender};
 use super::prepare::{PreparedRender, PreparedSingleOutput};
 #[cfg(feature = "markdown")]
 use super::svg_pipeline::svg_metadata;
@@ -48,7 +48,14 @@ pub(crate) fn execute_render(prepared: PreparedRender) -> Result<(), CliError> {
             write_output(destination, &artifact.bytes, &single.publications)
         }
         #[cfg(feature = "markdown")]
-        PreparedRender::Markdown(markdown) => execute_markdown(markdown),
+        PreparedRender::Markdown(markdown) => match markdown {
+            PreparedMarkdownRender::Native(prepared) => {
+                execute_markdown(prepared, markdown::scan_native_limited)
+            }
+            PreparedMarkdownRender::Mmdc11_16_0(prepared) => {
+                execute_markdown(prepared, markdown::scan_mmdc_11_16_0_limited)
+            }
+        },
     }
 }
 
@@ -256,17 +263,31 @@ struct RenderedMarkdownChart {
 }
 
 #[cfg(feature = "markdown")]
-fn execute_markdown(prepared: PreparedMarkdownRender) -> Result<(), CliError> {
+fn execute_markdown(
+    prepared: PreparedMarkdownJob,
+    scan: for<'source> fn(
+        &'source str,
+        Option<u64>,
+    ) -> Result<
+        Vec<markdown::MarkdownChart<'source>>,
+        markdown::MarkdownChartLimitExceeded,
+    >,
+) -> Result<(), CliError> {
     let mut chart_counter = prepared
         .resources
         .checked_count(CountLedgerKind::MarkdownCharts);
-    let charts = match markdown::extract_charts_limited(&prepared.source, chart_counter.max()) {
+    let charts = match scan(&prepared.source, chart_counter.max()) {
         Ok(charts) => charts,
         Err(error) => {
+            debug_assert_eq!(chart_counter.max(), Some(error.max));
             let limit_error = chart_counter
                 .try_add(error.observed)
                 .expect_err("scanner reported a count above the same policy limit");
-            return Err(limit_error.into());
+            return Err(CliError::markdown_chart(
+                error.observed,
+                error.location,
+                limit_error.into(),
+            ));
         }
     };
     let chart_count = u64::try_from(charts.len())
@@ -353,8 +374,8 @@ fn execute_markdown(prepared: PreparedMarkdownRender) -> Result<(), CliError> {
 
 #[cfg(feature = "markdown")]
 fn render_markdown_charts(
-    prepared: &PreparedMarkdownRender,
-    charts: &[markdown::MarkdownChart],
+    prepared: &PreparedMarkdownJob,
+    charts: &[markdown::MarkdownChart<'_>],
     output_files: &[std::path::PathBuf],
     staged_bytes: &Mutex<CheckedBytes>,
 ) -> Result<Vec<RenderedMarkdownChart>, CliError> {
@@ -370,13 +391,15 @@ fn render_markdown_charts(
             charts
                 .par_iter()
                 .zip(output_files.par_iter())
-                .map(|(chart, output_file)| {
+                .enumerate()
+                .map(|(index, (chart, output_file))| {
                     render_markdown_chart(
                         &prepared.renderer,
                         &prepared.output_path,
                         chart,
                         output_file,
                         staged_bytes,
+                        chart_number(index),
                     )
                 })
                 .collect()
@@ -386,13 +409,15 @@ fn render_markdown_charts(
     charts
         .iter()
         .zip(output_files)
-        .map(|(chart, output_file)| {
+        .enumerate()
+        .map(|(index, (chart, output_file))| {
             render_markdown_chart(
                 &prepared.renderer,
                 &prepared.output_path,
                 chart,
                 output_file,
                 staged_bytes,
+                chart_number(index),
             )
         })
         .collect()
@@ -402,25 +427,34 @@ fn render_markdown_charts(
 fn render_markdown_chart(
     renderer: &PreparedGraphicalRender,
     output_path: &Path,
-    chart: &markdown::MarkdownChart,
+    chart: &markdown::MarkdownChart<'_>,
     output_file: &Path,
     staged_bytes: &Mutex<CheckedBytes>,
+    chart_index: u64,
 ) -> Result<RenderedMarkdownChart, CliError> {
-    let artifact = execute_graphical(renderer, &chart.definition)?;
-    let artifact = artifact.charge_and_into_staged(staged_bytes)?;
-    let url = markdown::relative_markdown_url(output_path, output_file)?;
-    Ok(RenderedMarkdownChart {
-        output_file: output_file.to_path_buf(),
-        image: MarkdownImage {
-            url,
-            title: artifact.title.clone(),
-            alt: artifact
-                .desc
-                .clone()
-                .unwrap_or_else(|| "diagram".to_string()),
-        },
-        artifact,
-    })
+    let result = (|| {
+        let artifact = execute_graphical(renderer, chart.definition())?;
+        let artifact = artifact.charge_and_into_staged(staged_bytes)?;
+        let url = markdown::relative_markdown_url(output_path, output_file)?;
+        Ok(RenderedMarkdownChart {
+            output_file: output_file.to_path_buf(),
+            image: MarkdownImage {
+                url,
+                title: artifact.title.clone(),
+                alt: artifact
+                    .desc
+                    .clone()
+                    .unwrap_or_else(|| "diagram".to_string()),
+            },
+            artifact,
+        })
+    })();
+    result.map_err(|error| CliError::markdown_chart(chart_index, chart.location(), error))
+}
+
+#[cfg(feature = "markdown")]
+fn chart_number(index: usize) -> u64 {
+    u64::try_from(index).unwrap_or(u64::MAX).saturating_add(1)
 }
 
 #[cfg(feature = "markdown")]
