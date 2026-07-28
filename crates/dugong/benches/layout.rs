@@ -2,7 +2,8 @@ use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_ma
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, NodeLabel, layout, normalize};
 use std::hint::black_box;
-use std::time::Duration;
+
+const LAYER_COUNTS: [usize; 6] = [5, 10, 20, 40, 80, 160];
 
 #[derive(Debug, Clone)]
 struct LayeredDagSpec {
@@ -98,12 +99,12 @@ fn build_layered_dag_spec(
 }
 
 fn bench_layout(c: &mut Criterion) {
-    let mut group = c.benchmark_group("layout");
-    group.measurement_time(Duration::from_secs(10));
+    let mut group = c.benchmark_group("dugong_layout");
 
-    for layer_count in [10_usize, 25, 50] {
+    for layer_count in LAYER_COUNTS {
         let spec = build_layered_dag_spec("layout", layer_count, 10, None);
         let node_count = spec.node_ids.len();
+        group.throughput(criterion::Throughput::Elements(node_count as u64));
         group.bench_with_input(BenchmarkId::new("plan", node_count), &spec, |b, spec| {
             b.iter_batched(
                 || spec.build(),
@@ -120,12 +121,12 @@ fn bench_layout(c: &mut Criterion) {
 }
 
 fn bench_normalize(c: &mut Criterion) {
-    let mut group = c.benchmark_group("normalize");
-    group.measurement_time(Duration::from_secs(10));
+    let mut group = c.benchmark_group("dugong_normalize");
 
-    for layer_count in [10_usize, 25, 50] {
+    for layer_count in LAYER_COUNTS {
         let spec = build_layered_dag_spec("normalize", layer_count, 10, Some(2));
         let node_count = spec.node_ids.len();
+        group.throughput(criterion::Throughput::Elements(node_count as u64));
 
         group.bench_with_input(BenchmarkId::new("run", node_count), &spec, |b, spec| {
             b.iter_batched(
