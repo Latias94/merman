@@ -1039,6 +1039,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
         default_features: bool,
         toolchain: str | None,
         target_dir: Path,
+        target: str | None = None,
         locked: bool = True,
         corpus: Path,
     ):
@@ -1051,6 +1052,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             default_features=default_features,
             toolchain=toolchain,
             target_dir=target_dir,
+            target=target,
             locked=locked,
             corpus=corpus,
         )
@@ -1154,6 +1156,45 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 compare_self.cargo_prebuild_command(unlocked)
             with self.assertRaisesRegex(FileNotFoundError, "Cargo.lock"):
                 compare_self.cargo_prebuild_command(locked_without_file)
+
+    def test_shared_target_clean_resets_only_the_selected_bench_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            checkout = root / "checkout"
+            checkout.mkdir()
+            (checkout / "Cargo.lock").write_text("# lock\n", encoding="utf-8")
+            recipe = self._recipe(
+                label="head",
+                checkout=checkout,
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain="1.95.0",
+                target_dir=root / "target",
+                target="aarch64-apple-darwin",
+                corpus=Path("tools/bench/corpus.json"),
+            )
+
+            command = compare_self.cargo_clean_bench_profile_command(recipe)
+
+            self.assertEqual(
+                command,
+                [
+                    "cargo",
+                    "+1.95.0",
+                    "clean",
+                    "--locked",
+                    "--profile",
+                    "bench",
+                    "--target-dir",
+                    str(root / "target"),
+                    "--target",
+                    "aarch64-apple-darwin",
+                ],
+            )
+            self.assertNotIn("--workspace", command)
+            self.assertNotIn("--release", command)
 
     def test_shared_target_requires_explicit_freeze_mode(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1312,6 +1353,11 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 }
             )
             cargo_result = mock.Mock(returncode=0, stdout=cargo_stdout, stderr="")
+            clean_result = mock.Mock(
+                returncode=0,
+                stdout="",
+                stderr="Removed 42 files, 12.3MiB total",
+            )
             discovery_result = mock.Mock(
                 returncode=0,
                 stdout="end_to_end/flowchart_medium: benchmark\n",
@@ -1337,7 +1383,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 mock.patch.object(
                     compare_self,
                     "_run_process",
-                    side_effect=[cargo_result, discovery_result],
+                    side_effect=[clean_result, cargo_result, discovery_result],
                 ) as run_process,
             ):
                 runner, provenance, errors = compare_self._prepare_runner(
@@ -1360,6 +1406,14 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             self.assertEqual(provenance["build_environment"]["CARGO_BUILD_JOBS"], "1")
             self.assertEqual(provenance["shared_target_freeze"]["build_sequence"], 1)
             self.assertEqual(
+                provenance["shared_target_profile_reset"]["strategy"],
+                "cargo-clean-bench-profile-before-each-side",
+            )
+            self.assertIn(
+                "Removed 42 files",
+                provenance["shared_target_profile_reset"]["stderr_tail"],
+            )
+            self.assertEqual(
                 Path(provenance["source_executable"]["path"]).resolve(),
                 cargo_artifact.resolve(),
             )
@@ -1374,7 +1428,12 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 )[0],
                 str(runner.executable),
             )
+            self.assertEqual(
+                run_process.call_args_list[0].args[0][1:4],
+                ["clean", "--locked", "--profile"],
+            )
             self.assertEqual(run_process.call_args_list[0].kwargs["env"]["CARGO_BUILD_JOBS"], "1")
+            self.assertEqual(run_process.call_args_list[1].kwargs["env"]["CARGO_BUILD_JOBS"], "1")
 
     def test_shared_target_freeze_rejects_source_digest_drift_during_copy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1473,6 +1532,54 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             measure.assert_not_called()
             self.assertIn("digest changed", schedule["errors"]["flowchart_medium"])
             self.assertIn("error", schedule["rounds"][0]["executable_verification"])
+
+    def test_different_trees_require_distinct_frozen_executables(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            executable = root / "pipeline"
+            executable.write_bytes(b"same executable")
+            executable.chmod(0o555)
+            recipe = self._recipe(
+                label="base",
+                checkout=root,
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain=None,
+                target_dir=root / "target",
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            digest = compare_self._path_sha256(executable)
+            base = compare_self.PreparedRunner(
+                recipe=recipe,
+                executable=executable,
+                executable_sha256=digest,
+                benches=set(),
+                skipped={},
+                provenance={"git": {"tree": "a" * 40}},
+                env={},
+                frozen=True,
+            )
+            head = compare_self.PreparedRunner(
+                recipe=compare_self.RunnerRecipe(
+                    **{**recipe.__dict__, "label": "head"}
+                ),
+                executable=executable,
+                executable_sha256=digest,
+                benches=set(),
+                skipped={},
+                provenance={"git": {"tree": "b" * 40}},
+                env={},
+                frozen=True,
+            )
+
+            error = compare_self._binary_independence_error(base, head)
+
+            self.assertIsNotNone(error)
+            self.assertIn("byte-identical", error)
+            head.provenance["git"]["tree"] = "a" * 40
+            self.assertIsNone(compare_self._binary_independence_error(base, head))
 
     def test_prepare_checks_git_before_creating_an_in_checkout_target_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

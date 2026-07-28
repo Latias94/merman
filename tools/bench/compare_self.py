@@ -118,6 +118,32 @@ def cargo_prebuild_command(recipe: RunnerRecipe) -> list[str]:
     return command
 
 
+def cargo_clean_bench_profile_command(recipe: RunnerRecipe) -> list[str]:
+    """Reset one shared target's bench profile before compiling a frozen side."""
+    if not recipe.locked:
+        raise ValueError("decision-grade recipes must be locked")
+    lockfile = recipe.checkout / "Cargo.lock"
+    if not lockfile.is_file():
+        raise FileNotFoundError(f"locked recipe is missing Cargo.lock: {lockfile}")
+
+    command = ["cargo"]
+    if recipe.toolchain:
+        command.append(f"+{recipe.toolchain}")
+    command.extend(
+        [
+            "clean",
+            "--locked",
+            "--profile",
+            "bench",
+            "--target-dir",
+            str(recipe.target_dir),
+        ]
+    )
+    if recipe.target:
+        command.extend(["--target", recipe.target])
+    return command
+
+
 def parse_bench_executable(cargo_stdout: str, *, recipe: RunnerRecipe) -> Path:
     executables: set[Path] = set()
     for raw in cargo_stdout.splitlines():
@@ -431,6 +457,20 @@ class PreparedRunner:
     provenance: dict[str, Any]
     env: dict[str, str]
     frozen: bool = False
+
+
+def _binary_independence_error(
+    base: PreparedRunner,
+    head: PreparedRunner,
+) -> str | None:
+    base_tree = base.provenance.get("git", {}).get("tree")
+    head_tree = head.provenance.get("git", {}).get("tree")
+    if base_tree != head_tree and base.executable_sha256 == head.executable_sha256:
+        return (
+            "different Git trees produced byte-identical benchmark executables; "
+            "the requested comparison has no independently built binary delta"
+        )
+    return None
 
 
 def criterion_list_command(executable: Path) -> list[str]:
@@ -810,6 +850,33 @@ def _prepare_runner(
                 "CARGO_PROFILE_BENCH_OPT_LEVEL",
             )
         }
+        if freeze_plan is not None:
+            clean_command = cargo_clean_bench_profile_command(recipe)
+            provenance["shared_target_profile_reset"] = {
+                "strategy": "cargo-clean-bench-profile-before-each-side",
+                "command": clean_command,
+            }
+            print(
+                f"[reset] {recipe.label}: {_command_text(clean_command)}",
+                flush=True,
+            )
+            clean_result = _run_process(
+                clean_command,
+                cwd=recipe.checkout,
+                env=env,
+                timeout_seconds=timeout_seconds,
+            )
+            provenance["shared_target_profile_reset"].update(
+                {
+                    "stdout_tail": _output_tail(clean_result.stdout),
+                    "stderr_tail": _output_tail(clean_result.stderr),
+                }
+            )
+            _require_success(
+                clean_result,
+                command=clean_command,
+                cwd=recipe.checkout,
+            )
         command = cargo_prebuild_command(recipe)
         provenance["prebuild_command"] = command
         print(f"[prepare] {recipe.label}: {_command_text(command)}", flush=True)
@@ -2163,6 +2230,9 @@ def _empty_report(args: argparse.Namespace, absolute_threshold_ns: float) -> dic
                 "cargo_build_jobs": "1"
                 if getattr(args, "freeze_shared_target", False)
                 else None,
+                "profile_reset": "cargo-clean-bench-profile-before-each-side"
+                if getattr(args, "freeze_shared_target", False)
+                else None,
             },
         },
         "environment": {
@@ -2171,6 +2241,10 @@ def _empty_report(args: argparse.Namespace, absolute_threshold_ns: float) -> dic
             "cpu": best_effort_cpu_model(),
             "python": platform.python_version(),
             "rust": rustc_verbose(),
+        },
+        "harness": {
+            "schema": "compare-self-v2",
+            **_describe_required_file(Path(__file__).resolve()),
         },
         "recipes": {},
         "runners": {},
@@ -2229,6 +2303,9 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         "context": freeze_plan.context if freeze_plan is not None else None,
         "build_order": ["base", "head"] if freeze_plan is not None else None,
         "cargo_build_jobs": "1" if freeze_plan is not None else None,
+        "profile_reset": "cargo-clean-bench-profile-before-each-side"
+        if freeze_plan is not None
+        else None,
     }
 
     contracts, selection, operation_lanes = _load_fixture_contracts(
@@ -2304,6 +2381,9 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             "recipe",
             "base and head resolved to the same executable path; frozen candidates are not independent",
         )
+        return
+    if identity_error := _binary_independence_error(base, head):
+        _append_contract_error(report, "recipe", identity_error)
         return
     if args.evidence_mode == "confirmation":
         for side, runner in prepared.items():
@@ -2593,8 +2673,9 @@ def decision_grade_main(argv: list[str]) -> int:
         "--freeze-shared-target",
         action="store_true",
         help=(
-            "Allow one shared Cargo target by serially copying each compiler artifact into an "
-            "immutable target/perf-frozen context before discovery and sampling."
+            "Allow one shared Cargo target by clearing only its bench profile before each side, "
+            "then serially copying each rebuilt compiler artifact into an immutable "
+            "target/perf-frozen context before discovery and sampling."
         ),
     )
     parser.add_argument("--base-package", default="merman")

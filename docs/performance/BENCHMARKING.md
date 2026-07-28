@@ -120,6 +120,17 @@ Cargo is therefore outside the timed AB/BA schedule. A missing lockfile, ambiguo
 changed digest, absent benchmark, or failed direct invocation is an evidence-contract failure, not
 a slow sample.
 
+Base and head should normally use distinct target directories. When disk constraints require
+`--freeze-shared-target`, the runner clears only the shared target's `bench` profile before building
+each side, then copies that side's executable under `target/perf-frozen`. This reset is required:
+Cargo's cache is not a content-addressed boundary between different path-workspace checkouts, so a
+plain second `--target-dir` build can otherwise reuse the first checkout's executable. The debug
+profile and immutable frozen copies are not removed. Do not run another Cargo process against that
+target during either reset, build, or timing schedule. Different Git trees that still resolve to
+byte-identical benchmark executables fail the comparison, because they do not provide an
+independently built binary delta to measure. The JSON report records the comparison harness digest
+as well as both executable digests.
+
 ### Corpus and fixture byte gate
 
 The harness loads the corpus independently from both recipes. It compares the selected fixture on

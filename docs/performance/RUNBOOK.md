@@ -128,6 +128,12 @@ The harness invokes the frozen executables directly for discovery and every time
 not run in the background while sampling. A missing or mismatched item above is exit `2`; do not
 interpret it as a performance outcome.
 
+If both recipes deliberately share one target directory, pass `--freeze-shared-target`. That mode
+serially runs `cargo clean --profile bench` before each side, rebuilds it, and freezes the resulting
+executable before the next reset. The profile reset is part of the provenance contract and prevents
+Cargo from reusing an executable built from the other path-workspace checkout. It does not clean
+the debug profile. Ensure no other Cargo process is using the shared target for the whole run.
+
 ## 4. Use diagnostic mode for triage
 
 Run a one-to-four-pair alternating AB/BA schedule when the goal is only to decide where to
