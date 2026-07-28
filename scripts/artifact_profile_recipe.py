@@ -133,6 +133,62 @@ def cargo_build_args(
         raise RuntimeError(
             f"artifact profile {recipe.profile_id!r} does not declare target {target!r}"
         )
+    return _cargo_build_args(recipe, locked=locked, target=target, build_tool=build_tool)
+
+
+def cargo_host_build_args(
+    recipe: CargoArtifactRecipe,
+    host_target: str,
+    *,
+    locked: bool = False,
+    build_tool: CargoBuildTool = "cargo",
+) -> list[str]:
+    """Build a target-set recipe for the validated current host without `--target`."""
+    reject_cargo_profile_environment_overrides(recipe)
+    if recipe.build_target_kind != "target-set":
+        raise RuntimeError(
+            f"artifact profile {recipe.profile_id!r} is not a target-set recipe"
+        )
+    if host_target not in recipe.build_targets:
+        raise RuntimeError(
+            f"artifact profile {recipe.profile_id!r} does not declare host target "
+            f"{host_target!r}"
+        )
+    return _cargo_build_args(recipe, locked=locked, target=None, build_tool=build_tool)
+
+
+def rustc_host_target() -> str:
+    """Read the active Rust host triple without shell parsing."""
+    try:
+        completed = subprocess.run(
+            ["rustc", "-vV"],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise RuntimeError(f"could not run rustc -vV: {error}") from error
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip()
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(f"could not detect the Rust host target{suffix}")
+    for line in completed.stdout.splitlines():
+        if line.startswith("host: "):
+            target = line.removeprefix("host: ")
+            if target:
+                return target
+    raise RuntimeError("rustc -vV did not report a host target")
+
+
+def _cargo_build_args(
+    recipe: CargoArtifactRecipe,
+    *,
+    locked: bool,
+    target: str | None,
+    build_tool: CargoBuildTool,
+) -> list[str]:
+    """Project validated Cargo selectors; target is omitted only for a host build."""
 
     kinds = set(recipe.target_kinds)
     crate_types = set(recipe.crate_types)
@@ -530,6 +586,11 @@ def main() -> int:
         help="Execute the descriptor-owned Cargo build recipe.",
     )
     parser.add_argument(
+        "--build-host",
+        action="store_true",
+        help="Build a target-set recipe for the validated active Rust host.",
+    )
+    parser.add_argument(
         "--build-tool",
         choices=("cargo", "cargo-zigbuild"),
         default="cargo",
@@ -560,8 +621,13 @@ def main() -> int:
     args = parser.parse_args()
 
     recipe = load_artifact_profile(args.profile_id, args.descriptor)
-    if args.build and args.run_example is not None:
-        parser.error("--build and --run-example are mutually exclusive")
+    selected_actions = (
+        args.build,
+        args.build_host,
+        args.run_example is not None,
+    )
+    if sum(selected_actions) > 1:
+        parser.error("--build, --build-host, and --run-example are mutually exclusive")
     if args.build:
         if args.extra_feature or args.example_argument:
             parser.error("--extra-feature and --example-argument require --run-example")
@@ -570,6 +636,22 @@ def main() -> int:
                 recipe,
                 locked=args.locked,
                 target=args.target_triple,
+                build_tool=args.build_tool,
+            ),
+            cwd=REPO_ROOT,
+            check=True,
+        )
+        return 0
+    if args.build_host:
+        if args.target_triple is not None:
+            parser.error("--target-triple requires --build")
+        if args.extra_feature or args.example_argument:
+            parser.error("--extra-feature and --example-argument require --run-example")
+        subprocess.run(
+            cargo_host_build_args(
+                recipe,
+                rustc_host_target(),
+                locked=args.locked,
                 build_tool=args.build_tool,
             ),
             cwd=REPO_ROOT,

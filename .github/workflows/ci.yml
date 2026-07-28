@@ -64,6 +64,81 @@ jobs:
             git diff --check "$base...${{ github.sha }}"
           fi
 
+  cli-contracts:
+    name: cli-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Verify generated CLI distribution assets
+        run: python3 scripts/generate_cli_assets.py --check
+
+      - name: Test CLI distribution projections
+        run: python3 -m unittest scripts/test_artifact_profile_recipe.py scripts/test_verify_cli_process_matrix.py scripts/test_verify_cli_release_archive.py
+
+      - name: Test exact CLI feature process matrix
+        run: python3 scripts/verify_cli_process_matrix.py --locked
+
+      - name: Lint all CLI feature branches
+        run: cargo clippy --locked -p merman-cli --all-targets --all-features -- -D warnings
+
+  cli-artifact-profiles:
+    name: cli-artifact-profiles (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-2025-vs2026
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Build exact CLI artifact profiles
+        run: |
+          python3 scripts/artifact_profile_recipe.py cli-analysis --build-host --locked
+          python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
+
   build-test:
     name: build-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -215,8 +290,6 @@ jobs:
             cargo nextest run "${args[@]}" "$@"
           }
 
-          run_owner_test cli-analysis merman-cli \
-            --lib lint_only_profile_has_no_render_or_tool_commands
           run_owner_test rust-analysis merman-analysis \
             --test analyzer facts_and_diagnostics_payloads_use_independent_version_constants
           run_owner_test rust-ascii merman-ascii \
@@ -273,9 +346,6 @@ jobs:
         run: |
           cargo check -p merman-uniffi --no-default-features
           cargo check -p merman-uniffi --no-default-features --features ascii
-
-      - name: Build (release)
-        run: cargo build --release --locked -p merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: SVG DOM structure
         if: matrix.parity

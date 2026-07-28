@@ -2,11 +2,13 @@ name: Homebrew
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_version:
+        description: Optional stable formula version to require
+        required: false
+        type: string
   schedule:
     - cron: "23 9 * * 1"
-  push:
-    tags:
-      - "v*.*.*"
 
 permissions:
   contents: read
@@ -14,7 +16,6 @@ permissions:
 jobs:
   formula-health:
     name: formula-health
-    if: ${{ github.event_name != 'push' || !contains(github.ref_name, '-') }}
     runs-on: macos-15
     steps:
       - name: Update Homebrew metadata
@@ -22,6 +23,9 @@ jobs:
         run: brew update
 
       - name: Check Homebrew formula metadata
+        id: metadata
+        env:
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
         shell: bash
         run: |
           set -euo pipefail
@@ -31,8 +35,13 @@ jobs:
           desc="$(jq -r '.formulae[0].desc' <<<"$formula_json")"
 
           test "$version" != "null"
+          if [[ -n "$EXPECTED_VERSION" && "$version" != "$EXPECTED_VERSION" ]]; then
+            echo "::error::Homebrew stable version $version does not match expected $EXPECTED_VERSION." >&2
+            exit 1
+          fi
           test "$homepage" = "https://frankorz.com/merman/"
           test "$desc" = "Mermaid.js, but headless, in Rust"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Homebrew merman-cli stable version: $version"
           echo "Homebrew homepage: $homepage"
 
@@ -45,11 +54,58 @@ jobs:
         run: brew install merman-cli
 
       - name: Smoke installed merman-cli
+        env:
+          FORMULA_VERSION: ${{ steps.metadata.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          merman-cli --version
+          installed_version="$(merman-cli --version)"
+          test "$installed_version" = "merman-cli $FORMULA_VERSION"
+          IFS=. read -r formula_major formula_minor _ <<<"$FORMULA_VERSION"
+          if (( formula_major > 0 || formula_minor >= 8 )); then
+            merman-cli capabilities --json | jq -e '
+              .schema_version == 2
+              and .cli_contract_version == 2
+              and .package.name == "merman-cli"
+              and .package.version == $version
+              and (.compatibility.mermaid | type == "string" and length > 0)
+              and (.compatibility.mmdc | type == "string" and length > 0)
+              and (.descriptor.digest | test("^sha256:[0-9a-f]{64}$"))
+              and (
+                [
+                  "batch", "capabilities", "completion", "detect", "fix",
+                  "layout", "lint", "lint-rules", "mmdc", "parse", "render"
+                ] - .commands
+                | length == 0
+              )
+              and (
+                [
+                  "analysis", "ascii", "icons", "jpeg", "layout-cytoscape",
+                  "layout-elk", "markdown", "math", "network-icons",
+                  "parallel-markdown", "pdf", "png", "shell-completions", "svg",
+                  "system-clock", "system-random", "system-timezone", "system-timing"
+                ] - [.capabilities[].id]
+                | length == 0
+              )
+              and (
+                ["ascii", "jpeg", "pdf", "png", "svg"] - [.outputs[].id]
+                | length == 0
+              )
+            ' --arg version "$FORMULA_VERSION" >/dev/null
+            test -n "$(merman-cli completion bash)"
+            test -n "$(merman-cli completion zsh)"
+          else
+            echo "Skipping CLI contract v2 checks for stable $FORMULA_VERSION."
+          fi
           printf 'flowchart TD\nA[Homebrew] --> B[merman-cli]\n' > homebrew-smoke.mmd
           merman-cli render homebrew-smoke.mmd --output homebrew-smoke.svg
           grep -q '<svg' homebrew-smoke.svg
           grep -q 'Homebrew' homebrew-smoke.svg
+
+      - name: Audit installed formula
+        shell: bash
+        run: brew linkage --test merman-cli
+
+      - name: Run formula test
+        shell: bash
+        run: brew test merman-cli

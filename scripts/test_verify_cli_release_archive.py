@@ -42,7 +42,6 @@ CLI_RELEASE_COMMANDS = [
     "completion",
     "detect",
     "fix",
-    "help",
     "layout",
     "lint",
     "lint-rules",
@@ -1606,14 +1605,33 @@ class ReleaseWorkflowWiringTests(unittest.TestCase):
             with self.subTest(argument=argument):
                 self.assertIn(argument, self.verification_job)
 
+    def test_cli_archive_targets_match_the_release_profile_exactly(self) -> None:
+        self.assertIn(
+            "artifact_profile_recipe.py cli-release --field triples",
+            self.verification_job,
+        )
+        for diagnostic in [
+            "Unexpected merman-cli archive target",
+            "Duplicate merman-cli archive target",
+            "Missing merman-cli archive target",
+        ]:
+            with self.subTest(diagnostic=diagnostic):
+                self.assertIn(diagnostic, self.verification_job)
+
     def test_smoke_execution_is_limited_to_the_host_target(self) -> None:
         self.assertIn(
             """if [[ "$target" == "$host_target" ]]; then
               execute_args+=(--execute)
+              host_archive_executed=true
             fi""",
             self.verification_job,
         )
         self.assertIn('"${execute_args[@]}"', self.verification_job)
+        self.assertIn("host_archive_executed=true", self.verification_job)
+        self.assertIn(
+            "The host merman-cli archive was not executed",
+            self.verification_job,
+        )
 
     def test_release_authority_only_downloads_verified_snapshots(self) -> None:
         self.assertIn("name: verified-release-assets", self.verification_job)

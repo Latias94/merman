@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import artifact_profile_recipe
 from artifact_profile_recipe import (
     cargo_build_args,
+    cargo_host_build_args,
     cargo_run_example_args,
     load_artifact_profile,
 )
@@ -284,6 +285,73 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertEqual(
             command[command.index("--features") + 1], recipe.feature_argument
         )
+
+    def test_host_build_command_validates_the_host_without_changing_output_layout(
+        self,
+    ) -> None:
+        recipe = load_artifact_profile("cli-release")
+        command = cargo_host_build_args(
+            recipe,
+            "x86_64-unknown-linux-gnu",
+            locked=True,
+        )
+
+        self.assertEqual(command[:4], ["cargo", "build", "--profile", "release"])
+        self.assertIn("--locked", command)
+        self.assertNotIn("--target", command)
+        self.assertEqual(
+            command[command.index("--features") + 1],
+            recipe.feature_argument,
+        )
+        with self.assertRaisesRegex(RuntimeError, "does not declare host target"):
+            cargo_host_build_args(recipe, "aarch64-unknown-linux-gnu")
+
+    def test_host_build_cli_uses_the_detected_rust_target(self) -> None:
+        argv = [
+            "artifact_profile_recipe.py",
+            "cli-release",
+            "--build-host",
+            "--locked",
+        ]
+        with (
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.object(
+                artifact_profile_recipe,
+                "rustc_host_target",
+                return_value="x86_64-unknown-linux-gnu",
+            ),
+            mock.patch.object(artifact_profile_recipe.subprocess, "run") as run,
+        ):
+            self.assertEqual(artifact_profile_recipe.main(), 0)
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[:4], ["cargo", "build", "--profile", "release"])
+        self.assertNotIn("--target", command)
+        self.assertEqual(run.call_args.kwargs["cwd"], artifact_profile_recipe.REPO_ROOT)
+        self.assertTrue(run.call_args.kwargs["check"])
+
+    def test_rustc_host_target_fails_closed_on_command_or_output_errors(self) -> None:
+        cases = (
+            (
+                SimpleNamespace(returncode=1, stdout="", stderr="rustc failed"),
+                "could not detect",
+            ),
+            (
+                SimpleNamespace(returncode=0, stdout="host: \n", stderr=""),
+                "did not report",
+            ),
+        )
+        for completed, message in cases:
+            with (
+                self.subTest(completed=completed),
+                mock.patch.object(
+                    artifact_profile_recipe.subprocess,
+                    "run",
+                    return_value=completed,
+                ),
+                self.assertRaisesRegex(RuntimeError, message),
+            ):
+                artifact_profile_recipe.rustc_host_target()
 
     def test_python_production_and_generator_commands_have_separate_features(self) -> None:
         recipe = load_artifact_profile("python-uniffi-native")
