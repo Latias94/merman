@@ -225,14 +225,116 @@ jobs:
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
+
+  # Verify every CLI archive before anything with release authority can consume it.
+  verify-cli-archives:
+    needs:
+      - plan
+      - build-local-artifacts
+      - build-global-artifacts
+    runs-on: "ubuntu-24.04"
+    permissions:
+      contents: read
+    env:
+      RAW_ARTIFACT_DIR: artifacts
+      RELEASE_ASSET_DIR: ${{ runner.temp }}/verified-release-assets
+      RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+      VERIFIED_CLI_DIR: ${{ runner.temp }}/verified-cli
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+      - name: Download cargo-dist artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: artifacts-*
+          path: artifacts
+          merge-multiple: true
+      - name: Verify CLI release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$VERIFIED_CLI_DIR" "$RELEASE_ASSET_DIR"
+
+          release_version="$(
+            python3 scripts/release-version.py canonical --version "$RELEASE_TAG"
+          )"
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          if [[ -z "$host_target" ]]; then
+            echo "::error::Could not determine the Rust host target." >&2
+            exit 1
+          fi
+
+          mapfile -d '' cli_archives < <(
+            find "$RAW_ARTIFACT_DIR" -maxdepth 1 -type f \
+              \( -name 'merman-cli-*.tar.xz' -o -name 'merman-cli-*.zip' \) \
+              -print0
+          )
+          if (( ${#cli_archives[@]} == 0 )); then
+            echo "::error::No merman-cli release archives were produced." >&2
+            exit 1
+          fi
+
+          for archive in "${cli_archives[@]}"; do
+            archive_name="${archive##*/}"
+            case "$archive_name" in
+              merman-cli-*.tar.xz)
+                target="${archive_name#merman-cli-}"
+                target="${target%.tar.xz}"
+                ;;
+              merman-cli-*.zip)
+                target="${archive_name#merman-cli-}"
+                target="${target%.zip}"
+                ;;
+              *)
+                echo "::error::Unexpected CLI archive name: $archive_name" >&2
+                exit 1
+                ;;
+            esac
+
+            execute_args=()
+            if [[ "$target" == "$host_target" ]]; then
+              execute_args+=(--execute)
+            fi
+            python3 scripts/verify_cli_release_archive.py \
+              "$archive" \
+              --checksum "$archive.sha256" \
+              --target "$target" \
+              --version "$release_version" \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --verified-output "$VERIFIED_CLI_DIR/$archive_name" \
+              "${execute_args[@]}"
+          done
+
+          while IFS= read -r -d '' asset; do
+            asset_name="${asset##*/}"
+            case "$asset_name" in
+              *-dist-manifest.json|merman-cli-*.tar.xz|merman-cli-*.zip)
+                continue
+                ;;
+            esac
+            cp -- "$asset" "$RELEASE_ASSET_DIR/$asset_name"
+          done < <(find "$RAW_ARTIFACT_DIR" -maxdepth 1 -type f -print0)
+          cp -- "$VERIFIED_CLI_DIR"/* "$RELEASE_ASSET_DIR/"
+      - name: Upload verified release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: verified-release-assets
+          path: ${{ env.RELEASE_ASSET_DIR }}
+          if-no-files-found: error
+
   # Determines if we should publish/announce
   host:
     needs:
       - plan
       - build-local-artifacts
       - build-global-artifacts
-    # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
+      - verify-cli-archives
+    # Only verified snapshots may cross into the job with release authority.
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && needs.verify-cli-archives.result == 'success' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
     environment: github-release
     permissions:
       contents: write
@@ -242,9 +344,8 @@ jobs:
       - name: "Download GitHub Artifacts"
         uses: actions/download-artifact@v8
         with:
-          pattern: artifacts-*
+          name: verified-release-assets
           path: artifacts
-          merge-multiple: true
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
