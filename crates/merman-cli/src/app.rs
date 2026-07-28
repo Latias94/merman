@@ -1,4 +1,4 @@
-use crate::cli::Cli;
+use crate::cli::{Cli, RawCommand};
 use crate::error::CliError;
 #[cfg(feature = "ascii")]
 use crate::invocation::ColorEnvironment;
@@ -18,23 +18,19 @@ impl CliApp {
     }
 
     pub(crate) fn execute(self) -> ExitCode {
-        let facts = match system_facts() {
-            Ok(facts) => facts,
-            Err(error) => return report_error(CliError::Io(error)),
-        };
-        self.execute_from(env::args_os(), facts)
-    }
-
-    fn execute_from(
-        self,
-        args: impl IntoIterator<Item = OsString>,
-        facts: InvocationFacts,
-    ) -> ExitCode {
-        let args = args.into_iter().collect::<Vec<_>>();
+        let args = env::args_os().collect::<Vec<_>>();
         let cli = match parse_cli(&args) {
             Ok(cli) => cli,
             Err(error) => return print_clap_error(error),
         };
+        let facts = match system_facts(command_needs_working_directory(&cli.command)) {
+            Ok(facts) => facts,
+            Err(error) => return report_error(CliError::Io(error)),
+        };
+        self.execute_parsed(cli, facts)
+    }
+
+    fn execute_parsed(self, cli: Cli, facts: InvocationFacts) -> ExitCode {
         let invocation = match crate::invocation::resolve(cli, &facts) {
             Ok(invocation) => invocation,
             Err(error) => {
@@ -44,14 +40,35 @@ impl CliApp {
                 return report_error(error);
             }
         };
-        let invocation = match crate::output::preflight(invocation, &facts.cwd) {
-            Ok(invocation) => invocation,
+        let Some(cwd) = facts.cwd.as_deref() else {
+            return match crate::output::LocalPreflight::path_free(invocation) {
+                Ok(preflight) => run_preflight(preflight),
+                Err(error) => report_error(error),
+            };
+        };
+        let preflight = match crate::output::preflight(invocation, cwd) {
+            Ok(preflight) => preflight,
             Err(error) => return report_error(error),
         };
-        match crate::commands::run(invocation) {
-            Ok(exit_code) => exit_code_from_i32(exit_code),
-            Err(error) => report_error(error),
-        }
+        run_preflight(preflight)
+    }
+}
+
+fn run_preflight(preflight: crate::output::LocalPreflight) -> ExitCode {
+    match crate::commands::run(preflight) {
+        Ok(exit_code) => exit_code_from_i32(exit_code),
+        Err(error) => report_error(error),
+    }
+}
+
+fn command_needs_working_directory(command: &RawCommand) -> bool {
+    match command {
+        RawCommand::Capabilities(_) => false,
+        #[cfg(feature = "analysis")]
+        RawCommand::LintRules(_) => false,
+        #[cfg(feature = "shell-completions")]
+        RawCommand::Completion(_) => false,
+        _ => true,
     }
 }
 
@@ -290,9 +307,14 @@ fn root_help(command: &clap::Command) -> String {
     output
 }
 
-fn system_facts() -> io::Result<InvocationFacts> {
+fn system_facts(require_working_directory: bool) -> io::Result<InvocationFacts> {
+    let cwd = match env::current_dir() {
+        Ok(cwd) => Some(cwd),
+        Err(_) if !require_working_directory => None,
+        Err(error) => return Err(error),
+    };
     Ok(InvocationFacts {
-        cwd: env::current_dir()?,
+        cwd,
         stdin_is_terminal: io::stdin().is_terminal(),
         #[cfg(feature = "ascii")]
         stdout_is_terminal: io::stdout().is_terminal(),
@@ -370,5 +392,12 @@ mod tests {
         #[cfg(feature = "svg")]
         assert!(help.contains("Compatibility:\n  mmdc"));
         assert!(help.contains("Capabilities and tooling:"));
+    }
+
+    #[test]
+    fn only_commands_that_resolve_paths_require_a_working_directory() {
+        assert!(!command_needs_working_directory(&RawCommand::Capabilities(
+            crate::cli::CapabilitiesArgs { json: true }
+        )));
     }
 }

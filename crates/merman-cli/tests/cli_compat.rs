@@ -1554,7 +1554,7 @@ fn markdown_output_rewrites_mermaid_blocks_to_images() {
 fn markdown_artefacts_directory_controls_image_location() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let docs = tmp.path().join("docs");
-    let assets = tmp.path().join("assets");
+    let assets = docs.join("assets");
     fs::create_dir(&docs).expect("create docs dir");
     let input = docs.join("input.md");
     let output = docs.join("out.md");
@@ -1579,7 +1579,7 @@ fn markdown_artefacts_directory_controls_image_location() {
     assert!(assets.join("out-1.svg").exists());
     let rewritten = fs::read_to_string(&output).expect("read rewritten markdown");
     assert!(
-        rewritten.contains("![diagram](./../assets/out-1.svg)"),
+        rewritten.contains("![diagram](./assets/out-1.svg)"),
         "unexpected rewritten markdown:\n{rewritten}"
     );
 }

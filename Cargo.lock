@@ -2292,7 +2292,9 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "unicode-normalization",
  "url",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

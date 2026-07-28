@@ -1,4 +1,6 @@
 mod app;
+#[cfg(feature = "markdown")]
+mod batch;
 mod capabilities;
 mod cli;
 mod commands;
@@ -18,6 +20,8 @@ mod output;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 mod render;
 mod resources;
+#[cfg(feature = "markdown")]
+mod transaction;
 
 fn main() -> std::process::ExitCode {
     app::CliApp::system().execute()

@@ -209,6 +209,7 @@ pub(crate) fn replace_known_charts_with_images(
     out
 }
 
+#[cfg(test)]
 pub(crate) fn numbered_output_path(
     output_template: &Path,
     index: usize,
@@ -216,6 +217,25 @@ pub(crate) fn numbered_output_path(
     artefacts: Option<&Path>,
 ) -> PathBuf {
     NumberedOutputNamespace::new(output_template, format, artefacts).path(index)
+}
+
+pub(crate) fn native_manifest_path(output_root: &Path) -> PathBuf {
+    output_root.join(".merman-manifest.json")
+}
+
+pub(crate) fn strict_manifest_path(output_template: &Path) -> Result<PathBuf, CliError> {
+    let file_name = output_template.file_name().ok_or_else(|| {
+        CliError::InvalidOutput(format!(
+            "Markdown output template {} must name a file",
+            crate::error::safe_path(output_template)
+        ))
+    })?;
+    let mut manifest_name = file_name.to_os_string();
+    manifest_name.push(".merman-manifest.json");
+    Ok(output_template
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(manifest_name))
 }
 
 #[derive(Debug, Clone)]
@@ -262,6 +282,14 @@ impl NumberedOutputNamespace {
         &self.directory
     }
 
+    pub(crate) fn stem(&self) -> &str {
+        &self.stem
+    }
+
+    pub(crate) fn extension(&self) -> &str {
+        &self.extension
+    }
+
     pub(crate) fn path(&self, index: usize) -> PathBuf {
         self.directory
             .join(format!("{}-{index}.{}", self.stem, self.extension))
@@ -288,10 +316,11 @@ impl NumberedOutputNamespace {
 pub(crate) fn relative_markdown_url(
     markdown_output: &Path,
     image_output: &Path,
+    cwd: &Path,
 ) -> Result<String, CliError> {
     let base_dir = markdown_output.parent().unwrap_or_else(|| Path::new("."));
-    let base = absolute_path(base_dir)?;
-    let target = absolute_path(image_output)?;
+    let base = absolute_path(base_dir, cwd);
+    let target = absolute_path(image_output, cwd);
     let relative = relative_path(&base, &target).unwrap_or(target);
     Ok(format!("./{}", path_to_markdown_url(&relative)))
 }
@@ -358,12 +387,33 @@ fn escape_title(value: &str) -> String {
     out
 }
 
-fn absolute_path(path: &Path) -> Result<PathBuf, CliError> {
-    if path.is_absolute() {
-        Ok(path.to_path_buf())
+pub(crate) fn absolute_path(path: &Path, cwd: &Path) -> PathBuf {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
     } else {
-        Ok(std::env::current_dir()?.join(path))
+        cwd.join(path)
+    };
+    lexical_normalize(&absolute)
+}
+
+fn lexical_normalize(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if normalized.file_name().is_some() {
+                    normalized.pop();
+                } else if !normalized.has_root() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+                normalized.push(component.as_os_str());
+            }
+        }
     }
+    normalized
 }
 
 fn relative_path(base: &Path, target: &Path) -> Option<PathBuf> {

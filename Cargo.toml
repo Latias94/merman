@@ -114,11 +114,12 @@ krilla-svg = { version = "0.8", default-features = false }
 unicode-width = { version = "0.2.2", default-features = false }
 unicode-linebreak = "0.1.5"
 unicode-general-category = "1.1.0"
+unicode-normalization = "0.1.25"
 wasm-bindgen = "0.2"
 web-time = "1.1.0"
 wasm-minimal-protocol = "0.2.0"
 wasmi = { version = "1.0.9", default-features = false, features = ["simd"] }
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
 # The crate requires one transport runtime even when consumers only construct its LSP service.
 tower-lsp-server = { version = "0.23.0", default-features = false, features = ["runtime-tokio"] }
 

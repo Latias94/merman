@@ -703,6 +703,7 @@ impl CheckedBytes {
         self.0.used
     }
 
+    #[cfg(test)]
     pub(crate) const fn max(&self) -> Option<u64> {
         self.0.max
     }

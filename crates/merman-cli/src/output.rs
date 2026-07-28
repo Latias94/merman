@@ -33,6 +33,27 @@ impl LocalPreflight {
     pub(crate) fn into_parts(self) -> (ResolvedInvocation, PublicationGuards) {
         (self.invocation, self.publications)
     }
+
+    pub(crate) fn path_free(invocation: ResolvedInvocation) -> Result<Self, CliError> {
+        let is_path_free = match &invocation {
+            ResolvedInvocation::Capabilities(_) => true,
+            #[cfg(feature = "analysis")]
+            ResolvedInvocation::LintRules(_) => true,
+            #[cfg(feature = "shell-completions")]
+            ResolvedInvocation::Completion(_) => true,
+            _ => false,
+        };
+        if !is_path_free {
+            return Err(CliError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "current working directory is unavailable",
+            )));
+        }
+        Ok(Self {
+            invocation,
+            publications: PublicationGuards::new(None),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -40,9 +61,65 @@ pub(crate) struct PublicationGuards {
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     protected: Vec<GuardedInput>,
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-    cwd: PathBuf,
+    cwd: Option<PathBuf>,
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     scopes: Vec<Arc<PublicationScope>>,
+    #[cfg(feature = "markdown")]
+    transaction_root: Option<Arc<DirectoryGuard>>,
+}
+
+#[cfg(feature = "markdown")]
+#[derive(Debug, Clone)]
+pub(crate) struct ApprovedTransactionRoot {
+    path: PathBuf,
+    identity: Arc<DirectoryIdentity>,
+}
+
+#[cfg(feature = "markdown")]
+impl ApprovedTransactionRoot {
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(crate) fn verify(&self) -> Result<(), CliError> {
+        let canonical = std::fs::canonicalize(&self.path).map_err(|source| {
+            CliError::file(FileOperation::VerifyPublication, &self.path, source)
+        })?;
+        if canonical != self.path {
+            return Err(publication_identity_changed(&self.path));
+        }
+        let current = DirectoryIdentity::open(&self.path).map_err(|source| {
+            CliError::file(FileOperation::VerifyPublication, &self.path, source)
+        })?;
+        if !current.same_file(&self.identity) {
+            return Err(publication_identity_changed(&self.path));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn verify_same_filesystem(&self, path: &Path) -> Result<(), CliError> {
+        let current = DirectoryIdentity::open(path)
+            .map_err(|source| CliError::file(FileOperation::VerifyPublication, path, source))?;
+        if !current.same_filesystem(&self.identity) {
+            return Err(CliError::InvalidOutput(format!(
+                "transaction path {} is on a different filesystem than root {}",
+                safe_path(path),
+                safe_path(&self.path)
+            )));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(path: &Path) -> Result<Self, CliError> {
+        let path = std::fs::canonicalize(path)
+            .map_err(|source| CliError::file(FileOperation::Canonicalize, path, source))?;
+        let identity =
+            Arc::new(DirectoryIdentity::open(&path).map_err(|source| {
+                CliError::file(FileOperation::VerifyPublication, &path, source)
+            })?);
+        Ok(Self { path, identity })
+    }
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -55,16 +132,18 @@ struct GuardedInput {
 }
 
 impl PublicationGuards {
-    fn new(cwd: &Path) -> Self {
+    fn new(cwd: Option<&Path>) -> Self {
         #[cfg(not(any(feature = "analysis", feature = "svg", feature = "ascii")))]
         let _ = cwd;
         Self {
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
             protected: Vec::new(),
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-            cwd: cwd.to_path_buf(),
+            cwd: cwd.map(Path::to_path_buf),
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
             scopes: Vec::new(),
+            #[cfg(feature = "markdown")]
+            transaction_root: None,
         }
     }
 
@@ -80,7 +159,7 @@ impl PublicationGuards {
     }
 
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
-    fn verify(&self) -> Result<(), CliError> {
+    pub(crate) fn verify(&self) -> Result<(), CliError> {
         for input in &self.protected {
             let identity = same_file::Handle::from_path(&input.absolute).map_err(|source| {
                 CliError::file(FileOperation::VerifyPublication, &input.requested, source)
@@ -115,9 +194,10 @@ impl PublicationGuards {
         target: FileTarget,
         allow_protected_target: bool,
     ) -> Result<(), CliError> {
+        let cwd = self.working_directory()?;
         self.approve_scope(PublicationScope {
             matcher: PublicationMatcher::Exact {
-                path: lexical_absolute(&target.requested, &self.cwd),
+                path: lexical_absolute(&target.requested, cwd),
                 identity: target.identity,
             },
             parent: target.parent,
@@ -131,15 +211,27 @@ impl PublicationGuards {
         namespace: crate::markdown::NumberedOutputNamespace,
         guard: NumberedTargetGuard,
     ) -> Result<(), CliError> {
+        let cwd = self.working_directory()?;
         self.approve_scope(PublicationScope {
             matcher: PublicationMatcher::Numbered {
-                directory: lexical_absolute(namespace.directory(), &self.cwd),
+                directory: lexical_absolute(namespace.directory(), cwd),
                 namespace,
                 existing: guard.existing,
             },
             parent: guard.parent,
             allow_protected_target: false,
         })
+    }
+
+    #[cfg(feature = "markdown")]
+    fn approve_transaction_root(&mut self, guard: DirectoryGuard) -> Result<(), CliError> {
+        if self.transaction_root.is_some() {
+            return Err(CliError::InvalidOutput(
+                "one invocation cannot own more than one transaction root".to_string(),
+            ));
+        }
+        self.transaction_root = Some(Arc::new(guard));
+        Ok(())
     }
 
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -157,8 +249,79 @@ impl PublicationGuards {
     }
 
     #[cfg(feature = "markdown")]
-    pub(crate) fn prepare_directory(&self, path: &Path) -> Result<(), CliError> {
-        let lexical = lexical_absolute(path, &self.cwd);
+    pub(crate) fn prepare_transaction_root(&self) -> Result<ApprovedTransactionRoot, CliError> {
+        let guard = self.transaction_root.as_ref().ok_or_else(|| {
+            CliError::InvalidOutput(
+                "Markdown output has no transaction root approved by local preflight".to_string(),
+            )
+        })?;
+        self.verify()?;
+        guard.verify_anchor()?;
+        let directory = &guard.expected;
+        std::fs::create_dir_all(directory)
+            .map_err(|source| CliError::file(FileOperation::CreateDirectory, directory, source))?;
+        let identity = guard.seal()?;
+        Ok(ApprovedTransactionRoot {
+            path: directory.clone(),
+            identity,
+        })
+    }
+
+    #[cfg(feature = "markdown")]
+    pub(crate) fn prepare_directory(
+        &self,
+        path: &Path,
+    ) -> Result<ApprovedTransactionRoot, CliError> {
+        let matching = self.approved_directory_scopes(path)?;
+        let directory = &matching[0].parent.expected;
+        std::fs::create_dir_all(directory)
+            .map_err(|source| CliError::file(FileOperation::CreateDirectory, directory, source))?;
+        let identity = matching[0].parent.seal()?;
+        for scope in matching.iter().skip(1) {
+            scope.parent.seal_as(&identity)?;
+        }
+        Ok(ApprovedTransactionRoot {
+            path: directory.clone(),
+            identity,
+        })
+    }
+
+    #[cfg(feature = "markdown")]
+    pub(crate) fn approved_directory_path(&self, path: &Path) -> Result<PathBuf, CliError> {
+        let matching = self.approved_directory_scopes(path)?;
+        Ok(matching[0].parent.expected.clone())
+    }
+
+    #[cfg(feature = "markdown")]
+    pub(crate) fn approved_target_path(&self, requested: &Path) -> Result<PathBuf, CliError> {
+        let lexical = lexical_absolute(requested, self.working_directory()?);
+        let file_name = lexical.file_name().ok_or_else(|| {
+            CliError::InvalidOutput(format!(
+                "output target {} must name a file",
+                safe_path(requested)
+            ))
+        })?;
+        let scope = self
+            .scopes
+            .iter()
+            .find(|scope| scope.matcher.matches(&lexical))
+            .ok_or_else(|| {
+                CliError::InvalidOutput(format!(
+                    "output target {} was not approved by local preflight",
+                    safe_path(requested)
+                ))
+            })?;
+        self.verify()?;
+        scope.parent.verify_anchor()?;
+        Ok(scope.parent.expected.join(file_name))
+    }
+
+    #[cfg(feature = "markdown")]
+    fn approved_directory_scopes(
+        &self,
+        path: &Path,
+    ) -> Result<Vec<&Arc<PublicationScope>>, CliError> {
+        let lexical = lexical_absolute(path, self.working_directory()?);
         let matching = self
             .scopes
             .iter()
@@ -177,20 +340,13 @@ impl PublicationGuards {
                 return Err(publication_identity_changed(path));
             }
         }
-        let directory = &matching[0].parent.expected;
-        std::fs::create_dir_all(directory)
-            .map_err(|source| CliError::file(FileOperation::CreateDirectory, directory, source))?;
-        let identity = matching[0].parent.seal()?;
-        for scope in matching.iter().skip(1) {
-            scope.parent.seal_as(&identity)?;
-        }
-        Ok(())
+        Ok(matching)
     }
 
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     fn publication_for(&self, requested: &Path) -> Result<ApprovedPublication, CliError> {
         self.verify()?;
-        let lexical = lexical_absolute(requested, &self.cwd);
+        let lexical = lexical_absolute(requested, self.working_directory()?);
         let file_name = lexical.file_name().ok_or_else(|| {
             CliError::InvalidOutput(format!(
                 "output target {} must name a file",
@@ -215,9 +371,14 @@ impl PublicationGuards {
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn for_test() -> Self {
-        Self::new(Path::new("."))
+    #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+    fn working_directory(&self) -> Result<&Path, CliError> {
+        self.cwd.as_deref().ok_or_else(|| {
+            CliError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "current working directory is unavailable",
+            ))
+        })
     }
 }
 
@@ -228,7 +389,7 @@ pub(crate) fn preflight(
     #[cfg(not(any(feature = "analysis", feature = "svg", feature = "ascii")))]
     let _ = cwd;
     #[allow(unused_mut)]
-    let mut publications = PublicationGuards::new(cwd);
+    let mut publications = PublicationGuards::new(Some(cwd));
     match &mut invocation {
         #[cfg(feature = "analysis")]
         ResolvedInvocation::Fix(args) => {
@@ -247,6 +408,11 @@ pub(crate) fn preflight(
         #[cfg(feature = "markdown")]
         ResolvedInvocation::Batch(args) => {
             let inputs = render_inputs(&args.input, &args.common, None)?;
+            let transaction_root = prospective_directory(
+                &anchored_absolute(&args.output_root, cwd),
+                &args.output_root,
+                MissingParent::Allow,
+            )?;
             let target = args
                 .output
                 .destination()
@@ -259,8 +425,19 @@ pub(crate) fn preflight(
             );
             let target = preflight_file_target(target, cwd, &inputs, MissingParent::Allow)?;
             publications.approve_exact(target)?;
+            let manifest_path = crate::markdown::native_manifest_path(&args.output_root);
+            let manifest =
+                preflight_file_target(&manifest_path, cwd, &inputs, MissingParent::Allow)?;
+            require_transaction_descendant(&transaction_root, &manifest.parent, &manifest_path)?;
+            publications.approve_exact(manifest)?;
             let parent =
                 preflight_numbered_namespace(&namespace, cwd, &inputs, MissingParent::Allow)?;
+            require_transaction_descendant(
+                &transaction_root,
+                &parent.parent,
+                namespace.directory(),
+            )?;
+            publications.approve_transaction_root(transaction_root)?;
             publications.approve_numbered(namespace, parent)?;
             publications.protect(&inputs);
         }
@@ -277,6 +454,17 @@ pub(crate) fn preflight(
                     args.workflow,
                     crate::invocation::ResolvedWorkflow::MarkdownBatch
                 ) {
+                    let output_parent = anchored_absolute(target, cwd)
+                        .parent()
+                        .map(Path::to_path_buf)
+                        .ok_or_else(|| {
+                            CliError::InvalidOutput(format!(
+                                "mmdc Markdown output {} has no parent directory",
+                                safe_path(target)
+                            ))
+                        })?;
+                    let transaction_root =
+                        prospective_directory(&output_parent, target, MissingParent::Reject)?;
                     if crate::markdown::is_markdown_path(target) {
                         let target =
                             preflight_file_target(target, cwd, &inputs, MissingParent::Reject)?;
@@ -294,6 +482,21 @@ pub(crate) fn preflight(
                     };
                     let parent =
                         preflight_numbered_namespace(&namespace, cwd, &inputs, missing_parent)?;
+                    let manifest_path = crate::markdown::strict_manifest_path(target)?;
+                    let manifest =
+                        preflight_file_target(&manifest_path, cwd, &inputs, MissingParent::Reject)?;
+                    require_transaction_descendant(
+                        &transaction_root,
+                        &parent.parent,
+                        namespace.directory(),
+                    )?;
+                    require_transaction_descendant(
+                        &transaction_root,
+                        &manifest.parent,
+                        &manifest_path,
+                    )?;
+                    publications.approve_exact(manifest)?;
+                    publications.approve_transaction_root(transaction_root)?;
                     publications.approve_numbered(namespace, parent)?;
                 } else {
                     let target =
@@ -582,9 +785,14 @@ struct ApprovedPublication {
 #[derive(Debug)]
 struct DirectoryIdentity {
     handle: same_file::Handle,
+    filesystem: FileSystemIdentity,
     #[cfg(windows)]
     _rename_guard: File,
 }
+
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileSystemIdentity(u64);
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 impl DirectoryIdentity {
@@ -602,17 +810,30 @@ impl DirectoryIdentity {
                 .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
                 .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
                 .open(path)?;
+            let filesystem = windows_filesystem_identity(&guard)?;
             let handle = same_file::Handle::from_file(guard.try_clone()?)?;
             return Ok(Self {
                 handle,
+                filesystem,
                 _rename_guard: guard,
             });
         }
 
-        #[cfg(not(windows))]
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+
+            Ok(Self {
+                handle: same_file::Handle::from_path(path)?,
+                filesystem: FileSystemIdentity(std::fs::metadata(path)?.dev()),
+            })
+        }
+
+        #[cfg(not(any(unix, windows)))]
         {
             Ok(Self {
                 handle: same_file::Handle::from_path(path)?,
+                filesystem: FileSystemIdentity(0),
             })
         }
     }
@@ -620,6 +841,29 @@ impl DirectoryIdentity {
     fn same_file(&self, other: &Self) -> bool {
         self.handle == other.handle
     }
+
+    fn same_filesystem(&self, other: &Self) -> bool {
+        self.filesystem == other.filesystem
+    }
+}
+
+#[cfg(all(windows, any(feature = "analysis", feature = "svg", feature = "ascii")))]
+fn windows_filesystem_identity(file: &File) -> std::io::Result<FileSystemIdentity> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
+
+    let mut information = BY_HANDLE_FILE_INFORMATION::default();
+    // The handle remains owned by `file`; Windows writes only the fixed-size output structure.
+    let succeeded =
+        unsafe { GetFileInformationByHandle(file.as_raw_handle().cast(), &mut information) };
+    if succeeded == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(FileSystemIdentity(u64::from(
+        information.dwVolumeSerialNumber,
+    )))
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -697,6 +941,11 @@ impl DirectoryGuard {
         }
     }
 
+    #[cfg(feature = "markdown")]
+    fn same_filesystem(&self, other: &Self) -> bool {
+        self.anchor_identity.same_filesystem(&other.anchor_identity)
+    }
+
     fn seal(&self) -> Result<Arc<DirectoryIdentity>, CliError> {
         self.freeze_identity(self.current_identity()?)
     }
@@ -761,6 +1010,29 @@ impl DirectoryGuard {
         }
         Ok(Arc::clone(expected))
     }
+}
+
+#[cfg(feature = "markdown")]
+fn require_transaction_descendant(
+    root: &DirectoryGuard,
+    candidate: &DirectoryGuard,
+    requested: &Path,
+) -> Result<(), CliError> {
+    if candidate.expected.strip_prefix(&root.expected).is_err() {
+        return Err(CliError::InvalidOutput(format!(
+            "Markdown output {} lies outside transaction root {}; split-root publication is unsupported",
+            safe_path(requested),
+            safe_path(&root.expected)
+        )));
+    }
+    if !candidate.same_filesystem(root) {
+        return Err(CliError::InvalidOutput(format!(
+            "Markdown output {} crosses a nested filesystem beneath transaction root {}; split-root publication is unsupported",
+            safe_path(requested),
+            safe_path(&root.expected)
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -1394,7 +1666,7 @@ mod tests {
         let target = view.join("out.svg");
         let exact =
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
-        let mut guards = PublicationGuards::new(directory.path());
+        let mut guards = PublicationGuards::new(Some(directory.path()));
         guards.approve_exact(exact).unwrap();
 
         std::fs::remove_file(&view).unwrap();
@@ -1616,7 +1888,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("output.svg");
         std::fs::write(&target, b"complete old output").unwrap();
-        let mut guards = PublicationGuards::new(directory.path());
+        let mut guards = PublicationGuards::new(Some(directory.path()));
         let target_guard =
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
@@ -1643,7 +1915,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("output.svg");
         std::fs::write(&target, b"preflight output").unwrap();
-        let mut guards = PublicationGuards::new(directory.path());
+        let mut guards = PublicationGuards::new(Some(directory.path()));
         let target_guard =
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
@@ -1668,7 +1940,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("output.svg");
         std::fs::write(&target, b"preflight output").unwrap();
-        let mut guards = PublicationGuards::new(directory.path());
+        let mut guards = PublicationGuards::new(Some(directory.path()));
         let target_guard =
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
@@ -1696,7 +1968,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let target = directory.path().join("output.svg");
         std::fs::write(&target, b"acquired output").unwrap();
-        let mut guards = PublicationGuards::new(directory.path());
+        let mut guards = PublicationGuards::new(Some(directory.path()));
         let target_guard =
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
@@ -1736,7 +2008,7 @@ mod tests {
         let target = directory.path().join("output.svg");
         let redirect = directory.path().join("redirect.svg");
         std::fs::write(&redirect, b"protected redirect").unwrap();
-        let mut guards = PublicationGuards::new(directory.path());
+        let mut guards = PublicationGuards::new(Some(directory.path()));
         let target_guard =
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
@@ -1770,7 +2042,7 @@ mod tests {
         std::fs::create_dir(&redirected).unwrap();
         let target = approved.join("output.svg");
         let redirected_target = redirected.join("output.svg");
-        let mut guards = PublicationGuards::new(directory.path());
+        let mut guards = PublicationGuards::new(Some(directory.path()));
         let target_guard =
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
@@ -1806,7 +2078,7 @@ mod tests {
         std::fs::create_dir(&output_directory).unwrap();
         std::fs::create_dir(&redirect_directory).unwrap();
         let target = output_directory.join("output.svg");
-        let mut guards = PublicationGuards::new(directory.path());
+        let mut guards = PublicationGuards::new(Some(directory.path()));
         let target_guard =
             preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
         guards.approve_exact(target_guard).unwrap();
@@ -1856,7 +2128,7 @@ mod tests {
             directory.path(),
         )
         .unwrap();
-        let mut guards = PublicationGuards::new(directory.path());
+        let mut guards = PublicationGuards::new(Some(directory.path()));
         let target = preflight_file_target(
             &output_path,
             directory.path(),

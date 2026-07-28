@@ -74,6 +74,9 @@ pub(crate) enum CliError {
     Network(#[from] crate::network::NetworkError),
     #[error("{0}")]
     Resource(#[from] crate::resources::ResourceLedgerError),
+    #[cfg(feature = "markdown")]
+    #[error("{0}")]
+    Transaction(#[from] crate::transaction::TransactionError),
     #[error("stdout closed before output finished")]
     BrokenStdoutPipe,
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -204,6 +207,8 @@ impl CliError {
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
             Self::InvalidOutput(_) => ErrorCategory::Usage,
             Self::Io(_) | Self::JsonOutput(_) | Self::Stream { .. } => ErrorCategory::Operational,
+            #[cfg(feature = "markdown")]
+            Self::Transaction(_) => ErrorCategory::Operational,
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
             Self::File { .. } => ErrorCategory::Operational,
             #[cfg(feature = "analysis")]

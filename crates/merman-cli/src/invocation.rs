@@ -44,7 +44,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub(crate) struct InvocationFacts {
-    pub(crate) cwd: PathBuf,
+    pub(crate) cwd: Option<PathBuf>,
     pub(crate) stdin_is_terminal: bool,
     #[cfg(feature = "ascii")]
     pub(crate) stdout_is_terminal: bool,
@@ -688,7 +688,12 @@ fn normalize_render(
     validate_native_output_options(format, &args.options)?;
     let destination = resolve_single_destination(args.output, &input, format);
     let output = resolved_native_output(format, destination, &args.options, facts)?;
-    let common = resolve_native_common(args.options, runtime_policy, resources, &facts.cwd);
+    let common = resolve_native_common(
+        args.options,
+        runtime_policy,
+        resources,
+        working_directory(facts)?,
+    );
 
     Ok(ResolvedSingleRender {
         input,
@@ -776,7 +781,12 @@ fn normalize_batch(
     )?;
     #[cfg(feature = "parallel-markdown")]
     let jobs = resolve_parallel_jobs(args.jobs, &resources)?;
-    let common = resolve_native_common(args.options, runtime_policy, resources, &facts.cwd);
+    let common = resolve_native_common(
+        args.options,
+        runtime_policy,
+        resources,
+        working_directory(facts)?,
+    );
 
     Ok(ResolvedBatchRender {
         input,
@@ -877,7 +887,7 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         &args,
         output_is_stdout,
         resources,
-        &facts.cwd,
+        working_directory(facts)?,
     );
     let compatibility = MmdcCompatibilityInputs {
         puppeteer_config_file: args.puppeteer_config_file.clone(),
@@ -910,6 +920,15 @@ fn resolve_native_input(
         None if stdin_is_terminal => Err(CliError::MissingInput { command }),
         None => Ok(ResolvedInput::Stdin),
     }
+}
+
+fn working_directory(facts: &InvocationFacts) -> Result<&Path, CliError> {
+    facts.cwd.as_deref().ok_or_else(|| {
+        CliError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "current working directory is unavailable",
+        ))
+    })
 }
 
 #[cfg(feature = "analysis")]
@@ -1725,7 +1744,7 @@ mod tests {
 
     fn facts(stdin_is_terminal: bool) -> InvocationFacts {
         InvocationFacts {
-            cwd: PathBuf::from("."),
+            cwd: Some(PathBuf::from(".")),
             stdin_is_terminal,
             #[cfg(feature = "ascii")]
             stdout_is_terminal: false,
@@ -1743,7 +1762,7 @@ mod tests {
         term: Option<&str>,
     ) -> InvocationFacts {
         InvocationFacts {
-            cwd: PathBuf::from("."),
+            cwd: Some(PathBuf::from(".")),
             stdin_is_terminal: false,
             stdout_is_terminal,
             color: ColorEnvironment {

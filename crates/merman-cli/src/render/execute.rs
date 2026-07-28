@@ -1,22 +1,12 @@
 #[cfg(feature = "svg")]
 use super::prepare::{PreparedGraphicalOutput, PreparedGraphicalRender, PreparedGraphicalSource};
-#[cfg(feature = "markdown")]
-use super::prepare::{PreparedMarkdownJob, PreparedMarkdownRender};
 use super::prepare::{PreparedRender, PreparedSingleOutput};
 #[cfg(feature = "markdown")]
 use super::svg_pipeline::svg_metadata;
 use crate::error::CliError;
 use crate::io::write_output;
 #[cfg(feature = "markdown")]
-use crate::markdown::{self, MarkdownImage};
-#[cfg(feature = "markdown")]
-use crate::resources::{ByteLedgerKind, CheckedBytes, CountLedgerKind};
-#[cfg(feature = "parallel-markdown")]
-use rayon::prelude::*;
-#[cfg(feature = "markdown")]
-use std::path::Path;
-#[cfg(feature = "markdown")]
-use std::sync::Mutex;
+use crate::resources::CheckedBytes;
 
 pub(crate) fn execute_render(prepared: PreparedRender) -> Result<(), CliError> {
     match prepared {
@@ -48,19 +38,12 @@ pub(crate) fn execute_render(prepared: PreparedRender) -> Result<(), CliError> {
             write_output(destination, &artifact.bytes, &single.publications)
         }
         #[cfg(feature = "markdown")]
-        PreparedRender::Markdown(markdown) => match markdown {
-            PreparedMarkdownRender::Native(prepared) => {
-                execute_markdown(prepared, markdown::scan_native_limited)
-            }
-            PreparedMarkdownRender::Mmdc11_16_0(prepared) => {
-                execute_markdown(prepared, markdown::scan_mmdc_11_16_0_limited)
-            }
-        },
+        PreparedRender::Markdown(batch) => crate::batch::execute(batch),
     }
 }
 
 #[cfg(feature = "svg")]
-pub(super) fn execute_graphical(
+pub(crate) fn execute_graphical(
     prepared: &PreparedGraphicalRender,
     source: &str,
 ) -> Result<ExecutedArtifact, CliError> {
@@ -202,13 +185,13 @@ fn report_pdf_filter_plan(quiet: bool, plan: merman::svg::export::PdfFilterImage
     }
 }
 
-pub(super) struct ExecutedArtifact {
-    pub(super) bytes: Vec<u8>,
+pub(crate) struct ExecutedArtifact {
+    bytes: Vec<u8>,
     _permit: Option<super::admission::BackendPermit>,
     #[cfg(feature = "markdown")]
-    pub(super) title: Option<String>,
+    title: Option<String>,
     #[cfg(feature = "markdown")]
-    pub(super) desc: Option<String>,
+    desc: Option<String>,
 }
 
 impl ExecutedArtifact {
@@ -225,10 +208,11 @@ impl ExecutedArtifact {
     }
 
     #[cfg(feature = "markdown")]
-    fn charge_and_into_staged(
-        mut self,
-        staged_bytes: &Mutex<CheckedBytes>,
-    ) -> Result<StagedArtifact, CliError> {
+    pub(crate) fn stage_into(
+        self,
+        slot: crate::transaction::StageSlot,
+        staged_bytes: &std::sync::Mutex<CheckedBytes>,
+    ) -> Result<ExecutedMetadata, CliError> {
         // Until this charge succeeds, the bytes remain backend working memory
         // covered by the live permit rather than staged publication memory.
         let bytes = u64::try_from(self.bytes.len())
@@ -237,235 +221,16 @@ impl ExecutedArtifact {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .try_add(bytes)?;
-        let permit = self._permit.take();
-        let staged = StagedArtifact {
-            bytes: self.bytes,
+        slot.write_bytes(&self.bytes)?;
+        Ok(ExecutedMetadata {
             title: self.title,
             desc: self.desc,
-        };
-        drop(permit);
-        Ok(staged)
-    }
-}
-
-#[cfg(feature = "markdown")]
-struct StagedArtifact {
-    bytes: Vec<u8>,
-    title: Option<String>,
-    desc: Option<String>,
-}
-
-#[cfg(feature = "markdown")]
-struct RenderedMarkdownChart {
-    output_file: std::path::PathBuf,
-    artifact: StagedArtifact,
-    image: MarkdownImage,
-}
-
-#[cfg(feature = "markdown")]
-fn execute_markdown(
-    prepared: PreparedMarkdownJob,
-    scan: for<'source> fn(
-        &'source str,
-        Option<u64>,
-    ) -> Result<
-        Vec<markdown::MarkdownChart<'source>>,
-        markdown::MarkdownChartLimitExceeded,
-    >,
-) -> Result<(), CliError> {
-    let mut chart_counter = prepared
-        .resources
-        .checked_count(CountLedgerKind::MarkdownCharts);
-    let charts = match scan(&prepared.source, chart_counter.max()) {
-        Ok(charts) => charts,
-        Err(error) => {
-            debug_assert_eq!(chart_counter.max(), Some(error.max));
-            let limit_error = chart_counter
-                .try_add(error.observed)
-                .expect_err("scanner reported a count above the same policy limit");
-            return Err(CliError::markdown_chart(
-                error.observed,
-                error.location,
-                limit_error.into(),
-            ));
-        }
-    };
-    let chart_count = u64::try_from(charts.len())
-        .map_err(|_| CliError::InvalidInput("Markdown chart count overflow".to_string()))?;
-    chart_counter.try_add(chart_count)?;
-
-    if charts.is_empty() {
-        crate::diagnostics::DiagnosticSink::new(prepared.quiet)
-            .info("No mermaid charts found in Markdown input");
-    } else {
-        crate::diagnostics::DiagnosticSink::new(prepared.quiet).info(format!(
-            "Found {} mermaid charts in Markdown input",
-            charts.len()
-        ));
-    }
-
-    let format = graphical_format(&prepared.renderer.output);
-    let output_files = (1..=charts.len())
-        .map(|index| {
-            markdown::numbered_output_path(
-                &prepared.output_path,
-                index,
-                format,
-                prepared.artefacts.as_deref(),
-            )
         })
-        .collect::<Vec<_>>();
-    let staged_bytes = Mutex::new(
-        prepared
-            .resources
-            .checked_bytes(ByteLedgerKind::StagedOutput),
-    );
-    let rendered = render_markdown_charts(&prepared, &charts, &output_files, &staged_bytes)?;
-    let writes_document = markdown::is_markdown_path(&prepared.output_path);
-    let rewritten = if writes_document {
-        let images = rendered
-            .iter()
-            .map(|rendered| rendered.image.clone())
-            .collect::<Vec<_>>();
-        let rewritten_len = markdown::rewritten_markdown_len(&prepared.source, &charts, &images)?;
-        let bytes = u64::try_from(rewritten_len)
-            .map_err(|_| CliError::InvalidOutput("staged output size overflow".to_string()))?;
-        staged_bytes
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .try_add(bytes)?;
-        let rewritten = markdown::replace_known_charts_with_images(
-            &prepared.source,
-            &charts,
-            &images,
-            rewritten_len,
-        );
-        Some(rewritten)
-    } else {
-        None
-    };
-
-    for rendered in &rendered {
-        crate::io::write_file(
-            &rendered.output_file,
-            &rendered.artifact.bytes,
-            &prepared.publications,
-        )?;
     }
-    if let Some(rewritten) = rewritten.as_deref() {
-        crate::io::write_file(
-            &prepared.output_path,
-            rewritten.as_bytes(),
-            &prepared.publications,
-        )?;
-    }
-    for rendered in &rendered {
-        crate::diagnostics::DiagnosticSink::new(prepared.quiet)
-            .info(format!(" ✅ {}", rendered.image.url));
-    }
-    if writes_document {
-        crate::diagnostics::DiagnosticSink::new(prepared.quiet).info(format!(
-            " ✅ {}",
-            crate::error::safe_path(&prepared.output_path)
-        ));
-    }
-    Ok(())
 }
 
 #[cfg(feature = "markdown")]
-fn render_markdown_charts(
-    prepared: &PreparedMarkdownJob,
-    charts: &[markdown::MarkdownChart<'_>],
-    output_files: &[std::path::PathBuf],
-    staged_bytes: &Mutex<CheckedBytes>,
-) -> Result<Vec<RenderedMarkdownChart>, CliError> {
-    #[cfg(feature = "parallel-markdown")]
-    if charts.len() > 1 && prepared.jobs > 1 {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(prepared.jobs)
-            .build()
-            .map_err(|error| {
-                CliError::InvalidInput(format!("failed to configure Markdown render jobs: {error}"))
-            })?;
-        return pool.install(|| {
-            charts
-                .par_iter()
-                .zip(output_files.par_iter())
-                .enumerate()
-                .map(|(index, (chart, output_file))| {
-                    render_markdown_chart(
-                        &prepared.renderer,
-                        &prepared.output_path,
-                        chart,
-                        output_file,
-                        staged_bytes,
-                        chart_number(index),
-                    )
-                })
-                .collect()
-        });
-    }
-
-    charts
-        .iter()
-        .zip(output_files)
-        .enumerate()
-        .map(|(index, (chart, output_file))| {
-            render_markdown_chart(
-                &prepared.renderer,
-                &prepared.output_path,
-                chart,
-                output_file,
-                staged_bytes,
-                chart_number(index),
-            )
-        })
-        .collect()
-}
-
-#[cfg(feature = "markdown")]
-fn render_markdown_chart(
-    renderer: &PreparedGraphicalRender,
-    output_path: &Path,
-    chart: &markdown::MarkdownChart<'_>,
-    output_file: &Path,
-    staged_bytes: &Mutex<CheckedBytes>,
-    chart_index: u64,
-) -> Result<RenderedMarkdownChart, CliError> {
-    let result = (|| {
-        let artifact = execute_graphical(renderer, chart.definition())?;
-        let artifact = artifact.charge_and_into_staged(staged_bytes)?;
-        let url = markdown::relative_markdown_url(output_path, output_file)?;
-        Ok(RenderedMarkdownChart {
-            output_file: output_file.to_path_buf(),
-            image: MarkdownImage {
-                url,
-                title: artifact.title.clone(),
-                alt: artifact
-                    .desc
-                    .clone()
-                    .unwrap_or_else(|| "diagram".to_string()),
-            },
-            artifact,
-        })
-    })();
-    result.map_err(|error| CliError::markdown_chart(chart_index, chart.location(), error))
-}
-
-#[cfg(feature = "markdown")]
-fn chart_number(index: usize) -> u64 {
-    u64::try_from(index).unwrap_or(u64::MAX).saturating_add(1)
-}
-
-#[cfg(feature = "markdown")]
-fn graphical_format(output: &PreparedGraphicalOutput) -> crate::cli::RenderFormat {
-    match output {
-        PreparedGraphicalOutput::Svg => crate::cli::RenderFormat::Svg,
-        #[cfg(feature = "png")]
-        PreparedGraphicalOutput::Png { .. } => crate::cli::RenderFormat::Png,
-        #[cfg(feature = "jpeg")]
-        PreparedGraphicalOutput::Jpeg { .. } => crate::cli::RenderFormat::Jpeg,
-        #[cfg(feature = "pdf")]
-        PreparedGraphicalOutput::Pdf { .. } => crate::cli::RenderFormat::Pdf,
-    }
+pub(crate) struct ExecutedMetadata {
+    pub(crate) title: Option<String>,
+    pub(crate) desc: Option<String>,
 }

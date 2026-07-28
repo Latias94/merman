@@ -70,9 +70,10 @@ analysis = [
     "dep:same-file",
     "dep:sha2",
     "dep:similar",
+    "dep:windows-sys",
 ]
-svg = ["dep:atomic-write-file", "dep:same-file", "merman/svg"]
-ascii = ["dep:atomic-write-file", "dep:same-file", "merman/ascii"]
+svg = ["dep:atomic-write-file", "dep:same-file", "dep:windows-sys", "merman/svg"]
+ascii = ["dep:atomic-write-file", "dep:same-file", "dep:windows-sys", "merman/ascii"]
 png = ["svg", "merman/png"]
 jpeg = ["svg", "merman/jpeg"]
 pdf = ["svg", "merman/pdf"]
@@ -86,7 +87,7 @@ system-timing = ["merman/system-timing", "merman-analysis?/system-timing"]
 
 # Tool leaves own both their user-visible surface and their direct dependency.
 icons = ["svg", "dep:url"]
-markdown = ["svg"]
+markdown = ["svg", "dep:atomic-write-file", "dep:same-file", "dep:unicode-normalization"]
 network-icons = ["icons", "dep:hickory-resolver", "dep:reqwest", "dep:tokio"]
 parallel-markdown = ["markdown", "dep:rayon"]
 shell-completions = ["dep:clap_complete"]
@@ -110,6 +111,7 @@ similar = { workspace = true, optional = true }
 thiserror.workspace = true
 tokio = { workspace = true, optional = true, features = ["rt", "time"] }
 url = { workspace = true, optional = true }
+unicode-normalization = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
@@ -119,6 +121,9 @@ tempfile = "3.27.0"
 
 [target.'cfg(unix)'.dev-dependencies]
 libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, optional = true }
 
 [[test]]
 name = "cli_compat"

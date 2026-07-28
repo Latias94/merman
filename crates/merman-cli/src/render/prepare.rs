@@ -3,6 +3,8 @@ use super::admission::BackendAdmission;
 use super::icons::load_icon_registry;
 #[cfg(feature = "svg")]
 use super::svg_pipeline::svg_output_policy;
+#[cfg(feature = "markdown")]
+use crate::batch::{BatchDialect, PreparedBatch};
 #[cfg(feature = "svg")]
 use crate::cli::SvgPipelineKind;
 use crate::error::CliError;
@@ -24,8 +26,6 @@ use merman::svg::RenderEnvironment;
 #[cfg(feature = "svg")]
 use merman::svg::{HeadlessRenderer, SvgPipeline};
 use std::path::Path;
-#[cfg(feature = "markdown")]
-use std::path::PathBuf;
 
 #[cfg(feature = "pdf")]
 const MMDC_DEFAULT_PDF_WIDTH_PT: f32 = 612.0;
@@ -35,7 +35,7 @@ const MMDC_DEFAULT_PDF_HEIGHT_PT: f32 = 792.0;
 pub(crate) enum PreparedRender {
     Single(PreparedSingleRender),
     #[cfg(feature = "markdown")]
-    Markdown(PreparedMarkdownRender),
+    Markdown(PreparedBatch),
 }
 
 pub(crate) struct PreparedSingleRender {
@@ -59,7 +59,7 @@ pub(super) enum PreparedSingleOutput {
 }
 
 #[cfg(feature = "svg")]
-pub(super) struct PreparedGraphicalRender {
+pub(crate) struct PreparedGraphicalRender {
     pub(super) source: PreparedGraphicalSource,
     pub(super) pipeline: SvgPipeline,
     pub(super) output: PreparedGraphicalOutput,
@@ -89,25 +89,6 @@ pub(super) enum PreparedGraphicalOutput {
     Pdf {
         options: merman::svg::export::PdfOptions,
     },
-}
-
-#[cfg(feature = "markdown")]
-pub(crate) enum PreparedMarkdownRender {
-    Native(PreparedMarkdownJob),
-    Mmdc11_16_0(PreparedMarkdownJob),
-}
-
-#[cfg(feature = "markdown")]
-pub(crate) struct PreparedMarkdownJob {
-    pub(super) source: String,
-    pub(super) renderer: PreparedGraphicalRender,
-    pub(super) output_path: PathBuf,
-    pub(super) artefacts: Option<PathBuf>,
-    pub(super) resources: ResolvedResourcePolicy,
-    pub(super) publications: PublicationGuards,
-    #[cfg(feature = "parallel-markdown")]
-    pub(super) jobs: usize,
-    pub(super) quiet: bool,
 }
 
 pub(crate) fn prepare_render_for_native(
@@ -150,25 +131,20 @@ pub(crate) fn prepare_render_for_batch(
         .file()
         .expect("native batch normalization always selects a file target")
         .to_path_buf();
-    let common = resolved.common;
-    let resources = common.resources;
-    let (_, renderer) = prepare_graphical_output(resolved.output, common, false, false)?;
-    let quiet = renderer_quiet(&renderer);
-
-    publications.prepare_directory(&resolved.output_root)?;
-    Ok(PreparedRender::Markdown(PreparedMarkdownRender::Native(
-        PreparedMarkdownJob {
-            source,
-            renderer,
-            output_path,
-            artefacts: Some(resolved.output_root),
-            resources,
-            publications,
-            #[cfg(feature = "parallel-markdown")]
-            jobs: resolved.jobs,
-            quiet,
-        },
-    )))
+    let quiet = resolved.common.quiet;
+    Ok(PreparedRender::Markdown(PreparedBatch {
+        dialect: BatchDialect::NativeBatchV1,
+        source,
+        output: resolved.output,
+        common: resolved.common,
+        output_path,
+        transaction_root: resolved.output_root.clone(),
+        artefacts: Some(resolved.output_root),
+        publications,
+        #[cfg(feature = "parallel-markdown")]
+        jobs: resolved.jobs,
+        quiet,
+    }))
 }
 
 #[cfg(feature = "svg")]
@@ -254,27 +230,25 @@ fn prepare_mmdc_markdown(
         .file()
         .expect("mmdc Markdown normalization rejects stdout")
         .to_path_buf();
-    let common = resolved.common;
-    let resources = common.resources;
-    let (_, renderer) = prepare_graphical_output(resolved.output, common, false, true)?;
-    let quiet = renderer_quiet(&renderer);
+    let transaction_root = output_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    let quiet = resolved.common.quiet;
 
-    if let Some(path) = resolved.compatibility.artefacts.as_deref() {
-        publications.prepare_directory(path)?;
-    }
-    Ok(PreparedRender::Markdown(
-        PreparedMarkdownRender::Mmdc11_16_0(PreparedMarkdownJob {
-            source,
-            renderer,
-            output_path,
-            artefacts: resolved.compatibility.artefacts,
-            resources,
-            publications,
-            #[cfg(feature = "parallel-markdown")]
-            jobs: resolved.jobs,
-            quiet,
-        }),
-    ))
+    Ok(PreparedRender::Markdown(PreparedBatch {
+        dialect: BatchDialect::Mmdc11_16_0,
+        source,
+        output: resolved.output,
+        common: resolved.common,
+        output_path,
+        transaction_root,
+        artefacts: resolved.compatibility.artefacts,
+        publications,
+        #[cfg(feature = "parallel-markdown")]
+        jobs: resolved.jobs,
+        quiet,
+    }))
 }
 
 fn prepare_single(
@@ -330,7 +304,7 @@ fn prepare_single(
 }
 
 #[cfg(feature = "svg")]
-fn prepare_graphical_output(
+pub(crate) fn prepare_graphical_output(
     output: ResolvedOutput,
     common: ResolvedRenderCommon,
     raw_svg: bool,
@@ -630,9 +604,4 @@ fn pdf_options(
     options.embedded_image_limit = embedded_image_limit(embedded_images);
     options.conversion_limits = conversion_limits(&common.resources);
     options
-}
-
-#[cfg(feature = "markdown")]
-fn renderer_quiet(renderer: &PreparedGraphicalRender) -> bool {
-    renderer.quiet
 }
