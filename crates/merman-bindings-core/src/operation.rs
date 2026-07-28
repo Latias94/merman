@@ -330,6 +330,216 @@ mod tests {
     }
 
     #[test]
+    fn reusable_semantic_output_is_stable_across_empty_version_and_real_overlays() {
+        let engine =
+            BindingEngine::from_options(br#"{"parse":{"suppress_errors":false},"version":1}"#)
+                .unwrap();
+        let execute = |options_json| {
+            engine
+                .execute(BindingOperationRequest {
+                    operation_id: "semantic-json",
+                    source: b"flowchart TD\nA --> B",
+                    uri: None,
+                    options_json,
+                })
+                .unwrap()
+        };
+
+        let empty = execute(b"");
+        let version_only = execute(br#"{"version":1}"#);
+        let real = execute(br#"{"parse":{"suppress_errors":true}}"#);
+
+        assert_eq!(version_only.data, empty.data);
+        assert_eq!(version_only.metadata_json, empty.metadata_json);
+        assert_eq!(real.data, empty.data);
+        assert_eq!(real.metadata_json, empty.metadata_json);
+    }
+
+    #[test]
+    fn version_only_request_preserves_latent_wrapper_conflict() {
+        let engine = BindingEngine::from_options(
+            br#"{
+                "merman": { "fixed_today": "2025-01-01" },
+                "analysis": { "future_option": true }
+            }"#,
+        )
+        .expect("the constructor accepts exactly one analysis wrapper");
+        let error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "semantic-json",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: br#"{"version":1}"#,
+            })
+            .expect_err("request-time wrapper normalization exposes the conflict");
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("must not mix top-level analysis options"),
+            "unexpected error: {error:?}"
+        );
+    }
+
+    #[test]
+    fn unknown_operation_precedes_invalid_request_options() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        let error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "unknown-operation",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: b"{",
+            })
+            .expect_err("operation resolution runs before request option parsing");
+
+        assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(error.kind(), crate::BindingErrorKind::UnknownOperation);
+        assert!(error.message().contains("unknown operation"));
+    }
+
+    #[test]
+    fn uri_presence_validation_precedes_invalid_request_options() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+
+        let missing = engine
+            .execute(BindingOperationRequest {
+                operation_id: "document-analysis-json",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: b"{",
+            })
+            .expect_err("missing URI is rejected before malformed options");
+        assert_eq!(missing.status(), BindingStatus::InvalidArgument);
+        assert!(missing.message().contains("requires a document URI"));
+
+        let unexpected = engine
+            .execute(BindingOperationRequest {
+                operation_id: "semantic-json",
+                source: b"flowchart TD\nA --> B",
+                uri: Some(b"file:///diagram.mmd"),
+                options_json: b"{",
+            })
+            .expect_err("unexpected URI is rejected before malformed options");
+        assert_eq!(unexpected.status(), BindingStatus::InvalidArgument);
+        assert!(
+            unexpected
+                .message()
+                .contains("does not accept a document URI")
+        );
+    }
+
+    #[cfg(feature = "analysis")]
+    #[test]
+    fn invalid_request_options_precede_invalid_document_uri_bytes() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        let invalid_uri = [0xff];
+
+        let options_error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "document-analysis-json",
+                source: b"flowchart TD\nA --> B",
+                uri: Some(&invalid_uri),
+                options_json: b"{",
+            })
+            .expect_err("options are parsed before URI bytes are decoded");
+        assert_eq!(options_error.status(), BindingStatus::OptionsJsonError);
+
+        let uri_error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "document-analysis-json",
+                source: b"flowchart TD\nA --> B",
+                uri: Some(&invalid_uri),
+                options_json: b"",
+            })
+            .expect_err("valid options allow execution to reach URI decoding");
+        assert_eq!(uri_error.status(), BindingStatus::Utf8Error);
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn semantic_request_preserves_render_option_validation_before_source_errors() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        let invalid_source = [0xff];
+        let error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "semantic-json",
+                source: &invalid_source,
+                uri: None,
+                options_json: br#"{"svg":{"pipeline":"invalid-pipeline"}}"#,
+            })
+            .expect_err("full request-engine construction validates the render domain first");
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(
+            error
+                .message()
+                .contains("unsupported svg.pipeline: invalid-pipeline"),
+            "unexpected error: {error:?}"
+        );
+    }
+
+    #[cfg(all(feature = "analysis", feature = "svg"))]
+    #[test]
+    fn semantic_request_preserves_analysis_before_render_validation_order() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        let error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "semantic-json",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: br#"{
+                    "lint": { "profile": "invalid-profile" },
+                    "svg": { "pipeline": "invalid-pipeline" }
+                }"#,
+            })
+            .expect_err("analysis is constructed before the render engine");
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(
+            error
+                .message()
+                .contains("lint.profile must be core, recommended, or strict"),
+            "unexpected error: {error:?}"
+        );
+        assert!(!error.message().contains("svg.pipeline"));
+    }
+
+    #[cfg(not(feature = "png"))]
+    #[test]
+    fn invalid_request_options_precede_missing_operation_capability() {
+        let engine = BindingEngine::from_options(b"").unwrap();
+        let options_error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "png",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: b"{",
+            })
+            .expect_err("request options are validated before operation execution");
+        assert_eq!(options_error.status(), BindingStatus::OptionsJsonError);
+
+        let capability_error = engine
+            .execute(BindingOperationRequest {
+                operation_id: "png",
+                source: b"flowchart TD\nA --> B",
+                uri: None,
+                options_json: b"",
+            })
+            .expect_err("valid options reach the missing capability check");
+        assert_eq!(
+            capability_error.status(),
+            BindingStatus::UnsupportedOperation
+        );
+        assert_eq!(
+            capability_error.kind(),
+            crate::BindingErrorKind::MissingCapability
+        );
+        assert_eq!(capability_error.capability_id(), Some("png"));
+    }
+
+    #[test]
     fn every_compiled_operation_shares_one_shot_and_reusable_result_contracts() {
         let engine = BindingEngine::from_options(b"").unwrap();
 

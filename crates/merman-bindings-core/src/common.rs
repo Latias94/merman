@@ -1519,6 +1519,170 @@ mod tests {
         assert!(value.get("merman").is_none());
     }
 
+    #[test]
+    fn version_only_request_preserves_latent_wrapper_conflict_after_normalization() {
+        let base = br#"{
+            "merman": { "fixed_today": "2025-01-01" },
+            "analysis": { "future_option": true }
+        }"#;
+        parse_options(base).expect("the constructor accepts exactly one analysis wrapper");
+
+        let merged = merge_request_options(base, br#"{"version":1}"#, BindingResourceScope::Model)
+            .expect("the byte-level merge itself succeeds");
+        let error = parse_options(&merged).expect_err(
+            "normalizing the selected wrapper exposes the retained object wrapper conflict",
+        );
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("must not mix top-level analysis options"),
+            "unexpected error: {error:?}"
+        );
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn request_ascii_alias_spelling_collisions_remain_duplicate_field_errors() {
+        for (base, request, field) in [
+            (
+                br#"{"ascii":{"default_direction":"leftToRight"}}"#.as_slice(),
+                br#"{"ascii":{"defaultDirection":"topDown"}}"#.as_slice(),
+                "default_direction",
+            ),
+            (
+                br#"{"ascii":{"colorMode":"none"}}"#.as_slice(),
+                br#"{"ascii":{"color_mode":"ansi"}}"#.as_slice(),
+                "color_mode",
+            ),
+            (
+                br#"{"ascii":{"colorMode":null}}"#.as_slice(),
+                br#"{"ascii":{"color_mode":"none"}}"#.as_slice(),
+                "color_mode",
+            ),
+        ] {
+            let merged = merge_request_options(base, request, BindingResourceScope::Model)
+                .expect("each document is independently valid");
+            let error = parse_options(&merged)
+                .expect_err("different wire spellings survive recursive object merge");
+
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+            assert!(
+                error
+                    .message()
+                    .contains(&format!("duplicate field `{field}`")),
+                "field={field}, error={error:?}"
+            );
+        }
+
+        let merged = merge_request_options(
+            br#"{"ascii":{"colorMode":null}}"#,
+            br#"{"ascii":{"colorMode":"ansi"}}"#,
+            BindingResourceScope::Model,
+        )
+        .expect("the same raw key replaces its null base value");
+        let options = parse_options(&merged).expect("same-spelling replacement is not a duplicate");
+        assert_eq!(
+            options
+                .ascii
+                .as_ref()
+                .and_then(|ascii| ascii.color_mode.as_deref()),
+            Some("ansi")
+        );
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn request_ascii_alias_collision_uses_merged_wire_order() {
+        let base = br#"{
+            "ascii": {
+                "default_direction": "leftToRight",
+                "color_mode": "none"
+            }
+        }"#;
+
+        for (request, first_duplicate) in [
+            (
+                br#"{"ascii":{"colorMode":"ansi","defaultDirection":"topDown"}}"#.as_slice(),
+                "color_mode",
+            ),
+            (
+                br#"{"ascii":{"defaultDirection":"topDown","colorMode":"ansi"}}"#.as_slice(),
+                "default_direction",
+            ),
+        ] {
+            let merged = merge_request_options(base, request, BindingResourceScope::Model)
+                .expect("each alias spelling is independently valid");
+            let error = parse_options(&merged).expect_err("both aliases collide after merge");
+
+            assert!(
+                error
+                    .message()
+                    .contains(&format!("duplicate field `{first_duplicate}`")),
+                "expected first duplicate {first_duplicate}, error={error:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn request_ascii_nested_theme_alias_error_precedes_later_top_level_alias_error() {
+        let merged = merge_request_options(
+            br##"{
+                "ascii": {
+                    "color_mode": "none",
+                    "theme": {
+                        "foreground": "#ffffff",
+                        "background": "#000000"
+                    }
+                }
+            }"##,
+            br##"{
+                "ascii": {
+                    "colorMode": "ansi",
+                    "theme": { "fg": "#eeeeee" }
+                }
+            }"##,
+            BindingResourceScope::Model,
+        )
+        .expect("each alias spelling is independently valid");
+        let error = parse_options(&merged).expect_err("theme and top-level aliases both collide");
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error.message().contains("duplicate field `foreground`"),
+            "the in-place theme object is visited before the appended colorMode key: {error:?}"
+        );
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn request_resource_ceiling_error_precedes_cross_document_alias_error() {
+        let error = merge_request_options(
+            br#"{
+                "resources": {
+                    "profile": "constrained",
+                    "limits": { "max_source_bytes": 64 }
+                },
+                "ascii": { "color_mode": "none" }
+            }"#,
+            br#"{
+                "resources": { "limits": { "max_source_bytes": 65 } },
+                "ascii": { "colorMode": "ansi" }
+            }"#,
+            BindingResourceScope::Model,
+        )
+        .expect_err("resource tightening runs before merged options are reparsed");
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error.message().contains("loosen the transport ceiling"),
+            "unexpected error: {error:?}"
+        );
+        assert!(!error.message().contains("duplicate field"));
+    }
+
     #[cfg(any(feature = "svg", feature = "ascii"))]
     #[test]
     fn parse_options_accepts_analysis_wrapper_without_dropping_binding_options() {
