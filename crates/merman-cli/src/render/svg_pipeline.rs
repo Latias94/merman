@@ -46,3 +46,71 @@ fn decode_basic_xml_entities(value: &str) -> String {
         .replace("&gt;", ">")
         .replace("&amp;", "&")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use merman::svg::RenderEnvironment;
+
+    const SVG_WITH_BROWSER_ONLY_CONTENT: &str = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
+
+    fn process(kind: SvgPipelineKind) -> String {
+        let pipeline =
+            svg_output_policy(kind, Some("#f8fafc"), Some(".node { fill: red; }")).pipeline();
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("deterministic render session");
+        pipeline
+            .process_to_string(SVG_WITH_BROWSER_ONLY_CONTENT, &session)
+            .expect("pipeline output")
+    }
+
+    fn assert_root_background(svg: &str, expected: &str) {
+        let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
+        let style = document
+            .root_element()
+            .attribute("style")
+            .expect("root style attribute");
+        assert!(
+            style.split(';').map(str::trim).any(|declaration| {
+                declaration
+                    .split_once(':')
+                    .is_some_and(|(property, value)| {
+                        property.trim() == "background-color" && value.trim() == expected
+                    })
+            }),
+            "expected root background {expected:?}, got {style:?}"
+        );
+    }
+
+    #[test]
+    fn parity_keeps_browser_content_before_cli_postprocessors() {
+        let output = process(SvgPipelineKind::Parity);
+
+        assert!(output.contains("<foreignObject"));
+        assert_root_background(&output, "#f8fafc");
+        assert_eq!(
+            output
+                .matches(r#"data-merman-postprocess="scoped-css""#)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn resvg_safe_materializes_fallbacks_before_cli_postprocessors() {
+        let output = process(SvgPipelineKind::ResvgSafe);
+
+        assert!(!output.contains("<foreignObject"));
+        assert!(!output.contains("@keyframes bad"));
+        assert!(!output.contains("animation: bad"));
+        assert!(output.contains(r#"data-merman-foreignobject="fallback""#));
+        assert_root_background(&output, "#f8fafc");
+        assert_eq!(
+            output
+                .matches(r#"data-merman-postprocess="scoped-css""#)
+                .count(),
+            1
+        );
+    }
+}

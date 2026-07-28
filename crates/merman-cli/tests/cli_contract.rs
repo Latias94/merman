@@ -4,6 +4,7 @@ use assert_cmd::prelude::*;
 use serde_json::Value;
 use std::fs;
 use std::process::Command;
+use std::time::Duration;
 use support::{repo_root, run_with_stdin};
 
 fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
@@ -218,6 +219,360 @@ fn native_text_render_rejects_svg_and_network_only_options() {
         assert!(
             !stderr.contains("missing.mmd"),
             "irrelevant option rejection must precede input acquisition: {args:?}\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn invalid_render_configuration_precedes_primary_input_acquisition() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cases: &[(&str, &[&str], &str)] = &[
+        (
+            "boundary local midnight",
+            &[
+                "render",
+                "missing.mmd",
+                "--fixed-today=-262143-01-01",
+                "--fixed-local-offset-minutes",
+                "1439",
+            ],
+            "local datetime",
+        ),
+        (
+            "XYChart vertical plot height",
+            &[
+                "render",
+                "missing.mmd",
+                "--format",
+                "ascii",
+                "--xychart-vertical-plot-height",
+                "1",
+            ],
+            "at least 2",
+        ),
+        (
+            "XYChart horizontal plot width",
+            &[
+                "render",
+                "missing.mmd",
+                "--format",
+                "ascii",
+                "--xychart-horizontal-plot-width",
+                "1",
+            ],
+            "at least 2",
+        ),
+        (
+            "pdfFit viewport width",
+            &[
+                "mmdc",
+                "-i",
+                "missing.mmd",
+                "-o",
+                "out.pdf",
+                "--pdfFit",
+                "--width",
+                "1e308",
+            ],
+            "PDF viewport width is outside the supported numeric range",
+        ),
+    ];
+
+    for (label, args, expected) in cases {
+        let output = support::run_with_stdin_in_dir(args, "", Some(tmp.path()));
+        assert_eq!(
+            support::exit_code(output.status),
+            2,
+            "{label}: stderr: {:?}",
+            output.stderr
+        );
+        assert!(output.stdout.is_empty(), "{label}");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains(expected),
+            "{label} should report `{expected}` before opening input:\n{stderr}"
+        );
+        assert!(
+            !stderr.contains("missing.mmd"),
+            "{label} must precede missing input acquisition:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn invalid_render_configuration_does_not_wait_for_stdin() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(tmp.path().join("puppeteer.json"), "{not json")
+        .expect("write invalid Puppeteer config");
+    let cases: &[(&str, &[&str], &str)] = &[
+        (
+            "boundary local midnight",
+            &[
+                "render",
+                "-",
+                "--fixed-today=-262143-01-01",
+                "--fixed-local-offset-minutes",
+                "1439",
+            ],
+            "local datetime",
+        ),
+        (
+            "XYChart dimensions",
+            &[
+                "render",
+                "-",
+                "--format",
+                "ascii",
+                "--xychart-vertical-plot-height",
+                "1",
+            ],
+            "at least 2",
+        ),
+        (
+            "Puppeteer configuration JSON",
+            &["mmdc", "-i", "-", "-o", "-", "-p", "puppeteer.json"],
+            "JSON error",
+        ),
+        (
+            "pdfFit viewport width",
+            &[
+                "mmdc", "-i", "-", "-o", "out.pdf", "--pdfFit", "--width", "1e308",
+            ],
+            "PDF viewport width is outside the supported numeric range",
+        ),
+    ];
+
+    for (label, args, expected) in cases {
+        let output =
+            support::run_before_stdin_close_in_dir(args, Some(tmp.path()), Duration::from_secs(2));
+        assert_eq!(
+            support::exit_code(output.status),
+            2,
+            "{label}: stderr: {:?}",
+            output.stderr
+        );
+        assert!(output.stdout.is_empty(), "{label}");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains(expected),
+            "{label} should report `{expected}` before reading stdin:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn native_render_rejects_each_irrelevant_output_option_before_input_acquisition() {
+    let cases: &[(&str, &str, &[&str])] = &[
+        ("raster scale on SVG", "svg", &["--scale", "2"]),
+        (
+            "raster fit width on SVG",
+            "svg",
+            &["--raster-fit-width", "10"],
+        ),
+        (
+            "raster fit height on SVG",
+            "svg",
+            &["--raster-fit-height", "10"],
+        ),
+        (
+            "raster max width on SVG",
+            "svg",
+            &["--raster-max-width", "10"],
+        ),
+        (
+            "raster max height on SVG",
+            "svg",
+            &["--raster-max-height", "10"],
+        ),
+        (
+            "raster max pixels on SVG",
+            "svg",
+            &["--raster-max-pixels", "100"],
+        ),
+        ("unbounded raster on SVG", "svg", &["--raster-unbounded"]),
+        (
+            "PDF filter scale on SVG",
+            "svg",
+            &["--pdf-filter-scale", "2"],
+        ),
+        (
+            "PDF filter pixels on SVG",
+            "svg",
+            &["--pdf-max-filter-image-pixels", "100"],
+        ),
+        (
+            "unbounded PDF filters on SVG",
+            "svg",
+            &["--pdf-filter-images-unbounded"],
+        ),
+        (
+            "embedded image bytes on SVG",
+            "svg",
+            &["--embedded-image-max-bytes", "100"],
+        ),
+        (
+            "aggregate embedded bytes on SVG",
+            "svg",
+            &["--embedded-image-max-total-bytes", "100"],
+        ),
+        (
+            "embedded image pixels on SVG",
+            "svg",
+            &["--embedded-image-max-pixels", "100"],
+        ),
+        (
+            "aggregate embedded pixels on SVG",
+            "svg",
+            &["--embedded-image-max-total-pixels", "100"],
+        ),
+        (
+            "unbounded embedded images on SVG",
+            "svg",
+            &["--embedded-images-unbounded"],
+        ),
+        (
+            "sequence mirror on SVG",
+            "svg",
+            &["--sequence-mirror-actors"],
+        ),
+        (
+            "ASCII charset on SVG",
+            "svg",
+            &["--ascii-charset", "unicode"],
+        ),
+        (
+            "ASCII direction on SVG",
+            "svg",
+            &["--ascii-direction", "left-right"],
+        ),
+        ("ASCII color on SVG", "svg", &["--ascii-color", "plain"]),
+        (
+            "XYChart height on SVG",
+            "svg",
+            &["--xychart-vertical-plot-height", "10"],
+        ),
+        (
+            "XYChart category width on SVG",
+            "svg",
+            &["--xychart-category-band-width", "10"],
+        ),
+        (
+            "XYChart plot width on SVG",
+            "svg",
+            &["--xychart-horizontal-plot-width", "10"],
+        ),
+        (
+            "ASCII grid limit on SVG",
+            "svg",
+            &["--ascii-max-grid-cells", "100"],
+        ),
+        ("SVG pipeline on PNG", "png", &["--svg-pipeline", "parity"]),
+        ("background on text", "ascii", &["--background", "white"]),
+        ("CSS on text", "ascii", &["--css-file", "missing.css"]),
+        (
+            "text measurer on text",
+            "ascii",
+            &["--text-measurer", "deterministic"],
+        ),
+        (
+            "math renderer on text",
+            "ascii",
+            &["--math-renderer", "none"],
+        ),
+        ("container width on text", "ascii", &["--width", "100"]),
+        ("container height on text", "ascii", &["--height", "100"]),
+        ("SVG id on text", "ascii", &["--svg-id", "diagram"]),
+        (
+            "hand-drawn seed on text",
+            "ascii",
+            &["--hand-drawn-seed", "1"],
+        ),
+        (
+            "local icon pack on text",
+            "ascii",
+            &["--icon-pack", "missing.json"],
+        ),
+        (
+            "named icon source on text",
+            "ascii",
+            &["--icon-pack-source", "test#missing.json"],
+        ),
+        ("network icons on text", "ascii", &["--allow-network"]),
+        (
+            "private network icons on text",
+            "ascii",
+            &["--allow-network", "--allow-private-network"],
+        ),
+    ];
+
+    for (label, format, extra) in cases {
+        let mut args = vec!["render", "missing.mmd", "--format", *format];
+        args.extend_from_slice(extra);
+        let output = run_with_stdin(&args, "");
+        assert_eq!(
+            support::exit_code(output.status),
+            2,
+            "{label}: stderr: {:?}",
+            output.stderr
+        );
+        assert!(output.stdout.is_empty(), "{label}");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            !stderr.contains("missing.mmd") && !stderr.contains("missing.css"),
+            "{label} must fail before input acquisition:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn raw_svg_rejects_each_mermaid_only_option_before_input_acquisition() {
+    let cases: &[(&str, &[&str])] = &[
+        ("suppressed Mermaid errors", &["--suppress-errors"]),
+        ("Mermaid configuration", &["--config-file", "missing.json"]),
+        ("Mermaid theme", &["--theme", "dark"]),
+        ("native runtime", &["--runtime", "native"]),
+        ("system clock", &["--system-clock"]),
+        ("system timezone", &["--system-timezone"]),
+        ("system random", &["--system-random"]),
+        ("system timing", &["--system-timing"]),
+        ("fixed date", &["--fixed-today", "2026-07-28"]),
+        (
+            "fixed local offset",
+            &["--fixed-local-offset-minutes", "480"],
+        ),
+        ("text measurer", &["--text-measurer", "deterministic"]),
+        ("math renderer", &["--math-renderer", "none"]),
+        ("container width", &["--width", "100"]),
+        ("container height", &["--height", "100"]),
+        ("SVG id", &["--svg-id", "diagram"]),
+        ("hand-drawn seed", &["--hand-drawn-seed", "1"]),
+        ("local icon pack", &["--icon-pack", "missing.json"]),
+        (
+            "named icon source",
+            &["--icon-pack-source", "test#missing.json"],
+        ),
+        ("network icons", &["--allow-network"]),
+        (
+            "private network icons",
+            &["--allow-network", "--allow-private-network"],
+        ),
+    ];
+
+    for (label, extra) in cases {
+        let mut args = vec!["render", "missing.svg", "--format", "png"];
+        args.extend_from_slice(extra);
+        let output = run_with_stdin(&args, "");
+        assert_eq!(
+            support::exit_code(output.status),
+            2,
+            "{label}: stderr: {:?}",
+            output.stderr
+        );
+        assert!(output.stdout.is_empty(), "{label}");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            !stderr.contains("missing.svg") && !stderr.contains("missing.json"),
+            "{label} must fail before input acquisition:\n{stderr}"
         );
     }
 }

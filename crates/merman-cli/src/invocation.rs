@@ -8,11 +8,12 @@ use crate::cli::EmbeddedImageCliArgs;
 use crate::cli::PdfCliArgs;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 use crate::cli::RasterCliArgs;
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use crate::cli::RenderInputKind;
 #[cfg(any(
-    feature = "svg",
-    feature = "ascii",
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf",
     all(
         feature = "system-clock",
         feature = "system-timezone",
@@ -20,8 +21,6 @@ use crate::cli::RenderInputKind;
     )
 ))]
 use crate::cli::RuntimePolicyKind;
-#[cfg(feature = "ascii")]
-use crate::cli::TextOutputCliArgs;
 use crate::cli::{
     CapabilitiesArgs, Cli, DetectArgs, ParseArgs, ParseCliArgs, RawCommand, ResourceCliArgs,
     RuntimeCliArgs,
@@ -29,11 +28,14 @@ use crate::cli::{
 #[cfg(feature = "analysis")]
 use crate::cli::{FixArgs, LintArgs, LintRulesArgs};
 #[cfg(feature = "svg")]
-use crate::cli::{LayoutArgs, MmdcArgs, MmdcOutputFormat};
+use crate::cli::{LayoutArgs, MmdcArgs, MmdcOutputFormat, RenderCliArgs};
 #[cfg(any(feature = "svg", feature = "ascii"))]
-use crate::cli::{NativeRenderOptions, RenderArgs, RenderCliArgs, RenderFormat};
+use crate::cli::{NativeRenderOptions, RenderArgs, RenderFormat};
+#[cfg(feature = "ascii")]
+use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
 use crate::error::CliError;
 use crate::resources::ResolvedResourcePolicy;
+use merman::runtime::RuntimePolicy;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -42,31 +44,19 @@ use std::path::{Path, PathBuf};
 pub(crate) struct InvocationFacts {
     pub(crate) cwd: PathBuf,
     pub(crate) stdin_is_terminal: bool,
+    #[cfg(feature = "ascii")]
     pub(crate) stdout_is_terminal: bool,
+    #[cfg(feature = "ascii")]
     pub(crate) color: ColorEnvironment,
 }
 
+#[cfg(feature = "ascii")]
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ColorEnvironment {
     pub(crate) no_color: bool,
     pub(crate) force_color: bool,
     pub(crate) colorterm: Option<String>,
     pub(crate) term: Option<String>,
-}
-
-impl ColorEnvironment {
-    fn is_color_capable(&self) -> bool {
-        !self.no_color
-            && (self.force_color
-                || self
-                    .colorterm
-                    .as_deref()
-                    .is_some_and(|value| !value.is_empty())
-                || self
-                    .term
-                    .as_deref()
-                    .is_some_and(|value| !value.is_empty() && value != "dumb"))
-    }
 }
 
 #[derive(Debug)]
@@ -163,14 +153,6 @@ pub(crate) enum ResolvedInput {
 }
 
 impl ResolvedInput {
-    #[cfg(any(feature = "svg", feature = "ascii"))]
-    pub(crate) fn to_path_buf(&self) -> PathBuf {
-        match self {
-            Self::File(path) => path.clone(),
-            Self::Stdin => PathBuf::from("-"),
-        }
-    }
-
     pub(crate) fn file(&self) -> Option<&Path> {
         match self {
             Self::File(path) => Some(path),
@@ -206,9 +188,8 @@ pub(crate) enum ResolvedOutput {
     },
     #[cfg(feature = "ascii")]
     Text {
-        format: RenderFormat,
         destination: ResolvedDestination,
-        options: ResolvedTextOutputOptions,
+        options: merman::ascii::AsciiRenderOptions,
     },
     #[cfg(feature = "png")]
     Png {
@@ -227,7 +208,7 @@ pub(crate) enum ResolvedOutput {
         destination: ResolvedDestination,
         options: ResolvedPdfOptions,
         embedded_images: ResolvedEmbeddedImageOptions,
-        fit: bool,
+        mmdc_fit_width_px: Option<f32>,
     },
 }
 
@@ -254,7 +235,9 @@ impl ResolvedOutput {
             #[cfg(feature = "svg")]
             Self::Svg { .. } => RenderFormat::Svg,
             #[cfg(feature = "ascii")]
-            Self::Text { format, .. } => *format,
+            Self::Text { .. } => {
+                unreachable!("batch normalization rejects ASCII and Unicode output")
+            }
             #[cfg(feature = "png")]
             Self::Png { .. } => RenderFormat::Png,
             #[cfg(feature = "jpeg")]
@@ -315,12 +298,14 @@ pub(crate) struct ResolvedEmbeddedImageOptions {
 pub(crate) struct ResolvedRenderCommon {
     pub(crate) cwd: PathBuf,
     pub(crate) parse: ResolvedParseOptions,
+    #[cfg(feature = "svg")]
     pub(crate) render: ResolvedRenderOptions,
     pub(crate) resources: ResolvedResourcePolicy,
     #[cfg(feature = "svg")]
     pub(crate) background: Option<String>,
     #[cfg(feature = "svg")]
     pub(crate) css_file: Option<PathBuf>,
+    #[cfg(feature = "svg")]
     pub(crate) quiet: bool,
     #[cfg(feature = "icons")]
     pub(crate) icons: ResolvedIconSources,
@@ -338,47 +323,18 @@ pub(crate) struct ResolvedParseOptions {
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedRuntimeOptions {
-    pub(crate) policy: RuntimePolicyKind,
-    #[cfg(feature = "system-clock")]
-    pub(crate) system_clock: bool,
-    #[cfg(feature = "system-timezone")]
-    pub(crate) system_timezone: bool,
-    #[cfg(feature = "system-random")]
-    pub(crate) system_random: bool,
-    #[cfg(feature = "system-timing")]
-    pub(crate) system_timing: bool,
-    pub(crate) fixed_today: Option<chrono::NaiveDate>,
-    pub(crate) fixed_local_offset_minutes: Option<i32>,
+    pub(crate) runtime_policy: RuntimePolicy,
 }
 
-#[cfg(any(feature = "svg", feature = "ascii"))]
+#[cfg(feature = "svg")]
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedRenderOptions {
-    #[cfg(feature = "svg")]
     pub(crate) text_measurer: crate::cli::TextMeasurerKind,
-    #[cfg(feature = "svg")]
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
-    #[cfg(feature = "svg")]
     pub(crate) container_width: Option<f64>,
-    #[cfg(feature = "svg")]
     pub(crate) container_height: Option<f64>,
-    #[cfg(feature = "svg")]
     pub(crate) svg_id: Option<String>,
-    #[cfg(feature = "svg")]
     pub(crate) hand_drawn_seed: Option<u64>,
-}
-
-#[cfg(feature = "ascii")]
-#[derive(Debug, Clone, Default)]
-pub(crate) struct ResolvedTextOutputOptions {
-    pub(crate) sequence_mirror_actors: bool,
-    pub(crate) ascii_charset: Option<crate::cli::TextCharset>,
-    pub(crate) ascii_direction: Option<crate::cli::TextDirection>,
-    pub(crate) ascii_color: Option<crate::cli::TextColorMode>,
-    pub(crate) xychart_vertical_plot_height: Option<usize>,
-    pub(crate) xychart_category_band_width: Option<usize>,
-    pub(crate) xychart_horizontal_plot_width: Option<usize>,
-    pub(crate) ascii_max_grid_cells: Option<usize>,
 }
 
 #[cfg(feature = "icons")]
@@ -437,11 +393,6 @@ pub(crate) struct MmdcCompatibilityInputs {
 }
 
 pub(crate) fn resolve(cli: Cli, facts: &InvocationFacts) -> Result<ResolvedInvocation, CliError> {
-    let _ = (
-        &facts.cwd,
-        facts.stdout_is_terminal,
-        facts.color.is_color_capable(),
-    );
     match cli.command {
         RawCommand::Capabilities(args) => Ok(ResolvedInvocation::Capabilities(args)),
         RawCommand::Detect(args) => normalize_detect(args, facts).map(ResolvedInvocation::Detect),
@@ -583,8 +534,7 @@ fn validate_stdin_file_name(
     Ok(())
 }
 
-fn validate_runtime_args(args: &RuntimeCliArgs) -> Result<(), CliError> {
-    let _ = args;
+fn resolve_runtime_policy(args: &RuntimeCliArgs) -> Result<RuntimePolicy, CliError> {
     #[cfg(all(
         feature = "system-clock",
         feature = "system-timezone",
@@ -604,7 +554,26 @@ fn validate_runtime_args(args: &RuntimeCliArgs) -> Result<(), CliError> {
             "--system-timezone cannot be combined with --fixed-local-offset-minutes".to_string(),
         ));
     }
-    Ok(())
+    crate::config::resolve_runtime_policy(args)
+}
+
+fn validate_runtime_args(args: &RuntimeCliArgs) -> Result<(), CliError> {
+    resolve_runtime_policy(args).map(|_| ())
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn resolve_render_runtime_policy(
+    parse: &ParseCliArgs,
+    quiet: bool,
+) -> Result<RuntimePolicy, CliError> {
+    #[cfg(feature = "system-timing")]
+    if quiet && parse.runtime.system_timing {
+        let mut runtime = parse.runtime.clone();
+        runtime.system_timing = false;
+        return resolve_runtime_policy(&runtime);
+    }
+    let _ = quiet;
+    resolve_runtime_policy(&parse.runtime)
 }
 
 fn resolve_resource_policy(args: ResourceCliArgs) -> Result<ResolvedResourcePolicy, CliError> {
@@ -657,7 +626,7 @@ fn normalize_render(
     args: RenderArgs,
     facts: &InvocationFacts,
 ) -> Result<ResolvedSingleRender, CliError> {
-    validate_parse_args(&args.options.parse)?;
+    let runtime_policy = resolve_render_runtime_policy(&args.options.parse, args.options.quiet)?;
     let resources = resolve_resource_policy(args.resources.clone())?;
     let input = resolve_native_input(args.input, facts.stdin_is_terminal, "render")?;
     if input.file().is_some_and(is_native_markdown_path) {
@@ -666,22 +635,22 @@ fn normalize_render(
         ));
     }
     let format = infer_native_format(args.output.as_deref(), args.options.format)?;
-    #[cfg(feature = "svg")]
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     let input_kind = resolve_input_kind(args.input_kind, &input);
-    #[cfg(feature = "svg")]
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     if input_kind == RenderInputKind::Svg && !format.requires_svg_encoding() {
         return Err(CliError::InvalidInput(
             "SVG input requires a compiled PNG, JPEG, or PDF output format".to_string(),
         ));
     }
-    #[cfg(feature = "svg")]
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     if input_kind == RenderInputKind::Svg {
         validate_raw_svg_options(&args.options)?;
     }
     validate_native_output_options(format, &args.options)?;
     let destination = resolve_single_destination(args.output, &input, format);
-    let output = resolved_native_output(format, destination, &args.options)?;
-    let common = resolve_native_common(args.options, resources, &facts.cwd);
+    let output = resolved_native_output(format, destination, &args.options, facts)?;
+    let common = resolve_native_common(args.options, runtime_policy, resources, &facts.cwd);
 
     Ok(ResolvedSingleRender {
         input,
@@ -697,7 +666,7 @@ fn normalize_batch(
     args: BatchArgs,
     facts: &InvocationFacts,
 ) -> Result<ResolvedBatchRender, CliError> {
-    validate_parse_args(&args.options.parse)?;
+    let runtime_policy = resolve_render_runtime_policy(&args.options.parse, args.options.quiet)?;
     let resources = resolve_resource_policy(args.resources.clone())?;
     let input = resolve_native_input(args.input, facts.stdin_is_terminal, "batch")?;
     if let Some(path) = input.file()
@@ -765,10 +734,11 @@ fn normalize_batch(
         format,
         ResolvedDestination::File(output_path),
         &args.options,
+        facts,
     )?;
     #[cfg(feature = "parallel-markdown")]
     let jobs = resolve_parallel_jobs(args.jobs, &resources)?;
-    let common = resolve_native_common(args.options, resources, &facts.cwd);
+    let common = resolve_native_common(args.options, runtime_policy, resources, &facts.cwd);
 
     Ok(ResolvedBatchRender {
         input,
@@ -791,7 +761,7 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         theme: Some(args.parse.theme.as_str().to_string()),
         runtime: args.parse.runtime.clone(),
     };
-    validate_parse_args(&parse)?;
+    let runtime_policy = resolve_render_runtime_policy(&parse, args.quiet)?;
     let render = RenderCliArgs {
         text_measurer: Some(args.render.text_measurer),
         math_renderer: args.render.math_renderer,
@@ -864,6 +834,7 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     };
     let common = resolve_mmdc_common(
         parse,
+        runtime_policy,
         render,
         &args,
         output_is_stdout,
@@ -916,7 +887,7 @@ fn resolve_native_input_with_named_stdin(
     resolve_native_input(input, stdin_is_terminal, command)
 }
 
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn resolve_input_kind(
     requested: Option<RenderInputKind>,
     input: &ResolvedInput,
@@ -1039,7 +1010,10 @@ fn resolved_native_output(
     format: RenderFormat,
     destination: ResolvedDestination,
     options: &NativeRenderOptions,
+    facts: &InvocationFacts,
 ) -> Result<ResolvedOutput, CliError> {
+    #[cfg(not(feature = "ascii"))]
+    let _ = facts;
     let output = match format {
         #[cfg(feature = "svg")]
         RenderFormat::Svg => ResolvedOutput::Svg {
@@ -1047,11 +1021,13 @@ fn resolved_native_output(
             pipeline: options.svg_pipeline,
         },
         #[cfg(feature = "ascii")]
-        RenderFormat::Ascii | RenderFormat::Unicode => ResolvedOutput::Text {
-            format,
-            destination,
-            options: resolve_text_output_options(&options.text),
-        },
+        RenderFormat::Ascii | RenderFormat::Unicode => {
+            let options = resolve_text_output_options(format, &options.text, &destination, facts)?;
+            ResolvedOutput::Text {
+                destination,
+                options,
+            }
+        }
         #[cfg(feature = "png")]
         RenderFormat::Png => ResolvedOutput::Png {
             destination,
@@ -1069,23 +1045,115 @@ fn resolved_native_output(
             destination,
             options: resolve_pdf_options(&options.pdf),
             embedded_images: resolve_embedded_image_options(&options.embedded_images),
-            fit: true,
+            mmdc_fit_width_px: None,
         },
     };
     Ok(output)
 }
 
 #[cfg(feature = "ascii")]
-fn resolve_text_output_options(args: &TextOutputCliArgs) -> ResolvedTextOutputOptions {
-    ResolvedTextOutputOptions {
-        sequence_mirror_actors: args.sequence_mirror_actors,
-        ascii_charset: args.ascii_charset,
-        ascii_direction: args.ascii_direction,
-        ascii_color: args.ascii_color,
-        xychart_vertical_plot_height: args.xychart_vertical_plot_height,
-        xychart_category_band_width: args.xychart_category_band_width,
-        xychart_horizontal_plot_width: args.xychart_horizontal_plot_width,
-        ascii_max_grid_cells: args.ascii_max_grid_cells,
+fn resolve_text_output_options(
+    format: RenderFormat,
+    args: &TextOutputCliArgs,
+    destination: &ResolvedDestination,
+    facts: &InvocationFacts,
+) -> Result<merman::ascii::AsciiRenderOptions, CliError> {
+    let mut options = match format {
+        RenderFormat::Ascii => merman::ascii::AsciiRenderOptions::ascii(),
+        RenderFormat::Unicode => merman::ascii::AsciiRenderOptions::unicode(),
+        #[cfg(feature = "svg")]
+        _ => unreachable!("text options are resolved only for text output"),
+    };
+    if let Some(charset) = args.ascii_charset {
+        options.charset = match charset {
+            TextCharset::Ascii => merman::ascii::AsciiCharset::Ascii,
+            TextCharset::Unicode => merman::ascii::AsciiCharset::Unicode,
+        };
+    }
+    if let Some(direction) = args.ascii_direction {
+        options.default_direction = match direction {
+            TextDirection::LeftRight => merman::ascii::AsciiDirection::LeftRight,
+            TextDirection::TopDown => merman::ascii::AsciiDirection::TopDown,
+        };
+    }
+    if let Some(color_mode) = args.ascii_color {
+        let color_mode = match color_mode {
+            TextColorMode::Auto => resolve_auto_text_color(facts, destination),
+            explicit => explicit,
+        };
+        options.color_mode = match color_mode {
+            TextColorMode::Plain => merman::ascii::AsciiColorMode::Plain,
+            TextColorMode::Ansi16 => merman::ascii::AsciiColorMode::Ansi16,
+            TextColorMode::Ansi256 => merman::ascii::AsciiColorMode::Ansi256,
+            TextColorMode::Truecolor => merman::ascii::AsciiColorMode::TrueColor,
+            TextColorMode::Html => merman::ascii::AsciiColorMode::Html,
+            TextColorMode::Auto => unreachable!("automatic text color is resolved above"),
+        };
+    }
+    options.sequence_mirror_actors = args.sequence_mirror_actors;
+    if let Some(height) = args.xychart_vertical_plot_height {
+        options.xychart_vertical_plot_height = height;
+    }
+    if let Some(width) = args.xychart_category_band_width {
+        options.xychart_category_band_width = width;
+    }
+    if let Some(width) = args.xychart_horizontal_plot_width {
+        options.xychart_horizontal_plot_width = width;
+    }
+    if let Some(max_grid_cells) = args.ascii_max_grid_cells {
+        options.max_grid_cells = max_grid_cells;
+    }
+    options
+        .validate()
+        .map_err(|error| CliError::InvalidInput(format!("invalid ASCII options: {error}")))?;
+    Ok(options)
+}
+
+#[cfg(feature = "ascii")]
+fn resolve_auto_text_color(
+    facts: &InvocationFacts,
+    destination: &ResolvedDestination,
+) -> crate::cli::TextColorMode {
+    use crate::cli::TextColorMode;
+
+    if facts.color.no_color {
+        return TextColorMode::Plain;
+    }
+
+    let colorterm = facts
+        .color
+        .colorterm
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let term = facts
+        .color
+        .term
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let truecolor = colorterm.contains("truecolor") || colorterm.contains("24bit");
+
+    if facts.color.force_color {
+        return if truecolor {
+            TextColorMode::Truecolor
+        } else {
+            TextColorMode::Ansi256
+        };
+    }
+
+    if !matches!(destination, ResolvedDestination::Stdout) || !facts.stdout_is_terminal {
+        return TextColorMode::Plain;
+    }
+
+    if truecolor {
+        TextColorMode::Truecolor
+    } else if term.contains("256color") {
+        TextColorMode::Ansi256
+    } else if !term.is_empty() && term != "dumb" {
+        TextColorMode::Ansi16
+    } else {
+        TextColorMode::Plain
     }
 }
 
@@ -1115,35 +1183,44 @@ fn resolved_mmdc_output(
             destination,
             options: resolve_pdf_options(&args.pdf),
             embedded_images: resolve_embedded_image_options(&args.embedded_images),
-            fit: args.pdf_fit,
+            mmdc_fit_width_px: resolve_mmdc_pdf_fit_width(args)?,
         },
     };
     Ok(output)
 }
 
+#[cfg(feature = "pdf")]
+fn resolve_mmdc_pdf_fit_width(args: &MmdcArgs) -> Result<Option<f32>, CliError> {
+    if !args.pdf_fit {
+        return Ok(None);
+    }
+    let width = args.render.container_width as f32;
+    if !(width.is_finite() && width > 0.0) {
+        return Err(CliError::InvalidInput(
+            "PDF viewport width is outside the supported numeric range".to_string(),
+        ));
+    }
+    Ok(Some(width))
+}
+
 #[cfg(any(feature = "svg", feature = "ascii"))]
 fn resolve_native_common(
     options: NativeRenderOptions,
+    runtime_policy: RuntimePolicy,
     resources: ResolvedResourcePolicy,
     cwd: &Path,
 ) -> ResolvedRenderCommon {
-    #[cfg(feature = "system-timing")]
-    let options = {
-        let mut options = options;
-        if options.quiet {
-            options.parse.runtime.system_timing = false;
-        }
-        options
-    };
     ResolvedRenderCommon {
         cwd: cwd.to_path_buf(),
-        parse: resolve_parse_options(options.parse),
+        parse: resolve_parse_options(options.parse, runtime_policy),
+        #[cfg(feature = "svg")]
         render: resolve_render_options(options.render),
         resources,
         #[cfg(feature = "svg")]
         background: options.background_color,
         #[cfg(feature = "svg")]
         css_file: options.css_file,
+        #[cfg(feature = "svg")]
         quiet: options.quiet,
         #[cfg(feature = "icons")]
         icons: ResolvedIconSources {
@@ -1160,23 +1237,16 @@ fn resolve_native_common(
 #[cfg(feature = "svg")]
 fn resolve_mmdc_common(
     parse: ParseCliArgs,
+    runtime_policy: RuntimePolicy,
     render: RenderCliArgs,
     args: &MmdcArgs,
     output_is_stdout: bool,
     resources: ResolvedResourcePolicy,
     cwd: &Path,
 ) -> ResolvedRenderCommon {
-    #[cfg(feature = "system-timing")]
-    let parse = {
-        let mut parse = parse;
-        if args.quiet {
-            parse.runtime.system_timing = false;
-        }
-        parse
-    };
     ResolvedRenderCommon {
         cwd: cwd.to_path_buf(),
-        parse: resolve_parse_options(parse),
+        parse: resolve_parse_options(parse, runtime_policy),
         render: resolve_render_options(render),
         resources,
         background: Some(
@@ -1199,116 +1269,29 @@ fn resolve_mmdc_common(
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
-fn resolve_parse_options(args: ParseCliArgs) -> ResolvedParseOptions {
+fn resolve_parse_options(
+    args: ParseCliArgs,
+    runtime_policy: RuntimePolicy,
+) -> ResolvedParseOptions {
     ResolvedParseOptions {
         suppress_errors: args.suppress_errors,
         config_file: args.config_file,
         theme: args.theme,
-        runtime: resolve_runtime_options(args.runtime),
+        runtime: ResolvedRuntimeOptions { runtime_policy },
     }
 }
 
-#[cfg(any(feature = "svg", feature = "ascii"))]
-fn resolve_runtime_options(args: RuntimeCliArgs) -> ResolvedRuntimeOptions {
-    ResolvedRuntimeOptions {
-        policy: args.policy,
-        #[cfg(feature = "system-clock")]
-        system_clock: args.system_clock,
-        #[cfg(feature = "system-timezone")]
-        system_timezone: args.system_timezone,
-        #[cfg(feature = "system-random")]
-        system_random: args.system_random,
-        #[cfg(feature = "system-timing")]
-        system_timing: args.system_timing,
-        fixed_today: args.fixed_today,
-        fixed_local_offset_minutes: args.fixed_local_offset_minutes,
-    }
-}
-
-#[cfg(any(feature = "svg", feature = "ascii"))]
+#[cfg(feature = "svg")]
 fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
     ResolvedRenderOptions {
-        #[cfg(feature = "svg")]
         text_measurer: args
             .text_measurer
             .unwrap_or(crate::cli::TextMeasurerKind::Vendored),
-        #[cfg(feature = "svg")]
         math_renderer: args.math_renderer,
-        #[cfg(feature = "svg")]
         container_width: args.container_width,
-        #[cfg(feature = "svg")]
         container_height: args.container_height,
-        #[cfg(feature = "svg")]
         svg_id: args.svg_id,
-        #[cfg(feature = "svg")]
         hand_drawn_seed: args.hand_drawn_seed,
-    }
-}
-
-#[cfg(any(feature = "svg", feature = "ascii"))]
-impl ResolvedParseOptions {
-    pub(crate) fn into_legacy_cli_args(self) -> ParseCliArgs {
-        ParseCliArgs {
-            suppress_errors: self.suppress_errors,
-            config_file: self.config_file,
-            theme: self.theme,
-            runtime: self.runtime.into_legacy_cli_args(),
-        }
-    }
-}
-
-#[cfg(any(feature = "svg", feature = "ascii"))]
-impl ResolvedRuntimeOptions {
-    fn into_legacy_cli_args(self) -> RuntimeCliArgs {
-        RuntimeCliArgs {
-            policy: self.policy,
-            #[cfg(feature = "system-clock")]
-            system_clock: self.system_clock,
-            #[cfg(feature = "system-timezone")]
-            system_timezone: self.system_timezone,
-            #[cfg(feature = "system-random")]
-            system_random: self.system_random,
-            #[cfg(feature = "system-timing")]
-            system_timing: self.system_timing,
-            fixed_today: self.fixed_today,
-            fixed_local_offset_minutes: self.fixed_local_offset_minutes,
-        }
-    }
-}
-
-#[cfg(any(feature = "svg", feature = "ascii"))]
-impl ResolvedRenderOptions {
-    pub(crate) fn into_legacy_cli_args(self) -> RenderCliArgs {
-        RenderCliArgs {
-            #[cfg(feature = "svg")]
-            text_measurer: Some(self.text_measurer),
-            #[cfg(feature = "svg")]
-            math_renderer: self.math_renderer,
-            #[cfg(feature = "svg")]
-            container_width: self.container_width,
-            #[cfg(feature = "svg")]
-            container_height: self.container_height,
-            #[cfg(feature = "svg")]
-            svg_id: self.svg_id,
-            #[cfg(feature = "svg")]
-            hand_drawn_seed: self.hand_drawn_seed,
-        }
-    }
-}
-
-#[cfg(feature = "ascii")]
-impl ResolvedTextOutputOptions {
-    pub(crate) fn into_legacy_cli_args(self) -> TextOutputCliArgs {
-        TextOutputCliArgs {
-            sequence_mirror_actors: self.sequence_mirror_actors,
-            ascii_charset: self.ascii_charset,
-            ascii_direction: self.ascii_direction,
-            ascii_color: self.ascii_color,
-            xychart_vertical_plot_height: self.xychart_vertical_plot_height,
-            xychart_category_band_width: self.xychart_category_band_width,
-            xychart_horizontal_plot_width: self.xychart_horizontal_plot_width,
-            ascii_max_grid_cells: self.ascii_max_grid_cells,
-        }
     }
 }
 
@@ -1522,7 +1505,7 @@ fn validate_native_output_options(
     Ok(())
 }
 
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn validate_raw_svg_options(options: &NativeRenderOptions) -> Result<(), CliError> {
     if options.parse.suppress_errors
         || options.parse.config_file.is_some()
@@ -1566,7 +1549,7 @@ fn validate_raw_svg_options(options: &NativeRenderOptions) -> Result<(), CliErro
     Ok(())
 }
 
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn runtime_options_are_configured(options: &RuntimeCliArgs) -> bool {
     options.policy != RuntimePolicyKind::Deterministic
         || {
@@ -1706,9 +1689,141 @@ mod tests {
         InvocationFacts {
             cwd: PathBuf::from("."),
             stdin_is_terminal,
+            #[cfg(feature = "ascii")]
             stdout_is_terminal: false,
+            #[cfg(feature = "ascii")]
             color: ColorEnvironment::default(),
         }
+    }
+
+    #[cfg(feature = "ascii")]
+    fn color_facts(
+        stdout_is_terminal: bool,
+        no_color: bool,
+        force_color: bool,
+        colorterm: Option<&str>,
+        term: Option<&str>,
+    ) -> InvocationFacts {
+        InvocationFacts {
+            cwd: PathBuf::from("."),
+            stdin_is_terminal: false,
+            stdout_is_terminal,
+            color: ColorEnvironment {
+                no_color,
+                force_color,
+                colorterm: colorterm.map(str::to_owned),
+                term: term.map(str::to_owned),
+            },
+        }
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn auto_text_color_honors_no_color_before_force_color() {
+        let facts = color_facts(true, true, true, Some("truecolor"), Some("xterm-256color"));
+
+        assert_eq!(
+            resolve_auto_text_color(&facts, &ResolvedDestination::Stdout),
+            crate::cli::TextColorMode::Plain
+        );
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn auto_text_color_force_bypasses_destination_and_tty_checks() {
+        let truecolor = color_facts(false, false, true, Some("24BIT"), Some("dumb"));
+        assert_eq!(
+            resolve_auto_text_color(
+                &truecolor,
+                &ResolvedDestination::File(PathBuf::from("diagram.txt"))
+            ),
+            crate::cli::TextColorMode::Truecolor
+        );
+
+        let fallback = color_facts(false, false, true, None, Some("dumb"));
+        assert_eq!(
+            resolve_auto_text_color(&fallback, &ResolvedDestination::Stdout),
+            crate::cli::TextColorMode::Ansi256
+        );
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn auto_text_color_requires_terminal_stdout_without_force() {
+        let capable = color_facts(
+            true,
+            false,
+            false,
+            Some("truecolor"),
+            Some("xterm-256color"),
+        );
+
+        assert_eq!(
+            resolve_auto_text_color(
+                &capable,
+                &ResolvedDestination::File(PathBuf::from("diagram.txt"))
+            ),
+            crate::cli::TextColorMode::Plain
+        );
+
+        let piped = color_facts(
+            false,
+            false,
+            false,
+            Some("truecolor"),
+            Some("xterm-256color"),
+        );
+        assert_eq!(
+            resolve_auto_text_color(&piped, &ResolvedDestination::Stdout),
+            crate::cli::TextColorMode::Plain
+        );
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn auto_text_color_distinguishes_terminal_capabilities() {
+        for (colorterm, term, expected) in [
+            (
+                Some("TRUECOLOR"),
+                Some("screen"),
+                crate::cli::TextColorMode::Truecolor,
+            ),
+            (
+                None,
+                Some("xterm-256color"),
+                crate::cli::TextColorMode::Ansi256,
+            ),
+            (None, Some("xterm"), crate::cli::TextColorMode::Ansi16),
+            (None, Some("dumb"), crate::cli::TextColorMode::Plain),
+            (None, None, crate::cli::TextColorMode::Plain),
+        ] {
+            let facts = color_facts(true, false, false, colorterm, term);
+            assert_eq!(
+                resolve_auto_text_color(&facts, &ResolvedDestination::Stdout),
+                expected,
+                "unexpected mode for COLORTERM={colorterm:?}, TERM={term:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn text_output_options_resolve_auto_during_invocation_normalization() {
+        let facts = color_facts(true, false, false, None, Some("xterm"));
+        let args = TextOutputCliArgs {
+            ascii_color: Some(crate::cli::TextColorMode::Auto),
+            ..TextOutputCliArgs::default()
+        };
+
+        let resolved = resolve_text_output_options(
+            RenderFormat::Ascii,
+            &args,
+            &ResolvedDestination::Stdout,
+            &facts,
+        )
+        .expect("resolve text options");
+
+        assert_eq!(resolved.color_mode, merman::ascii::AsciiColorMode::Ansi16);
     }
 
     #[test]

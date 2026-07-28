@@ -2277,6 +2277,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "hickory-resolver",
+ "libc",
  "merman",
  "merman-analysis",
  "png",

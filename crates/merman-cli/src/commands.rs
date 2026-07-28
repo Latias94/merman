@@ -31,8 +31,6 @@ use merman_analysis::{
 use std::fmt::Write as _;
 use std::path::Path;
 
-#[cfg(all(feature = "ascii", not(feature = "svg")))]
-use crate::ascii_render::run_ascii_render;
 #[cfg(feature = "shell-completions")]
 use crate::cli::CompletionArgs;
 #[cfg(feature = "svg")]
@@ -42,11 +40,11 @@ use crate::invocation::ResolvedLayout;
 #[cfg(feature = "analysis")]
 use crate::invocation::{ResolvedFix, ResolvedLint};
 #[cfg(feature = "markdown")]
-use crate::render::render_plan_for_batch;
+use crate::render::prepare_render_for_batch;
 #[cfg(feature = "svg")]
-use crate::render::render_plan_for_mmdc;
-#[cfg(feature = "svg")]
-use crate::render::{render_plan_for_native, run_render};
+use crate::render::prepare_render_for_mmdc;
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use crate::render::{execute_render, prepare_render_for_native};
 
 #[derive(Serialize)]
 struct MetaOut<'a> {
@@ -93,27 +91,22 @@ pub(crate) fn run(preflight: LocalPreflight) -> Result<i32, CliError> {
             run_lint_rules(args)?;
             0
         }
-        #[cfg(feature = "svg")]
+        #[cfg(any(feature = "svg", feature = "ascii"))]
         ResolvedInvocation::Render(args) => {
-            let plan = render_plan_for_native(args, publications)?;
-            run_render(plan)?;
-            0
-        }
-        #[cfg(all(feature = "ascii", not(feature = "svg")))]
-        ResolvedInvocation::Render(args) => {
-            run_ascii_render(args, &publications)?;
+            let prepared = prepare_render_for_native(args, publications)?;
+            execute_render(prepared)?;
             0
         }
         #[cfg(feature = "markdown")]
         ResolvedInvocation::Batch(args) => {
-            let plan = render_plan_for_batch(args, publications)?;
-            run_render(plan)?;
+            let prepared = prepare_render_for_batch(args, publications)?;
+            execute_render(prepared)?;
             0
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Mmdc(args) => {
-            let plan = render_plan_for_mmdc(args, publications)?;
-            run_render(plan)?;
+            let prepared = prepare_render_for_mmdc(args, publications)?;
+            execute_render(prepared)?;
             0
         }
         #[cfg(feature = "shell-completions")]

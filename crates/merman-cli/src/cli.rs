@@ -341,7 +341,7 @@ pub(crate) struct RenderArgs {
     pub(crate) output: Option<PathBuf>,
 
     /// Interpret the input as Mermaid source or an existing SVG document.
-    #[cfg(feature = "svg")]
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[arg(
         long = "input-kind",
         value_enum,
@@ -1327,7 +1327,7 @@ pub(crate) enum MmdcOutputFormat {
     Pdf,
 }
 
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum RenderInputKind {
     Mermaid,
@@ -1351,7 +1351,7 @@ impl RenderFormat {
         }
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     pub(crate) fn requires_svg_encoding(self) -> bool {
         match self {
             #[cfg(feature = "png")]

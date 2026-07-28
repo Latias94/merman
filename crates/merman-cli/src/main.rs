@@ -1,6 +1,4 @@
 mod app;
-#[cfg(all(feature = "ascii", not(feature = "svg")))]
-mod ascii_render;
 mod capabilities;
 mod cli;
 mod commands;
@@ -15,7 +13,7 @@ mod markdown;
 #[cfg(feature = "network-icons")]
 mod network;
 mod output;
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "svg", feature = "ascii"))]
 mod render;
 mod resources;
 

@@ -3,6 +3,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Output, Stdio};
+use std::time::{Duration, Instant};
 
 pub fn repo_root() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -56,6 +57,42 @@ pub fn run_with_stdin_in_dir(args: &[&str], input: &str, cwd: Option<&Path>) -> 
         .write_all(input.as_bytes())
         .expect("write stdin");
     child.wait_with_output().expect("wait cli")
+}
+
+pub fn run_before_stdin_close_in_dir(
+    args: &[&str],
+    cwd: Option<&Path>,
+    timeout: Duration,
+) -> Output {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut command = Command::new(exe);
+    command
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if let Some(cwd) = cwd {
+        command.current_dir(cwd);
+    }
+
+    let mut child = command.spawn().expect("spawn cli");
+    let deadline = Instant::now() + timeout;
+    loop {
+        if child.try_wait().expect("poll cli").is_some() {
+            return child.wait_with_output().expect("collect cli output");
+        }
+        if Instant::now() >= deadline {
+            child.kill().expect("kill blocked cli");
+            let output = child
+                .wait_with_output()
+                .expect("collect blocked cli output");
+            panic!(
+                "CLI waited for stdin instead of rejecting {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 pub fn run_with_closed_stdout(args: &[&str], input: Option<&[u8]>) -> Output {

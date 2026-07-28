@@ -32,6 +32,8 @@ fn cli_renders_pdf_smoke() {
             "render",
             "--format",
             "pdf",
+            "--resource-profile",
+            "constrained",
             "--output",
             out.to_string_lossy().as_ref(),
             fixture.to_string_lossy().as_ref(),
@@ -69,6 +71,38 @@ fn cli_renders_pdf_with_default_out_path_for_file_input() {
 
     let bytes = fs::read(&expected_out).expect("read pdf");
     assert!(bytes.starts_with(b"%PDF-"), "output is not a PDF");
+}
+
+#[test]
+fn scoped_unbounded_pdf_and_images_keep_other_profile_limits() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = tmp.path().join("input.svg");
+    let out = tmp.path().join("out.pdf");
+    fs::write(
+        &input,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>"#,
+    )
+    .expect("write SVG");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "pdf",
+            "--resource-profile",
+            "constrained",
+            "--pdf-filter-images-unbounded",
+            "--embedded-images-unbounded",
+            "--output",
+            out.to_string_lossy().as_ref(),
+            input.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success();
+
+    let bytes = fs::read(&out).expect("read PDF");
+    assert!(bytes.starts_with(b"%PDF-"));
 }
 
 #[test]
@@ -177,4 +211,42 @@ fn cli_pdf_rejects_raster_pixel_limit_flags_when_raster_is_compiled() {
         !out.exists(),
         "validation must fail before creating the output file"
     );
+}
+
+#[cfg(feature = "parallel-markdown")]
+#[test]
+fn parallel_markdown_renders_ordered_pdf_artifacts() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = tmp.path().join("input.md");
+    let output_dir = tmp.path().join("rendered");
+    fs::write(
+        &input,
+        "```mermaid\nflowchart LR\nA-->B\n```\n\n```mermaid\nflowchart LR\nB-->C\n```\n",
+    )
+    .expect("write Markdown");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    Command::new(exe)
+        .args([
+            "batch",
+            input.to_string_lossy().as_ref(),
+            "--format",
+            "pdf",
+            "--output-dir",
+            output_dir.to_string_lossy().as_ref(),
+            "--jobs",
+            "2",
+        ])
+        .assert()
+        .success();
+
+    for name in ["input-1.pdf", "input-2.pdf"] {
+        let bytes = fs::read(output_dir.join(name)).expect("read PDF artifact");
+        assert!(bytes.starts_with(b"%PDF-"), "{name} is not a PDF");
+    }
+    let rewritten =
+        fs::read_to_string(output_dir.join("input.md")).expect("read rewritten Markdown");
+    let first = rewritten.find("./input-1.pdf").expect("first PDF link");
+    let second = rewritten.find("./input-2.pdf").expect("second PDF link");
+    assert!(first < second, "rewritten links must retain source order");
 }

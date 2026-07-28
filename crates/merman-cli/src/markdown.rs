@@ -204,11 +204,55 @@ fn next_line_end(source: &str, start: usize) -> usize {
 
 pub(crate) fn replace_charts_with_images(source: &str, images: &[MarkdownImage]) -> String {
     let charts = extract_charts(source);
+    let capacity = rewritten_markdown_len(source, &charts, images)
+        .expect("Markdown replacement length should fit usize");
+    replace_known_charts_with_images(source, &charts, images, capacity)
+}
+
+pub(crate) fn rewritten_markdown_len(
+    source: &str,
+    charts: &[MarkdownChart],
+    images: &[MarkdownImage],
+) -> Result<usize, CliError> {
+    let pair_count = charts.len().min(images.len());
+    let removed = charts
+        .iter()
+        .take(pair_count)
+        .try_fold(0_usize, |total, chart| {
+            let span = chart.end.checked_sub(chart.start).ok_or_else(|| {
+                CliError::InvalidOutput("invalid Markdown chart span".to_string())
+            })?;
+            total.checked_add(span).ok_or_else(|| {
+                CliError::InvalidOutput("rewritten Markdown size overflow".to_string())
+            })
+        })?;
+    let retained = source
+        .len()
+        .checked_sub(removed)
+        .ok_or_else(|| CliError::InvalidOutput("invalid Markdown chart spans".to_string()))?;
+    images
+        .iter()
+        .take(pair_count)
+        .try_fold(retained, |total, image| {
+            total
+                .checked_add(markdown_image_len(image)?)
+                .ok_or_else(|| {
+                    CliError::InvalidOutput("rewritten Markdown size overflow".to_string())
+                })
+        })
+}
+
+pub(crate) fn replace_known_charts_with_images(
+    source: &str,
+    charts: &[MarkdownChart],
+    images: &[MarkdownImage],
+    capacity: usize,
+) -> String {
     if charts.is_empty() {
         return source.to_string();
     }
 
-    let mut out = String::with_capacity(source.len());
+    let mut out = String::with_capacity(capacity);
     let mut last = 0;
     for (chart, image) in charts.iter().zip(images) {
         out.push_str(&source[last..chart.start]);
@@ -216,6 +260,7 @@ pub(crate) fn replace_charts_with_images(source: &str, images: &[MarkdownImage])
         last = chart.end;
     }
     out.push_str(&source[last..]);
+    debug_assert_eq!(out.len(), capacity);
     out
 }
 
@@ -312,6 +357,38 @@ fn markdown_image(image: &MarkdownImage) -> String {
         Some(title) => format!("![{}]({} \"{}\")", alt, image.url, escape_title(title)),
         None => format!("![{}]({})", alt, image.url),
     }
+}
+
+fn markdown_image_len(image: &MarkdownImage) -> Result<usize, CliError> {
+    let alt = escaped_markdown_len(&image.alt, |ch| matches!(ch, '[' | ']' | '\\'))?;
+    let mut len = 2_usize
+        .checked_add(alt)
+        .and_then(|len| len.checked_add(2))
+        .and_then(|len| len.checked_add(image.url.len()))
+        .ok_or_else(|| CliError::InvalidOutput("rewritten Markdown size overflow".to_string()))?;
+    if let Some(title) = image.title.as_deref() {
+        let title = escaped_markdown_len(title, |ch| matches!(ch, '"' | '\\'))?;
+        len = len
+            .checked_add(2)
+            .and_then(|len| len.checked_add(title))
+            .and_then(|len| len.checked_add(1))
+            .ok_or_else(|| {
+                CliError::InvalidOutput("rewritten Markdown size overflow".to_string())
+            })?;
+    }
+    len.checked_add(1)
+        .ok_or_else(|| CliError::InvalidOutput("rewritten Markdown size overflow".to_string()))
+}
+
+fn escaped_markdown_len(
+    value: &str,
+    must_escape: impl Fn(char) -> bool,
+) -> Result<usize, CliError> {
+    value.chars().try_fold(0_usize, |len, ch| {
+        len.checked_add(ch.len_utf8())
+            .and_then(|len| len.checked_add(usize::from(must_escape(ch))))
+            .ok_or_else(|| CliError::InvalidOutput("rewritten Markdown size overflow".to_string()))
+    })
 }
 
 fn escape_alt(value: &str) -> String {
@@ -478,13 +555,16 @@ mod tests {
         let images = [MarkdownImage {
             url: "./out-1.svg".to_string(),
             title: Some(r#"a "title""#.to_string()),
-            alt: r"diagram [one]".to_string(),
+            alt: r"diagram [一]".to_string(),
         }];
+        let charts = extract_charts(source);
+        let expected = r#"![diagram \[一\]](./out-1.svg "a \"title\"")"#;
 
         assert_eq!(
-            replace_charts_with_images(source, &images),
-            r#"![diagram \[one\]](./out-1.svg "a \"title\"")"#
+            rewritten_markdown_len(source, &charts, &images).expect("valid rewrite length"),
+            expected.len()
         );
+        assert_eq!(replace_charts_with_images(source, &images), expected);
     }
 
     #[test]

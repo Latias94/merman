@@ -109,6 +109,9 @@ png.workspace = true
 roxmltree.workspace = true
 tempfile = "3.27.0"
 
+[target.'cfg(unix)'.dev-dependencies]
+libc.workspace = true
+
 [[test]]
 name = "cli_compat"
 required-features = [
@@ -192,6 +195,10 @@ required-features = [
 [[test]]
 name = "ascii_smoke"
 required-features = ["ascii"]
+
+[[test]]
+name = "svg_smoke"
+required-features = ["svg"]
 
 [[test]]
 name = "jpeg_smoke"

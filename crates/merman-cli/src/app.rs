@@ -1,6 +1,8 @@
 use crate::cli::Cli;
 use crate::error::CliError;
-use crate::invocation::{ColorEnvironment, InvocationFacts};
+#[cfg(feature = "ascii")]
+use crate::invocation::ColorEnvironment;
+use crate::invocation::InvocationFacts;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, FromArgMatches};
 use std::env;
@@ -292,15 +294,22 @@ fn system_facts() -> io::Result<InvocationFacts> {
     Ok(InvocationFacts {
         cwd: env::current_dir()?,
         stdin_is_terminal: io::stdin().is_terminal(),
+        #[cfg(feature = "ascii")]
         stdout_is_terminal: io::stdout().is_terminal(),
+        #[cfg(feature = "ascii")]
         color: ColorEnvironment {
-            no_color: env::var_os("NO_COLOR").is_some(),
+            no_color: nonempty_environment_value(env::var_os("NO_COLOR").as_deref()),
             force_color: env::var_os("CLICOLOR_FORCE")
                 .is_some_and(|value| value != OsStr::new("") && value != OsStr::new("0")),
             colorterm: env::var("COLORTERM").ok(),
             term: env::var("TERM").ok(),
         },
     })
+}
+
+#[cfg(feature = "ascii")]
+fn nonempty_environment_value(value: Option<&OsStr>) -> bool {
+    value.is_some_and(|value| !value.is_empty())
 }
 
 fn write_command_help_to_stderr(name: &str) {
@@ -341,6 +350,15 @@ fn exit_code_from_i32(exit_code: i32) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn no_color_requires_a_non_empty_value() {
+        assert!(!nonempty_environment_value(None));
+        assert!(!nonempty_environment_value(Some(OsStr::new(""))));
+        assert!(nonempty_environment_value(Some(OsStr::new("0"))));
+        assert!(nonempty_environment_value(Some(OsStr::new("1"))));
+    }
 
     #[test]
     fn full_help_groups_commands_by_user_task() {

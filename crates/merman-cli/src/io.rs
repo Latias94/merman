@@ -3,15 +3,6 @@ use crate::input::{InputLimit, InputReadError, read_utf8};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
-#[cfg(any(feature = "svg", feature = "ascii"))]
-use std::path::PathBuf;
-
-#[cfg(any(feature = "svg", feature = "ascii"))]
-#[derive(Debug, Clone)]
-pub(crate) enum OutputTarget {
-    Stdout,
-    File(PathBuf),
-}
 
 pub(crate) fn read_input(
     path: Option<&Path>,
@@ -107,15 +98,15 @@ pub(crate) fn read_named_text_file(
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 pub(crate) fn write_output(
-    target: Option<&OutputTarget>,
+    target: &crate::invocation::ResolvedDestination,
     bytes: &[u8],
     publications: &crate::output::PublicationGuards,
 ) -> Result<(), CliError> {
     match target {
-        None | Some(OutputTarget::Stdout) => {
+        crate::invocation::ResolvedDestination::Stdout => {
             write_stdout(bytes)?;
         }
-        Some(OutputTarget::File(path)) => {
+        crate::invocation::ResolvedDestination::File(path) => {
             write_file(path, bytes, publications)?;
         }
     }
