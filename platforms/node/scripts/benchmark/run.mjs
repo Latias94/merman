@@ -128,6 +128,8 @@ export function runComparison(options) {
             summary: summarize(cold.samplesMs),
           },
           warm_latency: {
+            timing_scope: "warmed-engine-raw-svg-operation-result",
+            evidence_excluded: true,
             samples_ms: warm.samples_ms,
             samples: warm.samples,
             summary: summarize(warm.samples_ms),
@@ -178,7 +180,7 @@ export function runComparison(options) {
         !comparison.bytes_matched)
       .map(([id]) => id);
     const report = {
-      schema_version: 2,
+      schema_version: 3,
       provenance: reportProvenance,
       input: {
         digest: corpus.digest,

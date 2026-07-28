@@ -1,28 +1,36 @@
 import { performance } from "node:perf_hooks";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { svgTransportEvidence } from "./svg-signature.mjs";
 import { digestJson } from "../stable-json.mjs";
 
 const SMOKE_SOURCE = "flowchart TD\nA-->B";
 
-try {
-  const inputPath = process.argv[2];
-  if (!inputPath) throw new Error("benchmark worker requires an input JSON path");
-  const input = JSON.parse(readFileSync(inputPath, "utf8"));
-  const output =
-    input.mode === "cold"
-      ? await runCold(input)
-      : input.mode === "concurrency"
-        ? await runConcurrency(input)
-        : input.mode === "shutdown"
-          ? await runShutdown(input)
-          : await runWarm(input);
-  process.stdout.write(`${JSON.stringify(output)}\n`);
-} catch (error) {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
-  process.exitCode = 1;
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
+}
+
+async function main() {
+  try {
+    const inputPath = process.argv[2];
+    if (!inputPath) throw new Error("benchmark worker requires an input JSON path");
+    const input = JSON.parse(readFileSync(inputPath, "utf8"));
+    const output =
+      input.mode === "cold"
+        ? await runCold(input)
+        : input.mode === "concurrency"
+          ? await runConcurrency(input)
+          : input.mode === "shutdown"
+            ? await runShutdown(input)
+            : await runWarm(input);
+    process.stdout.write(`${JSON.stringify(output)}\n`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    process.exitCode = 1;
+  }
 }
 
 async function runCold(input) {
@@ -116,7 +124,7 @@ async function runWarm(input) {
 
   for (let iteration = 0; iteration < input.warmupIterations; iteration += 1) {
     for (const item of input.cases) {
-      timedRenderOutcome(item, await executeSvg(engine, item, input.operationOptions));
+      await executeSvg(engine, item, input.operationOptions);
     }
   }
 
@@ -124,10 +132,10 @@ async function runWarm(input) {
   const samples = [];
   for (let iteration = 0; iteration < input.iterations; iteration += 1) {
     for (const item of input.cases) {
-      const started = performance.now();
-      const execution = await executeSvg(engine, item, input.operationOptions);
-      const outcome = timedRenderOutcome(item, execution);
-      const elapsedMs = performance.now() - started;
+      const { elapsedMs, outcome } = await measureWarmSample({
+        execute: () => executeSvg(engine, item, input.operationOptions),
+        project: (execution) => timedRenderOutcome(item, execution),
+      });
       samplesMs.push(elapsedMs);
       samples.push({
         iteration,
@@ -155,6 +163,18 @@ async function runWarm(input) {
     queue_lifecycle: queueLifecycle,
     error_behavior: errorBehavior,
   };
+}
+
+export async function measureWarmSample({
+  execute,
+  project,
+  now = () => performance.now(),
+}) {
+  const started = now();
+  const execution = await execute();
+  const elapsedMs = now() - started;
+  const outcome = project(execution);
+  return { elapsedMs, outcome };
 }
 
 async function probeTypedErrors(engine, input) {

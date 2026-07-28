@@ -101,7 +101,7 @@ export function validateComparisonReport(
 ) {
   const trusted = trustedCorpusEvidence(trustedCorpus);
   assertObject(report, "report");
-  if (report.schema_version !== 2) throw new Error("report schema_version must be 2.");
+  if (report.schema_version !== 3) throw new Error("report schema_version must be 3.");
   validateProvenance(report.provenance);
   assertObject(report.input, "input");
   if (!SHA256_DIGEST.test(report.input.digest ?? "")) {
@@ -435,6 +435,12 @@ function validateCandidate(
     candidate.cold_process.samples_ms,
     `${candidate.id} cold process`,
   );
+  if (
+    candidate.warm_latency?.timing_scope !== "warmed-engine-raw-svg-operation-result" ||
+    candidate.warm_latency.evidence_excluded !== true
+  ) {
+    throw new Error(`${candidate.id} warm timing scope must exclude SVG evidence projection.`);
+  }
   validateSamples(candidate.warm_latency?.samples_ms, `${candidate.id} warm latency`);
   if (
     !Array.isArray(candidate.warm_latency?.samples) ||

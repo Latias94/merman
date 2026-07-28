@@ -26,6 +26,7 @@ import {
 import { summarize } from "../scripts/benchmark/stats.mjs";
 import { svgTransportEvidence } from "../scripts/benchmark/svg-signature.mjs";
 import { digestJson } from "../scripts/stable-json.mjs";
+import { measureWarmSample } from "../scripts/benchmark/worker.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
@@ -106,6 +107,28 @@ const SAMPLING = {
   measured_iterations: 2,
   concurrency_iterations: 2,
 };
+
+test("warm sampling stops the clock before projecting evidence", async () => {
+  const events = [];
+  const clock = [10, 25];
+  const sample = await measureWarmSample({
+    now: () => {
+      events.push("clock");
+      return clock.shift();
+    },
+    execute: async () => {
+      events.push("execute");
+      return "raw-result";
+    },
+    project: (execution) => {
+      events.push("project");
+      return `${execution}-evidence`;
+    },
+  });
+
+  assert.deepEqual(events, ["clock", "execute", "clock", "project"]);
+  assert.deepEqual(sample, { elapsedMs: 15, outcome: "raw-result-evidence" });
+});
 
 function validateComparisonReport(report) {
   return validateComparisonReportContract(report, {
@@ -535,6 +558,8 @@ function candidate(id) {
       ],
     },
     warm_latency: {
+      timing_scope: "warmed-engine-raw-svg-operation-result",
+      evidence_excluded: true,
       samples_ms: [1, 2, 1.5, 2.5],
       samples: [
         {
@@ -1213,7 +1238,7 @@ test("WASM footprint staging preserves generated artifacts despite wasm-pack's w
 
 test("a comparison report rejects missing provenance and mismatched inputs", () => {
   const report = {
-    schema_version: 2,
+    schema_version: 3,
     provenance,
     input: {
       digest: COMPARISON_INPUT_DIGEST,
@@ -1240,8 +1265,8 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
   );
 
   const oldSchema = structuredClone(report);
-  oldSchema.schema_version = 1;
-  assert.throws(() => validateComparisonReport(oldSchema), /schema_version must be 2/i);
+  oldSchema.schema_version = 2;
+  assert.throws(() => validateComparisonReport(oldSchema), /schema_version must be 3/i);
 
   const forgedCorpusDigest = structuredClone(report);
   forgedCorpusDigest.input.corpus_digest = `sha256:${"9".repeat(64)}`;
@@ -1298,6 +1323,34 @@ test("a comparison report rejects missing provenance and mismatched inputs", () 
   assert.throws(
     () => validateComparisonReport(forgedColdTimingScope),
     /cold timing scope.*exclude SVG evidence projection/i,
+  );
+
+  const forgedWarmTimingScope = structuredClone(report);
+  forgedWarmTimingScope.candidates[0].warm_latency.timing_scope = "includes-evidence-projection";
+  assert.throws(
+    () => validateComparisonReport(forgedWarmTimingScope),
+    /warm timing scope.*exclude SVG evidence projection/i,
+  );
+
+  const missingWarmTimingScope = structuredClone(report);
+  delete missingWarmTimingScope.candidates[0].warm_latency.timing_scope;
+  assert.throws(
+    () => validateComparisonReport(missingWarmTimingScope),
+    /warm timing scope.*exclude SVG evidence projection/i,
+  );
+
+  const includedWarmEvidence = structuredClone(report);
+  includedWarmEvidence.candidates[0].warm_latency.evidence_excluded = false;
+  assert.throws(
+    () => validateComparisonReport(includedWarmEvidence),
+    /warm timing scope.*exclude SVG evidence projection/i,
+  );
+
+  const missingWarmEvidence = structuredClone(report);
+  delete missingWarmEvidence.candidates[0].warm_latency.evidence_excluded;
+  assert.throws(
+    () => validateComparisonReport(missingWarmEvidence),
+    /warm timing scope.*exclude SVG evidence projection/i,
   );
 
   const missingBuildReceipt = structuredClone(report);
@@ -1691,7 +1744,7 @@ function recordParseStatus(evidence) {
 
 test("the report cannot announce a winner without complete target evidence", () => {
   const report = {
-    schema_version: 2,
+    schema_version: 3,
     provenance,
     input: {
       digest: COMPARISON_INPUT_DIGEST,
@@ -1829,7 +1882,7 @@ test("the report cannot announce a winner without complete target evidence", () 
 
 test("a rejected report records no selected transport", () => {
   const report = {
-    schema_version: 2,
+    schema_version: 3,
     provenance,
     input: {
       digest: COMPARISON_INPUT_DIGEST,
