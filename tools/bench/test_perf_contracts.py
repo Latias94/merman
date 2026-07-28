@@ -735,6 +735,45 @@ class CompareSelfContractsTest(unittest.TestCase):
         self.assertIn("bootstrap-resamples", report["contract_errors"][0]["message"])
         self.assertIn("confirmation", report["contract_errors"][0]["message"])
 
+    def test_discovery_reuse_is_confirmation_only_and_does_not_rebuild(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            base = root / "base"
+            head = root / "head"
+            base.mkdir()
+            head.mkdir()
+            source = root / "discovery.json"
+            source.write_text("{}\n", encoding="utf-8")
+            markdown = root / "invalid.md"
+            structured = root / "invalid.json"
+
+            with mock.patch.object(compare_self, "_execute_comparison") as execute:
+                result = compare_self.main(
+                    [
+                        "--base-dir",
+                        str(base),
+                        "--head-dir",
+                        str(head),
+                        "--reuse-discovery-json",
+                        str(source),
+                        "--reuse-discovery-sha256",
+                        compare_self.hashlib.sha256(b"{}\n").hexdigest(),
+                        "--freeze-shared-target",
+                        "--evidence-mode",
+                        "confirmation",
+                        "--out",
+                        str(markdown),
+                        "--json-out",
+                        str(structured),
+                    ]
+                )
+
+            report = json.loads(structured.read_text(encoding="utf-8"))
+
+        self.assertEqual(result, 2)
+        execute.assert_not_called()
+        self.assertIn("mutually exclusive", report["contract_errors"][0]["message"])
+
     def test_confirmation_rejects_an_unbounded_bootstrap_count(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -1056,6 +1095,378 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             locked=locked,
             corpus=corpus,
         )
+
+    @staticmethod
+    def _minimal_reusable_discovery() -> dict[str, object]:
+        runner = {
+            "recipe": {},
+            "git": {},
+            "manifest": {},
+            "workspace_manifest": {},
+            "lockfile": {},
+            "corpus": {},
+            "bench_source": {},
+            "toolchain": {},
+            "build_environment": {},
+            "shared_target_profile_reset": {},
+            "prebuild_command": [],
+            "prebuild_stderr_tail": "",
+            "source_executable": {},
+            "frozen_executable": {},
+            "executable": {},
+            "discovery_command": [],
+            "discovery": {},
+            "post_sampling_verification": {"status": "verified"},
+            "shared_target_freeze": {
+                "enabled": True,
+                "context": "reuse-test",
+                "target_dir": "/tmp/target",
+            },
+        }
+        return {
+            "schema_version": 2,
+            "harness": {
+                "schema": "compare-self-v2",
+                "path": "/tmp/compare_self.py",
+                "bytes": 100,
+                "sha256": "a" * 64,
+            },
+            "method": {
+                "evidence_mode": "confirmation",
+                "evidence_quality": "discovery_only",
+                "discovery_only": True,
+                "shared_target_freeze": {
+                    "enabled": True,
+                    "context": "reuse-test",
+                    "target_dir": "/tmp/target",
+                    "build_order": ["base", "head"],
+                    "cargo_build_jobs": "1",
+                    "profile_reset": "cargo-clean-bench-profile-before-each-side",
+                },
+            },
+            "summary": {
+                "exit_code": 0,
+                "outcome": "diagnostic_advisory",
+                "contract_failures": 0,
+                "comparable": 1,
+            },
+            "contract_errors": [],
+            "calibration": None,
+            "raw_rounds": [],
+            "fixtures": [
+                {
+                    "base_benchmark": "end_to_end/flowchart_medium",
+                    "head_benchmark": "end_to_end/flowchart_medium",
+                    "coverage_status": "comparable",
+                    "post_sampling_verification": {"status": "verified"},
+                }
+            ],
+            "rows": [
+                {
+                    "base_benchmark": "end_to_end/flowchart_medium",
+                    "head_benchmark": "end_to_end/flowchart_medium",
+                    "outcome": "diagnostic_advisory",
+                }
+            ],
+            "runners": {
+                "base": {
+                    **copy.deepcopy(runner),
+                    "shared_target_freeze": {
+                        **runner["shared_target_freeze"],
+                        "build_sequence": 1,
+                    },
+                },
+                "head": {
+                    **copy.deepcopy(runner),
+                    "shared_target_freeze": {
+                        **runner["shared_target_freeze"],
+                        "build_sequence": 2,
+                    },
+                },
+            },
+        }
+
+    def test_reusable_discovery_loader_rejects_digest_drift_and_invalid_json(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            duplicate = root / "duplicate.json"
+            duplicate.write_text('{"schema_version": 2, "schema_version": 2}\n')
+            nonfinite = root / "nonfinite.json"
+            nonfinite.write_text('{"value": NaN}\n')
+
+            with self.assertRaisesRegex(compare_self.ContractViolation, "duplicate"):
+                compare_self._load_reusable_discovery_report(
+                    duplicate, expected_sha256="0" * 64
+                )
+            with self.assertRaisesRegex(compare_self.ContractViolation, "non-finite"):
+                compare_self._load_reusable_discovery_report(
+                    nonfinite, expected_sha256="0" * 64
+                )
+
+            valid = root / "valid.json"
+            valid.write_text("{}\n", encoding="utf-8")
+            with self.assertRaisesRegex(compare_self.ContractViolation, "digest differs"):
+                compare_self._load_reusable_discovery_report(
+                    valid, expected_sha256="0" * 64
+                )
+
+            crlf = root / "crlf.json"
+            crlf_bytes = b"{}\r\n"
+            crlf.write_bytes(crlf_bytes)
+            _value, description = compare_self._load_reusable_discovery_report(
+                crlf,
+                expected_sha256=compare_self.hashlib.sha256(crlf_bytes).hexdigest(),
+            )
+            self.assertEqual(description["bytes"], len(crlf_bytes))
+            self.assertEqual(
+                description["sha256"],
+                compare_self.hashlib.sha256(crlf_bytes).hexdigest(),
+            )
+            method = {
+                "discovery_reuse": {
+                    "enabled": True,
+                    "source_report": description,
+                }
+            }
+            self.assertEqual(
+                compare_self._discovery_reuse_verification_errors(method), []
+            )
+            crlf.write_bytes(b"{}\n")
+            self.assertIn(
+                "digest changed",
+                " ".join(compare_self._discovery_reuse_verification_errors(method)),
+            )
+
+    def test_reusable_discovery_requires_successful_post_verified_frozen_evidence(
+        self,
+    ) -> None:
+        valid = self._minimal_reusable_discovery()
+        compare_self._validate_reusable_discovery_report(valid)
+
+        sampled = copy.deepcopy(valid)
+        sampled["raw_rounds"] = [{"pair": 1}]
+        with self.assertRaisesRegex(compare_self.ContractViolation, "sampling observations"):
+            compare_self._validate_reusable_discovery_report(sampled)
+
+        unverified = copy.deepcopy(valid)
+        unverified["runners"]["head"]["post_sampling_verification"]["status"] = "failed"
+        with self.assertRaisesRegex(compare_self.ContractViolation, "post-verified"):
+            compare_self._validate_reusable_discovery_report(unverified)
+
+        wrong_order = copy.deepcopy(valid)
+        wrong_order["runners"]["base"]["shared_target_freeze"]["build_sequence"] = 2
+        with self.assertRaisesRegex(compare_self.ContractViolation, "build sequence"):
+            compare_self._validate_reusable_discovery_report(wrong_order)
+
+    def test_prepare_reused_runner_revalidates_every_frozen_input_without_cargo_build(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            checkout = root / "checkout"
+            checkout.mkdir()
+            manifest = checkout / "Cargo.toml"
+            manifest.write_text(
+                '[package]\nname = "merman"\nversion = "0.0.0"\n',
+                encoding="utf-8",
+            )
+            lockfile = checkout / "Cargo.lock"
+            lockfile.write_text("# lock\n", encoding="utf-8")
+            corpus = checkout / "tools" / "bench" / "corpus.json"
+            corpus.parent.mkdir(parents=True)
+            corpus.write_text("{}\n", encoding="utf-8")
+            bench_source = checkout / "benches" / "pipeline.rs"
+            bench_source.parent.mkdir()
+            bench_source.write_text("fn main() {}\n", encoding="utf-8")
+            target_dir = (root / "target").resolve()
+            executable_bytes = b"frozen executable"
+            executable_sha256 = compare_self.hashlib.sha256(executable_bytes).hexdigest()
+            executable = (
+                target_dir
+                / "perf-frozen"
+                / "reuse-test"
+                / ("base-" + "a" * 40 + f"-{executable_sha256}")
+                / "pipeline-deadbeef"
+            )
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(executable_bytes)
+            executable.chmod(0o555)
+            executable = executable.resolve()
+            recipe = self._recipe(
+                label="base",
+                checkout=checkout,
+                package="merman",
+                bench="pipeline",
+                features=("svg",),
+                default_features=False,
+                toolchain="1.95.0",
+                target_dir=target_dir,
+                corpus=Path("tools/bench/corpus.json"),
+            )
+            git = {
+                "revision": "a" * 40,
+                "tree": "b" * 40,
+                "dirty": False,
+                "dirty_disposition": "clean",
+                "dirty_entries": [],
+                "dirty_entries_truncated": False,
+            }
+            files = {
+                "manifest": compare_self._describe_required_file(manifest),
+                "workspace_manifest": compare_self._describe_required_file(manifest),
+                "lockfile": compare_self._describe_required_file(lockfile),
+                "corpus": compare_self._describe_required_file(corpus),
+                "bench_source": compare_self._describe_required_file(bench_source),
+            }
+            executable_description = compare_self._describe_required_file(executable)
+            frozen_description = {
+                **executable_description,
+                "executable": True,
+                "mode": "0555",
+            }
+            discovery_stdout = "end_to_end/flowchart_medium: benchmark\n"
+            combined = discovery_stdout + "\n"
+            discovery = {
+                "bench_count": 1,
+                "benches": ["end_to_end/flowchart_medium"],
+                "skipped": {},
+                "output_sha256": compare_self.hashlib.sha256(
+                    combined.encode("utf-8")
+                ).hexdigest(),
+            }
+            toolchain = {
+                "requested": "1.95.0",
+                "rustc_verbose": "rustc test",
+                "cargo_verbose": "cargo test",
+            }
+            source_executable = {
+                **executable_description,
+                "path": str(target_dir / "debug" / "deps" / executable.name),
+                "executable": True,
+            }
+            build_environment = {
+                "RUSTFLAGS": None,
+                "CARGO_ENCODED_RUSTFLAGS": None,
+                "CARGO_BUILD_JOBS": "1",
+                "CARGO_PROFILE_BENCH_LTO": None,
+                "CARGO_PROFILE_BENCH_CODEGEN_UNITS": None,
+                "CARGO_PROFILE_BENCH_OPT_LEVEL": None,
+            }
+            origin = {
+                "recipe": compare_self._recipe_report(recipe),
+                "git": git,
+                **files,
+                "toolchain": toolchain,
+                "build_environment": build_environment,
+                "shared_target_profile_reset": {
+                    "strategy": "cargo-clean-bench-profile-before-each-side",
+                    "command": compare_self.cargo_clean_bench_profile_command(recipe),
+                    "stdout_tail": "",
+                    "stderr_tail": "Removed bench profile",
+                },
+                "prebuild_command": compare_self.cargo_prebuild_command(recipe),
+                "prebuild_stderr_tail": "",
+                "source_executable": source_executable,
+                "frozen_executable": frozen_description,
+                "executable": {
+                    **executable_description,
+                    "executable": True,
+                    "role": "frozen",
+                },
+                "shared_target_freeze": {
+                    "enabled": True,
+                    "context": "reuse-test",
+                    "target_dir": str(target_dir),
+                    "build_sequence": 1,
+                    "commit": git["revision"],
+                    "tree": git["tree"],
+                    "source_executable": source_executable,
+                    "frozen_executable": frozen_description,
+                },
+                "discovery_command": compare_self.criterion_list_command(executable),
+                "discovery": discovery,
+                "post_sampling_verification": {
+                    "status": "verified",
+                    "git": git,
+                    "files": {key: value["sha256"] for key, value in files.items()},
+                    "executable_sha256": executable_description["sha256"],
+                },
+            }
+            listed = mock.Mock(returncode=0, stdout=discovery_stdout, stderr="")
+
+            with (
+                mock.patch.object(compare_self, "_git_provenance", return_value=git),
+                mock.patch.object(
+                    compare_self, "_toolchain_version", return_value="rustc test"
+                ),
+                mock.patch.object(
+                    compare_self, "_cargo_version", return_value="cargo test"
+                ),
+                mock.patch.object(compare_self, "_run_process", return_value=listed) as run,
+            ):
+                runner, provenance, errors = compare_self._prepare_reused_runner(
+                    recipe,
+                    origin=origin,
+                    source_report={"path": "/tmp/discovery.json", "sha256": "c" * 64},
+                    timeout_seconds=1,
+                )
+
+            self.assertFalse(errors)
+            self.assertIsNotNone(runner)
+            assert runner is not None
+            self.assertTrue(runner.frozen)
+            self.assertEqual(runner.executable, executable.resolve())
+            self.assertEqual(provenance["discovery_reuse"]["status"], "verified")
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(run.call_args.args[0][0], str(executable))
+            self.assertNotIn("cargo", run.call_args.args[0])
+
+            swapped_executable = (
+                target_dir
+                / "perf-frozen"
+                / "reuse-test"
+                / ("head-" + "a" * 40 + f"-{executable_sha256}")
+                / executable.name
+            )
+            swapped_executable.parent.mkdir(parents=True)
+            swapped_executable.write_bytes(executable_bytes)
+            swapped_executable.chmod(0o555)
+            swapped = copy.deepcopy(origin)
+            for description in (
+                swapped["executable"],
+                swapped["frozen_executable"],
+                swapped["shared_target_freeze"]["frozen_executable"],
+            ):
+                description["path"] = str(swapped_executable)
+            swapped["discovery_command"][0] = str(swapped_executable)
+
+            with (
+                mock.patch.object(compare_self, "_git_provenance", return_value=git),
+                mock.patch.object(
+                    compare_self, "_toolchain_version", return_value="rustc test"
+                ),
+                mock.patch.object(
+                    compare_self, "_cargo_version", return_value="cargo test"
+                ),
+                mock.patch.object(compare_self, "_run_process") as swapped_run,
+            ):
+                swapped_runner, _provenance, swapped_errors = (
+                    compare_self._prepare_reused_runner(
+                        recipe,
+                        origin=swapped,
+                        source_report={
+                            "path": "/tmp/discovery.json",
+                            "sha256": "c" * 64,
+                        },
+                        timeout_seconds=1,
+                    )
+                )
+
+            self.assertIsNone(swapped_runner)
+            self.assertIn("destination identity differs", swapped_errors[0])
+            swapped_run.assert_not_called()
 
     def test_runner_recipes_build_each_side_with_its_own_cargo_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

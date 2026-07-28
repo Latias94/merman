@@ -11,6 +11,7 @@ they answer a different question.
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
 import hashlib
 import json
@@ -445,6 +446,62 @@ _BENCH_LIST_LINE = re.compile(r"^(?P<bench>[A-Za-z0-9_.:/-]+):\s*benchmark\s*$")
 
 class ContractViolation(RuntimeError):
     pass
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ContractViolation(f"duplicate JSON object key: {key!r}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_json_constant(value: str) -> None:
+    raise ContractViolation(f"non-finite JSON number: {value}")
+
+
+def _load_reusable_discovery_report(
+    path: Path, *, expected_sha256: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    resolved = path.resolve()
+    try:
+        raw = resolved.read_bytes()
+    except OSError as error:
+        raise ContractViolation(
+            f"could not read reusable discovery report {resolved}: {error}"
+        ) from error
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeError as error:
+        raise ContractViolation(
+            f"reusable discovery report is not UTF-8: {error}"
+        ) from error
+    try:
+        value = json.loads(
+            text,
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_nonfinite_json_constant,
+        )
+    except json.JSONDecodeError as error:
+        raise ContractViolation(
+            f"reusable discovery report is not valid JSON: {error}"
+        ) from error
+    if not isinstance(value, dict):
+        raise ContractViolation("reusable discovery report root must be an object")
+    description = {
+        "path": str(resolved),
+        "bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "expected_sha256": expected_sha256,
+    }
+    if description["sha256"] != expected_sha256:
+        raise ContractViolation(
+            "reusable discovery report digest differs from "
+            "--reuse-discovery-sha256"
+        )
+    description["digest_status"] = "verified"
+    return value, description
 
 
 @dataclass
@@ -967,6 +1024,547 @@ def _prepare_runner(
         )
     except Exception as error:
         errors.append(str(error))
+        provenance["preparation_error"] = str(error)
+        return None, provenance, errors
+
+
+_REUSABLE_DISCOVERY_METHOD_FIELDS = (
+    "preset",
+    "sample_size",
+    "warm_up_seconds",
+    "measurement_seconds",
+    "diagnostic_pairs",
+    "calibration_pairs",
+    "max_pairs",
+    "start_side",
+    "relative_threshold_percent",
+    "relative_threshold_log",
+    "absolute_threshold_ns",
+    "absolute_threshold_us",
+    "confidence_level",
+    "bootstrap_seed",
+    "bootstrap_resamples",
+    "interval_contract",
+)
+
+
+def _json_semantic_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _json_semantic_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_semantic_value(item) for item in value]
+    return value
+
+
+def _require_equal_reuse_value(label: str, current: Any, origin: Any) -> None:
+    if _json_semantic_value(current) != _json_semantic_value(origin):
+        raise ContractViolation(
+            f"reusable discovery {label} differs from the current comparison contract"
+        )
+
+
+def _validate_reusable_discovery_report(source: dict[str, Any]) -> None:
+    if source.get("schema_version") != 2:
+        raise ContractViolation("reusable discovery report must use schema_version 2")
+    method = source.get("method")
+    if not isinstance(method, dict):
+        raise ContractViolation("reusable discovery report method must be an object")
+    required_method = {
+        "evidence_mode": "confirmation",
+        "evidence_quality": "discovery_only",
+        "discovery_only": True,
+    }
+    for field, expected in required_method.items():
+        if method.get(field) != expected:
+            raise ContractViolation(
+                f"reusable discovery method.{field} must be {expected!r}"
+            )
+    freeze = method.get("shared_target_freeze")
+    if not isinstance(freeze, dict) or freeze.get("enabled") is not True:
+        raise ContractViolation(
+            "reusable discovery must originate from --freeze-shared-target"
+        )
+    context = freeze.get("context")
+    target_dir = freeze.get("target_dir")
+    if not isinstance(context, str) or not isinstance(target_dir, str):
+        raise ContractViolation("reusable discovery freeze provenance is incomplete")
+    _validate_freeze_component(context, field="context")
+    if freeze.get("build_order") != ["base", "head"]:
+        raise ContractViolation("reusable discovery freeze build order differs")
+    if freeze.get("cargo_build_jobs") != "1":
+        raise ContractViolation("reusable discovery freeze was not built serially")
+    if freeze.get("profile_reset") != "cargo-clean-bench-profile-before-each-side":
+        raise ContractViolation("reusable discovery freeze profile reset differs")
+
+    harness = source.get("harness")
+    if not isinstance(harness, dict) or harness.get("schema") != "compare-self-v2":
+        raise ContractViolation("reusable discovery harness schema differs")
+    if not isinstance(harness.get("path"), str):
+        raise ContractViolation("reusable discovery harness path is missing")
+    if not isinstance(harness.get("bytes"), int) or harness["bytes"] <= 0:
+        raise ContractViolation("reusable discovery harness byte count is invalid")
+    if not isinstance(harness.get("sha256"), str) or not re.fullmatch(
+        r"[0-9a-f]{64}", harness["sha256"]
+    ):
+        raise ContractViolation("reusable discovery harness digest is invalid")
+
+    if source.get("contract_errors") != []:
+        raise ContractViolation("reusable discovery report contains contract errors")
+    if source.get("calibration") is not None or source.get("raw_rounds") != []:
+        raise ContractViolation(
+            "reusable discovery report must not contain sampling observations"
+        )
+    summary = source.get("summary")
+    if not isinstance(summary, dict):
+        raise ContractViolation("reusable discovery summary must be an object")
+    if summary.get("exit_code") != 0 or summary.get("outcome") != "diagnostic_advisory":
+        raise ContractViolation("reusable discovery report did not complete successfully")
+    if summary.get("contract_failures") != 0:
+        raise ContractViolation("reusable discovery report contains contract failures")
+
+    fixtures = source.get("fixtures")
+    rows = source.get("rows")
+    if not isinstance(fixtures, list) or not fixtures:
+        raise ContractViolation("reusable discovery report has no fixtures")
+    if not isinstance(rows, list) or len(rows) != len(fixtures):
+        raise ContractViolation("reusable discovery rows do not cover every fixture")
+    if summary.get("comparable") != len(fixtures):
+        raise ContractViolation("reusable discovery comparable count differs")
+    if any(
+        not isinstance(row, dict) or row.get("outcome") != "diagnostic_advisory"
+        for row in rows
+    ):
+        raise ContractViolation("reusable discovery rows are not purely advisory")
+    fixture_benchmarks = [
+        (item.get("base_benchmark"), item.get("head_benchmark"))
+        for item in fixtures
+        if isinstance(item, dict)
+    ]
+    row_benchmarks = [
+        (item.get("base_benchmark"), item.get("head_benchmark"))
+        for item in rows
+        if isinstance(item, dict)
+    ]
+    if len(fixture_benchmarks) != len(fixtures) or fixture_benchmarks != row_benchmarks:
+        raise ContractViolation("reusable discovery fixture and row identities differ")
+    if any(
+        item.get("coverage_status") != "comparable"
+        or item.get("post_sampling_verification", {}).get("status") != "verified"
+        for item in fixtures
+    ):
+        raise ContractViolation(
+            "reusable discovery fixtures must be comparable and post-verified"
+        )
+
+    runners = source.get("runners")
+    if not isinstance(runners, dict) or set(runners) != {"base", "head"}:
+        raise ContractViolation("reusable discovery must contain exactly base and head runners")
+    for side in ("base", "head"):
+        runner = runners[side]
+        if not isinstance(runner, dict):
+            raise ContractViolation(f"reusable discovery {side} runner must be an object")
+        required_runner_fields = {
+            "recipe",
+            "git",
+            "manifest",
+            "workspace_manifest",
+            "lockfile",
+            "corpus",
+            "bench_source",
+            "toolchain",
+            "build_environment",
+            "shared_target_profile_reset",
+            "prebuild_command",
+            "prebuild_stderr_tail",
+            "source_executable",
+            "shared_target_freeze",
+            "frozen_executable",
+            "executable",
+            "discovery_command",
+            "discovery",
+            "post_sampling_verification",
+        }
+        missing_fields = sorted(required_runner_fields - set(runner))
+        if missing_fields:
+            raise ContractViolation(
+                f"reusable discovery {side} runner provenance is incomplete: "
+                f"missing={missing_fields}"
+            )
+        verification = runner.get("post_sampling_verification")
+        if not isinstance(verification, dict) or verification.get("status") != "verified":
+            raise ContractViolation(
+                f"reusable discovery {side} runner was not post-verified"
+            )
+        runner_freeze = runner.get("shared_target_freeze")
+        if not isinstance(runner_freeze, dict) or runner_freeze.get("enabled") is not True:
+            raise ContractViolation(
+                f"reusable discovery {side} runner is not a frozen runner"
+            )
+        if runner_freeze.get("context") != context:
+            raise ContractViolation(
+                f"reusable discovery {side} runner freeze context differs"
+            )
+        if runner_freeze.get("target_dir") != target_dir:
+            raise ContractViolation(
+                f"reusable discovery {side} runner target directory differs"
+            )
+        if runner_freeze.get("build_sequence") != (1 if side == "base" else 2):
+            raise ContractViolation(
+                f"reusable discovery {side} runner build sequence differs"
+            )
+
+
+def _fixture_reuse_identity(contract: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: contract.get(key)
+        for key in (
+            "name",
+            "family",
+            "base_benchmark",
+            "head_benchmark",
+            "selected",
+            "metadata",
+            "bytes",
+        )
+    }
+
+
+def _validate_reuse_comparison_contract(
+    *,
+    source: dict[str, Any],
+    report: dict[str, Any],
+    recipes: dict[str, RunnerRecipe],
+    selection: dict[str, Any],
+    contracts: Sequence[dict[str, Any]],
+) -> None:
+    _require_equal_reuse_value("comparison labels", report["comparison"], source.get("comparison"))
+    _require_equal_reuse_value("environment", report["environment"], source.get("environment"))
+    source_method = source["method"]
+    for field in _REUSABLE_DISCOVERY_METHOD_FIELDS:
+        _require_equal_reuse_value(
+            f"method.{field}", report["method"].get(field), source_method.get(field)
+        )
+    expected_recipes = {side: _recipe_report(recipe) for side, recipe in recipes.items()}
+    _require_equal_reuse_value("recipes", expected_recipes, source.get("recipes"))
+    _require_equal_reuse_value("selection", selection, source.get("selection"))
+    current_fixtures = [_fixture_reuse_identity(item) for item in contracts]
+    origin_fixtures = [
+        _fixture_reuse_identity(item)
+        for item in source["fixtures"]
+    ]
+    _require_equal_reuse_value("fixture identities", current_fixtures, origin_fixtures)
+
+
+def _prepare_reused_runner(
+    recipe: RunnerRecipe,
+    *,
+    origin: dict[str, Any],
+    source_report: dict[str, Any],
+    timeout_seconds: int,
+) -> tuple[PreparedRunner | None, dict[str, Any], list[str]]:
+    provenance = copy.deepcopy(origin)
+    errors: list[str] = []
+    origin_verification = provenance.pop("post_sampling_verification", None)
+    provenance["origin_post_discovery_verification"] = origin_verification
+    provenance["post_sampling_verification"] = None
+    provenance["discovery_reuse"] = {
+        "source_report": copy.deepcopy(source_report),
+        "status": "pending",
+    }
+    try:
+        _require_equal_reuse_value(
+            f"{recipe.label} runner recipe",
+            _recipe_report(recipe),
+            origin.get("recipe"),
+        )
+        current_git = _git_provenance(
+            recipe.checkout,
+            allow_dirty=False,
+            timeout_seconds=timeout_seconds,
+        )
+        _require_equal_reuse_value(
+            f"{recipe.label} Git provenance", current_git, origin.get("git")
+        )
+        provenance["git"] = current_git
+
+        manifest = _find_package_manifest(recipe.checkout, recipe.package)
+        workspace_manifest = recipe.checkout / "Cargo.toml"
+        lockfile = recipe.checkout / "Cargo.lock"
+        corpus_path = (
+            recipe.corpus
+            if recipe.corpus.is_absolute()
+            else recipe.checkout / recipe.corpus
+        )
+        bench_source = manifest.parent / "benches" / f"{recipe.bench}.rs"
+        current_files = {
+            "manifest": _describe_required_file(manifest),
+            "workspace_manifest": _describe_required_file(workspace_manifest),
+            "lockfile": _describe_required_file(lockfile),
+            "corpus": _describe_required_file(corpus_path),
+            "bench_source": _describe_required_file(bench_source),
+        }
+        for key, current in current_files.items():
+            _require_equal_reuse_value(
+                f"{recipe.label} {key}", current, origin.get(key)
+            )
+            provenance[key] = current
+
+        current_toolchain = {
+            "requested": recipe.toolchain,
+            "rustc_verbose": _toolchain_version(recipe, timeout_seconds=timeout_seconds),
+            "cargo_verbose": _cargo_version(recipe, timeout_seconds=timeout_seconds),
+        }
+        _require_equal_reuse_value(
+            f"{recipe.label} toolchain", current_toolchain, origin.get("toolchain")
+        )
+        provenance["toolchain"] = current_toolchain
+
+        expected_prebuild = cargo_prebuild_command(recipe)
+        _require_equal_reuse_value(
+            f"{recipe.label} prebuild command",
+            expected_prebuild,
+            origin.get("prebuild_command"),
+        )
+        profile_reset = origin.get("shared_target_profile_reset")
+        if not isinstance(profile_reset, dict):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} profile reset is missing"
+            )
+        if profile_reset.get("strategy") != "cargo-clean-bench-profile-before-each-side":
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} profile reset strategy differs"
+            )
+        _require_equal_reuse_value(
+            f"{recipe.label} profile reset command",
+            cargo_clean_bench_profile_command(recipe),
+            profile_reset.get("command"),
+        )
+        if not all(
+            isinstance(profile_reset.get(field), str)
+            for field in ("stdout_tail", "stderr_tail")
+        ):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} profile reset output is incomplete"
+            )
+        if not isinstance(origin.get("prebuild_stderr_tail"), str):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} prebuild output is incomplete"
+            )
+        build_environment = origin.get("build_environment")
+        expected_build_environment_fields = {
+            "RUSTFLAGS",
+            "CARGO_ENCODED_RUSTFLAGS",
+            "CARGO_BUILD_JOBS",
+            "CARGO_PROFILE_BENCH_LTO",
+            "CARGO_PROFILE_BENCH_CODEGEN_UNITS",
+            "CARGO_PROFILE_BENCH_OPT_LEVEL",
+        }
+        if not isinstance(build_environment, dict) or set(build_environment) != (
+            expected_build_environment_fields
+        ):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} build environment is incomplete"
+            )
+        if build_environment.get("CARGO_BUILD_JOBS") != "1":
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} was not built serially"
+            )
+
+        freeze = origin.get("shared_target_freeze")
+        executable_origin = origin.get("executable")
+        if not isinstance(freeze, dict) or not isinstance(executable_origin, dict):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} executable provenance is incomplete"
+            )
+        if freeze.get("commit") != current_git["revision"]:
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} frozen commit differs"
+            )
+        if freeze.get("tree") != current_git["tree"]:
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} frozen tree differs"
+            )
+        if freeze.get("enabled") is not True:
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} freeze is disabled"
+            )
+        if freeze.get("target_dir") != str(recipe.target_dir.resolve()):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} freeze target differs"
+            )
+        frozen_origin = freeze.get("frozen_executable")
+        if not isinstance(frozen_origin, dict):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} frozen executable is missing"
+            )
+        for field in ("path", "bytes", "sha256"):
+            if frozen_origin.get(field) != executable_origin.get(field):
+                raise ContractViolation(
+                    f"reusable discovery {recipe.label} executable {field} differs from freeze"
+                )
+        _require_equal_reuse_value(
+            f"{recipe.label} top-level frozen executable",
+            frozen_origin,
+            origin.get("frozen_executable"),
+        )
+        if frozen_origin.get("mode") != "0555" or executable_origin.get("role") != "frozen":
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} executable is not immutable"
+            )
+        executable_path = Path(str(frozen_origin.get("path", "")))
+        if not executable_path.is_absolute() or executable_path.is_symlink():
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} executable path is not a direct absolute file"
+            )
+        executable = executable_path.resolve()
+        source_executable = origin.get("source_executable")
+        freeze_source_executable = freeze.get("source_executable")
+        if not isinstance(source_executable, dict):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} source executable is missing"
+            )
+        _require_equal_reuse_value(
+            f"{recipe.label} frozen source executable",
+            source_executable,
+            freeze_source_executable,
+        )
+        for field in ("bytes", "sha256"):
+            if source_executable.get(field) != frozen_origin.get(field):
+                raise ContractViolation(
+                    f"reusable discovery {recipe.label} source executable {field} differs"
+                )
+        if source_executable.get("executable") is not True:
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} source executable role differs"
+            )
+        source_path = Path(str(source_executable.get("path", "")))
+        if not source_path.is_absolute():
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} source executable path is not absolute"
+            )
+        target_root = recipe.target_dir.resolve()
+        resolved_source_path = source_path.resolve()
+        if not _path_is_within(resolved_source_path, target_root) or _path_is_within(
+            resolved_source_path, target_root / "perf-frozen"
+        ):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} source executable escaped the Cargo target"
+            )
+        if source_path.name != executable_path.name:
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} source and frozen executable names differ"
+            )
+        perf_frozen_root = recipe.target_dir.resolve() / "perf-frozen"
+        declared_freeze_root = perf_frozen_root / str(freeze.get("context", ""))
+        if perf_frozen_root.is_symlink() or declared_freeze_root.is_symlink():
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} freeze context is a symlink"
+            )
+        if executable_path.parent.is_symlink():
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} executable directory is a symlink"
+            )
+        freeze_root = declared_freeze_root.resolve()
+        if not _path_is_within(freeze_root, perf_frozen_root.resolve()):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} freeze context escaped the target"
+            )
+        if not _path_is_within(executable, freeze_root):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} executable escaped its freeze context"
+            )
+        expected_destination_name = (
+            f"{recipe.label}-{current_git['revision']}-{frozen_origin.get('sha256')}"
+        )
+        if executable_path.parent.name != expected_destination_name:
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} executable destination identity differs"
+            )
+        current_executable = {
+            **_describe_required_file(executable),
+            "executable": True,
+            "mode": f"{stat.S_IMODE(executable.stat().st_mode):04o}",
+        }
+        _require_equal_reuse_value(
+            f"{recipe.label} frozen executable", current_executable, frozen_origin
+        )
+
+        if not isinstance(origin_verification, dict):
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} origin verification is missing"
+            )
+        _require_equal_reuse_value(
+            f"{recipe.label} origin verification Git",
+            origin_verification.get("git"),
+            current_git,
+        )
+        for key, current in current_files.items():
+            if origin_verification.get("files", {}).get(key) != current["sha256"]:
+                raise ContractViolation(
+                    f"reusable discovery {recipe.label} origin verification for {key} differs"
+                )
+        if origin_verification.get("executable_sha256") != current_executable["sha256"]:
+            raise ContractViolation(
+                f"reusable discovery {recipe.label} origin executable verification differs"
+            )
+
+        env = {
+            "CARGO_INCREMENTAL": "0",
+            "CARGO_PROFILE_BENCH_DEBUG": "0",
+            "CARGO_BUILD_JOBS": "1",
+        }
+        list_command = criterion_list_command(executable)
+        _require_equal_reuse_value(
+            f"{recipe.label} original discovery command",
+            list_command,
+            origin.get("discovery_command"),
+        )
+        print(f"[rediscover] {recipe.label}: {_command_text(list_command)}", flush=True)
+        listed = _run_process(
+            list_command,
+            cwd=recipe.checkout,
+            env=env,
+            timeout_seconds=timeout_seconds,
+        )
+        _require_success(listed, command=list_command, cwd=recipe.checkout)
+        combined = "\n".join((listed.stdout, listed.stderr))
+        benches = {
+            match.group("bench")
+            for raw in combined.splitlines()
+            if (match := _BENCH_LIST_LINE.match(strip_ansi(raw).strip()))
+        }
+        skipped = parse_skip_lines(combined)
+        current_discovery = {
+            "bench_count": len(benches),
+            "benches": sorted(benches),
+            "skipped": skipped,
+            "output_sha256": hashlib.sha256(combined.encode("utf-8")).hexdigest(),
+        }
+        _require_equal_reuse_value(
+            f"{recipe.label} Criterion discovery",
+            current_discovery,
+            origin.get("discovery"),
+        )
+        provenance["reuse_discovery_command"] = list_command
+        provenance["reuse_discovery"] = current_discovery
+        provenance["discovery_reuse"]["status"] = "verified"
+        return (
+            PreparedRunner(
+                recipe=recipe,
+                executable=executable,
+                executable_sha256=current_executable["sha256"],
+                benches=benches,
+                skipped=skipped,
+                provenance=provenance,
+                env=env,
+                frozen=True,
+            ),
+            provenance,
+            errors,
+        )
+    except Exception as error:
+        errors.append(str(error))
+        provenance["discovery_reuse"]["status"] = "failed"
         provenance["preparation_error"] = str(error)
         return None, provenance, errors
 
@@ -1707,6 +2305,32 @@ def _fixture_verification_errors(contracts: Sequence[dict[str, Any]]) -> list[st
     return errors
 
 
+def _discovery_reuse_verification_errors(method: dict[str, Any]) -> list[str]:
+    reuse = method.get("discovery_reuse")
+    if not isinstance(reuse, dict) or reuse.get("enabled") is not True:
+        return []
+    errors: list[str] = []
+    source = reuse.get("source_report")
+    verification: dict[str, Any] = {"status": "failed"}
+    try:
+        if not isinstance(source, dict):
+            raise ContractViolation("discovery reuse source report provenance is missing")
+        path = Path(str(source.get("path", "")))
+        current = _describe_required_file(path)
+        verification["source_report"] = current
+        if current.get("bytes") != source.get("bytes"):
+            errors.append("reusable discovery report byte count changed during sampling")
+        if current.get("sha256") != source.get("sha256"):
+            errors.append("reusable discovery report digest changed during sampling")
+        if source.get("sha256") != source.get("expected_sha256"):
+            errors.append("reusable discovery report no longer matches its trust anchor")
+    except Exception as error:
+        errors.append(str(error))
+    verification["status"] = "verified" if not errors else "failed"
+    reuse["post_sampling_verification"] = verification
+    return errors
+
+
 def _comparison_row(
     contract: dict[str, Any],
     *,
@@ -1956,6 +2580,32 @@ def write_decision_markdown(path: Path, report: dict[str, Any]) -> None:
 
 
 def _validate_args(args: argparse.Namespace) -> None:
+    reuse_discovery = bool(getattr(args, "reuse_discovery_json", ""))
+    reuse_digest = getattr(args, "reuse_discovery_sha256", "")
+    if reuse_discovery and not re.fullmatch(r"[0-9a-f]{64}", reuse_digest):
+        raise ContractViolation(
+            "--reuse-discovery-sha256 must be the preregistered lowercase SHA-256 digest"
+        )
+    if reuse_digest and not reuse_discovery:
+        raise ContractViolation(
+            "--reuse-discovery-sha256 requires --reuse-discovery-json"
+        )
+    if reuse_discovery and args.freeze_shared_target:
+        raise ContractViolation(
+            "--reuse-discovery-json and --freeze-shared-target are mutually exclusive"
+        )
+    if reuse_discovery and args.discovery_only:
+        raise ContractViolation(
+            "--reuse-discovery-json cannot be combined with --discovery-only"
+        )
+    if reuse_discovery and args.evidence_mode != "confirmation":
+        raise ContractViolation(
+            "--reuse-discovery-json is only valid with --evidence-mode confirmation"
+        )
+    if reuse_discovery and args.allow_dirty:
+        raise ContractViolation(
+            "--reuse-discovery-json requires clean confirmation checkouts"
+        )
     if args.evidence_mode == "diagnostic" and not 1 <= args.pairs <= 4:
         raise ContractViolation("diagnostic --pairs must be between one and four")
     if args.calibration_pairs < 8 or args.calibration_pairs % 2 != 0:
@@ -2234,6 +2884,15 @@ def _empty_report(args: argparse.Namespace, absolute_threshold_ns: float) -> dic
                 if getattr(args, "freeze_shared_target", False)
                 else None,
             },
+            "discovery_reuse": {
+                "enabled": bool(getattr(args, "reuse_discovery_json", "")),
+                "status": "pending"
+                if getattr(args, "reuse_discovery_json", "")
+                else "disabled",
+                "source_report": None,
+                "source_generated_at": None,
+                "source_harness": None,
+            },
         },
         "environment": {
             "os": platform.platform(),
@@ -2292,21 +2951,41 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         "base": _recipe_report(base_recipe),
         "head": _recipe_report(head_recipe),
     }
-    freeze_plan = _shared_target_freeze_plan(
-        base_recipe,
-        head_recipe,
-        enabled=args.freeze_shared_target,
-    )
-    report["method"]["shared_target_freeze"] = {
-        "enabled": freeze_plan is not None,
-        "target_dir": str(freeze_plan.target_dir) if freeze_plan is not None else None,
-        "context": freeze_plan.context if freeze_plan is not None else None,
-        "build_order": ["base", "head"] if freeze_plan is not None else None,
-        "cargo_build_jobs": "1" if freeze_plan is not None else None,
-        "profile_reset": "cargo-clean-bench-profile-before-each-side"
-        if freeze_plan is not None
-        else None,
-    }
+    reuse_source: dict[str, Any] | None = None
+    reuse_source_report: dict[str, Any] | None = None
+    if args.reuse_discovery_json:
+        reuse_source, reuse_source_report = _load_reusable_discovery_report(
+            Path(args.reuse_discovery_json),
+            expected_sha256=args.reuse_discovery_sha256,
+        )
+        _validate_reusable_discovery_report(reuse_source)
+        report["method"]["shared_target_freeze"] = copy.deepcopy(
+            reuse_source["method"]["shared_target_freeze"]
+        )
+        report["method"]["discovery_reuse"] = {
+            "enabled": True,
+            "status": "validating",
+            "source_report": copy.deepcopy(reuse_source_report),
+            "source_generated_at": reuse_source.get("generated_at"),
+            "source_harness": copy.deepcopy(reuse_source.get("harness")),
+        }
+        freeze_plan = None
+    else:
+        freeze_plan = _shared_target_freeze_plan(
+            base_recipe,
+            head_recipe,
+            enabled=args.freeze_shared_target,
+        )
+        report["method"]["shared_target_freeze"] = {
+            "enabled": freeze_plan is not None,
+            "target_dir": str(freeze_plan.target_dir) if freeze_plan is not None else None,
+            "context": freeze_plan.context if freeze_plan is not None else None,
+            "build_order": ["base", "head"] if freeze_plan is not None else None,
+            "cargo_build_jobs": "1" if freeze_plan is not None else None,
+            "profile_reset": "cargo-clean-bench-profile-before-each-side"
+            if freeze_plan is not None
+            else None,
+        }
 
     contracts, selection, operation_lanes = _load_fixture_contracts(
         base_recipe=base_recipe,
@@ -2333,6 +3012,14 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
     }
     report["selection"] = selection
     report["fixtures"] = contracts
+    if reuse_source is not None:
+        _validate_reuse_comparison_contract(
+            source=reuse_source,
+            report=report,
+            recipes={"base": base_recipe, "head": head_recipe},
+            selection=selection,
+            contracts=contracts,
+        )
     if not contracts:
         raise ContractViolation("no benchmark fixtures were selected")
     if args.evidence_mode == "confirmation":
@@ -2357,19 +3044,28 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
 
     prepared: dict[str, PreparedRunner] = {}
     for build_sequence, recipe in enumerate((base_recipe, head_recipe), start=1):
-        runner, provenance, errors = _prepare_runner(
-            recipe,
-            allow_dirty=args.allow_dirty,
-            timeout_seconds=args.timeout_seconds,
-            freeze_plan=freeze_plan,
-            build_sequence=build_sequence if freeze_plan is not None else None,
-        )
+        if reuse_source is not None:
+            assert reuse_source_report is not None
+            runner, provenance, errors = _prepare_reused_runner(
+                recipe,
+                origin=reuse_source["runners"][recipe.label],
+                source_report=reuse_source_report,
+                timeout_seconds=args.timeout_seconds,
+            )
+        else:
+            runner, provenance, errors = _prepare_runner(
+                recipe,
+                allow_dirty=args.allow_dirty,
+                timeout_seconds=args.timeout_seconds,
+                freeze_plan=freeze_plan,
+                build_sequence=build_sequence if freeze_plan is not None else None,
+            )
         report["runners"][recipe.label] = provenance
         for error in errors:
             _append_contract_error(report, f"prepare_{recipe.label}", error)
         if runner is not None:
             prepared[recipe.label] = runner
-        elif freeze_plan is not None:
+        elif freeze_plan is not None or reuse_source is not None:
             break
     if len(prepared) != 2:
         return
@@ -2407,6 +3103,13 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         "multiplicity_adjustment": "bonferroni",
         "components": "two metrics per comparable benchmark",
     }
+    if reuse_source is not None:
+        _require_equal_reuse_value(
+            "method.confidence_contract",
+            report["method"]["confidence_contract"],
+            reuse_source["method"].get("confidence_contract"),
+        )
+        report["method"]["discovery_reuse"]["status"] = "verified"
     if not comparable:
         _append_contract_error(report, "coverage", "no comparable benchmark rows")
     if args.discovery_only:
@@ -2657,6 +3360,8 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             _append_contract_error(report, "freeze_verification", error)
     for error in _fixture_verification_errors(contracts):
         _append_contract_error(report, "freeze_verification", error)
+    for error in _discovery_reuse_verification_errors(report["method"]):
+        _append_contract_error(report, "freeze_verification", error)
 
 
 def decision_grade_main(argv: list[str]) -> int:
@@ -2676,6 +3381,21 @@ def decision_grade_main(argv: list[str]) -> int:
             "Allow one shared Cargo target by clearing only its bench profile before each side, "
             "then serially copying each rebuilt compiler artifact into an immutable "
             "target/perf-frozen context before discovery and sampling."
+        ),
+    )
+    parser.add_argument(
+        "--reuse-discovery-json",
+        default="",
+        help=(
+            "Reuse independently frozen executables from a successful schema-v2 confirmation "
+            "discovery report after strict provenance and rediscovery validation."
+        ),
+    )
+    parser.add_argument(
+        "--reuse-discovery-sha256",
+        default="",
+        help=(
+            "Required preregistered SHA-256 trust anchor for --reuse-discovery-json."
         ),
     )
     parser.add_argument("--base-package", default="merman")
@@ -2758,6 +3478,22 @@ def decision_grade_main(argv: list[str]) -> int:
     except ContractViolation as error:
         print(f"invalid performance evidence outputs: {error}", file=sys.stderr)
         return 2
+
+    if args.reuse_discovery_json:
+        reuse_path = Path(args.reuse_discovery_json).resolve()
+        if reuse_path in (markdown_path, json_path) or (
+            reuse_path.exists()
+            and (
+                _same_existing_file(reuse_path, markdown_path)
+                or _same_existing_file(reuse_path, json_path)
+            )
+        ):
+            print(
+                "invalid performance evidence outputs: --reuse-discovery-json must not "
+                "be overwritten by --out or --json-out",
+                file=sys.stderr,
+            )
+            return 2
 
     absolute_threshold_ns = _absolute_threshold_ns(args)
     report = _empty_report(args, absolute_threshold_ns)
