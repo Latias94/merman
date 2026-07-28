@@ -1,12 +1,10 @@
 ---
 title: Mermaid Parity, Editor Language, and Release Alignment - Plan
 type: refactor
+status: complete
 date: 2026-07-19
 deepened: 2026-07-19
-artifact_contract: ce-unified-plan/v1
-artifact_readiness: implementation-ready
-product_contract_source: ce-plan-bootstrap
-execution: code
+execution: complete
 ---
 
 # Mermaid Parity, Editor Language, and Release Alignment - Plan
@@ -17,6 +15,8 @@ execution: code
 > In particular, the current Typst contract has one `publish` package profile backed by the exact
 > `typst-wasm` artifact recipe. Retired bridge/SVG/minimal, `*-no-elk`, and profile-shaped artifact
 > directory names in earlier revisions are not active build or release interfaces.
+> All imperative language below records the completed implementation and is not current execution
+> guidance.
 
 ## Goal Capsule
 

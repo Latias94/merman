@@ -1,15 +1,17 @@
 ---
 title: Mermaid Family-Owned Architecture Refactor - Plan
 type: refactor
+status: complete
 date: 2026-07-14
 deepened: 2026-07-14
-artifact_contract: ce-unified-plan/v1
-artifact_readiness: implementation-ready
-product_contract_source: ce-plan-bootstrap
-execution: code
+execution: complete
 ---
 
-# Mermaid Family-Owned Architecture Refactor - Plan
+# Mermaid Family-Owned Architecture Refactor - Implemented Historical Plan
+
+**Status:** Implemented historical plan. Preserve its requirements, implementation units, and verification contract as decision evidence; use [ADR 0073](../adr/0073-family-owned-diagram-architecture.md), the [Mermaid Upgrade Playbook](../release/MERMAID_UPGRADE_PLAYBOOK.md), and current `xtask` verification commands for ongoing ownership and release work.
+
+> All imperative language below records the completed implementation and is not current execution guidance.
 
 ## Goal Capsule
 

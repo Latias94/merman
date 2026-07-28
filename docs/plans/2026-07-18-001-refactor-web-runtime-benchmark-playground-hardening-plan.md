@@ -1,12 +1,10 @@
 ---
 title: Web Runtime, Benchmark, and Playground Hardening - Plan
 type: refactor
+status: complete
 date: 2026-07-18
 deepened: 2026-07-18
-artifact_contract: ce-unified-plan/v1
-artifact_readiness: implementation-ready
-product_contract_source: ce-plan-bootstrap
-execution: code
+execution: complete
 ---
 
 # Web Runtime, Benchmark, and Playground Hardening - Plan
@@ -14,6 +12,8 @@ execution: code
 > Historical implementation plan. Its completed browser-runtime decisions remain useful evidence,
 > but its ABI and distribution constraints are superseded by
 > `2026-07-22-001-refactor-capability-driven-feature-and-distribution-architecture-plan.md`.
+> All imperative language below records the completed implementation and is not current execution
+> guidance.
 
 ## Goal Capsule
 

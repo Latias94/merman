@@ -441,11 +441,11 @@ U12 + U14 + U15 --> U17 fixed-point review, alpha.4 versioning, and pull request
 - A future Node product is an evidence outcome, not a promised release surface: U14 may reject both candidate transports and record that no Node package is published.
 - Flutter Rust Bridge is likewise a comparison candidate, not a promised dependency; ABI 3 plus `ffigen` remains the fallback and may be the final Flutter result.
 
-### Fixed-Point Review Intake
+### Historical Fixed-Point Review Intake
 
-This ledger records findings revalidated against the current branch after the original `2e74281b4` review anchor. It belongs to the implementation plan, not to `xtask` or a runtime descriptor. Each row has one implementation-unit owner below; that owner closes the named proof before its output enters U12, even when a later unit deletes or replaces the affected code.
+This immutable ledger records findings revalidated after the original `2e74281b4` review anchor. Its rows describe defects at intake, not current open issues. The active closure ledger later in this plan is the only implementation checklist; neither ledger is an `xtask`, release, or runtime authority.
 
-| ID | Confirmed current defect | Required proof |
+| ID | Finding at review intake | Required proof |
 | --- | --- | --- |
 | RV1 | CI still requests removed FFI feature `core-full` before parity jobs | Structured workflow/Cargo feature validation and a successful parity job setup |
 | RV2 | `text-outer-tspan` normalization erases real label text | Comparator fixture where wrapping noise normalizes but `Alpha` and `Beta` remain unequal |

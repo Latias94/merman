@@ -135,6 +135,6 @@ python3 /Users/frankorz/.codex/skills/.system/skill-creator/scripts/quick_valida
 ## Resource Map
 
 - [benchmark-matrix.md](references/benchmark-matrix.md): commands, fairness rules, and metric schema for native, JS, Web, and Node measurements.
-- [scenario-matrix.md](references/scenario-matrix.md): workflow-to-crate/package recommendations and migration vocabulary.
+- [scenario-matrix.md](references/scenario-matrix.md): required workflow coverage and range-specific migration fields.
 - [report-template.md](references/report-template.md): changelog-friendly report structure with compact tables.
 - `scripts/collect_release_facts.py`: deterministic release-range and source-fact collector.
