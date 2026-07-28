@@ -8,8 +8,8 @@ collected. It is intentionally separate from the admitted Dugong batch-retiremen
 
 ## Frozen comparison
 
-- Adjacent base: the clean evidence-infrastructure commit containing this receipt; its immutable
-  commit and tree hashes must be recorded before production implementation starts.
+- Adjacent base commit: `6b5f3e0ef2bc1b3162712b5a2de71fe8f887e213`.
+- Adjacent base tree: `7e9f82864725122c37e7b8931c3bdaaf5f790a4f`.
 - Candidate scope: Flowchart compound-hierarchy adjustment and cluster extraction only.
 - Public primary lane: `flowchart_large`.
 - Public controls: `flowchart_medium`, ports-heavy Flowchart, and `class_medium`.
