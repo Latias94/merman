@@ -17,6 +17,8 @@ pub(crate) enum FileOperation {
     InspectIdentity,
     Canonicalize,
     VerifyPublication,
+    #[cfg(feature = "analysis")]
+    VerifySourceSnapshot,
     #[cfg(feature = "markdown")]
     ReadDirectory,
     #[cfg(feature = "markdown")]
@@ -34,6 +36,8 @@ impl std::fmt::Display for FileOperation {
             Self::InspectIdentity => "inspect the file identity of",
             Self::Canonicalize => "resolve",
             Self::VerifyPublication => "verify the preflight identity of",
+            #[cfg(feature = "analysis")]
+            Self::VerifySourceSnapshot => "verify the acquired source snapshot of",
             #[cfg(feature = "markdown")]
             Self::ReadDirectory => "scan",
             #[cfg(feature = "markdown")]
@@ -108,6 +112,12 @@ pub(crate) enum CliError {
     #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     InvalidOutput(String),
+    #[cfg(feature = "analysis")]
+    #[error("refusing to overwrite concurrently modified source {path:?}: {reason}")]
+    ConcurrentModification { path: PathBuf, reason: String },
+    #[cfg(feature = "analysis")]
+    #[error("invalid diagnostic fix plan: {0}")]
+    InvalidFixPlan(String),
 }
 
 impl CliError {
@@ -173,6 +183,10 @@ impl CliError {
             Self::Io(_) | Self::JsonOutput(_) | Self::Stream { .. } => ErrorCategory::Operational,
             #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
             Self::File { .. } => ErrorCategory::Operational,
+            #[cfg(feature = "analysis")]
+            Self::ConcurrentModification { .. } => ErrorCategory::Operational,
+            #[cfg(feature = "analysis")]
+            Self::InvalidFixPlan(_) => ErrorCategory::Content,
             Self::Input { error, .. } if error.is_operational() => ErrorCategory::Operational,
             #[cfg(feature = "network-icons")]
             Self::Network(error) if error.is_operational() => ErrorCategory::Operational,

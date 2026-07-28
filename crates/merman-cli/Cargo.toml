@@ -64,7 +64,13 @@ default = [
 
 # Public leaves describe observable CLI capabilities. Keep them additive: exact
 # absence claims belong to a `default-features = false` artifact profile.
-analysis = ["dep:atomic-write-file", "dep:merman-analysis", "dep:same-file"]
+analysis = [
+    "dep:atomic-write-file",
+    "dep:merman-analysis",
+    "dep:same-file",
+    "dep:sha2",
+    "dep:similar",
+]
 svg = ["dep:atomic-write-file", "dep:same-file", "merman/svg"]
 ascii = ["dep:atomic-write-file", "dep:same-file", "merman/ascii"]
 png = ["svg", "merman/png"]
@@ -99,6 +105,8 @@ reqwest = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 same-file = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+similar = { workspace = true, optional = true }
 thiserror.workspace = true
 tokio = { workspace = true, optional = true, features = ["rt", "time"] }
 url = { workspace = true, optional = true }
@@ -199,6 +207,10 @@ required-features = ["ascii"]
 [[test]]
 name = "svg_smoke"
 required-features = ["svg"]
+
+[[test]]
+name = "fix_cli"
+required-features = ["analysis"]
 
 [[test]]
 name = "jpeg_smoke"

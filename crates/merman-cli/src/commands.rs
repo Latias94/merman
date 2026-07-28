@@ -18,15 +18,17 @@ use crate::cli::{AnalysisCliArgs, LintOutputFormat, LintRuleSeverityOverride, Li
 #[cfg(feature = "analysis")]
 use crate::config::{runtime_policy_for, site_config_for};
 #[cfg(feature = "analysis")]
+use crate::diagnostics::DiagnosticSink;
+#[cfg(feature = "analysis")]
+use crate::fix::{FixCatalog, FixPlanError, FixSelection};
+#[cfg(feature = "analysis")]
 use crate::input::{InputReadError, ObservedSize};
 #[cfg(feature = "analysis")]
-use crate::io::{read_primary_input, write_file};
+use crate::io::{read_fix_source, read_primary_input, write_file, write_file_verified};
 #[cfg(feature = "analysis")]
 use merman_analysis::document::analyze_document;
 #[cfg(feature = "analysis")]
-use merman_analysis::{
-    AnalysisPayload, AnalysisRuleConfig, Analyzer, DiagnosticFixEdit, SourceDescriptor,
-};
+use merman_analysis::{AnalysisPayload, AnalysisRuleConfig, Analyzer, SourceDescriptor};
 #[cfg(feature = "analysis")]
 use std::fmt::Write as _;
 use std::path::Path;
@@ -212,33 +214,92 @@ fn run_fix(
     args: ResolvedFix,
     publications: &crate::output::PublicationGuards,
 ) -> Result<i32, CliError> {
-    use crate::invocation::ResolvedFixDestination;
+    use crate::invocation::ResolvedFixMode;
 
     let source = analysis_source_for(&args.input, args.stdin_file_name.as_deref(), &args.analysis);
     let max_source_bytes = source_limit(&args.resources);
-    let text =
-        read_analysis_input(&args.input, max_source_bytes).map_err(CliError::primary_input)?;
+    let input_limit = source_input_limit(max_source_bytes);
+    let acquired = read_fix_source(&args.input, input_limit).map_err(CliError::primary_input)?;
+    let text = acquired.text();
     let analyzer = analyzer_for(
         &args.analysis,
         source.clone(),
         max_source_bytes,
         &args.resources,
     )?;
-    let payload = analyze_document(&text, &analyzer, source.clone());
-    let fixed = apply_diagnostic_fixes(&text, &payload, args.all)?;
+    let payload = analyze_document(text, &analyzer, source);
+    let catalog = FixCatalog::build(text, &payload.diagnostics).map_err(map_fix_plan_error)?;
+    let source_label = fix_source_label(&args);
+    let selection = FixSelection {
+        rule_ids: args.selectors.rules,
+        fix_ids: args.selectors.fixes,
+    };
+    let plan = catalog.plan(&selection).map_err(map_fix_plan_error)?;
+    let sink = DiagnosticSink::new(args.quiet);
+    for conflict in plan.skipped_conflicts() {
+        sink.info(format!(
+            "skipped rule `{}` fix `{}` because it conflicts with selected fix `{}`",
+            conflict.rule_id, conflict.fix_id, conflict.conflicting_fix_id
+        ));
+    }
+    let fixed = plan.apply(text).map_err(map_fix_plan_error)?;
+    let changed = fixed.as_bytes() != text.as_bytes();
 
-    match &args.destination {
-        ResolvedFixDestination::Stdout => write_stdout(fixed.as_bytes())?,
-        ResolvedFixDestination::Output(path) => {
+    match &args.mode {
+        ResolvedFixMode::Stdout => write_stdout(fixed.as_bytes())?,
+        ResolvedFixMode::Check => return Ok(i32::from(changed)),
+        ResolvedFixMode::Diff => {
+            if changed {
+                write_stdout(unified_fix_diff(text, &fixed, &source_label).as_bytes())?;
+            }
+            return Ok(i32::from(changed));
+        }
+        ResolvedFixMode::Output(path) => {
             write_file(path, fixed.as_bytes(), publications)?;
         }
-        ResolvedFixDestination::WriteInput(path) => {
-            write_file(path, fixed.as_bytes(), publications)?;
+        ResolvedFixMode::WriteInput(path) => {
+            if changed {
+                write_file_verified(path, fixed.as_bytes(), publications, |approved_path| {
+                    acquired.verify_unchanged(approved_path)
+                })?;
+            }
         }
     }
 
-    let after = analyze_document(&fixed, &analyzer, source);
-    Ok(i32::from(!after.valid))
+    Ok(0)
+}
+
+#[cfg(feature = "analysis")]
+fn map_fix_plan_error(error: FixPlanError) -> CliError {
+    if error.is_selection_error() {
+        CliError::InvalidInput(error.to_string())
+    } else {
+        CliError::InvalidFixPlan(error.to_string())
+    }
+}
+
+#[cfg(feature = "analysis")]
+fn fix_source_label(args: &ResolvedFix) -> String {
+    args.input
+        .file()
+        .or(args.stdin_file_name.as_deref())
+        .map(|path| {
+            path.to_string_lossy()
+                .chars()
+                .flat_map(char::escape_debug)
+                .collect()
+        })
+        .unwrap_or_else(|| "stdin".to_string())
+}
+
+#[cfg(feature = "analysis")]
+fn unified_fix_diff(source: &str, fixed: &str, label: &str) -> String {
+    let old = format!("a/{label}");
+    let new = format!("b/{label}");
+    similar::TextDiff::from_lines(source, fixed)
+        .unified_diff()
+        .header(&old, &new)
+        .to_string()
 }
 
 #[cfg(feature = "analysis")]
@@ -459,130 +520,4 @@ fn is_markdown_input(input: Option<&Path>) -> bool {
     input
         .map(merman_analysis::markdown::is_markdown_path)
         .unwrap_or(false)
-}
-
-#[cfg(feature = "analysis")]
-fn apply_diagnostic_fixes(
-    text: &str,
-    payload: &AnalysisPayload,
-    apply_all: bool,
-) -> Result<String, CliError> {
-    let fixes = payload.diagnostics.iter().flat_map(|diagnostic| {
-        if apply_all {
-            diagnostic.fixes.iter().collect::<Vec<_>>()
-        } else {
-            diagnostic
-                .fixes
-                .iter()
-                .find(|fix| fix.is_preferred)
-                .or_else(|| diagnostic.fixes.first())
-                .into_iter()
-                .collect()
-        }
-    });
-    let edits = fixes.flat_map(|fix| fix.edits.iter()).collect::<Vec<_>>();
-    apply_fix_edits(text, edits)
-}
-
-#[cfg(feature = "analysis")]
-fn apply_fix_edits(text: &str, edits: Vec<&DiagnosticFixEdit>) -> Result<String, CliError> {
-    let mut edits = edits;
-    edits.sort_by_key(|edit| (edit.span.byte_start, edit.span.byte_end));
-
-    let mut previous_end = 0;
-    for edit in &edits {
-        let start = edit.span.byte_start;
-        let end = edit.span.byte_end;
-        if start > end
-            || end > text.len()
-            || !text.is_char_boundary(start)
-            || !text.is_char_boundary(end)
-        {
-            return Err(CliError::InvalidInput(
-                "diagnostic fix contains an invalid UTF-8 byte range".to_string(),
-            ));
-        }
-        if start < previous_end {
-            return Err(CliError::InvalidInput(
-                "selected diagnostic fixes overlap; choose a narrower fix set".to_string(),
-            ));
-        }
-        previous_end = end;
-    }
-
-    let mut result = text.to_string();
-    for edit in edits.into_iter().rev() {
-        result.replace_range(edit.span.byte_start..edit.span.byte_end, &edit.replacement);
-    }
-    Ok(result)
-}
-
-#[cfg(all(test, feature = "analysis"))]
-mod tests {
-    use super::*;
-    use merman_analysis::{
-        AnalysisDiagnostic, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan,
-        LspRange, SourceDescriptor, Utf16Position,
-    };
-
-    fn span(start: usize, end: usize) -> DiagnosticSpan {
-        DiagnosticSpan {
-            byte_start: start,
-            byte_end: end,
-            line: 1,
-            column: start + 1,
-            end_line: 1,
-            end_column: end + 1,
-            lsp_range: LspRange::new(
-                Utf16Position {
-                    line: 0,
-                    character: start,
-                },
-                Utf16Position {
-                    line: 0,
-                    character: end,
-                },
-            ),
-        }
-    }
-
-    #[test]
-    fn diagnostic_fix_application_rejects_overlapping_edits() {
-        let edits = [
-            DiagnosticFixEdit::new(span(0, 2), "A"),
-            DiagnosticFixEdit::new(span(1, 3), "B"),
-        ];
-        let error = apply_fix_edits("abcd", edits.iter().collect()).expect_err("overlap");
-        assert!(error.to_string().contains("overlap"));
-    }
-
-    #[test]
-    fn diagnostic_fix_application_uses_byte_ranges_without_shifting_later_edits() {
-        let edits = [
-            DiagnosticFixEdit::new(span(0, 1), "first"),
-            DiagnosticFixEdit::new(span(4, 5), "second"),
-        ];
-        assert_eq!(
-            apply_fix_edits("a中b", edits.iter().collect()).expect("apply edits"),
-            "first中second"
-        );
-    }
-
-    #[test]
-    fn default_fix_selection_prefers_preferred_fix_per_diagnostic() {
-        let diagnostic = AnalysisDiagnostic::error("test", DiagnosticCategory::Parse, "test")
-            .with_fix(DiagnosticFix::new(
-                "fallback",
-                vec![DiagnosticFixEdit::new(span(0, 1), "x")],
-            ))
-            .with_fix(
-                DiagnosticFix::new("preferred", vec![DiagnosticFixEdit::new(span(0, 1), "y")])
-                    .preferred(),
-            );
-        let payload = AnalysisPayload::new(SourceDescriptor::diagram(), vec![diagnostic]);
-        assert_eq!(
-            apply_diagnostic_fixes("a", &payload, false).expect("apply preferred fix"),
-            "y"
-        );
-    }
 }

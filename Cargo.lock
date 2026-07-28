@@ -2287,6 +2287,8 @@ dependencies = [
  "same-file",
  "serde",
  "serde_json",
+ "sha2",
+ "similar",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -3888,6 +3890,15 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "similar"
+version = "3.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6505efef05804732ed8a3f2d4f279429eb485bd69d5b0cc6b19cc02005cda16"
+dependencies = [
+ "bstr",
+]
 
 [[package]]
 name = "simplecss"

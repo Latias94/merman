@@ -36,6 +36,8 @@ use crate::cli::{TextCharset, TextColorMode, TextDirection, TextOutputCliArgs};
 use crate::error::CliError;
 use crate::resources::ResolvedResourcePolicy;
 use merman::runtime::RuntimePolicy;
+#[cfg(feature = "analysis")]
+use std::collections::BTreeSet;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -124,18 +126,28 @@ pub(crate) struct ResolvedLint {
 pub(crate) struct ResolvedFix {
     pub(crate) input: ResolvedInput,
     pub(crate) stdin_file_name: Option<PathBuf>,
-    pub(crate) destination: ResolvedFixDestination,
-    pub(crate) all: bool,
+    pub(crate) mode: ResolvedFixMode,
+    pub(crate) selectors: FixSelectors,
+    pub(crate) quiet: bool,
     pub(crate) analysis: crate::cli::AnalysisCliArgs,
     pub(crate) resources: ResolvedResourcePolicy,
 }
 
 #[cfg(feature = "analysis")]
 #[derive(Debug)]
-pub(crate) enum ResolvedFixDestination {
+pub(crate) enum ResolvedFixMode {
     Stdout,
+    Check,
+    Diff,
     Output(PathBuf),
     WriteInput(PathBuf),
+}
+
+#[cfg(feature = "analysis")]
+#[derive(Debug)]
+pub(crate) struct FixSelectors {
+    pub(crate) rules: BTreeSet<String>,
+    pub(crate) fixes: BTreeSet<crate::fix::FixId>,
 }
 
 #[cfg(all(feature = "svg", feature = "markdown"))]
@@ -478,7 +490,19 @@ fn normalize_lint(args: LintArgs, facts: &InvocationFacts) -> Result<ResolvedLin
 
 #[cfg(feature = "analysis")]
 fn normalize_fix(args: FixArgs, facts: &InvocationFacts) -> Result<ResolvedFix, CliError> {
-    validate_analysis_args(&args.analysis)?;
+    let mut analysis = args.analysis;
+    if analysis.lint_profile.is_none() {
+        analysis.lint_profile = Some(merman_analysis::AnalysisRuleProfile::Recommended);
+    }
+    for rule_id in &args.rules {
+        analysis
+            .disable_rules
+            .retain(|disabled| disabled != rule_id);
+        if !analysis.enable_rules.contains(rule_id) {
+            analysis.enable_rules.push(rule_id.clone());
+        }
+    }
+    validate_analysis_args(&analysis)?;
     let input = resolve_native_input_with_named_stdin(
         args.input,
         facts.stdin_is_terminal,
@@ -486,24 +510,38 @@ fn normalize_fix(args: FixArgs, facts: &InvocationFacts) -> Result<ResolvedFix, 
         args.stdin_file_name.is_some(),
     )?;
     validate_stdin_file_name(&input, args.stdin_file_name.as_deref())?;
-    let destination = if args.write {
+    let mode = if args.check {
+        ResolvedFixMode::Check
+    } else if args.diff {
+        ResolvedFixMode::Diff
+    } else if args.write {
         let Some(path) = input.file() else {
             return Err(CliError::InvalidInput(
                 "--write requires a file input, not stdin".to_string(),
             ));
         };
-        ResolvedFixDestination::WriteInput(path.to_path_buf())
+        ResolvedFixMode::WriteInput(path.to_path_buf())
     } else if let Some(path) = args.output {
-        ResolvedFixDestination::Output(path)
+        if path == Path::new("-") {
+            return Err(CliError::InvalidInput(
+                "`--output -` is ambiguous; omit `--output` to write fixed source to stdout"
+                    .to_string(),
+            ));
+        }
+        ResolvedFixMode::Output(path)
     } else {
-        ResolvedFixDestination::Stdout
+        ResolvedFixMode::Stdout
     };
     Ok(ResolvedFix {
         input,
         stdin_file_name: args.stdin_file_name,
-        destination,
-        all: args.all,
-        analysis: args.analysis,
+        mode,
+        selectors: FixSelectors {
+            rules: args.rules.into_iter().collect(),
+            fixes: args.fixes.into_iter().collect(),
+        },
+        quiet: args.quiet,
+        analysis,
         resources: resolve_resource_policy(args.resources)?,
     })
 }

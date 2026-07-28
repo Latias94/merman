@@ -5,6 +5,8 @@ mod commands;
 mod config;
 mod diagnostics;
 mod error;
+#[cfg(feature = "analysis")]
+mod fix;
 mod input;
 mod invocation;
 mod io;

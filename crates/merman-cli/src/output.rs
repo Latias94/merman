@@ -325,7 +325,7 @@ fn preflight_fix(
     cwd: &Path,
     publications: &mut PublicationGuards,
 ) -> Result<Vec<ProtectedInput>, CliError> {
-    use crate::invocation::ResolvedFixDestination;
+    use crate::invocation::ResolvedFixMode;
 
     let mut inputs = Vec::new();
     if let Some(path) = args.input.file() {
@@ -345,9 +345,9 @@ fn preflight_fix(
         )?);
     }
 
-    match &mut args.destination {
-        ResolvedFixDestination::Stdout => {}
-        ResolvedFixDestination::Output(target) => {
+    match &mut args.mode {
+        ResolvedFixMode::Stdout | ResolvedFixMode::Check | ResolvedFixMode::Diff => {}
+        ResolvedFixMode::Output(target) => {
             if args.input.file().is_some_and(|input| input == target) {
                 return Err(CliError::InvalidOutput(format!(
                     "fix output {} aliases the primary input; use --write for in-place fixes",
@@ -357,7 +357,7 @@ fn preflight_fix(
             let target = preflight_file_target(target, cwd, &inputs, MissingParent::Reject)?;
             publications.approve_exact(target)?;
         }
-        ResolvedFixDestination::WriteInput(target) => {
+        ResolvedFixMode::WriteInput(target) => {
             let primary = inputs.first().ok_or_else(|| {
                 CliError::InvalidInput("--write requires a file input, not stdin".to_string())
             })?;
@@ -1132,6 +1132,16 @@ pub(crate) fn publish_atomic_file(
     publish_with_backend(path, bytes, publications, &SystemAtomicBackend)
 }
 
+#[cfg(feature = "analysis")]
+pub(crate) fn publish_atomic_file_verified(
+    path: &Path,
+    bytes: &[u8],
+    publications: &PublicationGuards,
+    verify: impl FnMut(&Path) -> Result<(), CliError>,
+) -> Result<(), CliError> {
+    publish_with_backend_and_verifier(path, bytes, publications, &SystemAtomicBackend, verify)
+}
+
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 trait AtomicBackend {
     type Stage: Write;
@@ -1178,6 +1188,17 @@ fn publish_with_backend<B: AtomicBackend>(
     publications: &PublicationGuards,
     backend: &B,
 ) -> Result<(), CliError> {
+    publish_with_backend_and_verifier(path, bytes, publications, backend, |_| Ok(()))
+}
+
+#[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
+fn publish_with_backend_and_verifier<B: AtomicBackend>(
+    path: &Path,
+    bytes: &[u8],
+    publications: &PublicationGuards,
+    backend: &B,
+    mut verify: impl FnMut(&Path) -> Result<(), CliError>,
+) -> Result<(), CliError> {
     let approved = publications.publication_for(path)?;
     verify_publication_target(&approved, &publications.protected)?;
 
@@ -1190,6 +1211,12 @@ fn publish_with_backend<B: AtomicBackend>(
     stage
         .write_all(bytes)
         .map_err(|source| CliError::file(FileOperation::WriteAtomicStaging, path, source))?;
+    publications.verify()?;
+    verify_publication_target(&approved, &publications.protected)?;
+    backend
+        .verify_parent(&stage, &approved.path, &approved.parent_identity)
+        .map_err(|source| CliError::file(FileOperation::VerifyPublication, path, source))?;
+    verify(&approved.path)?;
     publications.verify()?;
     verify_publication_target(&approved, &publications.protected)?;
     backend
@@ -1662,6 +1689,42 @@ mod tests {
             }
         ));
         assert_eq!(std::fs::read(&target).unwrap(), b"concurrent replacement");
+    }
+
+    #[test]
+    fn mutation_after_custom_verification_is_rechecked_before_commit() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("output.svg");
+        std::fs::write(&target, b"acquired output").unwrap();
+        let mut guards = PublicationGuards::new(directory.path());
+        let target_guard =
+            preflight_file_target(&target, directory.path(), &[], MissingParent::Reject).unwrap();
+        guards.approve_exact(target_guard).unwrap();
+
+        let error = publish_with_backend_and_verifier(
+            &target,
+            b"our replacement",
+            &guards,
+            &SystemAtomicBackend,
+            |approved| {
+                std::fs::remove_file(approved).unwrap();
+                std::fs::write(approved, b"mutation after snapshot comparison").unwrap();
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CliError::File {
+                operation: FileOperation::VerifyPublication,
+                ..
+            }
+        ));
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            b"mutation after snapshot comparison"
+        );
     }
 
     #[cfg(unix)]

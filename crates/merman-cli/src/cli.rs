@@ -207,22 +207,61 @@ pub(crate) struct FixArgs {
     )]
     pub(crate) stdin_file_name: Option<PathBuf>,
 
-    /// Write the result back to the input file instead of stdout.
-    #[arg(long, conflicts_with = "output", help_heading = "Output")]
+    /// Exit 1 when the selected fixes would change the source.
+    #[arg(
+        long,
+        conflicts_with_all = ["diff", "write", "output"],
+        help_heading = "Output"
+    )]
+    pub(crate) check: bool,
+
+    /// Print a unified diff and exit 1 when the source would change.
+    #[arg(
+        long,
+        conflicts_with_all = ["check", "write", "output"],
+        help_heading = "Output"
+    )]
+    pub(crate) diff: bool,
+
+    /// Write the result back to the input file.
+    #[arg(
+        long,
+        conflicts_with_all = ["check", "diff", "output"],
+        help_heading = "Output"
+    )]
     pub(crate) write: bool,
 
     /// Write the result to this file instead of stdout.
     #[arg(
         short = 'o',
         long,
+        conflicts_with_all = ["check", "diff", "write"],
         value_hint = ValueHint::FilePath,
         help_heading = "Output"
     )]
     pub(crate) output: Option<PathBuf>,
 
-    /// Apply every non-conflicting fix instead of one preferred fix per diagnostic.
-    #[arg(long, help_heading = "Fix selection")]
-    pub(crate) all: bool,
+    /// Restrict fixes to this fixable lint rule id. Can be repeated.
+    #[arg(
+        long = "rule",
+        value_name = "RULE_ID",
+        value_parser = parse_fix_rule_id,
+        help_heading = "Fix selection"
+    )]
+    pub(crate) rules: Vec<String>,
+
+    /// Select an exact stable fix id. Can be repeated.
+    #[arg(
+        long = "fix",
+        value_name = "STABLE_FIX_ID",
+        value_parser = parse_fix_id,
+        help_heading = "Fix selection"
+    )]
+    pub(crate) fixes: Vec<crate::fix::FixId>,
+
+    /// Suppress non-error fix selection diagnostics.
+    #[arg(short = 'q', long, help_heading = "Output")]
+    pub(crate) quiet: bool,
 
     #[command(flatten)]
     pub(crate) analysis: AnalysisCliArgs,
@@ -1425,6 +1464,26 @@ fn parse_lint_rule_id(value: &str) -> Result<String, String> {
         ));
     }
     Ok(value.to_string())
+}
+
+#[cfg(feature = "analysis")]
+fn parse_fix_rule_id(value: &str) -> Result<String, String> {
+    let Some(descriptor) = configurable_rule_descriptor(value) else {
+        return Err(format!(
+            "unknown or non-configurable lint rule id `{value}`"
+        ));
+    };
+    if !descriptor.fixable {
+        return Err(format!("lint rule `{value}` does not provide fixes"));
+    }
+    Ok(value.to_string())
+}
+
+#[cfg(feature = "analysis")]
+fn parse_fix_id(value: &str) -> Result<crate::fix::FixId, String> {
+    value
+        .parse::<crate::fix::FixId>()
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(feature = "analysis")]
