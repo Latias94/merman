@@ -53,6 +53,39 @@
       ]
     },
     {
+      "id": "binding-request-version-only-memory",
+      "kind": "public",
+      "owner": "merman-bindings-core",
+      "public_operation": "binding-execute-operation-semantic-json",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "fresh-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-system-allocator-subprocess",
+      "required_features": ["analysis", "ascii", "svg"],
+      "selector": "memory/request_version_only/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 2, 4, 10, 32, 100],
+      "workload": "binding-semantic-info-analysis-ascii-svg-version-only-operation-calls-v1",
+      "evidence_contract": "docs/performance/contracts/binding-request-version-only-memory-v2.json",
+      "measurement_metrics": [
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "kind",
+        "operation_id",
+        "media_type",
+        "result_data_bytes",
+        "result_metadata_bytes",
+        "result_data_sha256",
+        "result_metadata_sha256",
+        "operation_calls"
+      ]
+    },
+    {
       "id": "binding-analysis-ascii-svg-request-resource-override",
       "kind": "public",
       "owner": "merman-bindings-core",

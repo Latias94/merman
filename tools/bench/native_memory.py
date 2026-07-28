@@ -16,7 +16,7 @@ MEMORY_SCALES = (1, 2, 4, 10, 32, 100)
 MIN_REPEATS = 5
 MAX_BOOTSTRAP_RESAMPLES = 100_000
 
-_PROTOCOL_FIELDS = frozenset(
+_COMMON_PROTOCOL_FIELDS = frozenset(
     {
         "schema_version",
         "lane_id",
@@ -33,10 +33,6 @@ _PROTOCOL_FIELDS = frozenset(
         "invocation_id",
         "nonce",
         "output_sha256",
-        "output_width",
-        "output_height",
-        "input_nodes",
-        "input_edges",
         "snapshot_live_bytes",
         "allocation_count",
         "allocated_bytes",
@@ -47,6 +43,18 @@ _PROTOCOL_FIELDS = frozenset(
         "counter_underflowed",
     }
 )
+_PROTOCOL_FIELDS_BY_SCHEMA = {
+    1: _COMMON_PROTOCOL_FIELDS
+    | frozenset(
+        {
+            "output_width",
+            "output_height",
+            "input_nodes",
+            "input_edges",
+        }
+    ),
+    2: _COMMON_PROTOCOL_FIELDS | frozenset({"workload_units", "semantic_output"}),
+}
 _ECHO_FIELDS = (
     "lane_id",
     "public_operation",
@@ -163,22 +171,161 @@ def _require_lowercase_hex(value: object, *, field: str, length: int) -> str:
     return value
 
 
+def _type_sensitive_json_equal(actual: object, expected: object) -> bool:
+    if isinstance(actual, Mapping) and isinstance(expected, Mapping):
+        return set(actual) == set(expected) and all(
+            _type_sensitive_json_equal(actual[key], expected[key]) for key in actual
+        )
+    if isinstance(actual, list) and isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            _type_sensitive_json_equal(left, right)
+            for left, right in zip(actual, expected, strict=True)
+        )
+    return type(actual) is type(expected) and actual == expected
+
+
+def _validate_json_contract_value(value: object, *, context: str) -> None:
+    if value is None or isinstance(value, (str, bool, int)):
+        return
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise MemoryContractError(f"{context} must not contain non-finite numbers")
+        return
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            if not isinstance(key, str) or not key:
+                raise MemoryContractError(f"{context} object keys must be non-empty strings")
+            _validate_json_contract_value(nested, context=f"{context}.{key}")
+        return
+    if isinstance(value, list):
+        for index, nested in enumerate(value):
+            _validate_json_contract_value(nested, context=f"{context}[{index}]")
+        return
+    raise MemoryContractError(f"{context} contains a non-JSON value")
+
+
+def validate_semantic_response_contract(
+    semantic_contract: Mapping[str, object],
+    *,
+    semantic_output_dimensions: Sequence[str] | None = None,
+) -> str:
+    """Validate the declarative schema-v2 semantic response contract."""
+
+    contract_fields = frozenset(
+        {
+            "scale_field",
+            "operation_output_sha256",
+            "zero_output_sha256",
+            "operation",
+            "zero",
+        }
+    )
+    if frozenset(semantic_contract) != contract_fields:
+        raise MemoryContractError("semantic response contract fields differ")
+
+    scale_field = semantic_contract["scale_field"]
+    if not isinstance(scale_field, str) or not scale_field.strip():
+        raise MemoryContractError("semantic response scale_field must be non-empty")
+    operation = semantic_contract["operation"]
+    zero = semantic_contract["zero"]
+    if not isinstance(operation, Mapping) or not isinstance(zero, Mapping):
+        raise MemoryContractError("semantic response operation/zero values must be objects")
+    if not operation or set(operation) != set(zero) or scale_field in operation:
+        raise MemoryContractError(
+            "semantic response operation/zero fields must match and exclude scale_field"
+        )
+    for mode, fixed in (("operation", operation), ("zero", zero)):
+        _validate_json_contract_value(fixed, context=f"semantic_response.{mode}")
+
+    _require_lowercase_hex(
+        semantic_contract["operation_output_sha256"],
+        field="semantic_response.operation_output_sha256",
+        length=64,
+    )
+    zero_digest = _require_lowercase_hex(
+        semantic_contract["zero_output_sha256"],
+        field="semantic_response.zero_output_sha256",
+        length=64,
+    )
+    if zero_digest != hashlib.sha256(b"").hexdigest():
+        raise MemoryContractError("zero semantic response digest must identify empty output")
+
+    if semantic_output_dimensions is not None:
+        expected_dimensions = set(operation) | {scale_field}
+        if set(semantic_output_dimensions) != expected_dimensions:
+            raise MemoryContractError(
+                "semantic response fields differ from lane semantic_output_dimensions"
+            )
+    return scale_field
+
+
+def _validate_semantic_output(
+    payload: Mapping[str, object],
+    *,
+    semantic_contract: Mapping[str, object],
+    workload_units_per_scale: int,
+) -> None:
+    if (
+        isinstance(workload_units_per_scale, bool)
+        or not isinstance(workload_units_per_scale, int)
+        or workload_units_per_scale <= 0
+    ):
+        raise MemoryContractError("workload_units_per_scale must be a positive integer")
+
+    scale_field = validate_semantic_response_contract(semantic_contract)
+    operation = semantic_contract["operation"]
+    zero = semantic_contract["zero"]
+    assert isinstance(operation, Mapping)
+    assert isinstance(zero, Mapping)
+
+    operation_digest = _require_lowercase_hex(
+        semantic_contract["operation_output_sha256"],
+        field="semantic_response.operation_output_sha256",
+        length=64,
+    )
+    zero_digest = str(semantic_contract["zero_output_sha256"])
+
+    scale = int(payload["scale"])
+    expected_workload_units = scale * workload_units_per_scale
+    if payload["workload_units"] != expected_workload_units:
+        raise MemoryContractError("workload_units differ from the registered scale contract")
+    mode = str(payload["mode"])
+    fixed = operation if mode == "operation" else zero
+    expected_semantic = {
+        **fixed,
+        scale_field: expected_workload_units if mode == "operation" else 0,
+    }
+    if not _type_sensitive_json_equal(payload["semantic_output"], expected_semantic):
+        raise MemoryContractError("semantic output differs from the owner contract")
+    expected_digest = operation_digest if mode == "operation" else zero_digest
+    if payload["output_sha256"] != expected_digest:
+        raise MemoryContractError("output_sha256 differs from the owner contract")
+
+
 def _validate_payload(
     payload: Mapping[str, object],
     *,
     expected: Mapping[str, object] | None,
     validate_peak_invariants: bool = True,
+    semantic_contract: Mapping[str, object] | None = None,
+    workload_units_per_scale: int | None = None,
+    require_semantic_contract: bool = False,
 ) -> dict[str, object]:
+    raw_schema_version = payload.get("schema_version")
+    if isinstance(raw_schema_version, bool) or not isinstance(raw_schema_version, int):
+        raise MemoryContractError("schema_version must be an integer")
+    protocol_fields = _PROTOCOL_FIELDS_BY_SCHEMA.get(raw_schema_version)
+    if protocol_fields is None:
+        raise MemoryContractError("unsupported native-memory schema_version")
     fields = frozenset(payload)
-    if fields != _PROTOCOL_FIELDS:
-        missing = sorted(_PROTOCOL_FIELDS - fields)
-        unknown = sorted(fields - _PROTOCOL_FIELDS)
+    if fields != protocol_fields:
+        missing = sorted(protocol_fields - fields)
+        unknown = sorted(fields - protocol_fields)
         raise MemoryContractError(
             f"protocol fields differ: missing={missing}, unknown={unknown}"
         )
 
-    if _require_int(payload, "schema_version", minimum=1) != 1:
-        raise MemoryContractError("unsupported native-memory schema_version")
+    schema_version = _require_int(payload, "schema_version", minimum=1)
 
     lane_id = payload["lane_id"]
     if not isinstance(lane_id, str) or not lane_id.strip():
@@ -196,10 +343,29 @@ def _validate_payload(
     _require_int(payload, "seed", minimum=0)
     _require_int(payload, "repeat", minimum=0)
     _require_int(payload, "pid", minimum=1)
-    _require_int(payload, "input_nodes", minimum=0)
-    _require_int(payload, "input_edges", minimum=0)
-    _require_finite_nonnegative_number(payload, "output_width")
-    _require_finite_nonnegative_number(payload, "output_height")
+    if schema_version == 1:
+        _require_int(payload, "input_nodes", minimum=0)
+        _require_int(payload, "input_edges", minimum=0)
+        _require_finite_nonnegative_number(payload, "output_width")
+        _require_finite_nonnegative_number(payload, "output_height")
+        if semantic_contract is not None or workload_units_per_scale is not None:
+            raise MemoryContractError("schema version 1 cannot use a semantic response contract")
+    else:
+        _require_int(payload, "workload_units", minimum=1)
+        semantic_output = payload["semantic_output"]
+        if not isinstance(semantic_output, Mapping) or not semantic_output:
+            raise MemoryContractError("semantic_output must be a non-empty object")
+        if semantic_contract is None or workload_units_per_scale is None:
+            if require_semantic_contract:
+                raise MemoryContractError(
+                    "schema version 2 requires an owner semantic response contract"
+                )
+        else:
+            _validate_semantic_output(
+                payload,
+                semantic_contract=semantic_contract,
+                workload_units_per_scale=workload_units_per_scale,
+            )
     for field in _COUNTER_FIELDS:
         _require_int(payload, field, minimum=0)
 
@@ -262,12 +428,20 @@ def validate_response(
     stderr: str,
     *,
     expected: Mapping[str, object],
+    semantic_contract: Mapping[str, object] | None = None,
+    workload_units_per_scale: int | None = None,
 ) -> dict[str, object]:
     """Validate one completed subprocess response and its request echo."""
 
     if not isinstance(stderr, str) or stderr:
         raise MemoryContractError("native-memory subprocess wrote to stderr")
-    return _validate_payload(strict_json_line(stdout), expected=expected)
+    return _validate_payload(
+        strict_json_line(stdout),
+        expected=expected,
+        semantic_contract=semantic_contract,
+        workload_units_per_scale=workload_units_per_scale,
+        require_semantic_contract=True,
+    )
 
 
 def _paired_sample_index(
@@ -287,6 +461,8 @@ def _paired_sample_index(
     nonces: set[str] = set()
     lane_id: str | None = None
     executable_sha256: str | None = None
+    protocol_schema_version: int | None = None
+    lane_contract: tuple[object, ...] | None = None
 
     for raw_sample in samples:
         if not isinstance(raw_sample, Mapping):
@@ -324,6 +500,8 @@ def _paired_sample_index(
 
         current_lane = str(sample["lane_id"])
         current_digest = str(sample["executable_sha256"])
+        current_schema_version = int(sample["schema_version"])
+        current_lane_contract = tuple(sample[field] for field in _ECHO_FIELDS[1:5])
         if lane_id is None:
             lane_id = current_lane
         elif lane_id != current_lane:
@@ -332,6 +510,14 @@ def _paired_sample_index(
             executable_sha256 = current_digest
         elif executable_sha256 != current_digest:
             raise MemoryContractError("sample executable digest changed within the matrix")
+        if protocol_schema_version is None:
+            protocol_schema_version = current_schema_version
+        elif protocol_schema_version != current_schema_version:
+            raise MemoryContractError("sample matrix contains multiple protocol schemas")
+        if lane_contract is None:
+            lane_contract = current_lane_contract
+        elif lane_contract != current_lane_contract:
+            raise MemoryContractError("sample lane lifecycle contract changed within the matrix")
 
         repeat_slot = (scale, repeat)
         prior_seed = repeat_seeds.setdefault(repeat_slot, seed)
@@ -353,30 +539,51 @@ def _paired_sample_index(
             raise MemoryContractError(
                 f"unmatched operation/zero pair for scale={scale}, seed={seed}, repeat={repeat}"
             )
-        for field in ("input_nodes", "input_edges"):
-            if pair["operation"][field] != pair["zero"][field]:
-                raise MemoryContractError(
-                    f"paired operation/zero input evidence differs for {field}"
-                )
+        schema_version = int(pair["operation"]["schema_version"])
+        if schema_version == 1:
+            for field in ("input_nodes", "input_edges"):
+                if pair["operation"][field] != pair["zero"][field]:
+                    raise MemoryContractError(
+                        f"paired operation/zero input evidence differs for {field}"
+                    )
+        elif pair["operation"]["workload_units"] != pair["zero"]["workload_units"]:
+            raise MemoryContractError(
+                "paired operation/zero workload_units evidence differs"
+            )
 
         zero = pair["zero"]
-        if (
-            zero["output_sha256"] != hashlib.sha256(b"").hexdigest()
-            or float(zero["output_width"]) != 0.0
-            or float(zero["output_height"]) != 0.0
-        ):
+        zero_output_is_empty = zero["output_sha256"] == hashlib.sha256(b"").hexdigest()
+        if schema_version == 1:
+            zero_output_is_empty = (
+                zero_output_is_empty
+                and float(zero["output_width"]) == 0.0
+                and float(zero["output_height"]) == 0.0
+            )
+        if not zero_output_is_empty:
             raise MemoryContractError("zero-work output signature is not empty")
 
-    operation_signatures: dict[int, tuple[object, object, object, object, object]] = {}
+    operation_signatures: dict[int, tuple[object, ...]] = {}
     for (scale, _seed, _repeat), pair in sorted(pairs.items()):
         operation = pair["operation"]
-        signature = (
-            operation["output_sha256"],
-            operation["output_width"],
-            operation["output_height"],
-            operation["input_nodes"],
-            operation["input_edges"],
-        )
+        if int(operation["schema_version"]) == 1:
+            signature = (
+                operation["output_sha256"],
+                operation["output_width"],
+                operation["output_height"],
+                operation["input_nodes"],
+                operation["input_edges"],
+            )
+        else:
+            signature = (
+                operation["output_sha256"],
+                operation["workload_units"],
+                json.dumps(
+                    operation["semantic_output"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ),
+            )
         previous = operation_signatures.setdefault(scale, signature)
         if previous != signature:
             raise MemoryContractError(

@@ -31,6 +31,10 @@ else:
 MEMORY_SCALES = (1, 2, 4, 10, 32, 100)
 EXECUTABLE_SHA256 = "a" * 64
 OUTPUT_SHA256 = "c" * 64
+EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
+BINDING_DATA_SHA256 = "471b942eb8877b2ee7c38b86567b13f79fba101df1e5b4767b3421a200e0ad3f"
+BINDING_METADATA_SHA256 = "5662eba44530c1a9bf01f352dd84496fb368c9522757c479f735526d200a9e29"
+BINDING_OUTPUT_SHA256 = "5c5a3cdbe1f692c630006b4c365f348d93d8afd6ea99ecf45d8d2e10524acf53"
 
 
 def protocol_response(
@@ -124,6 +128,76 @@ def expected_echo(payload: dict[str, object]) -> dict[str, object]:
             "invocation_id",
             "nonce",
         )
+    }
+
+
+def binding_semantic_contract() -> dict[str, object]:
+    return {
+        "scale_field": "operation_calls",
+        "operation_output_sha256": BINDING_OUTPUT_SHA256,
+        "zero_output_sha256": EMPTY_SHA256,
+        "operation": {
+            "kind": "binding-operation-result-v1",
+            "operation_id": "semantic-json",
+            "media_type": "application/json",
+            "result_data_bytes": 31,
+            "result_metadata_bytes": 126,
+            "result_data_sha256": BINDING_DATA_SHA256,
+            "result_metadata_sha256": BINDING_METADATA_SHA256,
+        },
+        "zero": {
+            "kind": "binding-operation-result-v1",
+            "operation_id": "semantic-json",
+            "media_type": "application/json",
+            "result_data_bytes": 0,
+            "result_metadata_bytes": 0,
+            "result_data_sha256": EMPTY_SHA256,
+            "result_metadata_sha256": EMPTY_SHA256,
+        },
+    }
+
+
+def binding_protocol_response(
+    *,
+    mode: str = "operation",
+    scale: int = 1,
+    repeat: int = 0,
+    pid: int = 30_000,
+) -> dict[str, object]:
+    zero = mode == "zero"
+    contract = binding_semantic_contract()
+    fixed = contract["zero" if zero else "operation"]
+    assert isinstance(fixed, dict)
+    invocation_id = f"binding-request-version-only-memory:{mode}:{scale}:101:{repeat}"
+    return {
+        "schema_version": 2,
+        "lane_id": "binding-request-version-only-memory",
+        "public_operation": "binding-execute-operation-semantic-json",
+        "process_lifecycle": "fresh-process",
+        "engine_lifecycle": "reused-engine",
+        "logical_operations_per_estimate": 1,
+        "mode": mode,
+        "scale": scale,
+        "seed": 101,
+        "repeat": repeat,
+        "pid": pid,
+        "executable_sha256": EXECUTABLE_SHA256,
+        "invocation_id": invocation_id,
+        "nonce": hashlib.sha256(invocation_id.encode("utf-8")).hexdigest()[:32],
+        "output_sha256": EMPTY_SHA256 if zero else BINDING_OUTPUT_SHA256,
+        "workload_units": scale,
+        "semantic_output": {
+            **fixed,
+            "operation_calls": 0 if zero else scale,
+        },
+        "snapshot_live_bytes": 400,
+        "allocation_count": 0 if zero else scale * 10,
+        "allocated_bytes": 0 if zero else scale * 1_000,
+        "live_bytes_after": 400,
+        "peak_live_bytes": 400 if zero else 400 + scale * 100,
+        "peak_growth_bytes": 0 if zero else scale * 100,
+        "counter_overflowed": False,
+        "counter_underflowed": False,
     }
 
 
@@ -263,6 +337,83 @@ class NativeMemoryProtocolContractsTest(unittest.TestCase):
         self.assertEqual(floating_sample["output_width"], 10.5)
         self.assertEqual(floating_sample["output_height"], 5.25)
 
+    def test_schema_v2_validates_owner_locked_binding_semantics(self) -> None:
+        validate = self.api("validate_response")
+        payload = binding_protocol_response(scale=10)
+
+        sample = validate(
+            json.dumps(payload) + "\n",
+            "",
+            expected=expected_echo(payload),
+            semantic_contract=binding_semantic_contract(),
+            workload_units_per_scale=1,
+        )
+
+        self.assertEqual(sample["workload_units"], 10)
+        self.assertEqual(sample["semantic_output"]["operation_calls"], 10)
+        self.assertEqual(
+            sample["semantic_output"]["result_data_sha256"],
+            BINDING_DATA_SHA256,
+        )
+
+    def test_schema_v2_rejects_semantic_drift_and_type_confusion(self) -> None:
+        validate = self.api("validate_response")
+        error = self.contract_error()
+        baseline = binding_protocol_response(scale=1)
+
+        mutations = (
+            lambda payload: payload["semantic_output"].__setitem__(  # type: ignore[union-attr]
+                "media_type", "text/plain"
+            ),
+            lambda payload: payload["semantic_output"].__setitem__(  # type: ignore[union-attr]
+                "operation_calls", True
+            ),
+            lambda payload: payload["semantic_output"].__setitem__(  # type: ignore[union-attr]
+                "operation_calls", 2
+            ),
+            lambda payload: payload["semantic_output"].__setitem__(  # type: ignore[union-attr]
+                "unexpected", "field"
+            ),
+            lambda payload: payload.__setitem__("workload_units", True),
+            lambda payload: payload.__setitem__("output_sha256", "b" * 64),
+        )
+        for mutate in mutations:
+            payload = json.loads(json.dumps(baseline))
+            mutate(payload)
+            with self.subTest(payload=payload), self.assertRaises(error):
+                validate(
+                    json.dumps(payload) + "\n",
+                    "",
+                    expected=expected_echo(baseline),
+                    semantic_contract=binding_semantic_contract(),
+                    workload_units_per_scale=1,
+                )
+
+    def test_schema_v2_pairs_generic_workload_evidence_without_svg_fields(self) -> None:
+        validate = self.api("validate_response")
+        adjust = self.api("paired_adjustments")
+        operation = binding_protocol_response(mode="operation", scale=4, pid=31_000)
+        zero = binding_protocol_response(mode="zero", scale=4, pid=31_001)
+        samples = [
+            validate(
+                json.dumps(payload) + "\n",
+                "",
+                expected=expected_echo(payload),
+                semantic_contract=binding_semantic_contract(),
+                workload_units_per_scale=1,
+            )
+            for payload in (operation, zero)
+        ]
+
+        self.assertEqual(
+            adjust(samples, metric="allocation_count"),
+            {4: (40,)},
+        )
+
+        samples[1]["workload_units"] = 5
+        with self.assertRaisesRegex(self.contract_error(), "workload_units"):
+            adjust(samples, metric="allocation_count")
+
     def test_validate_response_rejects_any_stderr(self) -> None:
         validate = self.api("validate_response")
         error = self.contract_error()
@@ -355,6 +506,17 @@ class NativeMemoryProtocolContractsTest(unittest.TestCase):
                     "",
                     expected=expected_echo(protocol_response()),
                 )
+
+        payload = protocol_response(invocation_id=" ")
+        with self.assertRaisesRegex(
+            error,
+            r"^invocation_id must be a trimmed non-empty string of at most 256 characters$",
+        ):
+            validate(
+                json.dumps(payload) + "\n",
+                "",
+                expected=expected_echo(protocol_response()),
+            )
 
     def test_validate_response_rejects_unknown_fields_and_protocol_versions(self) -> None:
         validate = self.api("validate_response")
@@ -1013,6 +1175,61 @@ class LaneRegistryContractsTest(unittest.TestCase):
 
         corpus = self.load(self.registry())
         self.assertEqual(corpus.lanes[1].size_vector, MEMORY_SCALES)
+
+    def test_render_svg_memory_lane_requires_svg_semantic_evidence(self) -> None:
+        required_dimensions = (
+            "input_nodes",
+            "input_edges",
+            "svg_sha256",
+            "svg_viewbox_width",
+            "svg_viewbox_height",
+        )
+        for missing in required_dimensions:
+            registry = self.clone(self.registry())
+            lane = registry["lanes"][1]  # type: ignore[index]
+            lane["semantic_output_dimensions"].remove(missing)
+            with self.subTest(missing=missing), self.assertRaisesRegex(
+                ValueError,
+                "missing semantic output evidence",
+            ):
+                self.load(registry)
+
+    def test_memory_lane_accepts_owner_specific_semantic_dimensions(self) -> None:
+        registry = self.clone(self.registry())
+        lane = registry["lanes"][1]  # type: ignore[index]
+        lane.update(
+            {
+                "id": "binding-request-version-only-memory",
+                "owner": "merman-bindings-core",
+                "public_operation": "binding-execute-operation-semantic-json",
+                "required_features": ["analysis", "ascii", "svg"],
+                "selector": "memory/request_version_only/{fixture}",
+                "workload": "binding-version-only-operation-calls-v1",
+                "evidence_contract": (
+                    "docs/performance/contracts/"
+                    "binding-request-version-only-memory-v2.json"
+                ),
+                "semantic_output_dimensions": [
+                    "operation_calls",
+                    "operation_id",
+                    "media_type",
+                    "result_data_bytes",
+                    "result_metadata_bytes",
+                    "result_data_sha256",
+                    "result_metadata_sha256",
+                ],
+            }
+        )
+
+        corpus = self.load(registry)
+        self.assertEqual(
+            corpus.lanes[1].semantic_output_dimensions[0],
+            "operation_calls",
+        )
+
+        lane["semantic_output_dimensions"] = []
+        with self.assertRaisesRegex(ValueError, "must not be empty"):
+            self.load(registry)
 
     def test_id_selector_and_history_alias_share_one_global_namespace(self) -> None:
         collision_mutators = (

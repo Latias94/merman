@@ -14,7 +14,7 @@ import secrets
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from compare_self import RunnerRecipe, cargo_prebuild_command, parse_bench_executable
@@ -30,6 +30,7 @@ from native_memory import (
     suite_exit_code,
     validate_response,
     validate_sample_matrix,
+    validate_semantic_response_contract,
 )
 
 
@@ -46,18 +47,34 @@ DEFAULT_SEED = 0x4D45524D414E
 DEFAULT_BOOTSTRAP_RESAMPLES = 10_000
 DEFAULT_TIMEOUT_SECONDS = 300
 _METRICS = ("allocation_count", "allocated_bytes", "peak_growth_bytes")
-_OWNER_CONTRACT_FIELDS = frozenset(
+_OWNER_CONTRACT_COMMON_FIELDS = frozenset(
     {
         "schema_version",
         "lane_id",
         "workload",
         "evidence_class",
         "candidate_admission",
-        "generator",
         "metrics",
     }
 )
+_OWNER_CONTRACT_V1_FIELDS = _OWNER_CONTRACT_COMMON_FIELDS | frozenset({"generator"})
+_OWNER_CONTRACT_V2_FIELDS = _OWNER_CONTRACT_COMMON_FIELDS | frozenset(
+    {"probe", "scale", "semantic_response"}
+)
 _GENERATOR_FIELDS = frozenset({"id", "nodes_per_scale", "edges_per_scale"})
+_PROBE_FIELDS = frozenset(
+    {
+        "protocol_schema_version",
+        "package",
+        "package_manifest",
+        "bench",
+        "features",
+        "default_features",
+        "inputs",
+    }
+)
+_PROBE_INPUT_FIELDS = frozenset({"path", "sha256"})
+_SCALE_FIELDS = frozenset({"dimension", "units_per_scale"})
 _BOUND_FIELDS = frozenset({"slope_cap", "max_scale_cap"})
 _BUILD_ENVIRONMENT_OVERRIDES = {
     "CARGO_BUILD_JOBS": "1",
@@ -200,12 +217,73 @@ def _positive_int(value: object, *, field: str) -> int:
     return value
 
 
+def _nonempty_string(value: object, *, field: str) -> str:
+    if not isinstance(value, str) or not value.strip() or value != value.strip():
+        raise DriverContractError(f"{field} must be a trimmed non-empty string")
+    return value
+
+
+def _lowercase_sha256(value: object, *, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise DriverContractError(f"{field} must be a lowercase SHA-256 digest")
+    return value
+
+
+def _repo_relative_path(value: object, *, field: str) -> str:
+    path = _nonempty_string(value, field=field)
+    pure = PurePosixPath(path)
+    if (
+        pure.is_absolute()
+        or path != pure.as_posix()
+        or any(part in ("", ".", "..") for part in pure.parts)
+        or "\\" in path
+    ):
+        raise DriverContractError(f"{field} must be a normalized repo-relative path")
+    return path
+
+
+def _resolve_repo_file(root: Path, relative: str, *, field: str) -> Path:
+    try:
+        resolved_root = root.resolve(strict=True)
+        resolved = (resolved_root / relative).resolve(strict=True)
+        resolved.relative_to(resolved_root)
+    except (OSError, ValueError) as error:
+        raise DriverContractError(f"{field} does not resolve to a repository file") from error
+    if not resolved.is_file():
+        raise DriverContractError(f"{field} does not resolve to a repository file")
+    return resolved
+
+
+def _validate_metrics_contract(contract: Mapping[str, object]) -> None:
+    metrics = contract["metrics"]
+    if not isinstance(metrics, dict) or frozenset(metrics) != frozenset(_METRICS):
+        raise DriverContractError("owner contract must define exactly three allocator metrics")
+    for metric in _METRICS:
+        bounds = metrics[metric]
+        if not isinstance(bounds, dict) or frozenset(bounds) != _BOUND_FIELDS:
+            raise DriverContractError(f"owner contract bounds differ for {metric}")
+        _positive_number(bounds["slope_cap"], field=f"{metric}.slope_cap")
+        _positive_number(bounds["max_scale_cap"], field=f"{metric}.max_scale_cap")
+
+
 def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
     contract = _strict_json_object(path)
-    if frozenset(contract) != _OWNER_CONTRACT_FIELDS:
-        raise DriverContractError("owner contract fields differ from schema version 1")
-    if contract["schema_version"] != 1:
+    schema_version = contract.get("schema_version")
+    if isinstance(schema_version, bool) or schema_version not in (1, 2):
         raise DriverContractError("unsupported owner contract schema_version")
+    expected_fields = (
+        _OWNER_CONTRACT_V1_FIELDS
+        if schema_version == 1
+        else _OWNER_CONTRACT_V2_FIELDS
+    )
+    if frozenset(contract) != expected_fields:
+        raise DriverContractError(
+            f"owner contract fields differ from schema version {schema_version}"
+        )
     if contract["lane_id"] != lane.id or contract["workload"] != lane.workload:
         raise DriverContractError("owner contract identity differs from the selected lane")
     evidence_class = contract["evidence_class"]
@@ -218,23 +296,75 @@ def load_owner_contract(path: Path, *, lane: LaneMetadata) -> dict[str, object]:
             "owner contract evidence class and candidate-admission flag disagree"
         )
 
-    generator = contract["generator"]
-    if not isinstance(generator, dict) or frozenset(generator) != _GENERATOR_FIELDS:
-        raise DriverContractError("owner contract generator fields differ")
-    if generator["id"] != lane.workload:
-        raise DriverContractError("owner contract generator id differs from lane workload")
-    _positive_int(generator["nodes_per_scale"], field="generator.nodes_per_scale")
-    _positive_int(generator["edges_per_scale"], field="generator.edges_per_scale")
+    if schema_version == 1:
+        generator = contract["generator"]
+        if not isinstance(generator, dict) or frozenset(generator) != _GENERATOR_FIELDS:
+            raise DriverContractError("owner contract generator fields differ")
+        if generator["id"] != lane.workload:
+            raise DriverContractError("owner contract generator id differs from lane workload")
+        _positive_int(generator["nodes_per_scale"], field="generator.nodes_per_scale")
+        _positive_int(generator["edges_per_scale"], field="generator.edges_per_scale")
+    else:
+        probe = contract["probe"]
+        if not isinstance(probe, dict) or frozenset(probe) != _PROBE_FIELDS:
+            raise DriverContractError("owner contract probe fields differ")
+        if probe["protocol_schema_version"] != 2:
+            raise DriverContractError("schema-v2 owner probe must use protocol schema 2")
+        package = _nonempty_string(probe["package"], field="probe.package")
+        if package != lane.owner:
+            raise DriverContractError("owner contract probe package differs from lane owner")
+        _repo_relative_path(probe["package_manifest"], field="probe.package_manifest")
+        _nonempty_string(probe["bench"], field="probe.bench")
+        if not isinstance(probe["default_features"], bool):
+            raise DriverContractError("probe.default_features must be a boolean")
+        features = probe["features"]
+        if (
+            not isinstance(features, list)
+            or any(not isinstance(value, str) or not value for value in features)
+            or len(features) != len(set(features))
+            or tuple(features) != lane.required_features
+        ):
+            raise DriverContractError(
+                "owner contract probe features differ from lane required_features"
+            )
+        inputs = probe["inputs"]
+        if not isinstance(inputs, list) or not inputs:
+            raise DriverContractError("owner contract probe inputs must be a non-empty list")
+        seen_paths: set[str] = set()
+        for index, raw_input in enumerate(inputs):
+            if not isinstance(raw_input, dict) or frozenset(raw_input) != _PROBE_INPUT_FIELDS:
+                raise DriverContractError(f"probe.inputs[{index}] fields differ")
+            input_path = _repo_relative_path(
+                raw_input["path"], field=f"probe.inputs[{index}].path"
+            )
+            if input_path in seen_paths:
+                raise DriverContractError("owner contract probe inputs contain duplicate paths")
+            seen_paths.add(input_path)
+            _lowercase_sha256(
+                raw_input["sha256"], field=f"probe.inputs[{index}].sha256"
+            )
 
-    metrics = contract["metrics"]
-    if not isinstance(metrics, dict) or frozenset(metrics) != frozenset(_METRICS):
-        raise DriverContractError("owner contract must define exactly three allocator metrics")
-    for metric in _METRICS:
-        bounds = metrics[metric]
-        if not isinstance(bounds, dict) or frozenset(bounds) != _BOUND_FIELDS:
-            raise DriverContractError(f"owner contract bounds differ for {metric}")
-        _positive_number(bounds["slope_cap"], field=f"{metric}.slope_cap")
-        _positive_number(bounds["max_scale_cap"], field=f"{metric}.max_scale_cap")
+        scale = contract["scale"]
+        if not isinstance(scale, dict) or frozenset(scale) != _SCALE_FIELDS:
+            raise DriverContractError("owner contract scale fields differ")
+        dimension = _nonempty_string(scale["dimension"], field="scale.dimension")
+        _positive_int(scale["units_per_scale"], field="scale.units_per_scale")
+        semantic_response = contract["semantic_response"]
+        if not isinstance(semantic_response, dict):
+            raise DriverContractError("semantic_response must be an object")
+        try:
+            scale_field = validate_semantic_response_contract(
+                semantic_response,
+                semantic_output_dimensions=lane.semantic_output_dimensions,
+            )
+        except MemoryContractError as error:
+            raise DriverContractError(str(error)) from error
+        if dimension != scale_field:
+            raise DriverContractError(
+                "owner scale dimension differs from semantic response scale_field"
+            )
+
+    _validate_metrics_contract(contract)
     return contract
 
 
@@ -243,18 +373,32 @@ def memory_recipe(
     *,
     target_dir: Path,
     toolchain: str | None,
+    corpus: Path = DEFAULT_CORPUS,
+    contract: Mapping[str, object] | None = None,
 ) -> RunnerRecipe:
+    if contract is not None and contract.get("schema_version") == 2:
+        probe = contract["probe"]
+        assert isinstance(probe, Mapping)
+        package = str(probe["package"])
+        bench = str(probe["bench"])
+        features = tuple(str(value) for value in probe["features"])  # type: ignore[union-attr]
+        default_features = bool(probe["default_features"])
+    else:
+        package = "merman"
+        bench = "native_memory"
+        features = ("svg",)
+        default_features = False
     return RunnerRecipe(
         label="native-memory",
         checkout=root,
-        package="merman",
-        bench="native_memory",
-        features=("svg",),
-        default_features=False,
+        package=package,
+        bench=bench,
+        features=features,
+        default_features=default_features,
         toolchain=toolchain,
         target_dir=target_dir,
         locked=True,
-        corpus=DEFAULT_CORPUS,
+        corpus=corpus,
     )
 
 
@@ -418,8 +562,9 @@ def run_probe(
     *,
     executable_sha256: str,
     lane: LaneMetadata,
-    generator: Mapping[str, object],
     timeout_seconds: int,
+    generator: Mapping[str, object] | None = None,
+    contract: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     request_line = json.dumps(request, separators=(",", ":"), allow_nan=False) + "\n"
     try:
@@ -440,6 +585,21 @@ def run_probe(
             f"native-memory subprocess exited {result.returncode} for "
             f"{request['invocation_id']}: {result.stdout[-1_000:]}"
         )
+    semantic_contract: Mapping[str, object] | None = None
+    workload_units_per_scale: int | None = None
+    contract_schema = contract.get("schema_version") if contract is not None else 1
+    if contract_schema == 2:
+        raw_semantic_contract = contract["semantic_response"]  # type: ignore[index]
+        scale_contract = contract["scale"]  # type: ignore[index]
+        assert isinstance(raw_semantic_contract, Mapping)
+        assert isinstance(scale_contract, Mapping)
+        semantic_contract = raw_semantic_contract
+        workload_units_per_scale = int(scale_contract["units_per_scale"])
+    elif generator is None:
+        if contract is None or not isinstance(contract.get("generator"), Mapping):
+            raise DriverContractError("schema-v1 probe requires a generator contract")
+        generator = contract["generator"]  # type: ignore[assignment]
+
     try:
         response = validate_response(
             result.stdout,
@@ -449,19 +609,26 @@ def run_probe(
                 executable_sha256=executable_sha256,
                 lane=lane,
             ),
+            semantic_contract=semantic_contract,
+            workload_units_per_scale=workload_units_per_scale,
         )
     except MemoryContractError as error:
         raise DriverContractError(str(error)) from error
 
-    scale = int(request["scale"])
-    expected_nodes = int(generator["nodes_per_scale"]) * scale
-    expected_edges = int(generator["edges_per_scale"]) * scale
-    if response["input_nodes"] != expected_nodes or response["input_edges"] != expected_edges:
-        raise DriverContractError(
-            f"generator dimensions differ at scale {scale}: "
-            f"expected {expected_nodes}/{expected_edges}, got "
-            f"{response['input_nodes']}/{response['input_edges']}"
-        )
+    if contract_schema == 1:
+        assert generator is not None
+        scale = int(request["scale"])
+        expected_nodes = int(generator["nodes_per_scale"]) * scale
+        expected_edges = int(generator["edges_per_scale"]) * scale
+        if (
+            response["input_nodes"] != expected_nodes
+            or response["input_edges"] != expected_edges
+        ):
+            raise DriverContractError(
+                f"generator dimensions differ at scale {scale}: "
+                f"expected {expected_nodes}/{expected_edges}, got "
+                f"{response['input_nodes']}/{response['input_edges']}"
+            )
     return response
 
 
@@ -589,15 +756,15 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             raise DriverContractError(f"lane {lane.id!r} is not a native memory lane")
         if lane.process_lifecycle != "fresh-process":
             raise DriverContractError("native memory lane must declare fresh-process isolation")
-        expected_workload = _SUPPORTED_LANE_WORKLOADS.get(lane.id)
+        registered_v1_workload = _SUPPORTED_LANE_WORKLOADS.get(lane.id)
         if (
-            expected_workload is None
-            or lane.workload != expected_workload
-            or lane.kind != "public"
-            or lane.public_operation != "render-svg"
-            or lane.engine_lifecycle != "reused-engine"
-            or lane.logical_operations_per_estimate != 1
+            registered_v1_workload is not None
+            and lane.workload != registered_v1_workload
         ):
+            raise DriverContractError(
+                "selected lane semantics are unsupported by the native-memory probe"
+            )
+        if lane.kind != "public" or lane.logical_operations_per_estimate != 1:
             raise DriverContractError(
                 "selected lane semantics are unsupported by the native-memory probe"
             )
@@ -605,6 +772,18 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
         if not contract_path.is_absolute():
             contract_path = root / contract_path
         contract = load_owner_contract(contract_path, lane=lane)
+        if contract["schema_version"] == 1:
+            expected_workload = _SUPPORTED_LANE_WORKLOADS.get(lane.id)
+            if (
+                expected_workload is None
+                or lane.workload != expected_workload
+                or lane.public_operation != "render-svg"
+                or lane.engine_lifecycle != "reused-engine"
+            ):
+                raise DriverContractError(
+                    "selected schema-v1 lane semantics are unsupported by the "
+                    "native-memory probe"
+                )
         if not args.smoke:
             report["method"]["evidence_class"] = contract["evidence_class"]  # type: ignore[index]
             report["candidate_admission"] = bool(
@@ -622,12 +801,54 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             "measurement_metrics": list(lane.measurement_metrics),
             "semantic_output_dimensions": list(lane.semantic_output_dimensions),
         }
-        report["inputs"] = {
+
+        target_dir = Path(args.target_dir)
+        if not target_dir.is_absolute():
+            target_dir = root / target_dir
+        target_dir = target_dir.resolve()
+        recipe = memory_recipe(
+            root,
+            target_dir=target_dir,
+            toolchain=args.toolchain,
+            corpus=corpus_path,
+            contract=contract,
+        )
+        if lane.required_features != recipe.features:
+            raise DriverContractError(
+                "lane required features differ from the native-memory Cargo recipe"
+            )
+
+        if contract["schema_version"] == 2:
+            probe = contract["probe"]
+            assert isinstance(probe, Mapping)
+            package_manifest_path = _resolve_repo_file(
+                root,
+                str(probe["package_manifest"]),
+                field="probe.package_manifest",
+            )
+            probe_inputs: list[dict[str, object]] = []
+            raw_inputs = probe["inputs"]
+            assert isinstance(raw_inputs, list)
+            for index, raw_input in enumerate(raw_inputs):
+                assert isinstance(raw_input, Mapping)
+                input_path = _resolve_repo_file(
+                    root,
+                    str(raw_input["path"]),
+                    field=f"probe.inputs[{index}].path",
+                )
+                record = _describe_file(input_path, root=root)
+                if record["sha256"] != raw_input["sha256"]:
+                    raise DriverContractError(
+                        f"owner contract probe input digest differs at index {index}"
+                    )
+                probe_inputs.append(record)
+        else:
+            package_manifest_path = root / "crates" / "merman" / "Cargo.toml"
+            probe_inputs = []
+
+        report_inputs: dict[str, object] = {
             "workspace_manifest": _describe_file(root / "Cargo.toml", root=root),
-            "package_manifest": _describe_file(
-                root / "crates" / "merman" / "Cargo.toml",
-                root=root,
-            ),
+            "package_manifest": _describe_file(package_manifest_path, root=root),
             "cargo_lock": _describe_file(root / "Cargo.lock", root=root),
             "corpus": {
                 "path": str(corpus_path),
@@ -641,16 +862,9 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
                 "value": contract,
             },
         }
-
-        target_dir = Path(args.target_dir)
-        if not target_dir.is_absolute():
-            target_dir = root / target_dir
-        target_dir = target_dir.resolve()
-        recipe = memory_recipe(root, target_dir=target_dir, toolchain=args.toolchain)
-        if lane.required_features != recipe.features:
-            raise DriverContractError(
-                "lane required features differ from the native-memory Cargo recipe"
-            )
+        if probe_inputs:
+            report_inputs["probe_inputs"] = probe_inputs
+        report["inputs"] = report_inputs
         build_command = cargo_prebuild_command(recipe)
         report["recipe"] = {
             "package": recipe.package,
@@ -713,8 +927,6 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
         report["run_id"] = run_id
         report["schedule"] = schedule
         samples: list[dict[str, object]] = []
-        generator = contract["generator"]
-        assert isinstance(generator, Mapping)
         for entry in schedule:
             request = entry["request"]
             assert isinstance(request, Mapping)
@@ -723,7 +935,7 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
                 request,
                 executable_sha256=executable_digest,
                 lane=lane,
-                generator=generator,
+                contract=contract,
                 timeout_seconds=args.timeout_seconds,
             )
             entry["response"] = response

@@ -282,18 +282,18 @@ def _load_lanes(data: dict[str, object], schema_version: int) -> tuple[LaneMetad
                 raise ValueError(
                     f"memory lane {lane_id} must register the native allocator metrics"
                 )
-            required_output = {
-                "input_nodes",
-                "input_edges",
-                "svg_sha256",
-                "svg_viewbox_width",
-                "svg_viewbox_height",
-            }
-            if not required_output.issubset(semantic_output_dimensions):
-                raise ValueError(
-                    f"memory lane {lane_id} is missing semantic output evidence"
-                )
-
+            if public_operation == "render-svg":
+                required_output = {
+                    "input_nodes",
+                    "input_edges",
+                    "svg_sha256",
+                    "svg_viewbox_width",
+                    "svg_viewbox_height",
+                }
+                if not required_output.issubset(semantic_output_dimensions):
+                    raise ValueError(
+                        f"memory lane {lane_id} is missing semantic output evidence"
+                    )
         if kind == "public":
             if diagnostic_stage is not None or parent_public_lane is not None:
                 raise ValueError(

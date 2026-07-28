@@ -35,7 +35,19 @@ CONTRACT_PATH = (
     / "contracts"
     / "flowchart-end-to-end-memory-v1.json"
 )
+BINDING_CORPUS_PATH = ROOT / "tools" / "bench" / "binding_request_corpus.json"
+BINDING_CONTRACT_PATH = (
+    ROOT
+    / "docs"
+    / "performance"
+    / "contracts"
+    / "binding-request-version-only-memory-v2.json"
+)
 EXECUTABLE_SHA256 = "a" * 64
+EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
+BINDING_DATA_SHA256 = "471b942eb8877b2ee7c38b86567b13f79fba101df1e5b4767b3421a200e0ad3f"
+BINDING_METADATA_SHA256 = "5662eba44530c1a9bf01f352dd84496fb368c9522757c479f735526d200a9e29"
+BINDING_OUTPUT_SHA256 = "5c5a3cdbe1f692c630006b4c365f348d93d8afd6ea99ecf45d8d2e10524acf53"
 
 
 def response_for(request: dict[str, object]) -> dict[str, object]:
@@ -63,6 +75,49 @@ def response_for(request: dict[str, object]) -> dict[str, object]:
         "output_height": 0 if zero else scale * 5,
         "input_nodes": scale * 3,
         "input_edges": scale * 4,
+        "snapshot_live_bytes": 100,
+        "allocation_count": 0 if zero else scale * 10,
+        "allocated_bytes": 0 if zero else scale * 1_000,
+        "live_bytes_after": 100,
+        "peak_live_bytes": 100 if zero else 100 + scale * 100,
+        "peak_growth_bytes": 0 if zero else scale * 100,
+        "counter_overflowed": False,
+        "counter_underflowed": False,
+    }
+
+
+def binding_response_for(request: dict[str, object]) -> dict[str, object]:
+    scale = int(request["scale"])
+    zero = request["mode"] == "zero"
+    return {
+        "schema_version": 2,
+        "lane_id": request["lane_id"],
+        "public_operation": "binding-execute-operation-semantic-json",
+        "process_lifecycle": "fresh-process",
+        "engine_lifecycle": "reused-engine",
+        "logical_operations_per_estimate": 1,
+        "mode": request["mode"],
+        "scale": scale,
+        "seed": request["seed"],
+        "repeat": request["repeat"],
+        "pid": 1234,
+        "executable_sha256": EXECUTABLE_SHA256,
+        "invocation_id": request["invocation_id"],
+        "nonce": request["nonce"],
+        "output_sha256": EMPTY_SHA256 if zero else BINDING_OUTPUT_SHA256,
+        "workload_units": scale,
+        "semantic_output": {
+            "kind": "binding-operation-result-v1",
+            "operation_id": "semantic-json",
+            "media_type": "application/json",
+            "result_data_bytes": 0 if zero else 31,
+            "result_metadata_bytes": 0 if zero else 126,
+            "result_data_sha256": EMPTY_SHA256 if zero else BINDING_DATA_SHA256,
+            "result_metadata_sha256": (
+                EMPTY_SHA256 if zero else BINDING_METADATA_SHA256
+            ),
+            "operation_calls": 0 if zero else scale,
+        },
         "snapshot_live_bytes": 100,
         "allocation_count": 0 if zero else scale * 10,
         "allocated_bytes": 0 if zero else scale * 1_000,
@@ -135,6 +190,13 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
         return resolve_lane_selector(load_corpus(CORPUS_PATH), run_native_memory.DEFAULT_LANE)
 
     @staticmethod
+    def binding_lane():
+        return resolve_lane_selector(
+            load_corpus(BINDING_CORPUS_PATH),
+            "binding-request-version-only-memory",
+        )
+
+    @staticmethod
     def args(**overrides: object) -> argparse.Namespace:
         values: dict[str, object] = {
             "corpus": str(CORPUS_PATH),
@@ -192,6 +254,137 @@ class NativeMemoryDriverContractsTest(unittest.TestCase):
                 run_native_memory.DriverContractError, "disagree"
             ):
                 run_native_memory.load_owner_contract(path, lane=self.lane())
+
+    def test_binding_owner_contract_selects_its_own_probe_recipe(self) -> None:
+        lane = self.binding_lane()
+        contract = run_native_memory.load_owner_contract(
+            BINDING_CONTRACT_PATH,
+            lane=lane,
+        )
+        recipe = run_native_memory.memory_recipe(
+            ROOT,
+            target_dir=ROOT / "target",
+            toolchain="1.95.0",
+            corpus=BINDING_CORPUS_PATH,
+            contract=contract,
+        )
+
+        self.assertEqual(contract["schema_version"], 2)
+        self.assertEqual(contract["scale"]["dimension"], "operation_calls")
+        self.assertEqual(recipe.package, "merman-bindings-core")
+        self.assertEqual(recipe.bench, "request_overlay_memory")
+        self.assertEqual(recipe.features, ("analysis", "ascii", "svg"))
+        self.assertEqual(recipe.corpus, BINDING_CORPUS_PATH)
+
+    def test_binding_probe_is_locked_to_owner_semantics_and_call_scale(self) -> None:
+        lane = self.binding_lane()
+        contract = run_native_memory.load_owner_contract(
+            BINDING_CONTRACT_PATH,
+            lane=lane,
+        )
+        nonces = (f"{index:032x}" for index in range(60))
+        request = run_native_memory.build_schedule(
+            lane_id=lane.id,
+            repeats=5,
+            seed=1,
+            run_id="binding-probe",
+            nonce_factory=lambda: next(nonces),
+        )[18]["request"]
+        payload = binding_response_for(request)
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(payload) + "\n",
+            stderr="",
+        )
+
+        with mock.patch.object(subprocess, "run", return_value=completed):
+            response = run_native_memory.run_probe(
+                Path("/tmp/request-overlay-memory"),
+                request,
+                executable_sha256=EXECUTABLE_SHA256,
+                lane=lane,
+                contract=contract,
+                timeout_seconds=30,
+            )
+        self.assertEqual(response["workload_units"], request["scale"])
+
+        payload["semantic_output"]["result_data_bytes"] = True
+        completed.stdout = json.dumps(payload) + "\n"
+        with mock.patch.object(subprocess, "run", return_value=completed), self.assertRaisesRegex(
+            run_native_memory.DriverContractError,
+            "semantic output",
+        ):
+            run_native_memory.run_probe(
+                Path("/tmp/request-overlay-memory"),
+                request,
+                executable_sha256=EXECUTABLE_SHA256,
+                lane=lane,
+                contract=contract,
+                timeout_seconds=30,
+            )
+
+    def test_binding_owner_contract_rejects_recipe_and_semantic_drift(self) -> None:
+        lane = self.binding_lane()
+        baseline = json.loads(BINDING_CONTRACT_PATH.read_text(encoding="utf-8"))
+        mutations = (
+            lambda value: value["probe"].__setitem__("protocol_schema_version", 1),
+            lambda value: value["probe"].__setitem__(
+                "features", ["svg", "ascii", "analysis"]
+            ),
+            lambda value: value["scale"].__setitem__("units_per_scale", True),
+            lambda value: value["semantic_response"]["operation"].__setitem__(
+                "unexpected", 1
+            ),
+            lambda value: value["probe"]["inputs"][0].__setitem__(
+                "sha256", "A" * 64
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as raw:
+            path = Path(raw) / "contract.json"
+            for mutate in mutations:
+                damaged = json.loads(json.dumps(baseline))
+                mutate(damaged)
+                path.write_text(json.dumps(damaged), encoding="utf-8")
+                with self.subTest(contract=damaged), self.assertRaises(
+                    run_native_memory.DriverContractError
+                ):
+                    run_native_memory.load_owner_contract(path, lane=lane)
+
+    def test_binding_dry_run_records_and_verifies_probe_input_provenance(self) -> None:
+        report, exit_code = run_native_memory.execute(
+            self.args(
+                corpus=str(BINDING_CORPUS_PATH),
+                lane="binding-request-version-only-memory",
+                contract=str(BINDING_CONTRACT_PATH),
+                dry_run=True,
+            )
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["recipe"]["package"], "merman-bindings-core")
+        self.assertEqual(
+            report["inputs"]["package_manifest"]["path"],
+            "crates/merman-bindings-core/Cargo.toml",
+        )
+        self.assertEqual(len(report["inputs"]["probe_inputs"]), 3)
+
+        damaged = json.loads(BINDING_CONTRACT_PATH.read_text(encoding="utf-8"))
+        damaged["probe"]["inputs"][0]["sha256"] = "b" * 64
+        with tempfile.TemporaryDirectory() as raw:
+            path = Path(raw) / "contract.json"
+            path.write_text(json.dumps(damaged), encoding="utf-8")
+            failed, failed_exit = run_native_memory.execute(
+                self.args(
+                    corpus=str(BINDING_CORPUS_PATH),
+                    lane="binding-request-version-only-memory",
+                    contract=str(path),
+                    dry_run=True,
+                )
+            )
+
+        self.assertEqual(failed_exit, 2)
+        self.assertIn("probe input digest differs", failed["contract_errors"][0])
 
     def test_schedule_is_balanced_fixed_seed_and_has_fresh_identities(self) -> None:
         nonces = (f"{index:032x}" for index in range(60))
