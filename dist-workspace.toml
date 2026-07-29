@@ -15,6 +15,9 @@ packages = ["merman-cli", "merman-lsp"]
 ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell"]
+# Keep archive names stable for cargo-binstall and downstream package manifests.
+unix-archive = ".tar.xz"
+windows-archive = ".zip"
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Which actions to run on pull requests

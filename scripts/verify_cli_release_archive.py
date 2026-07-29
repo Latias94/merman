@@ -126,9 +126,24 @@ def _archive_extension_for_target(target: str) -> str:
     return ".zip" if "windows" in target.split("-") else ".tar.xz"
 
 
+def release_archive_name(target: str) -> str:
+    """Return the cargo-dist archive name consumed by installation metadata."""
+    return f"{PACKAGE_NAME}-{target}{_archive_extension_for_target(target)}"
+
+
+def release_binary_archive_path(target: str) -> str:
+    """Return the executable path before cargo-binstall strips the archive layout."""
+    binary_name = _binary_name(target)
+    if _archive_extension_for_target(target) == ".zip":
+        return binary_name
+    archive_name = release_archive_name(target)
+    wrapper = archive_name.removesuffix(".tar.xz")
+    return f"{wrapper}/{binary_name}"
+
+
 def _archive_stem(archive: Path, target: str) -> str:
     extension = _archive_extension_for_target(target)
-    expected_name = f"{PACKAGE_NAME}-{target}{extension}"
+    expected_name = release_archive_name(target)
     if archive.name != expected_name:
         raise ArchiveVerificationError(
             f"archive name must be {expected_name!r}, got {archive.name!r}"

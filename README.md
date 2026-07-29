@@ -120,6 +120,8 @@ The default dependency enables complete deterministic SVG rendering, including b
 | Call Merman from another language | [Python](https://pypi.org/project/merman/), [C/C++](https://github.com/Latias94/merman/tree/main/crates/merman-ffi#readme), [Flutter/Dart](https://pub.dev/packages/merman), [Android](https://github.com/Latias94/merman/tree/main/platforms/android#readme), or [Apple](https://github.com/Latias94/merman/tree/main/platforms/apple#readme) |
 | Render in Rustdoc or Typst | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) or the [Typst package](https://github.com/Latias94/merman/tree/main/packages/typst/merman#readme) |
 
+For a shell, install the complete stable CLI with `cargo binstall merman-cli` or `brew install merman-cli`. GitHub archives also bundle checked completion and man-page assets; binary-only installers keep `merman-cli completion <shell>` available as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
+
 Publication status differs by platform. The [release surface contract](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md) distinguishes registry packages from repository or CI artifacts.
 
 ## Bring Only What You Need

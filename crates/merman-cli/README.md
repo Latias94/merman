@@ -14,15 +14,13 @@ The command line has three explicit workflows:
 
 ## Install
 
-Install the complete CLI:
-
-<!-- BEGIN GENERATED RELEASE README CLI_PACKAGE_INSTALL -->
+Prefer the stable complete prebuilt binary, with a source-build fallback when no official archive is available for the current target:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli
+cargo binstall merman-cli
 ```
 
-<!-- END GENERATED RELEASE README CLI_PACKAGE_INSTALL -->
+Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the current target, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable.
 
 Homebrew users can install the stable formula:
 
@@ -32,11 +30,43 @@ brew install merman-cli
 
 The formula follows stable releases and may trail this pre-release documentation.
 
+Install the complete CLI from source:
+
+<!-- BEGIN GENERATED RELEASE README CLI_PACKAGE_INSTALL -->
+
+```sh
+cargo install --git https://github.com/Latias94/merman --locked merman-cli
+```
+
+<!-- END GENERATED RELEASE README CLI_PACKAGE_INSTALL -->
+
 From a local checkout:
 
 ```sh
 cargo install --path crates/merman-cli
 ```
+
+Every standard installation selects the complete `cli-release` capability set. Cargo-dist and cargo-binstall consume the project-built `dist` artifact; source channels build the same features with their package manager's release profile. Channels also differ in which support files they place on disk:
+
+| Channel | Binary | Completion and man pages |
+| --- | --- | --- |
+| `cargo binstall merman-cli` | Project release archive, with source fallback | Not installed |
+| GitHub shell or PowerShell installer | Project release archive | Not installed |
+| Direct GitHub archive | Included | Bundled under `completions/` and `man/` |
+| Homebrew formula `0.8.0` or later | Source build or Homebrew bottle | Bash, Zsh, Fish, PowerShell, and man pages installed |
+| `cargo install` | Built from source | Not installed |
+
+Runtime completion is the universal fallback, including for custom feature builds:
+
+```sh
+merman-cli completion bash
+merman-cli completion zsh
+merman-cli completion fish
+merman-cli completion powershell
+merman-cli completion elvish
+```
+
+The release archive also includes legal notices. Cargo-binstall installs only the executable. The cargo-dist installers likewise omit completion and man files, but may create an environment file and update shell startup configuration to expose their install directory on `PATH`. See the [CLI release contract](https://github.com/Latias94/merman/blob/main/docs/releasing/CLI.md) for archive paths and package-manager integration details.
 
 The executable is named `merman-cli`; Merman does not install an `mmdc` alias.
 

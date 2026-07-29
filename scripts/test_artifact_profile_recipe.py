@@ -296,7 +296,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             locked=True,
         )
 
-        self.assertEqual(command[:4], ["cargo", "build", "--profile", "release"])
+        self.assertEqual(command[:4], ["cargo", "build", "--profile", "dist"])
         self.assertIn("--locked", command)
         self.assertNotIn("--target", command)
         self.assertEqual(
@@ -325,7 +325,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             self.assertEqual(artifact_profile_recipe.main(), 0)
 
         command = run.call_args.args[0]
-        self.assertEqual(command[:4], ["cargo", "build", "--profile", "release"])
+        self.assertEqual(command[:4], ["cargo", "build", "--profile", "dist"])
         self.assertNotIn("--target", command)
         self.assertEqual(run.call_args.kwargs["cwd"], artifact_profile_recipe.REPO_ROOT)
         self.assertTrue(run.call_args.kwargs["check"])
@@ -685,11 +685,17 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             "python3 scripts/verify_cli_assets.py --require powershell",
         )
 
-    def test_homebrew_checks_the_complete_cli_contract_v2_surface(self) -> None:
+    def test_homebrew_checks_binary_and_version_gated_asset_contracts(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         workflow = load_workflow_contract(repo_root / ".github/workflows/homebrew.yml")
+        job = workflow_job(workflow, "formula-health")
+        self.assertEqual(
+            {row["os"] for row in job["matrix_include"]},
+            {"macos-15", "ubuntu-24.04"},
+        )
+        self.assertEqual(job["env"]["SUPPORT_ASSETS_SINCE"], "0.8.0")
         step = workflow_step(
-            workflow_job(workflow, "formula-health"),
+            job,
             name="Smoke installed merman-cli",
         )
         command = step["run"]
@@ -699,22 +705,15 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         )
         self.assertNotIn("brew info", command)
         self.assertNotIn("formula_version", command)
-        for contract in [
-            ".cli_contract_version == 3",
-            '"analysis", "ascii", "icons", "jpeg", "layout-cytoscape"',
-            '"parallel-markdown", "pdf", "png", "shell-completions", "svg"',
-            '["ascii", "jpeg", "pdf", "png", "svg"]',
-            "brew linkage --test merman-cli",
-        ]:
-            with self.subTest(contract=contract):
-                if contract.startswith("brew "):
-                    linkage = workflow_step(
-                        workflow_job(workflow, "formula-health"),
-                        name="Audit installed formula",
-                    )
-                    self.assertIn(contract, linkage["run"])
-                else:
-                    self.assertIn(contract, command)
+        self.assertIn("merman-cli --version", command)
+        self.assertIn("merman-cli render", command)
+        support_assets = workflow_step(
+            job,
+            name="Verify version-gated support assets",
+        )
+        self.assertIn("scripts/verify_homebrew_install.py", support_assets["run"])
+        linkage = workflow_step(job, name="Audit installed formula")
+        self.assertIn("brew linkage --test merman-cli", linkage["run"])
 
     def test_c_ffi_ci_smoke_resolves_the_recipe_owned_output_directory(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]

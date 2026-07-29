@@ -16,8 +16,27 @@ permissions:
 jobs:
   formula-health:
     name: formula-health
-    runs-on: macos-15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      SUPPORT_ASSETS_SINCE: "0.8.0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+          - os: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Homebrew test environment
+        uses: Homebrew/actions/setup-homebrew@1f8e202ffddf94def7f42f6fa3a482e821489f9c # 2026.07.10.1
+        with:
+          core: true
+          setup-sandbox: true
+
       - name: Update Homebrew metadata
         shell: bash
         run: brew update
@@ -35,6 +54,10 @@ jobs:
           desc="$(jq -r '.formulae[0].desc' <<<"$formula_json")"
 
           test "$version" != "null"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Homebrew returned a non-stable version: $version" >&2
+            exit 1
+          fi
           if [[ -n "$EXPECTED_VERSION" && "$version" != "$EXPECTED_VERSION" ]]; then
             echo "::error::Homebrew stable version $version does not match expected $EXPECTED_VERSION." >&2
             exit 1
@@ -49,6 +72,13 @@ jobs:
         shell: bash
         run: brew livecheck merman-cli --json
 
+      - name: Check out formula release contract
+        uses: actions/checkout@v6
+        with:
+          ref: refs/tags/v${{ steps.metadata.outputs.version }}
+          path: formula-contract
+          persist-credentials: false
+
       - name: Install merman-cli from Homebrew
         shell: bash
         run: brew install merman-cli
@@ -61,46 +91,31 @@ jobs:
           set -euo pipefail
           installed_version="$(merman-cli --version)"
           test "$installed_version" = "merman-cli $FORMULA_VERSION"
-          IFS=. read -r formula_major formula_minor _ <<<"$FORMULA_VERSION"
-          if (( formula_major > 0 || formula_minor >= 8 )); then
-            merman-cli capabilities --json | jq -e '
-              .schema_version == 2
-              and .cli_contract_version == 3
-              and .package.name == "merman-cli"
-              and .package.version == $version
-              and (.compatibility.mermaid | type == "string" and length > 0)
-              and (.compatibility.mmdc | type == "string" and length > 0)
-              and (.descriptor.digest | test("^sha256:[0-9a-f]{64}$"))
-              and (
-                [
-                  "batch", "capabilities", "completion", "detect", "fix",
-                  "layout", "lint", "lint-rules", "mmdc", "parse", "render"
-                ] - .commands
-                | length == 0
-              )
-              and (
-                [
-                  "analysis", "ascii", "icons", "jpeg", "layout-cytoscape",
-                  "layout-elk", "markdown", "math", "network-icons",
-                  "parallel-markdown", "pdf", "png", "shell-completions", "svg",
-                  "system-clock", "system-random", "system-timezone", "system-timing"
-                ] - [.capabilities[].id]
-                | length == 0
-              )
-              and (
-                ["ascii", "jpeg", "pdf", "png", "svg"] - [.outputs[].id]
-                | length == 0
-              )
-            ' --arg version "$FORMULA_VERSION" >/dev/null
-            test -n "$(merman-cli completion bash)"
-            test -n "$(merman-cli completion zsh)"
-          else
-            echo "Skipping CLI contract v2 checks for stable $FORMULA_VERSION."
-          fi
           printf 'flowchart TD\nA[Homebrew] --> B[merman-cli]\n' > homebrew-smoke.mmd
           merman-cli render homebrew-smoke.mmd --output homebrew-smoke.svg
           grep -q '<svg' homebrew-smoke.svg
           grep -q 'Homebrew' homebrew-smoke.svg
+
+      - name: Verify version-gated support assets
+        env:
+          FORMULA_VERSION: ${{ steps.metadata.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          formula_prefix="$(brew --prefix merman-cli)"
+          contract_root="$GITHUB_WORKSPACE/formula-contract"
+          contract_verifier="$(
+            python3 scripts/verify_homebrew_install.py \
+              --formula-version "$FORMULA_VERSION" \
+              --support-assets-since "$SUPPORT_ASSETS_SINCE" \
+              --contract-root "$contract_root" \
+              --select-version-verifier
+          )"
+          python3 "$contract_verifier" \
+            --formula-version "$FORMULA_VERSION" \
+            --support-assets-since "$SUPPORT_ASSETS_SINCE" \
+            --prefix "$formula_prefix" \
+            --contract-root "$contract_root"
 
       - name: Audit installed formula
         shell: bash

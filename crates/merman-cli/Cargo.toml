@@ -43,6 +43,16 @@ features = [
     "system-timing",
 ]
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }{ archive-suffix }"
+pkg-fmt = "txz"
+bin-dir = "{ name }-{ target }/{ bin }{ binary-ext }"
+disabled-strategies = ["quick-install"]
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+bin-dir = "{ bin }{ binary-ext }"
+
 [package.metadata.merman]
 artifact-profile-required = true
 

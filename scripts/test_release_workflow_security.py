@@ -113,8 +113,8 @@ def web_package_manifest(entry: dict) -> Path:
 
 def exact_binary_build_command(profile_id: str) -> str:
     recipe = load_artifact_profile(profile_id)
-    if recipe.cargo_profile != "release":
-        raise AssertionError(f"{profile_id} must use the release Cargo profile")
+    if recipe.cargo_profile != "dist":
+        raise AssertionError(f"{profile_id} must use the cargo-dist Cargo profile")
     if recipe.default_features is not False:
         raise AssertionError(f"{profile_id} must disable Cargo default features")
     if recipe.target_kinds != ("bin",) or recipe.crate_types != ("bin",):

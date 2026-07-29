@@ -518,9 +518,9 @@ fn validate_cargo_dist_recipe(
     if !CARGO_DIST_PROFILE_IDS.contains(&profile.id.as_str()) {
         return Ok(());
     }
-    if profile.cargo.profile != "release" {
+    if profile.cargo.profile != "dist" {
         return Err(format!(
-            "{path}.cargo.profile: cargo-dist artifact `{}` must use the `release` profile",
+            "{path}.cargo.profile: cargo-dist artifact `{}` must use the `dist` profile",
             profile.id
         ));
     }
@@ -1069,7 +1069,7 @@ fn validate_wasm_owner_closures(profiles: &[WasmArtifactProfile]) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     use std::sync::OnceLock;
 
     fn committed_value() -> Value {
@@ -1262,6 +1262,15 @@ mod tests {
         }
         let error = validate_fixture(value).unwrap_err();
         assert!(error.contains("package.metadata.dist.features"), "{error}");
+    }
+
+    #[test]
+    fn rejects_cargo_dist_profile_drift_from_exact_release_profile() {
+        let mut value = committed_value();
+        let index = profile_index(&value, "cli-release");
+        value["profiles"][index]["cargo"]["profile"] = json!("release");
+        let error = validate_fixture(value).unwrap_err();
+        assert!(error.contains("must use the `dist` profile"), "{error}");
     }
 
     #[test]

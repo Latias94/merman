@@ -41,6 +41,9 @@ jobs:
       - name: Verify release surface contract
         run: python3 scripts/verify-release-surfaces.py
 
+      - name: Verify CLI installation metadata
+        run: python3 scripts/cli_installation_contract.py
+
       - name: Verify third-party source and license contract
         run: python3 scripts/verify-third-party-licenses.py
 

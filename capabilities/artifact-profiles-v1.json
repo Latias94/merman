@@ -158,7 +158,7 @@
       "cargo": {
         "package": "merman-cli",
         "manifest": "crates/merman-cli/Cargo.toml",
-        "profile": "release",
+        "profile": "dist",
         "default_features": false,
         "features": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
@@ -352,7 +352,7 @@
       "cargo": {
         "package": "merman-lsp",
         "manifest": "crates/merman-lsp/Cargo.toml",
-        "profile": "release",
+        "profile": "dist",
         "default_features": false,
         "features": ["stdio"],
         "target": {

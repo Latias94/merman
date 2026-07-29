@@ -132,6 +132,9 @@ jobs:
       - name: Validate CLI distribution assets
         run: python3 scripts/verify_cli_assets.py --require bash,zsh,fish,elvish,mandoc
 
+      - name: Verify CLI installation metadata
+        run: python3 scripts/cli_installation_contract.py
+
       - name: Verify exact Rust dependency license reports
         run: python3 scripts/generate-rust-license-report.py --check
 
