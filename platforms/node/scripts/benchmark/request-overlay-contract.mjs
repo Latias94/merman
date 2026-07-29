@@ -4,6 +4,9 @@ const SCALE_POINTS = [1, 2, 4, 10, 32, 100];
 const OVERLAY_IDS = ["empty", "version-only", "real-resource-override"];
 const TRANSPORTS = ["napi", "node-wasm"];
 const REVISIONS = ["base", "head"];
+const RSS_METHOD = "lane-local-retained/fresh-process-envelope-v4";
+const CONFIRMATION_CRITICAL_Z = 2.2414027264652865;
+const CONFIRMATION_POWER_Z = 0.8416212327266186;
 const DECISION_STATUSES = [
   "confirmed-improvement",
   "rejected",
@@ -16,7 +19,7 @@ const COMMIT = /^[0-9a-f]{40}$/;
 
 export function validateRequestOverlayManifest(value) {
   assertObject(value, "request-overlay manifest");
-  if (value.schema_version !== 1) fail("manifest schema_version must be 1");
+  if (value.schema_version !== 2) fail("manifest schema_version must be 2");
   if (
     value.lane_id !== "binding-request-overlay-node-owner" ||
     value.owner !== "merman-bindings-core"
@@ -90,6 +93,22 @@ export function validateRequestOverlayManifest(value) {
   ) {
     fail("manifest error probe is not the fixed request-scope policy rejection");
   }
+  assertObject(value.resource_limit_probe, "manifest resource_limit_probe");
+  if (
+    value.resource_limit_probe.id !== "real-overlay-max-source-bytes" ||
+    value.resource_limit_probe.source_prefix !== "info\n" ||
+    value.resource_limit_probe.padding_character !== "x" ||
+    value.resource_limit_probe.padding_bytes !== 4096 ||
+    value.resource_limit_probe.overlay_id !== "real-resource-override" ||
+    value.resource_limit_probe.expected?.ok !== false ||
+    value.resource_limit_probe.expected?.error?.code !== 10 ||
+    value.resource_limit_probe.expected?.error?.code_name !==
+      "MERMAN_RESOURCE_LIMIT_EXCEEDED" ||
+    value.resource_limit_probe.expected?.error?.message !==
+      "resource limit exceeded during source: max_source_bytes actual=4101 max=4096"
+  ) {
+    fail("manifest resource-limit probe differs from the fixed real-overlay contract");
+  }
 
   assertObject(value.scaling, "manifest scaling");
   assertEqual(value.scaling.batch_sizes, SCALE_POINTS, "manifest batch sizes");
@@ -103,17 +122,43 @@ export function validateRequestOverlayManifest(value) {
   }
 
   validateSamplingDefaults(value.sampling_defaults);
+  validateSamplingLimits(value.sampling_limits);
   assertObject(value.statistics, "manifest statistics");
   if (
-    value.statistics.method !== "deterministic-paired-bootstrap-v1" ||
+    value.statistics.method !== "deterministic-paired-bootstrap-mc-bounded-v2" ||
     value.statistics.confidence_level !== 0.95 ||
     value.statistics.bootstrap_seed !== 84_960_128_876_878 ||
     value.statistics.bootstrap_resamples !== 10_000 ||
+    value.statistics.monte_carlo_failure_probability !== 0.001 ||
     value.statistics.multiplicity_adjustment !== "bonferroni" ||
     value.statistics.aa_family_size !== REVISIONS.length * TRANSPORTS.length * 4 ||
     value.statistics.confirmation_family_size !== TRANSPORTS.length * 2
   ) {
     fail("manifest statistics differ from the registered simultaneous bootstrap contract");
+  }
+  assertObject(value.rss_contract, "manifest rss_contract");
+  assertEqual(value.rss_contract.dimensions, [
+    { id: "batch-reused", measurement: "batch", lifecycle: "reused" },
+    { id: "base-size-cold", measurement: "base-size", lifecycle: "cold" },
+    { id: "base-size-reused", measurement: "base-size", lifecycle: "reused" },
+  ], "manifest RSS dimensions");
+  if (
+    value.rss_contract.method !== RSS_METHOD ||
+    value.rss_contract.curve_transform !== "ols-log-scale-log1p-growth-v1" ||
+    value.rss_contract.curve_metric !==
+      "lane-local-sampled-current-growth-bytes" ||
+    value.rss_contract.process_envelope_metric !==
+      "fresh-process-current-or-max-growth-v1" ||
+    value.rss_contract.maximum_slope_upper_bound !== 1 ||
+    value.rss_contract.maximum_absolute_growth_bytes !== 64 * 1024 * 1024 ||
+    value.rss_contract.maximum_head_regression_bytes !== 1024 * 1024 ||
+    value.rss_contract.maximum_process_envelope_growth_bytes !== 64 * 1024 * 1024 ||
+    value.rss_contract.maximum_head_process_envelope_regression_bytes !== 1024 * 1024 ||
+    value.rss_contract.maximum_startup_history_gap_bytes !== 1024 * 1024 ||
+    value.rss_contract.maximum_lane_history_gap_bytes !== 1024 * 1024 ||
+    value.rss_contract.upper_bound_method !== "observed-process-maximum-v1"
+  ) {
+    fail("manifest RSS contract differs from the registered owner bounds");
   }
   assertObject(value.decision_rule, "manifest decision_rule");
   if (
@@ -157,8 +202,27 @@ export function prepareRequestOverlayInputs(manifestValue) {
       manifest.operation,
       manifest.error_probe.request_options,
     ),
+    resource_limit_request_json: encodeRequest(
+      {
+        ...manifest.operation,
+        source:
+          manifest.resource_limit_probe.source_prefix +
+          manifest.resource_limit_probe.padding_character.repeat(
+            manifest.resource_limit_probe.padding_bytes,
+          ),
+      },
+      manifest.overlays.find(
+        (overlay) => overlay.id === manifest.resource_limit_probe.overlay_id,
+      ).request_options,
+    ),
     base_json_by_units: baseJsonByUnits,
   };
+}
+
+export function requestOverlayRssLanePlan(manifestValue, samplingValue) {
+  const manifest = validateRequestOverlayManifest(manifestValue);
+  const sampling = validateSampling(samplingValue, manifest);
+  return buildRssLanePlan(manifest, sampling);
 }
 
 export function validateSampling(value, manifestValue) {
@@ -186,6 +250,16 @@ export function validateSampling(value, manifestValue) {
     value.confirmation_pairs % 2 !== 0
   ) {
     fail("sampling pair counts violate the registered balanced 8..32 budget");
+  }
+  const limits = manifest.sampling_limits;
+  if (
+    value.cold_samples > limits.maximum_cold_samples ||
+    value.warmup_iterations > limits.maximum_warmup_iterations ||
+    value.reused_samples > limits.maximum_reused_samples ||
+    estimatedWorkerLogicalOperations(value) >
+      limits.maximum_logical_operations_per_worker
+  ) {
+    fail("sampling workload exceeds the registered worker budget");
   }
   return value;
 }
@@ -268,7 +342,7 @@ export function validateRequestOverlayWorkerResult(
   const manifest = validateRequestOverlayManifest(manifestValue);
   assertObject(value, "worker result");
   if (
-    value.schema_version !== 1 ||
+    value.schema_version !== 2 ||
     value.lane_id !== manifest.lane_id ||
     value.artifact_key !== artifactKey ||
     value.manifest_digest !== digestJson(manifest)
@@ -287,15 +361,24 @@ export function validateRequestOverlayWorkerResult(
     !/^[0-9a-f]{32}$/.test(value.process.invocation_nonce) ||
     typeof value.process.parent_invocation_id !== "string" ||
     !/^[0-9a-f]{32}$/.test(value.process.parent_invocation_id) ||
-    value.process.gc_mode !== "exposed-double-before-sample" ||
+    value.process.gc_mode !== "exposed-double-before-lane-and-sample" ||
     value.process.clock !== "process.hrtime.bigint"
   ) {
     fail("worker process evidence is invalid");
   }
   assertEqual(value.artifact, artifactIdentity, "worker artifact identity");
-  validateRss(value.rss);
-  validateSemanticEvidence(value.semantic_evidence, manifest, artifactIdentity);
-  validateMeasurements(value.measurements, manifest, sampling);
+  validateRss(value.rss, manifest, sampling);
+  const measurementSemanticPassed = validateMeasurements(
+    value.measurements,
+    manifest,
+    sampling,
+  );
+  validateSemanticEvidence(
+    value.semantic_evidence,
+    manifest,
+    artifactIdentity,
+    measurementSemanticPassed,
+  );
   return value;
 }
 
@@ -306,7 +389,22 @@ export function projectSemanticEvidence(cells) {
       cell_id: cell.id,
       artifact_key: cell.artifact_key,
       success_digest: digestJson(cell.result.semantic_evidence.success_probes),
+      reused_success_digest:
+        digestJson(cell.result.semantic_evidence.reused_success_probes),
+      measurement_digest: digestJson({
+        passed: cell.result.measurements.semantic_contract_passed,
+        overlays: cell.result.measurements.overlays.map(
+          (lane) => lane.semantic_contract,
+        ),
+        batch_scaling: cell.result.measurements.batch_scaling.map(
+          (lane) => lane.semantic_contract,
+        ),
+        base_size_scaling: cell.result.measurements.base_size_scaling.map(
+          (lane) => lane.semantic_contract,
+        ),
+      }),
       error_digest: digestJson(cell.result.semantic_evidence.error_probe),
+      resource_limit_digest: digestJson(cell.result.semantic_evidence.resource_limit_probe),
       runtime_catalog_digest: cell.result.semantic_evidence.runtime_catalog_digest,
     })),
   };
@@ -315,22 +413,35 @@ export function projectSemanticEvidence(cells) {
 export function projectRss(cells) {
   return artifactKeys().map((artifactKey) => ({
     artifact_key: artifactKey,
-    method: "process.memoryUsage.rss/process.resourceUsage.maxRSS",
+    method: RSS_METHOD,
     processes: cells
       .filter((cell) => cell.artifact_key === artifactKey)
       .map((cell) => ({
         cell_id: cell.id,
         baseline_current_rss_bytes: cell.result.rss.baseline_current_rss_bytes,
-        baseline_peak_rss_bytes: cell.result.rss.baseline_peak_rss_bytes,
+        baseline_process_max_rss_bytes:
+          cell.result.rss.baseline_process_max_rss_bytes,
+        baseline_history_gap_bytes: cell.result.rss.baseline_history_gap_bytes,
         final_current_rss_bytes: cell.result.rss.final_current_rss_bytes,
-        peak_rss_bytes: cell.result.rss.peak_rss_bytes,
-        operation_peak_growth_bytes: cell.result.rss.operation_peak_growth_bytes,
+        final_process_max_rss_bytes: cell.result.rss.final_process_max_rss_bytes,
+        peak_sampled_current_rss_bytes:
+          cell.result.rss.peak_sampled_current_rss_bytes,
+        peak_process_max_rss_bytes: cell.result.rss.peak_process_max_rss_bytes,
+        sampled_current_peak_growth_bytes:
+          cell.result.rss.sampled_current_peak_growth_bytes,
+        process_max_peak_growth_bytes:
+          cell.result.rss.process_max_peak_growth_bytes,
+        fresh_process_envelope_growth_bytes:
+          cell.result.rss.fresh_process_envelope_growth_bytes,
+        lanes: structuredClone(cell.result.rss.lanes),
       })),
   }));
 }
 
 export function qualifyNoise(cells, manifestValue, maximumConfirmationPairs = 32) {
   const manifest = validateRequestOverlayManifest(manifestValue);
+  validateEvenPairCount(maximumConfirmationPairs, "maximum confirmation pairs");
+  const powerContract = confirmationPowerContract(manifest);
   const byArtifact = Object.fromEntries(
     REVISIONS.flatMap((calibrationRevision) => TRANSPORTS.map((transport) => {
       const pairs = pairedPrimaryObservations(cells, "aa", transport, calibrationRevision);
@@ -338,8 +449,16 @@ export function qualifyNoise(cells, manifestValue, maximumConfirmationPairs = 32
       const d = pairs.map(({ left, right }) => right - left);
       const relativeMde = Math.log(1 + manifest.decision_rule.minimum_relative_effect);
       const absoluteMde = manifest.decision_rule.minimum_absolute_effect_ns;
-      const requiredRelative = requiredPairs(sampleStandardDeviation(r), relativeMde);
-      const requiredAbsolute = requiredPairs(sampleStandardDeviation(d), absoluteMde);
+      const requiredRelative = requiredPairs(
+        sampleStandardDeviation(r),
+        relativeMde,
+        powerContract,
+      );
+      const requiredAbsolute = requiredPairs(
+        sampleStandardDeviation(d),
+        absoluteMde,
+        powerContract,
+      );
       const required = nextEven(Math.max(8, requiredRelative, requiredAbsolute));
       const identityBounds = pairedBootstrapBounds(
         pairs.map((pair) => pair.left),
@@ -362,9 +481,13 @@ export function qualifyNoise(cells, manifestValue, maximumConfirmationPairs = 32
         },
       );
       const stable =
+        includesZero(identityBounds.log_ratio) &&
         withinEquivalence(identityBounds.log_ratio, relativeMde) &&
+        includesZero(identityBounds.absolute_ns) &&
         withinEquivalence(identityBounds.absolute_ns, absoluteMde) &&
+        includesZero(orderBounds.log_ratio) &&
         withinEquivalence(orderBounds.log_ratio, relativeMde) &&
+        includesZero(orderBounds.absolute_ns) &&
         withinEquivalence(orderBounds.absolute_ns, absoluteMde) &&
         required <= maximumConfirmationPairs;
       return [`${calibrationRevision}:${transport}`, {
@@ -396,6 +519,7 @@ export function qualifyNoise(cells, manifestValue, maximumConfirmationPairs = 32
     method: manifest.statistics.method,
     simultaneous_confidence_level: manifest.statistics.confidence_level,
     multiplicity_adjustment: manifest.statistics.multiplicity_adjustment,
+    power_contract: powerContract,
     by_artifact: byArtifact,
     required_confirmation_pairs: requiredPairsAcrossTransports,
     within_budget: requiredPairsAcrossTransports <= maximumConfirmationPairs,
@@ -403,8 +527,147 @@ export function qualifyNoise(cells, manifestValue, maximumConfirmationPairs = 32
   };
 }
 
+export function classifyRssGate(cells, manifestValue) {
+  const manifest = validateRequestOverlayManifest(manifestValue);
+  const contract = manifest.rss_contract;
+  const byTransport = Object.fromEntries(TRANSPORTS.map((transport) => {
+    const pairs = pairedRssCurves(cells, transport, manifest);
+    const dimensions = Object.fromEntries(contract.dimensions.map((dimension) => {
+      const samples = pairs.map((pair) => {
+        const baseCurve = rssCurve(pair.base, dimension);
+        const headCurve = rssCurve(pair.head, dimension);
+        return {
+          pair_index: pair.pair_index,
+          order: pair.order,
+          base_growth_bytes: baseCurve,
+          head_growth_bytes: headCurve,
+          head_slope: log1pScaleSlope(SCALE_POINTS, headCurve),
+          head_absolute_growth_bytes: Math.max(...headCurve),
+          head_regression_bytes: Math.max(
+            ...headCurve.map((value, index) => value - baseCurve[index]),
+          ),
+        };
+      });
+      const slopeUpper = observedProcessUpper(
+        samples.map((sample) => sample.head_slope),
+        contract,
+      );
+      const absoluteUpper = observedProcessUpper(
+        samples.map((sample) => sample.head_absolute_growth_bytes),
+        contract,
+      );
+      const regressionUpper = observedProcessUpper(
+        samples.map((sample) => sample.head_regression_bytes),
+        contract,
+      );
+      const qualified =
+        slopeUpper.upper <= contract.maximum_slope_upper_bound &&
+        absoluteUpper.upper <= contract.maximum_absolute_growth_bytes &&
+        regressionUpper.upper <= contract.maximum_head_regression_bytes;
+      return [dimension.id, {
+        dimension: structuredClone(dimension),
+        samples,
+        slope_upper_bound: slopeUpper,
+        absolute_growth_upper_bound_bytes: absoluteUpper,
+        head_regression_upper_bound_bytes: regressionUpper,
+        qualified,
+      }];
+    }));
+    const processSamples = pairs.map((pair) => ({
+      pair_index: pair.pair_index,
+      order: pair.order,
+      base_growth_bytes: pair.base.rss.fresh_process_envelope_growth_bytes,
+      head_growth_bytes: pair.head.rss.fresh_process_envelope_growth_bytes,
+      base_startup_history_gap_bytes: pair.base.rss.baseline_history_gap_bytes,
+      head_startup_history_gap_bytes: pair.head.rss.baseline_history_gap_bytes,
+      base_lane_history_gap_bytes: maximumMeasurementLaneHistoryGap(pair.base),
+      head_lane_history_gap_bytes: maximumMeasurementLaneHistoryGap(pair.head),
+      head_regression_bytes:
+        pair.head.rss.fresh_process_envelope_growth_bytes -
+        pair.base.rss.fresh_process_envelope_growth_bytes,
+    }));
+    const processEnvelope = {
+      samples: processSamples,
+      absolute_growth_upper_bound_bytes: observedProcessUpper(
+        processSamples.map((sample) => sample.head_growth_bytes),
+        contract,
+      ),
+      head_regression_upper_bound_bytes: observedProcessUpper(
+        processSamples.map((sample) => sample.head_regression_bytes),
+        contract,
+      ),
+      startup_history_gap_upper_bound_bytes: observedProcessUpper(
+        processSamples.flatMap((sample) => [
+          sample.base_startup_history_gap_bytes,
+          sample.head_startup_history_gap_bytes,
+        ]),
+        contract,
+      ),
+      lane_history_gap_upper_bound_bytes: observedProcessUpper(
+        processSamples.flatMap((sample) => [
+          sample.base_lane_history_gap_bytes,
+          sample.head_lane_history_gap_bytes,
+        ]),
+        contract,
+      ),
+    };
+    processEnvelope.qualified =
+      processEnvelope.absolute_growth_upper_bound_bytes.upper <=
+        contract.maximum_process_envelope_growth_bytes &&
+      processEnvelope.head_regression_upper_bound_bytes.upper <=
+        contract.maximum_head_process_envelope_regression_bytes &&
+      processEnvelope.startup_history_gap_upper_bound_bytes.upper <=
+        contract.maximum_startup_history_gap_bytes &&
+      processEnvelope.lane_history_gap_upper_bound_bytes.upper <=
+        contract.maximum_lane_history_gap_bytes;
+    return [transport, {
+      dimensions,
+      process_envelope: processEnvelope,
+      qualified:
+        Object.values(dimensions).every((dimension) => dimension.qualified) &&
+        processEnvelope.qualified,
+    }];
+  }));
+  const qualified = Object.values(byTransport).every((transport) => transport.qualified);
+  return {
+    method: contract.method,
+    curve_transform: contract.curve_transform,
+    curve_metric: contract.curve_metric,
+    process_envelope_metric: contract.process_envelope_metric,
+    upper_bound_method: contract.upper_bound_method,
+    limits: {
+      maximum_slope_upper_bound: contract.maximum_slope_upper_bound,
+      maximum_absolute_growth_bytes: contract.maximum_absolute_growth_bytes,
+      maximum_head_regression_bytes: contract.maximum_head_regression_bytes,
+      maximum_process_envelope_growth_bytes:
+        contract.maximum_process_envelope_growth_bytes,
+      maximum_head_process_envelope_regression_bytes:
+        contract.maximum_head_process_envelope_regression_bytes,
+      maximum_startup_history_gap_bytes:
+        contract.maximum_startup_history_gap_bytes,
+      maximum_lane_history_gap_bytes:
+        contract.maximum_lane_history_gap_bytes,
+    },
+    by_transport: byTransport,
+    qualified,
+  };
+}
+
+function maximumMeasurementLaneHistoryGap(workerResult) {
+  const gaps = workerResult.rss.lanes
+    .filter((lane) => lane.lane_id.startsWith("measurement:"))
+    .map((lane) => lane.baseline_history_gap_bytes);
+  if (gaps.length === 0) fail("worker RSS evidence lacks measurement lane history gaps");
+  return Math.max(...gaps);
+}
+
 export function classifyDecision(cells, noise, manifestValue) {
   const manifest = validateRequestOverlayManifest(manifestValue);
+  const semantic = classifySemanticGate(cells);
+  if (!semantic.base_qualified) {
+    fail("base artifacts do not satisfy the fixed request-overlay semantic contract");
+  }
+  const rss = classifyRssGate(cells, manifest);
   const byTransport = Object.fromEntries(
     TRANSPORTS.map((transport) => {
       const pairs = pairedPrimaryObservations(cells, "ab_ba", transport);
@@ -444,17 +707,26 @@ export function classifyDecision(cells, noise, manifestValue) {
   );
   let status = "inconclusive";
   const reasons = [];
-  if (!noise.stable || !noise.within_budget) {
+  if (!semantic.head_qualified) {
+    status = "rejected";
+    reasons.push("At least one head artifact failed a mandatory semantic owner gate.");
+  } else if (!noise.stable || !noise.within_budget) {
     reasons.push("A/A noise did not qualify within the registered 32-pair budget.");
   } else if (Object.values(byTransport).some((entry) => entry.confirmed_regression)) {
     status = "regressed";
     reasons.push("At least one transport cleared both ordinary regression thresholds.");
-  } else if (Object.values(byTransport).every((entry) => entry.confirmed_improvement)) {
-    status = "confirmed-improvement";
-    reasons.push("Both transports cleared the ordinary relative and absolute improvement gates.");
   } else if (Object.values(byTransport).some((entry) => entry.confirmed_non_improvement)) {
     status = "rejected";
     reasons.push("At least one transport disconfirmed an ordinary improvement threshold.");
+  } else if (Object.values(byTransport).every((entry) => entry.confirmed_improvement)) {
+    if (rss.qualified) {
+      status = "confirmed-improvement";
+      reasons.push(
+        "Both transports cleared the ordinary latency gates and every RSS owner bound.",
+      );
+    } else {
+      reasons.push("Latency improved, but at least one RSS curve exceeded its owner bound.");
+    }
   } else {
     reasons.push("At least one paired interval crossed an ordinary improvement threshold.");
   }
@@ -462,18 +734,98 @@ export function classifyDecision(cells, noise, manifestValue) {
     status,
     transport_admission: "not-evaluated",
     primary_metric: "version-only reused executeSync batch_ns per logical operation",
+    semantic,
     noise,
     confirmation: { by_transport: byTransport },
+    rss,
     reasons,
   };
+}
+
+function classifySemanticGate(cells) {
+  const byArtifact = Object.fromEntries(artifactKeys().map((artifactKey) => {
+    const artifactCells = cells.filter((cell) => cell.artifact_key === artifactKey);
+    const failedCellIds = artifactCells
+      .filter((cell) => cell.result.semantic_evidence.passed !== true)
+      .map((cell) => cell.id);
+    const rawIdentityDigests = [
+      ...new Set(artifactCells.map((cell) => semanticRawIdentityDigest(cell.result))),
+    ].sort();
+    return [artifactKey, {
+      cell_count: artifactCells.length,
+      failed_cell_ids: failedCellIds,
+      raw_identity_digests: rawIdentityDigests,
+      fresh_process_deterministic: rawIdentityDigests.length === 1,
+      qualified:
+        artifactCells.length > 0 &&
+        failedCellIds.length === 0 &&
+        rawIdentityDigests.length === 1,
+    }];
+  }));
+  const crossRevision = Object.fromEntries(TRANSPORTS.map((transport) => {
+    const baseDigest = byArtifact[`base:${transport}`].raw_identity_digests[0] ?? null;
+    const headDigest = byArtifact[`head:${transport}`].raw_identity_digests[0] ?? null;
+    return [transport, {
+      base_digest: baseDigest,
+      head_digest: headDigest,
+      equal: baseDigest !== null && baseDigest === headDigest,
+    }];
+  }));
+  return {
+    by_artifact: byArtifact,
+    cross_revision: crossRevision,
+    base_qualified: TRANSPORTS.every(
+      (transport) => byArtifact[`base:${transport}`].qualified,
+    ),
+    head_qualified: TRANSPORTS.every(
+      (transport) =>
+        byArtifact[`head:${transport}`].qualified && crossRevision[transport].equal,
+    ),
+  };
+}
+
+function semanticRawIdentityDigest(workerResult) {
+  const semantic = workerResult.semantic_evidence;
+  return digestJson({
+    success: semantic.success_probes.map((probe) => ({
+      id: probe.id,
+      raw_sha256: probe.raw_sha256,
+    })),
+    reused_success: semantic.reused_success_probes.map((probe) => ({
+      id: probe.id,
+      response_sequence_sha256: probe.response_sequence_sha256,
+      unique_response_sha256: probe.unique_response_sha256,
+    })),
+    error: semantic.error_probe.raw_sha256,
+    resource_limit: semantic.resource_limit_probe.raw_sha256,
+    measurements: {
+      overlays: measurementWireIdentity(workerResult.measurements.overlays),
+      batch_scaling: measurementWireIdentity(workerResult.measurements.batch_scaling),
+      base_size_scaling: measurementWireIdentity(
+        workerResult.measurements.base_size_scaling,
+      ),
+    },
+  });
+}
+
+function measurementWireIdentity(lanes) {
+  return lanes.map((lane) => ({
+    overlay_id: lane.overlay_id,
+    engine_lifecycle: lane.engine_lifecycle,
+    logical_operations_per_sample: lane.logical_operations_per_sample,
+    batch_size: lane.batch_size ?? null,
+    base_size_units: lane.base_size_units ?? null,
+    response_sequence_sha256: lane.semantic_contract.response_sequence_sha256,
+    unique_response_sha256: lane.semantic_contract.unique_response_sha256,
+  }));
 }
 
 export function validateRequestOverlayReport(report, { trustedManifest }) {
   const manifest = validateRequestOverlayManifest(trustedManifest);
   assertObject(report, "request-overlay report");
   if (
-    report.schema_version !== 1 ||
-    report.report_kind !== "merman-node-request-overlay-owner-v1" ||
+    report.schema_version !== 2 ||
+    report.report_kind !== "merman-node-request-overlay-owner-v2" ||
     report.owner !== "merman-bindings-core"
   ) {
     fail("report identity is invalid");
@@ -544,6 +896,10 @@ export function artifactKeys() {
 
 function validateMeasurements(value, manifest, sampling) {
   assertObject(value, "worker measurements");
+  if (typeof value.semantic_contract_passed !== "boolean") {
+    fail("worker measurement semantic aggregate is invalid");
+  }
+  const semanticContracts = [];
   if (!Array.isArray(value.overlays) || value.overlays.length !== OVERLAY_IDS.length * 2) {
     fail("worker overlay measurements have incomplete lifecycle coverage");
   }
@@ -557,7 +913,10 @@ function validateMeasurements(value, manifest, sampling) {
         lifecycle === "cold" ? sampling.cold_samples : sampling.reused_samples,
         lifecycle,
         1,
+        sampling.warmup_iterations,
+        manifest.success_contract,
       );
+      semanticContracts.push(lane.semantic_contract);
     }
   }
   if (!Array.isArray(value.batch_scaling) || value.batch_scaling.length !== SCALE_POINTS.length) {
@@ -568,7 +927,15 @@ function validateMeasurements(value, manifest, sampling) {
     if (lane?.overlay_id !== manifest.scaling.overlay_id) {
       fail(`worker batch ${batchSize} does not use the registered overlay`);
     }
-    validateLane(lane, sampling.reused_samples, "reused", batchSize);
+    validateLane(
+      lane,
+      sampling.reused_samples,
+      "reused",
+      batchSize,
+      sampling.warmup_iterations,
+      manifest.success_contract,
+    );
+    semanticContracts.push(lane.semantic_contract);
   }
   if (!Array.isArray(value.base_size_scaling) || value.base_size_scaling.length !== SCALE_POINTS.length * 2) {
     fail("worker base-size scaling does not contain both lifecycles at six points");
@@ -590,12 +957,27 @@ function validateMeasurements(value, manifest, sampling) {
         lifecycle === "cold" ? sampling.cold_samples : sampling.reused_samples,
         lifecycle,
         1,
+        sampling.warmup_iterations,
+        manifest.success_contract,
       );
+      semanticContracts.push(lane.semantic_contract);
     }
   }
+  const semanticPassed = semanticContracts.every((contract) => contract.passed);
+  if (value.semantic_contract_passed !== semanticPassed) {
+    fail("worker measurement semantic aggregate is inconsistent");
+  }
+  return semanticPassed;
 }
 
-function validateLane(lane, expectedCount, lifecycle, logicalOperations) {
+function validateLane(
+  lane,
+  expectedCount,
+  lifecycle,
+  logicalOperations,
+  warmupIterations,
+  expectedEnvelope,
+) {
   assertObject(lane, "measurement lane");
   if (
     lane.engine_lifecycle !== lifecycle ||
@@ -619,6 +1001,59 @@ function validateLane(lane, expectedCount, lifecycle, logicalOperations) {
     summarizeTimingSamples(lane.samples, logicalOperations),
     "measurement lane summary",
   );
+  const expectedSemanticObservations = logicalOperations * (
+    expectedCount + (lifecycle === "reused" ? warmupIterations : 0)
+  );
+  validateMeasurementSemanticContract(
+    lane.semantic_contract,
+    expectedSemanticObservations,
+    expectedEnvelope,
+  );
+}
+
+function validateMeasurementSemanticContract(value, expectedCount, expectedEnvelope) {
+  assertObject(value, "measurement semantic contract");
+  if (
+    value.observation_count !== expectedCount ||
+    !Number.isSafeInteger(value.matching_observations) ||
+    value.matching_observations < 0 ||
+    value.matching_observations > expectedCount ||
+    !SHA256.test(value.response_sequence_sha256 ?? "") ||
+    !Array.isArray(value.unique_response_sha256) ||
+    value.unique_response_sha256.length === 0 ||
+    value.unique_response_sha256.some((digest) => !SHA256.test(digest)) ||
+    stableJson(value.unique_response_sha256) !==
+      stableJson([...new Set(value.unique_response_sha256)].sort()) ||
+    typeof value.wire_deterministic !== "boolean" ||
+    typeof value.passed !== "boolean"
+  ) {
+    fail("measurement semantic coverage is invalid");
+  }
+  const semanticMatches = value.matching_observations === expectedCount;
+  const wireDeterministic = value.unique_response_sha256.length === 1;
+  if (value.wire_deterministic !== wireDeterministic) {
+    fail("measurement wire determinism classification is invalid");
+  }
+  const passed = semanticMatches && wireDeterministic;
+  if (value.passed !== passed) {
+    fail("measurement semantic classification is invalid");
+  }
+  if (semanticMatches) {
+    if (value.first_mismatch !== null) {
+      fail("measurement semantic contract records a spurious mismatch");
+    }
+    return;
+  }
+  assertObject(value.first_mismatch, "measurement first mismatch");
+  if (
+    !Number.isSafeInteger(value.first_mismatch.observation_index) ||
+    value.first_mismatch.observation_index < 0 ||
+    value.first_mismatch.observation_index >= expectedCount ||
+    !SHA256.test(value.first_mismatch.raw_sha256 ?? "") ||
+    stableJson(value.first_mismatch.envelope) === stableJson(expectedEnvelope)
+  ) {
+    fail("measurement first mismatch is invalid");
+  }
 }
 
 function validateTimingSample(sample) {
@@ -633,10 +1068,21 @@ function validateTimingSample(sample) {
   }
 }
 
-function validateSemanticEvidence(value, manifest, artifactIdentity) {
+function validateSemanticEvidence(
+  value,
+  manifest,
+  artifactIdentity,
+  measurementSemanticPassed,
+) {
   assertObject(value, "worker semantic evidence");
-  if (value.passed !== true || !Array.isArray(value.success_probes)) {
-    fail("worker did not pass the fixed semantic contract");
+  if (
+    typeof value.passed !== "boolean" ||
+    typeof value.probe_passed !== "boolean" ||
+    typeof value.measurement_passed !== "boolean" ||
+    !Array.isArray(value.success_probes) ||
+    !Array.isArray(value.reused_success_probes)
+  ) {
+    fail("worker semantic evidence is malformed");
   }
   if (value.runtime_catalog_digest !== artifactIdentity.runtime_catalog_digest) {
     fail("worker runtime catalog does not match its receipt-bound artifact identity");
@@ -647,11 +1093,101 @@ function validateSemanticEvidence(value, manifest, artifactIdentity) {
   ];
   assertEqual(value.success_probes.map((probe) => probe?.id), expectedIds, "semantic probe IDs");
   for (const probe of value.success_probes) {
-    assertEqual(probe.envelope, manifest.success_contract, `semantic probe ${probe.id}`);
     assertDigest(probe.raw_sha256, `semantic probe ${probe.id} digest`);
+    const matches = stableJson(probe.envelope) === stableJson(manifest.success_contract);
+    if (probe.matches_contract !== matches) {
+      fail(`semantic probe ${probe.id} match classification is invalid`);
+    }
   }
-  assertEqual(value.error_probe?.envelope, manifest.error_probe.expected, "semantic error probe");
+  assertEqual(
+    value.reused_success_probes.map((probe) => probe?.id),
+    OVERLAY_IDS.map((id) => `overlay:${id}`),
+    "reused semantic probe IDs",
+  );
+  for (const probe of value.reused_success_probes) {
+    validateReusedSemanticProbe(probe, manifest.success_contract);
+  }
   assertDigest(value.error_probe?.raw_sha256, "semantic error probe digest");
+  const errorMatches =
+    stableJson(value.error_probe?.envelope) === stableJson(manifest.error_probe.expected);
+  if (value.error_probe?.matches_contract !== errorMatches) {
+    fail("semantic error probe match classification is invalid");
+  }
+  assertDigest(
+    value.resource_limit_probe?.raw_sha256,
+    "semantic resource-limit probe digest",
+  );
+  const resourceMatches =
+    stableJson(value.resource_limit_probe?.envelope) ===
+    stableJson(manifest.resource_limit_probe.expected);
+  if (value.resource_limit_probe?.matches_contract !== resourceMatches) {
+    fail("semantic resource-limit probe match classification is invalid");
+  }
+  const probePassed =
+    value.success_probes.every((probe) => probe.matches_contract) &&
+    value.reused_success_probes.every((probe) => probe.passed) &&
+    errorMatches &&
+    resourceMatches;
+  if (
+    value.probe_passed !== probePassed ||
+    value.measurement_passed !== measurementSemanticPassed ||
+    value.passed !== (probePassed && measurementSemanticPassed)
+  ) {
+    fail("worker semantic aggregate classification is invalid");
+  }
+}
+
+function validateReusedSemanticProbe(probe, expectedEnvelope) {
+  assertObject(probe, "reused semantic probe");
+  if (
+    probe.iterations !== 32 ||
+    !Number.isSafeInteger(probe.matching_observations) ||
+    probe.matching_observations < 0 ||
+    probe.matching_observations > probe.iterations ||
+    !Array.isArray(probe.response_sha256) ||
+    probe.response_sha256.length !== probe.iterations ||
+    !Array.isArray(probe.unique_response_sha256)
+  ) {
+    fail(`reused semantic probe ${probe.id} coverage is invalid`);
+  }
+  for (const digest of probe.response_sha256) {
+    assertDigest(digest, `reused semantic probe ${probe.id} response digest`);
+  }
+  assertSortedUniqueStrings(
+    probe.unique_response_sha256,
+    `reused semantic probe ${probe.id} unique response digests`,
+  );
+  assertEqual(
+    probe.unique_response_sha256,
+    [...new Set(probe.response_sha256)].sort(),
+    `reused semantic probe ${probe.id} unique response digest projection`,
+  );
+  if (probe.response_sequence_sha256 !== digestJson(probe.response_sha256)) {
+    fail(`reused semantic probe ${probe.id} sequence digest is invalid`);
+  }
+  if (probe.matching_observations === probe.iterations) {
+    if (probe.first_mismatch !== null) {
+      fail(`reused semantic probe ${probe.id} records a spurious mismatch`);
+    }
+  } else {
+    assertObject(probe.first_mismatch, `reused semantic probe ${probe.id} first mismatch`);
+    const mismatch = probe.first_mismatch;
+    if (
+      !Number.isSafeInteger(mismatch.iteration) ||
+      mismatch.iteration < 0 ||
+      mismatch.iteration >= probe.iterations ||
+      mismatch.raw_sha256 !== probe.response_sha256[mismatch.iteration] ||
+      stableJson(mismatch.envelope) === stableJson(expectedEnvelope)
+    ) {
+      fail(`reused semantic probe ${probe.id} first mismatch is invalid`);
+    }
+  }
+  const passed =
+    probe.matching_observations === probe.iterations &&
+    probe.unique_response_sha256.length === 1;
+  if (probe.passed !== passed) {
+    fail(`reused semantic probe ${probe.id} aggregate classification is invalid`);
+  }
 }
 
 function validateCells(cells, report, manifest) {
@@ -704,10 +1240,15 @@ function validateArtifacts(values, revisions) {
     if (side.length !== 2 || side.some((value) => value.commit !== revisions[revision])) {
       fail(`${revision} artifact commits do not match report revisions`);
     }
+    if (side.some((value) => value.commit_tree !== revisions[`${revision}_tree`])) {
+      fail(`${revision} artifact trees do not match report revisions`);
+    }
     for (const key of [
+      "commit_tree",
       "source_digest",
       "cargo_lock_digest",
       "binding_contract_digest",
+      "build_environment_digest",
       "capability_recipe_digest",
       "runtime_catalog_digest",
     ]) {
@@ -725,6 +1266,7 @@ function validateArtifactIdentity(value) {
     !REVISIONS.includes(value.revision) ||
     !TRANSPORTS.includes(value.transport) ||
     !COMMIT.test(value.commit ?? "") ||
+    !COMMIT.test(value.commit_tree ?? "") ||
     !Number.isSafeInteger(value.artifact_bytes) ||
     value.artifact_bytes < 1 ||
     typeof value.artifact_path_in_receipt !== "string" ||
@@ -760,6 +1302,7 @@ function validateArtifactIdentity(value) {
     "source_digest",
     "cargo_lock_digest",
     "binding_contract_digest",
+    "build_environment_digest",
     "dependency_closure_digest",
     "capability_recipe_digest",
     "input_digest",
@@ -813,6 +1356,86 @@ function pairedPrimaryObservations(cells, phase, transport, calibrationRevision 
   return pairs;
 }
 
+function pairedRssCurves(cells, transport, manifest) {
+  const selected = cells.filter(
+    (cell) => cell.phase === "ab_ba" && cell.transport === transport,
+  );
+  const pairs = [];
+  for (const pairIndex of [...new Set(selected.map((cell) => cell.pair_index))]
+    .sort((left, right) => left - right)) {
+    const pairCells = selected.filter((cell) => cell.pair_index === pairIndex);
+    if (pairCells.length !== 2) {
+      fail(`RSS confirmation/${transport}/${pairIndex} is not a complete pair`);
+    }
+    const byRole = new Map(pairCells.map((cell) => [cell.role, cell.result]));
+    const base = byRole.get("base");
+    const head = byRole.get("head");
+    if (!base || !head) {
+      fail(`RSS confirmation/${transport}/${pairIndex} pair roles are incomplete`);
+    }
+    for (const dimension of manifest.rss_contract.dimensions) {
+      rssCurve(base, dimension);
+      rssCurve(head, dimension);
+    }
+    pairs.push({ pair_index: pairIndex, order: pairCells[0].order, base, head });
+  }
+  if (pairs.length < 8) fail(`RSS confirmation/${transport} requires at least eight pairs`);
+  return pairs;
+}
+
+function rssCurve(workerResult, dimension) {
+  return SCALE_POINTS.map((scale) => {
+    const laneId = rssScaleLaneId(dimension, scale);
+    const lane = workerResult.rss.lanes.find((entry) => entry.lane_id === laneId);
+    if (!lane) fail(`worker RSS evidence lacks ${laneId}`);
+    if (!Number.isSafeInteger(lane.sampled_current_growth_bytes) ||
+      lane.sampled_current_growth_bytes < 0) {
+      fail(`worker RSS evidence has an invalid ${laneId} growth value`);
+    }
+    return lane.sampled_current_growth_bytes;
+  });
+}
+
+function rssScaleLaneId(dimension, scale) {
+  if (dimension.measurement === "batch") {
+    return `measurement:batch:${scale}:${dimension.lifecycle}`;
+  }
+  if (dimension.measurement === "base-size") {
+    return `measurement:base-size:${scale}:${dimension.lifecycle}`;
+  }
+  fail(`unknown RSS scale dimension ${dimension.id}`);
+}
+
+function log1pScaleSlope(scales, growthBytes) {
+  const x = scales.map((scale) => Math.log(scale));
+  const y = growthBytes.map((value) => Math.log1p(value));
+  const xMean = mean(x);
+  const yMean = mean(y);
+  const denominator = x.reduce((sum, value) => sum + (value - xMean) ** 2, 0);
+  if (!(denominator > 0)) fail("RSS scale slope requires distinct positive scales");
+  return x.reduce(
+    (sum, value, index) => sum + (value - xMean) * (y[index] - yMean),
+    0,
+  ) / denominator;
+}
+
+function observedProcessUpper(values, contract) {
+  if (
+    !Array.isArray(values) ||
+    values.length < 8 ||
+    values.some((value) => !Number.isFinite(value))
+  ) {
+    fail("RSS owner bound requires at least eight finite process observations");
+  }
+  return {
+    estimate: mean(values),
+    lower: Math.min(...values),
+    upper: Math.max(...values),
+    observation_count: values.length,
+    upper_bound_method: contract.upper_bound_method,
+  };
+}
+
 function primaryEstimate(workerResult) {
   const lane = workerResult.measurements.overlays.find(
     (entry) => entry.overlay_id === "version-only" && entry.engine_lifecycle === "reused",
@@ -825,7 +1448,9 @@ function validateRevisions(value) {
   assertObject(value, "report revisions");
   if (
     !COMMIT.test(value.base ?? "") ||
+    !COMMIT.test(value.base_tree ?? "") ||
     !COMMIT.test(value.head ?? "") ||
+    !COMMIT.test(value.head_tree ?? "") ||
     value.base === value.head ||
     value.relationship !== "head^1==base" ||
     value.verified !== true
@@ -834,24 +1459,212 @@ function validateRevisions(value) {
   }
 }
 
-function validateRss(value) {
+function validateRss(value, manifest, sampling) {
   assertObject(value, "worker RSS");
+  assertExactKeys(value, [
+    "method",
+    "baseline_current_rss_bytes",
+    "baseline_process_max_rss_bytes",
+    "baseline_history_gap_bytes",
+    "final_current_rss_bytes",
+    "final_process_max_rss_bytes",
+    "peak_sampled_current_rss_bytes",
+    "peak_process_max_rss_bytes",
+    "sampled_current_peak_growth_bytes",
+    "process_max_peak_growth_bytes",
+    "fresh_process_envelope_growth_bytes",
+    "lanes",
+  ], "worker RSS");
+  if (value.method !== RSS_METHOD) {
+    fail("worker RSS evidence is invalid");
+  }
+  for (const key of [
+    "baseline_current_rss_bytes",
+    "baseline_process_max_rss_bytes",
+    "final_current_rss_bytes",
+    "final_process_max_rss_bytes",
+    "peak_sampled_current_rss_bytes",
+    "peak_process_max_rss_bytes",
+  ]) {
+    validatePositiveSafeInteger(value[key], `worker RSS ${key}`);
+  }
+  for (const key of [
+    "sampled_current_peak_growth_bytes",
+    "process_max_peak_growth_bytes",
+    "baseline_history_gap_bytes",
+    "fresh_process_envelope_growth_bytes",
+  ]) {
+    validateNonNegativeSafeInteger(value[key], `worker RSS ${key}`);
+  }
   if (
-    value.method !== "process.memoryUsage.rss/process.resourceUsage.maxRSS" ||
-    !Number.isSafeInteger(value.baseline_current_rss_bytes) ||
-    value.baseline_current_rss_bytes < 1 ||
-    !Number.isSafeInteger(value.baseline_peak_rss_bytes) ||
-    value.baseline_peak_rss_bytes < value.baseline_current_rss_bytes ||
-    !Number.isSafeInteger(value.final_current_rss_bytes) ||
-    value.final_current_rss_bytes < 1 ||
-    !Number.isSafeInteger(value.peak_rss_bytes) ||
-    value.peak_rss_bytes < value.baseline_peak_rss_bytes ||
-    value.peak_rss_bytes < value.final_current_rss_bytes ||
-    value.operation_peak_growth_bytes !==
-      Math.max(0, value.peak_rss_bytes - value.baseline_peak_rss_bytes)
+    value.baseline_process_max_rss_bytes < value.baseline_current_rss_bytes ||
+    value.baseline_history_gap_bytes !==
+      value.baseline_process_max_rss_bytes - value.baseline_current_rss_bytes ||
+    value.final_process_max_rss_bytes < value.final_current_rss_bytes ||
+    value.final_process_max_rss_bytes < value.baseline_process_max_rss_bytes ||
+    value.peak_process_max_rss_bytes < value.peak_sampled_current_rss_bytes
   ) {
     fail("worker RSS evidence is invalid");
   }
+
+  const expectedPlan = requestOverlayRssLanePlan(manifest, sampling);
+  if (!Array.isArray(value.lanes) || value.lanes.length !== expectedPlan.length) {
+    fail("worker RSS lane coverage is incomplete");
+  }
+  let precedingProcessMaximum = value.baseline_process_max_rss_bytes;
+  for (let index = 0; index < expectedPlan.length; index += 1) {
+    const lane = value.lanes[index];
+    const expected = expectedPlan[index];
+    assertObject(lane, `worker RSS lane ${index}`);
+    assertExactKeys(lane, [
+      "lane_id",
+      "observation_count",
+      "baseline_current_rss_bytes",
+      "baseline_process_max_rss_bytes",
+      "baseline_history_gap_bytes",
+      "peak_sampled_current_rss_bytes",
+      "peak_process_max_rss_bytes",
+      "sampled_current_growth_bytes",
+      "process_max_growth_bytes",
+      "operation_peak_growth_bytes",
+    ], `worker RSS lane ${index}`);
+    if (
+      lane.lane_id !== expected.lane_id ||
+      lane.observation_count !== expected.observation_count
+    ) {
+      fail(`worker RSS lane ${index} identity or observation count is invalid`);
+    }
+    validatePositiveSafeInteger(
+      lane.baseline_current_rss_bytes,
+      `worker RSS lane ${lane.lane_id} sampled current baseline`,
+    );
+    validatePositiveSafeInteger(
+      lane.baseline_process_max_rss_bytes,
+      `worker RSS lane ${lane.lane_id} process maximum baseline`,
+    );
+    validatePositiveSafeInteger(
+      lane.peak_sampled_current_rss_bytes,
+      `worker RSS lane ${lane.lane_id} sampled current peak`,
+    );
+    validatePositiveSafeInteger(
+      lane.peak_process_max_rss_bytes,
+      `worker RSS lane ${lane.lane_id} process maximum`,
+    );
+    for (const key of [
+      "baseline_history_gap_bytes",
+      "sampled_current_growth_bytes",
+      "process_max_growth_bytes",
+      "operation_peak_growth_bytes",
+    ]) {
+      validateNonNegativeSafeInteger(
+        lane[key],
+        `worker RSS lane ${lane.lane_id} ${key}`,
+      );
+    }
+    const sampledCurrentGrowth = Math.max(
+      0,
+      lane.peak_sampled_current_rss_bytes - lane.baseline_current_rss_bytes,
+    );
+    const processMaxGrowth = Math.max(
+      0,
+      lane.peak_process_max_rss_bytes - lane.baseline_process_max_rss_bytes,
+    );
+    if (
+      lane.baseline_process_max_rss_bytes < lane.baseline_current_rss_bytes ||
+      lane.baseline_history_gap_bytes !==
+        lane.baseline_process_max_rss_bytes - lane.baseline_current_rss_bytes ||
+      lane.baseline_process_max_rss_bytes < precedingProcessMaximum ||
+      lane.peak_sampled_current_rss_bytes < lane.baseline_current_rss_bytes ||
+      lane.peak_process_max_rss_bytes < lane.baseline_process_max_rss_bytes ||
+      lane.peak_process_max_rss_bytes < lane.peak_sampled_current_rss_bytes ||
+      lane.sampled_current_growth_bytes !== sampledCurrentGrowth ||
+      lane.process_max_growth_bytes !== processMaxGrowth ||
+      lane.operation_peak_growth_bytes !==
+        Math.max(sampledCurrentGrowth, processMaxGrowth)
+    ) {
+      fail(`worker RSS lane ${lane.lane_id} derived evidence is invalid`);
+    }
+    precedingProcessMaximum = lane.peak_process_max_rss_bytes;
+  }
+  if (value.final_process_max_rss_bytes < precedingProcessMaximum) {
+    fail("worker RSS final process maximum predates a larger lane maximum");
+  }
+
+  const peakSampledCurrent = Math.max(
+    value.baseline_current_rss_bytes,
+    value.final_current_rss_bytes,
+    ...value.lanes.map((lane) => lane.peak_sampled_current_rss_bytes),
+  );
+  const peakProcessMaximum = Math.max(
+    value.baseline_process_max_rss_bytes,
+    value.final_process_max_rss_bytes,
+    ...value.lanes.map((lane) => lane.peak_process_max_rss_bytes),
+  );
+  const sampledCurrentGrowth = Math.max(
+    0,
+    peakSampledCurrent - value.baseline_current_rss_bytes,
+  );
+  const processMaxGrowth = Math.max(
+    0,
+    peakProcessMaximum - value.baseline_process_max_rss_bytes,
+  );
+  if (
+    value.peak_sampled_current_rss_bytes !== peakSampledCurrent ||
+    value.peak_process_max_rss_bytes !== peakProcessMaximum ||
+    value.sampled_current_peak_growth_bytes !== sampledCurrentGrowth ||
+    value.process_max_peak_growth_bytes !== processMaxGrowth ||
+    value.fresh_process_envelope_growth_bytes !==
+      Math.max(sampledCurrentGrowth, processMaxGrowth)
+  ) {
+    fail("worker RSS aggregate evidence is invalid");
+  }
+}
+
+function buildRssLanePlan(manifest, sampling) {
+  return [
+    { lane_id: "lifecycle:artifact-load", observation_count: 1 },
+    { lane_id: "semantic:runtime-catalog", observation_count: 1 },
+    ...manifest.overlays.map((overlay) => ({
+      lane_id: `semantic:overlay:${overlay.id}`,
+      observation_count: 2,
+    })),
+    ...manifest.scaling.base_size_units.map((units) => ({
+      lane_id: `semantic:base-size:${units}`,
+      observation_count: 1,
+    })),
+    {
+      lane_id: `semantic:error:${manifest.error_probe.id}`,
+      observation_count: 1,
+    },
+    {
+      lane_id: `semantic:resource-limit:${manifest.resource_limit_probe.id}`,
+      observation_count: 1,
+    },
+    ...manifest.overlays.flatMap((overlay) => [
+      {
+        lane_id: `measurement:overlay:${overlay.id}:cold`,
+        observation_count: sampling.cold_samples,
+      },
+      {
+        lane_id: `measurement:overlay:${overlay.id}:reused`,
+        observation_count: sampling.reused_samples,
+      },
+    ]),
+    ...manifest.scaling.batch_sizes.map((batchSize) => ({
+      lane_id: `measurement:batch:${batchSize}:reused`,
+      observation_count: sampling.reused_samples,
+    })),
+    ...manifest.scaling.base_size_units.flatMap((units) => [
+      {
+        lane_id: `measurement:base-size:${units}:cold`,
+        observation_count: sampling.cold_samples,
+      },
+      {
+        lane_id: `measurement:base-size:${units}:reused`,
+        observation_count: sampling.reused_samples,
+      },
+    ]),
+  ];
 }
 
 function validateProvenance(value) {
@@ -946,6 +1759,30 @@ function validateSamplingDefaults(value) {
   }
 }
 
+function validateSamplingLimits(value) {
+  assertObject(value, "manifest sampling_limits");
+  if (
+    value.maximum_cold_samples !== 20 ||
+    value.maximum_warmup_iterations !== 100 ||
+    value.maximum_reused_samples !== 100 ||
+    value.maximum_logical_operations_per_worker !== 50_000 ||
+    value.worker_timeout_ms !== 120_000
+  ) {
+    fail("manifest sampling limits differ from the registered worker budget");
+  }
+}
+
+function estimatedWorkerLogicalOperations(sampling) {
+  const semanticOperations = OVERLAY_IDS.length * (1 + 32) + SCALE_POINTS.length + 2;
+  const coldOperations =
+    (OVERLAY_IDS.length + SCALE_POINTS.length) * sampling.cold_samples;
+  const reusedScale = sampling.warmup_iterations + sampling.reused_samples;
+  const reusedOperations =
+    (OVERLAY_IDS.length + SCALE_POINTS.length +
+      SCALE_POINTS.reduce((sum, scale) => sum + scale, 0)) * reusedScale;
+  return semanticOperations + coldOperations + reusedOperations;
+}
+
 function validateEvenPairCount(value, label) {
   if (!Number.isSafeInteger(value) || value < 8 || value > 32 || value % 2 !== 0) {
     fail(`${label} must be an even integer in 8..32`);
@@ -966,9 +1803,31 @@ function summarizeNumbers(values) {
   };
 }
 
-function requiredPairs(sigma, mde) {
+function requiredPairs(sigma, mde, powerContract) {
   if (sigma === 0) return 8;
-  return Math.ceil((((1.645 + 0.842) * sigma) / mde) ** 2);
+  const required = Math.ceil(
+    (((powerContract.critical_z + powerContract.power_z) * sigma) / mde) ** 2,
+  );
+  return Number.isSafeInteger(required) && required < Number.MAX_SAFE_INTEGER
+    ? required
+    : Number.MAX_SAFE_INTEGER - 1;
+}
+
+function confirmationPowerContract(manifest) {
+  const simultaneousConfidence = manifest.statistics.confidence_level;
+  const familySize = manifest.statistics.confirmation_family_size;
+  const componentConfidence = 1 - (1 - simultaneousConfidence) / familySize;
+  return {
+    method: "normal-approximation-v1",
+    interval: "one-sided",
+    target_power: manifest.decision_rule.power,
+    simultaneous_confidence_level: simultaneousConfidence,
+    component_confidence_level: componentConfidence,
+    family_size: familySize,
+    multiplicity_adjustment: manifest.statistics.multiplicity_adjustment,
+    critical_z: CONFIRMATION_CRITICAL_Z,
+    power_z: CONFIRMATION_POWER_Z,
+  };
 }
 
 function nextEven(value) {
@@ -1003,12 +1862,16 @@ export function pairedBootstrapBounds(
       confidenceLevel: componentConfidence,
       interval,
       resamples: statistics.bootstrap_resamples,
+      monteCarloFailureProbability:
+        statistics.monte_carlo_failure_probability / (familySize * 4),
       seed: deriveSeed(statistics.bootstrap_seed, `${seedLabel}:log-ratio`),
     }),
     absolute_ns: bootstrapMeanBounds(absolute, {
       confidenceLevel: componentConfidence,
       interval,
       resamples: statistics.bootstrap_resamples,
+      monteCarloFailureProbability:
+        statistics.monte_carlo_failure_probability / (familySize * 4),
       seed: deriveSeed(statistics.bootstrap_seed, `${seedLabel}:absolute`),
     }),
     confidence_contract: {
@@ -1019,11 +1882,24 @@ export function pairedBootstrapBounds(
       interval,
       bootstrap_seed: statistics.bootstrap_seed,
       bootstrap_resamples: statistics.bootstrap_resamples,
+      monte_carlo_failure_probability:
+        statistics.monte_carlo_failure_probability,
+      monte_carlo_failure_probability_per_bound:
+        statistics.monte_carlo_failure_probability / (familySize * 4),
     },
   };
 }
 
-function bootstrapMeanBounds(values, { confidenceLevel, interval, resamples, seed }) {
+function bootstrapMeanBounds(
+  values,
+  {
+    confidenceLevel,
+    interval,
+    resamples,
+    seed,
+    monteCarloFailureProbability,
+  },
+) {
   const estimate = mean(values);
   if (values.length === 1 || values.every((value) => value === values[0])) {
     return { estimate, lower: estimate, upper: estimate };
@@ -1041,11 +1917,74 @@ function bootstrapMeanBounds(values, { confidenceLevel, interval, resamples, see
   const alpha = 1 - confidenceLevel;
   const lowerProbability = interval === "one-sided" ? alpha : alpha / 2;
   const upperProbability = interval === "one-sided" ? confidenceLevel : 1 - alpha / 2;
+  const lower = conservativeBootstrapLower(
+    means,
+    lowerProbability,
+    monteCarloFailureProbability,
+  );
+  const upper = conservativeBootstrapUpper(
+    means,
+    upperProbability,
+    monteCarloFailureProbability,
+  );
   return {
     estimate,
-    lower: percentile(means, lowerProbability),
-    upper: percentile(means, upperProbability),
+    lower: lower.value,
+    upper: upper.value,
+    monte_carlo: {
+      method: "exact-binomial-order-statistic-v1",
+      failure_probability: monteCarloFailureProbability,
+      lower_rank: lower.rank,
+      upper_rank: upper.rank,
+      resamples,
+    },
   };
+}
+
+function conservativeBootstrapLower(sorted, probability, failureProbability) {
+  const count = maximumBinomialLowerTailCount(
+    sorted.length,
+    probability,
+    failureProbability,
+  );
+  if (count < 0) return { value: -Number.MAX_VALUE, rank: null };
+  const rank = count + 1;
+  return { value: sorted[rank - 1], rank };
+}
+
+function conservativeBootstrapUpper(sorted, probability, failureProbability) {
+  const count = maximumBinomialLowerTailCount(
+    sorted.length,
+    1 - probability,
+    failureProbability,
+  );
+  if (count < 0) return { value: Number.MAX_VALUE, rank: null };
+  const rank = sorted.length - count;
+  return { value: sorted[rank - 1], rank };
+}
+
+function maximumBinomialLowerTailCount(trials, probability, maximumCumulative) {
+  if (
+    !Number.isSafeInteger(trials) ||
+    trials < 1 ||
+    !(probability > 0 && probability < 1) ||
+    !(maximumCumulative > 0 && maximumCumulative < 1)
+  ) {
+    fail("Monte Carlo order-statistic confidence contract is invalid");
+  }
+  let probabilityAtCount = Math.exp(trials * Math.log1p(-probability));
+  let cumulative = probabilityAtCount;
+  if (cumulative > maximumCumulative) return -1;
+  let maximumCount = 0;
+  for (let count = 0; count < trials; count += 1) {
+    probabilityAtCount *=
+      ((trials - count) / (count + 1)) *
+      (probability / (1 - probability));
+    if (cumulative + probabilityAtCount > maximumCumulative) break;
+    cumulative += probabilityAtCount;
+    maximumCount = count + 1;
+  }
+  return maximumCount;
 }
 
 function deriveSeed(baseSeed, label) {
@@ -1070,6 +2009,10 @@ function seededRandom(seed) {
 
 function withinEquivalence(bounds, margin) {
   return bounds.lower >= -margin && bounds.upper <= margin;
+}
+
+function includesZero(bounds) {
+  return bounds.lower <= 0 && bounds.upper >= 0;
 }
 
 function sampleStandardDeviation(values) {
@@ -1107,6 +2050,26 @@ function assertSortedUniqueStrings(value, label) {
     stableJson(value) !== stableJson([...new Set(value)].sort())
   ) {
     fail(`${label} must be sorted unique strings`);
+  }
+}
+
+function assertExactKeys(value, expectedKeys, label) {
+  const actual = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  if (stableJson(actual) !== stableJson(expected)) {
+    fail(`${label} fields differ from the fixed contract`);
+  }
+}
+
+function validatePositiveSafeInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    fail(`${label} must be a positive safe integer`);
+  }
+}
+
+function validateNonNegativeSafeInteger(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    fail(`${label} must be a non-negative safe integer`);
   }
 }
 

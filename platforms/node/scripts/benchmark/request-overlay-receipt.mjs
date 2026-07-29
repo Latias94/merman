@@ -7,10 +7,15 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import { validateCandidateDependencyPackages } from "../build-candidate.mjs";
+import {
+  computeBuildReceiptInputDigest,
+  validateBuildEnvironment,
+  validateBuildSourceProvenance,
+} from "../build-receipt.mjs";
 import { digestJson, stableJson } from "../stable-json.mjs";
 
 const SHA256 = /^sha256:[0-9a-f]{64}$/;
-const COMMIT = /^[0-9a-f]{40}$/;
 
 export function readHistoricalRequestOverlayReceipt(
   artifactPath,
@@ -56,12 +61,14 @@ export function readHistoricalRequestOverlayReceipt(
     revision,
     transport,
     commit: receipt.commit,
+    commit_tree: receipt.commit_tree,
     target: receipt.config.target,
     rust_target: receipt.config.rust_target,
     wasm_pack_target: receipt.config.wasm_pack_target,
     cargo_features: receipt.config.features,
     capability_ids: receipt.config.capability_recipe.capabilities,
     build_tools: receipt.tools,
+    build_environment_digest: receipt.build_environment_digest,
     artifact_path: artifact,
     artifact_path_in_receipt: relativeArtifact,
     artifact_bytes: recordedArtifact.bytes,
@@ -84,20 +91,24 @@ export function projectHistoricalArtifact(value) {
 
 function validateReceipt(value, transport) {
   assertObject(value, "historical build receipt");
-  if (value.schema_version !== 1 || value.config?.candidate !== transport) {
+  if (value.schema_version !== 4 || value.config?.candidate !== transport) {
     throw new Error(`Historical ${transport} build receipt has an invalid schema or candidate.`);
-  }
-  if (!COMMIT.test(value.commit ?? "")) {
-    throw new Error(`Historical ${transport} build receipt commit is invalid.`);
   }
   for (const key of [
     "source_digest",
     "cargo_lock_digest",
     "binding_contract_digest",
+    "build_environment_digest",
     "input_digest",
   ]) {
     assertDigest(value[key], `historical ${transport} receipt ${key}`);
   }
+  validateBuildSourceProvenance(value, {
+    label: `Historical ${transport} build receipt`,
+  });
+  validateBuildEnvironment(value, {
+    label: `Historical ${transport} build receipt`,
+  });
 
   assertObject(value.config, `historical ${transport} receipt config`);
   assertObject(value.config.capability_recipe, `historical ${transport} capability recipe`);
@@ -128,14 +139,9 @@ function validateReceipt(value, transport) {
   ) {
     throw new Error(`Historical ${transport} dependency closure is not self-consistent.`);
   }
+  validateCandidateDependencyPackages(value.dependency_closure.packages, transport);
   validateTools(value.tools, transport);
-  const expectedInputDigest = digestJson({
-    cargo_lock_digest: value.cargo_lock_digest,
-    config: value.config,
-    dependency_closure_digest: value.dependency_closure.digest,
-    source_digest: value.source_digest,
-    tools: value.tools,
-  });
+  const expectedInputDigest = computeBuildReceiptInputDigest(value);
   if (value.input_digest !== expectedInputDigest) {
     throw new Error(`Historical ${transport} receipt input digest is not self-consistent.`);
   }

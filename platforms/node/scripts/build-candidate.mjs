@@ -2,22 +2,29 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveNodeTarget } from "../src/native-loader.mjs";
 import { validateRuntimeCatalog } from "../src/engine.mjs";
-import { replaceDirectory } from "./replace-directory.mjs";
+import {
+  acquireExclusiveFileLock,
+  ensureOwnedDirectory,
+  replaceDirectory,
+} from "./replace-directory.mjs";
 import { svgTransportEvidence } from "./benchmark/svg-signature.mjs";
 import { digestJson, stableJson } from "./stable-json.mjs";
 
@@ -33,8 +40,70 @@ const capabilityDescriptorPath = path.join(
 );
 const capabilitySurface = readJson(capabilityDescriptorPath);
 const artifactsRoot = path.join(nodeRoot, "artifacts");
-const cargoLockPath = path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock");
 const requireFromBuild = createRequire(import.meta.url);
+export const CANDIDATE_BUILD_ENVIRONMENT_REQUIRED_NAMES = Object.freeze([
+  "AR",
+  "CARGO_BUILD_RUSTC",
+  "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
+  "CARGO_BUILD_RUSTC_WRAPPER",
+  "CARGO_BUILD_TARGET",
+  "CARGO",
+  "CARGO_ENCODED_RUSTFLAGS",
+  "CARGO_HOME",
+  "CARGO_INCREMENTAL",
+  "CARGO_PROFILE_RELEASE_CODEGEN_UNITS",
+  "CARGO_PROFILE_RELEASE_DEBUG",
+  "CARGO_PROFILE_RELEASE_INCREMENTAL",
+  "CARGO_PROFILE_RELEASE_LTO",
+  "CARGO_PROFILE_RELEASE_OPT_LEVEL",
+  "CARGO_PROFILE_RELEASE_PANIC",
+  "CARGO_PROFILE_RELEASE_STRIP",
+  "CC",
+  "CFLAGS",
+  "CPPFLAGS",
+  "CXX",
+  "CXXFLAGS",
+  "DEVELOPER_DIR",
+  "DYLD_INSERT_LIBRARIES",
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LD_PRELOAD",
+  "LDFLAGS",
+  "MACOSX_DEPLOYMENT_TARGET",
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "PATH",
+  "RUSTC",
+  "RUSTC_BOOTSTRAP",
+  "RUSTC_WORKSPACE_WRAPPER",
+  "RUSTC_WRAPPER",
+  "RUSTFLAGS",
+  "RUSTUP_HOME",
+  "RUSTUP_TOOLCHAIN",
+  "SDKROOT",
+  "SOURCE_DATE_EPOCH",
+  "SystemRoot",
+  "SYSTEMROOT",
+  "COMSPEC",
+  "PATHEXT",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+  "WASM_BINDGEN_TEST_TIMEOUT",
+  "WASM_PACK_PROFILE",
+]);
+const SNAPSHOT_PATHS = Object.freeze([
+  ".cargo",
+  "Cargo.lock",
+  "Cargo.toml",
+  "capabilities",
+  "crates",
+  "platforms/node",
+  "rust-toolchain.toml",
+]);
+const gitSourceValidationCache = new Set();
 
 if (isMainModule()) {
   try {
@@ -48,57 +117,233 @@ if (isMainModule()) {
 
 export function buildCandidate({ candidate, target = null }) {
   assertDescriptor();
-  mkdirSync(artifactsRoot, { recursive: true });
+  ensureOwnedDirectory(nodeRoot, artifactsRoot);
   const resolvedTarget = candidate === "napi" ? target ?? resolveNodeTarget() : null;
   const recipe = resolveCandidateRecipe(candidate, resolvedTarget);
-  const metadata = cargoMetadata(recipe);
-  validateCandidatePackageVersions(metadata);
-  const dependencyClosure = candidateDependencyClosure(metadata, recipe);
-  const before = collectLocalInputEntries(metadata);
-  const stage = mkdtempSync(path.join(artifactsRoot, `.stage-${candidate}-`));
   const output = candidate === "napi"
     ? path.join(artifactsRoot, "napi", resolvedTarget)
     : path.join(artifactsRoot, "node-wasm");
+  assertBuildOutputPath(output);
+  ensureOwnedDirectory(nodeRoot, path.dirname(output));
+  const buildLock = acquireExclusiveFileLock(`${output}.build-lock`, {
+    purpose: `${candidate} candidate build`,
+  });
+  let sourceSnapshot;
+  let stage;
 
   try {
-    if (candidate === "napi") buildNapi(stage, recipe);
-    else buildNodeWasm(stage, recipe);
+    sourceSnapshot = materializeCommittedSourceSnapshot();
+    assertCurrentBuildControllerMatchesSnapshot(sourceSnapshot.sourceRoot);
+    const buildEnvironment = resolveCandidateBuildEnvironment({
+      sourceRoot: sourceSnapshot.sourceRoot,
+    });
+    const metadata = cargoMetadata(
+      recipe,
+      sourceSnapshot.sourceRoot,
+      buildEnvironment.environment,
+    );
+    validateCandidatePackageVersions(metadata);
+    const dependencyClosure = candidateDependencyClosure(
+      metadata,
+      recipe,
+      sourceSnapshot.sourceRoot,
+    );
+    const before = collectLocalInputEntries(metadata, sourceSnapshot.sourceRoot);
+    const beforeProvenance = resolveSourceProvenance(before, dependencyClosure, {
+      commit: sourceSnapshot.commit,
+      commitTree: sourceSnapshot.commitTree,
+    });
+    stage = mkdtempSync(path.join(artifactsRoot, `.stage-${candidate}-`));
+    if (candidate === "napi") {
+      buildNapi(
+        stage,
+        recipe,
+        buildEnvironment.environment,
+        sourceSnapshot.sourceRoot,
+      );
+    } else {
+      buildNodeWasm(
+        stage,
+        recipe,
+        buildEnvironment.environment,
+        sourceSnapshot.sourceRoot,
+      );
+    }
     normalizeArtifacts(stage, candidate);
     const runtime = probeCandidateRuntime(stage, recipe);
 
-    const afterMetadata = cargoMetadata(recipe);
-    const after = collectLocalInputEntries(afterMetadata);
+    const afterMetadata = cargoMetadata(
+      recipe,
+      sourceSnapshot.sourceRoot,
+      buildEnvironment.environment,
+    );
+    const after = collectLocalInputEntries(afterMetadata, sourceSnapshot.sourceRoot);
     if (stableJson(before) !== stableJson(after)) {
       throw new Error("Node candidate source inputs changed during the build; rerun it.");
     }
     if (
       dependencyClosure.digest !==
-      candidateDependencyClosure(afterMetadata, recipe).digest
+      candidateDependencyClosure(
+        afterMetadata,
+        recipe,
+        sourceSnapshot.sourceRoot,
+      ).digest
     ) {
       throw new Error("Node candidate dependency closure changed during the build; rerun it.");
     }
-    writeBuildReceipt(stage, recipe, before, dependencyClosure, runtime);
-    replaceDirectory(stage, output);
+    const afterProvenance = resolveSourceProvenance(after, dependencyClosure, {
+      commit: sourceSnapshot.commit,
+      commitTree: sourceSnapshot.commitTree,
+    });
+    if (stableJson(beforeProvenance) !== stableJson(afterProvenance)) {
+      throw new Error("Node candidate Git source provenance changed during the build; rerun it.");
+    }
+    if (
+      stableJson(resolveCandidateBuildEnvironment({
+        sourceRoot: sourceSnapshot.sourceRoot,
+      }).contract) !==
+      stableJson(buildEnvironment.contract)
+    ) {
+      throw new Error("Node candidate build environment changed during the build; rerun it.");
+    }
+    writeBuildReceipt(
+      stage,
+      recipe,
+      beforeProvenance,
+      dependencyClosure,
+      runtime,
+      buildEnvironment,
+      sourceSnapshot.sourceRoot,
+    );
+    buildLock.assertOwned();
+    replaceDirectory(stage, output, { ownershipRoot: nodeRoot });
     console.log(`[merman-node] built ${candidate}${resolvedTarget ? ` for ${resolvedTarget}` : ""}`);
+  } finally {
+    try {
+      if (stage && existsSync(stage)) rmSync(stage, { recursive: true, force: true });
+    } finally {
+      try {
+        sourceSnapshot?.dispose();
+      } finally {
+        buildLock.release();
+      }
+    }
+  }
+}
+
+function assertBuildOutputPath(output) {
+  const relative = path.relative(artifactsRoot, output);
+  if (
+    relative === "" ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error("Candidate build output must stay inside the Node artifacts root.");
+  }
+}
+
+export function materializeCommittedSourceSnapshot({
+  repository = repositoryRoot,
+  commit = gitCapture(repository, ["rev-parse", "--verify", "HEAD^{commit}"]),
+  paths = SNAPSHOT_PATHS,
+} = {}) {
+  if (!/^[0-9a-f]{40}$/.test(commit)) {
+    throw new Error("Candidate source snapshot requires a canonical Git commit.");
+  }
+  const commitTree = gitCapture(repository, [
+    "rev-parse",
+    "--verify",
+    `${commit}^{tree}`,
+  ]);
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-source-"));
+  const sourceRoot = path.join(root, "source");
+  const indexPath = path.join(root, "git-index");
+  mkdirSync(sourceRoot);
+  const environment = gitEnvironment({ GIT_INDEX_FILE: indexPath });
+  try {
+    runGit(repository, ["read-tree", commit], { environment });
+    const listed = runGit(repository, [
+      "ls-tree",
+      "-r",
+      "-z",
+      "--name-only",
+      commit,
+      "--",
+      ...paths,
+    ], { encoding: null });
+    runGit(repository, [
+      "checkout-index",
+      "--stdin",
+      "-z",
+      `--prefix=${sourceRoot}${path.sep}`,
+    ], { environment, input: listed });
+    const expectedPaths = listed.toString("utf8").split("\0").filter(Boolean);
+    const actualPaths = walkFiles(sourceRoot).map((file) =>
+      path.relative(sourceRoot, file).split(path.sep).join("/")
+    ).sort(comparePaths);
+    if (stableJson(actualPaths) !== stableJson(expectedPaths)) {
+      throw new Error("Candidate source snapshot differs from its committed Git tree.");
+    }
+    let disposed = false;
+    return {
+      commit,
+      commitTree,
+      sourceRoot,
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        rmSync(root, { recursive: true, force: true });
+      },
+    };
   } catch (error) {
-    rmSync(stage, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
     throw error;
   }
 }
 
-function buildNapi(stage, recipe) {
+function assertCurrentBuildControllerMatchesSnapshot(sourceRoot) {
+  for (const relativePath of [
+    "capabilities/feature-surface-v1.json",
+    "platforms/node/candidate-builds.json",
+    "platforms/node/package-surfaces.json",
+    "platforms/node/package.json",
+    "platforms/node/scripts/benchmark/svg-signature.mjs",
+    "platforms/node/scripts/build-candidate.mjs",
+    "platforms/node/scripts/replace-directory.mjs",
+    "platforms/node/scripts/stable-json.mjs",
+    "platforms/node/src/bounded-executor.mjs",
+    "platforms/node/src/engine.mjs",
+    "platforms/node/src/errors.mjs",
+    "platforms/node/src/native-loader.mjs",
+  ]) {
+    const current = path.join(repositoryRoot, relativePath);
+    const committed = path.join(sourceRoot, relativePath);
+    if (digestFile(current) !== digestFile(committed)) {
+      throw new Error(
+        `Candidate build controller differs from HEAD: ${relativePath}. Commit it before building.`,
+      );
+    }
+  }
+}
+
+function buildNapi(stage, recipe, environment, sourceRoot) {
   const cli = path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js");
   assertFile(cli, "pinned @napi-rs/cli; run npm ci first");
-  const invocation = candidateBuildInvocation(recipe, stage);
-  run(invocation.command, invocation.args);
+  const invocation = candidateBuildInvocation(recipe, stage, { sourceRoot });
+  run(invocation.command, invocation.args, environment, sourceRoot);
 }
 
-function buildNodeWasm(stage, recipe) {
-  const invocation = candidateBuildInvocation(recipe, stage);
-  run(invocation.command, invocation.args);
+function buildNodeWasm(stage, recipe, environment, sourceRoot) {
+  const invocation = candidateBuildInvocation(recipe, stage, { sourceRoot });
+  run(invocation.command, invocation.args, environment, sourceRoot);
 }
 
-export function candidateBuildInvocation(recipe, stage) {
+export function candidateBuildInvocation(
+  recipe,
+  stage,
+  { sourceRoot = repositoryRoot } = {},
+) {
+  const sourceNodeRoot = path.join(sourceRoot, "platforms", "node");
   const featureArgument = recipe.cargoFeatures.join(",");
   if (recipe.candidate === "napi") {
     return {
@@ -107,11 +352,11 @@ export function candidateBuildInvocation(recipe, stage) {
         path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js"),
         "build",
         "--cwd",
-        repositoryRoot,
+        sourceRoot,
         "--manifest-path",
         descriptor.cargo.manifest,
         "--package-json-path",
-        path.join(nodeRoot, "package.json"),
+        path.join(sourceNodeRoot, "package.json"),
         "--target",
         recipe.rustTarget,
         "--output-dir",
@@ -136,7 +381,7 @@ export function candidateBuildInvocation(recipe, stage) {
       command: "wasm-pack",
       args: [
         "build",
-        path.dirname(path.join(repositoryRoot, descriptor.cargo.manifest)),
+        path.dirname(path.join(sourceRoot, descriptor.cargo.manifest)),
         "--target",
         recipe.wasmPackTarget,
         "--release",
@@ -180,54 +425,69 @@ function normalizeArtifacts(stage, candidate) {
 function writeBuildReceipt(
   stage,
   recipe,
-  inputEntries,
+  sourceProvenance,
   dependencyClosure,
   runtime,
+  buildEnvironment,
+  sourceRoot,
 ) {
+  const { commit, commit_tree: commitTree, source_inputs: inputEntries } = sourceProvenance;
   const sourceDigest = digestJson(inputEntries);
   const bindingContractEntries = collectBindingContractEntries(inputEntries);
   const bindingContractDigest = digestJson(bindingContractEntries);
-  const cargoLockDigest = digestFile(cargoLockPath);
+  const cargoLockDigest = inputEntries.find(
+    (entry) => entry.path === "crates/merman-node/Cargo.lock",
+  )?.sha256;
+  if (!cargoLockDigest) {
+    throw new Error("Node candidate source closure omits crates/merman-node/Cargo.lock.");
+  }
+  const environment = buildEnvironment.environment;
+  const environmentContract = buildEnvironment.contract;
   const tools = {
-    cargo: runCapture("cargo", ["--version"]),
+    cargo: runCapture(candidateCargoCommand(), ["--version"], {
+      cwd: sourceRoot,
+      environment,
+    }),
     node: process.version,
-    rustc: runCapture("rustc", ["--version", "--verbose"]),
+    rustc: runCapture(candidateRustcCommand(), ["--version", "--verbose"], {
+      cwd: sourceRoot,
+      environment,
+    }),
     transport_builder:
       recipe.candidate === "napi"
         ? runCapture(process.execPath, [
             path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js"),
             "--version",
-          ])
-        : runCapture("wasm-pack", ["--version"]),
+          ], { cwd: sourceRoot, environment })
+        : runCapture("wasm-pack", ["--version"], { cwd: sourceRoot, environment }),
   };
-  const config = {
-    candidate: recipe.candidate,
-    target: recipe.targetId,
-    rust_target: recipe.rustTarget,
-    wasm_pack_target: recipe.wasmPackTarget,
-    default_features: false,
-    capability_recipe: {
-      descriptor: descriptor.capability_recipe.descriptor,
-      target: descriptor.capability_recipe.target,
-      capabilities: recipe.capabilityFeatures,
-    },
-    features: recipe.cargoFeatures,
+  const config = candidateBuildConfig(recipe);
+  const inputEvidence = {
+    binding_contract_digest: bindingContractDigest,
+    build_environment: environmentContract,
+    build_environment_digest: digestJson(environmentContract),
+    cargo_lock_digest: cargoLockDigest,
+    commit,
+    commit_tree: commitTree,
+    config,
+    dependency_closure: dependencyClosure,
+    source_digest: sourceDigest,
+    source_inputs: inputEntries,
+    tools,
   };
   const receipt = {
-    schema_version: 1,
+    schema_version: 4,
     config,
-    commit: runCapture("git", ["rev-parse", "HEAD"]),
+    commit,
+    commit_tree: commitTree,
+    source_inputs: inputEntries,
     source_digest: sourceDigest,
     cargo_lock_digest: cargoLockDigest,
     binding_contract_digest: bindingContractDigest,
+    build_environment: environmentContract,
+    build_environment_digest: digestJson(environmentContract),
     dependency_closure: dependencyClosure,
-    input_digest: digestJson({
-      cargo_lock_digest: cargoLockDigest,
-      config,
-      dependency_closure_digest: dependencyClosure.digest,
-      source_digest: sourceDigest,
-      tools,
-    }),
+    input_digest: computeBuildReceiptInputDigest(inputEvidence),
     runtime,
     tools,
     artifacts: artifactEntries(stage),
@@ -430,14 +690,19 @@ function collectBindingContractEntries(inputEntries) {
   return entries;
 }
 
-function cargoMetadata(recipe) {
+function cargoMetadata(
+  recipe,
+  sourceRoot = repositoryRoot,
+  environment = candidateProcessEnvironment(),
+) {
+  cargoConfigurationInputs(sourceRoot, environment);
   const args = [
     "metadata",
     "--locked",
     "--format-version",
     "1",
     "--manifest-path",
-    path.join(repositoryRoot, descriptor.cargo.manifest),
+    path.join(sourceRoot, descriptor.cargo.manifest),
     "--filter-platform",
     recipe.rustTarget,
   ];
@@ -445,45 +710,155 @@ function cargoMetadata(recipe) {
   if (recipe.cargoFeatures.length > 0) {
     args.push("--features", recipe.cargoFeatures.join(","));
   }
-  return JSON.parse(runCapture("cargo", args));
+  return JSON.parse(runCapture(candidateCargoCommand(), args, { cwd: sourceRoot, environment }));
 }
 
-function collectLocalInputEntries(metadata) {
+function collectLocalInputEntries(metadata, sourceRoot = repositoryRoot) {
   const roots = new Set();
   for (const item of metadata.packages) {
     if (item.source !== null) continue;
     const manifest = path.resolve(item.manifest_path);
-    if (!isWithin(repositoryRoot, manifest)) continue;
+    if (!isWithin(sourceRoot, manifest)) continue;
     roots.add(path.dirname(manifest));
   }
   const files = new Set([
-    path.join(repositoryRoot, "Cargo.toml"),
-    path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock"),
-    capabilityDescriptorPath,
-    path.join(nodeRoot, "candidate-builds.json"),
-    packageSurfacePath,
-    path.join(nodeRoot, "package.json"),
-    path.join(nodeRoot, "package-lock.json"),
-    path.join(nodeRoot, "scripts", "benchmark", "svg-signature.mjs"),
-    path.join(nodeRoot, "scripts", "build-candidate.mjs"),
-    path.join(nodeRoot, "scripts", "replace-directory.mjs"),
-    path.join(nodeRoot, "scripts", "stable-json.mjs"),
-    path.join(nodeRoot, "src", "bounded-executor.mjs"),
-    path.join(nodeRoot, "src", "engine.mjs"),
-    path.join(nodeRoot, "src", "errors.mjs"),
-    path.join(nodeRoot, "src", "native-loader.mjs"),
+    path.join(sourceRoot, "Cargo.toml"),
+    path.join(sourceRoot, "rust-toolchain.toml"),
+    path.join(sourceRoot, "crates", "merman-node", "Cargo.lock"),
+    path.join(sourceRoot, descriptor.capability_recipe.descriptor),
+    path.join(sourceRoot, "platforms", "node", "candidate-builds.json"),
+    path.join(sourceRoot, "platforms", "node", "package-surfaces.json"),
+    path.join(sourceRoot, "platforms", "node", "package.json"),
+    path.join(sourceRoot, "platforms", "node", "package-lock.json"),
+    path.join(sourceRoot, "platforms", "node", "scripts", "benchmark", "svg-signature.mjs"),
+    path.join(sourceRoot, "platforms", "node", "scripts", "build-candidate.mjs"),
+    path.join(sourceRoot, "platforms", "node", "scripts", "replace-directory.mjs"),
+    path.join(sourceRoot, "platforms", "node", "scripts", "stable-json.mjs"),
+    path.join(sourceRoot, "platforms", "node", "src", "bounded-executor.mjs"),
+    path.join(sourceRoot, "platforms", "node", "src", "engine.mjs"),
+    path.join(sourceRoot, "platforms", "node", "src", "errors.mjs"),
+    path.join(sourceRoot, "platforms", "node", "src", "native-loader.mjs"),
   ]);
+  for (const file of walkFiles(path.join(sourceRoot, "crates"), {
+    skipBuildOutputs: true,
+  })) {
+    files.add(file);
+  }
+  for (const file of walkFiles(path.join(sourceRoot, "capabilities"), {
+    skipBuildOutputs: true,
+  })) {
+    files.add(file);
+  }
   for (const root of roots) {
     for (const file of walkFiles(root, { skipBuildOutputs: true })) files.add(file);
   }
   return [...files]
     .filter((file) => existsSync(file) && statSync(file).isFile())
     .map((file) => ({
-      path: path.relative(repositoryRoot, file).split(path.sep).join("/"),
+      path: path.relative(sourceRoot, file).split(path.sep).join("/"),
       bytes: statSync(file).size,
       sha256: digestFile(file),
     }))
-    .sort((left, right) => left.path.localeCompare(right.path));
+    .sort((left, right) => comparePaths(left.path, right.path));
+}
+
+function resolveSourceProvenance(
+  sourceInputs,
+  dependencyClosure,
+  {
+    commit = gitCapture(repositoryRoot, ["rev-parse", "--verify", "HEAD^{commit}"]),
+    commitTree = gitCapture(repositoryRoot, ["rev-parse", "--verify", `${commit}^{tree}`]),
+  } = {},
+) {
+  const provenance = { commit, commit_tree: commitTree, source_inputs: sourceInputs };
+  validateGitSourceInputs(
+    { ...provenance, dependency_closure: dependencyClosure },
+    { label: "Node candidate source provenance" },
+  );
+  return provenance;
+}
+
+export function validateGitSourceInputs(
+  value,
+  { label = "Node candidate Git source provenance" } = {},
+) {
+  if (
+    !/^[0-9a-f]{40}$/.test(value.commit ?? "") ||
+    !/^[0-9a-f]{40}$/.test(value.commit_tree ?? "")
+  ) {
+    throw new Error(`${label} must use canonical SHA-1 commit and tree object IDs.`);
+  }
+  const sourceInputs = validateSourceInputEntries(value.source_inputs, label);
+  const validationKey = `${value.commit}:${value.commit_tree}`;
+  if (gitSourceValidationCache.has(validationKey)) return sourceInputs;
+  const resolvedCommit = gitCapture(repositoryRoot, [
+    "rev-parse",
+    "--verify",
+    `${value.commit}^{commit}`,
+  ]);
+  if (resolvedCommit !== value.commit) {
+    throw new Error(`${label} commit does not resolve to its declared Git object.`);
+  }
+  const resolvedTree = gitCapture(repositoryRoot, [
+    "rev-parse",
+    "--verify",
+    `${value.commit}^{tree}`,
+  ]);
+  if (resolvedTree !== value.commit_tree) {
+    throw new Error(`${label} commit tree does not match Git.`);
+  }
+  gitSourceValidationCache.add(validationKey);
+  return sourceInputs;
+}
+
+function validateSourceInputEntries(entries, label) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error(`${label} source input list must be non-empty.`);
+  }
+  const paths = new Set();
+  for (const entry of entries) {
+    if (
+      !entry ||
+      typeof entry.path !== "string" ||
+      entry.path.length === 0 ||
+      entry.path !== path.posix.normalize(entry.path) ||
+      entry.path.startsWith("../") ||
+      path.posix.isAbsolute(entry.path) ||
+      entry.path.includes("\\") ||
+      /[\0\r\n]/.test(entry.path) ||
+      paths.has(entry.path) ||
+      !Number.isSafeInteger(entry.bytes) ||
+      entry.bytes < 0 ||
+      !/^sha256:[0-9a-f]{64}$/.test(entry.sha256 ?? "")
+    ) {
+      throw new Error(`${label} source input list contains an invalid or duplicate entry.`);
+    }
+    paths.add(entry.path);
+  }
+  const sortedPaths = [...paths].sort(comparePaths);
+  if (stableJson(entries.map((entry) => entry.path)) !== stableJson(sortedPaths)) {
+    throw new Error(`${label} source input list must be sorted by repository path.`);
+  }
+  return entries;
+}
+
+export function computeBuildReceiptInputDigest(
+  value,
+  dependencyClosureDigest = value?.dependency_closure?.digest,
+) {
+  return digestJson({
+    binding_contract_digest: value.binding_contract_digest,
+    build_environment: value.build_environment,
+    build_environment_digest: value.build_environment_digest,
+    cargo_lock_digest: value.cargo_lock_digest,
+    commit: value.commit,
+    commit_tree: value.commit_tree,
+    config: value.config,
+    dependency_closure_digest: dependencyClosureDigest,
+    source_digest: value.source_digest,
+    source_inputs: value.source_inputs,
+    tools: value.tools,
+  });
 }
 
 function artifactEntries(stage) {
@@ -645,7 +1020,11 @@ export function resolveCandidateRuntimeContract() {
   };
 }
 
-export function candidateDependencyClosure(metadata, recipe) {
+export function candidateDependencyClosure(
+  metadata,
+  recipe,
+  sourceRoot = repositoryRoot,
+) {
   if (
     !metadata ||
     !Array.isArray(metadata.packages) ||
@@ -658,7 +1037,7 @@ export function candidateDependencyClosure(metadata, recipe) {
     .map((node) => {
       const item = packageById.get(node.id);
       if (!item) throw new Error(`Cargo metadata cannot resolve package ${node.id}.`);
-      const source = item.source ?? localPackageSource(item.manifest_path);
+      const source = item.source ?? localPackageSource(item.manifest_path, sourceRoot);
       return {
         name: item.name,
         version: item.version,
@@ -673,14 +1052,33 @@ export function candidateDependencyClosure(metadata, recipe) {
   };
 }
 
+export function candidateBuildConfig(recipe) {
+  return {
+    candidate: recipe.candidate,
+    target: recipe.targetId,
+    rust_target: recipe.rustTarget,
+    wasm_pack_target: recipe.wasmPackTarget,
+    default_features: false,
+    capability_recipe: {
+      descriptor: descriptor.capability_recipe.descriptor,
+      target: descriptor.capability_recipe.target,
+      capabilities: recipe.capabilityFeatures,
+    },
+    features: recipe.cargoFeatures,
+  };
+}
+
 export function resolveCandidateBuildEvidence(recipe) {
   const metadata = cargoMetadata(recipe);
   validateCandidatePackageVersions(metadata);
+  const dependencyClosure = candidateDependencyClosure(metadata, recipe);
   const inputEntries = collectLocalInputEntries(metadata);
+  const sourceProvenance = resolveSourceProvenance(inputEntries, dependencyClosure);
   return {
+    ...sourceProvenance,
     source_digest: digestJson(inputEntries),
     binding_contract_digest: digestJson(collectBindingContractEntries(inputEntries)),
-    dependency_closure_digest: candidateDependencyClosure(metadata, recipe).digest,
+    dependency_closure_digest: dependencyClosure.digest,
   };
 }
 
@@ -784,6 +1182,12 @@ function comparePackageIdentities(left, right) {
   return 0;
 }
 
+function comparePaths(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function parseArgs(args) {
   if (args.includes("--help") || args.includes("-h")) {
     console.log("usage: node scripts/build-candidate.mjs --candidate <node-wasm|napi> [--target <target-id>]");
@@ -821,8 +1225,12 @@ function assertDescriptor() {
   }
 }
 
-function walkFiles(root, { skipBuildOutputs = false } = {}) {
+export function walkFiles(root, { skipBuildOutputs = false } = {}) {
   if (!existsSync(root)) return [];
+  const rootStat = lstatSync(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error(`Candidate build input root must be a regular directory: ${root}.`);
+  }
   const files = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (
@@ -835,40 +1243,313 @@ function walkFiles(root, { skipBuildOutputs = false } = {}) {
     const absolute = path.join(root, entry.name);
     if (entry.isDirectory()) files.push(...walkFiles(absolute, { skipBuildOutputs }));
     else if (entry.isFile()) files.push(absolute);
+    else {
+      throw new Error(`Candidate build input tree contains a non-regular entry: ${absolute}.`);
+    }
   }
   return files;
 }
 
 function digestFile(file) {
-  const digest = createHash("sha256");
-  digest.update(readFileSync(file));
-  return `sha256:${digest.digest("hex")}`;
+  return digestBytes(readFileSync(file));
 }
 
-function localPackageSource(manifestPath) {
+function digestBytes(value) {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function localPackageSource(manifestPath, sourceRoot = repositoryRoot) {
   const directory = path.dirname(path.resolve(manifestPath));
-  if (!isWithin(repositoryRoot, directory)) {
+  if (!isWithin(sourceRoot, directory)) {
     throw new Error(`Local Cargo package escapes the repository: ${manifestPath}.`);
   }
-  return `path:${path.relative(repositoryRoot, directory).split(path.sep).join("/")}`;
+  return `path:${path.relative(sourceRoot, directory).split(path.sep).join("/")}`;
 }
 
-function run(command, args) {
+function run(command, args, environment, cwd = nodeRoot) {
   const result = spawnSync(command, args, {
-    cwd: nodeRoot,
-    env: {
-      ...process.env,
-      CARGO_BUILD_JOBS: "1",
-      CARGO_TARGET_DIR: path.join(repositoryRoot, "target"),
-    },
+    cwd,
+    env: environment,
     stdio: "inherit",
   });
   if (result.error) throw new Error(`Failed to run ${command}: ${result.error.message}`);
   if (result.status !== 0) throw new Error(`${command} exited with status ${result.status ?? 1}.`);
 }
 
-function runCapture(command, args) {
-  const result = spawnSync(command, args, { cwd: nodeRoot, encoding: "utf8" });
+export function resolveCandidateBuildEnvironment({
+  sourceRoot = repositoryRoot,
+} = {}) {
+  const enforced = {
+    CARGO_BUILD_JOBS: "1",
+    CARGO_TARGET_DIR: path.join(repositoryRoot, "target"),
+  };
+  const inheritedNames = candidateBuildInheritedNames(enforced);
+  const environment = candidateProcessEnvironment(enforced, inheritedNames);
+  const inherited = [...inheritedNames].sort().map((name) => {
+    const value = environment[name];
+    return value === undefined
+      ? { name, state: "absent" }
+      : { name, state: "present", value_sha256: digestBytes(value) };
+  });
+  const externalInputs = [
+    ...cargoConfigurationInputs(sourceRoot, environment),
+    executableInput("tool/cargo", candidateCargoCommand(), sourceRoot, environment),
+    executableInput("tool/git", "git", sourceRoot, environment),
+    executableInput("tool/node", process.execPath, sourceRoot, environment),
+    executableInput("tool/rustc", candidateRustcCommand(), sourceRoot, environment),
+    executableInput("tool/wasm-pack", "wasm-pack", sourceRoot, environment),
+    pathBoundFileInput(
+      "tool/napi-cli",
+      path.join(nodeRoot, "node_modules", "@napi-rs", "cli", "dist", "cli.js"),
+    ),
+    treeInput("tool/napi-cli-node-modules", path.join(nodeRoot, "node_modules")),
+    ...environmentToolInputs(sourceRoot, environment),
+  ];
+  const contract = {
+    schema_version: 2,
+    enforced: {
+      CARGO_BUILD_JOBS: enforced.CARGO_BUILD_JOBS,
+      CARGO_TARGET_DIR: "target",
+    },
+    inherited,
+    external_inputs: externalInputs,
+  };
+  return {
+    environment,
+    contract,
+  };
+}
+
+function candidateBuildInheritedNames(enforced = {}) {
+  const inheritedNames = new Set(CANDIDATE_BUILD_ENVIRONMENT_REQUIRED_NAMES);
+  for (const name of Object.keys(process.env)) {
+    if (!Object.hasOwn(enforced, name) && isBuildInfluencingEnvironmentName(name)) {
+      inheritedNames.add(name);
+    }
+  }
+  return inheritedNames;
+}
+
+function candidateProcessEnvironment(
+  enforced = {
+    CARGO_BUILD_JOBS: "1",
+    CARGO_TARGET_DIR: path.join(repositoryRoot, "target"),
+  },
+  inheritedNames = candidateBuildInheritedNames(enforced),
+) {
+  rejectInjectedBuildEnvironment();
+  const environment = {};
+  for (const name of inheritedNames) {
+    if (process.env[name] !== undefined) environment[name] = process.env[name];
+  }
+  return { ...environment, ...enforced };
+}
+
+function rejectInjectedBuildEnvironment() {
+  for (const name of [
+    "NODE_OPTIONS",
+    "NODE_PATH",
+    "LD_PRELOAD",
+    "DYLD_INSERT_LIBRARIES",
+  ]) {
+    if (process.env[name] !== undefined && process.env[name] !== "") {
+      throw new Error(`Candidate builds reject ${name} process injection.`);
+    }
+  }
+}
+
+function isBuildInfluencingEnvironmentName(name) {
+  return CANDIDATE_BUILD_ENVIRONMENT_REQUIRED_NAMES.includes(name) ||
+    /^CARGO_/.test(name) ||
+    /^RUSTC_/.test(name) ||
+    /^RUSTUP_/.test(name) ||
+    /^(?:AR|CC|CXX|LD|NM|OBJCOPY|RANLIB|STRIP|CFLAGS|CXXFLAGS|CPPFLAGS|LDFLAGS)(?:_.+)?$/.test(name) ||
+    /^(?:BINDGEN|CCACHE|LIBCLANG|NAPI_RS|OPENSSL|PKG_CONFIG|SCCACHE|WASM_BINDGEN|WASM_PACK)_/.test(name);
+}
+
+function cargoConfigurationInputs(sourceRoot, environment) {
+  const cargoHome = environment.CARGO_HOME ||
+    (environment.HOME ? path.join(environment.HOME, ".cargo") : null);
+  rejectUnboundCargoConfiguration(sourceRoot, cargoHome);
+  const candidates = [
+    ["build-source/.cargo/config", path.join(sourceRoot, ".cargo", "config")],
+    ["build-source/.cargo/config.toml", path.join(sourceRoot, ".cargo", "config.toml")],
+    ["cargo-home/config", cargoHome ? path.join(cargoHome, "config") : null],
+    ["cargo-home/config.toml", cargoHome ? path.join(cargoHome, "config.toml") : null],
+  ];
+  return candidates.map(([id, file]) => fileInput(id, file));
+}
+
+function rejectUnboundCargoConfiguration(sourceRoot, cargoHome) {
+  const allowedCargoHome = cargoHome === null ? null : path.resolve(cargoHome);
+  let ancestor = path.dirname(path.resolve(sourceRoot));
+  while (true) {
+    const cargoDirectory = path.join(ancestor, ".cargo");
+    if (path.resolve(cargoDirectory) !== allowedCargoHome) {
+      for (const name of ["config", "config.toml"]) {
+        if (existsSync(path.join(cargoDirectory, name))) {
+          throw new Error(
+            `Candidate build cwd inherits unbound Cargo configuration: ${path.join(cargoDirectory, name)}.`,
+          );
+        }
+      }
+    }
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+}
+
+function fileInput(id, file) {
+  if (file === null || !existsSync(file)) return { id, state: "absent" };
+  const stat = lstatSync(file);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`Candidate build input must be a regular non-symlink file: ${id}.`);
+  }
+  return {
+    id,
+    state: "present",
+    bytes: stat.size,
+    sha256: digestFile(file),
+  };
+}
+
+function pathBoundFileInput(id, file) {
+  const input = fileInput(id, file);
+  if (input.state === "absent") return input;
+  return { ...input, path_sha256: digestBytes(realpathSync(file)) };
+}
+
+function executableInput(id, command, cwd, environment) {
+  const resolved = resolveExecutable(command, cwd, environment);
+  if (resolved === null) return { id, state: "absent" };
+  return pathBoundFileInput(id, resolved);
+}
+
+function treeInput(id, root) {
+  if (!existsSync(root)) return { id, state: "absent" };
+  const rootStat = lstatSync(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error(`Candidate build input must be a non-symlink directory: ${id}.`);
+  }
+  const files = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.name === ".bin") continue;
+    const absolute = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...walkFiles(absolute));
+    else if (entry.isFile()) files.push(absolute);
+    else {
+      throw new Error(`Candidate build input tree contains a non-regular entry: ${id}.`);
+    }
+  }
+  const entries = files.map((file) => ({
+    path: path.relative(root, file).split(path.sep).join("/"),
+    bytes: statSync(file).size,
+    sha256: digestFile(file),
+  })).sort((left, right) => comparePaths(left.path, right.path));
+  return {
+    id,
+    state: "present",
+    file_count: entries.length,
+    bytes: entries.reduce((total, entry) => total + entry.bytes, 0),
+    sha256: digestJson(entries),
+    path_sha256: digestBytes(realpathSync(root)),
+  };
+}
+
+function environmentToolInputs(sourceRoot, environment) {
+  return Object.keys(environment)
+    .filter((name) => isToolSelectingEnvironmentName(name))
+    .sort()
+    .map((name) => {
+      const command = environment[name];
+      if (command === undefined || command === "") {
+        return { id: `environment-tool/${name}`, state: "absent" };
+      }
+      const resolved = resolveExecutable(command, sourceRoot, environment);
+      if (resolved === null) {
+        throw new Error(`Candidate build environment tool ${name} cannot be resolved.`);
+      }
+      return executableInput(`environment-tool/${name}`, command, sourceRoot, environment);
+    });
+}
+
+function isToolSelectingEnvironmentName(name) {
+  return new Set([
+    "CARGO_BUILD_RUSTC",
+    "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
+    "CARGO_BUILD_RUSTC_WRAPPER",
+    "RUSTC_WRAPPER",
+    "RUSTC_WORKSPACE_WRAPPER",
+  ]).has(name) ||
+    /^(?:AR|CC|CXX|LD|NM|OBJCOPY|RANLIB|STRIP)(?:_.+)?$/.test(name) ||
+    /^CARGO_TARGET_.+_(?:LINKER|RUNNER)$/.test(name);
+}
+
+function resolveExecutable(command, cwd, environment = process.env) {
+  if (typeof command !== "string" || command.length === 0 || /[\0\r\n]/.test(command)) {
+    throw new Error("Candidate build tool command is invalid.");
+  }
+  if (path.isAbsolute(command) || command.includes(path.sep)) {
+    const resolved = path.resolve(cwd, command);
+    return existsSync(resolved) ? realpathSync(resolved) : null;
+  }
+  const locator = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync(locator, [command], { cwd, encoding: "utf8", env: environment });
+  if (result.error || result.status !== 0) return null;
+  const first = result.stdout.split(/\r?\n/, 1)[0];
+  return first ? realpathSync(first) : null;
+}
+
+function candidateCargoCommand() {
+  return process.env.CARGO ?? "cargo";
+}
+
+function candidateRustcCommand() {
+  return process.env.CARGO_BUILD_RUSTC ?? process.env.RUSTC ?? "rustc";
+}
+
+function gitCapture(repository, args) {
+  return runGit(repository, args, { encoding: "utf8" }).trim();
+}
+
+function runGit(
+  repository,
+  args,
+  { encoding = "utf8", environment = gitEnvironment(), input } = {},
+) {
+  const result = spawnSync("git", args, {
+    cwd: repository,
+    encoding,
+    env: environment,
+    input,
+    maxBuffer: 512 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) {
+    const stderr = Buffer.isBuffer(result.stderr)
+      ? result.stderr.toString("utf8")
+      : result.stderr ?? "";
+    throw new Error(
+      `git ${args.join(" ")} failed: ${result.error?.message ?? stderr.trim()}`,
+    );
+  }
+  return result.stdout;
+}
+
+function gitEnvironment(overrides = {}) {
+  const environment = candidateProcessEnvironment();
+  for (const name of Object.keys(environment)) {
+    if (name.startsWith("GIT_")) delete environment[name];
+  }
+  return { ...environment, ...overrides };
+}
+
+function runCapture(
+  command,
+  args,
+  { cwd = nodeRoot, environment = candidateProcessEnvironment() } = {},
+) {
+  const result = spawnSync(command, args, { cwd, encoding: "utf8", env: environment });
   if (result.error) throw new Error(`Failed to run ${command}: ${result.error.message}`);
   if (result.status !== 0) {
     throw new Error(`${command} exited with status ${result.status ?? 1}: ${(result.stderr ?? "").trim()}`);

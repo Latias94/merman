@@ -1,13 +1,26 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { readBuildReceipt } from "../scripts/build-receipt.mjs";
+import {
+  computeBuildReceiptInputDigest,
+  readBuildReceipt,
+} from "../scripts/build-receipt.mjs";
+import { resolveCandidateBuildEnvironment } from "../scripts/build-candidate.mjs";
 import { stageWasmPackage } from "../scripts/benchmark/footprint.mjs";
 import {
   computeCorpusDigest,
@@ -27,6 +40,11 @@ import { summarize } from "../scripts/benchmark/stats.mjs";
 import { svgTransportEvidence } from "../scripts/benchmark/svg-signature.mjs";
 import { digestJson } from "../scripts/stable-json.mjs";
 import { measureWarmSample } from "../scripts/benchmark/worker.mjs";
+import {
+  acquireExclusiveFileLock,
+  ensureOwnedDirectory,
+  replaceDirectory,
+} from "../scripts/replace-directory.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
@@ -128,6 +146,121 @@ test("warm sampling stops the clock before projecting evidence", async () => {
 
   assert.deepEqual(events, ["clock", "execute", "clock", "project"]);
   assert.deepEqual(sample, { elapsedMs: 15, outcome: "raw-result-evidence" });
+});
+
+test("exclusive artifact locks reject overlapping owners", (context) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-lock-"));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const lockPath = path.join(root, "candidate.build-lock");
+  const first = acquireExclusiveFileLock(lockPath, {
+    purpose: "candidate build",
+    owner: "first",
+  });
+
+  assert.throws(
+    () => acquireExclusiveFileLock(lockPath, {
+      purpose: "candidate build",
+      owner: "second",
+    }),
+    /candidate build is already in progress/i,
+  );
+  first.release();
+
+  const second = acquireExclusiveFileLock(lockPath, {
+    purpose: "candidate build",
+    owner: "second",
+  });
+  second.release();
+  assert.equal(existsSync(lockPath), false);
+});
+
+test("directory replacement is serialized and preserves the staged candidate", (context) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-replace-"));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const output = path.join(root, "candidate");
+  const stage = path.join(root, "stage");
+  mkdirSync(output);
+  mkdirSync(stage);
+  writeFileSync(path.join(output, "artifact"), "old");
+  writeFileSync(path.join(stage, "artifact"), "new");
+  const lock = acquireExclusiveFileLock(`${output}.replace-lock`, {
+    purpose: "directory replacement",
+  });
+
+  assert.throws(
+    () => replaceDirectory(stage, output),
+    /directory replacement is already in progress/i,
+  );
+  assert.equal(readFileSync(path.join(output, "artifact"), "utf8"), "old");
+  assert.equal(readFileSync(path.join(stage, "artifact"), "utf8"), "new");
+  lock.release();
+
+  replaceDirectory(stage, output);
+  assert.equal(readFileSync(path.join(output, "artifact"), "utf8"), "new");
+  assert.equal(existsSync(stage), false);
+});
+
+test("artifact locks reject a symbolic-link output parent", (context) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-lock-parent-"));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const outside = path.join(root, "outside");
+  const linked = path.join(root, "linked");
+  mkdirSync(outside);
+  try {
+    symlinkSync(outside, linked, "dir");
+  } catch (error) {
+    if (error?.code === "EPERM" || error?.code === "EACCES") {
+      context.skip("the host does not permit test symlinks");
+      return;
+    }
+    throw error;
+  }
+
+  assert.throws(
+    () => acquireExclusiveFileLock(path.join(linked, "candidate.build-lock")),
+    /lock parent must be a non-symlink directory/i,
+  );
+  assert.equal(existsSync(path.join(outside, "candidate.build-lock")), false);
+});
+
+test("artifact locks reject a replaced parent directory", (context) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-lock-identity-"));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const parent = path.join(root, "artifacts");
+  const moved = path.join(root, "artifacts-original");
+  mkdirSync(parent);
+  const lock = acquireExclusiveFileLock(path.join(parent, "candidate.build-lock"));
+  renameSync(parent, moved);
+  mkdirSync(parent);
+
+  assert.throws(() => lock.assertOwned(), /lock parent changed/i);
+  assert.throws(() => lock.release(), /lock parent changed/i);
+  assert.equal(existsSync(path.join(parent, "candidate.build-lock")), false);
+  assert.equal(existsSync(path.join(moved, "candidate.build-lock")), true);
+});
+
+test("owned artifact directories reject symbolic-link ancestors", (context) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-node-owned-root-"));
+  context.after(() => rmSync(root, { recursive: true, force: true }));
+  const outside = path.join(root, "outside");
+  const artifacts = path.join(root, "workspace", "artifacts");
+  mkdirSync(path.dirname(artifacts), { recursive: true });
+  mkdirSync(outside);
+  try {
+    symlinkSync(outside, artifacts, "dir");
+  } catch (error) {
+    if (error?.code === "EPERM" || error?.code === "EACCES") {
+      context.skip("the host does not permit test symlinks");
+      return;
+    }
+    throw error;
+  }
+
+  assert.throws(
+    () => ensureOwnedDirectory(root, path.join(artifacts, "napi")),
+    /owned directory component must be a non-symlink directory/i,
+  );
+  assert.equal(existsSync(path.join(outside, "napi")), false);
 });
 
 function validateComparisonReport(report) {
@@ -1005,7 +1138,7 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
     transport_builder: "3.7.4",
   };
   const receipt = {
-    schema_version: 1,
+    schema_version: 4,
     config: {
       candidate: "napi",
       target: "darwin-arm64",
@@ -1021,10 +1154,14 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
         "transport-napi",
       ],
     },
-    commit: provenance.commit,
-    source_digest: `sha256:${"d".repeat(64)}`,
-    cargo_lock_digest: cargoLockDigest,
-    binding_contract_digest: `sha256:${"e".repeat(64)}`,
+    commit: testGitCapture(["rev-parse", "--verify", "HEAD^{commit}"]),
+    commit_tree: testGitCapture(["rev-parse", "--verify", "HEAD^{tree}"]),
+    source_inputs: testCommittedSourceClosure(),
+    source_digest: null,
+    cargo_lock_digest: null,
+    binding_contract_digest: null,
+    build_environment: resolveCandidateBuildEnvironment().contract,
+    build_environment_digest: null,
     dependency_closure: {
       digest: digestJson([
         {
@@ -1069,16 +1206,24 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
       },
     ],
   };
-  receipt.input_digest = digestJson({
-    cargo_lock_digest: receipt.cargo_lock_digest,
-    config: receipt.config,
-    dependency_closure_digest: receipt.dependency_closure.digest,
-    source_digest: receipt.source_digest,
-    tools: receipt.tools,
-  });
+  receipt.source_digest = digestJson(receipt.source_inputs);
+  receipt.cargo_lock_digest = receipt.source_inputs.find(
+    (entry) => entry.path === "crates/merman-node/Cargo.lock",
+  ).sha256;
+  receipt.binding_contract_digest = digestJson(
+    receipt.source_inputs.filter(
+      (entry) =>
+        !entry.path.startsWith("crates/merman-node/") &&
+        !entry.path.startsWith("platforms/node/"),
+    ),
+  );
+  receipt.build_environment_digest = digestJson(receipt.build_environment);
+  assert.equal(receipt.cargo_lock_digest, cargoLockDigest);
+  receipt.input_digest = computeBuildReceiptInputDigest(receipt);
   const currentEvidence = {
     source_digest: receipt.source_digest,
     binding_contract_digest: receipt.binding_contract_digest,
+    build_environment_digest: receipt.build_environment_digest,
     dependency_closure_digest: receipt.dependency_closure.digest,
   };
   const readReceipt = () => readBuildReceipt(artifact, {
@@ -1095,9 +1240,11 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
     rust_target: "aarch64-apple-darwin",
     wasm_pack_target: null,
     commit: receipt.commit,
+    commit_tree: receipt.commit_tree,
     source_digest: receipt.source_digest,
     cargo_lock_digest: receipt.cargo_lock_digest,
     binding_contract_digest: receipt.binding_contract_digest,
+    build_environment_digest: receipt.build_environment_digest,
     dependency_closure_digest: receipt.dependency_closure.digest,
     capability_recipe_digest: CAPABILITY_RECIPE_DIGEST,
     runtime_catalog_digest: RUNTIME_CATALOG_DIGEST,
@@ -1133,15 +1280,24 @@ test("a build receipt is bound to the exact measured artifact", (context) => {
   assert.throws(() => readReceipt(), /input digest.*recorded build inputs/i);
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
 
+  const differentBuildEnvironment = structuredClone(receipt);
+  differentBuildEnvironment.build_environment.inherited.find(
+    (entry) => entry.name === "PATH",
+  ).value_sha256 = `sha256:${"f".repeat(64)}`;
+  differentBuildEnvironment.build_environment_digest =
+    digestJson(differentBuildEnvironment.build_environment);
+  differentBuildEnvironment.input_digest =
+    computeBuildReceiptInputDigest(differentBuildEnvironment);
+  writeFileSync(
+    path.join(root, "build-receipt.json"),
+    JSON.stringify(differentBuildEnvironment),
+  );
+  assert.throws(() => readReceipt(), /build environment is stale/i);
+  writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
+
   const wrongTarget = structuredClone(receipt);
   wrongTarget.config.rust_target = "x86_64-apple-darwin";
-  wrongTarget.input_digest = digestJson({
-    cargo_lock_digest: wrongTarget.cargo_lock_digest,
-    config: wrongTarget.config,
-    dependency_closure_digest: wrongTarget.dependency_closure.digest,
-    source_digest: wrongTarget.source_digest,
-    tools: wrongTarget.tools,
-  });
+  wrongTarget.input_digest = computeBuildReceiptInputDigest(wrongTarget);
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(wrongTarget));
   assert.throws(() => readReceipt(), /target configuration.*canonical/i);
   writeFileSync(path.join(root, "build-receipt.json"), JSON.stringify(receipt));
@@ -1904,3 +2060,31 @@ test("a rejected report records no selected transport", () => {
   report.workload_comparison = computeWorkloadComparison(report.candidates);
   assert.deepEqual(validateComparisonReport(report), report);
 });
+
+function testCommittedSourceInput(relativePath) {
+  const bytes = testGitBytes(["show", `HEAD:${relativePath}`]);
+  return {
+    path: relativePath,
+    bytes: bytes.length,
+    sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+  };
+}
+
+function testCommittedSourceClosure() {
+  return ["Cargo.toml", "crates/merman-node/Cargo.lock"].map(testCommittedSourceInput);
+}
+
+function testGitCapture(args) {
+  return testGitBytes(args).toString("utf8").trim();
+}
+
+function testGitBytes(args) {
+  const result = spawnSync("git", args, {
+    cwd: repositoryRoot,
+    encoding: null,
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${result.error?.message ?? result.stderr}`);
+  }
+  return result.stdout;
+}

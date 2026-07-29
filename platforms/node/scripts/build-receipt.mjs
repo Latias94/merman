@@ -1,14 +1,18 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  CANDIDATE_BUILD_ENVIRONMENT_REQUIRED_NAMES,
+  computeBuildReceiptInputDigest,
   probeCandidateRuntime,
   resolveCandidateBuildEvidence,
+  resolveCandidateBuildEnvironment,
   resolveCandidateRecipe,
   resolveCandidateRuntimeContract,
   validateCandidateDependencyPackages,
+  validateGitSourceInputs,
 } from "./build-candidate.mjs";
 import { digestJson, stableJson } from "./stable-json.mjs";
 import { validateRuntimeCatalog } from "../src/engine.mjs";
@@ -16,6 +20,7 @@ import { validateRuntimeCatalog } from "../src/engine.mjs";
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
 const cargoLockPath = path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock");
+const SHA256 = /^sha256:[0-9a-f]{64}$/;
 const packageVersion = JSON.parse(
   readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
 ).version;
@@ -30,18 +35,28 @@ export function readBuildReceipt(
   const receiptPath = path.join(path.dirname(artifact), "build-receipt.json");
   assertFile(receiptPath, "candidate build receipt");
   const value = JSON.parse(readFileSync(receiptPath, "utf8"));
-  if (value.schema_version !== 1) {
-    throw new Error("candidate build receipt schema_version must be 1.");
+  if (value.schema_version !== 4) {
+    throw new Error("candidate build receipt schema_version must be 4.");
   }
   for (const key of [
     "source_digest",
     "cargo_lock_digest",
     "binding_contract_digest",
+    "build_environment_digest",
     "input_digest",
   ]) {
-    if (!/^sha256:[0-9a-f]{64}$/.test(value[key] ?? "")) {
+    if (!SHA256.test(value[key] ?? "")) {
       throw new Error(`candidate build receipt has an invalid ${key}.`);
     }
+  }
+  validateBuildSourceProvenance(value);
+  const { buildRecipe, capabilityRecipe } = validateCapabilityRecipe(value.config);
+  validateBuildEnvironment(value);
+  const currentBuildEnvironment = resolveCandidateBuildEnvironment().contract;
+  if (digestJson(currentBuildEnvironment) !== value.build_environment_digest) {
+    throw new Error(
+      "candidate build receipt build environment is stale for the current process.",
+    );
   }
   if (value.cargo_lock_digest !== digestFile(cargoLockPath)) {
     throw new Error("candidate build receipt Cargo lock digest does not match the current lockfile.");
@@ -50,15 +65,11 @@ export function readBuildReceipt(
     value.dependency_closure,
     value.config?.candidate,
   );
-  const { buildRecipe, capabilityRecipe } = validateCapabilityRecipe(value.config);
   validateBuildTools(value.tools);
-  const expectedInputDigest = digestJson({
-    cargo_lock_digest: value.cargo_lock_digest,
-    config: value.config,
-    dependency_closure_digest: dependencyClosureDigest,
-    source_digest: value.source_digest,
-    tools: value.tools,
-  });
+  const expectedInputDigest = computeBuildReceiptInputDigest(
+    value,
+    dependencyClosureDigest,
+  );
   if (value.input_digest !== expectedInputDigest) {
     throw new Error("candidate build receipt input digest does not match its recorded build inputs.");
   }
@@ -79,6 +90,7 @@ export function readBuildReceipt(
     }
   }
   const receiptRoot = path.dirname(receiptPath);
+  assertDirectory(receiptRoot, "candidate build receipt root");
   const artifactPath = path.relative(receiptRoot, artifact).split(path.sep).join("/");
   if (!Array.isArray(value.artifacts) || value.artifacts.length === 0) {
     throw new Error("candidate build receipt contains no artifacts.");
@@ -105,7 +117,7 @@ export function readBuildReceipt(
     assertFile(recordedPath, `candidate artifact ${recorded.path}`);
     if (
       recorded.sha256 !== digestFile(recordedPath) ||
-      recorded.bytes !== statSync(recordedPath).size
+      recorded.bytes !== lstatSync(recordedPath).size
     ) {
       throw new Error(`candidate build receipt does not match ${recorded.path}.`);
     }
@@ -135,9 +147,11 @@ export function readBuildReceipt(
     rust_target: value.config.rust_target,
     wasm_pack_target: value.config.wasm_pack_target,
     commit: value.commit,
+    commit_tree: value.commit_tree,
     source_digest: value.source_digest,
     cargo_lock_digest: value.cargo_lock_digest,
     binding_contract_digest: value.binding_contract_digest,
+    build_environment_digest: value.build_environment_digest,
     dependency_closure_digest: dependencyClosureDigest,
     capability_recipe_digest: digestJson(capabilityRecipe),
     runtime_catalog_digest: runtimeCatalogDigest,
@@ -145,6 +159,164 @@ export function readBuildReceipt(
     artifact_digest: artifactDigest,
     runtime_artifacts: runtimeArtifacts,
   };
+}
+
+export { computeBuildReceiptInputDigest } from "./build-candidate.mjs";
+
+export function validateBuildSourceProvenance(
+  value,
+  { label = "candidate build receipt" } = {},
+) {
+  const sourceInputs = validateGitSourceInputs(value, { label });
+  if (digestJson(sourceInputs) !== value.source_digest) {
+    throw new Error(`${label} source digest does not match its source inputs.`);
+  }
+  const bindingInputs = sourceInputs.filter(
+    (entry) =>
+      !entry.path.startsWith("crates/merman-node/") &&
+      !entry.path.startsWith("platforms/node/"),
+  );
+  if (
+    bindingInputs.length === 0 ||
+    digestJson(bindingInputs) !== value.binding_contract_digest
+  ) {
+    throw new Error(`${label} binding contract digest does not match its source inputs.`);
+  }
+  const cargoLock = sourceInputs.find(
+    (entry) => entry.path === "crates/merman-node/Cargo.lock",
+  );
+  if (!cargoLock || cargoLock.sha256 !== value.cargo_lock_digest) {
+    throw new Error(`${label} Cargo lock digest does not match its source inputs.`);
+  }
+
+  return sourceInputs;
+}
+
+export function validateBuildEnvironment(
+  value,
+  { label = "candidate build receipt" } = {},
+) {
+  const environment = value.build_environment;
+  if (
+    !environment ||
+    typeof environment !== "object" ||
+    Array.isArray(environment) ||
+    environment.schema_version !== 2 ||
+    environment.enforced?.CARGO_BUILD_JOBS !== "1" ||
+    environment.enforced?.CARGO_TARGET_DIR !== "target" ||
+    !Array.isArray(environment.inherited) ||
+    !Array.isArray(environment.external_inputs)
+  ) {
+    throw new Error(`${label} build environment contract is invalid.`);
+  }
+  const inheritedNames = [];
+  for (const entry of environment.inherited) {
+    if (
+      !entry ||
+      typeof entry.name !== "string" ||
+      entry.name.length === 0 ||
+      !new Set(["absent", "present"]).has(entry.state) ||
+      (entry.state === "absent" && Object.keys(entry).length !== 2) ||
+      (entry.state === "present" && !SHA256.test(entry.value_sha256 ?? ""))
+    ) {
+      throw new Error(`${label} inherited build environment is invalid.`);
+    }
+    inheritedNames.push(entry.name);
+  }
+  if (
+    JSON.stringify(inheritedNames) !==
+      JSON.stringify([...new Set(inheritedNames)].sort())
+  ) {
+    throw new Error(`${label} inherited build environment must be sorted and unique.`);
+  }
+  for (const required of CANDIDATE_BUILD_ENVIRONMENT_REQUIRED_NAMES) {
+    if (!inheritedNames.includes(required)) {
+      throw new Error(`${label} inherited build environment omits ${required}.`);
+    }
+  }
+  const expectedExternalIds = [
+    "build-source/.cargo/config",
+    "build-source/.cargo/config.toml",
+    "cargo-home/config",
+    "cargo-home/config.toml",
+    "tool/cargo",
+    "tool/git",
+    "tool/node",
+    "tool/rustc",
+    "tool/wasm-pack",
+    "tool/napi-cli",
+    "tool/napi-cli-node-modules",
+  ];
+  const expectedEnvironmentToolIds = environment.inherited
+    .filter(
+      (entry) =>
+        entry.state === "present" &&
+        (new Set([
+          "CARGO_BUILD_RUSTC",
+          "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
+          "CARGO_BUILD_RUSTC_WRAPPER",
+          "RUSTC_WRAPPER",
+          "RUSTC_WORKSPACE_WRAPPER",
+        ]).has(entry.name) ||
+          /^(?:AR|CC|CXX|LD|NM|OBJCOPY|RANLIB|STRIP)(?:_.+)?$/.test(entry.name) ||
+          /^CARGO_TARGET_.+_(?:LINKER|RUNNER)$/.test(entry.name)),
+    )
+    .map((entry) => `environment-tool/${entry.name}`)
+    .sort();
+  if (
+    JSON.stringify(environment.external_inputs.map((entry) => entry?.id)) !==
+      JSON.stringify([...expectedExternalIds, ...expectedEnvironmentToolIds])
+  ) {
+    throw new Error(`${label} external build input coverage is incomplete.`);
+  }
+  for (const entry of environment.external_inputs) {
+    if (entry.state === "absent") {
+      if (Object.keys(entry).length !== 2) {
+        throw new Error(`${label} absent Cargo configuration evidence is invalid.`);
+      }
+    } else if (
+      entry.state !== "present" ||
+      !Number.isSafeInteger(entry.bytes) ||
+      entry.bytes < 0 ||
+      !SHA256.test(entry.sha256 ?? "") ||
+      (entry.path_sha256 !== undefined && !SHA256.test(entry.path_sha256))
+    ) {
+      throw new Error(`${label} present external build input evidence is invalid.`);
+    }
+    if (
+      entry.state === "present" &&
+      (entry.id.startsWith("tool/") || entry.id.startsWith("environment-tool/")) &&
+      !SHA256.test(entry.path_sha256 ?? "")
+    ) {
+      throw new Error(`${label} path-bound external build input evidence is invalid.`);
+    }
+    if (
+      entry.id === "tool/napi-cli-node-modules" &&
+      entry.state === "present" &&
+      (!Number.isSafeInteger(entry.file_count) || entry.file_count < 1)
+    ) {
+      throw new Error(`${label} external build input tree evidence is invalid.`);
+    }
+  }
+  for (const required of [
+    "tool/cargo",
+    "tool/git",
+    "tool/node",
+    "tool/rustc",
+    "tool/napi-cli",
+    "tool/napi-cli-node-modules",
+  ]) {
+    if (environment.external_inputs.find((entry) => entry.id === required)?.state !== "present") {
+      throw new Error(`${label} lacks required external build input ${required}.`);
+    }
+  }
+  if (
+    !SHA256.test(value.build_environment_digest ?? "") ||
+    digestJson(environment) !== value.build_environment_digest
+  ) {
+    throw new Error(`${label} build environment digest is invalid.`);
+  }
+  return environment;
 }
 
 function runtimeArtifactEntries(candidate, artifacts) {
@@ -391,21 +563,41 @@ function sortedUniqueStrings(value, label, { allowEmpty = false } = {}) {
 }
 
 function digestFile(file) {
-  return `sha256:${createHash("sha256").update(readFileSync(file)).digest("hex")}`;
+  return digestBytes(readFileSync(file));
+}
+
+function digestBytes(value) {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function collectArtifactPaths(root, current = root) {
+  assertDirectory(current, "candidate artifact directory");
   const files = [];
   for (const entry of readdirSync(current, { withFileTypes: true })) {
     const absolute = path.join(current, entry.name);
-    if (entry.isDirectory()) files.push(...collectArtifactPaths(root, absolute));
-    else if (entry.isFile()) {
+    const stat = lstatSync(absolute);
+    if (stat.isDirectory() && !stat.isSymbolicLink()) {
+      files.push(...collectArtifactPaths(root, absolute));
+    } else if (stat.isFile() && !stat.isSymbolicLink()) {
       files.push(path.relative(root, absolute).split(path.sep).join("/"));
+    } else {
+      throw new Error(`Candidate artifact root contains a non-regular entry: ${absolute}.`);
     }
   }
   return files.sort();
 }
 
 function assertFile(file, label) {
-  if (!existsSync(file) || !statSync(file).isFile()) throw new Error(`Missing ${label}: ${file}.`);
+  if (!existsSync(file)) throw new Error(`Missing ${label}: ${file}.`);
+  const stat = lstatSync(file);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`${label} must be a regular non-symlink file: ${file}.`);
+  }
+}
+
+function assertDirectory(directory, label) {
+  const stat = lstatSync(directory);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error(`${label} must be a non-symlink directory: ${directory}.`);
+  }
 }

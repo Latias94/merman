@@ -1,9 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
-  mkdirSync,
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
+  rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -30,17 +36,45 @@ const nodeRoot = path.resolve(scriptRoot, "..", "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
 const workerPath = path.join(scriptRoot, "request-overlay-worker.mjs");
 const manifestPath = path.join(nodeRoot, "benchmark", "request-overlay.json");
+const COMPARISON_STAGES = [
+  "harness-digest",
+  "output-contract",
+  "manifest-contract",
+  "artifact-attestation",
+  "artifact-snapshot",
+  "revision-contract",
+  "same-revision-contract",
+  "build-comparability-contract",
+  "aa-exploration",
+  "noise-qualification",
+  "confirmation",
+  "artifact-stability",
+  "decision",
+  "harness-stability",
+  "report-contract",
+];
 
 if (isMainModule()) {
+  let options;
   try {
-    const options = parseRequestOverlayArgs(process.argv.slice(2));
+    options = parseRequestOverlayArgs(process.argv.slice(2));
     const report = runRequestOverlayComparison(options);
-    mkdirSync(path.dirname(options.output), { recursive: true });
-    writeFileSync(options.output, `${JSON.stringify(report, null, 2)}\n`);
+    writeRequestOverlayReport(options.output, report);
     console.log(`[merman-node] request-overlay owner report written to ${options.output}`);
     process.exitCode = requestOverlayExitCode(report.decision.status);
   } catch (error) {
     console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    if (options) {
+      try {
+        writeRequestOverlayReport(options.output, contractFailureReceipt(options, error));
+      } catch (writeError) {
+        console.error(
+          `request-overlay contract-failure receipt could not be written: ${
+            writeError instanceof Error ? writeError.message : String(writeError)
+          }`,
+        );
+      }
+    }
     process.exitCode = requestOverlayExitCode("contract-failure");
   }
 }
@@ -49,75 +83,132 @@ export function runRequestOverlayComparison(
   options,
   { invokeWorker = invokeWorkerProcess } = {},
 ) {
-  const initialHarnessDigest = computeRequestOverlayHarnessDigest();
-  validateOutputPath(options.output, options.artifacts);
-  const manifest = validateRequestOverlayManifest(readJson(manifestPath));
-  const historicalArtifacts = readArtifacts(options.artifacts);
-  const projectedArtifacts = historicalArtifacts.map(projectHistoricalArtifact);
-  const revisions = verifyAdjacentRevisions(projectedArtifacts);
-  verifySameRevisionContracts(projectedArtifacts);
+  const initialHarnessDigest = comparisonStage(
+    "harness-digest",
+    computeRequestOverlayHarnessDigest,
+  );
+  comparisonStage(
+    "output-contract",
+    () => validateOutputPath(options.output, options.artifacts),
+  );
+  const manifest = comparisonStage(
+    "manifest-contract",
+    () => validateRequestOverlayManifest(readJson(manifestPath)),
+  );
+  const historicalArtifacts = comparisonStage(
+    "artifact-attestation",
+    () => readArtifacts(options.artifacts),
+  );
+  const snapshot = comparisonStage(
+    "artifact-snapshot",
+    () => snapshotRequestOverlayArtifacts(historicalArtifacts),
+  );
+  try {
+    const projectedArtifacts = historicalArtifacts.map(projectHistoricalArtifact);
+    const revisions = comparisonStage(
+      "revision-contract",
+      () => verifyAdjacentRevisions(projectedArtifacts),
+    );
+    comparisonStage(
+      "same-revision-contract",
+      () => verifySameRevisionContracts(projectedArtifacts),
+    );
+    comparisonStage(
+      "build-comparability-contract",
+      () => verifyCrossRevisionBuildContracts(projectedArtifacts),
+    );
 
-  const samplingBase = {
-    aa_pairs: options.aaPairs,
-    maximum_confirmation_pairs: manifest.sampling_defaults.maximum_confirmation_pairs,
-    confirmation_pairs: 8,
-    cold_samples: options.coldSamples,
-    warmup_iterations: options.warmupIterations,
-    reused_samples: options.reusedSamples,
-  };
-  const invocationId = randomBytes(16).toString("hex");
-  const artifactsByKey = new Map(historicalArtifacts.map((artifact) => [artifact.key, artifact]));
-  const aa = executeCells(
-    explorationCells({ aaPairs: samplingBase.aa_pairs }),
-    { artifactsByKey, manifest, sampling: samplingBase, invocationId, invokeWorker },
-  );
-  const noise = qualifyNoise(
-    aa,
-    manifest,
-    samplingBase.maximum_confirmation_pairs,
-  );
-  const confirmationPairs = Math.min(
-    samplingBase.maximum_confirmation_pairs,
-    Math.max(8, noise.required_confirmation_pairs),
-  );
-  const sampling = { ...samplingBase, confirmation_pairs: confirmationPairs };
-  const confirmation = executeCells(
-    confirmationCells({ confirmationPairs }),
-    { artifactsByKey, manifest, sampling, invocationId, invokeWorker },
-  );
-  const cells = [...aa, ...confirmation];
-  assertArtifactsUnchanged(projectedArtifacts, options.artifacts);
-  const decision = classifyDecision(cells, noise, manifest);
-  const report = {
-    schema_version: 1,
-    report_kind: "merman-node-request-overlay-owner-v1",
-    owner: "merman-bindings-core",
-    scope: {
-      lane_id: manifest.lane_id,
-      operation_id: manifest.operation.operation_id,
-      transports: ["napi", "node-wasm"],
-      timing_clock: "process.hrtime.bigint",
-      timing_operation: "raw-engine.executeSync",
-      transport_admission: "not-evaluated",
-    },
-    provenance: provenance(initialHarnessDigest, invocationId, options),
-    revisions,
-    input: {
-      manifest_digest: digestJsonFile(manifestPath),
-      manifest,
-    },
-    sampling,
-    artifacts: projectedArtifacts,
-    semantic_evidence: projectSemanticEvidence(cells),
-    cells,
-    rss: projectRss(cells),
-    decision,
-  };
-  assertHarnessUnchanged(initialHarnessDigest);
-  return validateRequestOverlayReport(report, { trustedManifest: manifest });
+    const samplingBase = {
+      aa_pairs: options.aaPairs,
+      maximum_confirmation_pairs: manifest.sampling_defaults.maximum_confirmation_pairs,
+      confirmation_pairs: 8,
+      cold_samples: options.coldSamples,
+      warmup_iterations: options.warmupIterations,
+      reused_samples: options.reusedSamples,
+    };
+    const invocationId = randomBytes(16).toString("hex");
+    const artifactsByKey = new Map(
+      snapshot.artifacts.map((artifact) => [artifact.key, artifact]),
+    );
+    const aa = comparisonStage(
+      "aa-exploration",
+      () => executeCells(
+        explorationCells({ aaPairs: samplingBase.aa_pairs }),
+        { artifactsByKey, manifest, sampling: samplingBase, invocationId, invokeWorker },
+      ),
+    );
+    const noise = comparisonStage(
+      "noise-qualification",
+      () => qualifyNoise(
+        aa,
+        manifest,
+        samplingBase.maximum_confirmation_pairs,
+      ),
+    );
+    const confirmationPairs = Math.min(
+      samplingBase.maximum_confirmation_pairs,
+      Math.max(8, noise.required_confirmation_pairs),
+    );
+    const sampling = { ...samplingBase, confirmation_pairs: confirmationPairs };
+    const confirmation = comparisonStage(
+      "confirmation",
+      () => executeCells(
+        confirmationCells({ confirmationPairs }),
+        { artifactsByKey, manifest, sampling, invocationId, invokeWorker },
+      ),
+    );
+    const cells = [...aa, ...confirmation];
+    comparisonStage(
+      "artifact-stability",
+      () => {
+        assertArtifactsUnchanged(projectedArtifacts, options.artifacts);
+        assertArtifactsUnchanged(projectedArtifacts, snapshot.paths);
+      },
+    );
+    const decision = comparisonStage(
+      "decision",
+      () => classifyDecision(cells, noise, manifest),
+    );
+    const report = {
+      schema_version: 2,
+      report_kind: "merman-node-request-overlay-owner-v2",
+      owner: "merman-bindings-core",
+      scope: {
+        lane_id: manifest.lane_id,
+        operation_id: manifest.operation.operation_id,
+        transports: ["napi", "node-wasm"],
+        timing_clock: "process.hrtime.bigint",
+        timing_operation: "raw-engine.executeSync",
+        transport_admission: "not-evaluated",
+      },
+      provenance: provenance(initialHarnessDigest, invocationId, options),
+      revisions,
+      input: {
+        manifest_digest: digestJsonFile(manifestPath),
+        manifest,
+      },
+      sampling,
+      artifacts: projectedArtifacts,
+      semantic_evidence: projectSemanticEvidence(cells),
+      cells,
+      rss: projectRss(cells),
+      decision,
+    };
+    comparisonStage(
+      "harness-stability",
+      () => assertHarnessUnchanged(initialHarnessDigest),
+    );
+    return comparisonStage(
+      "report-contract",
+      () => validateRequestOverlayReport(report, { trustedManifest: manifest }),
+    );
+  } finally {
+    snapshot.dispose();
+  }
 }
 
 export function parseRequestOverlayArgs(args) {
+  const manifest = validateRequestOverlayManifest(readJson(manifestPath));
   const outputDefault = path.join(
     nodeRoot,
     "reports",
@@ -135,23 +226,26 @@ export function parseRequestOverlayArgs(args) {
     aaPairs: evenIntegerAfter(
       args,
       "--aa-pairs",
-      readJson(manifestPath).sampling_defaults.aa_pairs,
+      manifest.sampling_defaults.aa_pairs,
       { min: 8, max: 32 },
     ),
-    coldSamples: positiveIntegerAfter(
+    coldSamples: boundedPositiveIntegerAfter(
       args,
       "--cold-samples",
-      readJson(manifestPath).sampling_defaults.cold_samples,
+      manifest.sampling_defaults.cold_samples,
+      manifest.sampling_limits.maximum_cold_samples,
     ),
-    warmupIterations: positiveIntegerAfter(
+    warmupIterations: boundedPositiveIntegerAfter(
       args,
       "--warmup-iterations",
-      readJson(manifestPath).sampling_defaults.warmup_iterations,
+      manifest.sampling_defaults.warmup_iterations,
+      manifest.sampling_limits.maximum_warmup_iterations,
     ),
-    reusedSamples: positiveIntegerAfter(
+    reusedSamples: boundedPositiveIntegerAfter(
       args,
       "--reused-samples",
-      readJson(manifestPath).sampling_defaults.reused_samples,
+      manifest.sampling_defaults.reused_samples,
+      manifest.sampling_limits.maximum_reused_samples,
     ),
   };
   rejectUnknownArgs(args, new Set([
@@ -165,7 +259,27 @@ export function parseRequestOverlayArgs(args) {
     "--warmup-iterations",
     "--reused-samples",
   ]));
+  options.output = validateOutputPath(options.output, options.artifacts);
   return options;
+}
+
+export function writeRequestOverlayReport(output, report) {
+  const parent = path.dirname(output);
+  const temporary = path.join(
+    parent,
+    `.${path.basename(output)}.${process.pid}.${randomBytes(16).toString("hex")}.tmp`,
+  );
+  assertSafeOutputParent(parent);
+  try {
+    writeFileSync(temporary, `${JSON.stringify(report, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    renameSync(temporary, output);
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+  }
 }
 
 export function requestOverlayExitCode(status) {
@@ -188,12 +302,21 @@ export function verifyAdjacentRevisions(artifacts, { git = runGit } = {}) {
     }
   }
   const base = byRevision.get("base")[0].commit;
+  const baseTree = byRevision.get("base")[0].commit_tree;
   const head = byRevision.get("head")[0].commit;
+  const headTree = byRevision.get("head")[0].commit_tree;
   const firstParent = git(["rev-parse", `${head}^1`]);
   if (firstParent !== base) {
     throw new Error(`request-overlay revisions are not adjacent: ${head}^1 is ${firstParent}, not ${base}.`);
   }
-  return { base, head, relationship: "head^1==base", verified: true };
+  return {
+    base,
+    base_tree: baseTree,
+    head,
+    head_tree: headTree,
+    relationship: "head^1==base",
+    verified: true,
+  };
 }
 
 export function verifySameRevisionContracts(artifacts) {
@@ -203,14 +326,43 @@ export function verifySameRevisionContracts(artifacts) {
       throw new Error(`${revision} contract comparison requires N-API and Node-WASM artifacts.`);
     }
     for (const key of [
+      "commit_tree",
       "source_digest",
       "cargo_lock_digest",
       "binding_contract_digest",
+      "build_environment_digest",
       "capability_recipe_digest",
       "runtime_catalog_digest",
     ]) {
       if (new Set(side.map((artifact) => artifact[key])).size !== 1) {
         throw new Error(`${revision} N-API and Node-WASM receipts disagree on ${key}.`);
+      }
+    }
+  }
+}
+
+export function verifyCrossRevisionBuildContracts(artifacts) {
+  for (const transport of ["napi", "node-wasm"]) {
+    const base = artifacts.find(
+      (artifact) => artifact.revision === "base" && artifact.transport === transport,
+    );
+    const head = artifacts.find(
+      (artifact) => artifact.revision === "head" && artifact.transport === transport,
+    );
+    if (!base || !head) {
+      throw new Error(`${transport} comparison requires adjacent base and head artifacts.`);
+    }
+    for (const key of [
+      "target",
+      "rust_target",
+      "wasm_pack_target",
+      "cargo_features",
+      "capability_ids",
+      "build_tools",
+      "build_environment_digest",
+    ]) {
+      if (stableJson(base[key]) !== stableJson(head[key])) {
+        throw new Error(`${transport} base and head builds disagree on ${key}.`);
       }
     }
   }
@@ -249,6 +401,46 @@ function readArtifacts(paths) {
   ];
 }
 
+export function snapshotRequestOverlayArtifacts(historicalArtifacts) {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-request-overlay-artifacts-"));
+  try {
+    const paths = {};
+    for (const artifact of historicalArtifacts) {
+      const destination = path.join(root, artifact.key.replace(":", "-"));
+      cpSync(path.dirname(artifact.artifact_path), destination, {
+        recursive: true,
+        dereference: false,
+        errorOnExist: true,
+        force: false,
+      });
+      paths[artifact.key] = path.join(
+        destination,
+        artifact.artifact_path_in_receipt,
+      );
+    }
+    const artifacts = readArtifacts(paths);
+    const expected = historicalArtifacts.map(projectHistoricalArtifact);
+    const actual = artifacts.map(projectHistoricalArtifact);
+    if (stableJson(actual) !== stableJson(expected)) {
+      throw new Error("request-overlay artifact snapshot differs from its attested source.");
+    }
+    let disposed = false;
+    return {
+      root,
+      paths,
+      artifacts,
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        rmSync(root, { recursive: true, force: true });
+      },
+    };
+  } catch (error) {
+    rmSync(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 function assertArtifactsUnchanged(initialArtifacts, paths) {
   const currentArtifacts = readArtifacts(paths).map(projectHistoricalArtifact);
   if (stableJson(currentArtifacts) !== stableJson(initialArtifacts)) {
@@ -261,7 +453,7 @@ function executeCells(cells, context) {
     const artifact = context.artifactsByKey.get(identity.artifact_key);
     if (!artifact) throw new Error(`Unknown request-overlay artifact ${identity.artifact_key}.`);
     const invocation = {
-      schema_version: 1,
+      schema_version: 2,
       artifact_key: identity.artifact_key,
       revision: artifact.revision,
       transport: artifact.transport,
@@ -285,6 +477,7 @@ function invokeWorkerProcess(invocation) {
       encoding: "utf8",
       input: `${JSON.stringify(invocation)}\n`,
       maxBuffer: 256 * 1024 * 1024,
+      timeout: invocation.manifest.sampling_limits.worker_timeout_ms,
     },
   );
   if (result.error || result.status !== 0) {
@@ -390,6 +583,14 @@ function positiveIntegerAfter(args, flag, fallback) {
   return value;
 }
 
+function boundedPositiveIntegerAfter(args, flag, fallback, maximum) {
+  const value = positiveIntegerAfter(args, flag, fallback);
+  if (value > maximum) {
+    throw new Error(`${flag} must not exceed ${maximum}.`);
+  }
+  return value;
+}
+
 function evenIntegerAfter(args, flag, fallback, { min, max }) {
   const value = positiveIntegerAfter(args, flag, fallback);
   if (value < min || value > max || value % 2 !== 0) {
@@ -415,28 +616,115 @@ function rejectUnknownArgs(args, knownFlags) {
   }
 }
 
-function validateOutputPath(output, artifacts) {
+export function validateOutputPath(output, artifacts) {
   const resolvedOutput = path.resolve(output);
   if (path.extname(resolvedOutput) !== ".json") {
     throw new Error("request-overlay output must be a .json report path.");
+  }
+  const parent = path.dirname(resolvedOutput);
+  assertSafeOutputParent(parent);
+  if (existsSync(resolvedOutput)) {
+    const outputStat = lstatSync(resolvedOutput);
+    if (!outputStat.isFile() || outputStat.isSymbolicLink()) {
+      throw new Error("request-overlay output must be a regular non-symlink file when it exists.");
+    }
   }
   if (requestOverlayHarnessFiles().includes(resolvedOutput)) {
     throw new Error("request-overlay output must not overwrite a harness input.");
   }
   for (const artifact of Object.values(artifacts)) {
-    const root = path.dirname(path.resolve(artifact));
+    const resolvedArtifact = path.resolve(artifact);
+    const declaredRoot = path.dirname(resolvedArtifact);
+    if (
+      !existsSync(resolvedArtifact) &&
+      !existsSync(path.join(declaredRoot, "build-receipt.json"))
+    ) {
+      continue;
+    }
+    const root = path.resolve(declaredRoot);
     const relative = path.relative(root, resolvedOutput);
     if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) {
       throw new Error("request-overlay output must not modify a receipt-bound artifact directory.");
     }
   }
+  return resolvedOutput;
 }
 
-function requestOverlayHarnessFiles() {
+function contractFailureReceipt(options, error) {
+  let harnessDigest = null;
+  try {
+    harnessDigest = computeRequestOverlayHarnessDigest();
+  } catch {
+    // The report records that the harness could not be digested instead of reusing a stale result.
+  }
+  return {
+    schema_version: 1,
+    report_kind: "merman-node-request-overlay-contract-failure-v1",
+    owner: "merman-bindings-core",
+    status: "contract-failure",
+    transport_admission: "not-evaluated",
+    generated_at_utc: new Date().toISOString(),
+    output: displayPath(options.output),
+    harness_digest: harnessDigest,
+    command: requestOverlayCommand(options),
+    evidence: {
+      output_path_validated: true,
+      harness_digest_available: harnessDigest !== null,
+      completed_stages: completedComparisonStages(error?.stage),
+    },
+    failure: {
+      stage: error?.stage ?? "comparison",
+      name: error instanceof Error ? error.name : "Error",
+      message: error instanceof Error ? error.message : String(error),
+    },
+  };
+}
+
+function comparisonStage(stage, action) {
+  try {
+    return action();
+  } catch (cause) {
+    if (cause?.stage && COMPARISON_STAGES.includes(cause.stage)) throw cause;
+    const message = cause instanceof Error ? cause.message : String(cause);
+    const error = new Error(`${stage}: ${message}`, { cause });
+    error.name = "RequestOverlayContractError";
+    error.stage = stage;
+    throw error;
+  }
+}
+
+function completedComparisonStages(failedStage) {
+  const index = COMPARISON_STAGES.indexOf(failedStage);
+  return index < 0 ? [] : COMPARISON_STAGES.slice(0, index);
+}
+
+function assertSafeOutputParent(parent) {
+  if (!existsSync(parent)) {
+    throw new Error("request-overlay output parent must already exist.");
+  }
+  const stat = lstatSync(parent);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    throw new Error("request-overlay output parent must be a non-symlink directory.");
+  }
+}
+
+export function requestOverlayHarnessFiles() {
   return [
     manifestPath,
+    path.join(repositoryRoot, "capabilities", "feature-surface-v1.json"),
+    path.join(nodeRoot, "candidate-builds.json"),
+    path.join(nodeRoot, "package-lock.json"),
     path.join(nodeRoot, "package.json"),
+    path.join(nodeRoot, "package-surfaces.json"),
+    path.join(nodeRoot, "scripts", "benchmark", "svg-signature.mjs"),
+    path.join(nodeRoot, "scripts", "build-candidate.mjs"),
+    path.join(nodeRoot, "scripts", "build-receipt.mjs"),
+    path.join(nodeRoot, "scripts", "replace-directory.mjs"),
     path.join(nodeRoot, "scripts", "stable-json.mjs"),
+    path.join(nodeRoot, "src", "bounded-executor.mjs"),
+    path.join(nodeRoot, "src", "engine.mjs"),
+    path.join(nodeRoot, "src", "errors.mjs"),
+    path.join(nodeRoot, "src", "native-loader.mjs"),
     ...readdirSync(scriptRoot)
       .filter((name) => /^request-overlay-[a-z-]+\.mjs$/.test(name))
       .map((name) => path.join(scriptRoot, name)),
