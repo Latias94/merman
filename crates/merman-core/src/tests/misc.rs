@@ -1400,6 +1400,51 @@ fn combined_parse_keeps_generic_custom_semantics_and_reports_editor_unavailable(
 }
 
 #[test]
+fn combined_parse_retains_metadata_when_a_custom_parser_panics() {
+    let mut engine = Engine::new();
+    engine
+        .registry_mut()
+        .add_fn("generic-custom", detect_generic_custom);
+    engine
+        .diagram_registry_mut()
+        .insert("generic-custom", panicking_custom_parser);
+    let snapshot = engine
+        .parse_diagram_snapshot_sync(
+            "%%{ init: {\"theme\":\"dark\"} }%%\ngeneric-custom\npayload\n",
+        )
+        .expect("snapshot capture should contain parser panics")
+        .expect("custom detector should produce a snapshot");
+
+    assert_eq!(snapshot.metadata().diagram_type, "generic-custom");
+    assert_eq!(snapshot.metadata().config.get_str("theme"), Some("dark"));
+    let crate::DiagramParseOutcome::Panicked(message) = snapshot.outcome() else {
+        panic!("custom parser panic was not retained in the snapshot");
+    };
+    assert!(message.contains("custom parser fixture panic"));
+    assert!(matches!(
+        snapshot.editor_facts(),
+        crate::ParsedEditorFacts::Unavailable
+    ));
+    assert!(!snapshot.recovered_incomplete_directive());
+}
+
+#[test]
+fn combined_parse_records_recovered_incomplete_directives() {
+    let snapshot = Engine::new()
+        .parse_diagram_snapshot_sync(concat!(
+            "%%{ init: {\"theme\":\"dark\"} }%%\n",
+            "%%{ malformed\n",
+            "flowchart TD\n",
+            "A-->B\n",
+        ))
+        .expect("editor snapshot preprocessing should recover the malformed line")
+        .expect("the later flowchart should still be detected");
+
+    assert_eq!(snapshot.metadata().config.get_str("theme"), Some("dark"));
+    assert!(snapshot.recovered_incomplete_directive());
+}
+
+#[test]
 fn combined_parse_uses_wardley_semantics_and_retains_missing_custom_parser_failure() {
     let wardley = Engine::new()
         .parse_diagram_snapshot_sync("wardley-beta\ntitle Example")
@@ -1537,6 +1582,14 @@ fn custom_overlay_json_parser(
         "owner": "custom-semantic",
         "diagramType": meta.diagram_type,
     })))
+}
+
+fn panicking_custom_parser(
+    _code: &str,
+    _meta: &ParseMetadata,
+    _control: &ParseControl,
+) -> ParseControlResult<Result<serde_json::Value>> {
+    panic!("custom parser fixture panic")
 }
 
 fn custom_overlay_render_parser(code: &str, meta: &ParseMetadata) -> Result<CustomJsonRenderModel> {

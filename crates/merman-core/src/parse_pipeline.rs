@@ -13,6 +13,16 @@ use diagram::{
     ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
     ResolvedRenderParser, ResolvedSemanticParser,
 };
+use serde_json::Value;
+
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("panic while analyzing Mermaid source")
+        .to_string()
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ParseSource<'a> {
@@ -251,6 +261,7 @@ impl<'a> ParsePipeline<'a> {
         };
         control.checkpoint()?;
         let source_map = EditorParseSourceMap::new(&code);
+        let recovered_incomplete_directive = code.recovered_incomplete_directive();
         let editor_input = source_map.parser_input();
         let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
 
@@ -260,33 +271,49 @@ impl<'a> ParsePipeline<'a> {
             .flatten();
 
         let parse_start = operation_timing.map(runtime::OperationTiming::start);
-        let (model_result, combined_facts) = match resolved {
-            Some(ResolvedSemanticParser::BuiltIn(parser)) => {
-                if let Some(parser) = combined {
-                    control.checkpoint()?;
-                    let parsed = parser(editor_input, &meta, control)?;
-                    control.checkpoint()?;
-                    let (model, editor_facts) = parsed.into_parts();
-                    (model, Some(editor_facts))
-                } else {
-                    control.checkpoint()?;
-                    let model = parser(editor_input, &meta);
-                    control.checkpoint()?;
-                    (model, None)
-                }
+        let parse_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+            || -> ParseControlResult<(Result<Value>, Option<EditorSemanticFacts>)> {
+                let parsed = match resolved {
+                    Some(ResolvedSemanticParser::BuiltIn(parser)) => {
+                        if let Some(parser) = combined {
+                            control.checkpoint()?;
+                            let parsed = parser(editor_input, &meta, control)?;
+                            control.checkpoint()?;
+                            let (model, editor_facts) = parsed.into_parts();
+                            (model, Some(editor_facts))
+                        } else {
+                            control.checkpoint()?;
+                            let model = parser(editor_input, &meta);
+                            control.checkpoint()?;
+                            (model, None)
+                        }
+                    }
+                    Some(ResolvedSemanticParser::Custom(parser)) => {
+                        control.checkpoint()?;
+                        let model = parser(editor_input, &meta, control)?;
+                        control.checkpoint()?;
+                        (model, None)
+                    }
+                    None => (
+                        Err(Error::UnsupportedDiagram {
+                            diagram_type: meta.diagram_type.clone(),
+                        }),
+                        None,
+                    ),
+                };
+                Ok(parsed)
+            },
+        ));
+        let (model_result, combined_facts) = match parse_result {
+            Ok(parsed) => parsed?,
+            Err(payload) => {
+                return Ok(Ok(Some(DiagramParseSnapshot::new(
+                    meta,
+                    DiagramParseOutcome::Panicked(panic_payload_message(payload.as_ref())),
+                    ParsedEditorFacts::Unavailable,
+                    recovered_incomplete_directive,
+                ))));
             }
-            Some(ResolvedSemanticParser::Custom(parser)) => {
-                control.checkpoint()?;
-                let model = parser(editor_input, &meta, control)?;
-                control.checkpoint()?;
-                (model, None)
-            }
-            None => (
-                Err(Error::UnsupportedDiagram {
-                    diagram_type: meta.diagram_type.clone(),
-                }),
-                None,
-            ),
         };
         let parse = parse_start.map(runtime::OperationTimer::elapsed);
         let owner = resolved.map(ResolvedSemanticParser::owner);
@@ -305,6 +332,7 @@ impl<'a> ParsePipeline<'a> {
                     meta,
                     DiagramParseOutcome::Failed(err),
                     editor_facts,
+                    recovered_incomplete_directive,
                 ))));
             }
         };
@@ -333,6 +361,7 @@ impl<'a> ParsePipeline<'a> {
             meta,
             DiagramParseOutcome::Parsed(model),
             editor_facts,
+            recovered_incomplete_directive,
         ))))
     }
 

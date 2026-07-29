@@ -185,6 +185,8 @@ pub enum ParsedEditorFacts {
 pub enum DiagramParseOutcome {
     Parsed(Value),
     Failed(Error),
+    /// Family construction panicked after preprocessing produced valid metadata.
+    Panicked(String),
 }
 
 impl DiagramParseOutcome {
@@ -192,7 +194,7 @@ impl DiagramParseOutcome {
     pub fn parsed_model(&self) -> Option<&Value> {
         match self {
             Self::Parsed(model) => Some(model),
-            Self::Failed(_) => None,
+            Self::Failed(_) | Self::Panicked(_) => None,
         }
     }
 }
@@ -206,6 +208,7 @@ pub struct DiagramParseSnapshot {
     meta: ParseMetadata,
     outcome: DiagramParseOutcome,
     editor_facts: ParsedEditorFacts,
+    recovered_incomplete_directive: bool,
 }
 
 impl DiagramParseSnapshot {
@@ -213,11 +216,13 @@ impl DiagramParseSnapshot {
         meta: ParseMetadata,
         outcome: DiagramParseOutcome,
         editor_facts: ParsedEditorFacts,
+        recovered_incomplete_directive: bool,
     ) -> Self {
         Self {
             meta,
             outcome,
             editor_facts,
+            recovered_incomplete_directive,
         }
     }
 
@@ -239,6 +244,11 @@ impl DiagramParseSnapshot {
     /// Returns parser-backed editor facts retained by this operation.
     pub fn editor_facts(&self) -> &ParsedEditorFacts {
         &self.editor_facts
+    }
+
+    /// Whether editor preprocessing recovered an unterminated directive line.
+    pub const fn recovered_incomplete_directive(&self) -> bool {
+        self.recovered_incomplete_directive
     }
 }
 

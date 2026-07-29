@@ -1,7 +1,7 @@
 use crate::analyzer::{
-    AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, AnalysisOptions, AnalysisSnapshotPolicy,
-    Analyzer,
+    AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, AnalysisSnapshotPolicy, Analyzer,
 };
+use crate::diagnostic_projection::{DiagnosticCandidate, project_diagnostic_candidates};
 use crate::editor::FenceExpectedSyntax;
 use crate::{
     ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisCancellationToken, AnalysisCancelled,
@@ -14,14 +14,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::Arc;
 
 /// One sealed rich capture bound to an exact parser environment and snapshot policy.
 #[derive(Debug)]
 pub struct AnalysisGeneration {
+    storage: Box<AnalysisGenerationStorage>,
+}
+
+#[derive(Debug)]
+struct AnalysisGenerationStorage {
     source_map: SourceMap,
     diagrams: Vec<AnalyzedDiagram>,
-    document_error: Option<Arc<merman_core::Error>>,
+    document_candidates: Vec<DiagnosticCandidate>,
     environment_identity: AnalysisEnvironmentIdentity,
     snapshot_policy: AnalysisSnapshotPolicy,
 }
@@ -102,21 +106,19 @@ impl AnalysisGeneration {
         let environment_identity = analyzer.environment_identity().clone();
         let snapshot_policy = analyzer.options().snapshot_policy().clone();
         Self {
-            source_map,
-            diagrams,
-            document_error: None,
-            environment_identity,
-            snapshot_policy,
+            storage: Box::new(AnalysisGenerationStorage {
+                source_map,
+                diagrams,
+                document_candidates: Vec::new(),
+                environment_identity,
+                snapshot_policy,
+            }),
         }
     }
 
-    pub(crate) fn with_document_error(mut self, error: Arc<merman_core::Error>) -> Self {
-        self.document_error = Some(error);
+    pub(crate) fn with_document_candidates(mut self, candidates: Vec<DiagnosticCandidate>) -> Self {
+        self.storage.document_candidates = candidates;
         self
-    }
-
-    pub(crate) fn document_error(&self) -> Option<&merman_core::Error> {
-        self.document_error.as_deref()
     }
 
     /// Projects diagnostics without parsing or mutating this generation.
@@ -132,27 +134,59 @@ impl AnalysisGeneration {
         policy: &AnalysisDiagnosticPolicy,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<AnalysisPayload, AnalysisCancelled> {
-        Analyzer::with_options(AnalysisOptions {
-            snapshot: self.snapshot_policy.clone(),
-            diagnostics: policy.clone(),
-        })
-        .project_generation_cancellable(self, cancellation)
+        cancellation.checkpoint()?;
+        let mut diagnostics =
+            project_diagnostic_candidates(&self.storage.document_candidates, policy, cancellation)?;
+        for diagram in &self.storage.diagrams {
+            cancellation.checkpoint()?;
+            let projected = project_diagnostic_candidates(
+                &diagram.diagnostic_candidates,
+                policy,
+                cancellation,
+            )?;
+            diagnostics.extend(crate::document::decorate_analyzed_diagnostics(
+                &self.storage.source_map,
+                self.storage.snapshot_policy.source.kind,
+                diagram,
+                projected,
+            ));
+        }
+        cancellation.checkpoint()?;
+        Ok(AnalysisPayload::new(
+            self.storage.snapshot_policy.source.clone(),
+            diagnostics,
+        ))
     }
 
     pub fn environment_identity(&self) -> &AnalysisEnvironmentIdentity {
-        &self.environment_identity
+        &self.storage.environment_identity
     }
 
     pub fn snapshot_policy(&self) -> &AnalysisSnapshotPolicy {
-        &self.snapshot_policy
+        &self.storage.snapshot_policy
     }
 
     pub fn source_map(&self) -> &SourceMap {
-        &self.source_map
+        &self.storage.source_map
     }
 
     pub fn diagrams(&self) -> &[AnalyzedDiagram] {
-        &self.diagrams
+        &self.storage.diagrams
+    }
+
+    #[cfg(test)]
+    pub(crate) fn diagnostic_candidate_rule_ids(&self) -> Vec<&'static str> {
+        self.storage
+            .document_candidates
+            .iter()
+            .chain(
+                self.storage
+                    .diagrams
+                    .iter()
+                    .flat_map(|diagram| diagram.diagnostic_candidates.iter()),
+            )
+            .map(DiagnosticCandidate::rule_id)
+            .collect()
     }
 
     pub(crate) fn to_facts_payload(
@@ -188,7 +222,8 @@ pub struct AnalyzedDiagram {
     pub(crate) fence_delimiter: Option<FenceDelimiter>,
     pub(crate) fence_delimiter_spans: Option<FenceDelimiterSpans>,
     pub(crate) syntax: AnalysisSyntaxFacts,
-    pub(crate) evidence: Arc<DiagramAnalysisEvidence>,
+    pub(crate) diagnostic_candidates: Vec<DiagnosticCandidate>,
+    pub(crate) parse_disposition: DiagramParseDisposition,
 }
 
 impl AnalyzedDiagram {
@@ -232,10 +267,11 @@ impl AnalyzedDiagram {
         &self.syntax
     }
 
-    pub(crate) fn from_document_diagram_with_evidence(
+    pub(crate) fn from_document_diagram(
         diagram: &DocumentDiagram,
         syntax: AnalysisSyntaxFacts,
-        evidence: Arc<DiagramAnalysisEvidence>,
+        diagnostic_candidates: Vec<DiagnosticCandidate>,
+        parse_disposition: DiagramParseDisposition,
     ) -> Self {
         Self {
             source_id: diagram.id.clone(),
@@ -250,50 +286,14 @@ impl AnalyzedDiagram {
             fence_delimiter: diagram.fence_delimiter,
             fence_delimiter_spans: diagram.fence_delimiter_spans.clone(),
             syntax,
-            evidence,
+            diagnostic_candidates,
+            parse_disposition,
         }
     }
 
     /// Returns the parser-owned outcome retained by this analysis generation.
     pub fn parse_disposition(&self) -> DiagramParseDisposition {
-        self.evidence.parse_disposition()
-    }
-}
-
-#[derive(Debug)]
-pub(crate) enum DiagramAnalysisEvidence {
-    SourceLimit,
-    EmptySource,
-    Panic {
-        message: String,
-    },
-    NoSnapshot,
-    OperationError {
-        error: Arc<merman_core::Error>,
-    },
-    Parsed {
-        metadata: merman_core::ParseMetadata,
-        model: Arc<Value>,
-        editor_facts: Option<Arc<merman_core::EditorSemanticFacts>>,
-    },
-    ParseFailed {
-        metadata: merman_core::ParseMetadata,
-        error: Arc<merman_core::Error>,
-        editor_facts: Option<Arc<merman_core::EditorSemanticFacts>>,
-    },
-}
-
-impl DiagramAnalysisEvidence {
-    fn parse_disposition(&self) -> DiagramParseDisposition {
-        match self {
-            Self::Parsed { .. } => DiagramParseDisposition::Parsed,
-            Self::ParseFailed { .. } => DiagramParseDisposition::Recovered,
-            Self::SourceLimit
-            | Self::EmptySource
-            | Self::Panic { .. }
-            | Self::NoSnapshot
-            | Self::OperationError { .. } => DiagramParseDisposition::Unavailable,
-        }
+        self.parse_disposition
     }
 }
 
@@ -404,9 +404,9 @@ impl AnalysisFactsPayload {
             source: payload.source.clone(),
             diagnostics: payload.diagnostics.clone(),
             diagrams: generation
-                .diagrams
+                .diagrams()
                 .iter()
-                .map(|diagram| AnalysisDiagramFacts::from_diagram(diagram, &generation.source_map))
+                .map(|diagram| AnalysisDiagramFacts::from_diagram(diagram, generation.source_map()))
                 .collect(),
         }
     }

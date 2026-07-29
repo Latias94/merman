@@ -231,6 +231,9 @@ fn preprocess_single_pass_controlled(
         Ok(processed) => processed,
         Err(error) => return Ok(Err(error)),
     };
+    if processed_directives.recovered_incomplete_directive {
+        source.mark_recovered_incomplete_directive();
+    }
     for prefix in processed_directives.editor_prefixes {
         source.record_global_directive_prefix(prefix);
     }
@@ -758,6 +761,7 @@ struct ProcessedDirectives {
     config: MermaidConfig,
     removals: Vec<std::ops::Range<usize>>,
     editor_prefixes: Vec<String>,
+    recovered_incomplete_directive: bool,
 }
 
 fn process_directives_controlled(
@@ -774,8 +778,10 @@ fn process_directives_controlled(
             config: MermaidConfig::empty_object(),
             removals: Vec::new(),
             editor_prefixes: Vec::new(),
+            recovered_incomplete_directive: false,
         }));
     }
+    let recovered_incomplete_directive = blocks.iter().any(|block| block.raw.is_none());
     let mut directives = Vec::new();
     for (index, block) in blocks.iter().enumerate() {
         if index % 32 == 0 {
@@ -825,6 +831,7 @@ fn process_directives_controlled(
         config: merged,
         removals: blocks.into_iter().map(|block| block.range).collect(),
         editor_prefixes,
+        recovered_incomplete_directive,
     }))
 }
 

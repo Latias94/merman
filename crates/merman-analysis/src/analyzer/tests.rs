@@ -8,11 +8,49 @@ use merman_core::{
     EditorSemanticDiagnostic, MermaidConfig, ParseMetadata, ParsedDiagram, SourceSpan,
 };
 use serde_json::json;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static REPROJECTION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static DERIVED_ANALYZER_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
+static CAPTURED_CONFIG_PANIC_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+fn detect_captured_config_fixture(source: &str, _config: &mut merman_core::MermaidConfig) -> bool {
+    source.trim_start().starts_with("captured-config-fixture")
+}
+
+fn captured_config_panicking_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+    _control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    CAPTURED_CONFIG_PANIC_CALLS.fetch_add(1, Ordering::SeqCst);
+    panic!("captured config fixture panic")
+}
+
+fn non_string_panicking_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+    _control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    std::panic::panic_any(42_u8)
+}
+
+fn unknown_warning_flowchart_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    Ok(Ok(json!({
+        "warningFacts": [{
+            "ruleId": "fixture.unknown_warning_rule",
+            "message": "fixture warning",
+            "span": { "start": 0, "end": 1 },
+        }],
+    })))
+}
 
 fn counting_flowchart_parser(
     _source: &str,
@@ -559,14 +597,11 @@ fn diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure() {
         Vec::new(),
         super::AnalysisMode::RichFacts,
     );
-    let diagram = crate::AnalyzedDiagram::from_document_diagram_with_evidence(
+    let diagram = crate::AnalyzedDiagram::from_document_diagram(
         &document,
         local.syntax,
-        Arc::new(crate::result::DiagramAnalysisEvidence::Parsed {
-            metadata: parsed.meta,
-            model: Arc::new(parsed.model),
-            editor_facts: None,
-        }),
+        local.candidates,
+        crate::DiagramParseDisposition::Parsed,
     );
     let result = crate::AnalysisGeneration::new(source_map, vec![diagram], &analyzer);
 
@@ -941,7 +976,7 @@ fn rule_changes_reproject_from_one_parse_generation() {
         .analyze_generation(source)
         .into_ready()
         .expect("source is within the analysis limit");
-    let evidence = std::sync::Arc::as_ptr(&result.diagrams()[0].evidence);
+    let candidates = result.diagrams()[0].diagnostic_candidates.as_ptr();
     let base_payload = result.project(base.options().diagnostic_policy());
 
     let enabled_analyzer = Analyzer::with_options(
@@ -982,8 +1017,8 @@ fn rule_changes_reproject_from_one_parse_generation() {
     assert_eq!(REPROJECTION_PARSE_CALLS.load(Ordering::SeqCst), 1);
     assert!(base_payload.valid);
     assert_eq!(
-        std::sync::Arc::as_ptr(&result.diagrams()[0].evidence),
-        evidence
+        result.diagrams()[0].diagnostic_candidates.as_ptr(),
+        candidates
     );
     assert_eq!(enabled.diagnostics.len(), 1);
     assert_eq!(
@@ -993,6 +1028,564 @@ fn rule_changes_reproject_from_one_parse_generation() {
     assert!(disabled.diagnostics.is_empty());
     assert_eq!(severity.diagnostics.len(), 1);
     assert_eq!(severity.diagnostics[0].severity, DiagnosticSeverity::Error);
+}
+
+#[test]
+fn captured_config_survives_custom_parser_panic_without_a_second_engine() {
+    CAPTURED_CONFIG_PANIC_CALLS.store(0, Ordering::SeqCst);
+    let mut engine = merman_core::Engine::new();
+    engine
+        .registry_mut()
+        .add_fn("captured-config-fixture", detect_captured_config_fixture);
+    engine
+        .diagram_registry_mut()
+        .insert("captured-config-fixture", captured_config_panicking_parser);
+    let rule_config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
+    let analyzer = Analyzer::with_engine(
+        engine,
+        AnalysisOptions::default().with_rule_config(rule_config.clone()),
+    );
+    let source = concat!(
+        "%%{ init: {\"theme\":\"dark\"} }%%\n",
+        "captured-config-fixture\n",
+    );
+
+    let generation = analyzer
+        .analyze_generation(source)
+        .into_ready()
+        .expect("fixture is within the source limit");
+    let first = generation.project(&AnalysisDiagnosticPolicy {
+        rule_config: rule_config.clone(),
+    });
+    let second = generation.project(&AnalysisDiagnosticPolicy { rule_config });
+
+    assert_eq!(first, second);
+    assert_eq!(CAPTURED_CONFIG_PANIC_CALLS.load(Ordering::SeqCst), 1);
+    assert!(first.diagnostics.iter().any(|diagnostic| {
+        diagnostic.id == crate::rules::PANIC_RULE_ID
+            && diagnostic.message.contains("captured config fixture panic")
+    }));
+    let migration = first
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .expect("captured metadata should retain the authoring diagnostic");
+    assert_eq!(migration.fixes.len(), 1);
+    assert!(migration.fixes[0].is_preferred);
+    assert!(migration.fixes[0].edits.iter().any(|edit| {
+        edit.replacement.contains("config:") && edit.replacement.contains("theme: dark")
+    }));
+}
+
+#[test]
+fn recovered_incomplete_directive_does_not_create_a_new_migration_fix() {
+    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+    ));
+    let source = concat!(
+        "%%{ init: {\"theme\":\"dark\"} }%%\n",
+        "%%{ malformed\n",
+        "flowchart TD\n",
+        "A-->B\n",
+    );
+    assert!(
+        merman_core::Engine::new()
+            .parse_metadata_sync(source)
+            .is_err(),
+        "the compatibility path only offered a fix after strict metadata capture",
+    );
+
+    let generation = analyzer
+        .analyze_generation(source)
+        .into_ready()
+        .expect("directive recovery should retain a ready generation");
+    let payload = generation.project(analyzer.options().diagnostic_policy());
+    let migration = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .expect("the authoring diagnostic remains visible without a preferred fix");
+
+    assert!(migration.fixes.is_empty());
+}
+
+#[test]
+fn non_string_parser_panic_preserves_the_public_fallback_message() {
+    let mut engine = merman_core::Engine::new();
+    engine
+        .registry_mut()
+        .add_fn("captured-config-fixture", detect_captured_config_fixture);
+    engine
+        .diagram_registry_mut()
+        .insert("captured-config-fixture", non_string_panicking_parser);
+    let analyzer = Analyzer::with_engine(engine, AnalysisOptions::default());
+
+    let payload = analyzer.analyze("captured-config-fixture\npayload\n");
+    let panic = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == crate::rules::PANIC_RULE_ID)
+        .expect("parser panics must remain public internal diagnostics");
+
+    assert_eq!(panic.message, "panic while analyzing Mermaid source");
+}
+
+#[test]
+fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
+    struct CorpusCase {
+        name: &'static str,
+        analyzer: Analyzer,
+        source: &'static str,
+    }
+
+    let mut unsupported_engine = merman_core::Engine::new();
+    *unsupported_engine.diagram_registry_mut() = merman_core::diagram::DiagramRegistry::new();
+
+    let mut panic_engine = merman_core::Engine::new();
+    panic_engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", panicking_flowchart_parser);
+
+    let mut registry_gap_engine = merman_core::Engine::new();
+    registry_gap_engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", unknown_warning_flowchart_parser);
+
+    let mut malformed_flowchart_engine = merman_core::Engine::new();
+    malformed_flowchart_engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", malformed_flowchart_parser);
+
+    let invalid_theme_analyzer = Analyzer::with_options(
+        AnalysisOptions::default()
+            .with_site_config(MermaidConfig::from_value(json!({ "secure": [] }))),
+    );
+    let nested_directive_config = format!(
+        "{}0{}",
+        "[".repeat(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1),
+        "]".repeat(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1),
+    );
+    let invalid_directive_source = Box::leak(
+        format!(
+            "%%{{ init: {nested_directive_config} }}%%\nflowchart TD\nA-->B\n"
+        )
+        .into_boxed_str(),
+    );
+    let cases = vec![
+        CorpusCase {
+            name: "source config rules",
+            analyzer: Analyzer::new(),
+            source: concat!(
+                "%%{ initialize: {",
+                "\"theme\":\"dark\",",
+                "\"lazyLoadedDiagrams\":true,",
+                "\"flowchart\":{\"htmlLabels\":true}",
+                "} }%%\n",
+                "flowchart TD\nA-->B\n",
+            ),
+        },
+        CorpusCase {
+            name: "empty source",
+            analyzer: Analyzer::new(),
+            source: "",
+        },
+        CorpusCase {
+            name: "parse recovery",
+            analyzer: Analyzer::new(),
+            source: "flowchart TD\nA[unterminated",
+        },
+        CorpusCase {
+            name: "unsupported family",
+            analyzer: Analyzer::with_engine(unsupported_engine, AnalysisOptions::default()),
+            source: "flowchart TD\nA-->B\n",
+        },
+        CorpusCase {
+            name: "malformed frontmatter",
+            analyzer: Analyzer::new(),
+            source: "---\ntitle: missing terminator\nflowchart TD\nA-->B\n",
+        },
+        CorpusCase {
+            name: "invalid directive json",
+            analyzer: Analyzer::new(),
+            source: invalid_directive_source,
+        },
+        CorpusCase {
+            name: "invalid frontmatter yaml",
+            analyzer: Analyzer::new(),
+            source: "---\nconfig: [\n---\nflowchart TD\nA-->B\n",
+        },
+        CorpusCase {
+            name: "invalid theme color",
+            analyzer: invalid_theme_analyzer,
+            source: concat!(
+                "%%{ init: {",
+                "\"themeVariables\":{\"primaryColor\":\"not-a-color\"}",
+                "} }%%\n",
+                "flowchart TD\nA-->B\n",
+            ),
+        },
+        CorpusCase {
+            name: "parser panic",
+            analyzer: Analyzer::with_engine(panic_engine, AnalysisOptions::default()),
+            source: "flowchart TD\nA-->B\n",
+        },
+        CorpusCase {
+            name: "registry gap",
+            analyzer: Analyzer::with_engine(registry_gap_engine, AnalysisOptions::default()),
+            source: "flowchart TD\nA-->B\n",
+        },
+        CorpusCase {
+            name: "flowchart facts projection",
+            analyzer: Analyzer::with_engine(
+                malformed_flowchart_engine,
+                AnalysisOptions::default(),
+            ),
+            source: "flowchart TD\nA-->B\n",
+        },
+        CorpusCase {
+            name: "block warnings",
+            analyzer: Analyzer::new(),
+            source: "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n",
+        },
+        CorpusCase {
+            name: "flowchart direction",
+            analyzer: Analyzer::new(),
+            source: "flowchart\nA-->B\n",
+        },
+        CorpusCase {
+            name: "flowchart style target",
+            analyzer: Analyzer::new(),
+            source: "graph TD;style Q background:#fff;",
+        },
+        CorpusCase {
+            name: "git graph duplicate",
+            analyzer: Analyzer::new(),
+            source: "gitGraph\ncommit id:\"duplicate\"\ncommit id:\"duplicate\"\n",
+        },
+    ];
+
+    let mut strict_rules = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Strict);
+    strict_rules
+        .disable_rule(crate::rules::FLOWCHART_EXPLICIT_DIRECTION_RULE_ID)
+        .unwrap();
+    strict_rules
+        .set_rule_severity(
+            crate::rules::BLOCK_WIDTH_RULE_ID,
+            DiagnosticSeverity::Error,
+        )
+        .unwrap();
+    let policies = [
+        AnalysisDiagnosticPolicy {
+            rule_config: AnalysisRuleConfig::default(),
+        },
+        AnalysisDiagnosticPolicy {
+            rule_config: AnalysisRuleConfig::default()
+                .with_profile(AnalysisRuleProfile::Recommended),
+        },
+        AnalysisDiagnosticPolicy {
+            rule_config: strict_rules,
+        },
+    ];
+    let mut observed_rule_ids = BTreeSet::new();
+
+    for case in cases {
+        let generation = case
+            .analyzer
+            .analyze_generation(case.source)
+            .into_ready()
+            .unwrap_or_else(|_| panic!("{} should produce a ready generation", case.name));
+        observed_rule_ids.extend(generation.diagnostic_candidate_rule_ids());
+
+        for policy in &policies {
+            let projected = generation.project(policy);
+            let fresh = case
+                .analyzer
+                .with_diagnostic_policy(policy.clone())
+                .analyze(case.source);
+            assert_eq!(projected, fresh, "{} under {policy:?}", case.name);
+        }
+    }
+
+    let resource_analyzer = Analyzer::with_options(
+        AnalysisOptions::default().with_max_source_bytes(Some(8)),
+    );
+    let resource_source = "flowchart TD\nA-->B\n";
+    let rejected = resource_analyzer.analyze_generation(resource_source);
+    let rejection = rejected
+        .rejection()
+        .expect("resource limits should reject before generation construction");
+    assert_eq!(rejection.payload(), &resource_analyzer.analyze(resource_source));
+    observed_rule_ids.extend(
+        rejection
+            .payload()
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.id.as_str()),
+    );
+
+    let catalog_rule_ids = crate::rules::rule_descriptors()
+        .iter()
+        .map(|descriptor| descriptor.id)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(observed_rule_ids, catalog_rule_ids);
+}
+
+#[test]
+fn config_authoring_rule_dominance_reprojects_all_four_enablement_combinations() {
+    let analyzer = Analyzer::new();
+    let generation = analyzer
+        .analyze_generation("%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n")
+        .into_ready()
+        .expect("fixture is within the source limit");
+
+    let severity_only = AnalysisRuleConfig::default()
+        .with_rule_severity(
+            crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID,
+            DiagnosticSeverity::Error,
+        )
+        .unwrap()
+        .with_rule_severity(
+            crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
+            DiagnosticSeverity::Error,
+        )
+        .unwrap();
+    assert!(
+        generation
+            .project(&AnalysisDiagnosticPolicy {
+                rule_config: severity_only,
+            })
+            .diagnostics
+            .is_empty(),
+        "severity overrides must not enable recommended rules",
+    );
+
+    for (frontmatter, init_alias, expected) in [
+        (false, false, None),
+        (
+            false,
+            true,
+            Some(crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID),
+        ),
+        (
+            true,
+            false,
+            Some(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
+        ),
+        (
+            true,
+            true,
+            Some(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
+        ),
+    ] {
+        let mut rules = AnalysisRuleConfig::default();
+        if frontmatter {
+            rules
+                .enable_rule(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                .unwrap();
+        }
+        if init_alias {
+            rules
+                .enable_rule(crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID)
+                .unwrap();
+        }
+        rules
+            .set_rule_severity(
+                crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID,
+                DiagnosticSeverity::Info,
+            )
+            .unwrap();
+        rules
+            .set_rule_severity(
+                crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
+                DiagnosticSeverity::Warning,
+            )
+            .unwrap();
+
+        let payload = generation.project(&AnalysisDiagnosticPolicy { rule_config: rules });
+        assert_eq!(payload.diagnostics.len(), usize::from(expected.is_some()));
+        if let Some(expected) = expected {
+            let diagnostic = &payload.diagnostics[0];
+            assert_eq!(diagnostic.id, expected);
+            assert_eq!(
+                diagnostic.severity,
+                if frontmatter {
+                    DiagnosticSeverity::Info
+                } else {
+                    DiagnosticSeverity::Warning
+                }
+            );
+            assert_eq!(diagnostic.fixes.len(), 1);
+        }
+    }
+}
+
+#[test]
+fn parse_and_recovery_rules_reproject_all_four_enablement_combinations() {
+    let analyzer = Analyzer::new();
+    let generation = analyzer
+        .analyze_generation("flowchart TD\nA[unterminated")
+        .into_ready()
+        .expect("parse failures retain a generation");
+    assert_eq!(
+        generation.diagrams()[0].parse_disposition(),
+        crate::DiagramParseDisposition::Recovered,
+    );
+
+    for (parse, recovery, expected_id, expected_valid) in [
+        (false, false, None, true),
+        (
+            false,
+            true,
+            Some(crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID),
+            true,
+        ),
+        (
+            true,
+            false,
+            Some(crate::rules::DIAGRAM_PARSE_RULE_ID),
+            false,
+        ),
+        (true, true, Some(crate::rules::DIAGRAM_PARSE_RULE_ID), false),
+    ] {
+        let mut rules = AnalysisRuleConfig::default();
+        if !parse {
+            rules
+                .disable_rule(crate::rules::DIAGRAM_PARSE_RULE_ID)
+                .unwrap();
+        }
+        if !recovery {
+            rules
+                .disable_rule(crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID)
+                .unwrap();
+        }
+
+        let payload = generation.project(&AnalysisDiagnosticPolicy { rule_config: rules });
+        assert_eq!(
+            payload.valid, expected_valid,
+            "parse={parse} recovery={recovery}"
+        );
+        assert_eq!(
+            payload.diagnostics.len(),
+            usize::from(expected_id.is_some())
+        );
+        if let Some(expected_id) = expected_id {
+            assert_eq!(payload.diagnostics[0].id, expected_id);
+            assert_eq!(
+                payload.diagnostics[0]
+                    .related
+                    .iter()
+                    .filter(|related| related.message.contains("Parser recovery produced"))
+                    .count(),
+                usize::from(parse && recovery)
+            );
+        }
+    }
+}
+
+#[test]
+fn markdown_fallback_recovery_is_scoped_per_fence_and_decorated_last() {
+    let source = Arc::<str>::from(concat!(
+        "before\n",
+        "```mermaid\n",
+        "flowchart TD\n",
+        "A[unterminated\n",
+        "```\n",
+        "between\n",
+        "```mermaid\n",
+        "flowchart TD\n",
+        "B[unterminated\n",
+        "```\n",
+    ));
+    let descriptor = crate::source_descriptor_for_markdown_path(Some("fixture.md"));
+    let document = crate::DocumentSource::new(Arc::clone(&source), descriptor.clone());
+    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_source(descriptor));
+    let mut analyzed = Vec::new();
+
+    for diagram in document.diagrams() {
+        let local_map = SourceMap::new(diagram.text.as_str());
+        let whole = local_map.whole_source_span().unwrap();
+        let node_start = diagram
+            .text
+            .as_str()
+            .find(if diagram.index == 0 { 'A' } else { 'B' })
+            .unwrap();
+        let node = local_map.span(node_start, node_start + 1).unwrap();
+        let mut primary = crate::diagnostic_projection::rule_diagnostic_without_default_span(
+            crate::rules::DIAGRAM_PARSE_RULE_ID,
+            AnalysisStatus::ParseError,
+            "fallback parse failure",
+            crate::rules::capture_rule_config(),
+        )
+        .unwrap()
+        .with_diagram_type("flowchart-v2")
+        .with_span(whole);
+        primary.related.push(crate::DiagnosticRelated {
+            message: "Parser reported a fallback location for this syntax error.".to_string(),
+            span: Some(whole),
+        });
+        let recovery = crate::diagnostic_projection::rule_diagnostic_without_default_span(
+            crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID,
+            AnalysisStatus::ParseError,
+            "recovery refinement",
+            crate::rules::capture_rule_config(),
+        )
+        .unwrap()
+        .with_diagram_type("flowchart-v2")
+        .with_span(node);
+        let candidates = vec![
+            crate::diagnostic_projection::DiagnosticCandidate::new(primary).with_parse_location(
+                Some(crate::diagnostic_projection::ParseDiagnosticLocation::Fallback),
+            ),
+            crate::diagnostic_projection::DiagnosticCandidate::new(recovery)
+                .with_recovery_kind(merman_core::EditorSemanticDiagnosticKind::ParserRecovery),
+        ];
+        let candidates = crate::document::remap_diagnostic_candidates(
+            document.source_map(),
+            diagram,
+            candidates,
+        );
+        analyzed.push(crate::AnalyzedDiagram::from_document_diagram(
+            diagram,
+            crate::AnalysisSyntaxFacts::unavailable(Some("flowchart-v2".to_string())),
+            candidates,
+            crate::DiagramParseDisposition::Recovered,
+        ));
+    }
+
+    let generation =
+        crate::AnalysisGeneration::new(document.source_map().clone(), analyzed, &analyzer);
+    let payload = generation.project(analyzer.options().diagnostic_policy());
+    let reprojected = generation.project(analyzer.options().diagnostic_policy());
+
+    assert_eq!(payload, reprojected);
+    assert_eq!(payload.diagnostics.len(), 2);
+    for (index, diagnostic) in payload.diagnostics.iter().enumerate() {
+        assert_eq!(diagnostic.id, crate::rules::DIAGRAM_PARSE_RULE_ID);
+        assert_eq!(
+            diagnostic
+                .related
+                .iter()
+                .filter(|related| related.message.contains("Parser recovery produced"))
+                .count(),
+            1,
+        );
+        assert_eq!(diagnostic.related.len(), 4);
+        assert!(diagnostic.related[0].message.contains("fallback location"));
+        assert!(
+            diagnostic.related[1]
+                .message
+                .contains("original parse location")
+        );
+        assert!(
+            diagnostic.related[2]
+                .message
+                .contains("Parser recovery produced")
+        );
+        assert_eq!(
+            diagnostic.related[3].message,
+            format!("Mermaid fence {}", index + 1)
+        );
+    }
 }
 
 #[test]

@@ -405,9 +405,9 @@ impl Engine {
     /// Captures semantic JSON or its original error and parser-backed editor facts in one operation.
     ///
     /// This is intended for editor integrations that need both diagnostics/facts and the
-    /// Mermaid-compatible model. Once preprocessing and detection succeed, family parse errors are
-    /// retained inside the snapshot alongside metadata and recovery facts. Consumers must project
-    /// that failure state directly rather than parsing the source again.
+    /// Mermaid-compatible model. Once preprocessing and detection succeed, family parse errors and
+    /// panics are retained inside the snapshot alongside metadata and recovery facts. Consumers
+    /// must project that failure state directly rather than parsing the source again.
     /// Error suppression is deliberately absent from this API; suppression remains limited to
     /// model-producing JSON and render facades.
     pub fn parse_diagram_snapshot_sync(&self, text: &str) -> Result<Option<DiagramParseSnapshot>> {
@@ -432,7 +432,8 @@ impl Engine {
     /// Captures one editor-facing parse operation when the diagram type is already known.
     ///
     /// This has the same closed snapshot contract as [`Engine::parse_diagram_snapshot_sync`], but
-    /// skips automatic detection. Family parse failures remain inside the returned snapshot.
+    /// skips automatic detection. Family parse failures and panics remain inside the returned
+    /// snapshot.
     pub fn parse_diagram_snapshot_with_type_sync(
         &self,
         diagram_type: &str,

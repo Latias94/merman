@@ -154,6 +154,29 @@ pub(crate) fn editor_recovery_diagnostics(
         .collect()
 }
 
+pub(crate) fn editor_recovery_candidates(
+    diagnostics: impl IntoIterator<Item = EditorSemanticDiagnostic>,
+    diagram_type: &str,
+    source_map: &SourceMap,
+) -> Vec<crate::diagnostic_projection::DiagnosticCandidate> {
+    editor_recovery_diagnostics(
+        diagnostics,
+        diagram_type,
+        source_map,
+        crate::rules::capture_rule_config(),
+    )
+    .into_iter()
+    .map(|recovery| {
+        let mut candidate =
+            crate::diagnostic_projection::DiagnosticCandidate::new(recovery.diagnostic);
+        if let Some(kind) = recovery.kind {
+            candidate = candidate.with_recovery_kind(kind);
+        }
+        candidate
+    })
+    .collect()
+}
+
 fn recovered_editor_diagnostic(
     diagnostic: EditorSemanticDiagnostic,
     diagram_type: &str,

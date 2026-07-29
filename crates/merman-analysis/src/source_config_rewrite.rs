@@ -3,22 +3,22 @@ use crate::{
     source_directives::{ByteSpan, init_directive_spans},
 };
 use merman_core::{
-    Engine,
+    MermaidConfig,
     preprocess::{FrontmatterBlock, parse_frontmatter_yaml_fields, split_frontmatter_block},
 };
 use serde_json::{Map, Value};
-use std::sync::OnceLock;
 
 pub(crate) fn init_directives_to_frontmatter_fix(
     source: &str,
     source_map: &SourceMap,
+    config: &MermaidConfig,
 ) -> Option<DiagnosticFix> {
     let init_directives = init_directive_spans(source);
     if init_directives.is_empty() {
         return None;
     }
 
-    let config = merged_diagram_config(source)?;
+    let config = config.as_value().clone();
     if matches!(&config, Value::Object(map) if map.is_empty()) {
         return None;
     }
@@ -84,18 +84,6 @@ pub(crate) fn frontmatter_config_fix(
     }
 
     Some(DiagnosticFix::new(title, edits).preferred())
-}
-
-fn merged_diagram_config(source: &str) -> Option<Value> {
-    migration_engine()
-        .parse_metadata_sync(source)
-        .ok()
-        .map(|metadata| metadata.config.as_value().clone())
-}
-
-fn migration_engine() -> &'static Engine {
-    static ENGINE: OnceLock<Engine> = OnceLock::new();
-    ENGINE.get_or_init(Engine::new)
 }
 
 struct FrontmatterEdit {
@@ -324,6 +312,14 @@ fn directive_removal_span(source: &str, directive: ByteSpan) -> ByteSpan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::Engine;
+
+    fn migration_fix(source: &str, source_map: &SourceMap) -> Option<DiagnosticFix> {
+        let metadata = merman_core::Engine::new()
+            .parse_metadata_sync(source)
+            .ok()?;
+        init_directives_to_frontmatter_fix(source, source_map, &metadata.config)
+    }
 
     fn apply_fix(source: &str, fix: &DiagnosticFix) -> String {
         let mut edited = source.to_string();
@@ -357,7 +353,7 @@ mod tests {
         let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
 
-        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
 
         assert!(fix.is_preferred);
@@ -373,7 +369,7 @@ mod tests {
         let source = "---\ntitle: Demo\ncustom: keep\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
 
-        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
 
         assert!(edited.starts_with("---\ntitle: Demo\ncustom: keep\nconfig:\n"));
@@ -450,7 +446,7 @@ mod tests {
         let source = "%%{ init: {\"theme\":\"dark\"} }%%\r\nflowchart TD\r\nA-->B\r\n";
         let source_map = SourceMap::new(source);
 
-        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
 
         assert!(edited.starts_with("---\r\nconfig:\r\n"));
@@ -464,7 +460,7 @@ mod tests {
         let source = "---\r\ntitle: Demo\r\ncustom: keep\r\n---\r\n%%{ init: {\"theme\":\"dark\"} }%%\r\nflowchart TD\r\nA-->B\r\n";
         let source_map = SourceMap::new(source);
 
-        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
 
         assert!(
@@ -481,7 +477,7 @@ mod tests {
         let source = "---\r\ntitle: Demo\r\nconfig:\r\n  theme: default\r\n---\r\n%%{ init: {\"theme\":\"dark\"} }%%\r\nflowchart TD\r\nA-->B\r\n";
         let source_map = SourceMap::new(source);
 
-        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
 
         assert!(edited.starts_with("---\r\ntitle: Demo\r\nconfig:\r\n"));
@@ -495,7 +491,7 @@ mod tests {
         let source = "---\n# keep rationale\ntitle: Demo\ncustom: keep\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
 
-        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
 
         assert!(edited.starts_with("---\n# keep rationale\ntitle: Demo\ncustom: keep\nconfig:\n"));
@@ -510,7 +506,7 @@ mod tests {
         let source = "---\n# keep rationale\ntitle: Demo\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
 
-        assert!(init_directives_to_frontmatter_fix(source, &source_map).is_none());
+        assert!(migration_fix(source, &source_map).is_none());
     }
 
     #[test]
@@ -518,7 +514,7 @@ mod tests {
         let source = "---\ntitle: Demo\n? [non, string, key]\n: ignored\ncustom: keep\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
 
-        assert!(init_directives_to_frontmatter_fix(source, &source_map).is_none());
+        assert!(migration_fix(source, &source_map).is_none());
     }
 
     #[test]
@@ -526,7 +522,7 @@ mod tests {
         let source = "---\ntitle: Demo\nnotes: |\n  keep exact text\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
 
-        assert!(init_directives_to_frontmatter_fix(source, &source_map).is_none());
+        assert!(migration_fix(source, &source_map).is_none());
     }
 
     #[test]
@@ -537,7 +533,7 @@ mod tests {
         ] {
             let source_map = SourceMap::new(source);
 
-            assert!(init_directives_to_frontmatter_fix(source, &source_map).is_none());
+            assert!(migration_fix(source, &source_map).is_none());
         }
     }
 
@@ -550,7 +546,7 @@ mod tests {
             .parse_metadata_sync(source)
             .expect("original metadata");
 
-        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
         let migrated = engine
             .parse_metadata_sync(&edited)
@@ -569,7 +565,7 @@ mod tests {
             .parse_metadata_sync(source)
             .expect("original metadata");
 
-        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let fix = migration_fix(source, &source_map).expect("migration fix");
         let edited = apply_fix(source, &fix);
         let migrated = engine
             .parse_metadata_sync(&edited)

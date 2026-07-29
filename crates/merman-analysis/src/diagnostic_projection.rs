@@ -1,13 +1,149 @@
 use crate::rules::{
     DIAGRAM_PARSE_RULE_ID, FLOWCHART_FACTS_PROJECTION_RULE_ID, INVALID_DIRECTIVE_JSON_RULE_ID,
     INVALID_FRONT_MATTER_YAML_RULE_ID, INVALID_THEME_COLOR_RULE_ID, MALFORMED_FRONT_MATTER_RULE_ID,
-    NO_DIAGRAM_RULE_ID, PANIC_RULE_ID, UNSUPPORTED_DIAGRAM_RULE_ID,
+    NO_DIAGRAM_RULE_ID, PANIC_RULE_ID, RuleDescriptor, UNSUPPORTED_DIAGRAM_RULE_ID,
     internal_rule_registry_gap_diagnostic, rule_descriptor,
 };
-use crate::{AnalysisDiagnostic, AnalysisStatus, SourceMap};
-use merman_core::{Error as CoreError, ParseDiagnostic, ParseDiagnosticSpanKind};
+use crate::{
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnostic, AnalysisDiagnosticPolicy,
+    AnalysisStatus, SourceMap,
+};
+use merman_core::{
+    EditorSemanticDiagnosticKind, Error as CoreError, ParseDiagnostic, ParseDiagnosticSpanKind,
+};
 
 const NO_DIAGRAM_MESSAGE: &str = "no Mermaid diagram detected";
+
+/// A complete diagnostic before rule filtering and severity resolution.
+#[derive(Debug, Clone)]
+pub(crate) struct DiagnosticCandidate {
+    diagnostic: AnalysisDiagnostic,
+    descriptor: RuleDescriptor,
+    suppressor_ids: &'static [&'static str],
+    parse_location: Option<ParseDiagnosticLocation>,
+    recovery_kind: Option<EditorSemanticDiagnosticKind>,
+}
+
+impl DiagnosticCandidate {
+    pub(crate) fn new(diagnostic: AnalysisDiagnostic) -> Self {
+        let descriptor = rule_descriptor(&diagnostic.id)
+            .expect("analysis diagnostics must reference a registered rule");
+        Self {
+            diagnostic,
+            descriptor,
+            suppressor_ids: &[],
+            parse_location: None,
+            recovery_kind: None,
+        }
+    }
+
+    pub(crate) fn with_suppressors(mut self, suppressor_ids: &'static [&'static str]) -> Self {
+        self.suppressor_ids = suppressor_ids;
+        self
+    }
+
+    pub(crate) fn with_parse_location(
+        mut self,
+        parse_location: Option<ParseDiagnosticLocation>,
+    ) -> Self {
+        self.parse_location = parse_location;
+        self
+    }
+
+    pub(crate) fn with_recovery_kind(
+        mut self,
+        recovery_kind: EditorSemanticDiagnosticKind,
+    ) -> Self {
+        self.recovery_kind = Some(recovery_kind);
+        self
+    }
+
+    pub(crate) fn map_diagnostic(
+        mut self,
+        map: impl FnOnce(AnalysisDiagnostic) -> AnalysisDiagnostic,
+    ) -> Self {
+        self.diagnostic = map(self.diagnostic);
+        self
+    }
+
+    fn materialize(&self, severity: crate::DiagnosticSeverity) -> AnalysisDiagnostic {
+        let mut diagnostic = self.diagnostic.clone();
+        diagnostic.severity = severity;
+        diagnostic
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn rule_id(&self) -> &'static str {
+        self.descriptor.id
+    }
+}
+
+pub(crate) fn project_diagnostic_candidates(
+    candidates: &[DiagnosticCandidate],
+    policy: &AnalysisDiagnosticPolicy,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<Vec<AnalysisDiagnostic>, AnalysisCancelled> {
+    let rule_config = &policy.rule_config;
+    let primary_parse_location = candidates.iter().find_map(|candidate| {
+        (candidate.descriptor.id == DIAGRAM_PARSE_RULE_ID
+            && candidate_enabled(candidate, rule_config))
+        .then_some(candidate.parse_location)
+        .flatten()
+    });
+    let mut diagnostics = Vec::with_capacity(candidates.len());
+
+    for (index, candidate) in candidates.iter().enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        if !candidate_enabled(candidate, rule_config) {
+            continue;
+        }
+
+        let diagnostic = candidate.materialize(candidate.descriptor.default_severity);
+        if let Some(kind) = candidate.recovery_kind {
+            crate::recovery::merge_recovery_diagnostics(
+                &mut diagnostics,
+                vec![crate::recovery::AnalysisRecoveryDiagnostic::parser_backed(
+                    diagnostic, kind,
+                )],
+                primary_parse_location,
+            );
+        } else {
+            diagnostics.push(diagnostic);
+        }
+    }
+    for (index, diagnostic) in diagnostics.iter_mut().enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        let descriptor = rule_descriptor(&diagnostic.id)
+            .expect("projected diagnostics must reference a registered rule");
+        diagnostic.severity = rule_config.severity_for(descriptor);
+    }
+    cancellation.checkpoint()?;
+    Ok(diagnostics)
+}
+
+pub(crate) fn candidates_from_diagnostics(
+    diagnostics: impl IntoIterator<Item = AnalysisDiagnostic>,
+) -> Vec<DiagnosticCandidate> {
+    diagnostics
+        .into_iter()
+        .map(DiagnosticCandidate::new)
+        .collect()
+}
+
+fn candidate_enabled(
+    candidate: &DiagnosticCandidate,
+    rule_config: &crate::rules::AnalysisRuleConfig,
+) -> bool {
+    rule_config.is_rule_enabled(candidate.descriptor)
+        && !candidate.suppressor_ids.iter().any(|rule_id| {
+            rule_descriptor(rule_id)
+                .is_some_and(|descriptor| rule_config.is_rule_enabled(descriptor))
+        })
+}
 
 #[derive(Debug)]
 pub(crate) struct CoreErrorDiagnostic {

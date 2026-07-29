@@ -43,6 +43,7 @@ pub struct PreprocessedSource {
     edit_map: SourceEditMap,
     global_lexemes: Vec<EditorLexeme>,
     global_directive_prefixes: Vec<String>,
+    recovered_incomplete_directive: bool,
 }
 
 impl PreprocessedSource {
@@ -52,6 +53,7 @@ impl PreprocessedSource {
             edit_map: SourceEditMap::identity(source.len()),
             global_lexemes: Vec::new(),
             global_directive_prefixes: Vec::new(),
+            recovered_incomplete_directive: false,
         }
     }
 
@@ -72,6 +74,14 @@ impl PreprocessedSource {
 
     pub(crate) fn global_directive_prefixes(&self) -> &[String] {
         &self.global_directive_prefixes
+    }
+
+    pub(crate) const fn recovered_incomplete_directive(&self) -> bool {
+        self.recovered_incomplete_directive
+    }
+
+    pub(super) fn mark_recovered_incomplete_directive(&mut self) {
+        self.recovered_incomplete_directive = true;
     }
 
     pub(super) fn record_global_directive_prefix(&mut self, prefix: String) {

@@ -218,34 +218,24 @@ impl DocumentSource {
         diagram: &DocumentDiagram,
         diagnostic: AnalysisDiagnostic,
     ) -> AnalysisDiagnostic {
-        remap_diagnostic(
-            &self.source_map,
-            diagram.start,
-            diagram.body_start,
-            diagram.end,
-            diagram.index,
-            diagram.is_fence(),
-            diagnostic,
-        )
+        remap_diagnostic(&self.source_map, diagram, true, diagnostic)
     }
 }
 
 fn remap_diagnostic(
     source_map: &SourceMap,
-    diagram_start: usize,
-    body_start: usize,
-    diagram_end: usize,
-    diagram_index: usize,
-    is_fence: bool,
+    diagram: &DocumentDiagram,
+    append_fence_context: bool,
     mut diagnostic: AnalysisDiagnostic,
 ) -> AnalysisDiagnostic {
     let remap_span = |span: DiagnosticSpan| {
-        let start = body_start.checked_add(span.byte_start)?;
-        let end = body_start.checked_add(span.byte_end)?;
+        let start = diagram.body_start.checked_add(span.byte_start)?;
+        let end = diagram.body_start.checked_add(span.byte_end)?;
         source_map.span(start, end).ok()
     };
-    let fence_span = is_fence
-        .then(|| source_map.span(diagram_start, diagram_end).ok())
+    let fence_span = diagram
+        .is_fence()
+        .then(|| source_map.span(diagram.start, diagram.end).ok())
         .flatten();
 
     diagnostic.span = diagnostic.span.and_then(&remap_span).or(fence_span);
@@ -267,9 +257,9 @@ fn remap_diagnostic(
     }
     diagnostic.fixes.retain(|fix| !fix.edits.is_empty());
 
-    if let Some(span) = fence_span {
+    if append_fence_context && let Some(span) = fence_span {
         diagnostic.related.push(DiagnosticRelated {
-            message: format!("Mermaid fence {}", diagram_index + 1),
+            message: format!("Mermaid fence {}", diagram.index + 1),
             span: Some(span),
         });
     }
@@ -412,14 +402,15 @@ fn analyze_document_generation_shared_inner(
     let operation_analyzer = match request_analyzer.try_for_operation() {
         Ok(analyzer) => analyzer,
         Err(error) => {
-            let error = Arc::new(merman_core::Error::from(error));
+            let candidates =
+                request_analyzer.runtime_policy_candidates(error, document.source_map());
             return Ok(AnalysisCaptureOutcome::Ready(
                 AnalysisGeneration::new(
                     document.source_map().clone(),
                     Vec::new(),
                     &request_analyzer,
                 )
-                .with_document_error(error),
+                .with_document_candidates(candidates),
             ));
         }
     };
@@ -483,28 +474,47 @@ fn extend_document_diagnostics(
     }
 }
 
-pub(crate) fn remap_analyzed_diagnostics(
+pub(crate) fn remap_diagnostic_candidates(
+    source_map: &SourceMap,
+    diagram: &DocumentDiagram,
+    candidates: Vec<crate::diagnostic_projection::DiagnosticCandidate>,
+) -> Vec<crate::diagnostic_projection::DiagnosticCandidate> {
+    if !diagram.is_fence() {
+        return candidates;
+    }
+
+    candidates
+        .into_iter()
+        .map(|candidate| {
+            candidate.map_diagnostic(|diagnostic| {
+                remap_diagnostic(source_map, diagram, false, diagnostic)
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn decorate_analyzed_diagnostics(
     source_map: &SourceMap,
     source_kind: SourceKind,
     diagram: &crate::AnalyzedDiagram,
-    diagnostics: Vec<AnalysisDiagnostic>,
+    mut diagnostics: Vec<AnalysisDiagnostic>,
 ) -> Vec<AnalysisDiagnostic> {
     match source_kind {
         SourceKind::Diagram => diagnostics,
-        SourceKind::Markdown | SourceKind::Mdx => diagnostics
-            .into_iter()
-            .map(|diagnostic| {
-                remap_diagnostic(
-                    source_map,
-                    diagram.start,
-                    diagram.body_start,
-                    diagram.end,
-                    diagram.index,
-                    diagram.kind == DocumentDiagramKind::MermaidFence,
-                    diagnostic,
-                )
-            })
-            .collect(),
+        SourceKind::Markdown | SourceKind::Mdx => {
+            let fence_span = (diagram.kind == DocumentDiagramKind::MermaidFence)
+                .then(|| source_map.span(diagram.start, diagram.end).ok())
+                .flatten();
+            if let Some(span) = fence_span {
+                for diagnostic in &mut diagnostics {
+                    diagnostic.related.push(DiagnosticRelated {
+                        message: format!("Mermaid fence {}", diagram.index + 1),
+                        span: Some(span),
+                    });
+                }
+            }
+            diagnostics
+        }
     }
 }
 
