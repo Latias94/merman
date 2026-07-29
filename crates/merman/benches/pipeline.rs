@@ -1,6 +1,7 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use merman::svg::{
-    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
+    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgPipeline, SvgRenderOptions,
+    headless_layout_options,
 };
 use merman_core::{DetectorRegistry, Engine, ParseOptions};
 use std::hint::black_box;
@@ -458,6 +459,29 @@ fn bench_end_to_end(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_resvg_end_to_end(c: &mut Criterion) {
+    let renderer = merman::svg::HeadlessRenderer::new();
+    let pipeline = SvgPipeline::resvg_safe();
+    let input = include_str!("fixtures/kanban_medium.mmd");
+
+    renderer
+        .render_resvg_compatible_svg_with_pipeline_sync(input, &pipeline)
+        .expect("ResvgSafe preflight")
+        .expect("detected benchmark diagram");
+
+    let mut group = c.benchmark_group("resvg_end_to_end");
+    group.bench_function("kanban_medium", |b| {
+        b.iter(|| {
+            let svg = renderer
+                .render_resvg_compatible_svg_with_pipeline_sync(black_box(input), &pipeline)
+                .expect("ResvgSafe render")
+                .expect("detected benchmark diagram");
+            black_box(svg.as_str().len());
+        })
+    });
+    group.finish();
+}
+
 #[cfg(feature = "png")]
 fn bench_png_end_to_end(c: &mut Criterion) {
     let renderer = merman::svg::HeadlessRenderer::new();
@@ -494,6 +518,7 @@ criterion_group!(
     bench_layout,
     bench_render,
     bench_end_to_end,
+    bench_resvg_end_to_end,
     bench_png_end_to_end
 );
 criterion_main!(benches);
