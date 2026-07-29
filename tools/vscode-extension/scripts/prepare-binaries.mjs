@@ -42,10 +42,10 @@ if (missing.length > 0) {
   }
   console.error("Build them first with the separate exact artifact recipes:");
   console.error(
-    "- cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio",
+    "- python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked",
   );
   console.error(
-    "- cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing",
+    "- python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked",
   );
   process.exit(1);
 }

@@ -245,6 +245,18 @@ class ReleaseReadmeTests(unittest.TestCase):
             "platforms/web/packages/render/README.md",
             release_readme.REGISTRY_MODE,
         )
+        registry_flutter = render_document(
+            "platforms/flutter/README.md",
+            release_readme.REGISTRY_MODE,
+        )
+        source_flutter = render_document(
+            "platforms/flutter/README.md",
+            release_readme.SOURCE_MODE,
+        )
+        registry_raster = render_document(
+            "docs/rendering/RASTER_OUTPUT.md",
+            release_readme.REGISTRY_MODE,
+        )
 
         self.assertIn(
             "cargo add merman@=0.8.0-alpha.4",
@@ -270,6 +282,20 @@ class ReleaseReadmeTests(unittest.TestCase):
             "npm install @mermanjs/web-render@0.8.0-alpha.4",
             registry_render,
         )
+        self.assertIn(
+            "dependencies:\n  merman: 0.8.0-alpha.4",
+            registry_flutter,
+        )
+        self.assertIn(
+            "dependencies:\n"
+            "  merman:\n"
+            "    git:\n"
+            f"      url: {REPOSITORY_URL}\n"
+            "      path: platforms/flutter",
+            source_flutter,
+        )
+        self.assertEqual(registry_raster.count('version = "=0.8.0-alpha.4"'), 2)
+        self.assertNotIn("git =", registry_raster)
 
     def test_verifier_rejects_stale_missing_duplicate_and_reordered_blocks(
         self,

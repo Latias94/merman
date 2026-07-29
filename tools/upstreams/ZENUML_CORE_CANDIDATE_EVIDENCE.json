@@ -2228,7 +2228,7 @@
     "validatorSources": [
       {
         "path": "platforms/web/src/svg-safety-policy.ts",
-        "sha256": "86bd6641249ede95f12ace49fc556bcce1aba334f5824951cf7d25bb89663482"
+        "sha256": "2aba8730b2c7fb56e305659778502e59237a7752223139505d568b4cb9017d74"
       },
       {
         "path": "platforms/web/src/svg-safety.ts",
@@ -2399,7 +2399,7 @@
     "probeCount": 13,
     "observationCount": 26,
     "passedObservationCount": 26,
-    "artifactSha256": "5aaa5c9887082471ad4020a230c01f05d29468613e0a3bb8126bd05c98e65adf"
+    "artifactSha256": "7a628aedbf658ab96229a85db9db7e4201d713fb67dfcb3bfc8beb88fd2fecbb"
   },
   "security": {
     "artifact": "tools/upstreams/ZENUML_BROWSER_SECURITY_EVIDENCE.json",
@@ -2408,7 +2408,7 @@
     "probeCount": 18,
     "observationCount": 36,
     "passedObservationCount": 36,
-    "artifactSha256": "5aaa5c9887082471ad4020a230c01f05d29468613e0a3bb8126bd05c98e65adf"
+    "artifactSha256": "7a628aedbf658ab96229a85db9db7e4201d713fb67dfcb3bfc8beb88fd2fecbb"
   },
   "resource": {
     "measurementScope": "runtime-entry",

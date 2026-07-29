@@ -1,7 +1,6 @@
 # Releasing
 
 Status: maintained release operator guide.
-Last updated: 2026-07-25
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
@@ -120,11 +119,13 @@ python3 scripts/release-version.py
 The gate discovers workspace members and validates their inherited package versions, internal
 workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's
 local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, Android and Flutter manifests,
-CocoaPods metadata, iOS framework bundle versions, and generated README installation examples. A
+CocoaPods metadata, iOS framework bundle versions, and generated installation projections. A
 new version starts in README `source` mode so an unpublished candidate uses repository commands.
 
-Immediately before release preflight, project the README to exact registry commands and run the
-release-ready check:
+Keep the target Changelog entry marked `Unreleased` during ordinary preparation. Immediately before the immutable preflight, replace it with the intended tag date in `YYYY-MM-DD` form and verify that its version matches the workspace release authority. Do not tag an `Unreleased` entry or reuse a date from an abandoned release attempt.
+
+Immediately before release preflight, project generated installation examples to exact registry
+commands and run the release-ready check:
 
 ```bash
 python3 scripts/release-version.py set-readme-mode \
@@ -136,11 +137,11 @@ The `registry` mode is a packaging projection, not observed publication state. I
 requires users to verify the selected registry before installation because crates.io, npm, PyPI,
 pub.dev, and GitHub artifacts are published by independent workflows.
 
-Commit every path printed by `set-readme-mode` before tagging: the root manifest, the root README,
-and every projected package README. Every publishing workflow runs the same `check --version` gate,
-which proves that the workflow input names the root authority and that every packaged README uses
-the exact registry command form. If release preparation is cancelled, restore source-candidate
-commands with:
+Commit every path printed by `set-readme-mode` before tagging: the root manifest and every
+projected installation document. Every publishing workflow runs the same `check --version` gate,
+which proves that the workflow input names the root authority and that every packaged installation
+example uses the exact registry command form. If release preparation is cancelled, restore
+source-candidate commands with:
 
 ```bash
 python3 scripts/release-version.py set-readme-mode \
@@ -165,13 +166,16 @@ Before tagging or publishing, run:
 
 ```bash
 VERSION="<version>"
-gh workflow run release-preflight.yml -f version="$VERSION" -f source_ref=main
+SOURCE_SHA="$(git rev-parse HEAD)"
+gh workflow run release-preflight.yml -f version="$VERSION" -f source_ref="$SOURCE_SHA"
 ```
 
 The preflight workflow verifies release versions, package file lists, registry-independent Rust
 crate publish dry-runs, Python wheels, Android AAR builds, Apple XCFramework builds, the web npm
 package dry-run, platform VSIX packaging, and Flutter
 `dart pub publish --dry-run`. It does not publish to any registry.
+
+Record `VERSION` and `SOURCE_SHA` with the preflight run. The run must be green for that exact immutable commit, not merely for a branch name that can move while preflight is running. Create the tag only through the `Tag And Push` step after that run succeeds.
 
 For local spot checks, run the normal Rust and platform gates:
 
@@ -243,8 +247,8 @@ leave the package group on divergent versions or tags.
 For local VS Code VSIX validation:
 
 ```bash
-cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio
-cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
+python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked
+python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
 cd tools/vscode-extension
 npm ci
 npm test
@@ -302,9 +306,11 @@ or any staged byte changes.
 ## Tag And Push
 
 ```bash
-VERSION="<version>"
-git tag "v${VERSION}"
-git push origin "v${VERSION}"
+test -n "$VERSION"
+test -n "$SOURCE_SHA"
+test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+git tag "v$VERSION" "$SOURCE_SHA"
+git push origin "v$VERSION"
 ```
 
 Do not move or force-update release tags after publication. Release tags are the immutable source

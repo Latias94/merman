@@ -14,6 +14,18 @@ from unittest import mock
 import zipfile
 from pathlib import Path
 
+try:
+    from scripts.github_workflow_contract import (
+        load_workflow_contract,
+        workflow_job,
+        workflow_step,
+    )
+except ModuleNotFoundError:
+    from github_workflow_contract import (
+        load_workflow_contract,
+        workflow_job,
+        workflow_step,
+    )
 
 MODULE_PATH = Path(__file__).with_name("verify-platform-bindings.py")
 SPEC = importlib.util.spec_from_file_location("verify_platform_bindings", MODULE_PATH)
@@ -143,11 +155,13 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 "armv7-linux-androideabi",
             )
 
-    def test_dart_ffi_smoke_consumes_the_exact_c_abi_recipe(self) -> None:
-        recipe = verify_platform_bindings.C_ABI_NATIVE_RECIPE
+    def test_dart_ffi_smoke_consumes_the_exact_flutter_desktop_recipe(self) -> None:
+        recipe = verify_platform_bindings.FLUTTER_DESKTOP_NATIVE_RECIPE
+        target = "x86_64-unknown-linux-gnu"
         with mock.patch.object(verify_platform_bindings, "run") as run:
             verify_platform_bindings.run_dart_ffi_native_smoke(
                 "dart",
+                target=target,
                 host_system="Linux",
             )
 
@@ -162,6 +176,10 @@ class NativeSdkRecipeTests(unittest.TestCase):
             recipe.feature_argument,
         )
         self.assertEqual(
+            build.args[0][build.args[0].index("--target") + 1],
+            target,
+        )
+        self.assertEqual(
             run.call_args_list[1].args[0],
             [
                 "dart",
@@ -170,6 +188,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 str(
                     MODULE_PATH.parents[1]
                     / "target"
+                    / target
                     / "native-sdk"
                     / "libmerman_ffi.so"
                 ),
@@ -184,6 +203,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
                 str(
                     MODULE_PATH.parents[1]
                     / "target"
+                    / target
                     / "native-sdk"
                     / "libmerman_ffi.so"
                 ),
@@ -196,33 +216,32 @@ class NativeSdkRecipeTests(unittest.TestCase):
             target_name="custom-ffi",
             cargo_profile="custom-profile",
         )
-        with mock.patch.object(
-            verify_platform_bindings,
-            "validate_c_abi_native_recipe",
-        ):
-            self.assertEqual(
-                verify_platform_bindings.host_dynamic_library(
-                    recipe,
-                    host_system="Darwin",
-                ),
-                MODULE_PATH.parents[1]
-                / "target"
-                / "custom-profile"
-                / "libcustom_ffi.dylib",
-            )
+        self.assertEqual(
+            verify_platform_bindings.host_dynamic_library(
+                recipe,
+                target="aarch64-apple-darwin",
+                host_system="Darwin",
+            ),
+            MODULE_PATH.parents[1]
+            / "target"
+            / "aarch64-apple-darwin"
+            / "custom-profile"
+            / "libcustom_ffi.dylib",
+        )
 
-    def test_dart_ffi_smoke_rejects_recipe_profile_drift_before_building(self) -> None:
+    def test_dart_ffi_smoke_rejects_target_outside_the_recipe(self) -> None:
         recipe = replace(
-            verify_platform_bindings.C_ABI_NATIVE_RECIPE,
-            cargo_profile="release",
+            verify_platform_bindings.FLUTTER_DESKTOP_NATIVE_RECIPE,
+            build_targets=("aarch64-apple-darwin",),
         )
         with (
             mock.patch.object(verify_platform_bindings, "run") as run,
-            self.assertRaisesRegex(RuntimeError, "c-abi-native"),
+            self.assertRaisesRegex(RuntimeError, "does not declare target"),
         ):
             verify_platform_bindings.run_dart_ffi_native_smoke(
                 "dart",
                 recipe,
+                target="x86_64-unknown-linux-gnu",
                 host_system="Linux",
             )
 
@@ -349,17 +368,12 @@ class GeneratedBindingFreshnessTests(unittest.TestCase):
         )
 
     def test_flutter_ci_uses_the_fail_closed_generated_binding_gate(self) -> None:
-        workflow = (MODULE_PATH.parents[1] / ".github" / "workflows" / "ci.yml").read_text(
-            encoding="utf-8"
+        document = load_workflow_contract(
+            MODULE_PATH.parents[1] / ".github" / "workflows" / "ci.yml"
         )
-        self.assertIn(
-            "git ls-files --error-unmatch -- lib/src/generated/native_abi.dart",
-            workflow,
-        )
-        self.assertIn(
-            "git diff --exit-code -- lib/src/generated/native_abi.dart",
-            workflow,
-        )
+        job = workflow_job(document, "platform-bindings")
+        step = workflow_step(job, name="Verify platform bindings")
+        self.assertEqual(step["run"], "python3 scripts/verify-platform-bindings.py")
 
 
 class AndroidAarVerificationTests(unittest.TestCase):

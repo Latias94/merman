@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildWasmInputManifest,
+  cargoMetadataForPreset,
   collectWasmInputEntries,
   verifyWasmInputManifest,
 } from "./wasm-input-manifest.mjs";
@@ -33,6 +34,114 @@ afterEach(() => {
 });
 
 describe("WASM input manifest", () => {
+  it("reads preset metadata through a lock-bound member-only probe", () => {
+    const fixture = createFixture();
+    const lockedRepositoryMetadata = {
+      packages: [{ id: "merman-wasm" }],
+      resolve: { root: "workspace", nodes: [] },
+    };
+    const expected = {
+      packages: [
+        {
+          id: "merman-wasm-freshness-probe",
+          name: "merman-wasm-freshness-probe",
+          version: "0.0.0",
+        },
+        { id: "merman-wasm", name: "merman-wasm", version: "0.8.0-alpha.4" },
+      ],
+      resolve: { root: "merman-wasm-freshness-probe", nodes: [] },
+    };
+    let sourceObserved;
+    let probeObserved;
+
+    const metadata = cargoMetadataForPreset({
+      preset: preset({ features: ["editor", "analysis"] }),
+      repoRoot: fixture.repoRoot,
+      capture(command, args, cwd) {
+        if (!args.includes("--offline")) {
+          sourceObserved = { command, args, cwd };
+          return JSON.stringify(lockedRepositoryMetadata);
+        }
+        const manifestPath = args[args.indexOf("--manifest-path") + 1];
+        const probeRoot = path.dirname(manifestPath);
+        probeObserved = {
+          command,
+          args,
+          cwd,
+          lock: readFileSync(path.join(probeRoot, "Cargo.lock"), "utf8"),
+          manifest: readFileSync(manifestPath, "utf8"),
+          manifestPath,
+        };
+        return JSON.stringify(expected);
+      },
+    });
+
+    assert.deepEqual(metadata, expected);
+    assert.equal(sourceObserved.command, "cargo");
+    assert.equal(sourceObserved.cwd, fixture.repoRoot);
+    assert.deepEqual(sourceObserved.args, [
+      "metadata",
+      "--format-version",
+      "1",
+      "--locked",
+      "--filter-platform",
+      "wasm32-unknown-unknown",
+      "--manifest-path",
+      path.join(fixture.repoRoot, "Cargo.toml"),
+    ]);
+    assert.equal(probeObserved.command, "cargo");
+    assert.equal(probeObserved.cwd, fixture.repoRoot);
+    assert.notEqual(
+      probeObserved.manifestPath,
+      path.join(fixture.repoRoot, "crates", "merman-wasm", "Cargo.toml"),
+    );
+    assert.equal(probeObserved.lock, read(fixture, "Cargo.lock"));
+    assert.match(probeObserved.manifest, /name = "merman-wasm-freshness-probe"/);
+    assert.match(
+      probeObserved.manifest,
+      /merman-wasm = \{ path = .*default-features = false, features = \["analysis", "editor"\] \}/,
+    );
+    assert.deepEqual(probeObserved.args, [
+      "metadata",
+      "--format-version",
+      "1",
+      "--offline",
+      "--filter-platform",
+      "wasm32-unknown-unknown",
+      "--manifest-path",
+      probeObserved.manifestPath,
+    ]);
+  });
+
+  it("rejects an offline probe package absent from the locked repository graph", () => {
+    const fixture = createFixture();
+    const lockedRepositoryMetadata = {
+      packages: [{ id: "merman-wasm" }],
+      resolve: { root: "workspace", nodes: [] },
+    };
+    const unlockedProbeMetadata = {
+      packages: [
+        { id: "probe", name: "probe", version: "0.0.0" },
+        { id: "unlocked", name: "unlocked", version: "1.2.3" },
+      ],
+      resolve: { root: "probe", nodes: [] },
+    };
+
+    assert.throws(
+      () =>
+        cargoMetadataForPreset({
+          preset: preset(),
+          repoRoot: fixture.repoRoot,
+          capture(_command, args) {
+            return JSON.stringify(
+              args.includes("--offline") ? unlockedProbeMetadata : lockedRepositoryMetadata,
+            );
+          },
+        }),
+      /resolution contains packages absent from the repository lock: unlocked@1\.2\.3/,
+    );
+  });
+
   it("invalidates canonical build inputs but ignores documentation", () => {
     const fixture = createFixture();
     const manifest = buildManifest(fixture);

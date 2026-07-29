@@ -107,6 +107,11 @@ jobs:
           }
           printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
 
+      - name: Verify release projections and README install mode
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/release-version.py check --version "$VERSION"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:

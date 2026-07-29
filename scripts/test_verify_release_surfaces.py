@@ -172,11 +172,7 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
                       - run: |
                           python3 scripts/release-version.py
                           python3 scripts/verify-release-surfaces.py
-                          python3 -m unittest \\
-                            scripts/test_release_readme.py \\
-                            scripts/test_release_status.py \\
-                            scripts/test_verify_release_surfaces.py \\
-                            scripts/test_web_package_group.py
+                          python3 -m unittest discover -s scripts -p 'test_*.py'
             """
             write(root, ".github/workflows/ci.yml", textwrap.dedent(workflow))
             verify_release_surfaces.check_ci_wiring(root)
@@ -200,6 +196,17 @@ class ReleaseSurfaceParsingTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 verify_release_surfaces.CheckFailure,
                 "does not execute python3 scripts/verify-release-surfaces.py",
+            ):
+                verify_release_surfaces.check_ci_wiring(root)
+
+            explicit_tests = workflow.replace(
+                "python3 -m unittest discover -s scripts -p 'test_*.py'",
+                "python3 -m unittest scripts/test_release_status.py",
+            )
+            write(root, ".github/workflows/ci.yml", textwrap.dedent(explicit_tests))
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                r"does not discover scripts/test_\*\.py",
             ):
                 verify_release_surfaces.check_ci_wiring(root)
 
@@ -509,49 +516,6 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
                 "allowlisted non-surface package manifest is missing",
             ):
                 verify_release_surfaces.check_package_inventory(root, contract)
-
-    def test_blocked_channels_must_explain_blocker(self) -> None:
-        contract = {
-            "surfaces": [
-                {
-                    "id": "vscode",
-                    "channels": [
-                        {
-                            "id": "vs-marketplace",
-                            "declared_state": "credential-blocked",
-                            "release_kinds": ["stable", "prerelease"],
-                        }
-                    ],
-                }
-            ]
-        }
-
-        with self.assertRaisesRegex(
-            verify_release_surfaces.CheckFailure,
-            "credential-blocked channels must name the missing credential",
-        ):
-            verify_release_surfaces.check_blocked_channel_metadata(contract)
-
-    def test_conditionally_not_applicable_channels_must_explain_why(self) -> None:
-        contract = {
-            "surfaces": [
-                {
-                    "id": "homebrew",
-                    "channels": [
-                        {
-                            "id": "homebrew-core",
-                            "declared_state": "published",
-                            "release_kinds": ["stable"],
-                        }
-                    ],
-                }
-            ]
-        }
-        with self.assertRaisesRegex(
-            verify_release_surfaces.CheckFailure,
-            "conditionally not-applicable channels must explain why",
-        ):
-            verify_release_surfaces.check_blocked_channel_metadata(contract)
 
     def test_web_contract_rejects_candidate_package_in_release_group(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

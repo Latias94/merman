@@ -8,10 +8,17 @@ Render and analyze Mermaid diagrams in Flutter without a browser or JavaScript r
 
 ## Install
 
+<!-- BEGIN GENERATED RELEASE README FLUTTER_PACKAGE_INSTALL -->
+
 ```yaml
 dependencies:
-  merman: ">=0.8.0-alpha.4 <0.9.0"
+  merman:
+    git:
+      url: https://github.com/Latias94/merman
+      path: platforms/flutter
 ```
+
+<!-- END GENERATED RELEASE README FLUTTER_PACKAGE_INSTALL -->
 
 Run `flutter pub get` after adding the dependency.
 
@@ -69,6 +76,8 @@ final merman = Merman.open(
 Omitting `runtime_policy` keeps the engine deterministic even when the packaged library includes native adapters. Set `"runtime_policy":"native"` only when the operation should consult the host clock, time-zone rules, and random source. Generic operation metadata reports the selected policy, and a custom slim artifact missing a requested adapter raises `MermanUnsupportedOperationException`.
 
 Use `constrained` for untrusted or multi-tenant input, `interactive` for cooperative local editing, and `trusted-native` for local native automation. `MermanResourceOptionsBuilder` is available when an application only needs to produce the shared resource-options fragment. The generic native operation envelope has no Dart-facing fields in schema 1, so the Flutter facade keeps it internal until a real per-output contract exists. The runtime catalog is the source of truth for the compiled capabilities and enforced resource limits. See the [options contract](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md) for profile selection and the complete option schema.
+
+`MermanResourceLimitId` and `MermanResourceProfile` are generated option-construction IDs; limit entries also expose whether an override is allowed. Inspect `runtimeCatalog.resourceLimits` and `runtimeCatalog.resourceProfiles` for the loaded ABI 3 library's complete phase, description, hard-cap, purpose, trust, recommendation, and nullable budget metadata. Those typed collections preserve additive IDs reported by a host-owned library; a `null` profile limit means unbounded, while hard caps are always finite.
 
 ## Reusable Engines And Text Measurement
 

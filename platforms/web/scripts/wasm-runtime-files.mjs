@@ -8,6 +8,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import { packageDistClosure } from "./package-dist-closure.mjs";
+
 export const WASM_RUNTIME_TOP_LEVEL_FILES = Object.freeze([
   "merman_wasm.js",
   "merman_wasm.d.ts",
@@ -52,62 +54,33 @@ export function wasmRuntimeFileRecords(
 export function packageDistFileRecords(
   distRoot,
   packageId,
-  { allowSiblingPackageEntries = false, allowSharedSourceMaps = false } = {},
+  { allowSiblingPackageEntries = false } = {},
 ) {
   if (!existsSync(distRoot) || !lstatSync(distRoot).isDirectory()) {
     throw new Error(`Missing compiled package directory: ${distRoot}.`);
   }
-  const names = [
-    `${packageId}.d.ts`,
-    `${packageId}.d.ts.map`,
-    `${packageId}.js`,
-    `${packageId}.js.map`,
-  ];
-  const entryRoot = path.join(distRoot, "package-entries");
-  if (!existsSync(entryRoot) || !lstatSync(entryRoot).isDirectory()) {
-    throw new Error(`Missing compiled package entry directory: ${entryRoot}.`);
-  }
-  const entryNames = readdirSync(entryRoot, { withFileTypes: true });
-  const actualNames = entryNames.map((entry) => entry.name).sort();
-  if (
-    !allowSiblingPackageEntries &&
-    JSON.stringify(actualNames) !== JSON.stringify(names)
-  ) {
-    throw new Error(`Compiled package entry directory contains unexpected files: ${entryRoot}.`);
-  }
-  for (const name of names) {
-    if (!actualNames.includes(name)) {
-      throw new Error(`Missing compiled package entry: ${path.join(entryRoot, name)}.`);
-    }
-  }
-
-  const records = names.map((name) =>
-    fileRecord(path.join(entryRoot, name), `dist/package-entries/${name}`),
-  );
-  for (const entry of readdirSync(distRoot, { withFileTypes: true })) {
-    if (entry.name === "package-entries") continue;
-    const absolute = path.join(distRoot, entry.name);
-    if (entry.isDirectory()) {
-      records.push(
-        ...walkDistFiles(absolute, `dist/${entry.name}`, {
-          allowSharedSourceMaps,
-        }),
+  const closure = packageDistClosure(distRoot, packageId);
+  const expected = closure.files;
+  if (!allowSiblingPackageEntries) {
+    const actual = walkDistPaths(distRoot);
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      const unexpected = actual.filter((file) => !expected.includes(file));
+      const missing = expected.filter((file) => !actual.includes(file));
+      throw new Error(
+        `Compiled package directory differs from the ${packageId} static module closure` +
+          `${unexpected.length === 0 ? "" : `; unexpected: ${unexpected.join(", ")}`}` +
+          `${missing.length === 0 ? "" : `; missing: ${missing.join(", ")}`}.`,
       );
-    } else if (entry.isFile()) {
-      if (entry.name.endsWith(".map")) {
-        if (!allowSharedSourceMaps) {
-          throw new Error(
-            `Compiled package directory must not contain shared source maps: ${absolute}.`,
-          );
-        }
-        continue;
-      }
-      records.push(fileRecord(absolute, `dist/${entry.name}`));
-    } else {
-      throw new Error(`Compiled package directory must contain regular files only: ${absolute}.`);
     }
   }
-  return records.sort(compareRecords);
+  return expected
+    .map((relative) =>
+      fileRecord(
+        path.join(distRoot, ...relative.split("/")),
+        `dist/${relative}`,
+      ),
+    )
+    .sort(compareRecords);
 }
 
 function walkSnippetFiles(root, relativeRoot) {
@@ -129,28 +102,20 @@ function walkSnippetFiles(root, relativeRoot) {
   return records;
 }
 
-function walkDistFiles(root, relativeRoot, { allowSharedSourceMaps }) {
-  const records = [];
+function walkDistPaths(root, relativeRoot = "") {
+  const paths = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const absolute = path.join(root, entry.name);
-    const relative = `${relativeRoot}/${entry.name}`;
+    const relative = relativeRoot ? `${relativeRoot}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
-      records.push(...walkDistFiles(absolute, relative, { allowSharedSourceMaps }));
+      paths.push(...walkDistPaths(absolute, relative));
     } else if (entry.isFile()) {
-      if (entry.name.endsWith(".map")) {
-        if (!allowSharedSourceMaps) {
-          throw new Error(
-            `Compiled package directory must not contain shared source maps: ${absolute}.`,
-          );
-        }
-        continue;
-      }
-      records.push(fileRecord(absolute, relative));
+      paths.push(relative);
     } else {
       throw new Error(`Compiled package directory must contain regular files only: ${absolute}.`);
     }
   }
-  return records;
+  return paths.sort();
 }
 
 function fileRecord(file, relativePath) {

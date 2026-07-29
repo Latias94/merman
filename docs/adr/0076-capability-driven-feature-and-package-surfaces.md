@@ -27,6 +27,11 @@ artifacts. Each recipe identifies a real Cargo package and target, profile, `def
 choice, explicit feature set, build target, and expected capability/output report. It contains no
 release-state field, documentation path, evidence prose, package bundle, or wire-layout copy.
 
+Closure evidence remains owned by its verifier rather than the artifact descriptor. A `host` recipe
+builds on the executing host, but its frozen dependency closure is explicitly the
+`x86_64-unknown-linux-gnu` reference closure. That evidence is neither a macOS/Windows closure union
+nor a support promise. A `target-set` recipe must prove each descriptor-owned target separately.
+
 Cargo manifests remain hand-written. Each protocol keeps its natural authority: the native ABI
 descriptor and header own C layouts and symbols; UniFFI definitions own generated language
 bindings; LSP owns its protocol surface; Web package exports own browser entry points; and the

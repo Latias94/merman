@@ -160,9 +160,7 @@ headless and foreground browsers without letting the hidden benchmark UI affect 
 
 The Playground loads local Monaco code and its editor worker; it does not use Monaco's default CDN
 loader. Merman language intelligence runs in a dedicated module Worker using the editor artifact
-selected by ADR-0076 (`@mermanjs/editor`, backed by the `browser-editor` artifact profile). The
-current `@mermanjs/web/editor`/`browser-editor` pair remains transitional until that surface
-migration.
+selected by ADR-0076 (`@mermanjs/web-editor`, backed by the `web-editor` artifact profile).
 The selected editor artifact includes invariant language semantics, analysis, and editor APIs but
 excludes SVG rendering, ASCII, layout, math, and system adapters.
 

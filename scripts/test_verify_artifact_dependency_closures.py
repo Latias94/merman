@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
-"""Tests for exact artifact dependency-closure verification."""
+"""Tests for exact artifact runtime dependency-closure verification."""
 
 from __future__ import annotations
 
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
+from typing import Sequence
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from artifact_dependency_approvals import (  # noqa: E402
+    ARTIFACT_DEPENDENCY_APPROVALS,
+    HOST_CLOSURE_REFERENCE_TARGET,
+)
 from artifact_profile_recipe import (  # noqa: E402
-    DEFAULT_DESCRIPTOR,
-    REPO_ROOT,
     CargoArtifactRecipe,
     load_artifact_profile,
 )
@@ -27,19 +30,20 @@ from github_workflow_contract import (  # noqa: E402
     workflow_step,
 )
 from verify_artifact_dependency_closures import (  # noqa: E402
-    CLAIMS,
-    EXACT_FINGERPRINT_CLAIMS,
-    PORTABLE_HOST_REFERENCE_TARGET,
+    LINUX_REFERENCE_SCOPE,
+    PROFILE_TARGET_SCOPE,
     SEMANTIC_CLAIMS,
     ClosureClaim,
     ClosureVerificationError,
     PackageFeatureExclusion,
-    _select_claims,
+    VerificationCase,
+    _select_cases,
     cargo_tree_command,
-    check_claim,
+    check_case,
     closure_fingerprint,
+    load_verification_cases,
     parse_cargo_tree,
-    verify_claims,
+    verify_cases,
 )
 
 
@@ -67,15 +71,199 @@ def recipe(
     )
 
 
-def tree_line(package: str, features: tuple[str, ...] = ()) -> str:
+def claim(
+    profile_id: str,
+    *,
+    required: tuple[str, ...] = ("fixture",),
+    forbidden: tuple[str, ...] = (),
+    forbidden_features: tuple[PackageFeatureExclusion, ...] = (),
+    residual: tuple[str, ...] = (),
+) -> ClosureClaim:
+    return ClosureClaim(
+        claim_id=f"{profile_id}-claim",
+        profile_id=profile_id,
+        required_packages=required,
+        forbidden_packages=forbidden,
+        forbidden_features=forbidden_features,
+        observed_residual_packages=residual,
+    )
+
+
+def case(
+    profile_id: str = "fixture",
+    *,
+    loaded_recipe: CargoArtifactRecipe | None = None,
+    loaded_claim: ClosureClaim | None = None,
+    target: str = HOST_CLOSURE_REFERENCE_TARGET,
+    fingerprint: str = "sha256:" + "0" * 64,
+) -> VerificationCase:
+    return VerificationCase(
+        recipe=loaded_recipe or recipe(profile_id),
+        claim=loaded_claim or claim(profile_id),
+        target=target,
+        approved_fingerprint=fingerprint,
+    )
+
+
+def tree_line(
+    package: str,
+    features: tuple[str, ...] = (),
+    *,
+    version: str = "1.2.3",
+    source: str | None = None,
+    proc_macro: bool = False,
+) -> str:
+    annotation = f" ({source})" if source is not None else ""
+    if proc_macro:
+        annotation += " (proc-macro)"
     return (
-        f"__MERMAN_CLOSURE_PACKAGE__{package} v1.2.3 (/workspace/{package})"
+        f"__MERMAN_CLOSURE_PACKAGE__{package} v{version}{annotation}"
         f"\t__MERMAN_CLOSURE_FEATURES__{','.join(features)}"
     )
 
 
+def write_descriptor(
+    directory: Path,
+    *profile_ids: str,
+    build_target: dict[str, object] | None = None,
+) -> Path:
+    path = directory / "profiles.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "profiles": [
+                    {
+                        "id": profile_id,
+                        "semantic_target": "native",
+                        "cargo": {
+                            "package": "fixture",
+                            "manifest": "Cargo.toml",
+                            "profile": "release",
+                            "default_features": False,
+                            "features": ["fixture"],
+                            "target": {
+                                "name": "fixture",
+                                "kinds": ["bin"],
+                                "crate_types": ["bin"],
+                                "required_features": [],
+                            },
+                            "build_target": build_target or {"kind": "host"},
+                        },
+                    }
+                    for profile_id in profile_ids
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+class ApprovalCatalogTests(unittest.TestCase):
+    def test_repository_catalog_covers_every_profile_and_declared_target(self) -> None:
+        cases = load_verification_cases()
+        self.assertEqual(
+            {case.recipe.profile_id for case in cases},
+            set(ARTIFACT_DEPENDENCY_APPROVALS),
+        )
+        self.assertGreater(len(cases), len(ARTIFACT_DEPENDENCY_APPROVALS))
+
+    def test_catalog_must_match_profile_directory_exactly(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            descriptor = write_descriptor(
+                Path(temporary_directory),
+                "known",
+                "missing",
+            )
+            approvals = {
+                "known": (
+                    (HOST_CLOSURE_REFERENCE_TARGET, "sha256:" + "0" * 64),
+                ),
+                "unexpected": (
+                    (HOST_CLOSURE_REFERENCE_TARGET, "sha256:" + "0" * 64),
+                ),
+            }
+            with self.assertRaisesRegex(
+                ClosureVerificationError,
+                r"missing=\['missing'\] unexpected=\['unexpected'\]",
+            ):
+                load_verification_cases(
+                    descriptor_path=descriptor,
+                    approvals=approvals,
+                    semantic_claims=(),
+                )
+
+    def test_targets_are_ordered_exact_and_fingerprints_are_valid(self) -> None:
+        fingerprint = "sha256:" + "0" * 64
+        invalid_catalogs = (
+            (
+                {"cross": (("target-one", fingerprint),)},
+                "must match descriptor evidence targets exactly",
+            ),
+            (
+                {
+                    "cross": (
+                        ("target-one", fingerprint),
+                        ("target-one", fingerprint),
+                    )
+                },
+                "duplicate approval targets",
+            ),
+            (
+                {
+                    "cross": (
+                        ("target-one", fingerprint),
+                        ("target-two", "not-a-fingerprint"),
+                    )
+                },
+                "invalid runtime fingerprints",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            descriptor = write_descriptor(
+                Path(temporary_directory),
+                "cross",
+                build_target={
+                    "kind": "target-set",
+                    "triples": ["target-one", "target-two"],
+                },
+            )
+            for approvals, message in invalid_catalogs:
+                with self.subTest(message=message), self.assertRaisesRegex(
+                    ClosureVerificationError,
+                    message,
+                ):
+                    load_verification_cases(
+                        descriptor_path=descriptor,
+                        approvals=approvals,
+                        semantic_claims=(),
+                    )
+
+    def test_recipe_derives_scope_and_exact_root_claim(self) -> None:
+        cases = load_verification_cases()
+        semantic_profiles = {claim.profile_id for claim in SEMANTIC_CLAIMS}
+
+        for current in cases:
+            with self.subTest(
+                profile=current.recipe.profile_id,
+                target=current.target,
+            ):
+                expected_scope = (
+                    LINUX_REFERENCE_SCOPE
+                    if current.recipe.build_target_kind == "host"
+                    else PROFILE_TARGET_SCOPE
+                )
+                self.assertEqual(current.closure_scope, expected_scope)
+                if current.recipe.profile_id not in semantic_profiles:
+                    self.assertEqual(
+                        current.claim.required_packages,
+                        (current.recipe.package,),
+                    )
+
+
 class DescriptorTests(unittest.TestCase):
-    def test_maintenance_profiles_are_exact_default_empty_recipes(self) -> None:
+    def test_maintenance_profiles_are_default_empty_exact_recipes(self) -> None:
         expected = {
             "cli-analysis": ("merman-cli", ("analysis",)),
             "rust-export-jpeg": ("merman-export", ("jpeg",)),
@@ -83,197 +271,38 @@ class DescriptorTests(unittest.TestCase):
             "rust-export-png": ("merman-export", ("png",)),
             "rust-svg-basic": ("merman", ("svg",)),
         }
-
         for profile_id, (package, features) in expected.items():
             with self.subTest(profile_id=profile_id):
                 loaded = load_artifact_profile(profile_id)
                 self.assertFalse(loaded.default_features)
-                self.assertEqual(loaded.package, package)
-                self.assertEqual(loaded.features, features)
+                self.assertEqual((loaded.package, loaded.features), (package, features))
 
     def test_ci_and_release_preflights_execute_the_closure_gate(self) -> None:
-        repository_root = SCRIPT_DIR.parent
         workflows = (
             (".github/workflows/ci.yml", "build-test", "Verify generated architecture contracts"),
             (
                 ".github/workflows/release-crates.yml",
                 "preflight",
-                "Verify exact artifact dependency closures",
+                "Verify target-scoped artifact dependency closures",
             ),
             (
                 ".github/workflows/release-preflight.yml",
                 "versions-and-packages",
-                "Verify exact artifact dependency closures",
+                "Verify target-scoped artifact dependency closures",
             ),
         )
-
         for path, job, step_name in workflows:
             with self.subTest(workflow=path):
-                workflow = load_workflow_contract(repository_root / path)
+                workflow = load_workflow_contract(SCRIPT_DIR.parent / path)
                 step = workflow_step(workflow_job(workflow, job), name=step_name)
                 self.assertIn(
                     "python3 scripts/verify_artifact_dependency_closures.py",
                     step["run"],
                 )
 
-    def test_ci_runs_owner_local_tests_from_exact_artifact_recipes(self) -> None:
-        repository_root = SCRIPT_DIR.parent
-        workflow = load_workflow_contract(repository_root / ".github/workflows/ci.yml")
-        step = workflow_step(
-            workflow_job(workflow, "build-test"),
-            name="Test exact artifact owner APIs",
-        )
-        run = step["run"]
-
-        self.assertIn(
-            'artifact_profile_recipe.py "$profile" --field package',
-            run,
-        )
-        self.assertIn(
-            'artifact_profile_recipe.py "$profile"',
-            run,
-        )
-        for profile_id in (
-            "cli-analysis",
-            "rust-analysis",
-            "rust-ascii",
-            "rust-bindings-core-native-sdk",
-            "rust-editor-core",
-            "rust-editor-facade",
-            "rust-export-jpeg",
-            "rust-export-pdf",
-            "rust-export-png",
-            "rust-svg-basic",
-        ):
-            with self.subTest(profile_id=profile_id):
-                self.assertIn(f"run_owner_test {profile_id} ", run)
-
-    def test_every_claim_has_a_unique_exact_profile(self) -> None:
-        profile_ids = [claim.profile_id for claim in CLAIMS]
-        self.assertEqual(len(profile_ids), len(set(profile_ids)))
-        for profile_id in profile_ids:
-            with self.subTest(profile_id=profile_id):
-                self.assertFalse(
-                    load_artifact_profile(profile_id, DEFAULT_DESCRIPTOR).default_features
-                )
-
-    def test_exact_claims_match_descriptor_root_and_target_contract(self) -> None:
-        for claim in EXACT_FINGERPRINT_CLAIMS:
-            with self.subTest(profile_id=claim.profile_id):
-                loaded = load_artifact_profile(claim.profile_id, DEFAULT_DESCRIPTOR)
-                self.assertEqual(claim.required_packages, (loaded.package,))
-                if loaded.build_target_kind == "host":
-                    self.assertIsNone(claim.target)
-                    self.assertEqual(
-                        claim.reference_target,
-                        PORTABLE_HOST_REFERENCE_TARGET,
-                    )
-                    command = cargo_tree_command(
-                        loaded,
-                        claim.target,
-                        reference_target=claim.reference_target,
-                    )
-                    self.assertEqual(
-                        command[command.index("--target") + 1],
-                        PORTABLE_HOST_REFERENCE_TARGET,
-                    )
-                else:
-                    self.assertIsNone(claim.target)
-                    self.assertIsNone(claim.reference_target)
-                    for target, _ in claim.approved_target_fingerprints:
-                        command = cargo_tree_command(loaded, target)
-                        self.assertEqual(
-                            command[command.index("--target") + 1],
-                            target,
-                        )
-                        self.assertEqual(
-                            command[command.index("--package") + 1],
-                            loaded.package,
-                        )
-                        self.assertNotIn("all", command)
-
-    def test_repository_exact_claims_have_approved_fingerprints(self) -> None:
-        for claim in EXACT_FINGERPRINT_CLAIMS:
-            with self.subTest(profile_id=claim.profile_id):
-                loaded = load_artifact_profile(claim.profile_id, DEFAULT_DESCRIPTOR)
-                if loaded.build_target_kind == "host":
-                    self.assertRegex(
-                        claim.approved_fingerprint,
-                        r"^sha256:[0-9a-f]{64}$",
-                    )
-                    self.assertEqual(claim.approved_target_fingerprints, ())
-                else:
-                    self.assertEqual(claim.approved_fingerprint, "")
-                    for _, fingerprint in claim.approved_target_fingerprints:
-                        self.assertRegex(fingerprint, r"^sha256:[0-9a-f]{64}$")
-
-    def test_repository_claims_cover_every_declared_target(self) -> None:
-        for claim in CLAIMS:
-            with self.subTest(profile_id=claim.profile_id):
-                loaded = load_artifact_profile(claim.profile_id, DEFAULT_DESCRIPTOR)
-                if loaded.build_target_kind == "host":
-                    self.assertIsNone(claim.target)
-                    self.assertEqual(
-                        claim.reference_target,
-                        PORTABLE_HOST_REFERENCE_TARGET,
-                    )
-                    self.assertEqual(claim.approved_target_fingerprints, ())
-                    continue
-
-                self.assertIsNone(claim.target)
-                self.assertIsNone(claim.reference_target)
-                approved_targets = [
-                    target for target, _ in claim.approved_target_fingerprints
-                ]
-                self.assertEqual(tuple(approved_targets), loaded.build_targets)
-                for _, fingerprint in claim.approved_target_fingerprints:
-                    self.assertRegex(fingerprint, r"^sha256:[0-9a-f]{64}$")
-
 
 class CargoTreeCommandTests(unittest.TestCase):
-    def test_host_command_uses_an_explicit_portable_linux_reference_target(self) -> None:
-        loaded = recipe("host", package="host-package")
-
-        command = cargo_tree_command(
-            loaded,
-            None,
-            reference_target=PORTABLE_HOST_REFERENCE_TARGET,
-        )
-
-        self.assertEqual(
-            command[command.index("--target") + 1],
-            "x86_64-unknown-linux-gnu",
-        )
-
-    def test_host_command_rejects_an_implicit_or_unapproved_reference_target(self) -> None:
-        loaded = recipe("host")
-
-        for reference_target in (None, "aarch64-apple-darwin", "all"):
-            with self.subTest(reference_target=reference_target), self.assertRaisesRegex(
-                ClosureVerificationError,
-                "portable reference target",
-            ):
-                cargo_tree_command(
-                    loaded,
-                    None,
-                    reference_target=reference_target,
-                )
-
-    def test_target_set_command_rejects_a_reference_target(self) -> None:
-        loaded = recipe(
-            "cross",
-            build_target_kind="target-set",
-            build_targets=("aarch64-linux-android",),
-        )
-
-        with self.assertRaisesRegex(ClosureVerificationError, "reference target"):
-            cargo_tree_command(
-                loaded,
-                "aarch64-linux-android",
-                reference_target=PORTABLE_HOST_REFERENCE_TARGET,
-            )
-
-    def test_command_uses_the_exact_recipe_and_descriptor_target(self) -> None:
+    def test_command_uses_exact_recipe_target_and_runtime_edges(self) -> None:
         loaded = recipe(
             "cli-analysis",
             package="merman-cli",
@@ -281,10 +310,15 @@ class CargoTreeCommandTests(unittest.TestCase):
             build_target_kind="target-set",
             build_targets=("x86_64-unknown-linux-gnu",),
         )
+        command = cargo_tree_command(
+            case(
+                "cli-analysis",
+                loaded_recipe=loaded,
+                target="x86_64-unknown-linux-gnu",
+            )
+        )
 
-        command = cargo_tree_command(loaded, "x86_64-unknown-linux-gnu")
-
-        self.assertEqual(command[0:2], ["cargo", "tree"])
+        self.assertEqual(command[:2], ["cargo", "tree"])
         self.assertIn("--locked", command)
         self.assertIn("--no-default-features", command)
         self.assertEqual(command[command.index("--package") + 1], "merman-cli")
@@ -293,218 +327,179 @@ class CargoTreeCommandTests(unittest.TestCase):
             command[command.index("--target") + 1],
             "x86_64-unknown-linux-gnu",
         )
-        self.assertEqual(command[command.index("--edges") + 1], "normal")
+        self.assertEqual(
+            command[command.index("--edges") + 1],
+            "normal,no-proc-macro",
+        )
 
-    def test_command_rejects_default_features(self) -> None:
-        loaded = recipe("bad", default_features=True)
-
+    def test_host_requires_the_linux_reference_target(self) -> None:
         with self.assertRaisesRegex(
-            ClosureVerificationError, "default_features=false"
+            ClosureVerificationError,
+            "Linux reference target",
         ):
-            cargo_tree_command(loaded, None)
+            cargo_tree_command(case(target="aarch64-apple-darwin"))
 
-    def test_command_rejects_target_outside_the_exact_recipe(self) -> None:
+    def test_target_set_rejects_an_undeclared_target(self) -> None:
         loaded = recipe(
             "cross",
             build_target_kind="target-set",
-            build_targets=("aarch64-apple-darwin",),
+            build_targets=("target-one",),
         )
+        with self.assertRaisesRegex(ClosureVerificationError, "does not declare target"):
+            cargo_tree_command(
+                case(
+                    "cross",
+                    loaded_recipe=loaded,
+                    target="target-two",
+                )
+            )
 
-        with self.assertRaisesRegex(
-            ClosureVerificationError, "does not declare target"
-        ):
-            cargo_tree_command(loaded, "x86_64-unknown-linux-gnu")
+    def test_command_rejects_default_features(self) -> None:
+        with self.assertRaisesRegex(ClosureVerificationError, "default_features=false"):
+            cargo_tree_command(
+                case(loaded_recipe=recipe("fixture", default_features=True))
+            )
 
 
 class CargoTreeParserTests(unittest.TestCase):
-    def test_parser_unions_features_for_duplicate_package_versions(self) -> None:
-        output = "\n".join(
-            (
-                tree_line("root", ("svg",)),
-                tree_line("shared", ("std",)),
-                "__MERMAN_CLOSURE_PACKAGE__shared v2.0.0 "
-                "(/workspace/shared-v2)\t__MERMAN_CLOSURE_FEATURES__serde",
+    def test_parser_unions_duplicate_package_features(self) -> None:
+        closure = parse_cargo_tree(
+            "\n".join(
+                (
+                    tree_line("root", ("one",)),
+                    tree_line("root", ("two",)) + " (*)",
+                )
             )
         )
+        self.assertEqual(closure.packages, frozenset({"root"}))
+        self.assertEqual(closure.features_by_package["root"], {"one", "two"})
 
-        closure = parse_cargo_tree(output)
-
-        self.assertEqual(closure.packages, frozenset(("root", "shared")))
-        self.assertEqual(
-            closure.features_by_package["shared"], frozenset(("serde", "std"))
-        )
-        self.assertEqual(
-            {
-                (package, version)
-                for package, version, _ in closure.features_by_package_identity
-            },
-            {("root", "1.2.3"), ("shared", "1.2.3"), ("shared", "2.0.0")},
-        )
-
-    def test_parser_normalizes_workspace_package_paths(self) -> None:
-        package_path = REPO_ROOT / "crates" / "merman-core"
+    def test_parser_normalizes_workspace_registry_git_and_proc_macro_sources(self) -> None:
         closure = parse_cargo_tree(
-            "__MERMAN_CLOSURE_PACKAGE__merman-core v1.2.3 "
-            f"({package_path})\t__MERMAN_CLOSURE_FEATURES__"
+            "\n".join(
+                (
+                    tree_line("workspace", source=str(SCRIPT_DIR.parent / "crates/merman")),
+                    tree_line("registry"),
+                    tree_line(
+                        "git-package",
+                        source="https://example.com/repo?rev=main#01234567",
+                    ),
+                    tree_line("macro", proc_macro=True),
+                )
+            )
         )
-
-        self.assertEqual(
-            set(closure.features_by_package_identity),
-            {("merman-core", "1.2.3", "path+workspace://crates/merman-core")},
+        identities = set(closure.features_by_package_identity)
+        self.assertIn(
+            ("workspace", "1.2.3", "path+workspace://crates/merman"),
+            identities,
         )
-
-    def test_parser_discards_cargo_deduplication_annotations(self) -> None:
-        closure = parse_cargo_tree(
-            "__MERMAN_CLOSURE_PACKAGE__root v1.2.3"
-            "\t__MERMAN_CLOSURE_FEATURES__std (*)"
+        self.assertIn(
+            (
+                "registry",
+                "1.2.3",
+                "registry+https://github.com/rust-lang/crates.io-index",
+            ),
+            identities,
         )
-
-        self.assertEqual(closure.features_by_package["root"], frozenset(("std",)))
+        self.assertTrue(
+            any(
+                name == "git-package" and source.startswith("git+https://")
+                for name, _version, source in identities
+            )
+        )
+        self.assertIn(
+            (
+                "macro",
+                "1.2.3",
+                "registry+https://github.com/rust-lang/crates.io-index",
+            ),
+            identities,
+        )
 
     def test_parser_rejects_unmarked_or_empty_output(self) -> None:
-        with self.assertRaisesRegex(ClosureVerificationError, "package marker"):
-            parse_cargo_tree("fixture v1.0.0")
-        with self.assertRaisesRegex(ClosureVerificationError, "no dependency packages"):
-            parse_cargo_tree("")
+        for output in ("", "root v1.2.3"):
+            with self.subTest(output=output), self.assertRaises(
+                ClosureVerificationError
+            ):
+                parse_cargo_tree(output)
+
+    def test_fingerprint_includes_version_features_and_source(self) -> None:
+        closures = (
+            parse_cargo_tree(tree_line("root", ("svg",), version="1.0.0")),
+            parse_cargo_tree(tree_line("root", ("math",), version="1.0.0")),
+            parse_cargo_tree(tree_line("root", ("svg",), version="2.0.0")),
+            parse_cargo_tree(
+                tree_line(
+                    "root",
+                    ("svg",),
+                    version="1.0.0",
+                    source="https://example.com/root#01234567",
+                )
+            ),
+        )
+        self.assertEqual(len({closure_fingerprint(item) for item in closures}), 4)
 
 
 class ClaimTests(unittest.TestCase):
-    def test_claim_reports_missing_forbidden_and_feature_drift_together(self) -> None:
-        claim = ClosureClaim(
-            claim_id="fixture",
-            profile_id="fixture",
-            target=None,
-            required_packages=("root", "required"),
-            forbidden_packages=("forbidden",),
+    def test_semantic_failures_are_reported_together(self) -> None:
+        loaded_claim = claim(
+            "semantic",
+            required=("root", "missing"),
+            forbidden=("forbidden",),
             forbidden_features=(
-                PackageFeatureExclusion("root", ("system-clock",)),
+                PackageFeatureExclusion("root", ("bad-feature",)),
             ),
-            observed_residual_packages=("residual",),
         )
         closure = parse_cargo_tree(
             "\n".join(
                 (
-                    tree_line("root", ("system-clock",)),
+                    tree_line("root", ("bad-feature",)),
                     tree_line("forbidden"),
                 )
             )
         )
+        failures, _ = check_case(
+            case(loaded_claim=loaded_claim),
+            closure,
+            enforce_fingerprint=False,
+        )
+        self.assertTrue(any("required packages missing: missing" in x for x in failures))
+        self.assertTrue(any("forbidden packages present" in x for x in failures))
+        self.assertTrue(any("enables forbidden features" in x for x in failures))
 
-        failures, observation = check_claim(
-            claim,
+    def test_residual_packages_must_remain_observed(self) -> None:
+        loaded_claim = claim(
+            "residual",
+            required=("root",),
+            residual=("upstream-residual",),
+        )
+        failures, _ = check_case(
+            case("residual", loaded_claim=loaded_claim),
+            parse_cargo_tree(tree_line("root")),
+            enforce_fingerprint=False,
+        )
+        self.assertIn("required packages missing: upstream-residual", failures)
+
+    def test_fingerprint_drift_is_fail_closed_but_print_mode_can_observe(self) -> None:
+        closure = parse_cargo_tree(tree_line("fixture"))
+        current = case(fingerprint="sha256:" + "0" * 64)
+
+        failures, observation = check_case(current, closure)
+        print_failures, _ = check_case(
+            current,
             closure,
             enforce_fingerprint=False,
         )
 
-        self.assertTrue(any("required, residual" in failure for failure in failures))
-        self.assertTrue(any("forbidden packages present" in failure for failure in failures))
-        self.assertTrue(any("system-clock" in failure for failure in failures))
-        self.assertEqual(observation.observed_residual_packages, ())
+        self.assertTrue(any("fingerprint drift" in failure for failure in failures))
+        self.assertEqual(print_failures, [])
+        self.assertEqual(observation.fingerprint, closure_fingerprint(closure))
 
-    def test_observed_residual_must_remain_explicitly_present(self) -> None:
-        claim = ClosureClaim(
-            claim_id="pdf",
-            profile_id="rust-export-pdf",
-            target=None,
-            required_packages=("merman-export",),
-            forbidden_packages=(),
-            observed_residual_packages=("krilla-svg",),
-        )
-
-        failures, _ = check_claim(
-            claim,
-            parse_cargo_tree(tree_line("merman-export", ("pdf",))),
-            enforce_fingerprint=False,
-        )
-
-        self.assertEqual(failures, ["required packages missing: krilla-svg"])
-
-    def test_exact_fingerprint_rejects_an_unknown_dependency(self) -> None:
-        approved = parse_cargo_tree(tree_line("root", ("svg",)))
-        claim = ClosureClaim(
-            claim_id="exact",
-            profile_id="exact",
-            target=None,
-            required_packages=("root",),
-            forbidden_packages=(),
-            approved_fingerprint=closure_fingerprint(approved),
-        )
-        observed = parse_cargo_tree(
-            "\n".join(
-                (
-                    tree_line("root", ("svg",)),
-                    tree_line("new-heavy-backend"),
-                )
-            )
-        )
-
-        failures, observation = check_claim(claim, observed)
-
-        self.assertEqual(observation.package_count, 2)
-        self.assertTrue(
-            any("dependency closure fingerprint drift" in failure for failure in failures)
-        )
-
-    def test_exact_fingerprint_rejects_a_missing_approval(self) -> None:
-        claim = ClosureClaim(
-            claim_id="exact",
-            profile_id="exact",
-            target=None,
-            required_packages=("root",),
-            forbidden_packages=(),
-        )
-
-        failures, _ = check_claim(claim, parse_cargo_tree(tree_line("root")))
-
-        self.assertIn(
-            "claim has no valid approved dependency closure fingerprint",
-            failures,
-        )
-
-    def test_exact_fingerprint_includes_versions_and_features(self) -> None:
-        baseline = parse_cargo_tree(tree_line("root", ("svg",)))
-        baseline_fingerprint = closure_fingerprint(baseline)
-
-        version_changed = parse_cargo_tree(
-            "__MERMAN_CLOSURE_PACKAGE__root v1.2.4 "
-            "(/workspace/root)\t__MERMAN_CLOSURE_FEATURES__svg"
-        )
-        feature_changed = parse_cargo_tree(tree_line("root", ("math", "svg")))
-
-        self.assertNotEqual(
-            baseline_fingerprint,
-            closure_fingerprint(version_changed),
-        )
-        self.assertNotEqual(
-            baseline_fingerprint,
-            closure_fingerprint(feature_changed),
-        )
-
-    def test_exact_fingerprint_includes_cargo_source_identity(self) -> None:
-        registry = parse_cargo_tree(
-            "__MERMAN_CLOSURE_PACKAGE__root v1.2.3"
-            "\t__MERMAN_CLOSURE_FEATURES__svg"
-        )
-        git = parse_cargo_tree(
-            "__MERMAN_CLOSURE_PACKAGE__root v1.2.3 "
-            "(https://github.com/example/root?rev=main#01234567)"
-            "\t__MERMAN_CLOSURE_FEATURES__svg"
-        )
-        workspace_path = parse_cargo_tree(tree_line("root", ("svg",)))
-
-        fingerprints = {
-            closure_fingerprint(registry),
-            closure_fingerprint(git),
-            closure_fingerprint(workspace_path),
-        }
-
-        self.assertEqual(len(fingerprints), 3)
-
-    def test_svg_basic_claim_rejects_optional_engine_and_product_leaks(self) -> None:
-        claim = next(
-            claim
-            for claim in CLAIMS
-            if claim.profile_id == "rust-svg-basic"
+    def test_svg_basic_semantics_reject_optional_product_leaks(self) -> None:
+        loaded_claim = next(
+            current
+            for current in SEMANTIC_CLAIMS
+            if current.profile_id == "rust-svg-basic"
         )
         closure = parse_cargo_tree(
             "\n".join(
@@ -512,264 +507,50 @@ class ClaimTests(unittest.TestCase):
                     tree_line("merman", ("layout-elk", "svg")),
                     tree_line("merman-core", ("system-timezone",)),
                     tree_line("merman-render", ("math",)),
-                    tree_line("getrandom"),
-                    tree_line("image"),
-                    tree_line("jiff"),
-                    tree_line("krilla"),
-                    tree_line("manatee"),
                     tree_line("merman-analysis"),
-                    tree_line("merman-ascii"),
-                    tree_line("merman-editor-core"),
                     tree_line("merman-layout-elk"),
-                    tree_line("ratex-svg"),
-                    tree_line("resvg"),
-                    tree_line("web-time"),
                 )
             )
         )
-
-        failures, _ = check_claim(
-            claim,
+        failures, _ = check_case(
+            case("rust-svg-basic", loaded_claim=loaded_claim),
             closure,
             enforce_fingerprint=False,
         )
-
-        self.assertTrue(
-            any("forbidden packages present" in failure for failure in failures)
-        )
-        self.assertTrue(
-            any("layout-elk" in failure for failure in failures)
-        )
-        self.assertTrue(
-            any("system-timezone" in failure for failure in failures)
-        )
-        self.assertTrue(any("math" in failure for failure in failures))
+        self.assertTrue(any("forbidden packages present" in x for x in failures))
+        self.assertTrue(any("layout-elk" in x for x in failures))
+        self.assertTrue(any("system-timezone" in x for x in failures))
+        self.assertTrue(any("math" in x for x in failures))
 
 
 class VerificationTests(unittest.TestCase):
-    def test_every_artifact_profile_has_one_exact_closure_claim(self) -> None:
-        descriptor = json.loads(DEFAULT_DESCRIPTOR.read_text(encoding="utf-8"))
-        profile_ids = {profile["id"] for profile in descriptor["profiles"]}
-        claimed_ids = [claim.profile_id for claim in CLAIMS]
-
-        self.assertEqual(set(claimed_ids), profile_ids)
-        self.assertEqual(len(claimed_ids), len(set(claimed_ids)))
-
-    def test_fake_runner_proves_semantic_repository_claims_without_cargo(self) -> None:
-        recipes = {
-            "rust-static-svg": recipe(
-                "rust-static-svg",
-                package="merman",
-                features=("layout-cytoscape", "layout-elk", "math", "svg"),
-            ),
-            "rust-svg-basic": recipe(
-                "rust-svg-basic",
-                package="merman",
-                features=("svg",),
-            ),
-            "cli-analysis": recipe(
-                "cli-analysis",
-                package="merman-cli",
-                features=("analysis",),
-                build_target_kind="target-set",
-                build_targets=("x86_64-unknown-linux-gnu",),
-            ),
-            "rust-export-png": recipe(
-                "rust-export-png",
-                package="merman-export",
-                features=("png",),
-            ),
-            "rust-export-jpeg": recipe(
-                "rust-export-jpeg",
-                package="merman-export",
-                features=("jpeg",),
-            ),
-            "rust-export-pdf": recipe(
-                "rust-export-pdf",
-                package="merman-export",
-                features=("pdf",),
-            ),
-        }
-        outputs = {
-            ("merman", "layout-cytoscape,layout-elk,math,svg"): "\n".join(
-                (
-                    tree_line(
-                        "merman", ("layout-cytoscape", "layout-elk", "math", "svg")
-                    ),
-                    tree_line("merman-core"),
-                    tree_line(
-                        "merman-render", ("layout-cytoscape", "layout-elk", "math")
-                    ),
-                )
-            ),
-            ("merman", "svg"): "\n".join(
-                (
-                    tree_line("merman", ("svg",)),
-                    tree_line("merman-core"),
-                    tree_line("merman-render"),
-                )
-            ),
-            ("merman-cli", "analysis"): "\n".join(
-                (
-                    tree_line("merman-cli", ("analysis",)),
-                    tree_line("merman-analysis"),
-                    tree_line("merman-core"),
-                )
-            ),
-            ("merman-export", "png"): "\n".join(
-                (
-                    tree_line("merman-export", ("png",)),
-                    tree_line("merman-render"),
-                    tree_line("resvg"),
-                    tree_line("tiny-skia"),
-                    tree_line("usvg"),
-                )
-            ),
-            ("merman-export", "jpeg"): "\n".join(
-                (
-                    tree_line("merman-export", ("jpeg",)),
-                    tree_line("image"),
-                    tree_line("merman-render"),
-                    tree_line("png"),
-                    tree_line("resvg"),
-                    tree_line("tiny-skia"),
-                    tree_line("usvg"),
-                )
-            ),
-            ("merman-export", "pdf"): "\n".join(
-                (
-                    tree_line("merman-export", ("pdf",)),
-                    tree_line("merman-render"),
-                    tree_line("krilla"),
-                    tree_line("fontdb"),
-                    tree_line("gif"),
-                    tree_line("image-webp"),
-                    tree_line("krilla-svg"),
-                    tree_line("memmap2"),
-                    tree_line("png"),
-                    tree_line("resvg"),
-                    tree_line("rustybuzz"),
-                    tree_line("tiny-skia"),
-                    tree_line("ttf-parser"),
-                    tree_line("usvg"),
-                    tree_line("zune-jpeg"),
-                )
-            ),
-        }
-        commands: list[Sequence[str]] = []
-
-        def loader(profile_id: str, _: Path) -> CargoArtifactRecipe:
-            return recipes[profile_id]
-
-        def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-            commands.append(command)
-            package = command[command.index("--package") + 1]
-            features = command[command.index("--features") + 1]
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                stdout=outputs[(package, features)],
-                stderr="",
-            )
-
-        fixture_claims = []
-        for claim in SEMANTIC_CLAIMS:
-            loaded = recipes[claim.profile_id]
-            fingerprint = closure_fingerprint(
-                parse_cargo_tree(
-                    outputs[(loaded.package, loaded.feature_argument)]
-                )
-            )
-            if loaded.build_target_kind == "target-set":
-                fixture_claims.append(
-                    replace(
-                        claim,
-                        approved_fingerprint="",
-                        approved_target_fingerprints=(
-                            (loaded.build_targets[0], fingerprint),
-                        ),
-                    )
-                )
-            else:
-                fixture_claims.append(
-                    replace(claim, approved_fingerprint=fingerprint)
-                )
-        observations = verify_claims(
-            fixture_claims,
-            runner=runner,
-            recipe_loader=loader,
-        )
-
-        self.assertEqual(len(commands), len(SEMANTIC_CLAIMS))
-        self.assertEqual(len(observations), len(SEMANTIC_CLAIMS))
-        for command in commands:
-            package = command[command.index("--package") + 1]
-            expected_target = (
-                "x86_64-unknown-linux-gnu"
-                if package == "merman-cli"
-                else PORTABLE_HOST_REFERENCE_TARGET
-            )
-            self.assertEqual(
-                command[command.index("--target") + 1],
-                expected_target,
-            )
-        pdf = next(
-            observation
-            for observation in observations
-            if observation.profile_id == "rust-export-pdf"
-        )
-        self.assertEqual(
-            pdf.observed_residual_packages,
-            (
-                "fontdb",
-                "gif",
-                "image-webp",
-                "krilla-svg",
-                "memmap2",
-                "png",
-                "resvg",
-                "rustybuzz",
-                "tiny-skia",
-                "ttf-parser",
-                "usvg",
-                "zune-jpeg",
-            ),
-        )
-
-    def test_target_set_runs_every_declared_target(self) -> None:
+    def test_every_target_runs_once_and_produces_runtime_evidence(self) -> None:
         targets = ("target-one", "target-two")
         loaded = recipe(
-            "multi-target",
+            "cross",
             package="root",
             build_target_kind="target-set",
             build_targets=targets,
         )
         output = tree_line("root")
         fingerprint = closure_fingerprint(parse_cargo_tree(output))
-        claim = ClosureClaim(
-            claim_id="multi-target",
-            profile_id="multi-target",
-            target=None,
-            required_packages=("root",),
-            forbidden_packages=(),
-            approved_target_fingerprints=tuple(
-                (target, fingerprint) for target in targets
-            ),
+        cases = tuple(
+            case(
+                "cross",
+                loaded_recipe=loaded,
+                loaded_claim=claim("cross", required=("root",)),
+                target=target,
+                fingerprint=fingerprint,
+            )
+            for target in targets
         )
         commands: list[Sequence[str]] = []
-
-        def loader(_: str, __: Path) -> CargoArtifactRecipe:
-            return loaded
 
         def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
 
-        observations = verify_claims(
-            (claim,),
-            runner=runner,
-            recipe_loader=loader,
-        )
+        observations = verify_cases(cases, runner=runner)
 
         self.assertEqual(
             tuple(command[command.index("--target") + 1] for command in commands),
@@ -779,71 +560,48 @@ class VerificationTests(unittest.TestCase):
             tuple(observation.closure_target for observation in observations),
             targets,
         )
-
-    def test_target_set_rejects_partial_or_duplicate_approvals(self) -> None:
-        loaded = recipe(
-            "multi-target",
-            package="root",
-            build_target_kind="target-set",
-            build_targets=("target-one", "target-two"),
+        self.assertEqual(
+            {observation.closure_scope for observation in observations},
+            {PROFILE_TARGET_SCOPE},
         )
 
-        def loader(_: str, __: Path) -> CargoArtifactRecipe:
-            return loaded
-
-        cases = (
-            (
-                (("target-one", "sha256:" + "0" * 64),),
-                "must match descriptor targets exactly",
-            ),
-            (
-                (
-                    ("target-one", "sha256:" + "0" * 64),
-                    ("target-one", "sha256:" + "0" * 64),
-                ),
-                "duplicate fingerprint targets",
-            ),
+    def test_identical_cargo_tree_commands_are_reused_across_claims(self) -> None:
+        loaded = recipe("shared", package="root")
+        output = tree_line("root")
+        fingerprint = closure_fingerprint(parse_cargo_tree(output))
+        cases = tuple(
+            case(
+                "shared",
+                loaded_recipe=loaded,
+                loaded_claim=claim("shared", required=("root",)),
+                fingerprint=fingerprint,
+            )
+            for _ in range(2)
         )
-        for target_fingerprints, message in cases:
-            with self.subTest(target_fingerprints=target_fingerprints):
-                claim = ClosureClaim(
-                    claim_id="multi-target",
-                    profile_id="multi-target",
-                    target=None,
-                    required_packages=("root",),
-                    forbidden_packages=(),
-                    approved_target_fingerprints=target_fingerprints,
-                )
-                with self.assertRaisesRegex(ClosureVerificationError, message):
-                    verify_claims(
-                        (claim,),
-                        runner=lambda _: self.fail("runner must not execute"),
-                        recipe_loader=loader,
-                        enforce_fingerprints=False,
-                    )
+        commands: list[Sequence[str]] = []
+
+        def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
+
+        observations = verify_cases(cases, runner=runner)
+
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(len(observations), 2)
 
     def test_failures_are_aggregated_across_profiles(self) -> None:
-        claims = (
-            ClosureClaim(
-                "one",
-                "one",
-                None,
-                ("root-one",),
-                ("bad-one",),
-                reference_target=PORTABLE_HOST_REFERENCE_TARGET,
-            ),
-            ClosureClaim(
-                "two",
-                "two",
-                None,
-                ("root-two",),
-                ("bad-two",),
-                reference_target=PORTABLE_HOST_REFERENCE_TARGET,
-            ),
+        cases = tuple(
+            case(
+                profile_id,
+                loaded_recipe=recipe(profile_id, package=profile_id),
+                loaded_claim=claim(
+                    profile_id,
+                    required=(f"root-{profile_id}",),
+                    forbidden=(f"bad-{profile_id}",),
+                ),
+            )
+            for profile_id in ("one", "two")
         )
-
-        def loader(profile_id: str, _: Path) -> CargoArtifactRecipe:
-            return recipe(profile_id, package=profile_id)
 
         def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
             package = command[command.index("--package") + 1]
@@ -855,50 +613,35 @@ class VerificationTests(unittest.TestCase):
             )
 
         with self.assertRaises(ClosureVerificationError) as raised:
-            verify_claims(
-                claims,
-                runner=runner,
-                recipe_loader=loader,
-                enforce_fingerprints=False,
-            )
+            verify_cases(cases, runner=runner, enforce_fingerprints=False)
 
         message = str(raised.exception)
-        self.assertIn("one (one, target=x86_64-unknown-linux-gnu)", message)
-        self.assertIn("two (two, target=x86_64-unknown-linux-gnu)", message)
+        self.assertIn("one-claim (one", message)
+        self.assertIn("two-claim (two", message)
         self.assertIn("required packages missing", message)
         self.assertIn("forbidden packages present", message)
 
     def test_runner_failure_is_fail_closed(self) -> None:
-        claim = ClosureClaim(
-            "failed",
-            "failed",
-            None,
-            ("failed",),
-            (),
-            reference_target=PORTABLE_HOST_REFERENCE_TARGET,
-        )
-
-        def loader(profile_id: str, _: Path) -> CargoArtifactRecipe:
-            return recipe(profile_id, package=profile_id)
-
         def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
             return subprocess.CompletedProcess(
-                command, 101, stdout="", stderr="dependency resolution failed"
+                command,
+                101,
+                stdout="",
+                stderr="dependency resolution failed",
             )
 
         with self.assertRaisesRegex(
-            ClosureVerificationError, "dependency resolution failed"
+            ClosureVerificationError,
+            "dependency resolution failed",
         ):
-            verify_claims(
-                (claim,),
-                runner=runner,
-                recipe_loader=loader,
-                enforce_fingerprints=False,
-            )
+            verify_cases((case(),), runner=runner, enforce_fingerprints=False)
 
     def test_unknown_profile_selection_is_rejected(self) -> None:
-        with self.assertRaisesRegex(ClosureVerificationError, "no dependency-closure claim"):
-            _select_claims(("not-a-profile",))
+        with self.assertRaisesRegex(
+            ClosureVerificationError,
+            "no dependency-closure approval",
+        ):
+            _select_cases((case(),), ("not-a-profile",))
 
 
 if __name__ == "__main__":

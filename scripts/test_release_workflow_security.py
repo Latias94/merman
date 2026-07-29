@@ -16,6 +16,10 @@ import uuid
 from pathlib import Path
 
 try:
+    from scripts.artifact_profile_recipe import (
+        load_artifact_profile,
+        load_artifact_profiles,
+    )
     from scripts.github_workflow_contract import (
         WorkflowContractError,
         load_workflow_contract as parse_workflow_structure,
@@ -23,6 +27,10 @@ try:
         workflow_step,
     )
 except ModuleNotFoundError:
+    from artifact_profile_recipe import (
+        load_artifact_profile,
+        load_artifact_profiles,
+    )
     from github_workflow_contract import (
         WorkflowContractError,
         load_workflow_contract as parse_workflow_structure,
@@ -35,7 +43,6 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 WEB_WORKSPACE_PACKAGE_JSON = ROOT / "platforms" / "web" / "package.json"
 WEB_DESCRIPTOR_JSON = ROOT / "platforms" / "web" / "web-surface-descriptor.json"
-ARTIFACT_PROFILE_DESCRIPTOR_JSON = ROOT / "capabilities" / "artifact-profiles-v1.json"
 RELEASE_SKILL = ROOT / ".agents" / "skills" / "merman-release" / "SKILL.md"
 APPLE_RELEASE_SMOKE = (
     ROOT
@@ -57,6 +64,12 @@ TAG_BOUND_SOURCE_WORKFLOWS = [
     WORKFLOW_ROOT / "release-apple.yml",
     WORKFLOW_ROOT / "release-android.yml",
     WORKFLOW_ROOT / "release-flutter.yml",
+]
+PUBLISH_WORKFLOWS = [
+    WORKFLOW_ROOT / "release.yml",
+    WORKFLOW_ROOT / "release-crates.yml",
+    WORKFLOW_ROOT / "release-web.yml",
+    *TAG_BOUND_SOURCE_WORKFLOWS,
 ]
 SOURCE_REF_WORKFLOWS = sorted(
     path
@@ -98,54 +111,37 @@ def web_package_manifest(entry: dict) -> Path:
     return ROOT / "platforms" / "web" / package_dir / "package.json"
 
 
-def artifact_profile(profile_id: str) -> dict:
-    descriptor = json.loads(ARTIFACT_PROFILE_DESCRIPTOR_JSON.read_text(encoding="utf-8"))
-    matches = [profile for profile in descriptor["profiles"] if profile["id"] == profile_id]
-    if len(matches) != 1:
-        raise AssertionError(f"expected one artifact profile {profile_id!r}, found {len(matches)}")
-    return matches[0]
-
-
 def exact_binary_build_command(profile_id: str) -> str:
-    profile = artifact_profile(profile_id)
-    cargo = profile["cargo"]
-    target = cargo["target"]
-    if cargo["profile"] != "release":
+    recipe = load_artifact_profile(profile_id)
+    if recipe.cargo_profile != "release":
         raise AssertionError(f"{profile_id} must use the release Cargo profile")
-    if cargo["default_features"] is not False:
+    if recipe.default_features is not False:
         raise AssertionError(f"{profile_id} must disable Cargo default features")
-    if target["kinds"] != ["bin"] or target["crate_types"] != ["bin"]:
+    if recipe.target_kinds != ("bin",) or recipe.crate_types != ("bin",):
         raise AssertionError(f"{profile_id} must select exactly one binary target")
-
-    command = [
-        "cargo",
-        "build",
-        "--release",
-        "--locked",
-        "--manifest-path",
-        cargo["manifest"],
-        "-p",
-        cargo["package"],
-        "--bin",
-        target["name"],
-        "--no-default-features",
-    ]
-    if cargo["features"]:
-        command.extend(["--features", ",".join(cargo["features"])])
-    return " ".join(command)
+    return (
+        f"python3 scripts/artifact_profile_recipe.py {profile_id} "
+        "--build-host --locked"
+    )
 
 
 def exact_dependency_gate_command(profile_id: str) -> str:
-    profile = artifact_profile(profile_id)
-    cargo = profile["cargo"]
-    if profile["semantic_target"] != "typst":
+    matches = [
+        profile
+        for profile in load_artifact_profiles()
+        if profile.profile_id == profile_id
+    ]
+    if len(matches) != 1:
+        raise AssertionError(f"expected one artifact profile {profile_id!r}")
+    profile = matches[0]
+    recipe = profile.cargo
+    if profile.semantic_target != "typst":
         raise AssertionError(f"{profile_id} must be a Typst artifact profile")
-    if cargo["default_features"] is not False:
+    if recipe.default_features is not False:
         raise AssertionError(f"{profile_id} must disable Cargo default features")
-    if cargo["build_target"] != {
-        "kind": "target-set",
-        "triples": ["wasm32-unknown-unknown"],
-    }:
+    if recipe.build_target_kind != "target-set" or recipe.build_targets != (
+        "wasm32-unknown-unknown",
+    ):
         raise AssertionError(f"{profile_id} must select the canonical WASM target")
     return (
         "cargo run --locked -p xtask -- profile-budget check-deps "
@@ -153,55 +149,70 @@ def exact_dependency_gate_command(profile_id: str) -> str:
     )
 
 
-def indented_block(text: str, marker: str) -> str:
-    lines = text.splitlines()
-    for index, line in enumerate(lines):
-        if line.strip() != marker:
-            continue
-        marker_indent = len(line) - len(line.lstrip(" "))
-        block: list[str] = []
-        for child in lines[index + 1 :]:
-            if child.strip() == "":
-                block.append(child)
-                continue
-            child_indent = len(child) - len(child.lstrip(" "))
-            if child_indent <= marker_indent:
-                break
-            block.append(child)
-        return "\n".join(block)
-    raise AssertionError(f"could not find {marker!r}")
+def workflow_document(path: Path) -> dict:
+    return parse_workflow_structure(path)
 
 
-def run_blocks(text: str) -> list[str]:
-    lines = text.splitlines()
-    blocks: list[str] = []
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped.startswith("run:"):
-            continue
+def workflow_run_blocks(path: Path) -> list[str]:
+    document = workflow_document(path)
+    return [
+        step["run"]
+        for job in document["jobs"].values()
+        for step in job["steps"]
+        if isinstance(step.get("run"), str)
+    ]
 
-        indent = len(line) - len(line.lstrip(" "))
-        inline = stripped.removeprefix("run:").strip()
-        if inline not in {"|", ">"}:
-            blocks.append(inline)
-            continue
 
-        block: list[str] = []
-        for child in lines[index + 1 :]:
-            if child.strip() == "":
-                block.append(child)
-                continue
-            child_indent = len(child) - len(child.lstrip(" "))
-            if child_indent <= indent:
-                break
-            block.append(child)
-        blocks.append("\n".join(block))
-    return blocks
+def contract_text(value: object) -> str:
+    """Render parsed contract values for concise substring assertions."""
+    lines: list[str] = []
+
+    def append(item: object) -> None:
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if isinstance(child, (dict, list)):
+                    lines.append(f"{key}:")
+                    append(child)
+                else:
+                    lines.append(f"{key}: {child}")
+        elif isinstance(item, list):
+            for child in item:
+                append(child)
+        else:
+            lines.append(str(item))
+
+    append(value)
+    return "\n".join(lines)
+
+
+def job_contract(path: Path, job_id: str) -> dict:
+    return workflow_job(workflow_document(path), job_id)
+
+
+def job_contract_text(path: Path, job_id: str) -> str:
+    return contract_text(job_contract(path, job_id))
+
+
+def step_contract_text(path: Path, job_id: str, step_name: str) -> str:
+    return contract_text(workflow_step(job_contract(path, job_id), name=step_name))
+
+
+def checkout_steps(contract: dict) -> list[dict]:
+    if "jobs" in contract:
+        jobs = contract["jobs"].values()
+    else:
+        jobs = (contract,)
+    return [
+        step
+        for job in jobs
+        for step in job.get("steps", [])
+        if isinstance(step.get("uses"), str)
+        and step["uses"].startswith("actions/checkout@")
+    ]
 
 
 def validation_script(path: Path) -> str:
-    text = read_workflow(path)
-    for block in run_blocks(text):
+    for block in workflow_run_blocks(path):
         if (
             "DISPATCH_RELEASE_TAG" in block or "DISPATCH_SOURCE_REF" in block
         ) and "GITHUB_OUTPUT" in block:
@@ -267,28 +278,6 @@ def parse_github_output(text: str) -> dict[str, str]:
     return outputs
 
 
-def checkout_blocks(text: str) -> list[str]:
-    lines = text.splitlines()
-    blocks: list[str] = []
-    for index, line in enumerate(lines):
-        if "uses: actions/checkout" not in line.strip():
-            continue
-
-        indent = len(line) - len(line.lstrip(" "))
-        step_indent = indent if line.lstrip().startswith("- ") else max(0, indent - 2)
-        block = [line]
-        for child in lines[index + 1 :]:
-            if child.strip() == "":
-                block.append(child)
-                continue
-            child_indent = len(child) - len(child.lstrip(" "))
-            if child_indent <= step_indent:
-                break
-            block.append(child)
-        blocks.append("\n".join(block))
-    return blocks
-
-
 def npm_publish_provenance_disabled_patterns() -> list[re.Pattern[str]]:
     return [
         re.compile(r"(?:^|\s)--(?:no-)?provenance\s*=\s*false(?:\s|$)", re.IGNORECASE),
@@ -308,47 +297,44 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 class ReleaseWorkflowSecurityTests(unittest.TestCase):
     def test_release_run_blocks_do_not_interpolate_dispatch_inputs(self) -> None:
         for path in RELEASE_WORKFLOWS:
-            text = read_workflow(path)
-            for index, block in enumerate(run_blocks(text)):
+            for index, block in enumerate(workflow_run_blocks(path)):
                 with self.subTest(workflow=path.name, run_block=index):
                     self.assertNotIn("${{ inputs.", block)
 
     def test_source_ref_checkouts_use_validated_output(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
+            document = workflow_document(path)
             text = read_workflow(path)
-
-            checkout_count = text.count("uses: actions/checkout")
-            local_validated_ref_count = len(
-                re.findall(
-                    r"(?m)^\s*ref:\s*\$\{\{ steps\.release\.outputs\.source_ref \}\}\s*$",
-                    text,
-                )
-            )
-            validated_ref_count = text.count("ref: ${{ needs.validate-inputs.outputs.source_ref }}")
-            validated_sha_count = text.count("ref: ${{ needs.validate-inputs.outputs.source_sha }}")
-            pinned_ref_count = text.count("ref: ${{ needs.preflight.outputs.source_sha }}")
-            workflow_ref_count = text.count("ref: ${{ github.workflow_sha }}")
+            checkouts = checkout_steps(document)
+            refs = [step["with"].get("ref") for step in checkouts]
+            allowed_refs = {
+                "${{ steps.release.outputs.source_ref }}",
+                "${{ needs.validate-inputs.outputs.source_ref }}",
+                "${{ needs.validate-inputs.outputs.source_sha }}",
+                "${{ needs.preflight.outputs.source_sha }}",
+                "${{ github.workflow_sha }}",
+            }
             with self.subTest(workflow=path.name):
-                self.assertEqual(
-                    local_validated_ref_count
-                    + validated_ref_count
-                    + validated_sha_count
-                    + pinned_ref_count
-                    + workflow_ref_count,
-                    checkout_count,
+                self.assertTrue(checkouts)
+                self.assertTrue(all(ref in allowed_refs for ref in refs))
+                validate_checkouts = checkout_steps(
+                    workflow_job(document, "validate-inputs")
                 )
                 self.assertGreaterEqual(
-                    workflow_ref_count,
-                    indented_block(text, "validate-inputs:").count(
-                        "ref: ${{ github.workflow_sha }}"
+                    refs.count("${{ github.workflow_sha }}"),
+                    sum(
+                        step["with"].get("ref") == "${{ github.workflow_sha }}"
+                        for step in validate_checkouts
                     ),
                 )
                 self.assertNotIn("ref: ${{ inputs.source_ref }}", text)
                 self.assertNotIn("inputs.source_ref ||", text)
 
     def test_release_web_validation_uses_the_trusted_canonical_version_parser(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
-        validate_job = indented_block(text, "validate-inputs:")
+        validate_job = job_contract_text(
+            WORKFLOW_ROOT / "release-web.yml",
+            "validate-inputs",
+        )
 
         self.assertIn("uses: actions/checkout@v6", validate_job)
         self.assertIn("ref: ${{ github.workflow_sha }}", validate_job)
@@ -361,13 +347,12 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self,
     ) -> None:
         for path in TAG_BOUND_SOURCE_WORKFLOWS:
-            text = read_workflow(path)
-            dispatch = indented_block(text, "workflow_dispatch:")
-            validate_job = indented_block(text, "validate-inputs:")
-            build_job = indented_block(text, "build:")
+            document = workflow_document(path)
+            validate_job = contract_text(workflow_job(document, "validate-inputs"))
+            build_job = contract_text(workflow_job(document, "build"))
 
             with self.subTest(workflow=path.name):
-                self.assertNotIn("source_ref:", dispatch)
+                self.assertNotIn("source_ref:", document["header"])
                 self.assertIn(
                     "source_sha: ${{ steps.source.outputs.source_sha }}",
                     validate_job,
@@ -399,8 +384,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     "ref: ${{ needs.validate-inputs.outputs.source_ref }}",
                     build_job,
                 )
-                for block in checkout_blocks(text):
-                    self.assertIn("persist-credentials: false", block)
+                for step in checkout_steps(document):
+                    self.assertEqual(step["with"].get("persist-credentials"), "false")
 
     def test_native_release_validation_derives_source_ref_from_release_tag(
         self,
@@ -461,30 +446,28 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn("source_ref", outputs)
 
-    def test_native_release_workflows_verify_all_version_projections(self) -> None:
-        for path in TAG_BOUND_SOURCE_WORKFLOWS:
-            build_job = indented_block(read_workflow(path), "build:")
-
+    def test_publish_workflows_verify_all_version_and_readme_projections(self) -> None:
+        for path in PUBLISH_WORKFLOWS:
             with self.subTest(workflow=path.name):
                 self.assertIn(
-                    'scripts/release-version.py check --version "$VERSION"',
-                    build_job,
+                    "scripts/release-version.py check --version",
+                    read_workflow(path),
                 )
 
     def test_native_release_workflows_fail_closed_on_generated_projection_drift(
         self,
     ) -> None:
-        apple = indented_block(
-            read_workflow(WORKFLOW_ROOT / "release-apple.yml"),
-            "build:",
+        apple = job_contract_text(
+            WORKFLOW_ROOT / "release-apple.yml",
+            "build",
         )
-        flutter = indented_block(
-            read_workflow(WORKFLOW_ROOT / "release-flutter.yml"),
-            "build:",
+        flutter = job_contract_text(
+            WORKFLOW_ROOT / "release-flutter.yml",
+            "build",
         )
-        python = indented_block(
-            read_workflow(WORKFLOW_ROOT / "release-python.yml"),
-            "build:",
+        python = job_contract_text(
+            WORKFLOW_ROOT / "release-python.yml",
+            "build",
         )
 
         self.assertIn(
@@ -510,9 +493,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
 
     def test_flutter_release_smokes_the_packaged_macos_library(self) -> None:
-        build_job = indented_block(
-            read_workflow(WORKFLOW_ROOT / "release-flutter.yml"),
-            "build:",
+        build_job = job_contract_text(
+            WORKFLOW_ROOT / "release-flutter.yml",
+            "build",
         )
 
         self.assertIn(
@@ -540,15 +523,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_source_ref_checkouts_do_not_persist_credentials(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
-            text = read_workflow(path)
+            steps = checkout_steps(workflow_document(path))
+            with self.subTest(workflow=path.name, checkout_count=len(steps)):
+                self.assertTrue(steps)
 
-            blocks = checkout_blocks(text)
-            with self.subTest(workflow=path.name, checkout_count=len(blocks)):
-                self.assertGreater(len(blocks), 0)
-
-            for index, block in enumerate(blocks):
+            for index, step in enumerate(steps):
                 with self.subTest(workflow=path.name, checkout=index):
-                    self.assertIn("persist-credentials: false", block)
+                    self.assertEqual(step["with"].get("persist-credentials"), "false")
 
     def test_validation_jobs_precede_release_checkouts(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
@@ -560,9 +541,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_validation_jobs_expose_safe_source_ref_output(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
-            text = read_workflow(path)
-
-            validate_job = indented_block(text, "validate-inputs:")
+            validate_job = job_contract_text(path, "validate-inputs")
             with self.subTest(workflow=path.name):
                 self.assertIn("GITHUB_OUTPUT", validate_job)
                 self.assertRegex(validate_job, re.compile(r"""(printf 'source_ref=%s\\n'|echo "source_ref=)"""))
@@ -573,7 +552,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             if "source_ref:" not in text:
                 continue
 
-            validate_job = indented_block(text, "validate-inputs:")
+            validate_job = job_contract_text(path, "validate-inputs")
             with self.subTest(workflow=path.name):
                 self.assertRegex(validate_job, re.compile(r"""(printf 'version=%s\\n'|echo "version=)"""))
                 if "release_tag:" in text:
@@ -695,18 +674,26 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 )
                 self.assertNotIn("source_ref", outputs)
 
-    def test_validation_scripts_reject_full_sha_source_ref_values(self) -> None:
+    def test_only_release_preflight_accepts_full_sha_source_ref_values(self) -> None:
         full_sha = "0123456789abcdef0123456789abcdef01234567"
         for path in SOURCE_REF_WORKFLOWS:
             with self.subTest(workflow=path.name):
                 result, outputs = run_workflow_validation(path, source_ref=full_sha)
 
-                self.assertNotEqual(
-                    result.returncode,
-                    0,
-                    msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
-                )
-                self.assertNotIn("source_ref", outputs)
+                if path.name == "release-preflight.yml":
+                    self.assertEqual(
+                        result.returncode,
+                        0,
+                        msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                    )
+                    self.assertEqual(outputs["source_ref"], full_sha)
+                else:
+                    self.assertNotEqual(
+                        result.returncode,
+                        0,
+                        msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                    )
+                    self.assertNotIn("source_ref", outputs)
 
     def test_release_validation_scripts_reject_mismatched_source_tags(self) -> None:
         for path in SOURCE_REF_RELEASE_WORKFLOWS:
@@ -728,8 +715,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
     def test_validation_jobs_reject_untrusted_source_ref_shapes(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
             text = read_workflow(path)
-
-            validate_job = indented_block(text, "validate-inputs:")
+            validate_job = job_contract_text(path, "validate-inputs")
             with self.subTest(workflow=path.name):
                 self.assertIn('[[ "$SOURCE_REF" != *$\'\\n\'*', validate_job)
                 self.assertIn("source_ref must be", validate_job)
@@ -739,8 +725,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_release_validation_jobs_reject_untrusted_ref_and_version_shapes(self) -> None:
         for path in SOURCE_REF_RELEASE_WORKFLOWS:
-            text = read_workflow(path)
-            validate_job = indented_block(text, "validate-inputs:")
+            validate_job = job_contract_text(path, "validate-inputs")
             with self.subTest(workflow=path.name):
                 self.assertTrue(
                     ("semver_re=" in validate_job and "0|[1-9]" in validate_job)
@@ -760,9 +745,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_validation_jobs_do_not_hold_publish_permissions(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
-            text = read_workflow(path)
-
-            validate_job = indented_block(text, "validate-inputs:")
+            validate_job = job_contract_text(path, "validate-inputs")
             with self.subTest(workflow=path.name):
                 self.assertNotIn("contents: write", validate_job)
                 self.assertNotIn("id-token: write", validate_job)
@@ -772,9 +755,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             WORKFLOW_ROOT / "release-android.yml",
             WORKFLOW_ROOT / "release-apple.yml",
         ]:
-            text = read_workflow(path)
-            build_job = indented_block(text, "build:")
-            upload_job = indented_block(text, "upload-release:")
+            build_job = job_contract_text(path, "build")
+            upload_job = job_contract_text(path, "upload-release")
 
             with self.subTest(workflow=path.name):
                 self.assertIn("contents: read", build_job)
@@ -788,14 +770,23 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn("::warning::GitHub Release", upload_job)
 
     def test_crates_token_upload_step_is_isolated_from_preflight(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "release-crates.yml")
-        preflight_job = indented_block(text, "preflight:")
-        web_owner_job = indented_block(text, "web-owner-preflight:")
-        typst_owner_job = indented_block(text, "typst-owner-preflight:")
-        publish_job = indented_block(text, "publish:")
-        preflight_step = indented_block(text, "- name: Preflight crates in dependency order")
-        upload_step = indented_block(text, "- name: Upload crates to crates.io")
-        upload_run = upload_step.split("run: |", 1)[1]
+        path = WORKFLOW_ROOT / "release-crates.yml"
+        text = read_workflow(path)
+        document = workflow_document(path)
+        preflight = workflow_job(document, "preflight")
+        publish = workflow_job(document, "publish")
+        preflight_job = contract_text(preflight)
+        web_owner_job = contract_text(workflow_job(document, "web-owner-preflight"))
+        typst_owner_job = contract_text(
+            workflow_job(document, "typst-owner-preflight")
+        )
+        publish_job = contract_text(publish)
+        preflight_step = contract_text(
+            workflow_step(preflight, name="Preflight crates in dependency order")
+        )
+        upload = workflow_step(publish, name="Upload crates to crates.io")
+        upload_step = contract_text(upload)
+        upload_run = upload["run"]
 
         self.assertNotIn("--dry-run", preflight_step)
         for job in [preflight_job, web_owner_job, typst_owner_job]:
@@ -844,10 +835,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
 
     def test_trusted_pypi_publish_job_only_downloads_artifact_and_publishes(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "release-python.yml")
-        verify_job = indented_block(text, "verify-wheel-metadata:")
-        github_release_job = indented_block(text, "github-release:")
-        publish_job = indented_block(text, "publish:")
+        path = WORKFLOW_ROOT / "release-python.yml"
+        publish = job_contract(path, "publish")
+        verify_job = job_contract_text(path, "verify-wheel-metadata")
+        github_release_job = job_contract_text(path, "github-release")
+        publish_job = contract_text(publish)
 
         self.assertIn("contents: read", verify_job)
         self.assertNotIn("contents: write", verify_job)
@@ -870,7 +862,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("exit 1", github_release_job)
 
         self.assertIn("if: ${{ inputs.publish_to_pypi }}", publish_job)
-        self.assertIn("- github-release", publish_job)
+        self.assertIn("github-release", publish["needs"])
         self.assertIn("environment: pypi", publish_job)
         self.assertIn("contents: read", publish_job)
         self.assertNotIn("contents: write", publish_job)
@@ -889,16 +881,18 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn(forbidden, publish_job)
 
     def test_trusted_npm_publish_job_only_downloads_artifact_and_publishes(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
-        publish_job = indented_block(text, "publish:")
+        publish_job = job_contract_text(
+            WORKFLOW_ROOT / "release-web.yml",
+            "publish",
+        )
 
         self.assertIn("runs-on: ubuntu-24.04", publish_job)
         self.assertIn("environment: npm", publish_job)
         self.assertIn("contents: read", publish_job)
         self.assertIn("id-token: write", publish_job)
         self.assertIn("actions/setup-node@", publish_job)
-        self.assertIn('node-version: "24"', publish_job)
-        self.assertIn('registry-url: "https://registry.npmjs.org"', publish_job)
+        self.assertIn("node-version: 24", publish_job)
+        self.assertIn("registry-url: https://registry.npmjs.org", publish_job)
         self.assertIn("package-manager-cache: false", publish_job)
         self.assertIn("Checkout trusted release verifier", publish_job)
         self.assertIn("ref: ${{ github.workflow_sha }}", publish_job)
@@ -973,6 +967,29 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("--target-dist-tag staging", pack["run"])
         self.assertNotIn("npm pack --dry-run", pack["run"])
 
+    def test_release_preflight_can_pin_an_immutable_dispatch_sha(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
+        validate = workflow_job(workflow, "validate-inputs")
+        input_step = workflow_step(validate, name="Validate release inputs")
+        pin_step = workflow_step(validate, name="Pin resolved source commit")
+
+        self.assertIn(
+            '[[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]',
+            input_step["run"],
+        )
+        self.assertEqual(
+            pin_step["env"]["EXPECTED_SOURCE_REF"],
+            "${{ steps.release.outputs.source_ref }}",
+        )
+        self.assertIn(
+            'test "$source_sha" = "$EXPECTED_SOURCE_REF"',
+            pin_step["run"],
+        )
+        self.assertIn(
+            'printf \'source_sha=%s\\n\' "$source_sha"',
+            pin_step["run"],
+        )
+
     def test_release_preflight_recomputes_exact_rust_license_reports(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
         preflight = workflow_job(workflow, "versions-and-packages")
@@ -990,8 +1007,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         )
 
     def test_trusted_npm_publish_job_does_not_disable_provenance(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
-        publish_job = indented_block(text, "publish:")
+        publish_job = job_contract_text(
+            WORKFLOW_ROOT / "release-web.yml",
+            "publish",
+        )
 
         self.assertNotIn("--provenance", publish_job)
         assert_no_npm_provenance_disable(self, publish_job)
@@ -1060,8 +1079,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 assert_no_npm_provenance_disable(self, text)
 
     def test_trusted_pubdev_publish_job_only_downloads_artifact_and_publishes(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "release-flutter.yml")
-        publish_job = indented_block(text, "publish:")
+        publish_job = job_contract_text(
+            WORKFLOW_ROOT / "release-flutter.yml",
+            "publish",
+        )
 
         self.assertIn("id-token: write", publish_job)
         self.assertIn("actions/download-artifact", publish_job)
@@ -1106,15 +1127,16 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
     def test_release_docs_use_separate_exact_lsp_and_cli_recipes(self) -> None:
         lsp_command = exact_binary_build_command("lsp-stdio-release")
         cli_command = exact_binary_build_command("cli-release")
-        for relative_path in [
-            "docs/release/PACKAGE_SURFACES.md",
-            "docs/release/RELEASING.md",
-        ]:
-            with self.subTest(path=relative_path):
-                text = (ROOT / relative_path).read_text(encoding="utf-8")
-                self.assertIn(lsp_command, text)
-                self.assertIn(cli_command, text)
-                self.assertNotIn("-p merman-lsp -p merman-cli", text)
+        releasing = (ROOT / "docs/release/RELEASING.md").read_text(encoding="utf-8")
+        self.assertIn(lsp_command, releasing)
+        self.assertIn(cli_command, releasing)
+        self.assertNotIn("-p merman-lsp -p merman-cli", releasing)
+
+        surfaces_doc = (ROOT / "docs/release/PACKAGE_SURFACES.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn(lsp_command, surfaces_doc)
+        self.assertNotIn(cli_command, surfaces_doc)
 
         surfaces = json.loads((ROOT / "docs/release/SURFACES.json").read_text(encoding="utf-8"))
         by_id = {surface["id"]: surface for surface in surfaces["surfaces"]}
@@ -1129,12 +1151,16 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
         for relative_path in [
             "crates/merman-typst-plugin/README.md",
-            "docs/release/PACKAGE_SURFACES.md",
             "docs/release/RELEASING.md",
         ]:
             with self.subTest(path=relative_path):
                 text = (ROOT / relative_path).read_text(encoding="utf-8")
                 self.assertIn(command, text)
+
+        surfaces_doc = (ROOT / "docs/release/PACKAGE_SURFACES.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn(command, surfaces_doc)
 
         surfaces = json.loads(
             (ROOT / "docs/release/SURFACES.json").read_text(encoding="utf-8")
@@ -1150,14 +1176,15 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
         for profile_id in ["cli-release", "lsp-stdio-release"]:
             with self.subTest(profile=profile_id):
-                profile = artifact_profile(profile_id)
-                cargo = profile["cargo"]
-                actual_packages.add(cargo["package"])
-                manifest = tomllib.loads((ROOT / cargo["manifest"]).read_text(encoding="utf-8"))
+                recipe = load_artifact_profile(profile_id)
+                actual_packages.add(recipe.package)
+                manifest = tomllib.loads(
+                    (ROOT / recipe.manifest).read_text(encoding="utf-8")
+                )
                 dist = manifest["package"]["metadata"]["dist"]
-                self.assertIs(dist["default-features"], cargo["default_features"])
-                self.assertEqual(dist["features"], cargo["features"])
-                self.assertEqual(set(cargo["build_target"]["triples"]), expected_targets)
+                self.assertIs(dist["default-features"], recipe.default_features)
+                self.assertEqual(dist["features"], list(recipe.features))
+                self.assertEqual(set(recipe.build_targets), expected_targets)
 
         self.assertEqual(actual_packages, expected_packages)
 
@@ -1380,6 +1407,20 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     steps:
                       - run: echo safe
             """,
+            "folded-run-scalar": """
+                jobs:
+                  build:
+                    steps:
+                      - run: >
+                          echo unsupported
+            """,
+            "chomped-run-scalar": """
+                jobs:
+                  build:
+                    steps:
+                      - run: |-
+                          echo unsupported
+            """,
             "yaml-alias": """
                 permissions:
                   contents: read
@@ -1400,17 +1441,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     with self.assertRaises(WorkflowContractError):
                         parse_workflow_structure(workflow)
 
-    def test_workflow_contract_supports_standard_run_block_scalar_headers(self) -> None:
+    def test_workflow_contract_supports_literal_run_block_scalars(self) -> None:
         source = """
             jobs:
               build:
                 steps:
-                  - name: Folded command
-                    run: >-
-                      echo first
-                      second
                   - name: Literal command
-                    run: |+
+                    run: |
                       echo third
                       echo fourth
         """
@@ -1420,7 +1457,6 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             document = parse_workflow_structure(workflow)
 
         job = workflow_job(document, "build")
-        self.assertEqual(workflow_step(job, name="Folded command")["run"], "echo first second")
         self.assertEqual(
             workflow_step(job, name="Literal command")["run"],
             "echo third\necho fourth",
@@ -1444,19 +1480,119 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
 class CiWorkflowSecurityTests(unittest.TestCase):
     def test_ci_workflow_declares_read_only_contents_permission(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "ci.yml")
-        header = text.split("\njobs:", 1)[0]
-
-        self.assertIn("permissions:\n  contents: read", header)
+        workflow = workflow_document(WORKFLOW_ROOT / "ci.yml")
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
 
     def test_ci_checkouts_do_not_persist_credentials(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "ci.yml")
-        blocks = checkout_blocks(text)
+        steps = checkout_steps(workflow_document(WORKFLOW_ROOT / "ci.yml"))
 
-        self.assertGreater(len(blocks), 0)
-        for index, block in enumerate(blocks):
+        self.assertTrue(steps)
+        for index, step in enumerate(steps):
             with self.subTest(checkout=index):
-                self.assertIn("persist-credentials: false", block)
+                self.assertEqual(step["with"].get("persist-credentials"), "false")
+
+    def test_ci_runs_node_candidate_contracts_against_the_nested_lockfile(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "ci.yml")
+        job = workflow_job(workflow, "build-test")
+        setup = workflow_step(job, name="Setup Node for generated Mermaid artifacts")
+        install = workflow_step(
+            job, name="Install Node candidate development dependencies"
+        )
+        verify = workflow_step(
+            job, name="Verify Node candidate contracts and nested lock freshness"
+        )
+
+        self.assertEqual(
+            setup["with"]["cache-dependency-path"],
+            "platforms/node/package-lock.json\ntools/mermaid-cli/package-lock.json\n",
+        )
+        self.assertEqual(install["run"], "npm ci --prefix platforms/node")
+        self.assertEqual(verify["run"], "npm test --prefix platforms/node")
+        self.assertLess(job["steps"].index(install), job["steps"].index(verify))
+
+    def test_ci_proves_binding_catalog_resists_external_timing_unification(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "ci.yml")
+        job = workflow_job(workflow, "build-test")
+        binding_step = workflow_step(
+            job, name="Test external Cargo feature unification contract"
+        )
+        ffi_step = workflow_step(job, name="Test C FFI artifact-profile consumer smoke")
+
+        for contract in (
+            "cargo nextest run --locked -p merman-bindings-core --no-default-features",
+            "--features merman-bindings-core/svg,merman/math,merman/system-timing",
+            "artifact_profile_recipe.py apple-uniffi-native",
+            'qualified_features="merman-uniffi/${features//,/,merman-uniffi/}"',
+            "cargo nextest run --locked -p merman-uniffi -p merman --no-default-features",
+            '--features "$qualified_features,merman/system-timing"',
+            "test(engine_exposes_metadata)",
+        ):
+            self.assertIn(contract, binding_step["run"])
+        self.assertIn(
+            'qualified_features="merman-ffi/${features//,/,merman-ffi/}"',
+            ffi_step["run"],
+        )
+        self.assertIn(
+            "cargo nextest run --locked -p merman-ffi -p merman "
+            "--no-default-features",
+            ffi_step["run"],
+        )
+        self.assertIn(
+            '--features "$qualified_features,merman/system-timing"',
+            ffi_step["run"],
+        )
+
+    def test_ci_compiles_the_apple_package_with_swift_5_9(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "ci.yml")
+        job = workflow_job(workflow, "apple-swift-5-9-smoke")
+
+        self.assertEqual(job["runs-on"], "macos-14")
+
+        select_step = workflow_step(
+            job, name="Select Xcode 15.2 and verify Swift 5.9"
+        )
+        self.assertIn(
+            "sudo xcode-select --switch "
+            "/Applications/Xcode_15.2.app/Contents/Developer",
+            select_step["run"],
+        )
+        self.assertIn(
+            "grep -Eq 'Apple Swift version 5\\.9",
+            select_step["run"],
+        )
+
+        toolchain_step = workflow_step(job, name="Install Rust toolchain")
+        self.assertEqual(toolchain_step["uses"], "dtolnay/rust-toolchain@1.95.0")
+        self.assertEqual(
+            toolchain_step["with"]["targets"],
+            "aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,"
+            "aarch64-apple-darwin,x86_64-apple-darwin",
+        )
+
+        build_step = workflow_step(
+            job, name="Build Apple XCFramework with Swift 5.9"
+        )
+        self.assertEqual(
+            build_step["env"]["MERMAN_AUTO_INSTALL_RUST_TARGETS"],
+            "false",
+        )
+        self.assertEqual(
+            build_step["run"],
+            "bash scripts/build-apple-xcframework.sh",
+        )
+
+        validation_step = workflow_step(job, name="Validate Swift 5.9 package")
+        for contract in (
+            "swift package describe",
+            "swift build",
+            "swift build --triple arm64-apple-ios14.0",
+            "swift build --triple arm64-apple-ios14.0-simulator",
+            "xcrun --sdk iphoneos --show-sdk-path",
+            "xcrun --sdk iphonesimulator --show-sdk-path",
+            "swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke",
+            "git diff --exit-code -- platforms/apple/Sources/Merman/Generated",
+        ):
+            self.assertIn(contract, validation_step["run"])
 
     def test_ci_pins_cypress_corpus_source_alignment(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "ci.yml")
@@ -1477,57 +1613,99 @@ class CiWorkflowSecurityTests(unittest.TestCase):
             text,
         )
 
+    def test_ci_prepares_pinned_generated_artifact_inputs_before_verification(self) -> None:
+        workflow_path = WORKFLOW_ROOT / "ci.yml"
+        text = read_workflow(workflow_path)
+        workflow = parse_workflow_structure(workflow_path)
+        job = workflow_job(workflow, "build-test")
+        step_names = [
+            step["name"]
+            for step in job["steps"]
+            if isinstance(step, dict) and isinstance(step.get("name"), str)
+        ]
+
+        verification_index = step_names.index("Verify generated architecture contracts")
+        reference_index = step_names.index(
+            "Verify pinned Mermaid reference before runtime install"
+        )
+        runtime_install_index = step_names.index("Install pinned Mermaid runtime")
+        self.assertLess(reference_index, runtime_install_index)
+        self.assertLess(
+            step_names.index("Setup Node for generated Mermaid artifacts"),
+            verification_index,
+        )
+        self.assertLess(
+            runtime_install_index,
+            verification_index,
+        )
+        self.assertLess(
+            step_names.index("Checkout pinned DOMPurify source"),
+            verification_index,
+        )
+        self.assertLess(
+            step_names.index("Verify pinned DOMPurify source checkout"),
+            verification_index,
+        )
+
+        self.assertIn('print(bundle["sanitizer"]["source"]["commit"])', text)
+        self.assertIn("repository: cure53/DOMPurify", text)
+        self.assertIn("ref: ${{ steps.dompurify-source.outputs.commit }}", text)
+        self.assertIn("path: repo-ref/dompurify", text)
+        self.assertIn("dist/purify.cjs.js", text)
+        self.assertIn(
+            "DOMPURIFY_SOURCE_COMMIT: ${{ steps.dompurify-source.outputs.commit }}",
+            text,
+        )
+
 
 class PagesWorkflowSecurityTests(unittest.TestCase):
     def test_pages_workflow_header_is_read_only(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "pages.yml")
-        header = text.split("\njobs:", 1)[0]
-
-        self.assertIn("permissions:\n  contents: read", header)
-        self.assertNotIn("pages: write", header)
-        self.assertNotIn("id-token: write", header)
+        workflow = workflow_document(WORKFLOW_ROOT / "pages.yml")
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
 
     def test_pages_build_job_does_not_hold_deploy_permissions(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "pages.yml")
-        build_job = indented_block(text, "build:")
-        blocks = checkout_blocks(build_job)
+        build = job_contract(WORKFLOW_ROOT / "pages.yml", "build")
+        steps = checkout_steps(build)
 
-        self.assertIn("permissions:\n      contents: read", build_job)
-        self.assertNotIn("pages: write", build_job)
-        self.assertNotIn("id-token: write", build_job)
-        self.assertGreater(len(blocks), 0)
-        for index, block in enumerate(blocks):
+        self.assertEqual(build["permissions"], {"contents": "read"})
+        self.assertTrue(steps)
+        for index, step in enumerate(steps):
             with self.subTest(checkout=index):
-                self.assertIn("persist-credentials: false", block)
+                self.assertEqual(step["with"].get("persist-credentials"), "false")
 
     def test_pages_deploy_job_owns_pages_write_permissions(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "pages.yml")
-        deploy_job = indented_block(text, "deploy:")
-
-        self.assertIn("pages: write", deploy_job)
-        self.assertIn("id-token: write", deploy_job)
-        self.assertIn("uses: actions/deploy-pages", deploy_job)
+        deploy = job_contract(WORKFLOW_ROOT / "pages.yml", "deploy")
+        self.assertEqual(
+            deploy["permissions"],
+            {"contents": "read", "id-token": "write", "pages": "write"},
+        )
+        self.assertTrue(
+            any(
+                step.get("uses", "").startswith("actions/deploy-pages@")
+                for step in deploy["steps"]
+            )
+        )
 
 
 class PerformanceWorkflowSecurityTests(unittest.TestCase):
     def test_performance_head_jobs_do_not_hold_comment_tokens(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
-        for job_name in ["regression:", "frontmatter:"]:
-            job = indented_block(text, job_name)
-            with self.subTest(job=job_name.removesuffix(":")):
+        path = WORKFLOW_ROOT / "performance.yml"
+        for job_name in ["regression", "frontmatter"]:
+            job = job_contract_text(path, job_name)
+            with self.subTest(job=job_name):
                 self.assertNotIn("issues: write", job)
                 self.assertNotIn("pull-requests: write", job)
                 self.assertNotIn("GH_TOKEN:", job)
                 self.assertNotIn("gh api", job)
 
     def test_performance_comment_jobs_are_isolated_from_pr_checkout(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
+        path = WORKFLOW_ROOT / "performance.yml"
         for job_name, artifact in [
-            ("regression-comment:", "perf-regression"),
-            ("frontmatter-comment:", "perf-frontmatter"),
+            ("regression-comment", "perf-regression"),
+            ("frontmatter-comment", "perf-frontmatter"),
         ]:
-            job = indented_block(text, job_name)
-            with self.subTest(job=job_name.removesuffix(":")):
+            job = job_contract_text(path, job_name)
+            with self.subTest(job=job_name):
                 self.assertIn("issues: write", job)
                 self.assertIn("actions/download-artifact", job)
                 self.assertIn(f"name: {artifact}", job)
@@ -1538,8 +1716,7 @@ class PerformanceWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotIn("tools/bench/", job)
 
     def test_performance_paths_cover_render_dependencies(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
-        paths = indented_block(text, "paths:")
+        paths = workflow_document(WORKFLOW_ROOT / "performance.yml")["header"]
 
         self.assertIn('"Cargo.toml"', paths)
         self.assertIn('"Cargo.lock"', paths)
@@ -1547,48 +1724,56 @@ class PerformanceWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('"crates/roughr/**"', paths)
 
     def test_performance_comment_bodies_are_rendered_before_artifact_upload(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
+        path = WORKFLOW_ROOT / "performance.yml"
         cases = [
             (
-                "regression:",
-                "- name: Render regression PR comment",
-                "- name: Upload regression artifacts",
+                "regression",
+                "Render regression PR comment",
+                "Upload regression artifacts",
                 "head/target/performance/pr_comment.md",
             ),
             (
-                "frontmatter:",
-                "- name: Render frontmatter PR comment",
-                "- name: Upload frontmatter artifacts",
+                "frontmatter",
+                "Render frontmatter PR comment",
+                "Upload frontmatter artifacts",
                 "head/target/performance/frontmatter_pr_comment.md",
             ),
         ]
 
         for job_name, render_step, upload_step, comment_path in cases:
-            job = indented_block(text, job_name)
-            upload_block = indented_block(job, upload_step)
-            with self.subTest(job=job_name.removesuffix(":")):
-                self.assertLess(job.index(render_step), job.index(upload_step))
-                self.assertIn(comment_path, upload_block)
+            job = job_contract(path, job_name)
+            step_names = [step.get("name") for step in job["steps"]]
+            upload = workflow_step(job, name=upload_step)
+            with self.subTest(job=job_name):
+                self.assertLess(
+                    step_names.index(render_step),
+                    step_names.index(upload_step),
+                )
+                self.assertIn(comment_path, contract_text(upload))
 
     def test_performance_checkouts_do_not_persist_credentials(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
-        checkout_count = text.count("uses: actions/checkout")
-        persisted_false_count = text.count("persist-credentials: false")
-
-        self.assertEqual(persisted_false_count, checkout_count)
+        steps = checkout_steps(workflow_document(WORKFLOW_ROOT / "performance.yml"))
+        self.assertTrue(steps)
+        self.assertTrue(
+            all(step["with"].get("persist-credentials") == "false" for step in steps)
+        )
 
     def test_performance_run_blocks_do_not_interpolate_dispatch_inputs(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
-
-        for index, block in enumerate(run_blocks(text)):
+        for index, block in enumerate(
+            workflow_run_blocks(WORKFLOW_ROOT / "performance.yml")
+        ):
             with self.subTest(run_block=index):
                 self.assertNotIn("inputs.", block)
                 self.assertNotIn("${{ inputs.", block)
 
     def test_performance_reference_toolchain_input_is_validated_before_shell_use(self) -> None:
-        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
-        install_step = indented_block(text, "- name: Install mermaid-rs-renderer toolchain")
-        comparison_step = indented_block(text, "- name: Run cross-repo comparison")
+        reference = job_contract(WORKFLOW_ROOT / "performance.yml", "reference")
+        install_step = contract_text(
+            workflow_step(reference, name="Install mermaid-rs-renderer toolchain")
+        )
+        comparison_step = contract_text(
+            workflow_step(reference, name="Run cross-repo comparison")
+        )
 
         self.assertIn(
             "MMDR_TOOLCHAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_toolchain || '1.92.0' }}",

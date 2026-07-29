@@ -25,6 +25,7 @@ from artifact_profile_recipe import (
     CargoArtifactRecipe,
     cargo_build_args as project_cargo_build_args,
     load_artifact_profile,
+    rustc_host_target,
 )
 from native_symbol_contract import (
     ANDROID_JNI_SYMBOL_CONTRACT,
@@ -37,6 +38,7 @@ from strict_json import StrictJsonContract
 C_ABI_NATIVE_RECIPE = load_artifact_profile("c-abi-native")
 ANDROID_NATIVE_RECIPE = load_artifact_profile("android-native")
 FLUTTER_ANDROID_NATIVE_RECIPE = load_artifact_profile("flutter-android-native")
+FLUTTER_DESKTOP_NATIVE_RECIPE = load_artifact_profile("flutter-desktop-native")
 FLUTTER_ROOT = REPO_ROOT / "platforms" / "flutter"
 ANDROID_ROOT = REPO_ROOT / "platforms" / "android"
 APPLE_ROOT = REPO_ROOT / "platforms" / "apple"
@@ -851,11 +853,11 @@ def assert_android_instrumentation_smoke_report(
 
 
 def host_dynamic_library(
-    recipe: CargoArtifactRecipe = C_ABI_NATIVE_RECIPE,
+    recipe: CargoArtifactRecipe,
     *,
+    target: str,
     host_system: str | None = None,
 ) -> Path:
-    validate_c_abi_native_recipe(recipe)
     system = platform.system() if host_system is None else host_system
     library_stem = recipe.target_name.replace("-", "_")
     if system == "Windows":
@@ -864,23 +866,30 @@ def host_dynamic_library(
         filename = f"lib{library_stem}.dylib"
     else:
         filename = f"lib{library_stem}.so"
-    return REPO_ROOT / "target" / recipe.cargo_profile / filename
+    output_dir = REPO_ROOT / "target" / target
+    return output_dir / recipe.cargo_profile / filename
 
 
 def run_dart_ffi_native_smoke(
     dart: str,
-    recipe: CargoArtifactRecipe = C_ABI_NATIVE_RECIPE,
+    recipe: CargoArtifactRecipe = FLUTTER_DESKTOP_NATIVE_RECIPE,
     *,
+    target: str | None = None,
     host_system: str | None = None,
 ) -> None:
-    validate_c_abi_native_recipe(recipe)
-    run(project_cargo_build_args(recipe, locked=True))
+    selected_target = rustc_host_target() if target is None else target
+    run(project_cargo_build_args(recipe, locked=True, target=selected_target))
+    library = host_dynamic_library(
+        recipe,
+        target=selected_target,
+        host_system=host_system,
+    )
     run(
         [
             dart,
             "run",
             "example/smoke.dart",
-            str(host_dynamic_library(recipe, host_system=host_system)),
+            str(library),
         ],
         cwd=FLUTTER_ROOT,
     )
@@ -889,7 +898,7 @@ def run_dart_ffi_native_smoke(
             dart,
             "run",
             "tool/semantic_operation_fixtures_test.dart",
-            str(host_dynamic_library(recipe, host_system=host_system)),
+            str(library),
         ],
         cwd=FLUTTER_ROOT,
     )

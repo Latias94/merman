@@ -19,6 +19,22 @@ report = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = report
 SPEC.loader.exec_module(report)
 
+WEB_PROFILE_FEATURES = {
+    "web-analysis": ["analysis"],
+    "web-ascii": ["ascii"],
+    "web-editor": ["editor"],
+    "web-full": [
+        "analysis",
+        "ascii",
+        "editor",
+        "layout-cytoscape",
+        "layout-elk",
+        "math",
+        "svg",
+    ],
+    "web-render": ["layout-cytoscape", "layout-elk", "math", "svg"],
+}
+
 
 class RustLicenseReportTests(unittest.TestCase):
     def test_strict_json_rejects_duplicate_keys_with_report_error(self) -> None:
@@ -94,7 +110,7 @@ class RustLicenseReportTests(unittest.TestCase):
 
             recipes = report.load_web_profile_recipes(root)
 
-            self.assertEqual(set(recipes), set(report.WEB_ARTIFACT_PROFILE_IDS))
+            self.assertEqual(set(recipes), set(WEB_PROFILE_FEATURES))
             self.assertEqual(recipes["web-analysis"]["cargo"]["features"], ["analysis"])
             command = report.cargo_about_command(
                 root / "report.json",
@@ -450,22 +466,7 @@ def write_web_profile_fixture(root: Path) -> dict[str, object]:
     profiles: dict[str, object] = {"schema_version": 1, "profiles": []}
     entries = profiles["profiles"]
     assert isinstance(entries, list)
-    for profile_id in report.WEB_ARTIFACT_PROFILE_IDS:
-        features = {
-            "web-analysis": ["analysis"],
-            "web-ascii": ["ascii"],
-            "web-editor": ["editor"],
-            "web-full": [
-                "analysis",
-                "ascii",
-                "editor",
-                "layout-cytoscape",
-                "layout-elk",
-                "math",
-                "svg",
-            ],
-            "web-render": ["layout-cytoscape", "layout-elk", "math", "svg"],
-        }[profile_id]
+    for profile_id, features in WEB_PROFILE_FEATURES.items():
         entries.append(
             {
                 "id": profile_id,

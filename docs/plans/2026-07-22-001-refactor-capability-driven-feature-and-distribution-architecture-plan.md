@@ -738,34 +738,34 @@ This immutable ledger records findings revalidated after the original `2e74281b4
 - **Test scenarios:** A deliberately stale package version fails version verification; old alpha.3 installation snippets and generated constants are detected; ABI 3/package version remain separate; changelog has a user-facing breaking migration section plus an evidence-backed comparison appendix; package-size and dependency-closure reports reject missing baseline/provenance fields; a Node comparison report rejects mismatched corpus/options/resource profile or an unqualified timing/RSS sample; clean package install/build smokes consume alpha.4 metadata; review findings require focused regressions; `git diff --check` and generated freshness remain clean after the bump; PR base/head and commit list contain only the intended branch.
 - **Verification:** Run the repository version verifier and release preflight without credentials, repeat the U12 strict verification contract against the alpha.4 tree, inspect `git diff <merge-base>...HEAD` and `git status`, and confirm no publish/tag/release side effect occurred. Independently reconcile every changelog/PR comparison claim with its recorded artifact, dependency, and benchmark evidence, and mark any unavailable candidate comparison as not admitted rather than estimated. The pushed branch and open PR are the terminal artifacts; CI is observed and any branch-owned failure is repaired before the plan is marked complete.
 
-### Active review closure ledger
+### Closed review ledger
 
-This ledger records the remaining review findings so implementation can continue across sessions. It
-is a planning checklist, not a release authority or an `xtask` input.
+This ledger records review findings closed during the alpha.4 implementation. It is historical
+planning evidence, not a release authority or an `xtask` input.
 
-- [ ] Parser/preprocess: eliminate double frontmatter preprocessing; admit all 16 Sequence
+- [x] Parser/preprocess: eliminate double frontmatter preprocessing; admit all 16 Sequence
   half-arrows; preserve State descriptions after the first colon; admit ER decimal/dotted entity
   names; apply Mindmap section modulo 11 in the model; align TreeView NBSP annotation boundaries;
   and reconcile the ZenUML detector/header contract.
-- [ ] ZenUML/Railroad: preserve ZenUML `accTitle:`/`accDescr:` messages; treat the first `ref`
+- [x] ZenUML/Railroad: preserve ZenUML `accTitle:`/`accDescr:` messages; treat the first `ref`
   argument as frame content; reject malformed Railroad YAML fences and backslash-newline strings;
   and align the Railroad root font selector.
-- [ ] Render semantics: preserve nested Markdown emphasis delimiters; render Kanban section/item
+- [x] Render semantics: preserve nested Markdown emphasis delimiters; render Kanban section/item
   Markdown; implement ER/Requirement Redux per-node color IDs; and retain JavaScript Cynefin seed
   type semantics.
-- [ ] Web product boundary: make the primary browser renderer correspond to `complete-svg`
+- [x] Web product boundary: make the primary browser renderer correspond to `complete-svg`
   (`svg`, both layouts, and `math`); admit a true `svg`-only package only after the unpacked-size
   gate; compile an unpacked consumer against every generated declaration; and derive legal
   projection from the proved artifact closure.
-- [ ] Lightweight evidence: add an exact `rust-svg-basic` closure claim that excludes layout,
+- [x] Lightweight evidence: add an exact `rust-svg-basic` closure claim that excludes layout,
   math, export, raster/PDF, environment, analysis, editor, and ASCII dependencies. Keep
   `complete-svg` as the only public aggregate, shared by the facade and Rustdoc integration; do
   not add `merman-min`, per-diagram features, negative features, or `tiny`/`minimal`/`full`
   presets.
-- [ ] First-use ergonomics: evaluate one `merman::render_svg(source)` convenience entry point over
+- [x] First-use ergonomics: evaluate one `merman::render_svg(source)` convenience entry point over
   the existing facade, and derive an operation-planning API from render dispatch only if it can
   report required and missing capability IDs without duplicating diagram/backend rules.
-- [ ] Dependency evidence: retain `serde-saphyr 1.0.0-rc.1` because its selected serializer
+- [x] Dependency evidence: retain `serde-saphyr 1.0.0-rc.1` because its selected serializer
   closure is smaller on WASM, and align the direct `granit-parser` API on the same exact RC to
   avoid carrying two parser generations. Keep the direct parser default-empty except for error
   messages; pin and verify the artifacts, YAML goldens, and target closures, then remeasure the

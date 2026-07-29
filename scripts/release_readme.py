@@ -91,6 +91,10 @@ def _npm_install_block(package: str, directory: str) -> ReadmeBlock:
     return ReadmeBlock("npm-install", package=package, directory=directory)
 
 
+def _pub_dependency_block(package: str, directory: str) -> ReadmeBlock:
+    return ReadmeBlock("pub-dependency", package=package, directory=directory)
+
+
 README_BLOCKS = {
     ROOT_README: (
         (
@@ -228,6 +232,34 @@ README_BLOCKS = {
                     optional=True,
                 ),
             ),
+        ),
+    ),
+    "docs/rendering/RASTER_OUTPUT.md": (
+        (
+            "RASTER_FACADE_DEPENDENCY",
+            _cargo_dependencies_block(
+                _dependency(
+                    "merman",
+                    default_features=False,
+                    features=("png", "pdf"),
+                ),
+            ),
+        ),
+        (
+            "RASTER_ENCODER_DEPENDENCY",
+            _cargo_dependencies_block(
+                _dependency(
+                    "merman",
+                    default_features=False,
+                    features=("png", "jpeg", "pdf"),
+                ),
+            ),
+        ),
+    ),
+    "platforms/flutter/README.md": (
+        (
+            "FLUTTER_PACKAGE_INSTALL",
+            _pub_dependency_block("merman", "platforms/flutter"),
         ),
     ),
     "platforms/web/README.md": (
@@ -530,6 +562,18 @@ def _render_block(
             else (f"npm install {block.package}@{release.canonical}",)
         )
         return _fence("sh", "\n".join(commands))
+    if block.kind == "pub-dependency":
+        body = (
+            "dependencies:\n"
+            f"  {block.package}:\n"
+            "    git:\n"
+            f"      url: {repository_url}\n"
+            f"      path: {block.directory}"
+            if mode == SOURCE_MODE
+            else "dependencies:\n"
+            f"  {block.package}: {release.canonical}"
+        )
+        return _fence("yaml", body)
     raise AssertionError(f"unsupported README block kind {block.kind!r}")
 
 

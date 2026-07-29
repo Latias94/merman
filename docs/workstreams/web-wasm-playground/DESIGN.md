@@ -1,7 +1,6 @@
 # Web WASM Playground
 
 Status: Closed
-Last updated: 2026-07-20
 
 ## Purpose
 
@@ -27,7 +26,7 @@ merman-core / merman-analysis / merman-editor-core / merman-render
                               |
                      crates/merman-wasm
                               |
-       @mermanjs/web capability-specific package subpaths
+        @mermanjs/web capability-specific packages
                               |
           Playground document runtime and Render Coordinator
              |                 |                    |
@@ -38,14 +37,15 @@ The package boundary is deliberately narrower than the application boundary:
 
 - `@mermanjs/web` exposes browser binding operations, explicit disposable editor document
   sessions, and capability metadata.
-- `@mermanjs/web/editor` exposes the full family catalog and parser-backed language intelligence
-  through `browser-editor`; it does not contain SVG, ASCII, host, or ELK capabilities.
+- `@mermanjs/web-editor` exposes the full family catalog and parser-backed language intelligence
+  through the `web-editor` artifact profile; it does not contain SVG, ASCII, host, or ELK
+  capabilities.
 - The Playground owns loading/retry policy, BFCache behavior, the latest-wins render coordinator,
   Compare and benchmark realms, UI state, and local report download.
 - `merman-wasm` is wasm-bindgen browser transport. `merman-typst-plugin` remains the separate
   wasm-minimal-protocol transport.
 
-Native browser ABI remains `2`. Editor diagnostics and analysis/facts payloads remain schema `1`.
+The Web transport API is version `3`. Editor diagnostics and analysis/facts payloads remain schema `1`.
 
 ## Document Runtime
 
@@ -105,7 +105,7 @@ suppress aggregates. Evidence can be downloaded locally as versioned JSON; it is
 The Playground configures a local Monaco instance before mounting the editor. Monaco's editor
 worker and the Merman language Worker are local module workers; no CDN loader is used.
 
-The Merman Worker imports `@mermanjs/web/editor` and owns one disposable `BrowserEditorSession`.
+The Merman Worker imports `@mermanjs/web-editor` and owns one disposable `BrowserEditorSession`.
 `didOpen` constructs its analyzed document, `didChange` atomically replaces the snapshot with a
 newer source/version, and queries do not resend or compare source text. Diagnostics, detection,
 completions, hover, code actions, symbols, definition, references, rename, and semantic tokens all

@@ -190,7 +190,7 @@
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
-      "gates": ["cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio"]
+      "gates": ["python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked"]
     },
     {
       "id": "rustdoc",
@@ -273,7 +273,7 @@
           "credential": "CARGO_REGISTRY_TOKEN"
         }
       ],
-      "gates": ["cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing"]
+      "gates": ["python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked"]
     },
     {
       "id": "homebrew",
@@ -388,8 +388,8 @@
         }
       ],
       "gates": [
-        "cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio",
-        "cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing",
+        "python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked",
+        "python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked",
         "npm run test --prefix tools/vscode-extension",
         "npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>"
       ]

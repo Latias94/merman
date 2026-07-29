@@ -7,7 +7,6 @@ silently accept YAML aliases, flow mappings, duplicate keys, or other shapes the
 
 from __future__ import annotations
 
-import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +22,12 @@ def load_workflow_contract(path: Path) -> dict[str, Any]:
         raise WorkflowContractError(f"{path}: expected exactly one top-level jobs mapping")
     jobs_start = jobs_markers[0]
 
-    document: dict[str, Any] = {"permissions": {}, "permissions_declared": False, "jobs": {}}
+    document: dict[str, Any] = {
+        "header": "\n".join(lines[:jobs_start]),
+        "permissions": {},
+        "permissions_declared": False,
+        "jobs": {},
+    }
     permission_markers = _mapping_lines(lines[:jobs_start], "permissions", indent=0)
     if len(permission_markers) > 1:
         raise WorkflowContractError(f"{path}: duplicate top-level permissions mapping")
@@ -101,7 +105,7 @@ def _parse_job(lines: list[str], start: int, end: int, *, owner: str) -> dict[st
             raise WorkflowContractError(f"{owner}: duplicate job key {key!r}")
         seen_keys.add(key)
         raw_value = raw_value.strip()
-        if key in {"env", "permissions"}:
+        if key in {"env", "outputs", "permissions"}:
             if raw_value:
                 raise WorkflowContractError(f"{owner}: {key} must be a block mapping")
             block_end = _next_at_most_indent(lines, index + 1, end, 4)
@@ -114,6 +118,15 @@ def _parse_job(lines: list[str], start: int, end: int, *, owner: str) -> dict[st
             )
             if key == "permissions":
                 job["permissions_declared"] = True
+        elif key == "needs" and not raw_value:
+            block_end = _next_at_most_indent(lines, index + 1, end, 4)
+            job[key] = _scalar_list(
+                lines,
+                index + 1,
+                block_end,
+                6,
+                owner=f"{owner}:{key}",
+            )
         elif key == "steps":
             if raw_value:
                 raise WorkflowContractError(f"{owner}: steps must be a block list")
@@ -183,10 +196,7 @@ def _parse_steps(lines: list[str], start: int, end: int, *, owner: str) -> list[
                 )
             elif key == "run" and _is_block_scalar(raw_value):
                 block_end = _next_at_most_indent(lines, index + 1, step_end, 8)
-                step[key] = _block_scalar_text(
-                    lines[index + 1 : block_end],
-                    raw_value,
-                )
+                step[key] = _block_scalar_text(lines[index + 1 : block_end])
             elif raw_value:
                 step[key] = _scalar(raw_value)
         has_uses = isinstance(step.get("uses"), str)
@@ -280,7 +290,8 @@ def _flat_mapping(
     owner: str,
 ) -> dict[str, str]:
     result: dict[str, str] = {}
-    for line in lines[start:end]:
+    for index in range(start, end):
+        line = lines[index]
         if _indent(line) != indent or _comment(line) or ":" not in line:
             continue
         key, value = line.strip().split(":", 1)
@@ -295,8 +306,36 @@ def _flat_mapping(
             raise WorkflowContractError(f"{owner}:{key}: block scalar values are unsupported")
         if not value:
             raise WorkflowContractError(f"{owner}: nested mapping value for {key!r} is unsupported")
-        result[key] = _scalar(value)
+        if _is_block_scalar(value):
+            block_end = _next_at_most_indent(lines, index + 1, end, indent)
+            result[key] = _block_scalar_text(lines[index + 1 : block_end])
+        else:
+            result[key] = _scalar(value)
     return result
+
+
+def _scalar_list(
+    lines: list[str],
+    start: int,
+    end: int,
+    indent: int,
+    *,
+    owner: str,
+) -> list[str]:
+    values: list[str] = []
+    for line in lines[start:end]:
+        if _comment(line) or not line.strip():
+            continue
+        if _indent(line) != indent or not line.lstrip().startswith("- "):
+            raise WorkflowContractError(f"{owner}: expected a flat scalar list")
+        value = line.lstrip()[2:].strip()
+        _reject_unmodeled_scalar(value, owner)
+        if not value:
+            raise WorkflowContractError(f"{owner}: list values must not be empty")
+        values.append(_scalar(value))
+    if not values:
+        raise WorkflowContractError(f"{owner}: list must not be empty")
+    return values
 
 
 def _next_at_most_indent(lines: list[str], start: int, end: int, indent: int) -> int:
@@ -330,40 +369,13 @@ def _reject_unmodeled_scalar(value: str, owner: str) -> None:
 
 
 def _is_block_scalar(value: str) -> bool:
-    """Accept the ordinary literal/folded headers used by GitHub Actions YAML."""
-    if not value or value[0] not in {"|", ">"}:
-        return False
-    suffix = value[1:]
-    if not suffix:
-        return True
-    if len(suffix) == 1 and suffix in {"+", "-"}:
-        return True
-    if len(suffix) == 1 and suffix.isdigit() and suffix != "0":
-        return True
-    return (
-        len(suffix) == 2
-        and suffix[0] in {"+", "-"}
-        and suffix[1].isdigit()
-        and suffix[1] != "0"
-    ) or (
-        len(suffix) == 2
-        and suffix[0].isdigit()
-        and suffix[0] != "0"
-        and suffix[1] in {"+", "-"}
+    """Accept only the literal block scalar form used by repository workflows."""
+    return value == "|"
+
+
+def _block_scalar_text(lines: list[str]) -> str:
+    indents = [_indent(line) for line in lines if line.strip()]
+    content_indent = min(indents, default=0)
+    return "\n".join(
+        line[content_indent:] if line.strip() else "" for line in lines
     )
-
-
-def _block_scalar_text(lines: list[str], header: str) -> str:
-    content = textwrap.dedent("\n".join(lines))
-    if not header.startswith(">"):
-        return content
-
-    folded: list[str] = []
-    previous_blank = False
-    for line in content.splitlines():
-        blank = not line.strip()
-        if folded:
-            folded.append("\n" if blank or previous_blank else " ")
-        folded.append(line)
-        previous_blank = blank
-    return "".join(folded)

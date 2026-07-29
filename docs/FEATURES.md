@@ -70,7 +70,9 @@ select their own direct leaf set instead.
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
 | C/C++/Dart/native embedding | ABI 3 SDK | Use the published native artifact recipe |
 | Swift/Kotlin/Python | UniFFI package | Use the platform package and runtime catalog |
-| Node/SSG | `@mermanjs/node` when admitted | The Node package owns its native artifact; browser WASM is not a Node transport |
+
+Node/SSG transport remains a private admission candidate, so there is no public
+`@mermanjs/node` package to select yet. Browser WASM is not a supported Node transport.
 
 ## Rust examples
 
@@ -263,6 +265,11 @@ An artifact profile records an exact Cargo package, target, direct feature set, 
 setting, and expected semantic IDs. Product owners separately define runtime policy, resource
 policy, package contents, evidence receipts, and distribution gates. Exclusion claims require both
 the exact artifact recipe and its owner-specific dependency or size evidence.
+
+For a `target-set` recipe, dependency evidence is checked independently for every declared target.
+For a `host` recipe, the build still uses the executing host, while the frozen dependency closure is
+only the `x86_64-unknown-linux-gnu` reference closure. It does not prove dependency absence on
+macOS or Windows.
 
 When comparing builds, record the target, compiler, lockfile, direct feature set, uncompressed and
 compressed sizes, dependency closure, licenses, and advisory results. A feature name alone is not a

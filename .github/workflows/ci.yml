@@ -35,6 +35,9 @@ jobs:
       - name: Verify release crate order docs
         run: python3 scripts/verify-release-crate-order.py
 
+      - name: Verify release version projections
+        run: python3 scripts/release-version.py
+
       - name: Verify release surface contract
         run: python3 scripts/verify-release-surfaces.py
 
@@ -48,7 +51,7 @@ jobs:
         run: python3 scripts/verify_crate_package_legal_materials.py
 
       - name: Test release and workflow hygiene scripts
-        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_release_status.py scripts/test_verify_release_surfaces.py scripts/test_web_package_group.py scripts/test_verify_third_party_licenses.py scripts/test_sync_release_legal_materials.py scripts/test_generate_rust_license_report.py scripts/test_python_wheel_licenses.py scripts/test_verify_rustsec_exceptions.py scripts/test_verify_crate_package_legal_materials.py scripts/test_workflow_path_filters.py scripts/test_fuzz_config.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py scripts/test_build_android.py scripts/test_native_symbol_contract.py scripts/test_artifact_profile_recipe.py scripts/test_verify_artifact_dependency_closures.py scripts/test_publish.py
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Check whitespace (pull request)
         if: github.event_name == 'pull_request'
@@ -92,9 +95,6 @@ jobs:
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
-
-      - name: Test CLI distribution projections
-        run: python3 -m unittest scripts/test_artifact_profile_recipe.py scripts/test_verify_cli_process_matrix.py scripts/test_verify_cli_release_archive.py
 
       - name: Test exact CLI feature process matrix
         run: python3 scripts/verify_cli_process_matrix.py --locked
@@ -206,6 +206,48 @@ jobs:
           actual="$(git -C repo-ref/mermaid rev-parse HEAD)"
           test "$actual" = "$MERMAID_SOURCE_COMMIT"
 
+      - name: Resolve pinned DOMPurify source
+        id: dompurify-source
+        if: matrix.parity
+        shell: bash
+        run: |
+          commit="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          bundle = json.loads(
+              Path("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json").read_text(encoding="utf-8")
+          )
+          print(bundle["sanitizer"]["source"]["commit"])
+          PY
+          )"
+          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid DOMPurify source commit in reference bundle: $commit" >&2
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        name: Checkout pinned DOMPurify source
+        if: matrix.parity
+        with:
+          repository: cure53/DOMPurify
+          ref: ${{ steps.dompurify-source.outputs.commit }}
+          path: repo-ref/dompurify
+          persist-credentials: false
+          sparse-checkout: |
+            dist/purify.cjs.js
+          sparse-checkout-cone-mode: false
+
+      - name: Verify pinned DOMPurify source checkout
+        if: matrix.parity
+        shell: bash
+        env:
+          DOMPURIFY_SOURCE_COMMIT: ${{ steps.dompurify-source.outputs.commit }}
+        run: |
+          actual="$(git -C repo-ref/dompurify rev-parse HEAD)"
+          test "$actual" = "$DOMPURIFY_SOURCE_COMMIT"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
@@ -233,26 +275,40 @@ jobs:
         with:
           cache-targets: false
 
+      - name: Verify pinned Mermaid reference before runtime install
+        if: matrix.parity
+        run: cargo run --locked -p xtask -- verify-mermaid-reference
+
+      - name: Setup Node for generated Mermaid artifacts
+        if: matrix.parity
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            platforms/node/package-lock.json
+            tools/mermaid-cli/package-lock.json
+
+      - name: Install pinned Mermaid runtime
+        if: matrix.parity
+        working-directory: tools/mermaid-cli
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm ci
+
       - name: Verify generated architecture contracts
         if: matrix.parity
         run: |
-          cargo run --locked -p xtask -- verify-mermaid-reference
-          cargo run --locked -p xtask -- verify-editor-token-descriptor
-          cargo run --locked -p xtask -- verify-text-measurement-protocol
-          cargo run --locked -p xtask -- verify-capability-surface
           cargo run --locked -p xtask -- verify-generated
-          cargo run --locked -p xtask -- verify-artifact-profiles
           python3 scripts/verify_artifact_dependency_closures.py
           cargo run --locked -p xtask -- verify-feature-matrix --strict
-          cargo run --locked -p xtask -- verify-typst-profile-constants
-          cargo run --locked -p xtask -- verify-web-diagram-catalog
-          cargo run --locked -p xtask -- verify-playground-example-catalog
           python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
 
       - name: Test (nextest)
         run: cargo nextest run --cargo-quiet
 
       - name: Test architecture compile-fail contracts
+        if: matrix.parity
         run: |
           cargo test -p merman-render --doc
           cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
@@ -308,28 +364,30 @@ jobs:
           run_owner_test rust-export-pdf merman-export \
             --lib pdf_leaf_encodes_a_sealed_svg
 
+      - name: Test external Cargo feature unification contract
+        if: matrix.parity
+        run: |
+          cargo nextest run --locked -p merman-bindings-core --no-default-features \
+            --features merman-bindings-core/svg,merman/math,merman/system-timing \
+            --lib --cargo-quiet
+          features="$(python3 scripts/artifact_profile_recipe.py apple-uniffi-native)"
+          qualified_features="merman-uniffi/${features//,/,merman-uniffi/}"
+          cargo nextest run --locked -p merman-uniffi -p merman --no-default-features \
+            --features "$qualified_features,merman/system-timing" \
+            --lib --cargo-quiet \
+            -E 'package(merman-uniffi) & test(engine_exposes_metadata)'
+
+      - name: Install Node candidate development dependencies
+        if: matrix.parity
+        run: npm ci --prefix platforms/node
+
+      - name: Verify Node candidate contracts and nested lock freshness
+        if: matrix.parity
+        run: npm test --prefix platforms/node
+
       - name: Verify Cypress corpus against pinned Mermaid source
         if: matrix.parity
         run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
-
-      - name: Setup Node for generated Mermaid artifacts
-        if: matrix.parity
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: tools/mermaid-cli/package-lock.json
-
-      - name: Install pinned Mermaid runtime
-        if: matrix.parity
-        working-directory: tools/mermaid-cli
-        env:
-          PUPPETEER_SKIP_DOWNLOAD: "true"
-        run: npm ci
-
-      - name: Verify generated default config
-        if: matrix.parity
-        run: cargo run --locked -p xtask -- verify-default-config
 
       - name: Test (nextest, merman render)
         if: matrix.parity
@@ -339,7 +397,10 @@ jobs:
         if: matrix.parity
         run: |
           features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
-          cargo nextest run -p merman-ffi --no-default-features --features "$features" --test c_consumer_smoke --cargo-quiet
+          qualified_features="merman-ffi/${features//,/,merman-ffi/}"
+          cargo nextest run --locked -p merman-ffi -p merman --no-default-features \
+            --features "$qualified_features,merman/system-timing" \
+            --test c_consumer_smoke --cargo-quiet
 
       - name: Check UniFFI no-render feature sets
         if: matrix.parity
@@ -698,48 +759,41 @@ jobs:
             -o target/merman-ffi-render-svg
           target/merman-ffi-render-svg | grep -q '<svg'
 
-  flutter-package-check:
-    name: flutter-package-check
-    runs-on: ubuntu-24.04
+  apple-swift-5-9-smoke:
+    name: apple-swift-5-9-smoke
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
+      - name: Select Xcode 15.2 and verify Swift 5.9
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
+          swift --version
+          swift --version | grep -Eq 'Apple Swift version 5\.9(\.[0-9]+)?([[:space:]]|$)'
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.38.3"
-          channel: stable
-          cache: true
+      - name: Build Apple XCFramework with Swift 5.9
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+        run: bash scripts/build-apple-xcframework.sh
 
-      - name: Validate Flutter package
-        working-directory: platforms/flutter
+      - name: Validate Swift 5.9 package
         run: |
-          flutter pub get
-          dart run ffigen --config ffigen.yaml
-          git ls-files --error-unmatch -- lib/src/generated/native_abi.dart
-          git diff --exit-code -- lib/src/generated/native_abi.dart
-          flutter analyze
-          dart format --set-exit-if-changed lib example tool
-          dart run tool/abi3_contract_test.dart
-
-      - name: Run Dart FFI smoke
-        working-directory: platforms/flutter
-        run: |
-          target_triple=x86_64-unknown-linux-gnu
-          python3 ../../scripts/artifact_profile_recipe.py flutter-desktop-native \
-            --build \
-            --locked \
-            --target-triple "$target_triple"
-          profile_dir="$(python3 ../../scripts/artifact_profile_recipe.py flutter-desktop-native --field profile)"
-          dart run example/smoke.dart "../../target/$target_triple/$profile_dir/libmerman_ffi.so"
+          swift package describe
+          swift build
+          swift build --triple arm64-apple-ios14.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
+          swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
   apple-uniffi-smoke:
     name: apple-uniffi-smoke

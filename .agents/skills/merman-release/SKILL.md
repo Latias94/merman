@@ -5,7 +5,7 @@ description: Merman release operator workflow. Use when preparing a new Merman v
 
 # Merman Release
 
-Coordinate releases without duplicating the public operator guide. `docs/release/RELEASING.md` owns exact commands and sequencing. `docs/release/SURFACES.json` owns declared surface state, and `scripts/release-status.py` reports observed release state.
+Coordinate releases without duplicating the public operator guide. `docs/release/RELEASING.md` owns the operator sequence and cross-surface commands. `docs/release/SURFACES.json` owns declared surface state and machine-readable per-surface gates, and `scripts/release-status.py` reports observed release state.
 
 ## Read First
 
@@ -37,29 +37,19 @@ If scope is incomplete, report what is ready and stop before the first external 
 
 Write the changelog for users:
 
-- Start with `## [version] - YYYY-MM-DD`, a short summary, and compact highlights.
+- Keep an in-progress entry as `## [version] - Unreleased`; immediately before immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form.
 - State installation, integration, migration, compatibility, or behavior changes users can act on.
 - Remove duplicate metadata and internal implementation detail.
 - Keep each Markdown paragraph or bullet on one physical line.
 - Use the repository's release-note voice; use `$writing-great-skills` for an evidence-backed range report and `$humanizer` when prose needs a final polish.
 
-### Version And README Projection
+### Version And Installation Projection
 
-Treat `Cargo.toml` `[workspace.package].version` as the workspace release authority:
-
-```bash
-python3 scripts/release-version.py set --version <version>
-python3 scripts/release-version.py
-```
+Treat `Cargo.toml` `[workspace.package].version` as the workspace release authority. Use the exact projection and validation commands in the `Version Checklist` of `docs/release/RELEASING.md`.
 
 Do not hand-edit generated version projections. If the command is interrupted, preserve the partial diff and rerun the same command; the workspace authority is written last.
 
-A version bump places generated README installation blocks in `source` mode. Immediately before preflight, switch the exact target version to `registry` mode and run the release-ready check:
-
-```bash
-python3 scripts/release-version.py set-readme-mode --mode registry --version <version>
-python3 scripts/release-version.py check --version <version>
-```
+A version bump places generated installation projections in `source` mode. Immediately before preflight, use the guide's exact commands to switch the target version to `registry` mode and run the release-ready check.
 
 Registry mode prepares truthful commands for the release artifact without claiming every registry is already live. Commit every projected file before tagging. If preparation is cancelled, switch back to `source`.
 
@@ -69,29 +59,19 @@ VS Code, Typst, and `roughr-merman` have independent version axes. Update them o
 
 ### Local Contract And Preflight
 
-Run the repository-owned contract checks:
-
-```bash
-python3 scripts/verify-release-surfaces.py
-python3 scripts/test_release_workflow_security.py
-python3 scripts/release-status.py --version <version> --view maintainer
-```
+Run the repository-owned contract and status checks listed in `docs/release/RELEASING.md`.
 
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 
 Preparation is complete when version projections and release notes are committed, the release-ready check passes, and preflight is green for the exact version and `SOURCE_SHA`.
 
+Apple source compatibility is a compiler-floor contract. The Swift 5.9/Xcode 15.2 CI job must pass for the exact source commit; a newer Swift compiler does not prove that floor. GitHub's `macos-14` hosted image starts retirement brownouts on 2026-10-05 and retires on 2026-11-02, so move this exact check to a maintained runner or toolchain before the brownouts. If no equivalent runner is available, block Apple shipping instead of weakening or silently skipping the check.
+
 ## Ship
 
 Do not continue here without explicit `ship` authorization for the current release.
 
-Verify HEAD and tag the immutable source:
-
-```bash
-test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-git tag v<version> "$SOURCE_SHA"
-git push origin v<version>
-```
+Use only the `Tag And Push` commands in `docs/release/RELEASING.md`. They must verify that `HEAD` is the preflighted `SOURCE_SHA`, create the tag at that explicit commit, and push that tag without moving it.
 
 Watch the tag-triggered cargo-dist, crates.io, and pub.dev workflows first. After the GitHub Release exists, use only the exact platform dispatch commands in `docs/release/RELEASING.md`; do not reconstruct them from memory or from this skill.
 

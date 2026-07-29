@@ -114,15 +114,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
-      - name: Verify Cargo workspace version matches tag
+      - name: Verify release projections and README install mode
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d ' ')
-          if [ "$CARGO_VERSION" != "$VERSION" ]; then
-            echo "::error::Cargo workspace version '$CARGO_VERSION' does not match tag $VERSION"
-            exit 1
-          fi
+        run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Verify FFI publish surface
         run: python3 scripts/verify-ffi-publish-surface.py
@@ -136,7 +131,7 @@ jobs:
       - name: Verify release crate publish order
         run: python3 scripts/verify-release-crate-order.py
 
-      - name: Verify exact artifact dependency closures
+      - name: Verify target-scoped artifact dependency closures
         run: python3 scripts/verify_artifact_dependency_closures.py
 
       - name: Preflight crates in dependency order

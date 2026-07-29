@@ -69,7 +69,7 @@ observable leaves instead:
 | Mathematics | `math` | Plain SVG does not pull the RaTeX and embedded-font closure. |
 | Bitmap/PDF export | `png`, `jpeg`, `pdf` | Each format is independent instead of one aggregate pulling every exporter. |
 | Diagnostics | `analysis` | Analysis does not imply renderer, layout, math, export, icon, or Markdown code. |
-| Editor intelligence | `editor` | Editor facts imply analysis, but not SVG or export code. |
+| Editor intelligence | `editor` | The `merman` facade forwards `editor` to `analysis`; lower-level products select the pair explicitly. Neither capability implies SVG or export code. |
 | CLI icons and Markdown | `icons`, `markdown`; opt into `network-icons`, `parallel-markdown` | Local icons and serial Markdown do not imply Reqwest/TLS or Rayon. |
 
 The ergonomic Rust facade keeps `default = ["complete-svg"]`. Lower-level crates, bindings,
@@ -417,7 +417,7 @@ as semantic parity evidence.
 | Browser editor | `@mermanjs/web-editor`, or `@mermanjs/web` when one realm also renders | The editor package contains analysis plus parser-backed editor intelligence | Use `web-editor` for a dedicated Worker; do not describe it as editor-only or combine full with duplicate slim packages. |
 | Native editor integration | `merman` | `default-features = false, features = ["analysis", "editor"]` | Parser-backed diagnostics and editor facts without linking SVG/export code. |
 | LSP process | `merman-lsp` | Published binary after release, or `--no-default-features --features stdio` | The LSP executable requires the `stdio` leaf; use artifact profile `lsp-stdio-release` for the exact release contract. |
-| Markdown or MDX conversion | `merman-cli` | `--no-default-features --features svg,markdown`; add `parallel-markdown` only after throughput measurement | Avoid Rayon unless batch conversion needs it. |
+| Markdown or MDX conversion | `merman-cli` | `--no-default-features --features markdown`; select `parallel-markdown` instead only after throughput measurement | `markdown` already implies SVG; avoid Rayon unless batch conversion needs it. |
 | Terminal preview | `merman` or `merman-cli` | Disable defaults and select `ascii`; query `ascii_capabilities` | No SVG backend is required, but only 14 families are admitted and support is graded Full, Partial, or Summary. SVG admission does not imply ASCII support. |
 | Node SSR or a Node static-site generator | Current CLI subprocess | Do not depend on private `@mermanjs/node` yet | There is no admitted in-process Node package; the candidate still lacks reproducible all-target admission. |
 | Typst | `@preview/merman:0.2.0` | Published Typst package on its independent version track | The current package embeds Merman alpha.3 and its `typst-wasm` profile has no math; it is not an alpha.4 artifact. |

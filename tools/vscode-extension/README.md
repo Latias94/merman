@@ -145,8 +145,8 @@ Merman contributes native VS Code settings grouped under Runtime, Language Intel
 Build release binaries, copy them into the extension runtime folder, and produce a local `.vsix`:
 
 ```bash
-cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio
-cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
+python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked
+python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
 cd tools/vscode-extension
 npm run build
 npm run prepare:binaries

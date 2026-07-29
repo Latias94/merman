@@ -627,77 +627,93 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             {"aarch64-linux-android", "wasm32-unknown-unknown"},
         )
 
-    def test_ci_proves_external_runtime_feature_unification(self) -> None:
+    def test_cli_profiles_use_binary_process_contracts(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
-        job = workflow_job(workflow, "build-test")
+        owner_step = workflow_step(
+            workflow_job(workflow, "build-test"),
+            name="Test exact artifact owner APIs",
+        )
+        self.assertNotIn("run_owner_test cli-analysis", owner_step["run"])
+
+        process_step = workflow_step(
+            workflow_job(workflow, "cli-contracts"),
+            name="Test exact CLI feature process matrix",
+        )
+        self.assertEqual(
+            process_step["run"],
+            "python3 scripts/verify_cli_process_matrix.py --locked",
+        )
+
+    def test_cli_artifact_profiles_build_on_every_descriptor_host(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
+        job = workflow_job(workflow, "cli-artifact-profiles")
+        matrix = job["matrix_include"]
+        self.assertEqual(
+            {(row["os"], row["target"]) for row in matrix},
+            {
+                ("ubuntu-24.04", "x86_64-unknown-linux-gnu"),
+                ("macos-15", "aarch64-apple-darwin"),
+                ("macos-15-intel", "x86_64-apple-darwin"),
+                ("windows-2025-vs2026", "x86_64-pc-windows-msvc"),
+            },
+        )
+        step = workflow_step(job, name="Build exact CLI artifact profiles")
+        self.assertEqual(
+            [line.strip() for line in step["run"].splitlines() if line.strip()],
+            [
+                "python3 scripts/artifact_profile_recipe.py "
+                "cli-analysis --build-host --locked",
+                "python3 scripts/artifact_profile_recipe.py "
+                "cli-release --build-host --locked",
+            ],
+        )
+
+    def test_homebrew_checks_the_complete_cli_contract_v2_surface(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        workflow = load_workflow_contract(repo_root / ".github/workflows/homebrew.yml")
         step = workflow_step(
-            job,
-            name="Test external Cargo feature unification contract",
+            workflow_job(workflow, "formula-health"),
+            name="Smoke installed merman-cli",
         )
+        command = step["run"]
+        self.assertEqual(
+            step["env"]["FORMULA_VERSION"],
+            "${{ steps.metadata.outputs.version }}",
+        )
+        self.assertNotIn("brew info", command)
+        self.assertNotIn("formula_version", command)
+        for contract in [
+            ".cli_contract_version == 2",
+            '"analysis", "ascii", "icons", "jpeg", "layout-cytoscape"',
+            '"parallel-markdown", "pdf", "png", "shell-completions", "svg"',
+            '["ascii", "jpeg", "pdf", "png", "svg"]',
+            "brew linkage --test merman-cli",
+        ]:
+            with self.subTest(contract=contract):
+                if contract.startswith("brew "):
+                    linkage = workflow_step(
+                        workflow_job(workflow, "formula-health"),
+                        name="Audit installed formula",
+                    )
+                    self.assertIn(contract, linkage["run"])
+                else:
+                    self.assertIn(contract, command)
 
-        self.assertIn(
-            "cargo nextest run --locked -p merman-bindings-core "
-            "--no-default-features",
-            step["run"],
-        )
-        self.assertIn(
-            "merman-bindings-core/svg,merman/math,merman/system-timing",
-            step["run"],
-        )
-        self.assertIn(
-            'features="$(python3 scripts/artifact_profile_recipe.py '
-            'apple-uniffi-native)"',
-            step["run"],
-        )
-        self.assertIn(
-            'qualified_features="merman-uniffi/${features//,/,merman-uniffi/}"',
-            step["run"],
-        )
-        self.assertIn(
-            "cargo nextest run --locked -p merman-uniffi -p merman "
-            "--no-default-features",
-            step["run"],
-        )
-        self.assertIn(
-            '--features "$qualified_features,merman/system-timing"',
-            step["run"],
-        )
-        self.assertIn(
-            "-E 'package(merman-uniffi) & test(engine_exposes_metadata)'",
-            step["run"],
-        )
-        self.assertNotIn("merman-bindings-core/math", step["run"])
-        self.assertNotIn("merman-bindings-core/system-timing", step["run"])
-
-    def test_native_ci_smokes_resolve_the_recipe_owned_output_directory(self) -> None:
+    def test_c_ffi_ci_smoke_resolves_the_recipe_owned_output_directory(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         workflow = load_workflow_contract(repo_root / ".github/workflows/ci.yml")
-        steps = (
-            (
-                workflow_step(
-                    workflow_job(workflow, "c-ffi-example"),
-                    name="Build and run C example",
-                ),
-                "c-abi-native",
-            ),
-            (
-                workflow_step(
-                    workflow_job(workflow, "flutter-package-check"),
-                    name="Run Dart FFI smoke",
-                ),
-                "flutter-desktop-native",
-            ),
+        step = workflow_step(
+            workflow_job(workflow, "c-ffi-example"),
+            name="Build and run C example",
         )
-
-        for step, profile_id in steps:
-            with self.subTest(step=step["name"]):
-                command = step["run"]
-                self.assertIn(
-                    f"artifact_profile_recipe.py {profile_id} --field profile",
-                    command,
-                )
-                self.assertNotIn("target/release", command)
+        command = step["run"]
+        self.assertIn(
+            "artifact_profile_recipe.py c-abi-native --field profile",
+            command,
+        )
+        self.assertNotIn("target/release", command)
 
     def test_uniffi_bindgen_is_generator_only(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]

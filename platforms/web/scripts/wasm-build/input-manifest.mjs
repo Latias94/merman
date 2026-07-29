@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -138,8 +139,24 @@ export function verifyWasmInputManifest({
   return { ok: reasons.length === 0, reasons };
 }
 
-export function cargoMetadataForPreset({ preset, repoRoot }) {
+export function cargoMetadataForPreset({ preset, repoRoot, capture = runCapture }) {
   const config = normalizedBuildConfig(preset);
+  const repositoryMetadata = parseCargoMetadata(
+    capture(
+      "cargo",
+      [
+        "metadata",
+        "--format-version",
+        "1",
+        "--locked",
+        "--filter-platform",
+        "wasm32-unknown-unknown",
+        "--manifest-path",
+        path.join(repoRoot, "Cargo.toml"),
+      ],
+      repoRoot,
+    ),
+  );
   const probeRoot = mkdtempSync(path.join(os.tmpdir(), "merman-wasm-metadata-"));
   try {
     mkdirSync(path.join(probeRoot, "src"));
@@ -148,27 +165,25 @@ export function cargoMetadataForPreset({ preset, repoRoot }) {
       path.join(probeRoot, "Cargo.toml"),
       isolatedProbeManifest(config, repoRoot),
     );
-    const result = runCapture(
-      "cargo",
-      [
-        "metadata",
-        "--format-version",
-        "1",
-        "--offline",
-        "--filter-platform",
-        "wasm32-unknown-unknown",
-        "--manifest-path",
-        path.join(probeRoot, "Cargo.toml"),
-      ],
-      repoRoot,
+    copyFileSync(path.join(repoRoot, "Cargo.lock"), path.join(probeRoot, "Cargo.lock"));
+    const probeMetadata = parseCargoMetadata(
+      capture(
+        "cargo",
+        [
+          "metadata",
+          "--format-version",
+          "1",
+          "--offline",
+          "--filter-platform",
+          "wasm32-unknown-unknown",
+          "--manifest-path",
+          path.join(probeRoot, "Cargo.toml"),
+        ],
+        repoRoot,
+      ),
     );
-    try {
-      return JSON.parse(result);
-    } catch (error) {
-      throw new Error(
-        `cargo metadata returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    assertProbeResolutionUsesLockedPackages(probeMetadata, repositoryMetadata);
+    return probeMetadata;
   } finally {
     rmSync(probeRoot, { recursive: true, force: true });
   }
@@ -727,6 +742,50 @@ function isolatedProbeManifest(config, repoRoot) {
     'resolver = "2"',
     "",
   ].join("\n");
+}
+
+function parseCargoMetadata(output) {
+  try {
+    return JSON.parse(output);
+  } catch (error) {
+    throw new Error(
+      `cargo metadata returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function assertProbeResolutionUsesLockedPackages(probeMetadata, repositoryMetadata) {
+  if (!Array.isArray(repositoryMetadata?.packages)) {
+    throw new Error("locked repository cargo metadata is missing packages.");
+  }
+  if (!Array.isArray(probeMetadata?.packages) || !probeMetadata.resolve?.root) {
+    throw new Error("isolated preset cargo metadata is missing packages or its root.");
+  }
+
+  const lockedPackageIds = new Set();
+  for (const packageInfo of repositoryMetadata.packages) {
+    if (!packageInfo || typeof packageInfo.id !== "string") {
+      throw new Error("locked repository cargo metadata contains an invalid package.");
+    }
+    lockedPackageIds.add(packageInfo.id);
+  }
+
+  const unexpected = [];
+  for (const packageInfo of probeMetadata.packages) {
+    if (!packageInfo || typeof packageInfo.id !== "string") {
+      throw new Error("isolated preset cargo metadata contains an invalid package.");
+    }
+    if (packageInfo.id !== probeMetadata.resolve.root && !lockedPackageIds.has(packageInfo.id)) {
+      unexpected.push(
+        `${packageInfo.name ?? packageInfo.id}@${packageInfo.version ?? "unknown"}`,
+      );
+    }
+  }
+  if (unexpected.length > 0) {
+    throw new Error(
+      `isolated preset resolution contains packages absent from the repository lock: ${unexpected.sort(compareNames).join(", ")}`,
+    );
+  }
 }
 
 function runCapture(command, args, cwd) {

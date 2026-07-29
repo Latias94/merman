@@ -93,8 +93,10 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         .current_dir(&workspace_root);
     run_checked("cargo fmt --check", &mut fmt_cmd)?;
 
-    println!("\n== editor token descriptor ==");
-    cmd::verify_editor_token_descriptor(Vec::new())?;
+    if !options.strict {
+        println!("\n== editor token descriptor ==");
+        cmd::verify_editor_token_descriptor(Vec::new())?;
+    }
 
     if options.all_features {
         println!("\n== cargo check --workspace --all-features ==");
@@ -172,7 +174,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
                 None,
             ),
             (
-                "exact artifact dependency closures",
+                "target-scoped artifact dependency closures",
                 "scripts/verify_artifact_dependency_closures.py",
                 None,
             ),

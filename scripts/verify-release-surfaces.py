@@ -114,7 +114,6 @@ def main(argv: list[str] | None = None) -> int:
         ("package manifest inventory", lambda: check_package_inventory(root, contract)),
         ("publishable crate inventory", lambda: check_publishable_crate_inventory(root, contract)),
         ("web package contract", lambda: check_web_contract(root, contract)),
-        ("blocked channel metadata", lambda: check_blocked_channel_metadata(contract)),
     ]
     if args.check_ci_self:
         checks.append(("CI wiring", lambda: check_ci_wiring(root)))
@@ -178,23 +177,14 @@ def check_surface_paths(root: Path, contract: dict[str, Any]) -> None:
         for package in surface.get("packages", []):
             require_file(root, package["manifest"])
         for channel in surface.get("channels", []):
-            workflow = channel.get("workflow")
-            if channel["declared_state"] in OPERATIONAL_CHANNEL_STATES and not workflow:
+            workflow = channel["workflow"]
+            require_file(root, workflow)
+            if not workflow.startswith(".github/workflows/") or not workflow.endswith(
+                (".yml", ".yaml")
+            ):
                 fail(
                     "docs/release/SURFACES.json",
-                    f"{surface['id']}/{channel['id']}: operational channel must declare a workflow",
-                )
-            if workflow:
-                require_file(root, workflow)
-                if not workflow.startswith(".github/workflows/") or not workflow.endswith((".yml", ".yaml")):
-                    fail(
-                        "docs/release/SURFACES.json",
-                        f"{surface['id']}/{channel['id']}: workflow must be a GitHub workflow YAML file",
-                    )
-            if channel["declared_state"] in OPERATIONAL_CHANNEL_STATES and not channel.get("workflow_job"):
-                fail(
-                    "docs/release/SURFACES.json",
-                    f"{surface['id']}/{channel['id']}: operational channel must declare workflow_job",
+                    f"{surface['id']}/{channel['id']}: workflow must be a GitHub workflow YAML file",
                 )
 
 
@@ -247,36 +237,7 @@ def load_workflow_contract_module() -> Any:
 def workflow_job_performs_channel_operation(job: dict[str, Any], kind: str) -> bool:
     if condition_is_always_false(job.get("if")):
         return False
-    command_rules: dict[str, tuple[tuple[str, ...], ...]] = {
-        "crates.io": (("cargo", "publish"),),
-        "github-release-assets": (("gh", "release", "create"), ("gh", "release", "upload")),
-        "homebrew": (("brew", "install"),),
-        "npm": (("npm", "publish"),),
-        "pub.dev": (("dart", "pub", "publish"),),
-    }
-    action_rules = {
-        "github-actions-artifact": "actions/upload-artifact",
-        "pypi": "pypa/gh-action-pypi-publish",
-    }
-    steps = job.get("steps", [])
-
-    if kind in action_rules:
-        expected = action_rules[kind]
-        return any(
-            not condition_is_always_false(step.get("if"))
-            and
-            isinstance(step.get("uses"), str)
-            and step["uses"].partition("@")[0] == expected
-            for step in steps
-        )
-    if kind in command_rules:
-        return any(
-            not condition_is_always_false(step.get("if"))
-            and isinstance(step.get("run"), str)
-            and operation_run_matches_kind(step["run"], kind, command_rules[kind])
-            for step in steps
-        )
-    raise CheckFailure(f"no workflow operation rule for operational channel kind {kind!r}")
+    return bool(active_operation_steps(job, kind))
 
 
 def operation_run_matches_kind(
@@ -452,6 +413,10 @@ def active_operation_steps(job: dict[str, Any], kind: str) -> list[dict[str, Any
         "github-actions-artifact": "actions/upload-artifact",
         "pypi": "pypa/gh-action-pypi-publish",
     }
+    if kind not in action_rules and kind not in command_rules:
+        raise CheckFailure(
+            f"no workflow operation rule for operational channel kind {kind!r}"
+        )
     result: list[dict[str, Any]] = []
     for step in job.get("steps", []):
         if condition_is_always_false(step.get("if")):
@@ -1052,6 +1017,7 @@ def check_web_contract(root: Path, contract: dict[str, Any]) -> None:
         fail("platforms/web/package.json", str(error))
 
     profile_ids = artifact_profile_ids(root)
+    package_versions: set[str] = set()
     for entry in descriptor["packages"]:
         if entry["artifact_profile"] not in profile_ids:
             fail(
@@ -1060,16 +1026,16 @@ def check_web_contract(root: Path, contract: dict[str, Any]) -> None:
             )
         package_dir = root / "platforms" / "web" / web_package_group.descriptor_package_path(entry)
         try:
-            web_package_group.validate_package_manifest(entry, package_dir, expected_version=None)
+            manifest = web_package_group.validate_package_manifest(
+                entry,
+                package_dir,
+                expected_version=None,
+            )
         except web_package_group.PackageGroupError as error:
             fail(package_dir / "package.json", str(error))
-
-    package_versions: set[str] = set()
-    for entry in descriptor["packages"]:
-        manifest_path = Path("platforms/web") / web_package_group.descriptor_package_path(entry) / "package.json"
-        version = read_json(root, str(manifest_path)).get("version")
+        version = manifest.get("version")
         if not isinstance(version, str) or not version:
-            fail(manifest_path, "Web package version must be a non-empty string")
+            fail(package_dir / "package.json", "Web package version must be a non-empty string")
         package_versions.add(version)
     if len(package_versions) != 1:
         fail(feature_contract["web_descriptor"], "all Web package manifests must share one version")
@@ -1172,23 +1138,6 @@ def write_generated_surface_docs(root: Path, contract: dict[str, Any]) -> None:
         path.write_text(text.replace(current, expected), encoding="utf-8")
 
 
-def check_blocked_channel_metadata(contract: dict[str, Any]) -> None:
-    for surface in contract["surfaces"]:
-        for channel in surface.get("channels", []):
-            state = channel["declared_state"]
-            owner = f"docs/release/SURFACES.json:{surface['id']}/{channel['id']}"
-            if state == "credential-blocked" and not channel.get("credential"):
-                fail(owner, "credential-blocked channels must name the missing credential")
-            if state in {"credential-blocked", "registry-blocked", "manual-registry"} and not channel.get("blocker"):
-                fail(owner, f"{state} channels must explain the blocker")
-            if state == "not-applicable" and not channel.get("not_applicable_reason"):
-                fail(owner, "not-applicable channels must explain why")
-            if set(channel.get("release_kinds", [])) != {"stable", "prerelease"} and not channel.get(
-                "not_applicable_reason"
-            ):
-                fail(owner, "conditionally not-applicable channels must explain why")
-
-
 def check_ci_wiring(root: Path) -> None:
     workflow_contract = load_workflow_contract_module()
     workflow_path = ".github/workflows/ci.yml"
@@ -1211,24 +1160,29 @@ def check_ci_wiring(root: Path) -> None:
     ]:
         if not any(shell_run_invokes(step["run"], verifier) for step in active_steps):
             fail(workflow_path, f"CI does not execute {' '.join(verifier)}")
-    for test_script in [
-        "scripts/test_release_readme.py",
-        "scripts/test_release_status.py",
-        "scripts/test_verify_release_surfaces.py",
-        "scripts/test_web_package_group.py",
-    ]:
-        if not any(
-            shell_run_invokes_python_unittest(step["run"], test_script)
-            for step in active_steps
-        ):
-            fail(workflow_path, f"CI does not execute unittest module {test_script}")
+    if not any(
+        shell_run_invokes_python_unittest_discovery(step["run"])
+        for step in active_steps
+    ):
+        fail(
+            workflow_path,
+            "CI does not discover scripts/test_*.py with Python unittest",
+        )
 
 
-def shell_run_invokes_python_unittest(run: str, test_script: str) -> bool:
-    logical_run = run.replace("\\\n", " ")
-    for line in executable_shell_lines(logical_run):
+def shell_run_invokes_python_unittest_discovery(run: str) -> bool:
+    for line in executable_shell_lines(run):
         tokens = shell_command_tokens(line)
-        if tokens[:3] == ["python3", "-m", "unittest"] and test_script in tokens[3:]:
+        if tokens == [
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "scripts",
+            "-p",
+            "test_*.py",
+        ]:
             return True
     return False
 

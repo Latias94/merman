@@ -39,13 +39,13 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "fe85d476bed4d10555af08f687ec853f950bca4bf21e4e0e1f6eeb0514f3f3c2",
+    "cargo_lock_sha256": "223444c1a2385f4807766f71d95de503dbcae0380ee05165760b1b437708e711",
     "configuration_sha256": "4765a9560ee1ed9c96619908ef21fc462eab4fa9d917243106f1a96b534d7007",
     "artifact_profile_sha256": "40fdc2de531d02980abc495dd84d5d43f66cfc217a1b64e1790f22d62361b5d4"
   },
   "dependency_closure": {
-    "package_count": 166,
-    "packages_sha256": "0af203aed5e6e3f789834d9620c74c92d89ce49632bd73fe0243110f5e305171"
+    "package_count": 167,
+    "packages_sha256": "1f4fc7bbfb3d982edaa6667a0f62107fd14aafaf0413baac83ff55dba1f3726e"
   },
   "licenses": [
     {
@@ -573,6 +573,16 @@
             "Alex Crichton <alex@alexcrichton.com>"
           ],
           "repository": "https://github.com/rust-lang/cfg-if"
+        },
+        {
+          "name": "data-url",
+          "version": "0.3.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Simon Sapin <simon.sapin@exyr.org>"
+          ],
+          "repository": "https://github.com/servo/rust-url"
         },
         {
           "name": "displaydoc",

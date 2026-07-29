@@ -1,7 +1,6 @@
 # Package Surfaces
 
 Status: maintained release surface contract.
-Last updated: 2026-07-23
 
 This document records merman package surfaces, current readiness, and the CI gates that protect
 each publication or artifact build.
@@ -100,7 +99,7 @@ Merman CI keeps publication separate from validation:
   examples aligned.
 - `platform-script-syntax` checks Python, Apple, and Flutter shell entry points.
 - `python-uniffi-wheel` builds and imports a local Python UniFFI wheel.
-- `flutter-package-check` runs `flutter pub get`, `flutter analyze`, and Dart formatting.
+- The platform binding gate runs Flutter dependency resolution, generated-binding drift checks, static analysis, formatting, ABI contract tests, and a native Dart smoke against the exact desktop artifact recipe.
 - `apple-uniffi-smoke` builds `Merman.xcframework` and validates the generated UniFFI Swift package.
 - `web-npm-dry-run` builds each admitted TypeScript/WASM package, verifies its package projection,
   then packs and verifies the complete lockstep npm group without publishing it.
@@ -191,13 +190,15 @@ a second SKU and a stable budget.
 
 ## Release Gates By Surface
 
-| Surface | Required local gate before release changes |
+`docs/release/RELEASING.md` owns the operator sequence and cross-surface commands. `docs/release/SURFACES.json` owns the machine-readable command for each surface gate. This document records what each gate must prove:
+
+| Surface | Required evidence |
 | --- | --- |
-| Browser npm package group | `cargo run -p xtask -- verify-mermaid-reference`; `cargo run -p xtask -- verify-editor-token-descriptor`; `cargo run -p xtask -- verify-artifact-profiles`; `npm run check:contracts --prefix platforms/web`; `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run verify:packages --prefix platforms/web`; `python3 scripts/web_package_group.py validate-descriptor --descriptor platforms/web/web-surface-descriptor.json` |
-| VS Code extension | `cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio`; `cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing`; `npm run test --prefix tools/vscode-extension`; `npm run prepare:binaries --prefix tools/vscode-extension`; `npm run package --prefix tools/vscode-extension -- --target <target> --out <file>`; `npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>` |
-| Browser artifact evidence | `cargo run -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json`; inspect the selected artifact profile instead of a legacy feature-profile name. |
-| Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --surface all --budget-file docs/release/WASM_SIZE_BUDGETS.json` |
-| Typst transport | `cargo run --locked -p xtask -- verify-typst-profile-constants`; `cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm`; `cargo run --locked -p xtask -- build-typst-package --profile publish`; `cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json`; `cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build`. The package builder consumes the sole `publish` profile and canonical `typst-wasm` artifact recipe, then validates the generated artifact, flat runtime catalog, plugin ABI `2`, size, package provenance, and Typst examples without exposing a private target path. PR CI compiles package examples and a preview import smoke with Typst 0.15.0, and push CI additionally runs the size matrix plus the tests-only package smoke. The dependency gate derives package, manifest, target, default-feature policy, and features from the exact artifact profile. Its admitted `json5`, `lol_html`, and `url` dependencies are pure-Rust parts of invariant Mermaid semantics and remain measured by the artifact size budget. |
+| Browser npm package group | Pinned Mermaid and editor descriptors, exact artifact profiles, TypeScript/WASM contracts, package projection, install smoke, lockstep group assembly, and provenance all agree. |
+| VS Code extension | Descriptor-owned LSP and CLI artifacts pass extension tests, binary preparation, target-specific VSIX packaging, and package-content verification. |
+| Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
+| Browser/Typst size evidence | The combined size matrix covers every admitted Web and Typst artifact exactly once. |
+| Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 2, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `lol_html`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
 
 ## WASM Size Matrix
 

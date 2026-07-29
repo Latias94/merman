@@ -33,13 +33,6 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "THIRD_PARTY_LICENSES" / "rust-cargo-dependencies.json"
 ARTIFACT_PROFILES_PATH = Path("capabilities/artifact-profiles-v1.json")
 WEB_REPORT_ROOT = Path("platforms/web/legal/rust-cargo-dependencies")
-WEB_ARTIFACT_PROFILE_IDS = (
-    "web-analysis",
-    "web-ascii",
-    "web-editor",
-    "web-full",
-    "web-render",
-)
 WEB_TARGET = "wasm32-unknown-unknown"
 PYTHON_ARTIFACT_PROFILE_ID = "python-uniffi-native"
 PYTHON_TARGET_REPORT_ROOT = Path("platforms/python/legal/rust-cargo-dependencies")
@@ -238,9 +231,9 @@ def resolve_report_target(
 
 
 def load_web_profile_recipes(root: Path) -> dict[str, dict[str, Any]]:
-    recipes = load_selected_profile_recipes(
+    recipes = load_profile_recipes(
         root,
-        WEB_ARTIFACT_PROFILE_IDS,
+        None,
         semantic_target="web",
     )
     for profile_id, recipe in recipes.items():
@@ -260,26 +253,36 @@ def load_native_profile_recipes(root: Path) -> dict[str, dict[str, Any]]:
     )
     if len(profile_ids) != len(set(profile_ids)):
         raise RustLicenseReportError("native report specs repeat an artifact profile")
-    return load_selected_profile_recipes(
+    return load_profile_recipes(
         root,
         profile_ids,
         semantic_target="native",
     )
 
 
-def load_selected_profile_recipes(
+def load_profile_recipes(
     root: Path,
-    profile_ids: tuple[str, ...],
+    profile_ids: tuple[str, ...] | None,
     *,
     semantic_target: str,
 ) -> dict[str, dict[str, Any]]:
-    if len(profile_ids) != len(set(profile_ids)):
+    if profile_ids is not None and len(profile_ids) != len(set(profile_ids)):
         raise RustLicenseReportError("selected artifact profiles must be unique")
     try:
         profiles = load_artifact_profiles(root / ARTIFACT_PROFILES_PATH)
     except ArtifactProfileError as error:
         raise RustLicenseReportError(str(error)) from error
     by_id = {profile.profile_id: profile for profile in profiles}
+    if profile_ids is None:
+        profile_ids = tuple(
+            profile.profile_id
+            for profile in profiles
+            if profile.semantic_target == semantic_target
+        )
+        if not profile_ids:
+            raise RustLicenseReportError(
+                f"artifact profile authority defines no {semantic_target} profiles"
+            )
     missing = sorted(set(profile_ids) - by_id.keys())
     if missing:
         raise RustLicenseReportError(

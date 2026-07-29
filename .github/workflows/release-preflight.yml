@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to validate"
+        description: "Immutable 40-character commit SHA, protected branch (main), or matching release tag to validate"
         required: true
         default: "main"
         type: string
@@ -52,14 +52,16 @@ jobs:
           [[ "$VERSION" =~ $semver_re ]] || fail "version must match X.Y.Z or X.Y.Z-alpha.N/beta.N/rc.N."
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           validated_source_ref="$SOURCE_REF"
-          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            :
+          elif [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
           elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match version."
             validated_source_ref="refs/tags/$source_tag"
           else
-            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
+            fail "source_ref must be an immutable lowercase commit SHA, main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
           fi
 
           {
@@ -77,9 +79,15 @@ jobs:
       - name: Pin resolved source commit
         id: pin-source
         shell: bash
+        env:
+          EXPECTED_SOURCE_REF: ${{ steps.release.outputs.source_ref }}
         run: |
           set -euo pipefail
-          printf 'source_sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          source_sha="$(git rev-parse HEAD)"
+          if [[ "$EXPECTED_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            test "$source_sha" = "$EXPECTED_SOURCE_REF"
+          fi
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
 
   versions-and-packages:
     needs: validate-inputs
@@ -110,8 +118,11 @@ jobs:
       - name: Verify release crate order docs
         run: python3 scripts/verify-release-crate-order.py
 
-      - name: Verify exact artifact dependency closures
+      - name: Verify target-scoped artifact dependency closures
         run: python3 scripts/verify_artifact_dependency_closures.py
+
+      - name: Verify generated CLI distribution assets
+        run: python3 scripts/generate_cli_assets.py --check
 
       - name: Verify exact Rust dependency license reports
         run: python3 scripts/generate-rust-license-report.py --check
@@ -491,8 +502,8 @@ jobs:
 
       - name: Build release runtime binaries
         run: |
-          cargo build --release --locked --manifest-path crates/merman-lsp/Cargo.toml -p merman-lsp --bin merman-lsp --no-default-features --features stdio
-          cargo build --release --locked --manifest-path crates/merman-cli/Cargo.toml -p merman-cli --bin merman-cli --no-default-features --features analysis,ascii,icons,jpeg,layout-cytoscape,layout-elk,markdown,math,network-icons,parallel-markdown,pdf,png,shell-completions,svg,system-clock,system-random,system-timezone,system-timing
+          python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked
+          python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
 
       - name: Typecheck extension
         working-directory: tools/vscode-extension

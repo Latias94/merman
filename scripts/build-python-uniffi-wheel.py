@@ -22,6 +22,7 @@ from artifact_profile_recipe import (
     cargo_build_args,
     cargo_run_example_args,
     load_artifact_profile,
+    rustc_host_target,
 )
 from python_wheel_licenses import (
     install_target_report,
@@ -84,27 +85,6 @@ def validate_python_native_recipe(recipe: CargoArtifactRecipe) -> None:
     manifest = REPO_ROOT / recipe.manifest
     if not manifest.is_file():
         raise RuntimeError(f"python-uniffi-native manifest does not exist: {manifest}")
-
-
-def rustc_host_target() -> str:
-    result = subprocess.run(
-        ["rustc", "-vV"],
-        cwd=REPO_ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            "could not detect the Rust host target: "
-            + (result.stderr or result.stdout).strip()
-        )
-    for line in result.stdout.splitlines():
-        if line.startswith("host: "):
-            target = line.removeprefix("host: ")
-            if target:
-                return target
-    raise RuntimeError("rustc -vV did not report a host target")
 
 
 def select_python_wheel_target(recipe: CargoArtifactRecipe) -> str:

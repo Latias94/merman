@@ -25,10 +25,11 @@
     "test:zenuml-browser-admission": "node scripts/zenuml-browser-admission.mjs --run",
     "record:zenuml-browser-admission": "node scripts/zenuml-browser-admission.mjs --run --write",
     "verify:dependencies": "npm ls --all && npm --prefix tests ls --all",
-    "test": "npm run prepare:browser-runtime && npm run test:browser:typecheck && npm run test:build-graph && npm run test:semantic-tokens && npm run test:mermaid-config && npm run test:runtime && npm run test:mermaid-requirements && npm run test:realm && npm run test:examples && npm run test:export && npm run test:benchmark",
+    "test": "npm run prepare:browser-runtime && npm run test:browser:typecheck && npm run test:build-graph && npm run test:semantic-tokens && npm run test:editor-worker && npm run test:mermaid-config && npm run test:runtime && npm run test:mermaid-requirements && npm run test:realm && npm run test:examples && npm run test:export && npm run test:benchmark",
     "test:benchmark": "node --test --experimental-strip-types src/benchmark/*.test.ts src/benchmark/realm/*.test.ts",
     "test:build-graph": "node --test scripts/benchmark-build-graph.test.mjs scripts/csp-policy.test.mjs scripts/package-entrypoints.test.mjs",
     "test:examples": "node --test --experimental-strip-types src/lib/examples.test.ts",
+    "test:editor-worker": "node --test --experimental-strip-types src/editor/worker-client.test.ts",
     "test:export": "node --test --experimental-strip-types src/lib/png-export-plan.test.ts",
     "test:browser": "npm run build && npm run test:browser:chromium",
     "test:browser:chromium": "npm --prefix tests run test:chromium",
@@ -77,8 +78,10 @@
   },
   "overrides": {
     "@zenuml/core": "3.50.1",
+    "brace-expansion": "5.0.8",
     "cytoscape": "3.34.0",
-    "dompurify": "3.4.12"
+    "dompurify": "3.4.12",
+    "tar": "7.5.22"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -65,6 +65,10 @@ const stablePublicTypes = new Set([
 ]);
 
 const rawWasmExports = contract.exportedValueNames(fullWasmTypes);
+const rawEditorSessionProperties = contract.exportedTypePropertyNames(
+  fullWasmTypes,
+  "EditorSession",
+);
 const publicValueExports = contract.exportedValueNames(publicEntry);
 const publicTypeExports = contract.exportedTypeNames(publicEntry);
 const catalogValueExports = contract.exportedValueNames(publicCatalog);
@@ -103,7 +107,7 @@ const requiredTypeProperties = new Map([
       "completions",
       "hover",
       "documentSymbols",
-      "workspaceSymbols",
+      "searchDocumentSymbols",
       "definition",
       "references",
       "prepareRename",
@@ -229,6 +233,12 @@ failed ||= reportMissing(
   requiredRawWrappers.filter((name) => !wasmModuleProperties.has(name)),
 );
 failed ||= reportMissing(
+  "check-contracts: wasm-bindgen EditorSession is missing document symbol search",
+  ["searchDocumentSymbols"].filter(
+    (name) => !rawEditorSessionProperties.has(name),
+  ),
+);
+failed ||= reportMissing(
   "check-contracts: stable public TypeScript helpers are missing",
   requiredPublicWrappers.filter((name) => !publicValueExports.has(name)),
 );
@@ -327,6 +337,19 @@ failed ||= reportPolicyFailure(
   contract
     .exportedTypePropertyNames(publicEntry, "AnalysisBindingOptions")
     .has("parse"),
+);
+failed ||= reportPolicyFailure(
+  "check-contracts: legacy single-document workspace symbol names must be removed",
+  publicValueExports.has("editorWorkspaceSymbols") ||
+    rawWasmExports.has("editorWorkspaceSymbols") ||
+    rawEditorSessionProperties.has("workspaceSymbols") ||
+    contract
+      .exportedTypePropertyNames(publicEntry, "BrowserEditorSession")
+      .has("workspaceSymbols") ||
+    contract
+      .exportedTypePropertyNames(publicEntry, "WasmEditorSessionBinding")
+      .has("workspaceSymbols") ||
+    wasmModuleProperties.has("editorWorkspaceSymbols"),
 );
 
 for (const [typeName, requiredLiterals] of requiredTypeStringLiterals) {
