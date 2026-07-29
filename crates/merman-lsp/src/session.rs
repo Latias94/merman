@@ -15,6 +15,8 @@ use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
 use tower_lsp_server::ls_types::CancelParams;
 use tower_lsp_server::{ExitedError, LspService};
 
+pub(crate) mod cache;
+
 tokio::task_local! {
     static ACTIVE_MUTATION: MutationCompletion;
 }

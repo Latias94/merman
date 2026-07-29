@@ -99,15 +99,15 @@ the coordinated refactor: consumers must regenerate against the current package,
 other than version `1` is rejected before its body is decoded.
 
 `AnalysisFactsPayload` is a binding wire projection, not the internal exchange format between
-analysis, editor-core, and LSP. Those modules share typed `AnalysisResult`,
+analysis, editor-core, and LSP. Those modules share typed `AnalysisGeneration`,
 `merman_editor_core::DocumentAnalysisContext` / `DocumentSnapshot`, the LSP-owned
 `DocumentAnalysisContext` / request-scoped `SnapshotContext`, and `FenceTextIndex` data without a
 JSON round trip.
 
-`AnalysisResult` and `AnalyzedDiagram` are sealed canonical outputs. Public callers may inspect
-their source map, payload, ranges, syntax, and parser disposition through read-only accessors, but
-only the analyzer and document-analysis pipeline can construct a generation or attach parser
-evidence.
+`AnalysisGeneration` and `AnalyzedDiagram` are sealed canonical outputs. Public callers may inspect
+their source map, ranges, syntax, parser disposition, and diagnostic projections through read-only
+accessors, but only the analyzer and document-analysis pipeline can construct a generation or
+attach parser-owned evidence.
 
 The facts schema version is unrelated to:
 
@@ -134,7 +134,7 @@ The facts schema version is unrelated to:
   that descriptor without a second enum, lookup table, sort, or regex grammar.
 
 One cached LSP `DocumentAnalysisContext` pairs an editor-core `DocumentSnapshot` with its canonical
-`AnalysisResult` and current diagnostic `AnalysisPayload` for a source version and analyzer
+`AnalysisGeneration` and current diagnostic `AnalysisPayload` for a source version and analyzer
 configuration. Each request borrows a `SnapshotContext`, which captures the document epoch and
 snapshot generation together with the diagnostic generation. The request kind determines whether
 currentness requires only the snapshot or both the snapshot and diagnostic payload. Completion,
@@ -142,7 +142,7 @@ hover/structure, rename, code actions, diagnostics, detection, and tokens theref
 parse generation.
 
 A rule-only analyzer change advances the diagnostic generation and reprojects `AnalysisPayload`
-from the cached canonical `AnalysisResult` through `Analyzer::reproject_payload`; it retains the
+from the cached canonical `AnalysisGeneration` through `AnalysisGeneration::project`; it retains the
 same snapshot, parser evidence, and semantic-token state and does not invoke another parse.
 Snapshot-affecting changes instead advance both generations, clear cached analysis contexts and
 semantic-token state, and require a new analysis build. Site configuration, runtime policy

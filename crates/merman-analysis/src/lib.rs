@@ -15,6 +15,7 @@ pub mod options_json;
 mod payload;
 mod recovery;
 mod result;
+mod retained_weight;
 mod rules;
 mod source_config_rewrite;
 mod source_directives;
@@ -50,7 +51,7 @@ pub use payload::{
     DiagnosticSpan, LspRange, SourceDescriptor, SourceKind, SourcePosition, Summary, Utf16Position,
 };
 pub use result::{
-    AnalysisCaptureOutcome, AnalysisDiagramFacts, AnalysisDiagramId, AnalysisDiagramSyntaxFacts,
+    AnalysisCaptureOutcome, AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts,
     AnalysisExpectedSyntaxFacts, AnalysisFactSpan, AnalysisFactsPayload,
     AnalysisFenceDelimiterFacts, AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts,
     AnalysisFlowchartFacts, AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts,

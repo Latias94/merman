@@ -66,6 +66,10 @@ impl DiagnosticCandidate {
         self
     }
 
+    pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
+        self.diagnostic.estimated_owned_heap_bytes()
+    }
+
     fn materialize(&self, severity: crate::DiagnosticSeverity) -> AnalysisDiagnostic {
         let mut diagnostic = self.diagnostic.clone();
         diagnostic.severity = severity;

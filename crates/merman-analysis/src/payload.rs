@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
+use crate::retained_weight::RetainedWeight;
+
 pub const ANALYSIS_PAYLOAD_VERSION: u32 = 1;
 // Diagnostics and facts are independent contracts whose first public shapes both start at 1.
 pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 1;
@@ -79,6 +81,13 @@ impl SourceDescriptor {
     pub fn with_language(mut self, language: impl Into<String>) -> Self {
         self.language = language.into();
         self
+    }
+
+    pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_optional_string(&self.path);
+        weight.add_string(&self.language);
+        weight.finish()
     }
 }
 
@@ -315,6 +324,28 @@ impl AnalysisDiagnostic {
         self.fixes.extend(fixes);
         self
     }
+
+    pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_string(&self.id);
+        weight.add_string(&self.message);
+        weight.add_optional_string(&self.code_name);
+        weight.add_optional_string(&self.diagram_type);
+        weight.add_optional_string(&self.help);
+        weight.add_array::<DiagnosticRelated>(self.related.capacity());
+        for related in &self.related {
+            weight.add_string(&related.message);
+        }
+        weight.add_array::<DiagnosticFix>(self.fixes.capacity());
+        for fix in &self.fixes {
+            weight.add_string(&fix.title);
+            weight.add_array::<DiagnosticFixEdit>(fix.edits.capacity());
+            for edit in &fix.edits {
+                weight.add_string(&edit.replacement);
+            }
+        }
+        weight.finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -373,5 +404,65 @@ impl AnalysisPayload {
 
     pub fn to_pretty_json_string(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
+    }
+
+    /// Estimates heap allocations owned by this payload, excluding the payload value itself.
+    ///
+    /// This is a stable, saturating cache weight rather than allocator-specific RSS accounting.
+    pub fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add(self.source.estimated_owned_heap_bytes());
+        weight.add_array::<AnalysisDiagnostic>(self.diagnostics.capacity());
+        for diagnostic in &self.diagnostics {
+            weight.add(diagnostic.estimated_owned_heap_bytes());
+        }
+        weight.finish()
+    }
+}
+
+#[cfg(test)]
+mod retained_weight_tests {
+    use super::*;
+
+    #[test]
+    fn payload_weight_covers_related_messages_and_nested_fix_edits() {
+        let base = AnalysisPayload::new(
+            SourceDescriptor::diagram(),
+            vec![AnalysisDiagnostic::error(
+                "test",
+                DiagnosticCategory::Semantic,
+                "message",
+            )],
+        );
+        let mut related = base.clone();
+        related.diagnostics[0].related.push(DiagnosticRelated {
+            message: "related allocation".repeat(8),
+            span: None,
+        });
+        let mut fixed = related.clone();
+        fixed.diagnostics[0].fixes.push(DiagnosticFix::new(
+            "fix allocation".repeat(8),
+            vec![DiagnosticFixEdit::new(
+                DiagnosticSpan::new(
+                    0..0,
+                    SourcePosition::new(1, 1),
+                    SourcePosition::new(1, 1),
+                    LspRange::new(
+                        Utf16Position {
+                            line: 0,
+                            character: 0,
+                        },
+                        Utf16Position {
+                            line: 0,
+                            character: 0,
+                        },
+                    ),
+                ),
+                "replacement allocation".repeat(8),
+            )],
+        ));
+
+        assert!(related.estimated_owned_heap_bytes() > base.estimated_owned_heap_bytes());
+        assert!(fixed.estimated_owned_heap_bytes() > related.estimated_owned_heap_bytes());
     }
 }

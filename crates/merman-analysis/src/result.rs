@@ -14,17 +14,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::mem::size_of;
 
-static NEXT_ANALYSIS_GENERATION_IDENTITY: AtomicUsize = AtomicUsize::new(1);
-
-fn next_analysis_generation_identity() -> usize {
-    NEXT_ANALYSIS_GENERATION_IDENTITY
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-            current.checked_add(1)
-        })
-        .expect("analysis generation identity space exhausted")
-}
+use crate::retained_weight::{RetainedWeight, conservative_btree_entry_bytes};
 
 /// One sealed rich capture bound to an exact parser environment and snapshot policy.
 #[derive(Debug)]
@@ -32,16 +24,8 @@ pub struct AnalysisGeneration {
     storage: Box<AnalysisGenerationStorage>,
 }
 
-/// An opaque diagram handle that is meaningful only within its issuing generation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AnalysisDiagramId {
-    generation_identity: usize,
-    ordinal: usize,
-}
-
 #[derive(Debug)]
 struct AnalysisGenerationStorage {
-    identity: usize,
     source_map: SourceMap,
     diagrams: Vec<AnalyzedDiagram>,
     document_candidates: Vec<DiagnosticCandidate>,
@@ -126,7 +110,6 @@ impl AnalysisGeneration {
         let snapshot_policy = analyzer.options().snapshot_policy().clone();
         Self {
             storage: Box::new(AnalysisGenerationStorage {
-                identity: next_analysis_generation_identity(),
                 source_map,
                 diagrams,
                 document_candidates: Vec::new(),
@@ -190,25 +173,36 @@ impl AnalysisGeneration {
         &self.storage.source_map
     }
 
+    /// Estimates heap owned by this generation while excluding the shared source buffer.
+    ///
+    /// Analyzer-owned environment, site-config, and runtime-policy Arc targets are excluded. The
+    /// estimate includes the full lazy `SourceMap` metric allowance and saturates on overflow.
+    pub fn estimated_owned_heap_bytes_excluding_source(&self) -> usize {
+        let mut weight = RetainedWeight::new(size_of::<AnalysisGenerationStorage>());
+        weight.add(
+            self.storage
+                .source_map
+                .estimated_owned_heap_bytes_excluding_source(),
+        );
+        weight.add_array::<AnalyzedDiagram>(self.storage.diagrams.capacity());
+        for diagram in &self.storage.diagrams {
+            weight.add(diagram.estimated_owned_heap_bytes_excluding_source());
+        }
+        weight.add_array::<DiagnosticCandidate>(self.storage.document_candidates.capacity());
+        for candidate in &self.storage.document_candidates {
+            weight.add(candidate.estimated_owned_heap_bytes());
+        }
+        weight.add(
+            self.storage
+                .snapshot_policy
+                .source
+                .estimated_owned_heap_bytes(),
+        );
+        weight.finish()
+    }
+
     pub fn diagrams(&self) -> &[AnalyzedDiagram] {
         &self.storage.diagrams
-    }
-
-    /// Returns opaque handles in this generation's diagram order.
-    pub fn diagram_ids(&self) -> impl ExactSizeIterator<Item = AnalysisDiagramId> + '_ {
-        let generation_identity = self.storage.identity;
-        (0..self.storage.diagrams.len()).map(move |ordinal| AnalysisDiagramId {
-            generation_identity,
-            ordinal,
-        })
-    }
-
-    /// Resolves a diagram handle, returning `None` for a different generation.
-    pub fn diagram(&self, id: AnalysisDiagramId) -> Option<&AnalyzedDiagram> {
-        if id.generation_identity != self.storage.identity {
-            return None;
-        }
-        self.storage.diagrams.get(id.ordinal)
     }
 
     #[cfg(test)]
@@ -332,6 +326,18 @@ impl AnalyzedDiagram {
     pub fn parse_disposition(&self) -> DiagramParseDisposition {
         self.parse_disposition
     }
+
+    fn estimated_owned_heap_bytes_excluding_source(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_string(&self.source_id);
+        weight.add(self.source.estimated_owned_heap_bytes());
+        weight.add(self.syntax.estimated_owned_heap_bytes());
+        weight.add_array::<DiagnosticCandidate>(self.diagnostic_candidates.capacity());
+        for candidate in &self.diagnostic_candidates {
+            weight.add(candidate.estimated_owned_heap_bytes());
+        }
+        weight.finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -373,6 +379,17 @@ impl AnalysisSyntaxFacts {
     pub fn with_effective_layout(mut self, effective_layout: Option<String>) -> Self {
         self.effective_layout = effective_layout;
         self
+    }
+
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_optional_string(&self.diagram_type);
+        weight.add_optional_string(&self.effective_layout);
+        weight.add(self.text_index.estimated_owned_heap_bytes());
+        if let Some(flowchart) = &self.flowchart {
+            weight.add(flowchart.estimated_owned_heap_bytes());
+        }
+        weight.finish()
     }
 }
 
@@ -610,6 +627,47 @@ pub struct AnalysisFlowchartFacts {
 }
 
 impl AnalysisFlowchartFacts {
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_optional_string(&self.direction);
+        weight.add(
+            self.class_defs
+                .len()
+                .saturating_mul(conservative_btree_entry_bytes::<String, Vec<String>>()),
+        );
+        for (name, classes) in &self.class_defs {
+            weight.add_string(name);
+            add_string_vec_weight(&mut weight, classes);
+        }
+        if let Some(defaults) = &self.edge_defaults {
+            weight.add_optional_string(&defaults.interpolate);
+            add_string_vec_weight(&mut weight, &defaults.style);
+        }
+        add_string_vec_weight(&mut weight, &self.vertex_calls);
+        weight.add_array::<AnalysisFlowchartNodeFacts>(self.nodes.capacity());
+        for node in &self.nodes {
+            weight.add(node.estimated_owned_heap_bytes());
+        }
+        weight.add_array::<AnalysisFlowchartEdgeFacts>(self.edges.capacity());
+        for edge in &self.edges {
+            weight.add(edge.estimated_owned_heap_bytes());
+        }
+        weight.add_array::<AnalysisFlowchartSubgraphFacts>(self.subgraphs.capacity());
+        for subgraph in &self.subgraphs {
+            weight.add(subgraph.estimated_owned_heap_bytes());
+        }
+        weight.add(
+            self.tooltips
+                .len()
+                .saturating_mul(conservative_btree_entry_bytes::<String, String>()),
+        );
+        for (name, tooltip) in &self.tooltips {
+            weight.add_string(name);
+            weight.add_string(tooltip);
+        }
+        weight.finish()
+    }
+
     #[cfg(test)]
     pub(crate) fn try_from_model(
         model: &Value,
@@ -668,6 +726,13 @@ impl AnalysisFlowchartFacts {
                 Ok(Err(error))
             }
         }
+    }
+}
+
+fn add_string_vec_weight(weight: &mut RetainedWeight, values: &Vec<String>) {
+    weight.add_array::<String>(values.capacity());
+    for value in values {
+        weight.add_string(value);
     }
 }
 
@@ -856,6 +921,30 @@ pub struct AnalysisFlowchartNodeFacts {
     pub have_callback: bool,
 }
 
+impl AnalysisFlowchartNodeFacts {
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_string(&self.id);
+        for value in [
+            &self.label,
+            &self.label_type,
+            &self.layout_shape,
+            &self.icon,
+            &self.form,
+            &self.pos,
+            &self.img,
+            &self.constraint,
+            &self.link,
+            &self.link_target,
+        ] {
+            weight.add_optional_string(value);
+        }
+        add_string_vec_weight(&mut weight, &self.classes);
+        add_string_vec_weight(&mut weight, &self.styles);
+        weight.finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisFlowchartEdgeFacts {
     pub id: String,
@@ -883,6 +972,28 @@ pub struct AnalysisFlowchartEdgeFacts {
     pub length: usize,
 }
 
+impl AnalysisFlowchartEdgeFacts {
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_string(&self.id);
+        weight.add_string(&self.from);
+        weight.add_string(&self.to);
+        for value in [
+            &self.label,
+            &self.label_type,
+            &self.edge_type,
+            &self.stroke,
+            &self.interpolate,
+            &self.animation,
+        ] {
+            weight.add_optional_string(value);
+        }
+        add_string_vec_weight(&mut weight, &self.classes);
+        add_string_vec_weight(&mut weight, &self.style);
+        weight.finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisFlowchartSubgraphFacts {
     pub id: String,
@@ -897,6 +1008,20 @@ pub struct AnalysisFlowchartSubgraphFacts {
     pub styles: Vec<String>,
     #[serde(default)]
     pub nodes: Vec<String>,
+}
+
+impl AnalysisFlowchartSubgraphFacts {
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_string(&self.id);
+        weight.add_string(&self.title);
+        weight.add_optional_string(&self.dir);
+        weight.add_optional_string(&self.label_type);
+        add_string_vec_weight(&mut weight, &self.classes);
+        add_string_vec_weight(&mut weight, &self.styles);
+        add_string_vec_weight(&mut weight, &self.nodes);
+        weight.finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1031,43 +1156,6 @@ fn fence_marker_name(marker: FenceMarker) -> &'static str {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn diagram_ids_address_generation_order_instead_of_source_indexes() {
-        let mut generation = Analyzer::new()
-            .analyze_generation("flowchart TD\nA-->B\n")
-            .into_ready()
-            .expect("valid source should produce a generation");
-        generation.storage.diagrams[0].index = 41;
-
-        let ids = generation.diagram_ids().collect::<Vec<_>>();
-
-        assert_eq!(ids.len(), 1);
-        let diagram = generation
-            .diagram(ids[0])
-            .expect("generation-issued id should resolve");
-        assert_eq!(diagram.index(), 41);
-        assert!(std::ptr::eq(diagram, &generation.diagrams()[0]));
-    }
-
-    #[test]
-    fn diagram_ids_reject_a_different_generation() {
-        let first = Analyzer::new()
-            .analyze_generation("flowchart TD\nA-->B\n")
-            .into_ready()
-            .expect("valid source should produce a generation");
-        let second = Analyzer::new()
-            .analyze_generation("flowchart TD\nC-->D\n")
-            .into_ready()
-            .expect("valid source should produce a generation");
-        let first_id = first
-            .diagram_ids()
-            .next()
-            .expect("first generation should contain a diagram");
-
-        assert!(first.diagram(first_id).is_some());
-        assert!(second.diagram(first_id).is_none());
-    }
 
     #[test]
     fn diagram_parse_disposition_uses_stable_snake_case_values() {

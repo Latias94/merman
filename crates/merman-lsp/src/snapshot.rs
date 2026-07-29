@@ -3,6 +3,7 @@ use merman_analysis::{
 };
 #[cfg(test)]
 use merman_editor_core::EditorDiagramDetection;
+use std::mem::size_of;
 use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 
@@ -23,6 +24,21 @@ pub struct DocumentAnalysisContext {
     pub snapshot: Arc<DocumentSnapshot>,
     generation: Arc<AnalysisGeneration>,
     pub payload: Arc<AnalysisPayload>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AnalysisOwnedWeight {
+    pub(crate) generation: usize,
+    pub(crate) payload: usize,
+    pub(crate) snapshots: usize,
+}
+
+impl AnalysisOwnedWeight {
+    pub(crate) fn total(self) -> usize {
+        self.generation
+            .saturating_add(self.payload)
+            .saturating_add(self.snapshots)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
@@ -111,6 +127,45 @@ impl DocumentAnalysisContext {
             generation: Arc::clone(&self.generation),
             payload,
         })
+    }
+
+    pub(crate) fn estimated_owned_weight(&self) -> AnalysisOwnedWeight {
+        let arc_overhead = 2usize.saturating_mul(size_of::<usize>());
+        let generation = arc_overhead
+            .saturating_add(size_of::<AnalysisGeneration>())
+            .saturating_add(
+                self.generation
+                    .estimated_owned_heap_bytes_excluding_source(),
+            );
+        let payload = arc_overhead
+            .saturating_add(size_of::<AnalysisPayload>())
+            .saturating_add(self.payload.estimated_owned_heap_bytes());
+        let snapshots = arc_overhead
+            .saturating_add(size_of::<DocumentAnalysisContext>())
+            .saturating_add(arc_overhead)
+            .saturating_add(size_of::<DocumentSnapshot>())
+            .saturating_add(self.snapshot.uri.as_str().len())
+            .saturating_add(
+                self.snapshot
+                    .editor
+                    .estimated_owned_heap_bytes_excluding_shared_analysis(),
+            );
+        #[cfg(test)]
+        let snapshots = self
+            .snapshot
+            .detection
+            .as_ref()
+            .map_or(snapshots, |detection| {
+                snapshots
+                    .saturating_add(detection.diagram_type.capacity())
+                    .saturating_add(detection.syntax_id.capacity())
+                    .saturating_add(detection.effective_layout_id.capacity())
+            });
+        AnalysisOwnedWeight {
+            generation,
+            payload,
+            snapshots,
+        }
     }
 
     #[cfg(test)]
@@ -226,11 +281,11 @@ mod tests {
         .into_ready()
         .expect("source is within the analysis limit");
         let lsp = super::DocumentAnalysisContext::from_editor(editor, uri.clone());
-        let fence_ids = lsp
+        let fence_identity = lsp
             .snapshot
             .fences()
             .iter()
-            .map(merman_editor_core::FenceSnapshot::diagram_id)
+            .map(|fence| (fence.source_id().to_owned(), fence.index()))
             .collect::<Vec<_>>();
         let fence_ranges = lsp
             .snapshot
@@ -292,9 +347,9 @@ mod tests {
                 .snapshot
                 .fences()
                 .iter()
-                .map(merman_editor_core::FenceSnapshot::diagram_id)
+                .map(|fence| (fence.source_id().to_owned(), fence.index()))
                 .collect::<Vec<_>>(),
-            fence_ids
+            fence_identity
         );
         assert_eq!(
             projected

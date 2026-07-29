@@ -1,17 +1,18 @@
 use crate::types::{DocumentKind, DocumentUri, Position};
 use merman_analysis::{
-    AnalysisDiagramId, AnalysisGeneration, AnalyzedDiagram, FenceDelimiter, FenceDelimiterSpans,
-    FenceTextIndex, SharedTextSlice, SourceDescriptor, SourceMap,
+    AnalysisGeneration, AnalyzedDiagram, FenceDelimiter, FenceDelimiterSpans, FenceTextIndex,
+    SharedTextSlice, SourceDescriptor, SourceMap,
 };
+use std::fmt;
+use std::mem::size_of;
 use std::ops::Range;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DocumentSnapshot {
     inner: Arc<DocumentSnapshotData>,
 }
 
-#[derive(Debug)]
 struct DocumentSnapshotData {
     uri: DocumentUri,
     version: i32,
@@ -21,10 +22,10 @@ struct DocumentSnapshotData {
     fences: Box<[FenceSnapshot]>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FenceSnapshot {
     generation: Arc<AnalysisGeneration>,
-    diagram_id: AnalysisDiagramId,
+    diagram_ordinal: usize,
 }
 
 impl DocumentSnapshot {
@@ -35,9 +36,8 @@ impl DocumentSnapshot {
         generation: Arc<AnalysisGeneration>,
     ) -> Self {
         let text = generation.source_map().source_arc();
-        let fences = generation
-            .diagram_ids()
-            .map(|diagram_id| FenceSnapshot::new(Arc::clone(&generation), diagram_id))
+        let fences = (0..generation.diagrams().len())
+            .map(|ordinal| FenceSnapshot::new(Arc::clone(&generation), ordinal))
             .collect::<Vec<_>>()
             .into_boxed_slice();
         Self {
@@ -76,6 +76,20 @@ impl DocumentSnapshot {
         &self.inner.text
     }
 
+    /// Estimates snapshot-owned heap excluding the shared source and analysis generation targets.
+    pub fn estimated_owned_heap_bytes_excluding_shared_analysis(&self) -> usize {
+        let arc_overhead = 2usize.saturating_mul(size_of::<usize>());
+        arc_overhead
+            .saturating_add(size_of::<DocumentSnapshotData>())
+            .saturating_add(self.inner.uri.capacity())
+            .saturating_add(
+                self.inner
+                    .fences
+                    .len()
+                    .saturating_mul(size_of::<FenceSnapshot>()),
+            )
+    }
+
     pub fn source_map(&self) -> &SourceMap {
         self.inner.generation.source_map()
     }
@@ -109,22 +123,32 @@ impl DocumentSnapshot {
     }
 }
 
+impl fmt::Debug for DocumentSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DocumentSnapshot")
+            .field("uri", &self.inner.uri)
+            .field("version", &self.inner.version)
+            .field("kind", &self.inner.kind)
+            .field("text_len", &self.inner.text.len())
+            .field("fence_count", &self.inner.fences.len())
+            .finish()
+    }
+}
+
 impl FenceSnapshot {
-    fn new(generation: Arc<AnalysisGeneration>, diagram_id: AnalysisDiagramId) -> Self {
+    fn new(generation: Arc<AnalysisGeneration>, diagram_ordinal: usize) -> Self {
         Self {
             generation,
-            diagram_id,
+            diagram_ordinal,
         }
     }
 
     fn diagram(&self) -> &AnalyzedDiagram {
         self.generation
-            .diagram(self.diagram_id)
-            .expect("fence diagram id must belong to its analysis generation")
-    }
-
-    pub const fn diagram_id(&self) -> AnalysisDiagramId {
-        self.diagram_id
+            .diagrams()
+            .get(self.diagram_ordinal)
+            .expect("fence diagram ordinal must belong to its analysis generation")
     }
 
     pub fn source_id(&self) -> &str {
@@ -183,5 +207,18 @@ impl FenceSnapshot {
         let diagram = self.diagram();
         diagram.fence_delimiter().is_none()
             || diagram.document_range().end == diagram.body_range().end
+    }
+}
+
+impl fmt::Debug for FenceSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("FenceSnapshot")
+            .field("diagram_ordinal", &self.diagram_ordinal)
+            .field("source_id", &self.source_id())
+            .field("index", &self.index())
+            .field("document_range", &self.document_range())
+            .field("diagram_type", &self.diagram_type())
+            .finish()
     }
 }

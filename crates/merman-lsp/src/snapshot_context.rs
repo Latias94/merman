@@ -90,9 +90,8 @@ pub(crate) async fn commit_diagnostic_reprojection_context(
     kind: SnapshotContextKind,
 ) -> Result<Option<SnapshotContext>> {
     let mut store = store.lock().await;
-    store.commit_diagnostic_reprojection(batch);
-    if store.has_analysis_payload(uri) {
-        return Ok(store.snapshot_context(uri));
+    if let Some(context) = store.commit_diagnostic_reprojection_context(uri, batch) {
+        return Ok(Some(context));
     }
     stale_or_retry(kind, store.get(uri).is_some())
 }

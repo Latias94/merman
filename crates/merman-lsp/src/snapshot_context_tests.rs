@@ -15,6 +15,14 @@ fn test_store() -> Arc<Mutex<DocumentStore>> {
     Arc::new(Mutex::new(DocumentStore::new()))
 }
 
+fn cache_entry_weight(uri: &Uri, text: &str) -> usize {
+    let mut store = DocumentStore::new();
+    store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let request = store.snapshot_build_request(uri).unwrap();
+    let analysis = request.build().unwrap();
+    DocumentStore::estimated_analysis_cache_entry_weight(uri, &analysis)
+}
+
 fn stale_message(kind: SnapshotContextKind) -> &'static str {
     match kind {
         SnapshotContextKind::CodeActions => "code action document changed",
@@ -371,6 +379,51 @@ async fn edit_during_diagnostic_reprojection_retries_without_building_under_the_
             .expect("expected latest analysis context");
     assert_eq!(current.snapshot.version(), 2);
     assert_eq!(executor.execution_count(), execution_count + 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn evicted_generation_rebuilds_once_for_overlapping_waiters() {
+    let a = Uri::from_str("file:///tmp/a.mmd").unwrap();
+    let b = Uri::from_str("file:///tmp/b.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+    let budget = cache_entry_weight(&a, text);
+    let store = Arc::new(Mutex::new(DocumentStore::with_analysis_cache_budget(
+        budget,
+    )));
+    {
+        let mut store = store.lock().await;
+        store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+        store.upsert_text(b.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    }
+    snapshot_context::snapshot_context_for_uri(&store, &a, SnapshotContextKind::Structure)
+        .await
+        .unwrap()
+        .unwrap();
+    snapshot_context::snapshot_context_for_uri(&store, &b, SnapshotContextKind::Structure)
+        .await
+        .unwrap()
+        .unwrap();
+    let (executor, before) = {
+        let store = store.lock().await;
+        assert!(!store.has_snapshot(&a));
+        let executor = store.analysis_executor();
+        let before = executor.execution_count();
+        (executor, before)
+    };
+
+    let (first, second) = tokio::join!(
+        snapshot_context::snapshot_context_for_uri(&store, &a, SnapshotContextKind::Structure,),
+        snapshot_context::snapshot_context_for_uri(&store, &a, SnapshotContextKind::Structure,),
+    );
+    let first = first.unwrap().unwrap();
+    let second = second.unwrap().unwrap();
+
+    assert!(Arc::ptr_eq(&first.snapshot, &second.snapshot));
+    assert_eq!(executor.execution_count(), before + 1);
+    let store = store.lock().await;
+    assert!(store.has_snapshot(&a));
+    assert!(store.is_snapshot_context_current(&first));
+    assert!(store.is_snapshot_context_current(&second));
 }
 
 #[tokio::test(flavor = "current_thread")]

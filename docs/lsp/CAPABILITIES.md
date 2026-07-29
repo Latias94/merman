@@ -56,7 +56,7 @@ policy.
 ## Typed Snapshot and Analysis Facts Wire Contracts
 
 LSP language behavior is projected from typed `DocumentSnapshot` / `FenceTextIndex` data built
-directly from `AnalysisResult`; the server does not round-trip serialized facts JSON. The separately
+directly from `AnalysisGeneration`; the server does not round-trip serialized facts JSON. The separately
 exposed `AnalysisFactsPayload` version 1 is the equivalent parser-only wire contract for binding
 consumers:
 

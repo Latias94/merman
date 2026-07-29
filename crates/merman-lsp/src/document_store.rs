@@ -3,6 +3,9 @@ use crate::analysis_executor::AnalysisExecutor;
 use crate::analysis_request::SnapshotBatchCommit;
 use crate::analysis_request::{AnalysisBuildKey, AnalysisBuildRequest};
 #[cfg(test)]
+use crate::session::cache::WeightedCacheStatistics;
+use crate::session::cache::{WeightedLru, WeightedReplacement, conservative_weighted_entry_bytes};
+#[cfg(test)]
 use crate::snapshot::DocumentSnapshot;
 use crate::snapshot::{
     DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotContext,
@@ -23,6 +26,7 @@ use tower_lsp_server::ls_types::{
 };
 
 pub(crate) const DEFAULT_LSP_MAX_SOURCE_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 
 pub(crate) fn default_lsp_analysis_options() -> AnalysisOptions {
     AnalysisOptions::default().with_max_source_bytes(Some(DEFAULT_LSP_MAX_SOURCE_BYTES))
@@ -49,7 +53,7 @@ pub struct DocumentStore {
     analyzer_configuration_request: AnalyzerConfigurationRequest,
     next_document_epoch: u64,
     documents: HashMap<Uri, DocumentRecord>,
-    analysis_generations: HashMap<Uri, CachedAnalysisGeneration>,
+    analysis_generations: WeightedLru<Uri, CachedAnalysisGeneration>,
     diagnostic_state: HashMap<Uri, StoredDiagnosticState>,
     semantic_tokens_state: HashMap<Uri, StoredSemanticTokensState>,
 }
@@ -57,7 +61,19 @@ pub struct DocumentStore {
 #[derive(Debug)]
 struct CachedAnalysisGeneration {
     context: Arc<DocumentAnalysisContext>,
+    document_epoch: DocumentEpoch,
+    snapshot_generation: SnapshotGeneration,
     diagnostic_generation: DiagnosticGeneration,
+}
+
+fn cached_analysis_weight(uri: &Uri, context: &DocumentAnalysisContext) -> usize {
+    context
+        .estimated_owned_weight()
+        .total()
+        .saturating_add(conservative_weighted_entry_bytes::<
+            Uri,
+            CachedAnalysisGeneration,
+        >(uri.as_str().len()))
 }
 
 #[derive(Debug)]
@@ -80,6 +96,8 @@ pub(crate) struct DiagnosticReprojectionRequest {
 struct DiagnosticReprojectionSource {
     uri: Uri,
     document_epoch: DocumentEpoch,
+    snapshot_generation: SnapshotGeneration,
+    diagnostic_generation: DiagnosticGeneration,
     context: Arc<DocumentAnalysisContext>,
 }
 
@@ -124,8 +142,16 @@ struct SourceLimitDocumentProjection {
 struct DiagnosticReprojection {
     uri: Uri,
     document_epoch: DocumentEpoch,
+    snapshot_generation: SnapshotGeneration,
+    diagnostic_generation: DiagnosticGeneration,
     original: Arc<DocumentAnalysisContext>,
     projected: Arc<DocumentAnalysisContext>,
+}
+
+#[derive(Debug)]
+struct DiagnosticReprojectionCommit {
+    committed: usize,
+    contexts: Vec<(Uri, SnapshotContext)>,
 }
 
 #[derive(Debug)]
@@ -469,6 +495,8 @@ fn project_diagnostics(
         projections.push(DiagnosticReprojection {
             uri: source.uri,
             document_epoch: source.document_epoch,
+            snapshot_generation: source.snapshot_generation,
+            diagnostic_generation: source.diagnostic_generation,
             projected: Arc::new(
                 source
                     .context
@@ -520,6 +548,16 @@ impl DocumentStore {
     pub(crate) fn with_session_cancellation(
         session_cancellation: AnalysisCancellationToken,
     ) -> Self {
+        Self::with_session_cancellation_and_cache_budget(
+            session_cancellation,
+            DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
+        )
+    }
+
+    fn with_session_cancellation_and_cache_budget(
+        session_cancellation: AnalysisCancellationToken,
+        analysis_cache_budget: usize,
+    ) -> Self {
         let analyzer = Analyzer::with_options(default_lsp_analysis_options());
         Self {
             analyzer,
@@ -531,10 +569,41 @@ impl DocumentStore {
             analyzer_configuration_request: AnalyzerConfigurationRequest::default(),
             next_document_epoch: 0,
             documents: HashMap::new(),
-            analysis_generations: HashMap::new(),
+            analysis_generations: WeightedLru::new(analysis_cache_budget),
             diagnostic_state: HashMap::new(),
             semantic_tokens_state: HashMap::new(),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self {
+        Self::with_session_cancellation_and_cache_budget(
+            AnalysisCancellationToken::new(),
+            analysis_cache_budget,
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn analysis_cache_total_weight(&self) -> usize {
+        self.analysis_generations.total_weight()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn analysis_cache_len(&self) -> usize {
+        self.analysis_generations.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn analysis_cache_statistics(&self) -> WeightedCacheStatistics {
+        self.analysis_generations.statistics()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn estimated_analysis_cache_entry_weight(
+        uri: &Uri,
+        context: &DocumentAnalysisContext,
+    ) -> usize {
+        cached_analysis_weight(uri, context)
     }
 
     #[cfg(test)]
@@ -708,10 +777,14 @@ impl DocumentStore {
                     .map(|record| DiagnosticReprojectionSource {
                         uri: uri.clone(),
                         document_epoch: record.epoch,
+                        snapshot_generation: cached.snapshot_generation,
+                        diagnostic_generation: cached.diagnostic_generation,
                         context: Arc::clone(&cached.context),
                     })
             })
             .collect::<Vec<_>>();
+        let mut sources = sources;
+        sources.sort_by(|left, right| left.uri.cmp(&right.uri));
         (!sources.is_empty()).then(|| DiagnosticReprojectionPlan {
             analyzer: self.analyzer.clone(),
             cancellation: self.diagnostic_reprojection_cancellation.clone(),
@@ -724,26 +797,80 @@ impl DocumentStore {
         &mut self,
         batch: DiagnosticReprojectionBatch,
     ) -> usize {
+        self.commit_diagnostic_reprojection_transaction(batch)
+            .committed
+    }
+
+    pub(crate) fn commit_diagnostic_reprojection_context(
+        &mut self,
+        uri: &Uri,
+        batch: DiagnosticReprojectionBatch,
+    ) -> Option<SnapshotContext> {
+        self.commit_diagnostic_reprojection_transaction(batch)
+            .contexts
+            .into_iter()
+            .find_map(|(projected_uri, context)| (projected_uri == *uri).then_some(context))
+    }
+
+    fn commit_diagnostic_reprojection_transaction(
+        &mut self,
+        mut batch: DiagnosticReprojectionBatch,
+    ) -> DiagnosticReprojectionCommit {
         if batch.generation != self.diagnostic_generation {
-            return 0;
+            return DiagnosticReprojectionCommit {
+                committed: 0,
+                contexts: Vec::new(),
+            };
         }
 
-        let mut committed = 0;
+        batch
+            .projections
+            .sort_by(|left, right| left.uri.cmp(&right.uri));
+        let mut replacements = Vec::new();
+        let mut contexts = Vec::new();
         for projection in batch.projections {
-            if !self.is_document_epoch_current(&projection.uri, projection.document_epoch) {
-                continue;
-            }
-            let Some(cached) = self.analysis_generations.get_mut(&projection.uri) else {
+            let Some(record) = self.documents.get(&projection.uri) else {
                 continue;
             };
-            if !Arc::ptr_eq(&cached.context, &projection.original) {
+            let Some(cached) = self.analysis_generations.peek(&projection.uri) else {
+                continue;
+            };
+            if record.epoch != projection.document_epoch
+                || cached.document_epoch != projection.document_epoch
+                || self.snapshot_generation != projection.snapshot_generation
+                || cached.snapshot_generation != projection.snapshot_generation
+                || cached.diagnostic_generation != projection.diagnostic_generation
+                || !Arc::ptr_eq(&cached.context, &projection.original)
+            {
                 continue;
             }
-            cached.context = projection.projected;
-            cached.diagnostic_generation = batch.generation;
-            committed += 1;
+            let context = SnapshotContext::with_analysis(
+                Arc::clone(&projection.projected.snapshot),
+                Arc::clone(&projection.projected.payload),
+                projection.snapshot_generation,
+                batch.generation,
+                projection.document_epoch,
+            );
+            let weight = cached_analysis_weight(&projection.uri, &projection.projected);
+            replacements.push(WeightedReplacement {
+                key: projection.uri.clone(),
+                value: CachedAnalysisGeneration {
+                    context: projection.projected,
+                    document_epoch: projection.document_epoch,
+                    snapshot_generation: projection.snapshot_generation,
+                    diagnostic_generation: batch.generation,
+                },
+                weight,
+            });
+            contexts.push((projection.uri, context));
         }
-        committed
+        let committed = contexts.len();
+        self.analysis_generations
+            .replace_batch_preserving_recency(replacements);
+        DiagnosticReprojectionCommit {
+            committed,
+            contexts,
+        }
     }
 
     pub(crate) fn discard_stale_analysis_generations(&mut self) {
@@ -1076,9 +1203,15 @@ impl DocumentStore {
     }
 
     pub fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
-        if let Some(cached) = self.analysis_generations.get(uri) {
-            return Some(self.cached_snapshot_context(cached, self.documents.get(uri)?.epoch));
+        let document_epoch = self.documents.get(uri)?.epoch;
+        let snapshot_generation = self.snapshot_generation;
+        if let Some(cached) = self.analysis_generations.get_if(uri, |cached| {
+            cached.document_epoch == document_epoch
+                && cached.snapshot_generation == snapshot_generation
+        }) {
+            return Some(Self::cached_snapshot_context(cached));
         }
+        self.analysis_generations.remove(uri);
 
         let request = self.snapshot_build_request(uri)?;
         let analysis = match request.build() {
@@ -1108,7 +1241,7 @@ impl DocumentStore {
 
     pub(crate) fn snapshot_build_request(&self, uri: &Uri) -> Option<AnalysisBuildRequest> {
         let record = self.documents.get(uri)?;
-        if record.document.has_unavailable_source() || self.analysis_generations.contains_key(uri) {
+        if record.document.has_unavailable_source() || self.has_snapshot(uri) {
             return None;
         }
         let key = AnalysisBuildKey::new(
@@ -1135,16 +1268,23 @@ impl DocumentStore {
         if self.snapshot_generation != request.snapshot_generation()
             || self.diagnostic_generation != request.diagnostic_generation()
             || !self.is_document_epoch_current(request.uri(), request.document_epoch())
+            || !self
+                .analysis_executor
+                .is_generation_current(request.uri(), request.analysis_job_generation())
         {
             return None;
         }
 
+        let weight = cached_analysis_weight(request.uri(), &analysis);
         self.analysis_generations.insert(
             request.uri().clone(),
             CachedAnalysisGeneration {
                 context: Arc::clone(&analysis),
+                document_epoch: request.document_epoch(),
+                snapshot_generation: request.snapshot_generation(),
                 diagnostic_generation: request.diagnostic_generation(),
             },
+            weight,
         );
         Some(SnapshotContext::with_analysis(
             Arc::clone(&analysis.snapshot),
@@ -1179,24 +1319,37 @@ impl DocumentStore {
     }
 
     pub fn has_snapshot(&self, uri: &Uri) -> bool {
-        self.analysis_generations.contains_key(uri)
+        let Some(record) = self.documents.get(uri) else {
+            return false;
+        };
+        self.analysis_generations.peek(uri).is_some_and(|cached| {
+            cached.document_epoch == record.epoch
+                && cached.snapshot_generation == self.snapshot_generation
+        })
     }
 
     pub fn has_analysis_payload(&self, uri: &Uri) -> bool {
-        self.analysis_generations
-            .get(uri)
-            .is_some_and(|cached| cached.diagnostic_generation == self.diagnostic_generation)
+        self.analysis_generations.peek(uri).is_some_and(|cached| {
+            cached.diagnostic_generation == self.diagnostic_generation
+                && cached.snapshot_generation == self.snapshot_generation
+                && self.is_document_epoch_current(uri, cached.document_epoch)
+        })
     }
 
     pub(crate) fn diagnostic_reprojection_request(
         &self,
         uri: &Uri,
     ) -> Option<DiagnosticReprojectionRequest> {
-        let cached = self.analysis_generations.get(uri)?;
+        let cached = self.analysis_generations.peek(uri)?;
         if cached.diagnostic_generation == self.diagnostic_generation {
             return None;
         }
         let record = self.documents.get(uri)?;
+        if cached.document_epoch != record.epoch
+            || cached.snapshot_generation != self.snapshot_generation
+        {
+            return None;
+        }
         Some(DiagnosticReprojectionRequest {
             analyzer: self.analyzer.clone(),
             cancellation: self.diagnostic_reprojection_cancellation.clone(),
@@ -1204,6 +1357,8 @@ impl DocumentStore {
             source: DiagnosticReprojectionSource {
                 uri: uri.clone(),
                 document_epoch: record.epoch,
+                snapshot_generation: cached.snapshot_generation,
+                diagnostic_generation: cached.diagnostic_generation,
                 context: Arc::clone(&cached.context),
             },
         })
@@ -1215,7 +1370,7 @@ impl DocumentStore {
         uri: &Uri,
     ) -> Option<&Arc<DocumentAnalysisContext>> {
         self.analysis_generations
-            .get(uri)
+            .peek(uri)
             .map(|cached| &cached.context)
     }
 
@@ -1250,8 +1405,11 @@ impl DocumentStore {
         let mut requests = Vec::new();
 
         for (uri, record) in &self.documents {
-            if let Some(cached) = self.analysis_generations.get(uri) {
-                contexts.push(self.cached_snapshot_context(cached, record.epoch));
+            if let Some(cached) = self.analysis_generations.peek(uri).filter(|cached| {
+                cached.document_epoch == record.epoch
+                    && cached.snapshot_generation == self.snapshot_generation
+            }) {
+                contexts.push(Self::cached_snapshot_context(cached));
             } else if let Some(request) = self.snapshot_build_request(uri) {
                 requests.push(request);
             }
@@ -1260,17 +1418,13 @@ impl DocumentStore {
         (contexts, requests)
     }
 
-    fn cached_snapshot_context(
-        &self,
-        cached: &CachedAnalysisGeneration,
-        document_epoch: DocumentEpoch,
-    ) -> SnapshotContext {
+    fn cached_snapshot_context(cached: &CachedAnalysisGeneration) -> SnapshotContext {
         SnapshotContext::with_analysis(
             Arc::clone(&cached.context.snapshot),
             Arc::clone(&cached.context.payload),
-            self.snapshot_generation,
+            cached.snapshot_generation,
             cached.diagnostic_generation,
-            document_epoch,
+            cached.document_epoch,
         )
     }
 

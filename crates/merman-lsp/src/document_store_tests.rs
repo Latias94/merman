@@ -2,13 +2,15 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::document_store::{
-    AnalyzerOptionsPreparation, DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiscardedSource,
+    AnalyzerOptionsPreparation, DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
+    DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiagnosticState, DocumentDiscardedSource,
     DocumentResourceLimit, DocumentStore, DocumentSyncError, PreparedDocumentText,
     SemanticTokensState, TextChangePreparation, TextDocumentUpdate, default_lsp_analysis_options,
 };
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisRuleConfig,
-    DiagnosticSeverity, FenceSemanticRole, FenceTextIndexSource, source_limit_diagnostic_span,
+    AnalysisRuleProfile, DiagnosticSeverity, FenceSemanticRole, FenceTextIndexSource,
+    source_limit_diagnostic_span,
 };
 use merman_editor_core::DocumentKind;
 use tower_lsp_server::ls_types::{
@@ -2648,4 +2650,279 @@ fn incomplete_mindmap_documents_use_recovered_parser_facts() {
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "root"));
     assert!(!index.node_ids().any(|id| id == "child"));
+}
+
+fn estimated_entry_weight(uri: &Uri, text: &str, kind: DocumentKind) -> usize {
+    let mut sizing = DocumentStore::new();
+    sizing.upsert_text(uri.clone(), 1, text.to_string(), kind);
+    let request = sizing
+        .snapshot_build_request(uri)
+        .expect("sizing document should require analysis");
+    let analysis = request.build().expect("sizing analysis should be accepted");
+    DocumentStore::estimated_analysis_cache_entry_weight(uri, &analysis)
+}
+
+fn assert_default_cache_admits(uri: Uri, text: String, kind: DocumentKind) {
+    let mut store = DocumentStore::new();
+    store.upsert_text(uri.clone(), 1, text, kind);
+    let request = store.snapshot_build_request(&uri).unwrap();
+    let analysis = request.build().unwrap();
+    let weight = DocumentStore::estimated_analysis_cache_entry_weight(&uri, &analysis);
+    assert!(weight <= DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES);
+    assert!(store.insert_built_analysis(&request, analysis).is_some());
+    assert_eq!(store.analysis_cache_len(), 1);
+    assert_eq!(store.analysis_cache_total_weight(), weight);
+    let statistics = store.analysis_cache_statistics();
+    assert_eq!(statistics.current_weight, weight);
+    assert_eq!(statistics.high_water_weight, weight);
+    assert_eq!(statistics.oversized_entries, 0);
+}
+
+#[test]
+fn weighted_analysis_cache_touches_and_evicts_complete_generations() {
+    let a = Uri::from_str("file:///tmp/a.mmd").unwrap();
+    let b = Uri::from_str("file:///tmp/b.mmd").unwrap();
+    let c = Uri::from_str("file:///tmp/c.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+    let entry_weight = estimated_entry_weight(&a, text, DocumentKind::Diagram);
+    let budget = entry_weight.checked_mul(2).expect("test cache budget fits");
+    let mut store = DocumentStore::with_analysis_cache_budget(budget);
+
+    for uri in [&a, &b] {
+        store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
+        store
+            .snapshot(uri)
+            .expect("entry should fit the test cache");
+    }
+    assert_eq!(store.analysis_cache_len(), 2);
+    assert_eq!(store.analysis_cache_total_weight(), budget);
+    store
+        .snapshot(&a)
+        .expect("touch should return the cached entry");
+
+    store.upsert_text(c.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    store
+        .snapshot(&c)
+        .expect("third analysis remains request-local");
+
+    assert!(store.has_snapshot(&a));
+    assert!(!store.has_snapshot(&b));
+    assert!(store.has_snapshot(&c));
+    assert_eq!(store.analysis_cache_len(), 2);
+    assert_eq!(store.analysis_cache_total_weight(), budget);
+    assert_eq!(store.analysis_cache_statistics().evictions, 1);
+}
+
+#[test]
+fn oversized_analysis_is_returned_current_without_disturbing_cache_invariants() {
+    let uri = Uri::from_str("file:///tmp/a.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+    let entry_weight = estimated_entry_weight(&uri, text, DocumentKind::Diagram);
+    let mut store = DocumentStore::with_analysis_cache_budget(entry_weight - 1);
+    store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let request = store
+        .snapshot_build_request(&uri)
+        .expect("uncached document should require analysis");
+    let analysis = request.build().expect("analysis should succeed");
+    let weak = Arc::downgrade(&analysis);
+
+    let context = store
+        .insert_built_analysis(&request, Arc::clone(&analysis))
+        .expect("oversized current analysis remains request-local");
+    drop(analysis);
+
+    assert!(store.is_analysis_context_current(&context));
+    assert_eq!(store.analysis_cache_len(), 0);
+    assert_eq!(store.analysis_cache_total_weight(), 0);
+    let statistics = store.analysis_cache_statistics();
+    assert_eq!(statistics.oversized_entries, 1);
+    assert_eq!(statistics.current_weight, 0);
+    assert_eq!(statistics.high_water_weight, 0);
+    assert!(store.get(&uri).is_some());
+    assert!(weak.upgrade().is_none());
+}
+
+#[test]
+fn cancelled_and_stale_builds_do_not_change_cache_weight_or_eviction_order() {
+    let uri = Uri::from_str("file:///tmp/a.mmd").unwrap();
+    let mut store = DocumentStore::new();
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let request = store.snapshot_build_request(&uri).unwrap();
+    let before = (
+        store.analysis_cache_total_weight(),
+        store.analysis_cache_len(),
+        store.analysis_cache_statistics().evictions,
+    );
+    let cancellation = AnalysisCancellationToken::new();
+    cancellation.cancel();
+    assert!(request.build_cancellable(&cancellation).is_err());
+    assert_eq!(
+        (
+            store.analysis_cache_total_weight(),
+            store.analysis_cache_len(),
+            store.analysis_cache_statistics().evictions,
+        ),
+        before
+    );
+
+    let stale_analysis = request.build().unwrap();
+    store.upsert_text(
+        uri.clone(),
+        2,
+        "flowchart TD\nA-->C\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    assert!(
+        store
+            .insert_built_analysis(&request, stale_analysis)
+            .is_none()
+    );
+    assert_eq!(
+        (
+            store.analysis_cache_total_weight(),
+            store.analysis_cache_len(),
+            store.analysis_cache_statistics().evictions,
+        ),
+        before
+    );
+}
+
+#[test]
+fn eviction_releases_cache_ownership_but_preserves_request_local_generation() {
+    let a = Uri::from_str("file:///tmp/a.mmd").unwrap();
+    let b = Uri::from_str("file:///tmp/b.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+    let entry_weight = estimated_entry_weight(&a, text, DocumentKind::Diagram);
+    let mut store = DocumentStore::with_analysis_cache_budget(entry_weight);
+    store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let request = store.snapshot_build_request(&a).unwrap();
+    let analysis = request.build().unwrap();
+    let weak_context = Arc::downgrade(&analysis);
+    let weak_generation = Arc::downgrade(analysis.generation());
+    let weak_payload = Arc::downgrade(&analysis.payload);
+    let request_local = store
+        .insert_built_analysis(&request, Arc::clone(&analysis))
+        .unwrap();
+    drop(analysis);
+
+    store.upsert_text(b.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    store.snapshot(&b).unwrap();
+
+    assert!(weak_context.upgrade().is_none());
+    assert!(weak_generation.upgrade().is_some());
+    assert!(weak_payload.upgrade().is_some());
+    assert!(store.is_analysis_context_current(&request_local));
+    drop(request_local);
+    assert!(weak_generation.upgrade().is_none());
+    assert!(weak_payload.upgrade().is_none());
+}
+
+#[test]
+fn eviction_keeps_open_document_diagnostic_and_token_identity() {
+    let a = Uri::from_str("file:///tmp/a.mmd").unwrap();
+    let b = Uri::from_str("file:///tmp/b.mmd").unwrap();
+    let text = "flowchart TD\nA-->B\n";
+    let entry_weight = estimated_entry_weight(&a, text, DocumentKind::Diagram);
+    let mut store = DocumentStore::with_analysis_cache_budget(entry_weight);
+    store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    let snapshot = store.snapshot_context(&a).unwrap();
+    assert!(store.set_semantic_tokens_state_if_current(
+        &snapshot,
+        SemanticTokensState::new(Some("tokens-a".to_string()), Vec::new()),
+    ));
+    let diagnostic = store
+        .diagnostic_contexts()
+        .into_iter()
+        .find(|context| context.document.uri == a)
+        .unwrap();
+    assert!(store.set_diagnostic_state_if_current(
+        &diagnostic,
+        DocumentDiagnosticState {
+            result_id: "diagnostics-a".to_string(),
+            diagnostics: Vec::new(),
+        },
+    ));
+
+    store.upsert_text(b.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    store.snapshot(&b).unwrap();
+
+    assert!(!store.has_snapshot(&a));
+    assert!(store.get(&a).is_some());
+    assert_eq!(
+        store.diagnostic_state(&a).unwrap().result_id,
+        "diagnostics-a"
+    );
+    assert_eq!(
+        store
+            .semantic_tokens_state(&a)
+            .and_then(|state| state.result_id.as_deref()),
+        Some("tokens-a")
+    );
+}
+
+#[test]
+fn larger_diagnostic_reprojection_can_be_current_without_being_cached() {
+    let uri = Uri::from_str("file:///tmp/a.mmd").unwrap();
+    let text = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+    let entry_weight = estimated_entry_weight(&uri, text, DocumentKind::Diagram);
+    let mut store = DocumentStore::with_analysis_cache_budget(entry_weight);
+    store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
+    store.snapshot_context(&uri).unwrap();
+    let (_, plan) = store.begin_analyzer_options(default_lsp_analysis_options().with_rule_config(
+        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+    ));
+    let batch = plan
+        .expect("recommended rules should reproject the cached generation")
+        .project()
+        .unwrap();
+
+    let context = store
+        .commit_diagnostic_reprojection_context(&uri, batch)
+        .expect("valid projected context must be returned even when oversized");
+
+    assert!(store.is_analysis_context_current(&context));
+    assert!(!context.analysis_payload().diagnostics.is_empty());
+    assert_eq!(store.analysis_cache_len(), 0);
+    assert_eq!(store.analysis_cache_total_weight(), 0);
+    assert!(store.get(&uri).is_some());
+}
+
+#[test]
+fn default_cache_admits_representative_source_limit_boundary_documents() {
+    let flow_uri = Uri::from_str("file:///tmp/boundary.mmd").unwrap();
+    let flow_prefix = "flowchart TD\nA-->B\n%% ";
+    let flow = format!(
+        "{flow_prefix}{}",
+        "x".repeat(DEFAULT_LSP_MAX_SOURCE_BYTES - flow_prefix.len())
+    );
+    assert_default_cache_admits(flow_uri, flow, DocumentKind::Diagram);
+
+    let markdown_uri = Uri::from_str("file:///tmp/boundary.md").unwrap();
+    let markdown_suffix = "\n```mermaid\nflowchart TD\nA-->B\n```\n";
+    let markdown = format!(
+        "{}{}",
+        "x".repeat(DEFAULT_LSP_MAX_SOURCE_BYTES - markdown_suffix.len()),
+        markdown_suffix
+    );
+    assert_default_cache_admits(markdown_uri, markdown, DocumentKind::Markdown);
+
+    let high_fact_uri = Uri::from_str("file:///tmp/high-fact.mmd").unwrap();
+    let mut high_fact = (0..4096)
+        .map(|index| format!("N{index}[Node {index}] --> N{}\n", index + 1))
+        .fold("flowchart TD\n".to_string(), |mut source, line| {
+            source.push_str(&line);
+            source
+        });
+    high_fact.push_str("%% ");
+    high_fact.extend(std::iter::repeat_n(
+        'x',
+        DEFAULT_LSP_MAX_SOURCE_BYTES - high_fact.len(),
+    ));
+    assert_eq!(high_fact.len(), DEFAULT_LSP_MAX_SOURCE_BYTES);
+    assert_default_cache_admits(high_fact_uri, high_fact, DocumentKind::Diagram);
 }

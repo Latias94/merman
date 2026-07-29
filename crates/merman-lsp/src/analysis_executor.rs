@@ -273,6 +273,14 @@ impl AnalysisExecutor {
         lock_recovering_poison(&self.inner.registry).generation_for(uri)
     }
 
+    pub(crate) fn is_generation_current(
+        &self,
+        uri: &Uri,
+        generation: AnalysisJobGeneration,
+    ) -> bool {
+        lock_recovering_poison(&self.inner.registry).current_generation_for(uri) == Some(generation)
+    }
+
     pub(crate) async fn execute(
         &self,
         request: &AnalysisBuildRequest,

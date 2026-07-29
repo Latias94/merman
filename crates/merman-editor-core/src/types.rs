@@ -11,6 +11,10 @@ impl DocumentUri {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub(crate) fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
 }
 
 impl From<String> for DocumentUri {

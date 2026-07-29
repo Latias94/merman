@@ -230,7 +230,7 @@ fn markdown_documents_create_multiple_fence_local_snapshots() {
 }
 
 #[test]
-fn markdown_fences_are_generation_views_with_stable_diagram_ids() {
+fn markdown_fences_are_generation_views_in_stable_generation_order() {
     let source: Arc<str> = Arc::from(concat!(
         "before\n",
         "```mermaid\n",
@@ -258,10 +258,7 @@ fn markdown_fences_are_generation_views_with_stable_diagram_ids() {
     assert!(std::ptr::eq(snapshot.source_map(), generation.source_map()));
     assert!(Arc::ptr_eq(snapshot.shared_text(), &source));
     assert_eq!(snapshot.fences().len(), generation.diagrams().len());
-    for fence in snapshot.fences() {
-        let diagram = generation
-            .diagram(fence.diagram_id())
-            .expect("fence id resolves in the owning generation");
+    for (fence, diagram) in snapshot.fences().iter().zip(generation.diagrams()) {
         assert_eq!(fence.source_id(), diagram.source_id());
         assert_eq!(fence.document_range(), diagram.document_range());
         assert_eq!(fence.body_range(), diagram.body_range());
@@ -274,6 +271,28 @@ fn markdown_fences_are_generation_views_with_stable_diagram_ids() {
             snapshot.shared_text()
         ));
     }
+}
+
+#[test]
+fn snapshot_debug_output_does_not_expand_the_shared_generation() {
+    let analyzed = DocumentWorkspace::build_analysis_context_with_shared_text(
+        &Analyzer::new(),
+        "file:///tmp/debug.md",
+        9,
+        Arc::from("```mermaid\nflowchart TD\nA-->B\n```\n"),
+        DocumentKind::Markdown,
+    )
+    .into_ready()
+    .expect("source is within the analysis limit");
+    let snapshot = analyzed.snapshot();
+
+    let document_debug = format!("{snapshot:?}");
+    let fence_debug = format!("{:?}", &snapshot.fences()[0]);
+
+    assert!(document_debug.contains("fence_count: 1"));
+    assert!(fence_debug.contains("diagram_ordinal: 0"));
+    assert!(!document_debug.contains("AnalysisGeneration"));
+    assert!(!fence_debug.contains("AnalysisGeneration"));
 }
 
 #[test]

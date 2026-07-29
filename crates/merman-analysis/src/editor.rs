@@ -1,6 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::mem::size_of;
 use std::sync::Arc;
 
+use crate::retained_weight::{
+    ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
+};
 use serde::{Deserialize, Serialize};
 
 mod core_facts;
@@ -484,6 +488,54 @@ impl FenceTextIndexData {
         self.reference_point_index = PointIntervalIndex::from_start_ordered(reference_intervals);
         Ok(())
     }
+
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::new(
+            ARC_ALLOCATION_OVERHEAD.saturating_add(size_of::<FenceTextIndexData>()),
+        );
+        for values in [&self.node_ids, &self.class_names, &self.directive_prefixes] {
+            weight.add(
+                values
+                    .len()
+                    .saturating_mul(conservative_btree_entry_bytes::<String, ()>()),
+            );
+            for value in values {
+                weight.add_string(value);
+            }
+        }
+        weight.add(
+            self.references
+                .len()
+                .saturating_mul(conservative_btree_entry_bytes::<
+                    FenceReferenceGroup,
+                    Vec<ByteSpan>,
+                >()),
+        );
+        for (group, spans) in &self.references {
+            weight.add_string(&group.name);
+            weight.add_array::<ByteSpan>(spans.capacity());
+        }
+        weight.add_array::<FenceLineItem>(self.outline_items.capacity());
+        for item in &self.outline_items {
+            weight.add_string(&item.name);
+            weight.add_optional_string(&item.detail);
+        }
+        weight.add_array::<FenceSemanticItem>(self.semantic_items.capacity());
+        for item in &self.semantic_items {
+            weight.add_string(&item.name);
+            weight.add_optional_string(&item.detail);
+        }
+        weight.add_array::<FenceLexeme>(self.lexemes.capacity());
+        for lexeme in &self.lexemes {
+            weight.add_array::<FenceLexemeModifier>(lexeme.modifiers.capacity());
+        }
+        weight.add_array::<FenceExpectedSyntax>(self.expected_syntax.capacity());
+        weight.add_array::<PointIntervalEntry<usize>>(self.semantic_point_index.entries.capacity());
+        weight.add_array::<PointIntervalEntry<ReferenceIntervalId>>(
+            self.reference_point_index.entries.capacity(),
+        );
+        weight.finish()
+    }
 }
 
 impl FenceTextIndex {
@@ -491,6 +543,10 @@ impl FenceTextIndex {
         Self {
             data: Arc::new(data),
         }
+    }
+
+    pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
+        self.data.estimated_owned_heap_bytes()
     }
 
     #[cfg(test)]
