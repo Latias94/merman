@@ -25,7 +25,9 @@ pub enum SvgPipelinePreset {
     ///
     /// This starts from the readable fallback path, strips native `<foreignObject>` labels, and
     /// removes known rasterization hazards such as unsupported CSS animation constructs and invalid
-    /// numeric attributes.
+    /// numeric attributes. Structural resources are limited to same-document fragments, ordinary
+    /// image elements require approved, syntactically valid inline raster data URLs, and `feImage`
+    /// accepts either form so a default usvg resolver cannot read files.
     ResvgSafe,
 }
 
@@ -152,6 +154,22 @@ mod tests {
         );
 
         assert_eq!(output.as_str(), expected.as_ref());
+    }
+
+    #[test]
+    fn resvg_safe_finalization_is_idempotent_after_resource_closure() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com"><text>docs</text></a><image href="../secret.png"/><use href="#shape"/><defs><path id="shape" d="M0 0H1V1H0z"/></defs><style>.safe{fill:url(#paint)}.external{background:url(/tmp/image.png)}</style></svg>"##;
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+
+        let once = super::super::finalize_resvg_svg(svg, &session).unwrap();
+        let twice = super::super::finalize_resvg_svg(once.as_str(), &session).unwrap();
+
+        assert_eq!(twice, once);
+        assert!(once.as_str().contains(r#"href="https://example.com""#));
+        assert!(!once.as_str().contains("secret.png"));
+        assert!(!once.as_str().contains("/tmp/image.png"));
     }
 
     #[test]

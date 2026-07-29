@@ -27,7 +27,7 @@ pub use pipeline::{
     ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
     SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, finalize_resvg_svg,
+    SvgPostprocessor, SvgReferencePlan, finalize_resvg_svg,
 };
 pub use theme_profile::{
     CompiledHostTheme, HostThemeAppearance, HostThemeOutput, HostThemePipelinePreset,

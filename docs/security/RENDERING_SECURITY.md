@@ -27,9 +27,14 @@ use merman::svg::{ResvgCompatibleSvg, SvgPipeline};
 ```
 
 The resvg-safe preset always runs after custom draft postprocessors. It tokenizes CSS, removes
-active SVG/SMIL content and unsafe attributes, parses the final XML, and returns the sealed
-`ResvgCompatibleSvg` type used by low-level PNG/JPG/PDF APIs. It is designed for non-browser SVG
-consumers, not as a browser DOM sanitizer for arbitrary user-supplied SVG.
+active SVG/SMIL content and unsafe attributes, and closes non-navigation rendering resources.
+Structural references are limited to same-document fragments; ordinary image resources require an
+approved inline PNG/JPEG/GIF/WebP data URL whose encoding is syntactically decodable; `feImage`
+accepts either form. This does not prove that the decoded bytes form the declared image container.
+SVG, XLink, and XML namespace aliases are checked by local attribute name, matching `usvg`. It then
+parses the final XML and returns the sealed `ResvgCompatibleSvg` type used by low-level PNG/JPG/PDF
+APIs. `<a>` navigation links remain in the SVG because rasterizers do not resolve them as resources;
+they are outside this non-browser raster-resource contract.
 
 ## Output Resource Boundaries
 
@@ -46,17 +51,29 @@ Output type determines the relevant allocation policy:
   every transient allocation made by third-party conversion backends.
 - PNG/JPG and PDF both bound embedded data-URL bytes before `usvg` parses them, then preflight
   embedded PNG/JPEG/GIF/WebP dimensions from image headers. Defaults allow 16 MiB and 16,777,216
-  intrinsic pixels per image, with 32 MiB and 33,554,432 pixels in aggregate.
+  intrinsic pixels per image, with 32 MiB and 33,554,432 pixels in aggregate. Aggregate data bytes
+  and resource counts include every same-document `<use>` occurrence that will duplicate an image,
+  plus conservative applications of local filter, mask, and clip-path definitions to each
+  `<use>`-expanded source element.
+- Merman's PNG/JPG/PDF exporters independently disable `usvg` string-href resolution. This defense
+  remains required even though the sealed SVG contract removes external image paths, so later
+  exporter refactors cannot silently restore host-file reads.
 - Both conversion paths also bound recursive SVG work such as isolation depth, filter primitives,
-  subroots, and nested SVG images before entering `resvg` or `krilla-svg`. The sealed XML tree and
-  the resolved `usvg` tree have a non-optional backend depth cap (256 on native, 64 on WebAssembly),
-  so an unbounded resource profile cannot bypass third-party recursion safety. Native preparation
-  and encoding run on a bounded 8 MiB worker stack.
+  subroots, and nested SVG images before entering `resvg` or `krilla-svg`. Terminal validation
+  resolves the same-document `<use>` graph and rejects cycles, expanded node counts, and expanded
+  depth before `usvg` materializes the tree. The sealed XML tree and resolved `usvg` tree retain a
+  non-optional 1,000,000-node hard cap and backend depth cap (256 on native, 64 on WebAssembly), so
+  an unbounded resource profile cannot bypass third-party recursion safety. Native preparation and
+  encoding run on a bounded 8 MiB worker stack.
 
 These limits are deliberately not one switch. Unbounding PNG/JPG output does not unbound PDF
 filters or image decoding, and unbounding PDF filters does not disable parser or render resource
 profiles. No unbounded option disables the recursive-backend capability cap. Keep each budget
 enabled at an untrusted boundary and fit preview images to their actual display size.
+
+`ResvgCompatibleSvg` alone does not prove the declared inline-image container or its decode cost. A
+host that bypasses Merman's export APIs and invokes `usvg` or another rasterizer directly must apply
+equivalent encoded-byte, container, frame, dimension, and aggregate-pixel checks before decoding.
 
 See [Raster And PDF Output](../rendering/RASTER_OUTPUT.md) for the exact option types and residual
 allocator boundary, and [Threat Model](THREAT_MODEL.md) for source/model/render limits. These limits
@@ -132,6 +149,8 @@ Hosts should:
 - keep untrusted authoring and preview surfaces on strict/default settings;
 - use `assertSafeSvgForDom()` or the VS Code preview policy before DOM insertion;
 - avoid postprocessing that reintroduces scripts, event handlers, external loads, or unsafe links;
+- run all trusted SVG/CSS postprocessors before the resvg-safe terminal stage; modifying the sealed
+  string invalidates its evidence;
 - prefer raster or resvg-safe output for downloads in environments that cannot inspect SVG safety;
 - keep PNG/JPG, PDF-filter, and embedded-image budgets independent and enabled for untrusted input;
 - use `RasterOptions::with_fit_to` for previews instead of rasterizing an intrinsic oversized SVG;

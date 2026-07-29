@@ -1211,6 +1211,7 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
+ "svgtypes",
  "thiserror 2.0.19",
  "unicode-linebreak",
  "unicode-width",

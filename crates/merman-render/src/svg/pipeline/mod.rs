@@ -31,10 +31,12 @@ pub trait SvgPostprocessor: Send + Sync {
     ) -> Result<Cow<'a, str>>;
 }
 
-/// SVG that has passed the terminal resvg compatibility finalizer.
+/// SVG that has passed the terminal resvg compatibility and rendering-resource finalizer.
 ///
 /// The inner string cannot be constructed directly. Custom postprocessors operate on an SVG draft
-/// before finalization and therefore cannot claim this type.
+/// before finalization and therefore cannot claim this type. Structural resources are limited to
+/// same-document fragments, ordinary image elements require approved, syntactically valid inline
+/// raster data URLs, and `feImage` accepts either form.
 ///
 /// ```compile_fail
 /// use merman_render::svg::ResvgCompatibleSvg;
@@ -44,11 +46,44 @@ pub trait SvgPostprocessor: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResvgCompatibleSvg {
     svg: String,
+    reference_plan: SvgReferencePlan,
+}
+
+/// Reference-expansion work retained by a sealed resvg-compatible SVG.
+///
+/// The occurrence slice is ordered by source-document element encounter order. Exporters use it
+/// to charge each inline resource once for every `<use>`-expanded instance before asking usvg to
+/// decode that resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SvgReferencePlan {
+    expanded_elements: usize,
+    max_tree_depth: usize,
+    raw_element_occurrences: Box<[usize]>,
+}
+
+impl SvgReferencePlan {
+    /// Returns the element count after same-document `<use>` expansion.
+    pub const fn expanded_elements(&self) -> usize {
+        self.expanded_elements
+    }
+
+    /// Returns the maximum resolved XML-tree depth after `<use>` expansion.
+    pub const fn max_tree_depth(&self) -> usize {
+        self.max_tree_depth
+    }
+
+    /// Returns expanded instance counts for source elements in document encounter order.
+    pub fn raw_element_occurrences(&self) -> &[usize] {
+        &self.raw_element_occurrences
+    }
 }
 
 impl ResvgCompatibleSvg {
-    fn finalized(svg: String) -> Self {
-        Self { svg }
+    fn finalized(svg: String, reference_plan: SvgReferencePlan) -> Self {
+        Self {
+            svg,
+            reference_plan,
+        }
     }
 
     pub fn as_str(&self) -> &str {
@@ -57,6 +92,11 @@ impl ResvgCompatibleSvg {
 
     pub fn into_string(self) -> String {
         self.svg
+    }
+
+    /// Returns the reference-expansion preflight retained at terminal finalization.
+    pub const fn reference_plan(&self) -> &SvgReferencePlan {
+        &self.reference_plan
     }
 }
 
@@ -178,6 +218,17 @@ impl SvgPipeline {
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
     ) -> Result<Cow<'a, str>> {
+        Ok(self
+            .process_cow_with_reference_plan(svg, metadata, session)?
+            .0)
+    }
+
+    fn process_cow_with_reference_plan<'a>(
+        &self,
+        svg: Cow<'a, str>,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+    ) -> Result<(Cow<'a, str>, Option<SvgReferencePlan>)> {
         let mut current = svg;
         session
             .resource_policy()
@@ -210,18 +261,19 @@ impl SvgPipeline {
         session
             .resource_policy()
             .check_svg_bytes(finalized.as_ref(), ResourceLimitPhase::SvgPostprocess)?;
-        if self.preset == SvgPipelinePreset::ResvgSafe {
-            final_validation::validate_resvg_compatible_svg(
+        let reference_plan = if self.preset == SvgPipelinePreset::ResvgSafe {
+            Some(final_validation::validate_resvg_compatible_svg(
                 finalized.as_ref(),
                 session.resource_policy(),
-            )?;
+            )?)
         } else {
             final_validation::validate_well_formed_svg(
                 finalized.as_ref(),
                 session.resource_policy(),
             )?;
-        }
-        Ok(finalized)
+            None
+        };
+        Ok((finalized, reference_plan))
     }
 
     pub fn process_to_string(&self, svg: &str, session: &RenderSession) -> Result<String> {
@@ -271,8 +323,11 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
+        let (svg, reference_plan) =
+            self.process_cow_with_reference_plan(Cow::Borrowed(svg), metadata, session)?;
         Ok(ResvgCompatibleSvg::finalized(
-            self.process_to_string_with_metadata(svg, metadata, session)?,
+            svg.into_owned(),
+            reference_plan.expect("resvg-safe processing always produces a reference plan"),
         ))
     }
 
@@ -283,8 +338,11 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
+        let (svg, reference_plan) =
+            self.process_cow_with_reference_plan(Cow::Owned(svg), metadata, session)?;
         Ok(ResvgCompatibleSvg::finalized(
-            self.process_owned_to_string_with_metadata(svg, metadata, session)?,
+            svg.into_owned(),
+            reference_plan.expect("resvg-safe processing always produces a reference plan"),
         ))
     }
 

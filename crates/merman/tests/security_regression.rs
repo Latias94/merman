@@ -161,13 +161,17 @@ fn raw_svg_options_cannot_bypass_diagram_id_normalization() {
 
 #[test]
 fn raw_resvg_safe_pipeline_strips_active_svg_content() {
-    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 16 16">
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:q="http://www.w3.org/1999/xlink" xml:base="/tmp/" viewBox="0 0 16 16">
 <script>alert(1)</script>
 <a href="#safe"><use href="#shape" xlink:href="#shape"/></a>
+<a href="https://example.com/docs"><text>docs</text></a>
 <a href="javascript&colon;alert(1)" onclick="alert(1)"><text>bad</text></a>
 <image href="data:image/png;base64,AAAA"/>
 <image href="data:text/html;base64,PHNjcmlwdD4="/>
 <image href="file:///etc/passwd"/>
+<image href="/tmp/secret.png"/>
+<image href="../secret.png"/>
+<image q:href="https://example.com/remote.png"/>
 <defs><path id="shape" d="M0 0H16V16H0z"/></defs>
 <rect width="16" height="16" fill="black"/>
 </svg>"##;
@@ -182,10 +186,42 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
     assert!(!lower.contains("javascript"), "{out}");
     assert!(!lower.contains("data:text/html"), "{out}");
     assert!(!lower.contains("file:///"), "{out}");
+    assert!(!lower.contains("secret.png"), "{out}");
+    assert!(!lower.contains("remote.png"), "{out}");
+    assert!(!lower.contains("xml:base"), "{out}");
     assert!(out.contains(r##"href="#safe""##), "{out}");
     assert!(out.contains(r##"href="#shape""##), "{out}");
     assert!(out.contains(r##"xlink:href="#shape""##), "{out}");
+    assert!(out.contains(r#"href="https://example.com/docs""#), "{out}");
     assert!(out.contains("data:image/png"), "{out}");
+}
+
+#[test]
+fn resvg_safe_flowchart_images_cannot_delegate_file_or_network_io_to_the_host() {
+    let source = r#"flowchart TD
+    Local@{ img: "/tmp/merman-secret.png", label: "Local", h: 60 }
+    Relative@{ img: "../merman-relative.png", label: "Relative", h: 60 }
+    Remote@{ img: "https://example.com/merman-remote.png", label: "Remote", h: 60 }
+    Local --> Relative --> Remote
+"#;
+    let renderer = HeadlessRenderer::new().with_diagram_id("security-image-resources");
+
+    let parity = render_svg(&renderer, "security-image-resources-parity", source);
+    assert!(parity.contains("/tmp/merman-secret.png"), "{parity}");
+    assert!(parity.contains("../merman-relative.png"), "{parity}");
+    assert!(
+        parity.contains("https://example.com/merman-remote.png"),
+        "{parity}"
+    );
+
+    let resvg_safe = render_resvg_safe(&renderer, "security-image-resources", source);
+    assert_xml_parseable("security-image-resources", &resvg_safe);
+    assert!(!resvg_safe.contains("merman-secret.png"), "{resvg_safe}");
+    assert!(!resvg_safe.contains("merman-relative.png"), "{resvg_safe}");
+    assert!(!resvg_safe.contains("merman-remote.png"), "{resvg_safe}");
+    assert!(resvg_safe.contains(">Local<"), "{resvg_safe}");
+    assert!(resvg_safe.contains(">Relative<"), "{resvg_safe}");
+    assert!(resvg_safe.contains(">Remote<"), "{resvg_safe}");
 }
 
 #[test]

@@ -110,6 +110,7 @@ resvg = { version = "0.47", default-features = false }
 serde-wasm-bindgen = "0.6"
 syn = { version = "2", features = ["full", "parsing"] }
 usvg = { version = "0.47", default-features = false }
+svgtypes = "=0.16.1"
 tiny-skia = "0.12"
 krilla = { version = "0.8", default-features = false }
 krilla-svg = { version = "0.8", default-features = false }

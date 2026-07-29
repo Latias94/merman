@@ -97,6 +97,7 @@ fn sanitize_tag_attributes(tag: &str) -> Cow<'_, str> {
         return Cow::Borrowed(tag);
     }
 
+    let element_name = start_tag_name(tag).map(local_name).unwrap_or_default();
     let mut changed = false;
     let mut out = String::new();
     let mut copied_until = 0usize;
@@ -106,7 +107,7 @@ fn sanitize_tag_attributes(tag: &str) -> Cow<'_, str> {
         let name = &tag[attr.name_start..attr.name_end];
         let value = &tag[attr.value_start..attr.value_end];
 
-        let replacement = sanitized_attr_replacement(name, value);
+        let replacement = sanitized_attr_replacement(element_name, name, value);
         if let AttrReplacement::Unchanged = replacement {
             cursor = attr.full_end;
             continue;
@@ -140,8 +141,12 @@ enum AttrReplacement {
     Replace(String),
 }
 
-fn sanitized_attr_replacement(name: &str, value: &str) -> AttrReplacement {
-    if should_drop_attribute(name, value) {
+fn sanitized_attr_replacement(element_name: &str, name: &str, value: &str) -> AttrReplacement {
+    if is_namespace_declaration(name) {
+        return AttrReplacement::Unchanged;
+    }
+
+    if should_drop_attribute(element_name, name, value) {
         return AttrReplacement::Drop;
     }
 
@@ -149,29 +154,37 @@ fn sanitized_attr_replacement(name: &str, value: &str) -> AttrReplacement {
         return AttrReplacement::Replace(format!(r#" {name}="{value}""#));
     }
 
-    if name.eq_ignore_ascii_case("style") {
+    if local_name(name).eq_ignore_ascii_case("style") {
         let sanitized = sanitize_style_attribute(value);
         if sanitized.trim().is_empty() {
             return AttrReplacement::Drop;
         }
         if sanitized != value {
-            return AttrReplacement::Replace(format!(r#" style="{sanitized}""#));
+            return AttrReplacement::Replace(format!(r#" {name}="{sanitized}""#));
         }
     }
 
     AttrReplacement::Unchanged
 }
 
-fn should_drop_attribute(name: &str, value: &str) -> bool {
-    if name.eq_ignore_ascii_case("style") {
+fn should_drop_attribute(element_name: &str, name: &str, value: &str) -> bool {
+    if is_namespace_declaration(name) {
         return false;
     }
 
-    if is_event_handler_attribute(name) || is_unsafe_url_attribute(name, value) {
+    let semantic_name = local_name(name.trim());
+    if semantic_name.eq_ignore_ascii_case("style") {
+        return false;
+    }
+
+    if is_event_handler_attribute(name)
+        || is_unsafe_url_attribute(element_name, name, value)
+        || is_base_url_attribute(name)
+    {
         return true;
     }
 
-    let normalized = name.to_ascii_lowercase();
+    let normalized = semantic_name.to_ascii_lowercase();
     if is_url_function_attribute(&normalized) && css_value_violates_url_safety(value) {
         return true;
     }
@@ -211,8 +224,12 @@ fn should_drop_attribute(name: &str, value: &str) -> bool {
     }
 }
 
-pub(in crate::svg::pipeline) fn attribute_violates_resvg_contract(name: &str, value: &str) -> bool {
-    should_drop_attribute(name, value)
+pub(in crate::svg::pipeline) fn attribute_violates_resvg_contract(
+    element_name: &str,
+    name: &str,
+    value: &str,
+) -> bool {
+    should_drop_attribute(element_name, name, value)
 }
 
 fn is_event_handler_attribute(name: &str) -> bool {
@@ -224,13 +241,26 @@ fn is_event_handler_attribute(name: &str) -> bool {
         && name.as_bytes()[2].is_ascii_alphabetic()
 }
 
-fn is_unsafe_url_attribute(name: &str, value: &str) -> bool {
-    let normalized = name.trim().to_ascii_lowercase();
-    if !matches!(normalized.as_str(), "href" | "xlink:href" | "src") {
+fn is_base_url_attribute(name: &str) -> bool {
+    let Some((prefix, local)) = name.trim().rsplit_once(':') else {
         return false;
-    }
+    };
+    !prefix.eq_ignore_ascii_case("xmlns") && local.eq_ignore_ascii_case("base")
+}
 
-    is_unsafe_url_value(value)
+fn is_unsafe_url_attribute(element_name: &str, name: &str, value: &str) -> bool {
+    let attribute_name = local_name(name.trim()).to_ascii_lowercase();
+    match attribute_name.as_str() {
+        "href" => match local_name(element_name).to_ascii_lowercase().as_str() {
+            "a" => is_unsafe_navigation_url_value(value),
+            "image" => !is_safe_data_image_url(value),
+            "feimage" => is_unsafe_render_resource_url_value(value),
+            _ => !is_same_document_fragment(value),
+        },
+        "src" => !is_safe_data_image_url(value),
+        "srcset" => true,
+        _ => false,
+    }
 }
 
 fn is_url_function_attribute(name: &str) -> bool {
@@ -244,17 +274,20 @@ fn is_url_function_attribute(name: &str) -> bool {
             | "marker-start"
             | "marker-mid"
             | "marker-end"
+            | "cursor"
+            | "background"
+            | "background-image"
     )
 }
 
-pub(super) fn is_unsafe_url_value(value: &str) -> bool {
+fn is_unsafe_navigation_url_value(value: &str) -> bool {
     let value = normalize_url_attr_for_scheme_check(value);
     if value.is_empty() || value.starts_with('#') {
         return false;
     }
 
     if value.starts_with("data:") {
-        return !is_safe_data_image_url(&value);
+        return true;
     }
 
     let Some(colon) = value.find(':') else {
@@ -262,6 +295,25 @@ pub(super) fn is_unsafe_url_value(value: &str) -> bool {
     };
     let scheme = &value[..colon];
     !matches!(scheme, "http" | "https" | "mailto")
+}
+
+pub(super) fn is_unsafe_render_resource_url_value(value: &str) -> bool {
+    if is_same_document_fragment(value) {
+        return false;
+    }
+
+    !is_safe_data_image_url(value)
+}
+
+fn is_same_document_fragment(value: &str) -> bool {
+    let value = normalize_url_attr_for_scheme_check(value);
+    is_same_document_fragment_normalized(&value)
+}
+
+fn is_same_document_fragment_normalized(value: &str) -> bool {
+    value
+        .strip_prefix('#')
+        .is_some_and(|fragment| !fragment.is_empty())
 }
 
 fn css_value_violates_url_safety(value: &str) -> bool {
@@ -277,13 +329,13 @@ fn validate_css_urls<'i, 't>(
     while !parser.is_exhausted() {
         let token = parser.next_including_whitespace()?.clone();
         match token {
-            Token::UnquotedUrl(url) if is_unsafe_url_value(&url) => {
+            Token::UnquotedUrl(url) if is_unsafe_render_resource_url_value(&url) => {
                 return Err(parser.new_custom_error(()));
             }
             Token::Function(name) if name.eq_ignore_ascii_case("url") => {
                 parser.parse_nested_block(|nested| {
                     let url = nested.expect_string_cloned()?;
-                    if is_unsafe_url_value(&url) {
+                    if is_unsafe_render_resource_url_value(&url) {
                         return Err(nested.new_custom_error(()));
                     }
                     Ok(())
@@ -316,20 +368,44 @@ fn normalize_url_attr_for_scheme_check(value: &str) -> String {
 }
 
 fn is_safe_data_image_url(value: &str) -> bool {
-    let Some(media_type) = value.strip_prefix("data:") else {
+    let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
+    let Ok(url) = data_url::DataUrl::process(decoded.as_ref()) else {
         return false;
     };
-    let media_type = media_type
-        .split_once(',')
-        .map_or(media_type, |(head, _)| head);
-    matches!(
-        media_type.split(';').next().unwrap_or_default(),
-        "image/png" | "image/jpeg" | "image/jpg" | "image/gif" | "image/webp"
-    )
+    let mime = url.mime_type();
+    let approved_mime = mime.matches("image", "png")
+        || mime.matches("image", "jpeg")
+        || mime.matches("image", "jpg")
+        || mime.matches("image", "gif")
+        || mime.matches("image", "webp");
+    approved_mime
+        && has_valid_percent_encoding(decoded.as_ref())
+        && url
+            .decode(|_| Ok::<(), std::convert::Infallible>(()))
+            .is_ok()
+}
+
+fn has_valid_percent_encoding(data_url: &str) -> bool {
+    let Some((_, encoded_body)) = data_url.split_once(',') else {
+        return false;
+    };
+    let encoded_body = encoded_body
+        .split_once('#')
+        .map_or(encoded_body, |(body, _)| body);
+    let mut bytes = encoded_body.bytes();
+    while let Some(byte) = bytes.next() {
+        if byte == b'%'
+            && (!bytes.next().is_some_and(|byte| byte.is_ascii_hexdigit())
+                || !bytes.next().is_some_and(|byte| byte.is_ascii_hexdigit()))
+        {
+            return false;
+        }
+    }
+    true
 }
 
 fn normalize_px_attribute(name: &str, value: &str) -> Option<String> {
-    let normalized = name.to_ascii_lowercase();
+    let normalized = local_name(name.trim()).to_ascii_lowercase();
     let guarded = matches!(
         normalized.as_str(),
         "width"
@@ -405,6 +481,11 @@ pub(in crate::svg::pipeline) fn matches_active_svg_element(name: &str) -> bool {
 fn local_name(name: &str) -> &str {
     name.rsplit_once(':')
         .map_or(name, |(_, local_name)| local_name)
+}
+
+fn is_namespace_declaration(name: &str) -> bool {
+    let name = name.trim();
+    name == "xmlns" || name.starts_with("xmlns:")
 }
 
 fn find_close_tag_end(svg: &str, from: usize, name: &str) -> Option<usize> {
@@ -754,6 +835,190 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_element_attributes_applies_contract_to_usvg_namespace_aliases() {
+        let svg = r##"<svg xmlns:s="http://www.w3.org/2000/svg" xmlns:q="http://www.w3.org/1999/xlink" xmlns:style="urn:example:ignored">
+<path
+    s:style="animation:spin 1s;stroke:#333"
+    q:fill="url(file:///tmp/paint.svg#paint)"
+    xml:width="NaN"
+    s:transform="rotate(NaN)"
+    q:d="M 0 NaN"
+    xml:x="10px"
+/>
+</svg>"##;
+
+        let out = sanitize_element_attributes(svg);
+
+        assert!(
+            out.contains(r#"xmlns:s="http://www.w3.org/2000/svg""#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"xmlns:q="http://www.w3.org/1999/xlink""#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"xmlns:style="urn:example:ignored""#),
+            "{out}"
+        );
+        assert!(out.contains(r#"s:style="stroke:#333""#), "{out}");
+        assert!(out.contains(r#"xml:x="10""#), "{out}");
+        for unsafe_value in [
+            "animation",
+            "file:///",
+            "q:fill",
+            "xml:width",
+            "s:transform",
+            "q:d",
+            "NaN",
+        ] {
+            assert!(
+                !out.contains(unsafe_value),
+                "{unsafe_value:?} survived: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_element_attributes_requires_decodable_data_image_payloads() {
+        let svg = r#"<svg>
+<image href="data:image/png;base64,AAAA"/>
+<image href="data:image/png,%89PNG%0D%0A"/>
+<image href="data:image/png;base64,AA*A"/>
+<image href="data:image/png;base64,A==="/>
+<image href="data:image/png,%"/>
+<image href="data:image/png,%GG"/>
+<image href="data:image/png;base64,AA%GG"/>
+</svg>"#;
+
+        let out = sanitize_element_attributes(svg);
+
+        assert!(
+            out.contains(r#"href="data:image/png;base64,AAAA""#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"href="data:image/png,%89PNG%0D%0A""#),
+            "{out}"
+        );
+        for malformed in [
+            "base64,AA*A",
+            "base64,A===",
+            r#"href="data:image/png,%""#,
+            "data:image/png,%GG",
+            "base64,AA%GG",
+        ] {
+            assert!(!out.contains(malformed), "{malformed:?} survived: {out}");
+        }
+    }
+
+    #[test]
+    fn sanitize_element_attributes_closes_non_navigation_render_resources() {
+        let svg = r##"<svg xmlns:q="http://www.w3.org/1999/xlink" xmlns:b="http://www.w3.org/XML/1998/namespace" xml:base="/tmp/">
+<a href="https://example.com/docs" q:href="../guide" data-bad="data:image/png;base64,CCCC"><text>links</text></a>
+<a href="data:image/png;base64,BBBB"><text>data link</text></a>
+<g b:base="../nested/"><image href="#nested-image"/></g>
+<image href="/tmp/absolute.png"/>
+<image href="../relative.png"/>
+<image href="./sibling.png"/>
+<image href="bare.png"/>
+<image href="//example.com/protocol-relative.png"/>
+<image href="\\server\share\image.png"/>
+<image href="C:\private\image.png"/>
+<image href="https://example.com/remote.png"/>
+<image href="data:image/png;base64,AAAA"/>
+<image href="data:image/png"/>
+<image href="d a t a:image/png;base64,EEEE"/>
+<image href="data:image /png;base64,FFFF"/>
+<image href="data:image/svg+xml;base64,PHN2Zy8+"/>
+<image href="#embedded-image"/>
+<feImage href="#embedded-filter-source"/>
+<feImage href="data:image/png;base64,GGGG"/>
+<feImage q:href="../filter.png"/>
+<use href="#shape" q:href="#shape"/>
+<use href="data:image/png;base64,DDDD"/>
+<use href="https://example.com/sprite.svg#shape"/>
+<textPath href="#path">safe</textPath>
+<textPath href="../text.svg#path">unsafe</textPath>
+</svg>"##;
+
+        let out = sanitize_element_attributes(svg);
+
+        assert!(out.contains(r#"href="https://example.com/docs""#), "{out}");
+        assert!(out.contains(r#"q:href="../guide""#), "{out}");
+        assert!(
+            out.contains(r#"href="data:image/png;base64,AAAA""#),
+            "{out}"
+        );
+        assert!(out.contains(r##"href="#embedded-filter-source""##), "{out}");
+        assert!(
+            out.contains(r#"href="data:image/png;base64,GGGG""#),
+            "{out}"
+        );
+        assert!(out.contains(r##"href="#shape""##), "{out}");
+        assert!(out.contains(r##"q:href="#shape""##), "{out}");
+        assert!(out.contains(r##"href="#path""##), "{out}");
+
+        for external in [
+            "/tmp/",
+            "absolute.png",
+            "relative.png",
+            "sibling.png",
+            "bare.png",
+            "protocol-relative.png",
+            r"\\server\share",
+            r"C:\private",
+            "remote.png",
+            r#"href="data:image/png""#,
+            "d a t a:",
+            "image /png",
+            "image/svg+xml",
+            "embedded-image",
+            "base64,DDDD",
+            "filter.png",
+            "sprite.svg",
+            "text.svg",
+            "xml:base",
+            "b:base",
+        ] {
+            assert!(!out.contains(external), "{external:?} survived: {out}");
+        }
+        assert!(
+            out.contains(r#"data-bad="data:image/png;base64,CCCC""#),
+            "{out}"
+        );
+        assert!(!out.contains("data:image/png;base64,BBBB"), "{out}");
+        assert_eq!(sanitize_element_attributes(&out), out);
+    }
+
+    #[test]
+    fn sanitize_element_attributes_drops_external_css_resource_urls() {
+        let svg = r##"<svg><path
+            fill="url(#paint)"
+            cursor="url(../cursor.svg)"
+            background="url(https://example.com/background.png)"
+            style="clip-path:url(#clip);background-image:url(/tmp/background.png);--inline:url(data:image/webp;base64,AAAA);--missing-comma:url(data:image/png);--spaced:url(&quot;d a t a:image/png;base64,BBBB&quot;);stroke:#333"
+        /></svg>"##;
+
+        let out = sanitize_element_attributes(svg);
+
+        assert!(out.contains(r##"fill="url(#paint)""##), "{out}");
+        assert!(out.contains("clip-path:url(#clip)"), "{out}");
+        assert!(
+            out.contains("--inline:url(data:image/webp;base64,AAAA)"),
+            "{out}"
+        );
+        assert!(out.contains("stroke:#333"), "{out}");
+        assert!(!out.contains("cursor="), "{out}");
+        assert!(!out.contains("background="), "{out}");
+        assert!(!out.contains("background-image"), "{out}");
+        assert!(!out.contains("missing-comma"), "{out}");
+        assert!(!out.contains("--spaced"), "{out}");
+        assert!(!out.contains("/tmp/"), "{out}");
+        assert!(!out.contains("https://"), "{out}");
+    }
+
+    #[test]
     fn sanitize_element_attributes_preserves_safe_fragment_ids_with_invalid_token_prefixes() {
         let svg = r##"<svg><defs><linearGradient id="undefined"/><linearGradient id="nan"/><linearGradient id="undefined-gradient"/><linearGradient id="nan-stroke"/></defs><circle fill="url(#undefined)" stroke="url(#nan)"/><circle fill="url(#undefined-gradient)" stroke="url(#nan-stroke)"/></svg>"##;
 
@@ -829,12 +1094,12 @@ mod tests {
 
     #[test]
     fn sanitize_style_rewrites_angle_tokens_without_corrupting_text() {
-        let svg = r#"<svg><path style="transform:rotate(45deg);content:&quot;45deg&quot;;background:url(a45deg.png);--label:foo45deg"/></svg>"#;
+        let svg = r##"<svg><path style="transform:rotate(45deg);content:&quot;45deg&quot;;background:url(#a45deg);--label:foo45deg"/></svg>"##;
         let out = sanitize_element_attributes(svg);
 
         assert!(out.contains("transform:rotate(45)"), "{out}");
         assert!(out.contains("content:&quot;45deg&quot;"), "{out}");
-        assert!(out.contains("background:url(a45deg.png)"), "{out}");
+        assert!(out.contains("background:url(#a45deg)"), "{out}");
         assert!(out.contains("--label:foo45deg"), "{out}");
     }
 }

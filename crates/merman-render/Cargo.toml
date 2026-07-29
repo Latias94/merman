@@ -42,6 +42,7 @@ math = [
 base64.workspace = true
 chrono.workspace = true
 cssparser.workspace = true
+data-url.workspace = true
 dugong.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
 icu_collator.workspace = true
@@ -60,6 +61,7 @@ roxmltree.workspace = true
 quick-xml.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+svgtypes.workspace = true
 thiserror.workspace = true
 roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true

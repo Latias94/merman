@@ -24,6 +24,7 @@ png = [
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
+    "dep:svgtypes",
     "dep:thiserror",
     "dep:tiny-skia",
     "dep:usvg",
@@ -35,6 +36,7 @@ jpeg = [
     "dep:merman-render",
     "dep:quick-xml",
     "dep:resvg",
+    "dep:svgtypes",
     "dep:thiserror",
     "dep:tiny-skia",
     "dep:usvg",
@@ -58,6 +60,7 @@ krilla-svg = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true, features = ["raster-images", "system-fonts", "text"] }
+svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true, features = ["system-fonts", "text"] }

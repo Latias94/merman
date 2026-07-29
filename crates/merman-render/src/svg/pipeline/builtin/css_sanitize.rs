@@ -6,7 +6,7 @@ use cssparser::{
 use std::borrow::Cow;
 use std::fmt;
 
-use super::attr_sanitize::is_unsafe_url_value;
+use super::attr_sanitize::is_unsafe_render_resource_url_value;
 use super::util::find_tag_end;
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
@@ -102,6 +102,7 @@ enum CssViolation {
     BadToken,
     Degrees,
     EmptyDeclaration,
+    MarkerReference,
     RootSelector,
     UnsafeUrl,
     UnsupportedAtRule(String),
@@ -116,6 +117,9 @@ impl fmt::Display for CssViolation {
                 f.write_str("CSS angle units are not accepted by the resvg-safe contract")
             }
             Self::EmptyDeclaration => f.write_str("empty CSS declaration"),
+            Self::MarkerReference => {
+                f.write_str("CSS marker references are not part of the resvg-safe contract")
+            }
             Self::RootSelector => {
                 f.write_str(":root rules are not part of the resvg-safe contract")
             }
@@ -308,6 +312,14 @@ fn rewrite_declaration_list<'i, 't>(
                 return Ok(None);
             }
 
+            if is_marker_reference_property(&property) {
+                consume_component_values(declaration)?;
+                if mode == CssProcessingMode::Validate {
+                    return Err(declaration.new_custom_error(CssViolation::MarkerReference));
+                }
+                return Ok(None);
+            }
+
             let value = rewrite_component_values(declaration, mode)?;
             if value.trim().is_empty() {
                 return Err(declaration.new_custom_error(CssViolation::EmptyDeclaration));
@@ -373,7 +385,7 @@ fn rewrite_component_values<'i, 't>(
                 );
             }
             Token::UnquotedUrl(url) => {
-                if is_unsafe_url_value(&url) {
+                if is_unsafe_render_resource_url_value(&url) {
                     return Err(input.new_custom_error(CssViolation::UnsafeUrl));
                 }
                 output.push_str(input.slice(token_start..token_end));
@@ -417,7 +429,7 @@ fn rewrite_quoted_url<'i, 't>(
     let url_start = input.position();
     let url = input.expect_string_cloned()?;
     input.expect_exhausted()?;
-    if is_unsafe_url_value(&url) {
+    if is_unsafe_render_resource_url_value(&url) {
         return Err(input.new_custom_error(CssViolation::UnsafeUrl));
     }
 
@@ -451,6 +463,13 @@ fn consume_component_values<'i, 't>(
 fn is_animation_property(property: &str) -> bool {
     let property = property.to_ascii_lowercase();
     property == "animation" || property.starts_with("animation-")
+}
+
+fn is_marker_reference_property(property: &str) -> bool {
+    matches!(
+        property.to_ascii_lowercase().as_str(),
+        "marker" | "marker-start" | "marker-mid" | "marker-end"
+    )
 }
 
 fn selector_contains_root(selector: &str) -> bool {
@@ -518,12 +537,12 @@ mod tests {
 
     #[test]
     fn css_sanitize_rewrites_only_dimension_tokens() {
-        let css = r#".a{transform:rotate(45deg) rotate(-10.5DEG);content:\"45deg\";background:url(a45deg.png);--name:foo45deg;--near:90deg-foo}"#;
+        let css = r##".a{transform:rotate(45deg) rotate(-10.5DEG);content:\"45deg\";background:url(#a45deg);--name:foo45deg;--near:90deg-foo}"##;
         let out = sanitize_css(css);
 
         assert!(out.contains("rotate(45) rotate(-10.5)"), "{out}");
         assert!(out.contains(r#"content:\"45deg\""#), "{out}");
-        assert!(out.contains("url(a45deg.png)"), "{out}");
+        assert!(out.contains("url(#a45deg)"), "{out}");
         assert!(out.contains("--name:foo45deg"), "{out}");
         assert!(out.contains("--near:90deg-foo"), "{out}");
     }
@@ -540,6 +559,38 @@ mod tests {
     }
 
     #[test]
+    fn css_sanitize_removes_marker_references_that_cannot_be_preflighted() {
+        let css = r##".edge{marker:url(#all);marker-start:url(#start);marker-mid:url(#mid);marker-end:url(#end);stroke:red}"##;
+
+        assert_eq!(sanitize_css(css), ".edge{stroke:red}");
+        assert!(validate_resvg_css_stylesheet(css).is_err());
+        assert!(validate_resvg_css_declaration_list("marker-end:url(#end);stroke:red").is_err());
+    }
+
+    #[test]
+    fn css_sanitize_drops_external_render_resources() {
+        let css = r##".local{background:url(../image.png);stroke:red}.root{cursor:url("/tmp/cursor.svg"),auto;fill:blue}.remote{filter:url(https://example.com/filter.svg#blur);color:black}.fragment{fill:url(#paint)}.embedded{background:url(data:image/png;base64,AAAA)}.missing-comma{background:url(data:image/png);opacity:.5}.spaced{background:url("d a t a:image/png;base64,BBBB");opacity:.75}"##;
+
+        let out = sanitize_css(css);
+
+        assert!(!out.contains("../image.png"), "{out}");
+        assert!(!out.contains("/tmp/cursor.svg"), "{out}");
+        assert!(!out.contains("https://example.com"), "{out}");
+        assert!(out.contains(".local{stroke:red}"), "{out}");
+        assert!(out.contains(".root{fill:blue}"), "{out}");
+        assert!(out.contains(".remote{color:black}"), "{out}");
+        assert!(out.contains(".fragment{fill:url(#paint)}"), "{out}");
+        assert!(
+            out.contains(".embedded{background:url(data:image/png;base64,AAAA)}"),
+            "{out}"
+        );
+        assert!(out.contains(".missing-comma{opacity:.5}"), "{out}");
+        assert!(out.contains(".spaced{opacity:.75}"), "{out}");
+        assert!(!out.contains("url(data:image/png)"), "{out}");
+        assert!(!out.contains("d a t a:"), "{out}");
+    }
+
+    #[test]
     fn css_validation_rejects_non_terminal_constructs() {
         assert!(validate_resvg_css_stylesheet("@import 'a.css';").is_err());
         assert!(validate_resvg_css_stylesheet(".a{animation:spin 1s}").is_err());
@@ -551,9 +602,9 @@ mod tests {
     #[test]
     fn deg_component_rewrite_does_not_touch_strings_or_urls() {
         assert_eq!(
-            sanitize_css_value(r#"rotate(.5deg) \"45deg\" url(a45deg.png) foo45deg 90deg-foo"#)
+            sanitize_css_value(r##"rotate(.5deg) \"45deg\" url(#a45deg) foo45deg 90deg-foo"##)
                 .as_deref(),
-            Some(r#"rotate(0.5) \"45deg\" url(a45deg.png) foo45deg 90deg-foo"#)
+            Some(r##"rotate(0.5) \"45deg\" url(#a45deg) foo45deg 90deg-foo"##)
         );
     }
 }

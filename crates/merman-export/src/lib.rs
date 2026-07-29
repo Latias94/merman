@@ -548,6 +548,8 @@ pub struct EmbeddedImagePlan {
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SvgConversionPlan {
+    /// Total resolved usvg nodes traversed before backend conversion.
+    pub tree_nodes: usize,
     /// Maximum resolved `usvg` group depth observed before backend conversion.
     pub max_tree_depth: usize,
     pub max_isolation_depth: usize,
@@ -723,19 +725,27 @@ impl PreparedPdf {
 #[cfg(any(feature = "png", feature = "jpeg"))]
 pub fn prepare_raster(svg: &ResvgCompatibleSvg, options: &RasterOptions) -> Result<PreparedRaster> {
     let source = svg.as_str().to_owned();
+    let reference_plan = svg.reference_plan().clone();
     let options = options.clone();
-    run_recursive_svg_backend(move || prepare_raster_on_backend_stack(&source, &options))
+    run_recursive_svg_backend(move || {
+        prepare_raster_on_backend_stack(&source, reference_plan.raw_element_occurrences(), &options)
+    })
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 fn prepare_raster_on_backend_stack(
     source: &str,
+    raw_element_occurrences: &[usize],
     options: &RasterOptions,
 ) -> Result<PreparedRaster> {
     let root_metadata = parse_root_svg_metadata(source)?;
     let mut usvg_options = usvg::Options::default();
     configure_usvg_options_for_raster(&mut usvg_options, root_metadata);
-    let data_plan = plan_embedded_data_resources(source, options.embedded_image_limit)?;
+    let data_plan = plan_embedded_data_resources_with_occurrences(
+        source,
+        raw_element_occurrences,
+        options.embedded_image_limit,
+    )?;
     let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse)?;
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
     let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
@@ -757,14 +767,25 @@ fn prepare_raster_on_backend_stack(
 #[cfg(feature = "pdf")]
 pub fn prepare_pdf(svg: &ResvgCompatibleSvg, options: &PdfOptions) -> Result<PreparedPdf> {
     let source = svg.as_str().to_owned();
+    let reference_plan = svg.reference_plan().clone();
     let options = options.clone();
-    run_recursive_svg_backend(move || prepare_pdf_on_backend_stack(&source, &options))
+    run_recursive_svg_backend(move || {
+        prepare_pdf_on_backend_stack(&source, reference_plan.raw_element_occurrences(), &options)
+    })
 }
 
 #[cfg(feature = "pdf")]
-fn prepare_pdf_on_backend_stack(source: &str, options: &PdfOptions) -> Result<PreparedPdf> {
+fn prepare_pdf_on_backend_stack(
+    source: &str,
+    raw_element_occurrences: &[usize],
+    options: &PdfOptions,
+) -> Result<PreparedPdf> {
     validate_pdf_options(options)?;
-    let data_plan = plan_embedded_data_resources(source, options.embedded_image_limit)?;
+    let data_plan = plan_embedded_data_resources_with_occurrences(
+        source,
+        raw_element_occurrences,
+        options.embedded_image_limit,
+    )?;
     let tree = parse_pdf_tree(source)?;
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits)?;
     let embedded_image_plan = plan_embedded_images(&tree, options.embedded_image_limit, data_plan)?;
@@ -982,6 +1003,7 @@ fn plan_svg_conversion_group(
 ) -> Result<()> {
     let mut stack = vec![(root, parent_isolation_depth, tree_depth)];
     while let Some((group, parent_depth, tree_depth)) = stack.pop() {
+        charge_svg_conversion_tree_node(plan)?;
         plan.max_tree_depth = plan.max_tree_depth.max(tree_depth);
         check_svg_conversion_limit(
             merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID,
@@ -1018,6 +1040,8 @@ fn plan_svg_conversion_group(
         for node in group.children() {
             if let usvg::Node::Group(child) = node {
                 stack.push((child, isolation_depth, tree_depth.saturating_add(1)));
+            } else {
+                charge_svg_conversion_tree_node(plan)?;
             }
             if let usvg::Node::Image(image) = node
                 && matches!(image.kind(), usvg::ImageKind::SVG(_))
@@ -1052,6 +1076,16 @@ fn plan_svg_conversion_group(
         }
     }
     Ok(())
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn charge_svg_conversion_tree_node(plan: &mut SvgConversionPlan) -> Result<()> {
+    plan.tree_nodes = plan.tree_nodes.saturating_add(1);
+    check_svg_conversion_limit(
+        merman_render::resources::SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
+        plan.tree_nodes,
+        Some(merman_render::resources::MAX_RESVG_TREE_NODES),
+    )
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -1185,21 +1219,42 @@ struct EmbeddedDataPlan {
     total_bytes: u64,
 }
 
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
 fn plan_embedded_data_resources(svg: &str, limit: EmbeddedImageLimit) -> Result<EmbeddedDataPlan> {
+    plan_embedded_data_resources_with_occurrences(svg, &[], limit)
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn plan_embedded_data_resources_with_occurrences(
+    svg: &str,
+    raw_element_occurrences: &[usize],
+    limit: EmbeddedImageLimit,
+) -> Result<EmbeddedDataPlan> {
     use quick_xml::XmlVersion;
     use quick_xml::events::Event;
 
     validate_embedded_image_limit(limit)?;
     let mut reader = quick_xml::Reader::from_str(svg);
     let mut plan = EmbeddedDataPlan::default();
+    let mut element_index = 0usize;
     loop {
         let event = reader.read_event().map_err(|_| ExportError::SvgParse)?;
-        let element = match event {
-            Event::Start(element) | Event::Empty(element)
-                if is_embedded_image_element(element.local_name().as_ref()) =>
-            {
-                element
+        let (element, occurrences) = match event {
+            Event::Start(element) | Event::Empty(element) => {
+                let occurrences = if raw_element_occurrences.is_empty() {
+                    1
+                } else {
+                    raw_element_occurrences
+                        .get(element_index)
+                        .copied()
+                        .ok_or(ExportError::SvgParse)?
+                };
+                element_index = element_index.saturating_add(1);
+                if is_embedded_image_element(element.local_name().as_ref()) {
+                    (element, occurrences)
+                } else {
+                    continue;
+                }
             }
             Event::Eof => break,
             _ => continue,
@@ -1224,9 +1279,12 @@ fn plan_embedded_data_resources(svg: &str, limit: EmbeddedImageLimit) -> Result<
 
             let mut resource_bytes = 0_u64;
             let mut limit_error = None;
+            let occurrences = occurrences as u64;
             let _ = data_url.decode(|chunk| {
                 resource_bytes = resource_bytes.saturating_add(chunk.len() as u64);
-                let aggregate = plan.total_bytes.saturating_add(resource_bytes);
+                let aggregate = plan
+                    .total_bytes
+                    .saturating_add(resource_bytes.saturating_mul(occurrences));
                 if let Some(max) = limit.max_bytes_per_image
                     && resource_bytes > max
                 {
@@ -1253,10 +1311,15 @@ fn plan_embedded_data_resources(svg: &str, limit: EmbeddedImageLimit) -> Result<
                 return Err(error);
             }
 
-            plan.resources = plan.resources.saturating_add(1);
+            plan.resources = plan.resources.saturating_add(occurrences as usize);
             plan.largest_bytes = plan.largest_bytes.max(resource_bytes);
-            plan.total_bytes = plan.total_bytes.saturating_add(resource_bytes);
+            plan.total_bytes = plan
+                .total_bytes
+                .saturating_add(resource_bytes.saturating_mul(occurrences));
         }
+    }
+    if !raw_element_occurrences.is_empty() && element_index != raw_element_occurrences.len() {
+        return Err(ExportError::SvgParse);
     }
     Ok(plan)
 }
@@ -1412,24 +1475,18 @@ fn draw_pdf_background(
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-#[derive(Debug, Clone, Copy)]
-struct ParsedViewBox {
-    width: f32,
-    height: f32,
-}
-
-#[cfg(any(feature = "png", feature = "jpeg"))]
 #[derive(Debug, Clone, Copy, Default)]
 struct RootSvgMetadata {
-    view_box: Option<ParsedViewBox>,
+    has_view_box: bool,
     max_width_px: Option<f32>,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 fn parse_root_svg_metadata(svg: &str) -> Result<RootSvgMetadata> {
-    use quick_xml::{XmlVersion, events::Event};
+    use quick_xml::{XmlVersion, events::Event, name::ResolveResult, reader::NsReader};
 
-    let mut reader = quick_xml::Reader::from_str(svg);
+    let mut reader = NsReader::from_str(svg);
+    reader.config_mut().enable_all_checks(true);
     loop {
         let event = reader.read_event().map_err(|_| ExportError::SvgParse)?;
         let element = match event {
@@ -1438,21 +1495,53 @@ fn parse_root_svg_metadata(svg: &str) -> Result<RootSvgMetadata> {
             _ => continue,
         };
 
-        if !element.local_name().as_ref().eq_ignore_ascii_case(b"svg") {
+        let (namespace, local_name) = reader.resolver().resolve_element(element.name());
+        let is_svg_namespace = matches!(namespace, ResolveResult::Unbound)
+            || matches!(
+                namespace,
+                ResolveResult::Bound(namespace)
+                    if namespace.as_ref() == b"http://www.w3.org/2000/svg"
+            );
+        if !is_svg_namespace || local_name.as_ref() != b"svg" {
             return Err(ExportError::SvgParse);
         }
 
         let mut metadata = RootSvgMetadata::default();
+        let mut view_box_seen = false;
+        let mut style_seen = false;
         for attribute in element.attributes() {
             let attribute = attribute.map_err(|_| ExportError::SvgParse)?;
+            if attribute.key.as_namespace_binding().is_some() {
+                continue;
+            }
+            let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
+            let is_unbound_attribute = matches!(&namespace, ResolveResult::Unbound);
+            let consumed_by_usvg = match namespace {
+                ResolveResult::Unknown(_) => return Err(ExportError::SvgParse),
+                ResolveResult::Unbound => true,
+                ResolveResult::Bound(namespace) => matches!(
+                    namespace.as_ref(),
+                    b"http://www.w3.org/2000/svg"
+                        | b"http://www.w3.org/1999/xlink"
+                        | b"http://www.w3.org/XML/1998/namespace"
+                ),
+            };
+            if !consumed_by_usvg {
+                continue;
+            }
+
             let value = attribute
                 .normalized_value(XmlVersion::Implicit1_0)
                 .map_err(|_| ExportError::SvgParse)?;
-            match attribute.key.local_name().as_ref() {
-                b"viewBox" => {
-                    metadata.view_box = parse_svg_view_box(value.as_ref());
+            match local_name.as_ref() {
+                b"viewBox" if !view_box_seen => {
+                    view_box_seen = true;
+                    metadata.has_view_box = has_valid_svg_view_box(value.as_ref());
                 }
-                b"style" => {
+                // usvg projects namespaced presentation attributes by local name, but parses the
+                // `style` declaration list only from the unbound XML attribute.
+                b"style" if is_unbound_attribute && !style_seen => {
+                    style_seen = true;
                     metadata.max_width_px = parse_inline_max_width_px(value.as_ref());
                 }
                 _ => {}
@@ -1463,31 +1552,17 @@ fn parse_root_svg_metadata(svg: &str) -> Result<RootSvgMetadata> {
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
-fn parse_svg_view_box(value: &str) -> Option<ParsedViewBox> {
-    let mut input = ParserInput::new(value);
-    let mut parser = Parser::new(&mut input);
-    let mut values = [0.0_f32; 4];
-
-    for index in 0..values.len() {
-        values[index] = parser.expect_number().ok()?;
-        if index < values.len() - 1 {
-            let _ = parser.try_parse(|parser| parser.expect_comma());
-        }
-    }
-    parser.expect_exhausted().ok()?;
-
-    let [min_x, min_y, width, height] = values;
-    if min_x.is_finite()
-        && min_y.is_finite()
-        && width.is_finite()
-        && height.is_finite()
-        && width > 0.0
-        && height > 0.0
-    {
-        Some(ParsedViewBox { width, height })
-    } else {
-        None
-    }
+fn has_valid_svg_view_box(value: &str) -> bool {
+    let Ok(view_box) = value.parse::<svgtypes::ViewBox>() else {
+        return false;
+    };
+    usvg::NonZeroRect::from_xywh(
+        view_box.x as f32,
+        view_box.y as f32,
+        view_box.w as f32,
+        view_box.h as f32,
+    )
+    .is_some()
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -1536,17 +1611,18 @@ struct RasterGeometry {
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 fn raster_geometry_for_svg(metadata: RootSvgMetadata, tree: &usvg::Tree) -> (RasterGeometry, bool) {
-    if let Some(vb) = metadata.view_box {
+    if metadata.has_view_box {
         // `usvg`/`resvg` already apply the root viewBox transform (including translating the
         // viewBox min corner to (0,0)) when building/rendering the tree. If we also translate
         // by `-min_x/-min_y` here, diagrams with negative viewBox mins (e.g. kanban, gitGraph)
         // get shifted fully out of the viewport and render as a blank/transparent pixmap.
+        let size = tree.size();
         return (
             RasterGeometry {
                 min_x: 0.0,
                 min_y: 0.0,
-                width: vb.width,
-                height: vb.height,
+                width: size.width(),
+                height: size.height(),
             },
             false,
         );
@@ -1759,7 +1835,7 @@ fn requested_raster_dim_px(value: f64) -> Result<f64> {
 fn configure_usvg_options_for_raster(opt: &mut usvg::Options<'_>, metadata: RootSvgMetadata) {
     opt.fontdb = shared_system_fontdb();
 
-    if metadata.view_box.is_none()
+    if !metadata.has_view_box
         && let Some(max_width) = metadata.max_width_px
         && max_width.is_finite()
         && max_width > 0.0
@@ -2129,21 +2205,37 @@ mod root_svg_metadata_tests {
         )
         .expect("root SVG metadata");
 
-        assert!(metadata.view_box.is_none());
+        assert!(!metadata.has_view_box);
         assert_eq!(metadata.max_width_px, Some(400.0));
     }
 
     #[test]
     fn metadata_uses_svg_number_and_css_token_grammar() {
         let metadata = parse_root_svg_metadata(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1.5,2,41.5,120" style="max-width: 400px nonsense"/>"#,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-1.5-2,41.5,120 trailing" style="max-width: 400px nonsense"/>"#,
         )
         .expect("root SVG metadata");
 
-        let view_box = metadata.view_box.expect("valid root viewBox");
-        assert_eq!(view_box.width, 41.5);
-        assert_eq!(view_box.height, 120.0);
+        assert!(metadata.has_view_box);
         assert_eq!(metadata.max_width_px, None);
+    }
+
+    #[test]
+    fn metadata_ignores_unknown_namespaces_and_uses_first_usvg_projection() {
+        let metadata = parse_root_svg_metadata(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:i="urn:ignored" xmlns:s="http://www.w3.org/2000/svg" i:viewBox="0 0 9000 9000" s:viewBox="invalid" viewBox="0 0 20 10" i:style="max-width: 9000px" s:style="max-width: 200px" style="max-width: 400px"/>"#,
+        )
+        .expect("root SVG metadata");
+
+        assert!(
+            !metadata.has_view_box,
+            "the first usvg-projected viewBox is invalid, so a later alias must not replace it"
+        );
+        assert_eq!(
+            metadata.max_width_px,
+            Some(400.0),
+            "usvg consumes only the unbound style declaration list"
+        );
     }
 }
 
@@ -2181,6 +2273,25 @@ mod tests {
             .begin_session()
             .unwrap();
         merman_render::svg::finalize_resvg_svg(svg, &session).unwrap()
+    }
+
+    #[test]
+    fn exporter_image_resolver_never_reads_string_hrefs() {
+        let resolver = data_url_only_image_href_resolver();
+        let options = usvg::Options::default();
+
+        for href in [
+            "/tmp/secret.png",
+            "../secret.png",
+            r"\\server\share\secret.png",
+            r"C:\private\secret.png",
+            "https://example.com/remote.png",
+        ] {
+            assert!(
+                (resolver.resolve_string)(href, &options).is_none(),
+                "string href unexpectedly resolved: {href}"
+            );
+        }
     }
 
     fn trusted_compatible_svg(svg: &str) -> merman_render::svg::ResvgCompatibleSvg {
@@ -2232,6 +2343,26 @@ mod tests {
         svg
     }
 
+    fn branching_data_image_use_svg(levels: usize, href: &str) -> String {
+        let mut svg =
+            String::from(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs>"#);
+        svg.push_str(&format!(
+            r#"<g id="leaf"><image href="{href}" width="1" height="1"/></g>"#
+        ));
+        for index in 0..levels {
+            let target = if index + 1 == levels {
+                "leaf".to_owned()
+            } else {
+                format!("use-{}", index + 1)
+            };
+            svg.push_str(&format!(
+                r##"<g id="use-{index}"><use href="#{target}"/><use href="#{target}"/></g>"##
+            ));
+        }
+        svg.push_str(r##"</defs><use href="#use-0"/></svg>"##);
+        svg
+    }
+
     fn svg_to_pdf_with_options(svg: &str, options: &PdfOptions) -> Result<Vec<u8>> {
         super::svg_to_pdf_with_options(&compatible_svg(svg), options)
     }
@@ -2253,6 +2384,65 @@ mod tests {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
         let bytes = svg_to_png(svg, &RasterOptions::default()).unwrap();
         assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+    }
+
+    #[test]
+    fn root_viewport_dimensions_drive_raster_planning_and_pixels() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
+        let options = RasterOptions::default();
+        let plan = svg_raster_plan(svg, &options).unwrap();
+
+        assert_eq!(plan.requested_width_px, 200.0);
+        assert_eq!(plan.requested_height_px, 100.0);
+        assert_eq!((plan.width_px, plan.height_px), (200, 100));
+
+        let bytes = svg_to_png(svg, &options).unwrap();
+        assert_eq!(png_size(&bytes), (200, 100));
+        let center = rgba_pixel(&bytes, 100, 50);
+        let side = rgba_pixel(&bytes, 10, 50);
+        assert!(
+            center[0] < 8 && center[1] < 8 && center[2] < 8 && center[3] > 247,
+            "expected the viewBox content at the viewport center, got {center:?}"
+        );
+        assert_eq!(
+            side,
+            [0, 0, 0, 0],
+            "preserveAspectRatio should leave transparent side padding"
+        );
+    }
+
+    #[test]
+    fn ignored_and_later_viewbox_aliases_do_not_change_usvg_geometry() {
+        for svg in [
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:i="urn:ignored" i:viewBox="0 0 9000 9000"><rect width="12" height="8" fill="black"/></svg>"#,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" s:viewBox="invalid" viewBox="0 0 9000 9000"><rect width="12" height="8" fill="black"/></svg>"#,
+        ] {
+            let plan = svg_raster_plan(svg, &RasterOptions::default()).unwrap();
+            assert_eq!(
+                (plan.width_px, plan.height_px),
+                (12, 8),
+                "metadata and usvg must agree on the effective viewBox: {svg}"
+            );
+        }
+    }
+
+    #[test]
+    fn non_positive_root_dimensions_cannot_cross_the_sealed_raster_boundary() {
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+
+        for svg in [
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="0" height="100" viewBox="0 0 10 10"/>"#,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="-1" viewBox="0 0 10 10"/>"#,
+        ] {
+            let error = merman_render::svg::finalize_resvg_svg(svg, &session)
+                .expect_err("invalid root dimensions must fail before raster preparation");
+            assert!(
+                error.to_string().contains("must be a positive length"),
+                "{error}"
+            );
+        }
     }
 
     #[test]
@@ -2293,15 +2483,16 @@ mod tests {
     }
 
     #[test]
-    fn expanded_use_tree_is_rejected_before_recursive_backends() {
-        let svg = trusted_compatible_svg(&expanded_use_chain_svg(
-            merman_render::resources::MAX_RESVG_TREE_DEPTH + 2,
-        ));
-        let options =
-            RasterOptions::default().with_conversion_limits(SvgConversionLimits::unbounded());
-        let error = super::prepare_raster(&svg, &options)
-            .err()
-            .expect("the expanded usvg tree must retain the backend depth cap");
+    fn expanded_use_tree_is_rejected_before_usvg_parsing() {
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(merman_render::resources::RenderResourcePolicy::trusted_native())
+            .begin_session()
+            .unwrap();
+        let error = merman_render::svg::finalize_resvg_svg(
+            &expanded_use_chain_svg(merman_render::resources::MAX_RESVG_TREE_DEPTH + 2),
+            &session,
+        )
+        .expect_err("the reference preflight must reject the expanded usvg depth");
 
         assert!(
             error
@@ -2309,6 +2500,96 @@ mod tests {
                 .contains(merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID),
             "{error}"
         );
+    }
+
+    #[test]
+    fn expanded_use_data_urls_count_toward_the_aggregate_before_usvg_parsing() {
+        let href = png_data_uri_with_declared_size(1, 1);
+        let svg = compatible_svg(&branching_data_image_use_svg(4, &href));
+        let one_source_resource =
+            plan_embedded_data_resources(svg.as_str(), EmbeddedImageLimit::unbounded())
+                .unwrap()
+                .total_bytes;
+        let options = RasterOptions {
+            embedded_image_limit: EmbeddedImageLimit::new(
+                Some(one_source_resource),
+                Some(one_source_resource),
+                None,
+                None,
+            ),
+            ..RasterOptions::default()
+        };
+
+        let error = super::prepare_raster(&svg, &options)
+            .err()
+            .expect("expanded data URLs must exceed the aggregate preflight budget");
+
+        assert!(error.to_string().contains("max_total_bytes"), "{error}");
+    }
+
+    #[test]
+    fn filter_and_marker_subroots_count_repeated_data_urls_before_usvg_parsing() {
+        let href = png_data_uri_with_declared_size(1, 1);
+        let cases = [
+            format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><image id="source" href="{href}" width="1" height="1"/><filter id="f"><feImage href="#source"/></filter></defs><rect width="10" height="10" filter="url(#f)"/></svg>"##
+            ),
+            format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><marker id="m"><image href="{href}" width="1" height="1"/></marker></defs><path d="M0 0L1 1L2 2L3 3" marker-mid="url(#m)"/></svg>"##
+            ),
+        ];
+
+        for raw in cases {
+            let one_source_resource =
+                plan_embedded_data_resources(&raw, EmbeddedImageLimit::unbounded())
+                    .unwrap()
+                    .total_bytes;
+            let svg = compatible_svg(&raw);
+            let options = RasterOptions {
+                embedded_image_limit: EmbeddedImageLimit::new(
+                    Some(one_source_resource),
+                    Some(one_source_resource),
+                    None,
+                    None,
+                ),
+                ..RasterOptions::default()
+            };
+
+            let error = super::prepare_raster(&svg, &options)
+                .err()
+                .expect("repeated filter or marker data URLs must exceed the preflight budget");
+            assert!(error.to_string().contains("max_total_bytes"), "{error}");
+        }
+    }
+
+    #[test]
+    fn css_effect_fanout_counts_filter_and_mask_data_urls_before_usvg_parsing() {
+        let href = png_data_uri_with_declared_size(1, 1);
+        let one_resource = plan_embedded_data_resources(
+            &format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><image href="{href}"/></svg>"#),
+            EmbeddedImageLimit::unbounded(),
+        )
+        .unwrap()
+        .total_bytes;
+        let raw = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><filter id="f"><feImage href="{href}"/></filter><mask id="m"><image href="{href}" width="1" height="1"/></mask></defs><style>.affected {{ filter: url(#f); mask: url(#m); }}</style><rect class="affected" width="1" height="1"/><rect class="affected" x="2" width="1" height="1"/><rect class="affected" x="4" width="1" height="1"/></svg>"##
+        );
+        let svg = compatible_svg(&raw);
+        let options = RasterOptions {
+            embedded_image_limit: EmbeddedImageLimit::new(
+                Some(one_resource),
+                Some(one_resource.saturating_mul(2)),
+                None,
+                None,
+            ),
+            ..RasterOptions::default()
+        };
+
+        let error = super::prepare_raster(&svg, &options)
+            .err()
+            .expect("CSS effect fanout must exceed the aggregate preflight budget");
+
+        assert!(error.to_string().contains("max_total_bytes"), "{error}");
     }
 
     #[test]

@@ -73,17 +73,20 @@ device-pixel ratio. The default pixmap budget can be changed with `--raster-max-
 `--raster-unbounded`. When the CLI automatically constrains an output, it reports the requested
 and final pixel dimensions on stderr unless `--quiet` is set.
 
-Top-level PDF export without `--pdfFit` uses a fixed 612-by-792-point Letter approximation. With
-`--pdfFit`, Merman uses `FitCssWidth`: `--width` supplies the CSS viewport width (800 pixels by
-default), responsive SVG width is constrained to that viewport, and the result is converted at
-72/96 PDF points per CSS pixel. This matches the sizing units used by Chromium's CSS-to-PDF path;
-the resulting drawing is still produced by Merman's browserless vector backend.
+The `mmdc` command's PDF export without `--pdfFit` uses a fixed 612-by-792-point Letter
+approximation. With `--pdfFit`, Merman uses `FitCssWidth`: `--width` supplies the CSS viewport
+width (800 pixels by default), responsive SVG width is constrained to that viewport, and the
+result is converted at 72/96 PDF points per CSS pixel. This matches the sizing units used by
+Chromium's CSS-to-PDF path; the resulting drawing is still produced by Merman's browserless
+vector backend.
 
 PDF filter sampling is controlled by `--pdf-filter-scale`, `--pdf-max-filter-pixels`, and
 `--pdf-filter-unbounded`. Embedded image decoding is controlled for both raster and PDF export by
 `--embedded-image-max-pixels`, `--embedded-image-max-total-pixels`, and
-`--embedded-images-unbounded`. Markdown batch encoding additionally uses
-`--encoding-memory-budget-mib` to bound aggregate in-flight encoding memory.
+`--embedded-images-unbounded`. Markdown batch work is admitted against the selected resource
+profile's aggregate scheduling-weight budget. Use
+`--resource-limit max_scheduling_weight_bytes=BYTES` with `--jobs` only when a scoped override is
+required.
 
 ## Library usage
 
@@ -91,10 +94,14 @@ Enable only the binary outputs the application uses (`png`, `jpeg`, and/or `pdf`
 crate. PNG and JPEG share private bitmap preparation; PDF remains a separate vector export path.
 The following example uses both `png` and `pdf`:
 
+<!-- BEGIN GENERATED RELEASE README RASTER_FACADE_DEPENDENCY -->
+
 ```toml
 [dependencies]
-merman = { version = "0.8.0-alpha.4", default-features = false, features = ["png", "pdf"] }
+merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["png", "pdf"] }
 ```
+
+<!-- END GENERATED RELEASE README RASTER_FACADE_DEPENDENCY -->
 
 ```rust
 use merman::svg::{
@@ -132,10 +139,14 @@ cargo run -p merman --features png --example example_05_raster_output
 If an application already owns SVG text, finalize it before calling low-level encoders. Those
 encoders accept only the sealed `ResvgCompatibleSvg` artifact:
 
+<!-- BEGIN GENERATED RELEASE README RASTER_ENCODER_DEPENDENCY -->
+
 ```toml
 [dependencies]
-merman = { version = "0.8.0-alpha.4", default-features = false, features = ["png", "jpeg", "pdf"] }
+merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["png", "jpeg", "pdf"] }
 ```
+
+<!-- END GENERATED RELEASE README RASTER_ENCODER_DEPENDENCY -->
 
 ```rust
 use merman::svg::{

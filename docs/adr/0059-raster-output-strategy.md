@@ -39,8 +39,8 @@ Merman keeps one renderer-owned export preparation path and distinct output allo
    have separate aggregate limits.
 5. Browser-style PDF fitting is a page-unit contract, not a raster-size heuristic.
    `PdfPagePolicy::FitCssWidth` constrains responsive SVG width in CSS pixels and converts 96 CSS
-   pixels to 72 PDF points. Top-level `merman-cli --pdfFit` uses this policy; the default top-level
-   page remains a 612-by-792-point Letter approximation.
+   pixels to 72 PDF points. The versioned `merman-cli mmdc --pdfFit` compatibility command uses this
+   policy; its default page remains a 612-by-792-point Letter approximation.
 6. Each unbounded option disables only its named allocation boundary. No export option disables
    parser, layout, label, or SVG-byte resource profiles.
 7. Resvg-compatible export has a separate backend capability boundary for resolved SVG group

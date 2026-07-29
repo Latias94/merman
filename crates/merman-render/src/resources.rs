@@ -19,6 +19,12 @@ const MIB: usize = 1024 * KIB;
 #[cfg(not(target_arch = "wasm32"))]
 pub const MAX_RESVG_TREE_DEPTH: usize = 256;
 pub const SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID: &str = "svg_backend_tree_depth";
+/// Maximum resolved usvg nodes accepted independently of caller-selected policies.
+///
+/// This matches usvg's own parser capability while rejecting expansion before it can allocate the
+/// upstream parser's full tree.
+pub const MAX_RESVG_TREE_NODES: usize = 1_000_000;
+pub const SVG_BACKEND_TREE_NODES_HARD_CAP_ID: &str = "svg_backend_tree_nodes";
 
 #[cfg(target_arch = "wasm32")]
 pub const MAX_RESVG_TREE_DEPTH: usize = 64;
@@ -455,6 +461,19 @@ impl RenderResourcePolicy {
             RenderResourceLimitId::MaxSvgElements,
             elements,
         )?;
+        if elements > MAX_RESVG_TREE_NODES {
+            return Err(ResourceLimitExceeded {
+                phase: ResourceLimitPhase::SvgPostprocess,
+                limit: SVG_BACKEND_TREE_NODES_HARD_CAP_ID,
+                actual: elements,
+                max: MAX_RESVG_TREE_NODES,
+                profile: self.profile(),
+                explicit_overrides: self
+                    .explicit_overrides()
+                    .map(|(id, value)| ResourceLimitOverride { id, value })
+                    .collect(),
+            });
+        }
         if tree_depth <= MAX_RESVG_TREE_DEPTH {
             return Ok(());
         }
@@ -680,6 +699,17 @@ mod tests {
         );
         limits.apply_override("max_svg_elements", 7).unwrap();
         assert_eq!(limits.value(ResourceLimitId::MaxSvgElements), Some(7));
+    }
+
+    #[test]
+    fn resolved_svg_node_hard_cap_remains_active_for_unbounded_policy() {
+        let error = RenderResourcePolicy::unbounded_for_trusted_input()
+            .check_svg_structure(MAX_RESVG_TREE_NODES + 1, 0)
+            .unwrap_err();
+
+        assert_eq!(error.limit, SVG_BACKEND_TREE_NODES_HARD_CAP_ID);
+        assert_eq!(error.actual, MAX_RESVG_TREE_NODES + 1);
+        assert_eq!(error.max, MAX_RESVG_TREE_NODES);
     }
 
     #[test]
