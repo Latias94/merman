@@ -79,9 +79,9 @@ uncontrolled binary. Do not disable the `compile` strategy.
 The metadata does not claim Linux ARM64 until that target passes the repository's full admission
 gate. A Homebrew ARM64 Linux bottle belongs to a different build and verification channel.
 
-## Scoop and WinGet candidate contract
+## Scoop and WinGet draft candidate contract
 
-The repository can generate registry-ready candidate files for a stable release, but it does not
+The repository can generate draft candidate files for a stable release, but it does not
 claim that either central registry already provides Merman. Do not add `scoop install` or
 `winget install` instructions to user documentation until the corresponding external submission
 is accepted and `docs/release/SURFACES.json` is updated from `manual-registry`.
@@ -101,17 +101,14 @@ python3 scripts/generate_cli_registry_candidates.py \
 The output contains:
 
 - `scoop/merman-cli.json`, limited to the published Windows x86_64 archive;
-- a registry-shaped, three-file WinGet manifest under
-  `winget/manifests/l/Latias94/MermanCLI/<VERSION>/`;
-- `candidate-receipt.json`, which binds every candidate file to its SHA-256 and records the exact
-  verified source archive, download URL, target, executable path, and digest.
+- a three-file WinGet manifest under `winget/manifests/l/Latias94/MermanCLI/<VERSION>/`.
 
 The WinGet candidate models the cargo-dist ZIP as a nested portable installer and currently
 declares the x64 Microsoft Visual C++ runtime package dependency used by the MSVC target. Its
-installer hash is uppercase as expected by WinGet; the Scoop hash and receipt use lowercase. The
-templates under `packaging/cli-registry/` are structured JSON contracts, not publishable files.
-The generator accepts only whole-value placeholders and validates the final registry structure
-before writing anything.
+installer hash is uppercase as expected by WinGet; the Scoop hash is lowercase. The templates under
+`packaging/cli-registry/` are one Scoop JSON template and three directly reviewable WinGet YAML
+templates. The generator replaces only the validated version, repository URLs, and archive digest;
+it does not implement a second WinGet schema validator.
 
 Run the repository checks with:
 
@@ -120,10 +117,11 @@ python3 -m unittest scripts.test_generate_cli_registry_candidates
 python3 scripts/verify-release-surfaces.py
 ```
 
-When U7 wires candidates into publication, the Windows release gate will additionally run
-`winget validate` against the generated three-file directory. Stable releases will require that
-gate; prereleases will take an explicit no-candidate branch. Until then, candidate generation is
-an independently runnable maintainer check and is not a release-workflow claim.
+Before submission, run `winget validate <generated-winget-directory>` on Windows. When U7 wires
+candidates into publication, that command will become a Windows release gate over the real verified
+archive; stable releases will require it and prereleases will take an explicit no-candidate branch.
+Until then, draft generation is an independently runnable maintainer check and is not a
+release-workflow claim.
 
 ## Homebrew formula contract
 

@@ -1,7 +1,0 @@
-{
-  "candidate-receipt.json": "8c9efc8b509c3c56c66be121d656181bd74694105f257d55f22042728cd26432",
-  "scoop/merman-cli.json": "a0319a7a9464acb4b78eeed33b67c6711a923bc496f859d5fbca7ab96094813e",
-  "winget/manifests/l/Latias94/MermanCLI/0.8.0/Latias94.MermanCLI.installer.yaml": "5b2313b57145a5c56f2c6c2419deb88a08f1b53ee29a541d30f581fe74107fcf",
-  "winget/manifests/l/Latias94/MermanCLI/0.8.0/Latias94.MermanCLI.locale.en-US.yaml": "7fdcb0ea01662ebc4ac31ac296ebc5a3c539b59c3bceebfbcd0af524401e0b3a",
-  "winget/manifests/l/Latias94/MermanCLI/0.8.0/Latias94.MermanCLI.yaml": "14aed117d5b814d0b8f5255d7a70764c633013b6c31cb400acdf2505b1640b2a"
-}

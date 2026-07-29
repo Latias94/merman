@@ -279,7 +279,7 @@
           "release_kinds": ["stable"],
           "workflow": ".github/workflows/ci.yml",
           "credential": null,
-          "blocker": "The generated stable candidate must be submitted to and accepted by the external Scoop Main bucket.",
+          "blocker": "The draft must be generated from the verified stable archive, validated, submitted to, and accepted by the external Scoop Main bucket.",
           "not_applicable_reason": "Scoop Main candidates are generated only for stable releases."
         },
         {
@@ -289,7 +289,7 @@
           "release_kinds": ["stable"],
           "workflow": ".github/workflows/ci.yml",
           "credential": null,
-          "blocker": "The generated stable candidate must be submitted to and accepted by the external winget-pkgs repository.",
+          "blocker": "The draft must be generated from the verified stable archive, pass winget validate, and be accepted by the external winget-pkgs repository.",
           "not_applicable_reason": "WinGet candidates are generated only for stable releases."
         }
       ],

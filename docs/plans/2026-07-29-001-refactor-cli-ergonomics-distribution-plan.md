@@ -726,9 +726,9 @@ been generated; validators reject it once a manifest is present.
 
 **Files:**
 
-- Add: repository-owned candidate templates
+- Add: one Scoop JSON template and three directly submittable WinGet YAML templates
 - Add: cross-platform candidate generator
-- Add: generator unit tests and fixture checksums
+- Add: focused generator unit tests
 - Modify: `.github/workflows/release.yml`
 - Modify: `docs/release/SURFACES.json`
 - Modify: release-status schema/validation only where needed for `manual-registry`
@@ -742,7 +742,8 @@ been generated; validators reject it once a manifest is present.
 - Render a Scoop x86_64 manifest with immutable URL, hash, binary, checkver, and autoupdate
   contract.
 - Render current multi-file WinGet manifests for ZIP plus nested portable installer.
-- Validate JSON structurally and run `winget validate` on Windows CI.
+- Parse the rendered Scoop JSON and run `winget validate` on the generated WinGet directory in
+  Windows release CI.
 - Publish candidates as release-maintainer evidence or workflow artifacts, not as an assertion
   that central commands already work.
 - Keep the generator and its tests independently runnable before U7. Wire it into the release
@@ -751,8 +752,9 @@ been generated; validators reject it once a manifest is present.
 
 **Verification:**
 
-- Golden and adversarial generator tests cover version/hash/target boundaries.
+- Deterministic generator tests cover version, archive hash, target, and existing-output boundaries.
 - Release workflow proves candidates consume the same verified Windows archive.
+- Windows release CI runs `winget validate` over the generated three-file manifest.
 - Surface and README language remains `manual-registry` until external acceptance.
 
 ### U6. Reusable Nix Package
