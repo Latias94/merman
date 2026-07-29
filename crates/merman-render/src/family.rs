@@ -1394,8 +1394,15 @@ mod tests {
     use merman_core::{CustomJsonProvenance, CustomJsonRenderModel, Engine, ParseOptions};
     use serde_json::{Value, json};
 
-    fn custom_semantic_parser(_code: &str, meta: &ParseMetadata) -> merman_core::Result<Value> {
-        Ok(json!({ "type": meta.diagram_type, "owner": "semantic" }))
+    fn custom_semantic_parser(
+        _code: &str,
+        meta: &ParseMetadata,
+        control: &merman_core::ParseControl,
+    ) -> merman_core::ParseControlResult<merman_core::Result<Value>> {
+        control.checkpoint()?;
+        Ok(Ok(
+            json!({ "type": meta.diagram_type, "owner": "semantic" }),
+        ))
     }
 
     fn custom_render_parser(
