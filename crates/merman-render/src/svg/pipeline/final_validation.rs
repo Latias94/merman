@@ -531,6 +531,13 @@ struct ElementReference {
     target_kind: ReferenceTargetKind,
 }
 
+struct ReferenceDependencyGraph {
+    // Real document nodes keep their encounter-order indexes. Trailing nodes are transparent
+    // candidate groups: they share duplicate-ID edges without contributing an element or depth.
+    dependencies: Vec<Vec<(usize, usize)>>,
+    real_nodes: usize,
+}
+
 fn append_reference_node(
     nodes: &mut Vec<ReferenceNode>,
     parent: Option<usize>,
@@ -792,6 +799,25 @@ fn plan_svg_reference_expansion(nodes: &[ReferenceNode]) -> Result<SvgReferenceP
         ));
     };
 
+    let mut dependencies = build_svg_reference_dependencies(nodes);
+    let baseline_plan = plan_svg_reference_dependencies(&dependencies)?;
+    let application_upper_bound = baseline_plan.expanded_elements();
+    for (index, node) in nodes.iter().enumerate() {
+        if node.may_repeat_per_element {
+            // Filter, mask, and clip-path definitions may be selected from inline attributes or
+            // CSS and are evaluated in a caller-specific context. Charge each definition once per
+            // `<use>`-expanded source element to bound nested image decoding without
+            // reimplementing CSS selector matching or usvg's private effect cache policy.
+            dependencies.dependencies[0].push((index, application_upper_bound));
+        }
+    }
+
+    plan_svg_reference_dependencies(&dependencies)
+}
+
+fn build_svg_reference_dependencies(nodes: &[ReferenceNode]) -> ReferenceDependencyGraph {
+    let real_nodes = nodes.len();
+
     let mut use_ids = HashMap::new();
     let mut parsed_ids: HashMap<&str, Vec<(usize, bool)>> = HashMap::new();
     for (index, node) in nodes.iter().enumerate() {
@@ -811,58 +837,101 @@ fn plan_svg_reference_expansion(nodes: &[ReferenceNode]) -> Result<SvgReferenceP
         }
     }
 
-    let mut dependencies = Vec::with_capacity(nodes.len());
-    for node in nodes {
-        let mut node_dependencies = node
-            .children
-            .iter()
-            .map(|&index| (index, 1_usize))
-            .collect::<Vec<_>>();
+    let mut dependencies = nodes
+        .iter()
+        .map(|node| {
+            node.children
+                .iter()
+                .map(|&index| (index, 1_usize))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let mut parsed_dependencies = HashMap::new();
+    let mut marker_dependencies = HashMap::new();
+    for (index, node) in nodes.iter().enumerate() {
         for reference in &node.references {
-            match reference.target_kind {
-                ReferenceTargetKind::UseElement => {
-                    if let Some(&target_index) = use_ids.get(reference.target.as_str()) {
-                        node_dependencies.push((target_index, reference.multiplicity));
-                    }
-                }
-                ReferenceTargetKind::ParsedElement | ReferenceTargetKind::Marker => {
-                    for &(target_index, is_marker) in parsed_ids
-                        .get(reference.target.as_str())
-                        .into_iter()
-                        .flatten()
-                    {
-                        if matches!(reference.target_kind, ReferenceTargetKind::Marker)
-                            && !is_marker
-                        {
-                            continue;
-                        }
-                        node_dependencies.push((target_index, reference.multiplicity));
-                    }
-                }
+            let target_index = match reference.target_kind {
+                ReferenceTargetKind::UseElement => use_ids.get(reference.target.as_str()).copied(),
+                ReferenceTargetKind::ParsedElement => resolve_parsed_id_dependency(
+                    reference.target.as_str(),
+                    false,
+                    &parsed_ids,
+                    &mut parsed_dependencies,
+                    &mut dependencies,
+                ),
+                ReferenceTargetKind::Marker => resolve_parsed_id_dependency(
+                    reference.target.as_str(),
+                    true,
+                    &parsed_ids,
+                    &mut marker_dependencies,
+                    &mut dependencies,
+                ),
+            };
+            if let Some(target_index) = target_index {
+                dependencies[index].push((target_index, reference.multiplicity));
             }
         }
-        dependencies.push(node_dependencies);
     }
 
-    let baseline_plan = plan_svg_reference_dependencies(&dependencies)?;
-    let application_upper_bound = baseline_plan.expanded_elements();
-    for (index, node) in nodes.iter().enumerate() {
-        if node.may_repeat_per_element {
-            // Filter, mask, and clip-path definitions may be selected from inline attributes or
-            // CSS and are evaluated in a caller-specific context. Charge each definition once per
-            // `<use>`-expanded source element to bound nested image decoding without
-            // reimplementing CSS selector matching or usvg's private effect cache policy.
-            dependencies[0].push((index, application_upper_bound));
-        }
+    ReferenceDependencyGraph {
+        dependencies,
+        real_nodes,
     }
-
-    plan_svg_reference_dependencies(&dependencies)
 }
 
-fn plan_svg_reference_dependencies(
-    dependencies: &[Vec<(usize, usize)>],
-) -> Result<SvgReferencePlan> {
+fn resolve_parsed_id_dependency<'a>(
+    target: &str,
+    marker_only: bool,
+    parsed_ids: &HashMap<&'a str, Vec<(usize, bool)>>,
+    resolved: &mut HashMap<&'a str, Option<usize>>,
+    dependencies: &mut Vec<Vec<(usize, usize)>>,
+) -> Option<usize> {
+    let (id, candidates) = parsed_ids.get_key_value(target)?;
+    if let [(index, is_marker)] = candidates.as_slice() {
+        return (!marker_only || *is_marker).then_some(*index);
+    }
+    if let Some(&dependency) = resolved.get(target) {
+        return dependency;
+    }
+    let dependency = if marker_only {
+        resolve_reference_candidates(
+            dependencies,
+            candidates
+                .iter()
+                .filter_map(|&(index, is_marker)| is_marker.then_some(index)),
+        )
+    } else {
+        resolve_reference_candidates(dependencies, candidates.iter().map(|&(index, _)| index))
+    };
+    resolved.insert(*id, dependency);
+    dependency
+}
+
+fn resolve_reference_candidates(
+    dependencies: &mut Vec<Vec<(usize, usize)>>,
+    mut candidates: impl Iterator<Item = usize>,
+) -> Option<usize> {
+    let Some(first) = candidates.next() else {
+        return None;
+    };
+    let Some(second) = candidates.next() else {
+        return Some(first);
+    };
+
+    // A duplicate-ID candidate union is materialized once. Every parsed-tree reference then owns
+    // one edge to this transparent group instead of copying every candidate edge.
+    let group_index = dependencies.len();
+    let mut group = Vec::with_capacity(candidates.size_hint().0.saturating_add(2));
+    group.push((first, 1));
+    group.push((second, 1));
+    group.extend(candidates.map(|index| (index, 1)));
+    dependencies.push(group);
+    Some(group_index)
+}
+
+fn plan_svg_reference_dependencies(graph: &ReferenceDependencyGraph) -> Result<SvgReferencePlan> {
     let cap = crate::resources::MAX_RESVG_TREE_NODES.saturating_add(1);
+    let dependencies = &graph.dependencies;
     let nodes_len = dependencies.len();
     let mut states = vec![0_u8; nodes_len];
     let mut expanded_elements = vec![0_usize; nodes_len];
@@ -872,13 +941,19 @@ fn plan_svg_reference_dependencies(
 
     while let Some((index, complete)) = stack.pop() {
         if complete {
-            let mut elements = 1_usize;
+            let is_group = index >= graph.real_nodes;
+            let mut elements = if is_group { 0 } else { 1 };
             let mut depth = 0_usize;
             for &(dependency, multiplicity) in &dependencies[index] {
                 let dependency_elements =
                     capped_svg_reference_mul(expanded_elements[dependency], multiplicity, cap);
                 elements = capped_svg_reference_add(elements, dependency_elements, cap);
-                depth = depth.max(expanded_depths[dependency].saturating_add(1));
+                let dependency_depth = expanded_depths[dependency];
+                depth = depth.max(if is_group {
+                    dependency_depth
+                } else {
+                    dependency_depth.saturating_add(1)
+                });
             }
             expanded_elements[index] = elements;
             expanded_depths[index] = depth;
@@ -924,6 +999,7 @@ fn plan_svg_reference_dependencies(
                 capped_svg_reference_add(raw_element_occurrences[dependency], added, cap);
         }
     }
+    raw_element_occurrences.truncate(graph.real_nodes);
 
     Ok(SvgReferencePlan {
         expanded_elements: expanded_elements[0],
@@ -1385,6 +1461,74 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_parsed_id_dependencies_are_shared_without_changing_plan_semantics() {
+        const DUPLICATES: usize = 64;
+        const MARKERS: usize = 32;
+        const REFERENCES: usize = 64;
+
+        let real_nodes = 1 + DUPLICATES + REFERENCES;
+        let node = |is_marker, parsed_id: Option<&str>, references| ReferenceNode {
+            children: Vec::new(),
+            is_style: false,
+            is_marker,
+            may_repeat_per_element: false,
+            use_id: None,
+            parsed_id: parsed_id.map(str::to_owned),
+            references,
+        };
+        let references = || {
+            vec![
+                ElementReference {
+                    target: "shared".to_owned(),
+                    multiplicity: 2,
+                    target_kind: ReferenceTargetKind::ParsedElement,
+                },
+                ElementReference {
+                    target: "shared".to_owned(),
+                    multiplicity: 3,
+                    target_kind: ReferenceTargetKind::Marker,
+                },
+            ]
+        };
+        let mut nodes = Vec::with_capacity(real_nodes);
+        nodes.push(node(false, None, Vec::new()));
+        nodes
+            .extend((0..DUPLICATES).map(|index| node(index < MARKERS, Some("shared"), Vec::new())));
+        nodes.extend((0..REFERENCES).map(|_| node(false, None, references())));
+        nodes[0].children = (1..real_nodes).collect();
+
+        let graph = build_svg_reference_dependencies(&nodes);
+        let dependency_edges = graph.dependencies.iter().map(Vec::len).sum::<usize>();
+        assert_eq!(graph.real_nodes, real_nodes);
+        assert_eq!(graph.dependencies.len(), real_nodes + 2);
+        assert_eq!(dependency_edges, 2 * DUPLICATES + MARKERS + 3 * REFERENCES);
+
+        let plan = plan_svg_reference_dependencies(&graph).unwrap();
+        assert_eq!(
+            plan.expanded_elements(),
+            1 + DUPLICATES + REFERENCES * (1 + 2 * DUPLICATES + 3 * MARKERS)
+        );
+        assert_eq!(plan.max_tree_depth(), 2);
+        assert_eq!(plan.raw_element_occurrences().len(), real_nodes);
+        for (index, &occurrences) in plan.raw_element_occurrences()[1..=DUPLICATES]
+            .iter()
+            .enumerate()
+        {
+            let expected = if index < MARKERS {
+                1 + 5 * REFERENCES
+            } else {
+                1 + 2 * REFERENCES
+            };
+            assert_eq!(occurrences, expected);
+        }
+        assert!(
+            plan.raw_element_occurrences()[1 + DUPLICATES..]
+                .iter()
+                .all(|&occurrences| occurrences == 1)
+        );
+    }
+
+    #[test]
     fn effect_definitions_charge_resource_descendants_for_every_possible_application() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><image id="source" href="data:image/png;base64,AAAA"/><filter id="filter"><feImage href="#source"/></filter><mask id="mask"><image href="data:image/png;base64,BBBB"/></mask></defs><style>.all{filter:url(#filter);mask:url(#mask)}</style><rect class="all"/><rect class="all"/><rect class="all"/></svg>"##;
         let plan =
@@ -1466,16 +1610,19 @@ mod tests {
 
     #[test]
     fn rejects_cyclic_same_document_expansion_references() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="first"><use href="#second"/></g><g id="second"><use href="#first"/></g></defs><use href="#first"/></svg>"##;
+        for svg in [
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="first"><use href="#second"/></g><g id="second"><use href="#first"/></g></defs><use href="#first"/></svg>"##,
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="loop"><filter><feImage href="#loop"/></filter></g><unknown id="loop"/></defs></svg>"##,
+        ] {
+            let error = validate(svg).unwrap_err();
 
-        let error = validate(svg).unwrap_err();
-
-        assert!(
-            error
-                .to_string()
-                .contains("same-document SVG expansion references contain a cycle"),
-            "{error}"
-        );
+            assert!(
+                error
+                    .to_string()
+                    .contains("same-document SVG expansion references contain a cycle"),
+                "{error}"
+            );
+        }
     }
 
     #[test]
