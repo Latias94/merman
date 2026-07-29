@@ -78,7 +78,7 @@ Run `merman-cli --help` to see only the commands compiled into your binary, then
 
 ## Migrating From The Old Root Syntax
 
-Root-level render flags were removed. They were ambiguous with native subcommands, exposed options that silently did nothing for some formats, and made compatibility behavior impossible to version independently. The break gives each workflow its own parser, defaults, validation, help, completion output, input rules, and publication guarantees.
+Root-level render flags are moving behind explicit subcommands. They were ambiguous with native subcommands, exposed options that silently did nothing for some formats, and made compatibility behavior impossible to version independently. The break gives each workflow its own parser, defaults, validation, help, completion output, input rules, and publication guarantees.
 
 | Before | Now |
 | --- | --- |
@@ -88,7 +88,9 @@ Root-level render flags were removed. They were ambiguous with native subcommand
 | Native single render through shared flags | `merman-cli render diagram.mmd --output diagram.svg` |
 | Native Markdown through extension inference | `merman-cli batch README.md --output-dir README.merman` |
 
-Passing a removed root render flag exits `2` with a targeted message pointing to `mmdc`, `render`, and `batch`; it does not execute a hidden compatibility path.
+During the `0.8.x` transition, an invocation whose first argument is an option owned by `mmdc`, such as `-i` or `--input`, is forwarded to the same parser and execution path as `merman-cli mmdc`. It prints a deprecation warning to stderr unless `--quiet` is present. This root-level forwarding is not advertised in help or completions and will be removed in `v0.9.0`; the explicit `merman-cli mmdc` subcommand remains supported.
+
+Bare root inputs and native-only root options still exit `2` with a targeted message pointing to `mmdc`, `render`, and `batch`. New scripts should choose an explicit subcommand now.
 
 The `mmdc` subcommand is a release-pinned compatibility snapshot. This release follows the supported command behavior of `@mermaid-js/mermaid-cli@11.16.0`; future changes are tied to an explicit Mermaid baseline update. See the [compatibility register](https://github.com/Latias94/merman/blob/main/docs/alignment/CLI_COMPATIBILITY.md) for exact coverage and deliberate browserless divergences.
 

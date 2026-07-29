@@ -53,13 +53,103 @@ fn root_requires_an_explicit_subcommand_without_side_effects() {
 }
 
 #[test]
-fn removed_root_render_syntax_points_to_explicit_workflows() {
+fn legacy_root_mmdc_options_forward_with_a_removal_warning() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(tmp.path().join("diagram.mmd"), "flowchart LR\nA-->B\n").expect("write input");
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe.as_os_str())
+        .current_dir(tmp.path())
+        .args(["-i", "diagram.mmd", "-o", "legacy.svg"])
+        .output()
+        .expect("run legacy root invocation");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    assert!(
+        output.stdout.is_empty(),
+        "file output must not write a payload"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("deprecated")
+            && stderr.contains("v0.9.0")
+            && stderr.contains("merman-cli mmdc"),
+        "legacy root invocation needs an actionable removal warning:\n{stderr}"
+    );
+    let svg = fs::read_to_string(tmp.path().join("legacy.svg")).expect("read legacy SVG");
+    assert!(svg.trim_start().starts_with("<svg"));
+}
+
+#[test]
+fn quiet_suppresses_only_the_legacy_root_removal_warning() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(tmp.path().join("diagram.mmd"), "flowchart LR\nA-->B\n").expect("write input");
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .current_dir(tmp.path())
+        .args(["--input=diagram.mmd", "--output=quiet.svg", "--quiet"])
+        .output()
+        .expect("run quiet legacy root invocation");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    assert!(
+        output.stderr.is_empty(),
+        "quiet legacy invocation must suppress the removal warning: {:?}",
+        output.stderr
+    );
+    assert!(tmp.path().join("quiet.svg").exists());
+}
+
+#[test]
+fn compact_legacy_root_options_use_the_mmdc_parser() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(tmp.path().join("diagram.mmd"), "flowchart LR\nA-->B\n").expect("write input");
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .current_dir(tmp.path())
+        .args(["-idiagram.mmd", "-ocompact.svg"])
+        .output()
+        .expect("run compact legacy root invocation");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    assert!(tmp.path().join("compact.svg").exists());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("v0.9.0"),
+        "compact mmdc options must use the same transition path"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn attached_non_utf8_input_reaches_the_mmdc_parser_unchanged() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = std::ffi::OsString::from_vec(b"diagram-\xff.mmd".to_vec());
+    let mut attached_input = std::ffi::OsString::from("-i");
+    attached_input.push(&input);
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .current_dir(tmp.path())
+        .args([
+            attached_input,
+            std::ffi::OsString::from("-o"),
+            std::ffi::OsString::from("non-utf8.svg"),
+        ])
+        .output()
+        .expect("run legacy root invocation with a non-UTF-8 path");
+
+    assert_eq!(exit_code(output.status), 2);
+    assert!(!tmp.path().join("non-utf8.svg").exists());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("v0.9.0") && stderr.contains("Input file") && stderr.contains("\\xFF"),
+        "the original non-UTF-8 argument must reach mmdc unchanged:\n{stderr}"
+    );
+}
+
+#[test]
+fn non_mmdc_root_render_syntax_points_to_explicit_workflows() {
     for args in [
-        vec!["-i", "missing.mmd", "-o", "out.svg"],
-        vec!["--input=missing.mmd", "--output=out.svg"],
-        vec!["-imissing.mmd", "-oout.svg"],
-        vec!["--pdfFit"],
-        vec!["--svg-pipeline"],
         vec!["--id", "diagram-root"],
         vec!["--suppress-errors"],
         vec!["--sequence-mirror-actors"],

@@ -5,12 +5,13 @@
 | Status | Supported versioned compatibility surface with registered divergences |
 | Baseline | `@mermaid-js/mermaid-cli@11.16.0` |
 | Interface | `merman-cli mmdc` |
+| Transitional alias | Root-level `mmdc` options through `0.8.x`; removed in `v0.9.0` |
 | Reference source | `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js` |
-| Last updated | 2026-07-28 |
+| Last updated | 2026-07-29 |
 
 Merman provides a browserless compatibility command for scripts that use the official Mermaid CLI. Compatibility is explicit and release-pinned: `merman-cli mmdc` owns the supported `mmdc@11.16.0` argument names, browser-independent defaults, file naming, Markdown detection, warnings, and fence scanner. The repository does not install an `mmdc` executable alias.
 
-The root command no longer accepts render flags. This separation lets the compatibility contract track a named upstream release while native `render` and `batch` use stricter Rust CLI conventions.
+The root command no longer owns or advertises render flags. During the `0.8.x` migration window, a root invocation that begins with an option owned by `mmdc` is rewritten to the explicit `mmdc` subcommand before Clap parsing. This separation lets the compatibility contract track a named upstream release while native `render` and `batch` use stricter Rust CLI conventions.
 
 ## Migration
 
@@ -31,7 +32,7 @@ The default output names intentionally differ:
 - `mmdc -o -` without `-e` retains the pinned SVG-format warning even though stdout otherwise
   enables quiet output.
 
-Removed root flags fail with exit `2` and a targeted migration message. They are not parsed by a hidden legacy adapter.
+The transitional root rewrite uses the exact `mmdc` parser, defaults, validation, and execution path. It emits a deprecation warning to stderr unless `--quiet` is present. The rewrite is intentionally absent from root help and completions and will be removed in `v0.9.0`; the explicit `merman-cli mmdc` interface is not scheduled for removal. Bare root inputs and options that are not owned by `mmdc` still fail with exit `2` and a targeted migration message.
 
 ## Contract Boundary
 

@@ -79,12 +79,18 @@ impl CliApp {
             process,
             mut execution,
         } = self;
-        let cli = match parse_cli(&process.args) {
-            Ok(cli) => cli,
+        let parsed = match parse_cli(&process.args) {
+            Ok(parsed) => parsed,
             Err(error) => {
                 return print_clap_error(error, &execution.stdout, &execution.stderr);
             }
         };
+        if parsed.should_warn_about_deprecated_root_mmdc()
+            && let Err(source) = execution.stderr.write_all(DEPRECATED_ROOT_MMDC_WARNING)
+        {
+            return CliError::stream("stderr", source).exit_code();
+        }
+        let cli = parsed.cli;
         let facts = match process.into_facts(command_needs_working_directory(&cli.command)) {
             Ok(facts) => facts,
             Err(error) => return report_error(CliError::Io(error), &execution.stderr),
@@ -149,10 +155,38 @@ pub(crate) fn cli_command() -> clap::Command {
     command.override_help(help)
 }
 
-fn parse_cli(args: &[OsString]) -> Result<Cli, clap::Error> {
+const DEPRECATED_ROOT_MMDC_WARNING: &[u8] = b"warning: root-level mmdc-compatible options are deprecated and will be removed in v0.9.0\nhelp: use `merman-cli mmdc ...`; the explicit `mmdc` subcommand remains supported\n";
+
+struct ParsedCli {
+    cli: Cli,
+    deprecated_root_mmdc: bool,
+}
+
+impl ParsedCli {
+    fn should_warn_about_deprecated_root_mmdc(&self) -> bool {
+        #[cfg(feature = "svg")]
+        {
+            self.deprecated_root_mmdc
+                && matches!(&self.cli.command, RawCommand::Mmdc(args) if !args.quiet)
+        }
+        #[cfg(not(feature = "svg"))]
+        {
+            let _ = self.deprecated_root_mmdc;
+            false
+        }
+    }
+}
+
+fn parse_cli(args: &[OsString]) -> Result<ParsedCli, clap::Error> {
     let mut command = cli_command();
-    match command.try_get_matches_from_mut(args) {
-        Ok(mut matches) => Cli::from_arg_matches_mut(&mut matches),
+    let normalized_args = deprecated_root_mmdc_args(&command, args);
+    let deprecated_root_mmdc = normalized_args.is_some();
+    let parse_args = normalized_args.as_deref().unwrap_or(args);
+    match command.try_get_matches_from_mut(parse_args) {
+        Ok(mut matches) => Cli::from_arg_matches_mut(&mut matches).map(|cli| ParsedCli {
+            cli,
+            deprecated_root_mmdc,
+        }),
         Err(error) => {
             if let Some(argument) = superseded_resource_flag(error.kind(), args) {
                 return Err(clap::Error::raw(
@@ -161,7 +195,9 @@ fn parse_cli(args: &[OsString]) -> Result<Cli, clap::Error> {
                 )
                 .with_cmd(&command));
             }
-            if let Some(argument) = removed_root_render_flag(error.kind(), args) {
+            if !deprecated_root_mmdc
+                && let Some(argument) = removed_root_render_flag(error.kind(), args)
+            {
                 return Err(clap::Error::raw(
                     ErrorKind::UnknownArgument,
                     removed_root_render_message(argument),
@@ -171,6 +207,53 @@ fn parse_cli(args: &[OsString]) -> Result<Cli, clap::Error> {
             Err(error)
         }
     }
+}
+
+fn deprecated_root_mmdc_args(command: &clap::Command, args: &[OsString]) -> Option<Vec<OsString>> {
+    let argument = args.get(1)?.to_string_lossy();
+    if !is_mmdc_option(command, &argument) {
+        return None;
+    }
+
+    let mut normalized = Vec::with_capacity(args.len() + 1);
+    normalized.push(args.first()?.clone());
+    normalized.push(OsString::from("mmdc"));
+    normalized.extend(args.iter().skip(1).cloned());
+    Some(normalized)
+}
+
+fn is_mmdc_option(command: &clap::Command, argument: &str) -> bool {
+    if matches!(argument, "--help" | "--version" | "-h" | "-V") {
+        return false;
+    }
+    let Some(option) = argument
+        .strip_prefix('-')
+        .filter(|option| !option.is_empty())
+    else {
+        return false;
+    };
+    let Some(mmdc) = command.find_subcommand("mmdc") else {
+        return false;
+    };
+    if let Some(long) = option.strip_prefix('-') {
+        let name = long.split_once('=').map_or(long, |(name, _)| name);
+        return !name.is_empty()
+            && mmdc.get_arguments().any(|candidate| {
+                candidate.get_long() == Some(name)
+                    || candidate
+                        .get_all_aliases()
+                        .is_some_and(|aliases| aliases.contains(&name))
+            });
+    }
+    let Some(short) = option.chars().next() else {
+        return false;
+    };
+    mmdc.get_arguments().any(|candidate| {
+        candidate.get_short() == Some(short)
+            || candidate
+                .get_all_short_aliases()
+                .is_some_and(|aliases| aliases.contains(&short))
+    })
 }
 
 fn superseded_resource_flag(kind: ErrorKind, args: &[OsString]) -> Option<&str> {
@@ -766,6 +849,28 @@ mod tests {
             execution: execution(io::empty(), stdout, SharedWriter::new(FailingWriter)),
         };
         assert_eq!(usage.execute(), ExitCode::from(3));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn deprecated_root_warning_failure_stops_before_input_acquisition() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let (stdout, stdout_bytes) = capture();
+        let app = CliApp {
+            process: snapshot(&["-i", "-", "-o", "-"], Ok(PathBuf::from(".")), false),
+            execution: execution(
+                CountingReader {
+                    reads: Arc::clone(&reads),
+                    source: Cursor::new(b"flowchart LR\nA-->B\n".to_vec()),
+                },
+                stdout,
+                SharedWriter::new(FailingWriter),
+            ),
+        };
+
+        assert_eq!(app.execute(), ExitCode::from(3));
+        assert_eq!(reads.load(Ordering::SeqCst), 0);
+        assert!(bytes(&stdout_bytes).is_empty());
     }
 
     #[cfg(any(feature = "svg", feature = "ascii"))]
