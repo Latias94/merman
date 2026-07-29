@@ -363,16 +363,6 @@ impl AnalysisExecutor {
         self.invalidate_uri(uri);
     }
 
-    pub(crate) fn release(&self, request: &AnalysisBuildRequest) {
-        let key = request.key();
-        let mut registry = lock_recovering_poison(&self.inner.registry);
-        if registry.jobs.get(&key).is_some_and(|job| job.is_complete()) {
-            registry.jobs.remove(&key);
-            drop(registry);
-            self.inner.capacity_changed.notify_waiters();
-        }
-    }
-
     pub(crate) fn forget(&self, uri: &Uri) {
         self.invalidate_uri(uri);
     }

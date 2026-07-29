@@ -82,12 +82,19 @@ struct DiagnosticPublisher {
     profile: ClientProtocolProfile,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MermanLanguageServer {
     client: Client,
     store: Arc<Mutex<DocumentStore>>,
-    client_profile: OnceLock<ClientProtocolProfile>,
+    client_profile: Arc<OnceLock<ClientProtocolProfile>>,
     refresh_coordinator: RefreshCoordinator,
+    session_cancellation: AnalysisCancellationToken,
+    client_effects: ClientEffectDispatcher,
+    _lifetime: Arc<MermanLanguageServerLifetime>,
+}
+
+#[derive(Debug)]
+struct MermanLanguageServerLifetime {
     session_cancellation: AnalysisCancellationToken,
     analysis_executor: crate::analysis_executor::AnalysisExecutor,
     client_effects: ClientEffectDispatcher,
@@ -98,14 +105,19 @@ impl MermanLanguageServer {
         let session_cancellation = AnalysisCancellationToken::new();
         let store = DocumentStore::with_session_cancellation(session_cancellation.clone());
         let analysis_executor = store.analysis_executor();
+        let client_effects = ClientEffectDispatcher::new();
         Self {
             client,
             store: Arc::new(Mutex::new(store)),
-            client_profile: OnceLock::new(),
+            client_profile: Arc::new(OnceLock::new()),
             refresh_coordinator: RefreshCoordinator::new(refresh_client),
-            session_cancellation,
-            analysis_executor,
-            client_effects: ClientEffectDispatcher::new(),
+            session_cancellation: session_cancellation.clone(),
+            client_effects: client_effects.clone(),
+            _lifetime: Arc::new(MermanLanguageServerLifetime {
+                session_cancellation,
+                analysis_executor,
+                client_effects,
+            }),
         }
     }
 
@@ -118,12 +130,24 @@ impl MermanLanguageServer {
     fn service_components() -> (MermanLspService, MermanClientSocket, RefreshClient) {
         let (refresh_client, refresh_requests, refresh_responses) = RefreshClient::channel();
         let refresh_handle = refresh_client.clone();
-        let (service, socket) = LspService::build(move |client| Self::new(client, refresh_client))
-            .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
-            .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
-            .finish();
+        let backend = Arc::new(OnceLock::new());
+        let backend_slot = Arc::clone(&backend);
+        let (service, socket) = LspService::build(move |client| {
+            let server = Self::new(client, refresh_client);
+            backend_slot
+                .set(server.clone())
+                .expect("LSP backend is constructed exactly once");
+            server
+        })
+        .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
+        .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
+        .finish();
+        let backend = backend
+            .get()
+            .expect("LSP service builder constructs its backend")
+            .clone();
         (
-            MermanLspService::new(service),
+            MermanLspService::new(service, backend),
             MermanClientSocket::new(socket, refresh_requests, refresh_responses),
             refresh_handle,
         )
@@ -663,7 +687,7 @@ impl DiagnosticPublisher {
     }
 }
 
-impl Drop for MermanLanguageServer {
+impl Drop for MermanLanguageServerLifetime {
     fn drop(&mut self) {
         self.session_cancellation.cancel();
         self.analysis_executor.invalidate_all();

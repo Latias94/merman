@@ -1132,7 +1132,6 @@ impl DocumentStore {
         request: &AnalysisBuildRequest,
         analysis: Arc<DocumentAnalysisContext>,
     ) -> Option<SnapshotContext> {
-        self.analysis_executor.release(request);
         if self.snapshot_generation != request.snapshot_generation()
             || self.diagnostic_generation != request.diagnostic_generation()
             || !self.is_document_epoch_current(request.uri(), request.document_epoch())

@@ -1027,6 +1027,64 @@ async fn did_change_applies_incremental_changes_in_order() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn session_routes_pipelined_messages_after_initialize_completes() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = Uri::from_str("file:///tmp/pipelined-initialize.mmd").unwrap();
+
+    let initialize = service.call(
+        Request::build("initialize")
+            .params(serde_json::to_value(InitializeParams::default()).unwrap())
+            .id(1)
+            .finish(),
+    );
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+
+    let (initialize, open) = tokio::join!(initialize, open);
+    assert!(initialize.unwrap().expect("initialize response").is_ok());
+    assert!(open.unwrap().is_none());
+    assert!(
+        service.inner().store.lock().await.get(&uri).is_some(),
+        "didOpen must be routed after the earlier initialize succeeds"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reads_wait_for_an_earlier_unpolled_shutdown() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
+
+    let shutdown = service.call(Request::build("shutdown").id(2).finish());
+    let rule_catalog = service.call(Request::build(RULE_CATALOG_METHOD).id(3).finish());
+    tokio::pin!(rule_catalog);
+    assert!(futures::poll!(&mut rule_catalog).is_pending());
+
+    let shutdown = shutdown
+        .await
+        .unwrap()
+        .expect("shutdown response after initialize");
+    assert!(shutdown.is_ok());
+    let rule_catalog = rule_catalog
+        .await
+        .unwrap()
+        .expect("post-shutdown request response");
+    assert!(rule_catalog.is_error());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn session_admission_preserves_open_change_and_close_order() {
     let (mut service, _socket) = MermanLanguageServer::service();
     initialize_test_service(&mut service).await;
@@ -1211,6 +1269,57 @@ async fn read_requests_wait_for_earlier_unpolled_mutations() {
         .expect("hover response after admitted open");
     assert!(response.is_ok());
     assert_ne!(response.result(), Some(&serde_json::Value::Null));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancellation_reaches_a_read_waiting_for_an_earlier_mutation() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/cancel-before-route.mmd").unwrap();
+
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let hover = service.call(
+        Request::build("textDocument/hover")
+            .params(
+                serde_json::to_value(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier { uri },
+                        Position::new(1, 0),
+                    ),
+                    work_done_progress_params: Default::default(),
+                })
+                .unwrap(),
+            )
+            .id(2)
+            .finish(),
+    );
+    let cancel = service.call(
+        Request::build("$/cancelRequest")
+            .params(serde_json::json!({ "id": 2 }))
+            .finish(),
+    );
+
+    assert!(cancel.await.unwrap().is_none());
+    assert!(open.await.unwrap().is_none());
+    let hover = hover.await.unwrap().expect("cancelled hover response");
+    assert_eq!(
+        hover.error().expect("request cancellation error").code,
+        tower_lsp_server::jsonrpc::ErrorCode::RequestCancelled
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

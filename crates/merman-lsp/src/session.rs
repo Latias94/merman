@@ -2,7 +2,7 @@ use crate::server::MermanLanguageServer;
 use crate::sync::lock_recovering_poison;
 use futures::FutureExt;
 use futures::future::{AbortHandle, Abortable, BoxFuture};
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
@@ -11,55 +11,67 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use tokio::sync::Notify;
 use tower::Service;
-use tower_lsp_server::jsonrpc::{Request, Response};
+use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
+use tower_lsp_server::ls_types::CancelParams;
 use tower_lsp_server::{ExitedError, LspService};
 
 tokio::task_local! {
     static ACTIVE_MUTATION: MutationCompletion;
 }
 
+/// Maximum number of handler futures an embedded or stdio transport should poll concurrently.
+pub const LSP_HANDLER_CONCURRENCY: usize = 4;
+
+/// Maximum encoded size of one LSP message accepted by the bundled transport.
+pub const LSP_MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
+
+/// Maximum aggregate encoded bytes retained by queued and running requests.
+pub const LSP_REQUEST_BYTE_BUDGET: usize = LSP_MAX_MESSAGE_BYTES * LSP_HANDLER_CONCURRENCY;
+
 /// The ordered JSON-RPC session exposed to embedded and stdio hosts.
 ///
 /// Admission happens synchronously in [`Service::call`], before transport futures may be polled
 /// concurrently. Reads therefore observe every earlier state mutation after it commits or aborts.
+/// The transport owns its request queue and must apply [`LSP_HANDLER_CONCURRENCY`],
+/// [`LSP_MAX_MESSAGE_BYTES`], and [`LSP_REQUEST_BYTE_BUDGET`] before retaining request futures.
 #[derive(Debug)]
 pub struct MermanLspService {
-    inner: LspService<MermanLanguageServer>,
+    inner: Arc<Mutex<LspService<MermanLanguageServer>>>,
+    _backend: MermanLanguageServer,
     input_order: Arc<InputOrder>,
+    admission_cancellations: Arc<AdmissionCancellationRegistry>,
 }
 
 impl MermanLspService {
-    pub(crate) fn new(inner: LspService<MermanLanguageServer>) -> Self {
+    pub(crate) fn new(
+        inner: LspService<MermanLanguageServer>,
+        backend: MermanLanguageServer,
+    ) -> Self {
         Self {
-            inner,
+            inner: Arc::new(Mutex::new(inner)),
+            _backend: backend,
             input_order: Arc::new(InputOrder::default()),
+            admission_cancellations: Arc::new(AdmissionCancellationRegistry::default()),
         }
     }
 
     #[cfg(test)]
     pub(crate) fn inner(&self) -> &MermanLanguageServer {
-        self.inner.inner()
-    }
-}
-
-impl Service<Request> for MermanLspService {
-    type Response = Option<Response>;
-    type Error = ExitedError;
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, context: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(context)
+        &self._backend
     }
 
-    fn call(&mut self, request: Request) -> Self::Future {
-        let admission = self.input_order.admit(request.method());
-        let future = self.inner.call(request);
-
+    fn route(
+        &self,
+        request: Request,
+        admission: Admission,
+        cancellation: Option<AdmissionCancellation>,
+    ) -> BoxFuture<'static, Result<Option<Response>, ExitedError>> {
+        let inner = Arc::clone(&self.inner);
         match admission {
-            Admission::Immediate => Box::pin(future),
+            Admission::Immediate => Box::pin(route_after_admission(inner, request, cancellation)),
             Admission::Read { order, target } => Box::pin(async move {
                 order.wait_until_completed(target).await;
-                future.await
+                route_after_admission(inner, request, cancellation).await
             }),
             Admission::Mutation {
                 order,
@@ -67,8 +79,149 @@ impl Service<Request> for MermanLspService {
                 completion,
             } => Box::pin(async move {
                 order.wait_until_completed(predecessor).await;
-                ACTIVE_MUTATION.scope(completion, future).await
+                ACTIVE_MUTATION
+                    .scope(
+                        completion,
+                        route_after_admission(inner, request, cancellation),
+                    )
+                    .await
             }),
+        }
+    }
+}
+
+async fn route_after_admission(
+    inner: Arc<Mutex<LspService<MermanLanguageServer>>>,
+    request: Request,
+    cancellation: Option<AdmissionCancellation>,
+) -> Result<Option<Response>, ExitedError> {
+    // `LspService::call` performs lifecycle routing synchronously. Keep that call behind ordered
+    // admission, but release the mutex before polling the handler so unrelated reads can overlap.
+    let future = match cancellation {
+        Some(cancellation) => match cancellation.route(&inner, request) {
+            AdmissionRoute::Cancelled(id) => {
+                return Ok(Some(Response::from_error(id, Error::request_cancelled())));
+            }
+            AdmissionRoute::Routed(future) => future,
+        },
+        None => lock_recovering_poison(&inner).call(request),
+    };
+    future.await
+}
+
+impl Service<Request> for MermanLspService {
+    type Response = Option<Response>;
+    type Error = ExitedError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, _context: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // The wrapper has no request queue: the host owns and bounds retained futures. Keeping
+        // admission ready also lets cancel and exit notifications reach queued handler futures.
+        // Lifecycle errors are evaluated after earlier mutations complete.
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, request: Request) -> Self::Future {
+        if let Some(id) = cancellation_request_id(&request) {
+            self.admission_cancellations.cancel(&id);
+        }
+        let cancellation = request
+            .id()
+            .cloned()
+            .and_then(|id| self.admission_cancellations.register(id));
+        let admission = self
+            .input_order
+            .admit(request.method(), request.id().is_none());
+        self.route(request, admission, cancellation)
+    }
+}
+
+fn cancellation_request_id(request: &Request) -> Option<Id> {
+    if request.method() != "$/cancelRequest" {
+        return None;
+    }
+    serde_json::from_value::<CancelParams>(request.params()?.clone())
+        .ok()
+        .map(|params| params.id.into())
+}
+
+#[derive(Debug, Default)]
+struct AdmissionCancellationRegistry {
+    pending: Mutex<HashMap<Id, Arc<AtomicBool>>>,
+}
+
+impl AdmissionCancellationRegistry {
+    fn register(self: &Arc<Self>, id: Id) -> Option<AdmissionCancellation> {
+        let cancellation = Arc::new(AtomicBool::new(false));
+        let mut pending = lock_recovering_poison(&self.pending);
+        if pending.contains_key(&id) {
+            return None;
+        }
+        pending.insert(id.clone(), Arc::clone(&cancellation));
+        Some(AdmissionCancellation {
+            registry: Arc::clone(self),
+            id,
+            cancellation,
+            registered: true,
+        })
+    }
+
+    fn cancel(&self, id: &Id) {
+        if let Some(cancellation) = lock_recovering_poison(&self.pending).get(id) {
+            cancellation.store(true, Ordering::Release);
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AdmissionCancellation {
+    registry: Arc<AdmissionCancellationRegistry>,
+    id: Id,
+    cancellation: Arc<AtomicBool>,
+    registered: bool,
+}
+
+enum AdmissionRoute {
+    Cancelled(Id),
+    Routed(BoxFuture<'static, Result<Option<Response>, ExitedError>>),
+}
+
+impl AdmissionCancellation {
+    fn route(
+        mut self,
+        inner: &Mutex<LspService<MermanLanguageServer>>,
+        request: Request,
+    ) -> AdmissionRoute {
+        let mut pending = lock_recovering_poison(&self.registry.pending);
+        let route = if self.cancellation.load(Ordering::Acquire) {
+            AdmissionRoute::Cancelled(self.id.clone())
+        } else {
+            // The registry lock closes the gap between wrapper admission and tower-lsp-server's
+            // own synchronous pending-request registration.
+            AdmissionRoute::Routed(lock_recovering_poison(inner).call(request))
+        };
+        if pending
+            .get(&self.id)
+            .is_some_and(|current| Arc::ptr_eq(current, &self.cancellation))
+        {
+            pending.remove(&self.id);
+        }
+        self.registered = false;
+        route
+    }
+}
+
+impl Drop for AdmissionCancellation {
+    fn drop(&mut self) {
+        if !self.registered {
+            return;
+        }
+        let mut pending = lock_recovering_poison(&self.registry.pending);
+        if pending
+            .get(&self.id)
+            .is_some_and(|current| Arc::ptr_eq(current, &self.cancellation))
+        {
+            pending.remove(&self.id);
         }
     }
 }
@@ -273,8 +426,8 @@ struct InputOrderState {
 }
 
 impl InputOrder {
-    fn admit(self: &Arc<Self>, method: &str) -> Admission {
-        match method_class(method) {
+    fn admit(self: &Arc<Self>, method: &str, is_notification: bool) -> Admission {
+        match method_class(method, is_notification) {
             MethodClass::Control => Admission::Immediate,
             MethodClass::Read => Admission::Read {
                 order: Arc::clone(self),
@@ -371,15 +524,11 @@ enum MethodClass {
     Read,
 }
 
-fn method_class(method: &str) -> MethodClass {
+fn method_class(method: &str, is_notification: bool) -> MethodClass {
     match method {
         "$/cancelRequest" | "exit" => MethodClass::Control,
-        "initialize"
-        | "textDocument/didOpen"
-        | "textDocument/didChange"
-        | "textDocument/didSave"
-        | "textDocument/didClose"
-        | "workspace/didChangeConfiguration" => MethodClass::Mutation,
+        "initialize" | "shutdown" => MethodClass::Mutation,
+        _ if is_notification => MethodClass::Mutation,
         _ => MethodClass::Read,
     }
 }
@@ -390,23 +539,30 @@ mod tests {
 
     #[test]
     fn protocol_methods_have_explicit_ordering_classes() {
-        assert_eq!(method_class("$/cancelRequest"), MethodClass::Control);
-        assert_eq!(method_class("exit"), MethodClass::Control);
-        assert_eq!(method_class("initialize"), MethodClass::Mutation);
+        assert_eq!(method_class("$/cancelRequest", true), MethodClass::Control);
+        assert_eq!(method_class("exit", true), MethodClass::Control);
+        assert_eq!(method_class("initialize", false), MethodClass::Mutation);
+        assert_eq!(method_class("shutdown", false), MethodClass::Mutation);
         assert_eq!(
-            method_class("textDocument/didChange"),
+            method_class("textDocument/didChange", true),
             MethodClass::Mutation
         );
-        assert_eq!(method_class("textDocument/completion"), MethodClass::Read);
-        assert_eq!(method_class("textDocument/didSave"), MethodClass::Mutation);
+        assert_eq!(
+            method_class("future/notification", true),
+            MethodClass::Mutation
+        );
+        assert_eq!(
+            method_class("textDocument/completion", false),
+            MethodClass::Read
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn dropped_mutations_do_not_leave_admission_gaps() {
         let order = Arc::new(InputOrder::default());
-        let first = order.admit("textDocument/didOpen");
-        let second = order.admit("textDocument/didChange");
-        let read = order.admit("textDocument/completion");
+        let first = order.admit("textDocument/didOpen", true);
+        let second = order.admit("textDocument/didChange", true);
+        let read = order.admit("textDocument/completion", false);
 
         drop(second);
         drop(first);

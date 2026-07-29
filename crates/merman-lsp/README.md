@@ -69,6 +69,48 @@ merman-lsp = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/me
 
 <!-- END GENERATED RELEASE README LSP_LIBRARY_DEPENDENCY -->
 
+The embedding boundary deliberately uses the same JSON-RPC and service types as `tower-lsp-server`. Declare those transport dependencies directly so Cargo resolves the traits and request types used by the host:
+
+```toml
+futures = "0.3.31"
+tower = { version = "0.5.2", default-features = false, features = ["util"] }
+tower-lsp-server = { version = "0.23.0", default-features = false, features = ["runtime-tokio"] }
+```
+
+Drive both halves of the returned pair. Incoming client requests enter the ordered service; its response goes back to the client. Server-initiated requests and notifications leave through the socket, and client responses to server-initiated requests must be sent back into that socket:
+
+```rust
+use futures::{SinkExt, StreamExt};
+use merman_lsp::{MermanClientSocket, MermanLanguageServer, MermanLspService};
+use tower::{Service, ServiceExt};
+use tower_lsp_server::jsonrpc::{Request, Response};
+use tower_lsp_server::ExitedError;
+
+async fn handle_client_request(
+    service: &mut MermanLspService,
+    request: Request,
+) -> Result<Option<Response>, ExitedError> {
+    service.ready().await?.call(request).await
+}
+
+async fn next_server_request(socket: &mut MermanClientSocket) -> Option<Request> {
+    socket.next().await
+}
+
+async fn handle_client_response(
+    socket: &mut MermanClientSocket,
+    response: Response,
+) -> Result<(), ExitedError> {
+    socket.send(response).await
+}
+
+fn create_session() -> (MermanLspService, MermanClientSocket) {
+    MermanLanguageServer::service()
+}
+```
+
+The host transport should poll these directions concurrently. It owns the request queue: reject encoded messages larger than `LSP_MAX_MESSAGE_BYTES`, retain no more than `LSP_REQUEST_BYTE_BUDGET` across queued and running messages, and poll at most `LSP_HANDLER_CONCURRENCY` handler futures concurrently. Call the service as each accepted message enters that bounded queue so a later `$/cancelRequest` can cancel a request that is still waiting for ordered admission. Dropping either half closes its associated pending work; do not leave the socket undriven because diagnostics, logs, and refresh requests use it.
+
 ## Runtime And Contract Boundaries
 
 LSP analysis uses deterministic runtime state. Initialization and workspace settings can provide `fixed_today` and `fixed_local_offset_minutes`, but the server does not expose a native runtime selector or forward `system-*` Cargo features.

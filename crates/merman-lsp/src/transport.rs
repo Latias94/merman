@@ -1,3 +1,4 @@
+use crate::session::{LSP_HANDLER_CONCURRENCY, LSP_MAX_MESSAGE_BYTES, LSP_REQUEST_BYTE_BUDGET};
 use futures::channel::mpsc;
 use futures::future::{self, BoxFuture};
 use futures::stream;
@@ -15,18 +16,8 @@ use tower::{BoxError, Service};
 use tower_lsp_server::Loopback;
 use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
 
-/// Maximum number of client requests the stdio transport may process concurrently.
-///
-/// Keep workspace-wide requests from monopolizing the handler loop while document epochs and
-/// snapshot generations guard response freshness.
-pub const LSP_HANDLER_CONCURRENCY: usize = 4;
-
 const MESSAGE_QUEUE_SIZE: usize = 100;
 const MAX_HEADER_BYTES: usize = 8 * 1024;
-// The source limit is 4 MiB. This leaves room for JSON string escaping and protocol metadata.
-const MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
-// Bound queued and executing requests by encoded body size as well as queue cardinality.
-const SERVER_REQUEST_BYTE_BUDGET: usize = MAX_MESSAGE_BYTES * LSP_HANDLER_CONCURRENCY;
 const OUTPUT_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 const OUTPUT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -265,7 +256,7 @@ where
     I: AsyncRead + Unpin,
 {
     fn new(input: I) -> Self {
-        Self::with_limits(input, MAX_HEADER_BYTES, MAX_MESSAGE_BYTES)
+        Self::with_limits(input, MAX_HEADER_BYTES, LSP_MAX_MESSAGE_BYTES)
     }
 
     fn with_limits(input: I, max_header_bytes: usize, max_message_bytes: usize) -> Self {
@@ -821,7 +812,7 @@ where
         stdout,
         loopback: socket,
         max_concurrency: LSP_HANDLER_CONCURRENCY,
-        request_byte_budget: SERVER_REQUEST_BYTE_BUDGET,
+        request_byte_budget: LSP_REQUEST_BYTE_BUDGET,
     }
 }
 
