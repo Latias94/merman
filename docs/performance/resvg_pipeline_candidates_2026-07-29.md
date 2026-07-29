@@ -15,9 +15,10 @@ validation rejected at discovery. No rejected production candidate remains.
 - Build: `cargo +1.95.0 bench -p merman --features png --bench pipeline --no-run`, default
   optimized bench profile, no ambient Rust flags, one Cargo job, shared `target`.
 
-Two lanes were added to the existing Criterion executable: one complete public PNG operation and
-one complete public ResvgSafe sealed-SVG operation. Both reuse the existing fixture. No runner,
-script, fixture, dependency, memory harness, or benchmark crate was added.
+Two temporary lanes were added to the existing Criterion executable for discovery: one complete
+public PNG operation and one complete public ResvgSafe sealed-SVG operation. Both reused the
+existing fixture and were removed after their candidates failed the admission gate. No runner,
+script, fixture, dependency, memory harness, or benchmark crate remains from these experiments.
 
 ## Accepted complexity repairs
 
@@ -125,9 +126,10 @@ removed. The reviewed two-pass fail-closed validator remains authoritative.
 
 - Retain transparent parsed-ID groups and hash-based expanded-attribute membership because they
   remove attacker-amplifiable superlinear work while preserving bounded semantics.
-- Retain the two narrow public benchmark lanes because raster export and ResvgSafe finalization had
-  no direct coverage before this unit.
+- Remove the two candidate-specific benchmark lanes after recording their executable and sampling
+  evidence. They cover only one fixture and do not belong in the all-fixture pipeline lane contract.
 - Reject one-shot export fusion and single-reader validation. Do not add API aliases, JPEG/PDF
   copies, event-by-event test matrices, differential oracles, or new benchmark scripts.
 - Revisit ordinary latency only when a profile identifies a larger owner in preset sanitization or
-  a real workload registers a different throughput/memory contract before measurement.
+  a real workload registers a different throughput/memory contract before measurement; add a lane
+  only after that operation and workload are registered.
