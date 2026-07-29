@@ -458,6 +458,33 @@ fn bench_end_to_end(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(feature = "png")]
+fn bench_png_end_to_end(c: &mut Criterion) {
+    let renderer = merman::svg::HeadlessRenderer::new();
+    let options = merman::svg::export::RasterOptions::default();
+    let input = include_str!("fixtures/kanban_medium.mmd");
+
+    renderer
+        .render_png_sync(input, &options)
+        .expect("PNG preflight")
+        .expect("detected benchmark diagram");
+
+    let mut group = c.benchmark_group("png_end_to_end");
+    group.bench_function("kanban_medium", |b| {
+        b.iter(|| {
+            let png = renderer
+                .render_png_sync(black_box(input), &options)
+                .expect("PNG render")
+                .expect("detected benchmark diagram");
+            black_box(png.len());
+        })
+    });
+    group.finish();
+}
+
+#[cfg(not(feature = "png"))]
+fn bench_png_end_to_end(_: &mut Criterion) {}
+
 criterion_group!(
     benches,
     bench_parse,
@@ -466,6 +493,7 @@ criterion_group!(
     bench_frontmatter_preprocess,
     bench_layout,
     bench_render,
-    bench_end_to_end
+    bench_end_to_end,
+    bench_png_end_to_end
 );
 criterion_main!(benches);
