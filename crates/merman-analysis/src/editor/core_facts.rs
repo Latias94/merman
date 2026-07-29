@@ -136,6 +136,7 @@ pub(super) fn from_core_facts_cancellable(
                 right.selection.end,
             ))
     });
+    index.build_point_indexes(cancellation)?;
     cancellation.checkpoint()?;
     Ok(FenceTextIndex::from_data(index))
 }

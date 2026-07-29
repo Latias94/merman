@@ -6,15 +6,14 @@ use merman_analysis::{
     SourceDescriptor, Summary,
 };
 use merman_bindings_core::{BindingError, BindingStatus};
-#[cfg(test)]
-use merman_editor_core::analysis_payload_to_diagnostics;
 use merman_editor_core::{
     DiagramDetectionValidity, DocumentAnalysisContext, DocumentKind, DocumentSnapshot,
     DocumentWorkspace, EditorDiagnostic, EditorDiagramDetection, EditorDocumentSymbol, EditorHover,
     EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, Position, Range,
-    RenameError, SemanticTokenDescriptor, code_actions_from_fixes, completion_for_snapshot,
-    document_symbols, goto_definition, hover, plan_semantic_tokens_for_snapshot, prepare_rename,
-    references, rename, search_document_symbols, semantic_token_descriptor,
+    RenameError, SemanticTokenDescriptor, analysis_payload_to_diagnostics, code_actions_from_fixes,
+    completion_for_snapshot, document_symbols, goto_definition, hover,
+    plan_semantic_tokens_for_snapshot, prepare_rename, references, rename, search_document_symbols,
+    semantic_token_descriptor,
 };
 use serde::Serialize;
 use std::{
@@ -465,7 +464,7 @@ fn diagnostics_for_context(context: &EditorDocumentContext) -> Result<JsValue, J
         valid: payload.valid,
         summary: payload.summary,
         source: payload.source.clone(),
-        diagnostics: context.analyzed.diagnostics().to_vec(),
+        diagnostics: analysis_payload_to_diagnostics(payload),
     };
     js_value(&response)
 }
@@ -499,10 +498,8 @@ pub fn editor_code_actions(
 
 fn code_actions_for_context(context: &EditorDocumentContext) -> Result<JsValue, JsValue> {
     let uri = context.analyzed.snapshot().uri().as_str();
-    js_value(&code_actions_for_diagnostics(
-        context.analyzed.diagnostics(),
-        uri,
-    ))
+    let diagnostics = analysis_payload_to_diagnostics(context.analyzed.payload());
+    js_value(&code_actions_for_diagnostics(&diagnostics, uri))
 }
 
 #[wasm_bindgen(js_name = editorCompletions)]
@@ -1244,6 +1241,34 @@ mod tests {
     }
 
     #[test]
+    fn one_entry_cache_shares_and_releases_analysis_generations() {
+        reset_editor_document_context_cache_for_tests();
+        let source = "flowchart TD\nA-->B\n";
+        let uri = "file:///tmp/cache.mmd";
+
+        let first = editor_document_context(source, Some(uri.to_string()), None).unwrap();
+        let repeated = editor_document_context(source, Some(uri.to_string()), None).unwrap();
+        let first_generation = first.analyzed.shared_analysis_generation();
+        let repeated_generation = repeated.analyzed.shared_analysis_generation();
+        let displaced = Arc::downgrade(&first_generation);
+
+        assert!(Arc::ptr_eq(&first_generation, &repeated_generation));
+        assert_eq!(editor_document_context_builds_for_tests(), 1);
+
+        let replacement = editor_document_context(source, Some(uri.to_string()), Some("{}"))
+            .expect("options mismatch replaces the one-entry cache");
+        let replacement_generation = replacement.analyzed.shared_analysis_generation();
+        assert!(!Arc::ptr_eq(&replacement_generation, &first_generation));
+        assert_eq!(editor_document_context_builds_for_tests(), 2);
+
+        drop(first_generation);
+        drop(repeated_generation);
+        drop(first);
+        drop(repeated);
+        assert!(displaced.upgrade().is_none());
+    }
+
+    #[test]
     fn editor_language_context_invalidates_on_source_or_uri_change() {
         reset_editor_document_context_cache_for_tests();
 
@@ -1423,8 +1448,8 @@ mod tests {
                 .detection()
                 .unwrap_or_else(|| panic!("detect {family}"));
             assert_eq!(detection.diagram_type, family, "{family} detection");
-            let diagnostics = context.analyzed.diagnostics();
-            let _ = code_actions_for_diagnostics(diagnostics, &uri);
+            let diagnostics = analysis_payload_to_diagnostics(context.analyzed.payload());
+            let _ = code_actions_for_diagnostics(&diagnostics, &uri);
             let snapshot = context.analyzed.snapshot();
             let header_character = source
                 .lines()

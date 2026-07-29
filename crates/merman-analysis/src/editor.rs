@@ -310,6 +310,108 @@ pub struct FenceTextIndex {
     data: Arc<FenceTextIndexData>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct ReferenceIntervalId {
+    group_ordinal: usize,
+    span_ordinal: usize,
+    semantic_item_id: usize,
+}
+
+#[derive(Debug)]
+struct PointIntervalEntry<T> {
+    span: ByteSpan,
+    value: T,
+    subtree_max_end: usize,
+}
+
+#[derive(Debug)]
+struct PointIntervalIndex<T> {
+    entries: Vec<PointIntervalEntry<T>>,
+}
+
+impl<T> Default for PointIntervalIndex<T> {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+}
+
+impl<T: Copy> PointIntervalIndex<T> {
+    fn from_start_ordered(intervals: Vec<(ByteSpan, T)>) -> Self {
+        debug_assert!(
+            intervals
+                .windows(2)
+                .all(|pair| pair[0].0.start <= pair[1].0.start)
+        );
+        let mut entries = intervals
+            .into_iter()
+            .map(|(span, value)| PointIntervalEntry {
+                span,
+                value,
+                subtree_max_end: span.end,
+            })
+            .collect::<Vec<_>>();
+        populate_subtree_max_ends(&mut entries);
+        Self { entries }
+    }
+
+    fn for_each_at(&self, offset: usize, mut visit: impl FnMut(T, ByteSpan)) -> usize {
+        fn visit_subtree<T: Copy>(
+            entries: &[PointIntervalEntry<T>],
+            offset: usize,
+            visited: &mut usize,
+            visit: &mut impl FnMut(T, ByteSpan),
+        ) {
+            if entries.is_empty() {
+                return;
+            }
+
+            let middle = entries.len() / 2;
+            let (left, rest) = entries.split_at(middle);
+            let (node, right) = rest
+                .split_first()
+                .expect("a non-empty interval subtree has a root");
+            *visited += 1;
+            if node.subtree_max_end < offset {
+                return;
+            }
+
+            visit_subtree(left, offset, visited, visit);
+            if node.span.start > offset {
+                return;
+            }
+            if node.span.contains(offset) {
+                visit(node.value, node.span);
+            }
+            visit_subtree(right, offset, visited, visit);
+        }
+
+        let mut visited = 0;
+        visit_subtree(&self.entries, offset, &mut visited, &mut visit);
+        visited
+    }
+}
+
+fn populate_subtree_max_ends<T>(entries: &mut [PointIntervalEntry<T>]) -> Option<usize> {
+    if entries.is_empty() {
+        return None;
+    }
+
+    let middle = entries.len() / 2;
+    let (left, rest) = entries.split_at_mut(middle);
+    let (node, right) = rest
+        .split_first_mut()
+        .expect("a non-empty interval subtree has a root");
+    let left_max = populate_subtree_max_ends(left);
+    let right_max = populate_subtree_max_ends(right);
+    node.subtree_max_end = left_max
+        .into_iter()
+        .chain(right_max)
+        .fold(node.span.end, usize::max);
+    Some(node.subtree_max_end)
+}
+
 #[derive(Debug, Default)]
 pub(super) struct FenceTextIndexData {
     pub(super) node_ids: BTreeSet<String>,
@@ -323,6 +425,65 @@ pub(super) struct FenceTextIndexData {
     pub(super) expected_syntax: Vec<FenceExpectedSyntax>,
     pub(super) completion_vocabulary: merman_core::EditorCompletionVocabulary,
     pub(super) source: FenceTextIndexSource,
+    semantic_point_index: PointIntervalIndex<usize>,
+    reference_point_index: PointIntervalIndex<ReferenceIntervalId>,
+}
+
+impl FenceTextIndexData {
+    pub(super) fn build_point_indexes(
+        &mut self,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<(), crate::AnalysisCancelled> {
+        let mut semantic_intervals = Vec::with_capacity(self.semantic_items.len());
+        let mut reference_item_ids = BTreeMap::new();
+        for (semantic_item_id, item) in self.semantic_items.iter().enumerate() {
+            if semantic_item_id.is_multiple_of(128) {
+                cancellation.checkpoint()?;
+            }
+            semantic_intervals.push((item.span, semantic_item_id));
+            if item.role == FenceSemanticRole::Entity {
+                let group = FenceReferenceGroup::from_semantic_item(item);
+                if self.references.contains_key(&group) {
+                    reference_item_ids.entry(group).or_insert(semantic_item_id);
+                }
+            }
+        }
+
+        let reference_count = self.references.values().map(Vec::len).sum();
+        let mut reference_intervals = Vec::with_capacity(reference_count);
+        let mut reference_index = 0usize;
+        for (group_ordinal, (group, spans)) in self.references.iter().enumerate() {
+            let semantic_item_id = *reference_item_ids
+                .get(group)
+                .expect("reference groups are derived from canonical semantic items");
+            for (span_ordinal, span) in spans.iter().copied().enumerate() {
+                if reference_index.is_multiple_of(128) {
+                    cancellation.checkpoint()?;
+                }
+                reference_intervals.push((
+                    span,
+                    ReferenceIntervalId {
+                        group_ordinal,
+                        span_ordinal,
+                        semantic_item_id,
+                    },
+                ));
+                reference_index += 1;
+            }
+        }
+        reference_intervals.sort_by(|(left_span, left_id), (right_span, right_id)| {
+            (left_span.start, left_span.end, left_id).cmp(&(
+                right_span.start,
+                right_span.end,
+                right_id,
+            ))
+        });
+        cancellation.checkpoint()?;
+
+        self.semantic_point_index = PointIntervalIndex::from_start_ordered(semantic_intervals);
+        self.reference_point_index = PointIntervalIndex::from_start_ordered(reference_intervals);
+        Ok(())
+    }
 }
 
 impl FenceTextIndex {
@@ -414,36 +575,15 @@ impl FenceTextIndex {
     }
 
     pub fn symbol_at_offset(&self, offset: usize) -> Option<(String, ByteSpan)> {
-        self.data.references.iter().find_map(|(group, spans)| {
-            spans
-                .iter()
-                .copied()
-                .find(|span| span.contains(offset))
-                .map(|span| (group.name.clone(), span))
-        })
+        let (reference, _) = self.reference_at_offset_indexed(offset);
+        let (reference, span) = reference?;
+        let item = self.data.semantic_items.get(reference.semantic_item_id)?;
+        Some((item.name.clone(), span))
     }
 
     pub fn semantic_item_at_offset(&self, offset: usize) -> Option<&FenceSemanticItem> {
-        self.data
-            .semantic_items
-            .iter()
-            .filter(|item| item.span.contains(offset))
-            .min_by(|left, right| {
-                let left_len = left.span.end.saturating_sub(left.span.start);
-                let right_len = right.span.end.saturating_sub(right.span.start);
-                (
-                    left_len,
-                    left.selection.start,
-                    left.selection.end,
-                    left.name.as_str(),
-                )
-                    .cmp(&(
-                        right_len,
-                        right.selection.start,
-                        right.selection.end,
-                        right.name.as_str(),
-                    ))
-            })
+        let (item_id, _) = self.semantic_item_id_at_offset_indexed(offset);
+        self.data.semantic_items.get(item_id?)
     }
 
     pub fn entity_item_at_offset(&self, offset: usize) -> Option<&FenceSemanticItem> {
@@ -532,6 +672,115 @@ impl FenceTextIndex {
                     right.span.start,
                     right.span.end,
                 ))
+            })
+    }
+
+    fn semantic_item_id_at_offset_indexed(&self, offset: usize) -> (Option<usize>, usize) {
+        let mut best = None;
+        let visited = self
+            .data
+            .semantic_point_index
+            .for_each_at(offset, |item_id, _| {
+                if best
+                    .is_none_or(|current| self.compare_semantic_item_ids(item_id, current).is_lt())
+                {
+                    best = Some(item_id);
+                }
+            });
+        (best, visited)
+    }
+
+    fn compare_semantic_item_ids(&self, left_id: usize, right_id: usize) -> std::cmp::Ordering {
+        let left = &self.data.semantic_items[left_id];
+        let right = &self.data.semantic_items[right_id];
+        let left_len = left.span.end.saturating_sub(left.span.start);
+        let right_len = right.span.end.saturating_sub(right.span.start);
+        (
+            left_len,
+            left.selection.start,
+            left.selection.end,
+            left.name.as_str(),
+            left_id,
+        )
+            .cmp(&(
+                right_len,
+                right.selection.start,
+                right.selection.end,
+                right.name.as_str(),
+                right_id,
+            ))
+    }
+
+    fn reference_at_offset_indexed(
+        &self,
+        offset: usize,
+    ) -> (Option<(ReferenceIntervalId, ByteSpan)>, usize) {
+        let mut best = None;
+        let visited = self
+            .data
+            .reference_point_index
+            .for_each_at(offset, |reference, span| {
+                if best
+                    .as_ref()
+                    .is_none_or(|(current, _)| reference < *current)
+                {
+                    best = Some((reference, span));
+                }
+            });
+        (best, visited)
+    }
+
+    #[cfg(test)]
+    fn semantic_item_id_at_offset_linear(&self, offset: usize) -> Option<usize> {
+        (0..self.data.semantic_items.len())
+            .filter(|item_id| self.data.semantic_items[*item_id].span.contains(offset))
+            .min_by(|left_id, right_id| {
+                let left = &self.data.semantic_items[*left_id];
+                let right = &self.data.semantic_items[*right_id];
+                let left_len = left.span.end.saturating_sub(left.span.start);
+                let right_len = right.span.end.saturating_sub(right.span.start);
+                (
+                    left_len,
+                    left.selection.start,
+                    left.selection.end,
+                    left.name.as_str(),
+                )
+                    .cmp(&(
+                        right_len,
+                        right.selection.start,
+                        right.selection.end,
+                        right.name.as_str(),
+                    ))
+            })
+    }
+
+    #[cfg(test)]
+    fn reference_at_offset_linear(&self, offset: usize) -> Option<(ReferenceIntervalId, ByteSpan)> {
+        self.data
+            .references
+            .iter()
+            .enumerate()
+            .find_map(|(group_ordinal, (group, spans))| {
+                let semantic_item_id = self.data.semantic_items.iter().position(|item| {
+                    item.role == FenceSemanticRole::Entity
+                        && item.name == group.name
+                        && item.kind == group.kind
+                })?;
+                spans
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .find(|(_, span)| span.contains(offset))
+                    .map(|(span_ordinal, span)| {
+                        (
+                            ReferenceIntervalId {
+                                group_ordinal,
+                                span_ordinal,
+                                semantic_item_id,
+                            },
+                            span,
+                        )
+                    })
             })
     }
 }

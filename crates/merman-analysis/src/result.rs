@@ -14,6 +14,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static NEXT_ANALYSIS_GENERATION_IDENTITY: AtomicUsize = AtomicUsize::new(1);
+
+fn next_analysis_generation_identity() -> usize {
+    NEXT_ANALYSIS_GENERATION_IDENTITY
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("analysis generation identity space exhausted")
+}
 
 /// One sealed rich capture bound to an exact parser environment and snapshot policy.
 #[derive(Debug)]
@@ -21,8 +32,16 @@ pub struct AnalysisGeneration {
     storage: Box<AnalysisGenerationStorage>,
 }
 
+/// An opaque diagram handle that is meaningful only within its issuing generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AnalysisDiagramId {
+    generation_identity: usize,
+    ordinal: usize,
+}
+
 #[derive(Debug)]
 struct AnalysisGenerationStorage {
+    identity: usize,
     source_map: SourceMap,
     diagrams: Vec<AnalyzedDiagram>,
     document_candidates: Vec<DiagnosticCandidate>,
@@ -107,6 +126,7 @@ impl AnalysisGeneration {
         let snapshot_policy = analyzer.options().snapshot_policy().clone();
         Self {
             storage: Box::new(AnalysisGenerationStorage {
+                identity: next_analysis_generation_identity(),
                 source_map,
                 diagrams,
                 document_candidates: Vec::new(),
@@ -172,6 +192,23 @@ impl AnalysisGeneration {
 
     pub fn diagrams(&self) -> &[AnalyzedDiagram] {
         &self.storage.diagrams
+    }
+
+    /// Returns opaque handles in this generation's diagram order.
+    pub fn diagram_ids(&self) -> impl ExactSizeIterator<Item = AnalysisDiagramId> + '_ {
+        let generation_identity = self.storage.identity;
+        (0..self.storage.diagrams.len()).map(move |ordinal| AnalysisDiagramId {
+            generation_identity,
+            ordinal,
+        })
+    }
+
+    /// Resolves a diagram handle, returning `None` for a different generation.
+    pub fn diagram(&self, id: AnalysisDiagramId) -> Option<&AnalyzedDiagram> {
+        if id.generation_identity != self.storage.identity {
+            return None;
+        }
+        self.storage.diagrams.get(id.ordinal)
     }
 
     #[cfg(test)]
@@ -994,6 +1031,43 @@ fn fence_marker_name(marker: FenceMarker) -> &'static str {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn diagram_ids_address_generation_order_instead_of_source_indexes() {
+        let mut generation = Analyzer::new()
+            .analyze_generation("flowchart TD\nA-->B\n")
+            .into_ready()
+            .expect("valid source should produce a generation");
+        generation.storage.diagrams[0].index = 41;
+
+        let ids = generation.diagram_ids().collect::<Vec<_>>();
+
+        assert_eq!(ids.len(), 1);
+        let diagram = generation
+            .diagram(ids[0])
+            .expect("generation-issued id should resolve");
+        assert_eq!(diagram.index(), 41);
+        assert!(std::ptr::eq(diagram, &generation.diagrams()[0]));
+    }
+
+    #[test]
+    fn diagram_ids_reject_a_different_generation() {
+        let first = Analyzer::new()
+            .analyze_generation("flowchart TD\nA-->B\n")
+            .into_ready()
+            .expect("valid source should produce a generation");
+        let second = Analyzer::new()
+            .analyze_generation("flowchart TD\nC-->D\n")
+            .into_ready()
+            .expect("valid source should produce a generation");
+        let first_id = first
+            .diagram_ids()
+            .next()
+            .expect("first generation should contain a diagram");
+
+        assert!(first.diagram(first_id).is_some());
+        assert!(second.diagram(first_id).is_none());
+    }
 
     #[test]
     fn diagram_parse_disposition_uses_stable_snake_case_values() {

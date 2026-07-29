@@ -7,8 +7,8 @@ use crate::document_store::{
     SemanticTokensState, TextChangePreparation, TextDocumentUpdate, default_lsp_analysis_options,
 };
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity,
-    FenceSemanticRole, FenceTextIndexSource, source_limit_diagnostic_span,
+    AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisRuleConfig,
+    DiagnosticSeverity, FenceSemanticRole, FenceTextIndexSource, source_limit_diagnostic_span,
 };
 use merman_editor_core::DocumentKind;
 use tower_lsp_server::ls_types::{
@@ -1236,6 +1236,8 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
     let snapshot_context = store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
+    let initial_payload = snapshot_context.analysis_payload() as *const AnalysisPayload;
+    let initial_text_index = snapshot_context.snapshot.fences()[0].text_index() as *const _;
     let canonical = Arc::clone(
         store
             .cached_analysis_generation(&uri)
@@ -1288,6 +1290,14 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         &snapshot_context.snapshot,
         &current_context.snapshot
     ));
+    assert_ne!(
+        current_context.analysis_payload() as *const AnalysisPayload,
+        initial_payload
+    );
+    assert_eq!(
+        current_context.snapshot.fences()[0].text_index() as *const _,
+        initial_text_index
+    );
     assert!(Arc::ptr_eq(
         &canonical,
         store

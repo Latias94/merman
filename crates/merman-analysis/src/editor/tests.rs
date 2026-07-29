@@ -13,6 +13,36 @@ fn facts_expecting(kind: EditorExpectedSyntaxKind, span: SourceSpan) -> EditorSe
     facts
 }
 
+fn entity(
+    name: impl Into<String>,
+    kind: EditorSemanticKind,
+    span: (usize, usize),
+    selection: (usize, usize),
+) -> EditorSemanticSymbol {
+    EditorSemanticSymbol::new(
+        name,
+        None,
+        kind,
+        SourceSpan::new(span.0, span.1),
+        SourceSpan::new(selection.0, selection.1),
+    )
+}
+
+fn payload(
+    name: impl Into<String>,
+    kind: EditorSemanticKind,
+    span: (usize, usize),
+    selection: (usize, usize),
+) -> EditorSemanticSymbol {
+    EditorSemanticSymbol::payload(
+        name,
+        None,
+        kind,
+        SourceSpan::new(span.0, span.1),
+        SourceSpan::new(selection.0, selection.1),
+    )
+}
+
 #[test]
 fn byte_span_contains_half_open_ranges_and_empty_insertions() {
     let span = ByteSpan { start: 0, end: 1 };
@@ -448,4 +478,201 @@ fn text_index_skips_payload_only_core_facts_for_completion() {
             .any(|item| item.name == "section")
     );
     assert!(!index.outline_items().iter().any(|item| item.name == "PK"));
+}
+
+#[test]
+fn indexed_semantic_lookup_matches_the_linear_oracle_at_every_boundary() {
+    let mut facts = EditorSemanticFacts::new();
+    facts.push_symbol(entity("outer", EditorSemanticKind::Module, (0, 20), (0, 5)));
+    facts.push_symbol(entity(
+        "longer",
+        EditorSemanticKind::Module,
+        (3, 13),
+        (5, 8),
+    ));
+    facts.push_symbol(entity(
+        "selection-start-later",
+        EditorSemanticKind::Module,
+        (4, 8),
+        (7, 8),
+    ));
+    facts.push_symbol(entity(
+        "selection-end-later",
+        EditorSemanticKind::Module,
+        (5, 9),
+        (6, 8),
+    ));
+    facts.push_symbol(payload(
+        "alpha",
+        EditorSemanticKind::Property,
+        (5, 9),
+        (6, 7),
+    ));
+    facts.push_symbol(entity("zeta", EditorSemanticKind::Property, (5, 9), (6, 7)));
+    facts.push_symbol(payload(
+        "empty",
+        EditorSemanticKind::Property,
+        (10, 10),
+        (10, 10),
+    ));
+    facts.push_symbol(entity(
+        "right-adjacent",
+        EditorSemanticKind::Module,
+        (10, 12),
+        (10, 12),
+    ));
+    let index = FenceTextIndex::from_core_facts(facts);
+
+    for offset in 0..=21 {
+        let (indexed, _) = index.semantic_item_id_at_offset_indexed(offset);
+        assert_eq!(
+            indexed,
+            index.semantic_item_id_at_offset_linear(offset),
+            "semantic lookup diverged at byte offset {offset}"
+        );
+    }
+
+    assert_eq!(
+        index
+            .semantic_item_at_offset(6)
+            .map(|item| item.name.as_str()),
+        Some("alpha"),
+        "name must be the final explicit semantic tie-break"
+    );
+    assert_eq!(
+        index
+            .semantic_item_at_offset(10)
+            .map(|item| item.name.as_str()),
+        Some("empty"),
+        "an exact empty span must beat an adjacent non-empty span"
+    );
+}
+
+#[test]
+fn indexed_semantic_lookup_preserves_full_ties_and_post_selection_entity_filtering() {
+    let mut facts = EditorSemanticFacts::new();
+    facts.push_symbol(entity("outer", EditorSemanticKind::Module, (0, 12), (0, 5)));
+    facts.push_symbol(payload(
+        "inner",
+        EditorSemanticKind::Property,
+        (3, 7),
+        (4, 5),
+    ));
+    facts.push_symbol(payload(
+        "same",
+        EditorSemanticKind::Property,
+        (8, 10),
+        (8, 9),
+    ));
+    facts.push_symbol(entity(
+        "same",
+        EditorSemanticKind::Property,
+        (8, 10),
+        (8, 9),
+    ));
+    let index = FenceTextIndex::from_core_facts(facts);
+
+    assert_eq!(
+        index
+            .semantic_item_at_offset(4)
+            .map(|item| item.name.as_str()),
+        Some("inner")
+    );
+    assert_eq!(index.entity_item_at_offset(4), None);
+    assert_eq!(
+        index
+            .entity_item_at_offset(1)
+            .map(|item| item.name.as_str()),
+        Some("outer")
+    );
+    assert_eq!(
+        index.semantic_item_at_offset(8).map(|item| item.role),
+        Some(FenceSemanticRole::Payload),
+        "a complete tie must keep the first canonical item"
+    );
+    assert_eq!(index.entity_item_at_offset(8), None);
+}
+
+#[test]
+fn indexed_reference_lookup_matches_btree_group_and_span_insertion_order() {
+    let mut facts = EditorSemanticFacts::new();
+    facts.push_symbol(entity("zeta", EditorSemanticKind::Module, (0, 12), (2, 7)));
+    facts.push_symbol(entity(
+        "alpha",
+        EditorSemanticKind::Property,
+        (0, 12),
+        (4, 8),
+    ));
+    facts.push_symbol(entity(
+        "alpha",
+        EditorSemanticKind::Property,
+        (0, 12),
+        (4, 4),
+    ));
+    facts.push_symbol(entity(
+        "alpha",
+        EditorSemanticKind::Property,
+        (0, 12),
+        (8, 10),
+    ));
+    facts.push_symbol(entity(
+        "alpha",
+        EditorSemanticKind::Module,
+        (0, 12),
+        (10, 10),
+    ));
+    let index = FenceTextIndex::from_core_facts(facts);
+
+    for offset in 0..=12 {
+        let (indexed, _) = index.reference_at_offset_indexed(offset);
+        assert_eq!(
+            indexed,
+            index.reference_at_offset_linear(offset),
+            "reference lookup diverged at byte offset {offset}"
+        );
+    }
+
+    assert_eq!(
+        index.symbol_at_offset(4),
+        Some(("alpha".to_string(), ByteSpan { start: 4, end: 8 })),
+        "BTree group order must beat parser insertion order"
+    );
+    assert_eq!(
+        index.symbol_at_offset(10),
+        Some(("alpha".to_string(), ByteSpan { start: 10, end: 10 })),
+        "empty reference spans match exactly at adjacent boundaries"
+    );
+}
+
+#[test]
+fn point_indexes_prune_non_overlapping_semantic_and_reference_intervals() {
+    const ITEM_COUNT: usize = 4096;
+    let mut facts = EditorSemanticFacts::new();
+    for item_id in 0..ITEM_COUNT {
+        let start = item_id * 3;
+        facts.push_symbol(entity(
+            format!("item-{item_id:04}"),
+            EditorSemanticKind::Module,
+            (start, start + 1),
+            (start, start + 1),
+        ));
+    }
+    let index = FenceTextIndex::from_core_facts(facts);
+    let offset = (ITEM_COUNT - 1) * 3;
+
+    let (semantic, semantic_visited) = index.semantic_item_id_at_offset_indexed(offset);
+    let (reference, reference_visited) = index.reference_at_offset_indexed(offset);
+    let balanced_height = usize::BITS as usize - ITEM_COUNT.leading_zeros() as usize;
+    let visit_bound = balanced_height * 2 + 1;
+
+    assert!(semantic.is_some());
+    assert!(reference.is_some());
+    assert!(
+        semantic_visited <= visit_bound,
+        "semantic query visited {semantic_visited} nodes; balanced-tree bound is {visit_bound}"
+    );
+    assert!(
+        reference_visited <= visit_bound,
+        "reference query visited {reference_visited} nodes; balanced-tree bound is {visit_bound}"
+    );
 }

@@ -143,18 +143,6 @@ pub fn search_document_symbols(
     symbols
 }
 
-pub fn workspace_symbols_for_snapshots<'a>(
-    snapshots: impl IntoIterator<Item = &'a DocumentSnapshot>,
-    query: &str,
-) -> Vec<EditorSymbolInformation> {
-    let mut symbols = snapshots
-        .into_iter()
-        .flat_map(|snapshot| search_document_symbols(snapshot, query))
-        .collect::<Vec<_>>();
-    sort_symbol_information(&mut symbols);
-    symbols
-}
-
 pub fn selection_ranges(
     snapshot: &DocumentSnapshot,
     positions: &[Position],

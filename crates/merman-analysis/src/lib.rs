@@ -50,7 +50,7 @@ pub use payload::{
     DiagnosticSpan, LspRange, SourceDescriptor, SourceKind, SourcePosition, Summary, Utf16Position,
 };
 pub use result::{
-    AnalysisCaptureOutcome, AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts,
+    AnalysisCaptureOutcome, AnalysisDiagramFacts, AnalysisDiagramId, AnalysisDiagramSyntaxFacts,
     AnalysisExpectedSyntaxFacts, AnalysisFactSpan, AnalysisFactsPayload,
     AnalysisFenceDelimiterFacts, AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts,
     AnalysisFlowchartFacts, AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts,

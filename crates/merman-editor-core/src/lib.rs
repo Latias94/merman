@@ -43,7 +43,7 @@ pub use structure::{
     EditorMarkupContent, EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation,
     EditorTextEdit, EditorWorkspaceEdit, RenameError, document_symbols, folding_ranges,
     goto_definition, hover, prepare_rename, references, rename, search_document_symbols,
-    selection_range, selection_ranges, workspace_symbols_for_snapshots,
+    selection_range, selection_ranges,
 };
 pub use token_planner::{
     PlannedToken, SemanticTokenPlan, TokenPlanError, plan_semantic_tokens_for_snapshot,

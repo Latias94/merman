@@ -1166,10 +1166,8 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         "]".repeat(merman_core::MAX_DIAGRAM_NESTING_DEPTH + 1),
     );
     let invalid_directive_source = Box::leak(
-        format!(
-            "%%{{ init: {nested_directive_config} }}%%\nflowchart TD\nA-->B\n"
-        )
-        .into_boxed_str(),
+        format!("%%{{ init: {nested_directive_config} }}%%\nflowchart TD\nA-->B\n")
+            .into_boxed_str(),
     );
     let cases = vec![
         CorpusCase {
@@ -1236,10 +1234,7 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         },
         CorpusCase {
             name: "flowchart facts projection",
-            analyzer: Analyzer::with_engine(
-                malformed_flowchart_engine,
-                AnalysisOptions::default(),
-            ),
+            analyzer: Analyzer::with_engine(malformed_flowchart_engine, AnalysisOptions::default()),
             source: "flowchart TD\nA-->B\n",
         },
         CorpusCase {
@@ -1269,10 +1264,7 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         .disable_rule(crate::rules::FLOWCHART_EXPLICIT_DIRECTION_RULE_ID)
         .unwrap();
     strict_rules
-        .set_rule_severity(
-            crate::rules::BLOCK_WIDTH_RULE_ID,
-            DiagnosticSeverity::Error,
-        )
+        .set_rule_severity(crate::rules::BLOCK_WIDTH_RULE_ID, DiagnosticSeverity::Error)
         .unwrap();
     let policies = [
         AnalysisDiagnosticPolicy {
@@ -1306,15 +1298,17 @@ fn policy_neutral_candidate_corpus_covers_the_rule_catalog() {
         }
     }
 
-    let resource_analyzer = Analyzer::with_options(
-        AnalysisOptions::default().with_max_source_bytes(Some(8)),
-    );
+    let resource_analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     let resource_source = "flowchart TD\nA-->B\n";
     let rejected = resource_analyzer.analyze_generation(resource_source);
     let rejection = rejected
         .rejection()
         .expect("resource limits should reject before generation construction");
-    assert_eq!(rejection.payload(), &resource_analyzer.analyze(resource_source));
+    assert_eq!(
+        rejection.payload(),
+        &resource_analyzer.analyze(resource_source)
+    );
     observed_rule_ids.extend(
         rejection
             .payload()

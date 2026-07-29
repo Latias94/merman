@@ -81,7 +81,9 @@ impl DocumentAnalysisContext {
         debug_assert_eq!(context.snapshot().uri().as_str(), uri.as_str());
         #[cfg(test)]
         let detection = context.detection().cloned();
-        let (editor, generation, payload) = context.into_canonical_parts();
+        let editor = context.snapshot().clone();
+        let generation = context.shared_analysis_generation();
+        let payload = context.shared_payload();
         Self {
             snapshot: Arc::new(DocumentSnapshot {
                 uri,
@@ -163,8 +165,159 @@ fn position_to_editor(
 
 #[cfg(test)]
 mod tests {
+    use merman_analysis::{
+        AnalysisCancellationToken, AnalysisOptions, AnalysisRuleConfig, Analyzer,
+        DiagnosticSeverity as AnalysisDiagnosticSeverity,
+    };
+    use merman_editor_core::{DocumentKind, DocumentWorkspace};
     use std::str::FromStr;
-    use tower_lsp_server::ls_types::{Position, Uri};
+    use std::sync::Arc;
+    use tower_lsp_server::ls_types::{
+        DiagnosticSeverity as LspDiagnosticSeverity, NumberOrString, Position, Uri,
+    };
+
+    #[test]
+    fn lsp_context_reuses_the_editor_generation_payload_and_text_index() {
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let editor = DocumentWorkspace::build_analysis_context_with_shared_text(
+            &Analyzer::new(),
+            uri.as_str(),
+            5,
+            Arc::from("flowchart TD\nA-->B\n"),
+            DocumentKind::Diagram,
+        )
+        .into_ready()
+        .expect("source is within the analysis limit");
+        let payload = editor.shared_payload();
+        let generation = editor.shared_analysis_generation();
+        let text_index = editor.snapshot().fences()[0].text_index() as *const _;
+
+        let lsp = super::DocumentAnalysisContext::from_editor(editor, uri);
+
+        assert!(Arc::ptr_eq(&lsp.payload, &payload));
+        assert!(Arc::ptr_eq(lsp.generation(), &generation));
+        assert_eq!(
+            lsp.snapshot.fences()[0].text_index() as *const _,
+            text_index
+        );
+    }
+
+    #[test]
+    fn markdown_fence_identity_and_protocol_ranges_survive_reprojection() {
+        let source = concat!(
+            "# Title\n\n",
+            "```mermaid\n",
+            "flowchart TD\n",
+            "A[unterminated\n",
+            "```\n\n",
+            "```mermaid\n",
+            "flowchart TD\n",
+            "B[unterminated\n",
+            "```\n",
+        );
+        let uri = Uri::from_str("file:///tmp/example.md").unwrap();
+        let editor = DocumentWorkspace::build_analysis_context_with_shared_text(
+            &Analyzer::new(),
+            uri.as_str(),
+            7,
+            Arc::from(source),
+            DocumentKind::Markdown,
+        )
+        .into_ready()
+        .expect("source is within the analysis limit");
+        let lsp = super::DocumentAnalysisContext::from_editor(editor, uri.clone());
+        let fence_ids = lsp
+            .snapshot
+            .fences()
+            .iter()
+            .map(merman_editor_core::FenceSnapshot::diagram_id)
+            .collect::<Vec<_>>();
+        let fence_ranges = lsp
+            .snapshot
+            .fences()
+            .iter()
+            .map(merman_editor_core::FenceSnapshot::document_range)
+            .collect::<Vec<_>>();
+        let initial = crate::diagnostics::analysis_payload_to_diagnostics(&lsp.payload, &uri);
+        let initial_parse = initial
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.code.as_ref()
+                    == Some(&NumberOrString::String(
+                        "merman.parse.diagram_parse".to_string(),
+                    ))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            initial_parse
+                .iter()
+                .map(|diagnostic| diagnostic.range.start.line)
+                .collect::<Vec<_>>(),
+            vec![4, 9]
+        );
+        let initial_ranges = initial_parse
+            .iter()
+            .map(|diagnostic| diagnostic.range)
+            .collect::<Vec<_>>();
+
+        let analyzer = Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_severity(
+                        "merman.parse.diagram_parse",
+                        AnalysisDiagnosticSeverity::Hint,
+                    )
+                    .unwrap(),
+            ),
+        );
+        let projected = lsp
+            .reproject_cancellable(&analyzer, &AnalysisCancellationToken::new())
+            .expect("diagnostic reprojection should complete");
+        let projected_protocol =
+            crate::diagnostics::analysis_payload_to_diagnostics(&projected.payload, &uri);
+        let projected_parse = projected_protocol
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.code.as_ref()
+                    == Some(&NumberOrString::String(
+                        "merman.parse.diagram_parse".to_string(),
+                    ))
+            })
+            .collect::<Vec<_>>();
+
+        assert!(Arc::ptr_eq(&projected.snapshot, &lsp.snapshot));
+        assert!(Arc::ptr_eq(projected.generation(), lsp.generation()));
+        assert_eq!(
+            projected
+                .snapshot
+                .fences()
+                .iter()
+                .map(merman_editor_core::FenceSnapshot::diagram_id)
+                .collect::<Vec<_>>(),
+            fence_ids
+        );
+        assert_eq!(
+            projected
+                .snapshot
+                .fences()
+                .iter()
+                .map(merman_editor_core::FenceSnapshot::document_range)
+                .collect::<Vec<_>>(),
+            fence_ranges
+        );
+        assert_eq!(
+            projected_parse
+                .iter()
+                .map(|diagnostic| diagnostic.range)
+                .collect::<Vec<_>>(),
+            initial_ranges
+        );
+        assert!(
+            projected_parse
+                .iter()
+                .all(|diagnostic| { diagnostic.severity == Some(LspDiagnosticSeverity::HINT) })
+        );
+    }
 
     #[test]
     fn fence_lookup_includes_end_position_for_completion() {
