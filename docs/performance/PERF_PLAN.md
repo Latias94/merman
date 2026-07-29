@@ -148,6 +148,11 @@ Exit: the remaining focused 2.81x layout and 3.85x SVG ratios are attributed to 
 with checked-in absolute stage receipts, and any retained change preserves Requirement goldens,
 sanitization, custom-measurer behavior, and public layout JSON.
 
+Completed on 2026-07-29. Sampling attributed 96.6% of Requirement prepare time to text/label work
+and Dugong, both excluded from the residual unit; the dispersed remainder has no qualifying
+owner-local term. U9 closes without production changes; see
+[the closure receipt](runtime_hypothesis_closures_2026-07-29.md).
+
 ### P1.1: Add fair reusable and strict cross-runner lanes
 
 The current public-path comparison is intentionally asymmetric: Merman's one-shot helper creates a
@@ -190,6 +195,11 @@ do not fork a second parser.
 
 Exit: semantic models, errors, recovery, spans, and editor output remain identical, while
 `parse`, `compatibility_json_parse`, and end-to-end measurements show where the fixed cost moved.
+
+Completed on 2026-07-29. Mindmap and Requirement were rejected by whole-parser upper bounds. A
+temporary Kanban no-fact candidate saved about 1.0 us (2.49%) on the accepted 40.71 us public path,
+below its 4.07 us and 10% low-latency thresholds, and was removed. See
+[the closure receipt](runtime_hypothesis_closures_2026-07-29.md).
 
 ### P1.5: Measure reporting overhead on the string-only SVG path
 

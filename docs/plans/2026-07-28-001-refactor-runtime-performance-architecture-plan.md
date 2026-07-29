@@ -370,6 +370,7 @@ Dependency direction remains `merman-bindings-core -> merman facade -> merman-re
 - **Test scenarios:** Valid, empty, Unicode, comments/directives, malformed header, mid-document recovery, unterminated block, overlapping/invalid lexeme protection on editor mode, exact serialized facts and first errors, single-construction counters, render-mode fact/finalization counters at zero, JSON and typed model equality where their projections overlap.
 - **Verification:** `merman-core`, analysis/editor integration, and Kanban parser suites pass; accepted typed parse/end-to-end confirmation clears R6; six-point memory curves pass R8; cold/reused lanes agree and controls remain within noise. Rejected/inconclusive results prove the original production path is restored.
 - **Deletion:** For accepted code, remove Kanban wrappers that construct/discard facts, duplicate semantic-source adapters, and unreachable branches. Otherwise remove all production candidate code and probes not retained as reusable evidence.
+- **Outcome (2026-07-29):** Rejected. A temporary family-local no-fact upper-bound probe saved about 1.0 us (2.49%) on the accepted 40.71 us public path, below the 4.07 us and 10% low-latency thresholds. The candidate was removed; see `docs/performance/runtime_hypothesis_closures_2026-07-29.md`.
 
 ### U11. Qualify Mindmap render-only fact emission independently
 
@@ -379,6 +380,7 @@ Dependency direction remains `merman-bindings-core -> merman facade -> merman-re
 - **Test scenarios:** Valid roots and deep trees; indentation variants; icons/classes/Markdown; Unicode; comments/directives; malformed/recovering lines; unterminated constructs; exact serialized facts, lexemes, spans, completeness, and first errors; render-mode emission/finalization counters at zero; typed model equality; simple-label control.
 - **Verification:** Mindmap core/editor/integration suites pass; accepted work clears the power-sized public confirmation and six-point memory bounds; rejected/inconclusive results leave no production branch or generic sink and carry the correct queue state.
 - **Deletion:** Remove only Mindmap-owned discarded-fact wrappers or unreachable branches proven obsolete; remove all rejected/inconclusive production instrumentation.
+- **Outcome (2026-07-29):** Rejected by upper bound. The complete 11.956 us typed parser is smaller than the public path's optimistic 15.526 us minimum saving, so its fact subset cannot qualify. No candidate or tests were added; see `docs/performance/runtime_hypothesis_closures_2026-07-29.md`.
 
 ### U12. Qualify Requirement render-only fact emission independently
 
@@ -388,6 +390,7 @@ Dependency direction remains `merman-bindings-core -> merman facade -> merman-re
 - **Test scenarios:** Requirement, element, relationship, and property variants; long descriptions; Unicode; comments/directives; malformed blocks and recovery; exact facts/lexemes/spans/completeness/first errors; render-mode emission/finalization counters at zero; typed model equality; existing prepared-label controls.
 - **Verification:** Requirement core/editor/integration suites pass; accepted parser work clears the power-sized public confirmation and six-point memory gates without changing U9 render profiles; rejected/inconclusive work leaves no production mode or shared abstraction.
 - **Deletion:** Remove only Requirement parser wrappers or branches made obsolete by the accepted family-owned path; remove all rejected/inconclusive candidate code and probes.
+- **Outcome (2026-07-29):** Rejected by upper bound. The complete 5.487 us typed parser is smaller than the public path's optimistic 18.155 us minimum saving, so its fact subset cannot qualify. No candidate or tests were added; see `docs/performance/runtime_hypothesis_closures_2026-07-29.md`.
 
 ### U5. Prepare Kanban labels once per operation
 
@@ -433,6 +436,7 @@ Dependency direction remains `merman-bindings-core -> merman facade -> merman-re
 - **Test scenarios:** Existing medium fixture; dense relationships; long Markdown/body lines; classes/styles; edge labels; custom/failing measurer; strict security; public layout JSON; prepared node/edge identity; repeated SVG/raster signatures; resource boundaries.
 - **Verification:** Focused Requirement, Look, prepared-render, full render, and raster suites pass for an accepted change; the power-sized adjacent confirmation and six-point memory curves clear R6/R8. Rejected and inconclusive paths require the same complete profile/provenance, no retained candidate code, and respectively a closed hypothesis or explicit retest trigger/budget.
 - **Deletion:** Remove temporary probes and all rejected/inconclusive candidate code; retain only reusable benchmark coverage and the durable decision receipt.
+- **Outcome (2026-07-29):** Rejected. The sampling profile places 96.6% of prepare samples in excluded text/label and Dugong owners; the residual is dispersed and far below the public threshold. No production candidate or new test remains; see `docs/performance/runtime_hypothesis_closures_2026-07-29.md`.
 
 ### U10. Integrate evidence, document, and review the complete program
 
