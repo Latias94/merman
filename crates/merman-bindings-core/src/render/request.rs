@@ -1,7 +1,9 @@
+#[cfg(test)]
+use crate::common::binding_runtime_policy_from;
 use crate::common::{
     BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, binding_resource_policy,
-    binding_runtime_policy_from, binding_site_config, css_declaration_value, finite_positive,
-    internal_json_error, no_diagram_error, normalize_option, runtime_policy_error,
+    binding_site_config, css_declaration_value, finite_positive, internal_json_error,
+    no_diagram_error, normalize_option, runtime_policy_error,
 };
 use merman::svg::{
     HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset, HostThemePreset,
@@ -117,7 +119,6 @@ impl RenderOperationConfig {
         options: &BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
-        let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
         let mut environment =
             RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
         environment = environment.with_resource_policy(binding_resource_policy(

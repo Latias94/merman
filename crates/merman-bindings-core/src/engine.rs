@@ -97,7 +97,7 @@ impl BindingEngine {
             host_text_measurer: None,
             semantic: configs.semantic.materialize(),
             #[cfg(feature = "analysis")]
-            analyzer: configs.analysis.materialize(),
+            analyzer: Analyzer::with_options(configs.analysis),
             #[cfg(feature = "svg")]
             render: configs.render.materialize(),
             #[cfg(feature = "ascii")]
@@ -146,7 +146,7 @@ impl BindingEngine {
             | crate::OperationKey::DocumentAnalysisFactsJson => {
                 #[cfg(feature = "analysis")]
                 {
-                    let analyzer = configs.analysis.materialize();
+                    let analyzer = Analyzer::with_options(configs.analysis);
                     match operation.key() {
                         crate::OperationKey::AnalysisJson => analyze_json_with(&analyzer, source),
                         crate::OperationKey::AnalysisFactsJson => {
@@ -346,19 +346,10 @@ impl BindingEngine {
 
     #[cfg(feature = "svg")]
     pub fn with_host_text_measurer(&self, measurer: Arc<dyn crate::HostTextMeasurer>) -> Self {
-        Self {
-            runtime_policy_id: self.runtime_policy_id,
-            runtime_policy: self.runtime_policy.clone(),
-            base_options: self.base_options.clone(),
-            unchanged_request_validation: self.unchanged_request_validation.clone(),
-            host_text_measurer: Some(Arc::clone(&measurer)),
-            semantic: self.semantic.clone(),
-            #[cfg(feature = "analysis")]
-            analyzer: self.analyzer.clone(),
-            render: self.render.with_host_text_measurer(measurer),
-            #[cfg(feature = "ascii")]
-            ascii: self.ascii.clone(),
-        }
+        let mut engine = self.clone();
+        engine.host_text_measurer = Some(Arc::clone(&measurer));
+        engine.render = self.render.with_host_text_measurer(measurer);
+        engine
     }
 
     pub fn render_ascii(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -554,7 +545,7 @@ fn ensure_selected_runtime_policy(
 struct BindingOperationConfigs {
     semantic: SemanticOperationConfig,
     #[cfg(feature = "analysis")]
-    analysis: AnalysisOperationConfig,
+    analysis: merman_analysis::AnalysisOptions,
     #[cfg(feature = "svg")]
     render: crate::render::RenderOperationConfig,
     #[cfg(feature = "ascii")]
@@ -566,9 +557,11 @@ impl BindingOperationConfigs {
         options: &common::BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
+        let runtime_policy = common::binding_runtime_policy_from(options, runtime_policy)?;
         let semantic = SemanticOperationConfig::compile(options, runtime_policy.clone())?;
         #[cfg(feature = "analysis")]
-        let analysis = AnalysisOperationConfig::compile(options, runtime_policy.clone())?;
+        let analysis =
+            common::artifact_analysis_options(options)?.with_runtime_policy(runtime_policy.clone());
         #[cfg(feature = "svg")]
         let render =
             crate::render::RenderOperationConfig::compile(options, runtime_policy.clone())?;
@@ -587,29 +580,6 @@ impl BindingOperationConfigs {
     }
 }
 
-#[cfg(feature = "analysis")]
-struct AnalysisOperationConfig {
-    options: merman_analysis::AnalysisOptions,
-}
-
-#[cfg(feature = "analysis")]
-impl AnalysisOperationConfig {
-    fn compile(
-        options: &common::BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
-    ) -> Result<Self, BindingError> {
-        let analysis = common::artifact_analysis_options(options)?;
-        let runtime_policy = common::binding_runtime_policy_from(options, runtime_policy)?;
-        Ok(Self {
-            options: analysis.with_runtime_policy(runtime_policy),
-        })
-    }
-
-    fn materialize(self) -> Analyzer {
-        Analyzer::with_options(self.options)
-    }
-}
-
 struct SemanticOperationConfig {
     runtime_policy: merman::runtime::RuntimePolicy,
     site_config: Option<merman::MermaidConfig>,
@@ -622,7 +592,6 @@ impl SemanticOperationConfig {
         options: &common::BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
-        let runtime_policy = common::binding_runtime_policy_from(options, runtime_policy)?;
         let site_config = common::binding_site_config(options)?;
         let parse_options = if options
             .parse

@@ -1,6 +1,6 @@
 use crate::common::{
-    BindingError, BindingStatus, binding_input_resource_policy, binding_runtime_policy_from,
-    binding_site_config, no_diagram_error, source_text,
+    BindingError, BindingStatus, binding_input_resource_policy, binding_site_config,
+    no_diagram_error, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -48,7 +48,6 @@ impl AsciiOperationConfig {
         } else {
             merman::ParseOptions::strict()
         };
-        let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
         let render_options = ascii_options_from_json(options)?;
         let resources = binding_input_resource_policy(options.analysis.resources.as_ref())?;
         let site_config = binding_site_config(options)?;
