@@ -267,9 +267,10 @@ policy, package contents, evidence receipts, and distribution gates. Exclusion c
 the exact artifact recipe and its owner-specific dependency or size evidence.
 
 For a `target-set` recipe, dependency evidence is checked independently for every declared target.
-For a `host` recipe, the build still uses the executing host, while the frozen dependency closure is
-only the `x86_64-unknown-linux-gnu` reference closure. It does not prove dependency absence on
-macOS or Windows.
+For a `host` recipe, the build still uses the executing host, while the frozen normal-dependency
+closure is only the `x86_64-unknown-linux-gnu` reference closure and excludes build and proc-macro
+edges. It is not a full clean-build cost metric and does not prove dependency absence on macOS or
+Windows.
 
 When comparing builds, record the target, compiler, lockfile, direct feature set, uncompressed and
 compressed sizes, dependency closure, licenses, and advisory results. A feature name alone is not a
