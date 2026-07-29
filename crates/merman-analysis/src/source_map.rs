@@ -149,7 +149,7 @@ impl SourceMap {
 
     pub fn byte_offset_for_utf16_position(&self, position: Utf16Position) -> Option<usize> {
         let line = self.line_metric(position.line)?;
-        line.byte_offset_for_utf16_column(position.character)
+        line.byte_offset_for_utf16_column(self.source.as_ref(), position.character)
     }
 
     fn validate_offset(&self, offset: usize) -> Result<(), SourceMapError> {
@@ -182,7 +182,7 @@ impl SourceMap {
         let clamped = offset.clamp(line.start, line.content_end);
         let relative = clamped - line.start;
         let (char_column, utf16_column) = line
-            .columns_for_relative_offset(relative)
+            .columns_for_relative_offset(self.source.as_ref(), relative)
             .expect("validated source offset should map to a cached line boundary");
 
         Ok(OffsetMetrics {
@@ -230,7 +230,7 @@ impl SourceMap {
         let clamped = offset.clamp(line.start, line.content_end);
         let relative = clamped - line.start;
         let (char_column, utf16_column) = line
-            .columns_for_relative_offset(relative)
+            .columns_for_relative_offset(self.source.as_ref(), relative)
             .expect("validated source offset should map to a cached line boundary");
 
         Ok(Ok(OffsetMetrics {
@@ -299,14 +299,16 @@ impl SourceMap {
     }
 
     #[cfg(test)]
-    fn cached_line_boundary_count(&self, line_index: usize) -> Option<usize> {
+    fn cached_line_checkpoint_count(&self, line_index: usize) -> Option<usize> {
         self.line_metrics
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get(&line_index)
-            .map(|line| line.stored_boundary_count())
+            .map(|line| line.stored_checkpoint_count())
     }
 }
+
+const LINE_COLUMN_CHECKPOINT_BYTES: usize = 1024;
 
 #[derive(Debug, Clone)]
 struct LineMetric {
@@ -319,48 +321,78 @@ struct LineMetric {
 enum LineColumns {
     Ascii,
     Unicode {
-        byte_boundaries: Vec<usize>,
-        utf16_columns: Vec<usize>,
+        checkpoints: Box<[ColumnCheckpoint]>,
     },
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ColumnCheckpoint {
+    byte_offset: usize,
+    char_column: usize,
+    utf16_column: usize,
+}
+
 impl LineMetric {
-    fn byte_offset_for_utf16_column(&self, column: usize) -> Option<usize> {
+    fn byte_offset_for_utf16_column(&self, source: &str, column: usize) -> Option<usize> {
         match &self.columns {
             LineColumns::Ascii => Some(self.start.saturating_add(column).min(self.content_end)),
-            LineColumns::Unicode {
-                byte_boundaries,
-                utf16_columns,
-            } => match utf16_columns.binary_search(&column) {
-                Ok(boundary_index) => Some(self.start + byte_boundaries[boundary_index]),
-                Err(boundary_index) if boundary_index >= utf16_columns.len() => {
-                    Some(self.content_end)
+            LineColumns::Unicode { checkpoints } => {
+                let line = source.get(self.start..self.content_end)?;
+                let checkpoint_index = checkpoints
+                    .partition_point(|checkpoint| checkpoint.utf16_column <= column)
+                    .saturating_sub(1);
+                let checkpoint = checkpoints[checkpoint_index];
+                let mut byte_offset = checkpoint.byte_offset;
+                let mut utf16_column = checkpoint.utf16_column;
+
+                if utf16_column == column {
+                    return Some(self.start + byte_offset);
                 }
-                Err(_) => None,
-            },
+
+                for ch in line.get(byte_offset..)?.chars() {
+                    let next_utf16_column = utf16_column + ch.len_utf16();
+                    if column < next_utf16_column {
+                        return None;
+                    }
+                    byte_offset += ch.len_utf8();
+                    utf16_column = next_utf16_column;
+                    if utf16_column == column {
+                        return Some(self.start + byte_offset);
+                    }
+                }
+
+                Some(self.content_end)
+            }
         }
     }
 
-    fn columns_for_relative_offset(&self, relative: usize) -> Option<(usize, usize)> {
+    fn columns_for_relative_offset(&self, source: &str, relative: usize) -> Option<(usize, usize)> {
         match &self.columns {
             LineColumns::Ascii => Some((relative, relative)),
-            LineColumns::Unicode {
-                byte_boundaries,
-                utf16_columns,
-            } => {
-                let boundary_index = byte_boundaries.binary_search(&relative).ok()?;
-                Some((boundary_index, utf16_columns[boundary_index]))
+            LineColumns::Unicode { checkpoints } => {
+                let line = source.get(self.start..self.content_end)?;
+                let checkpoint_index = checkpoints
+                    .partition_point(|checkpoint| checkpoint.byte_offset <= relative)
+                    .saturating_sub(1);
+                let checkpoint = checkpoints[checkpoint_index];
+                let suffix = line.get(checkpoint.byte_offset..relative)?;
+                let (char_delta, utf16_delta) =
+                    suffix.chars().fold((0usize, 0usize), |(chars, utf16), ch| {
+                        (chars + 1, utf16 + ch.len_utf16())
+                    });
+                Some((
+                    checkpoint.char_column + char_delta,
+                    checkpoint.utf16_column + utf16_delta,
+                ))
             }
         }
     }
 
     #[cfg(test)]
-    fn stored_boundary_count(&self) -> usize {
+    fn stored_checkpoint_count(&self) -> usize {
         match &self.columns {
             LineColumns::Ascii => 0,
-            LineColumns::Unicode {
-                byte_boundaries, ..
-            } => byte_boundaries.len(),
+            LineColumns::Unicode { checkpoints } => checkpoints.len(),
         }
     }
 }
@@ -520,22 +552,29 @@ fn line_metric_with_checkpoint<E>(
         });
     }
 
-    let mut byte_boundaries = Vec::new();
-    let mut utf16_columns = Vec::new();
-    let mut utf16 = 0usize;
-    let mut next_checkpoint = 0usize;
+    let mut checkpoints = vec![ColumnCheckpoint {
+        byte_offset: 0,
+        char_column: 0,
+        utf16_column: 0,
+    }];
+    let mut utf16_column = 0usize;
+    let mut next_column_checkpoint = LINE_COLUMN_CHECKPOINT_BYTES;
+    let mut next_cancellation_checkpoint = 0usize;
 
-    byte_boundaries.push(0);
-    utf16_columns.push(0);
-
-    for (relative, ch) in line.char_indices() {
-        if relative >= next_checkpoint {
+    for (char_column, (relative, ch)) in line.char_indices().enumerate() {
+        if relative >= next_cancellation_checkpoint {
             checkpoint()?;
-            next_checkpoint = relative.saturating_add(4096);
+            next_cancellation_checkpoint = relative.saturating_add(4096);
         }
-        utf16 += ch.len_utf16();
-        byte_boundaries.push(relative + ch.len_utf8());
-        utf16_columns.push(utf16);
+        if relative >= next_column_checkpoint {
+            checkpoints.push(ColumnCheckpoint {
+                byte_offset: relative,
+                char_column,
+                utf16_column,
+            });
+            next_column_checkpoint = relative.saturating_add(LINE_COLUMN_CHECKPOINT_BYTES);
+        }
+        utf16_column += ch.len_utf16();
     }
     checkpoint()?;
 
@@ -543,8 +582,7 @@ fn line_metric_with_checkpoint<E>(
         start,
         content_end,
         columns: LineColumns::Unicode {
-            byte_boundaries,
-            utf16_columns,
+            checkpoints: checkpoints.into_boxed_slice(),
         },
     })
 }
@@ -593,6 +631,70 @@ mod tests {
                 line: 1,
                 character: 5
             }
+        );
+    }
+
+    #[test]
+    fn sparse_unicode_checkpoints_preserve_every_character_boundary() {
+        let source = format!(
+            "{}é{}🤓{}",
+            "a".repeat(LINE_COLUMN_CHECKPOINT_BYTES - 1),
+            "β".repeat(LINE_COLUMN_CHECKPOINT_BYTES),
+            "z".repeat(LINE_COLUMN_CHECKPOINT_BYTES + 1),
+        );
+        let map = SourceMap::new(source.clone());
+        let mut char_column = 0usize;
+        let mut utf16_column = 0usize;
+
+        for (byte_offset, ch) in source.char_indices() {
+            assert_eq!(
+                map.line_col(byte_offset).unwrap(),
+                LineCol::new(1, char_column + 1)
+            );
+            assert_eq!(
+                map.utf16_position(byte_offset).unwrap(),
+                Utf16Position {
+                    line: 0,
+                    character: utf16_column,
+                }
+            );
+            assert_eq!(
+                map.byte_offset_for_utf16_position(Utf16Position {
+                    line: 0,
+                    character: utf16_column,
+                }),
+                Some(byte_offset)
+            );
+            for interior_column in 1..ch.len_utf16() {
+                assert_eq!(
+                    map.byte_offset_for_utf16_position(Utf16Position {
+                        line: 0,
+                        character: utf16_column + interior_column,
+                    }),
+                    None
+                );
+            }
+            char_column += 1;
+            utf16_column += ch.len_utf16();
+        }
+
+        assert_eq!(
+            map.line_col(source.len()).unwrap(),
+            LineCol::new(1, char_column + 1)
+        );
+        assert_eq!(
+            map.utf16_position(source.len()).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: utf16_column,
+            }
+        );
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 0,
+                character: utf16_column,
+            }),
+            Some(source.len())
         );
     }
 
@@ -679,7 +781,7 @@ mod tests {
         let map = SourceMap::new(source.clone());
 
         assert_eq!(map.cached_line_metric_count(), 0);
-        assert_eq!(map.cached_line_boundary_count(0), None);
+        assert_eq!(map.cached_line_checkpoint_count(0), None);
 
         for offset in source.match_indices('N').map(|(offset, _)| offset) {
             let end = source[offset..].find('[').map(|len| offset + len).unwrap();
@@ -688,10 +790,9 @@ mod tests {
             assert!(span.lsp_range.end.character > span.lsp_range.start.character);
         }
         assert_eq!(map.cached_line_metric_count(), 1);
-        assert_eq!(
-            map.cached_line_boundary_count(0),
-            Some(source.chars().count() + 1)
-        );
+        let checkpoint_count = map.cached_line_checkpoint_count(0).unwrap();
+        assert!(checkpoint_count > 0);
+        assert!(checkpoint_count <= source.len() / LINE_COLUMN_CHECKPOINT_BYTES + 2);
     }
 
     #[test]
@@ -717,7 +818,7 @@ mod tests {
                 character: source.len(),
             }
         );
-        assert_eq!(map.cached_line_boundary_count(0), Some(0));
+        assert_eq!(map.cached_line_checkpoint_count(0), Some(0));
         assert_eq!(
             map.byte_offset_for_utf16_position(Utf16Position {
                 line: 0,
@@ -734,6 +835,57 @@ mod tests {
             }),
             Some(5)
         );
+    }
+
+    #[test]
+    fn long_mostly_ascii_unicode_lines_use_sparse_column_checkpoints() {
+        let prefix_len = 64 * 1024 - 1;
+        let suffix_len = 64 * 1024;
+        let source = format!("{}🤓{}", "a".repeat(prefix_len), "b".repeat(suffix_len));
+        let emoji_start = prefix_len;
+        let emoji_end = emoji_start + '🤓'.len_utf8();
+        let map = SourceMap::new(source.clone());
+
+        assert_eq!(
+            map.line_col(emoji_start).unwrap(),
+            LineCol::new(1, prefix_len + 1)
+        );
+        assert_eq!(
+            map.line_col(emoji_end).unwrap(),
+            LineCol::new(1, prefix_len + 2)
+        );
+        assert_eq!(
+            map.utf16_position(emoji_end).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: prefix_len + 2,
+            }
+        );
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 0,
+                character: prefix_len + 1,
+            }),
+            None
+        );
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 0,
+                character: prefix_len + 2,
+            }),
+            Some(emoji_end)
+        );
+        assert_eq!(
+            map.utf16_position(source.len()).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: prefix_len + 2 + suffix_len,
+            }
+        );
+
+        let checkpoint_count = map.cached_line_checkpoint_count(0).unwrap();
+        assert!(checkpoint_count <= source.len() / LINE_COLUMN_CHECKPOINT_BYTES + 2);
+        assert!(checkpoint_count * 100 < source.chars().count());
     }
 
     #[test]
