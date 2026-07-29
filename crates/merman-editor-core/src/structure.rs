@@ -120,7 +120,10 @@ pub fn document_symbols(snapshot: &DocumentSnapshot) -> Vec<EditorDocumentSymbol
         .collect()
 }
 
-pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<EditorSymbolInformation> {
+pub fn search_document_symbols(
+    snapshot: &DocumentSnapshot,
+    query: &str,
+) -> Vec<EditorSymbolInformation> {
     let query = query.trim();
     let query = if query.is_empty() {
         None
@@ -133,10 +136,10 @@ pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<Editor
             continue;
         }
         let outline = outline_for_fence(fence);
-        collect_workspace_symbols(snapshot, &outline, None, query.as_deref(), &mut symbols);
+        collect_document_symbol_matches(snapshot, &outline, None, query.as_deref(), &mut symbols);
     }
 
-    sort_workspace_symbols(&mut symbols);
+    sort_symbol_information(&mut symbols);
     symbols
 }
 
@@ -146,9 +149,9 @@ pub fn workspace_symbols_for_snapshots<'a>(
 ) -> Vec<EditorSymbolInformation> {
     let mut symbols = snapshots
         .into_iter()
-        .flat_map(|snapshot| workspace_symbols(snapshot, query))
+        .flat_map(|snapshot| search_document_symbols(snapshot, query))
         .collect::<Vec<_>>();
-    sort_workspace_symbols(&mut symbols);
+    sort_symbol_information(&mut symbols);
     symbols
 }
 
@@ -479,15 +482,15 @@ fn outline_item_from_semantic(fence: &FenceSnapshot, item: &FenceSemanticItem) -
     }
 }
 
-fn collect_workspace_symbols(
+fn collect_document_symbol_matches(
     snapshot: &DocumentSnapshot,
     item: &OutlineItem,
     container_name: Option<&str>,
     query: Option<&str>,
     symbols: &mut Vec<EditorSymbolInformation>,
 ) {
-    if query.is_none_or(|query| workspace_symbol_matches(&item.name, query))
-        && let Some(location) = workspace_symbol_location(snapshot, item)
+    if query.is_none_or(|query| document_symbol_matches(&item.name, query))
+        && let Some(location) = document_symbol_location(snapshot, item)
     {
         symbols.push(EditorSymbolInformation {
             name: item.name.clone(),
@@ -500,15 +503,15 @@ fn collect_workspace_symbols(
 
     let container_name = Some(item.name.as_str());
     for child in &item.children {
-        collect_workspace_symbols(snapshot, child, container_name, query, symbols);
+        collect_document_symbol_matches(snapshot, child, container_name, query, symbols);
     }
 }
 
-fn workspace_symbol_matches(name: &str, query: &str) -> bool {
+fn document_symbol_matches(name: &str, query: &str) -> bool {
     name.to_lowercase().contains(query)
 }
 
-fn workspace_symbol_location(
+fn document_symbol_location(
     snapshot: &DocumentSnapshot,
     item: &OutlineItem,
 ) -> Option<EditorLocation> {
@@ -520,7 +523,7 @@ fn workspace_symbol_location(
     })
 }
 
-pub fn sort_workspace_symbols(symbols: &mut [EditorSymbolInformation]) {
+fn sort_symbol_information(symbols: &mut [EditorSymbolInformation]) {
     symbols.sort_by(|left, right| {
         left.name
             .cmp(&right.name)

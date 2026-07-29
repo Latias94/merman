@@ -1,14 +1,19 @@
 use serde_json::Value;
 
-/// Parses Mermaid's inline shape-data object with the same YAML-compatible path used by the
-/// public configuration pipeline. This is language behavior, not an optional fallback.
-pub(crate) fn parse_mermaid_inline_object(input: &str) -> Result<Value, String> {
+pub(crate) fn parse_mermaid_inline_object_controlled(
+    input: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<Result<Value, String>> {
     let yaml_data = if input.contains('\n') {
         format!("{input}\n")
     } else {
         format!("{{\n{input}\n}}")
     };
-    crate::yaml_config::parse_yaml_value(&yaml_data, crate::MAX_DIAGRAM_NESTING_DEPTH)
+    crate::yaml_config::parse_yaml_value_controlled(
+        &yaml_data,
+        crate::MAX_DIAGRAM_NESTING_DEPTH,
+        control,
+    )
 }
 
 pub(crate) fn value_to_string(v: &Value) -> Option<String> {
@@ -47,11 +52,26 @@ mod tests {
 
     #[test]
     fn inline_shape_data_uses_the_canonical_yaml_parser() {
-        let value = parse_mermaid_inline_object(r#"shape: rounded, label: "End", flag: true"#)
-            .expect("valid Mermaid inline shape data");
+        let value = parse_mermaid_inline_object_controlled(
+            r#"shape: rounded, label: "End", flag: true"#,
+            &crate::ParseControl::new(),
+        )
+        .expect("active parse control")
+        .expect("valid Mermaid inline shape data");
         assert_eq!(
             value,
             json!({"shape": "rounded", "label": "End", "flag": true})
         );
+    }
+
+    #[test]
+    fn controlled_inline_shape_data_propagates_cancellation() {
+        let control = crate::ParseControl::new();
+        control.cancel();
+
+        assert!(matches!(
+            parse_mermaid_inline_object_controlled("shape: rounded", &control),
+            Err(crate::ParseCancelled)
+        ));
     }
 }

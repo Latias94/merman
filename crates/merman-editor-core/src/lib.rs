@@ -42,8 +42,8 @@ pub use structure::{
     EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover, EditorLocation,
     EditorMarkupContent, EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation,
     EditorTextEdit, EditorWorkspaceEdit, RenameError, document_symbols, folding_ranges,
-    goto_definition, hover, prepare_rename, references, rename, selection_range, selection_ranges,
-    workspace_symbols, workspace_symbols_for_snapshots,
+    goto_definition, hover, prepare_rename, references, rename, search_document_symbols,
+    selection_range, selection_ranges, workspace_symbols_for_snapshots,
 };
 pub use token_planner::{
     PlannedToken, SemanticTokenPlan, TokenPlanError, plan_semantic_tokens_for_snapshot,

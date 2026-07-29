@@ -71,12 +71,16 @@ pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_pie_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> family::CombinedSemanticParse {
-    family::CombinedSemanticParse::from_construction(
-        construct_pie_semantic_source(code, meta),
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    let construction = construct_pie_semantic_source_controlled(code, meta, control)?;
+    let parsed = family::CombinedSemanticParse::from_construction(
+        construction,
         |source| (pie_output_to_json(source.output, meta), source.editor_facts),
         family::CombinedSemanticFailure::into_parts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 fn pie_output_to_json(output: PieParseOutput, meta: &ParseMetadata) -> Result<Value> {
@@ -126,21 +130,33 @@ fn construct_pie_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<PieSemanticSource, family::CombinedSemanticFailure> {
+    construct_pie_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_pie_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<
+    std::result::Result<PieSemanticSource, family::CombinedSemanticFailure>,
+> {
+    control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("pie");
 
-    let body = match pie_body_start(code) {
+    let body = match pie_body_start_controlled(code, control)? {
         PieHeader::Empty => {
-            return Ok(PieSemanticSource {
+            return Ok(Ok(PieSemanticSource {
                 output: PieParseOutput::Empty,
                 editor_facts: EditorSemanticFacts::new(),
-            });
+            }));
         }
         PieHeader::ExpectedPie => {
-            return Ok(PieSemanticSource {
+            return Ok(Ok(PieSemanticSource {
                 output: PieParseOutput::ExpectedPie,
                 editor_facts: EditorSemanticFacts::new(),
-            });
+            }));
         }
         PieHeader::Body(body) => body,
     };
@@ -157,6 +173,7 @@ fn construct_pie_semantic_source(
     let mut first_error = None;
 
     while offset < code.len() {
+        control.checkpoint()?;
         match parse_pie_statement(code, offset) {
             PieStatement::Common(parsed) => {
                 if let Some(diagnostic) = &parsed.diagnostic {
@@ -204,7 +221,10 @@ fn construct_pie_semantic_source(
 
     let mut sections = Vec::new();
     let mut seen = HashSet::new();
-    for section in parsed_sections {
+    for (index, section) in parsed_sections.into_iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         if section.value < 0.0 {
             let message = format!(
                 "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
@@ -228,10 +248,14 @@ fn construct_pie_semantic_source(
     lexemes.attach(code, &mut editor_facts);
 
     if let Some(error) = first_error {
-        return Err(family::CombinedSemanticFailure::new(error, editor_facts));
+        return Ok(Err(family::CombinedSemanticFailure::new(
+            error,
+            editor_facts,
+        )));
     }
 
-    Ok(PieSemanticSource {
+    control.checkpoint()?;
+    Ok(Ok(PieSemanticSource {
         output: PieParseOutput::Model(PieDiagramRenderModel {
             show_data: body.show_data_span.is_some(),
             title: common.title,
@@ -241,7 +265,7 @@ fn construct_pie_semantic_source(
             compatibility_output: CompatibilityOutputState::Model,
         }),
         editor_facts,
-    })
+    }))
 }
 
 enum PieStatement {
@@ -407,9 +431,13 @@ struct PieBodyStart {
     show_data_span: Option<SourceSpan>,
 }
 
-fn pie_body_start(code: &str) -> PieHeader {
+fn pie_body_start_controlled(
+    code: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<PieHeader> {
     let mut offset = 0usize;
     while offset < code.len() {
+        control.checkpoint()?;
         let (line, next_offset) = physical_line(code, offset);
         let visible = strip_inline_comment(line);
         let trimmed = visible.trim_start();
@@ -418,7 +446,7 @@ fn pie_body_start(code: &str) -> PieHeader {
             continue;
         }
         let Some(header_len) = keyword_token_len(trimmed, "pie") else {
-            return PieHeader::ExpectedPie;
+            return Ok(PieHeader::ExpectedPie);
         };
         let leading = visible.len() - trimmed.len();
         let header_start = offset + leading;
@@ -434,13 +462,13 @@ fn pie_body_start(code: &str) -> PieHeader {
             SourceSpan::new(show_data_start, show_data_start + len)
         });
         let body_start = show_data_span.map_or(after_header, |span| span.end);
-        return PieHeader::Body(PieBodyStart {
+        return Ok(PieHeader::Body(PieBodyStart {
             offset: body_start,
             header_span: SourceSpan::new(header_start, after_header),
             show_data_span,
-        });
+        }));
     }
-    PieHeader::Empty
+    Ok(PieHeader::Empty)
 }
 
 fn keyword_token_len(input: &str, keyword: &str) -> Option<usize> {
@@ -482,6 +510,21 @@ mod tests {
             effective_config: MermaidConfig::default(),
             title: None,
         }
+    }
+
+    #[test]
+    fn controlled_parse_can_cancel_after_the_pie_header() {
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            construct_pie_semantic_source_controlled(
+                "pie\n\"A\": 1\n\"B\": 2\n",
+                &metadata(),
+                &control,
+            ),
+            Err(crate::ParseCancelled)
+        ));
     }
 
     #[test]

@@ -235,10 +235,13 @@ pub(crate) fn parse_tree_view(code: &str, meta: &ParseMetadata) -> Result<Value>
 pub(crate) fn parse_tree_view_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("treeView");
-    parse_tree_view_input(code, meta).into_combined(code, meta)
+    let parsed = parse_tree_view_input_controlled(code, meta, control)?.into_combined(code, meta);
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn parse_tree_view_model_for_render(
@@ -293,13 +296,23 @@ fn construct_tree_view_semantic_source(
 }
 
 fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> TreeViewParseOutcome {
+    parse_tree_view_input_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn parse_tree_view_input_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<TreeViewParseOutcome> {
+    control.checkpoint()?;
     let mut editor_facts = EditorSemanticFacts::new();
     let mut first_issue = None;
-    let body = match tree_view_body_start(code) {
+    let body = match tree_view_body_start_controlled(code, control)? {
         Ok(body) => body,
         Err(issue) => {
             mark_tree_view_recovery(&mut editor_facts, &mut first_issue, issue);
-            return TreeViewParseOutcome {
+            return Ok(TreeViewParseOutcome {
                 snapshot: ParsedTreeViewInput {
                     title: None,
                     acc_title: None,
@@ -309,7 +322,7 @@ fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> TreeViewParseOutco
                 },
                 lexemes: LangiumLexemeTrace::default(),
                 first_issue,
-            };
+            });
         }
     };
     let mut offset = body.offset;
@@ -322,6 +335,7 @@ fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> TreeViewParseOutco
     let mut saw_node = false;
 
     while offset < code.len() {
+        control.checkpoint()?;
         if let Some(parsed) = parse_langium_common(code, offset) {
             if saw_node {
                 let span = parsed.fact.raw_span;
@@ -377,7 +391,10 @@ fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> TreeViewParseOutco
         .collect::<Vec<_>>();
     let line_format = TreeViewLineFormat::from_lines(&node_lines);
     let mut nodes = Vec::new();
-    for statement in node_statements {
+    for (index, statement) in node_statements.into_iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         match parse_node_line_details(&statement.line, statement.line_start, line_format, meta) {
             Ok(Some(node)) => {
                 lexemes.extend(node.lexemes.clone());
@@ -405,7 +422,8 @@ fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> TreeViewParseOutco
         }
     }
 
-    TreeViewParseOutcome {
+    control.checkpoint()?;
+    Ok(TreeViewParseOutcome {
         snapshot: ParsedTreeViewInput {
             title,
             acc_title,
@@ -415,7 +433,7 @@ fn parse_tree_view_input(code: &str, meta: &ParseMetadata) -> TreeViewParseOutco
         },
         lexemes,
         first_issue,
-    }
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -424,9 +442,13 @@ struct TreeViewBodyStart {
     header_span: SourceSpan,
 }
 
-fn tree_view_body_start(code: &str) -> std::result::Result<TreeViewBodyStart, TreeViewParseIssue> {
+fn tree_view_body_start_controlled(
+    code: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<std::result::Result<TreeViewBodyStart, TreeViewParseIssue>> {
     let mut offset = 0usize;
     while offset < code.len() {
+        control.checkpoint()?;
         let (line, next_offset) = physical_line_at(code, offset);
         let visible = strip_inline_comment_aware(line);
         let trimmed = visible.trim();
@@ -438,27 +460,27 @@ fn tree_view_body_start(code: &str) -> std::result::Result<TreeViewBodyStart, Tr
         let leading = visible.len().saturating_sub(visible.trim_start().len());
         let span = SourceSpan::new(offset + leading, offset + leading + trimmed.len());
         let Some(trailing) = trimmed.strip_prefix("treeView-beta") else {
-            return Err(TreeViewParseIssue::new(
+            return Ok(Err(TreeViewParseIssue::new(
                 "expected treeView-beta",
                 Some(span),
-            ));
+            )));
         };
         if !trailing.trim().is_empty() {
-            return Err(TreeViewParseIssue::new(
+            return Ok(Err(TreeViewParseIssue::new(
                 "unexpected tokens after treeView-beta",
                 Some(span),
-            ));
+            )));
         }
-        return Ok(TreeViewBodyStart {
+        return Ok(Ok(TreeViewBodyStart {
             offset: next_offset,
             header_span: SourceSpan::new(
                 offset + leading,
                 offset + leading + "treeView-beta".len(),
             ),
-        });
+        }));
     }
 
-    Err(TreeViewParseIssue::new("expected treeView-beta", None))
+    Ok(Err(TreeViewParseIssue::new("expected treeView-beta", None)))
 }
 
 fn mark_tree_view_recovery(
@@ -1670,7 +1692,7 @@ treeView-beta
 
         crate::diagrams::langium_common::reset_family_syntax_construction_count("treeView");
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_tree_view_json_and_editor_facts(text, &meta),
+            parse_tree_view_json_and_editor_facts(text, &meta, &crate::ParseControl::new()),
         )
         .unwrap();
         assert_eq!(
@@ -1859,7 +1881,9 @@ treeView-beta
         let errors = [
             parse_tree_view(text, &meta).unwrap_err(),
             crate::family::test_support::into_result(parse_tree_view_json_and_editor_facts(
-                text, &meta,
+                text,
+                &meta,
+                &crate::ParseControl::new(),
             ))
             .unwrap_err(),
             parse_tree_view_model_for_render(text, &meta).unwrap_err(),
@@ -1906,7 +1930,7 @@ treeView-beta
         let complete = "treeView-beta\naccDescr {\nline one\nline two\n}\nroot/\n";
         let meta = meta();
         let (json, facts) = crate::family::test_support::into_result(
-            parse_tree_view_json_and_editor_facts(complete, &meta),
+            parse_tree_view_json_and_editor_facts(complete, &meta, &crate::ParseControl::new()),
         )
         .unwrap();
         assert_eq!(json["accDescr"], json!("line one\nline two"));

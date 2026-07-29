@@ -116,14 +116,15 @@ pub(crate) fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_cynefin_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
     let CynefinParseOutcome {
         source: CynefinSemanticSource {
             mut model,
             editor_facts,
         },
         first_error,
-    } = construct_cynefin_parse_outcome(code, meta);
+    } = construct_cynefin_parse_outcome_controlled(code, meta, control)?;
     model.sanitize_common_db_fields(&meta.effective_config);
     let construction = match first_error {
         Some(error) => Err(crate::family::CombinedSemanticFailure::new(
@@ -135,7 +136,7 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
             editor_facts,
         }),
     };
-    crate::family::CombinedSemanticParse::from_construction(
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
         |source| {
             (
@@ -144,7 +145,9 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
             )
         },
         crate::family::CombinedSemanticFailure::into_parts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -184,6 +187,16 @@ fn parse_cynefin_semantic_source(
 }
 
 fn construct_cynefin_parse_outcome(code: &str, meta: &ParseMetadata) -> CynefinParseOutcome {
+    construct_cynefin_parse_outcome_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_cynefin_parse_outcome_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<CynefinParseOutcome> {
+    control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("cynefin");
 
@@ -197,6 +210,7 @@ fn construct_cynefin_parse_outcome(code: &str, meta: &ParseMetadata) -> CynefinP
     let mut first_error = None;
 
     while offset < code.len() {
+        control.checkpoint()?;
         let line_start = offset;
         let (segment, next_offset) = physical_line_at(code, offset);
         offset = next_offset;
@@ -258,7 +272,7 @@ fn construct_cynefin_parse_outcome(code: &str, meta: &ParseMetadata) -> CynefinP
             continue;
         }
 
-        let parsed_line = parse_cynefin_line_parts(body, body_start);
+        let parsed_line = parse_cynefin_line_parts_controlled(body, body_start, control)?;
         lexemes.extend(parsed_line.lexemes);
         if let Some(error) = parsed_line.error {
             let span = trimmed_source_span(body, body_start);
@@ -274,7 +288,10 @@ fn construct_cynefin_parse_outcome(code: &str, meta: &ParseMetadata) -> CynefinP
             continue;
         }
 
-        for part in parsed_line.parts {
+        for (index, part) in parsed_line.parts.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
             match part {
                 CynefinLinePart::Domain(domain) => {
                     current_domain = Some(start_domain(&mut model.domains, domain.text.clone()));
@@ -371,13 +388,14 @@ fn construct_cynefin_parse_outcome(code: &str, meta: &ParseMetadata) -> CynefinP
     model.acc_descr = common.acc_descr;
     lexemes.attach(code, &mut editor_facts);
 
-    CynefinParseOutcome {
+    control.checkpoint()?;
+    Ok(CynefinParseOutcome {
         source: CynefinSemanticSource {
             model,
             editor_facts,
         },
         first_error,
-    }
+    })
 }
 
 fn remember_cynefin_error(
@@ -428,12 +446,21 @@ fn split_header(line: &str, line_start: usize) -> Option<CynefinHeader<'_>> {
     })
 }
 
-fn parse_cynefin_line_parts(line: &str, line_start: usize) -> CynefinParsedLine {
+fn parse_cynefin_line_parts_controlled(
+    line: &str,
+    line_start: usize,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<CynefinParsedLine> {
     let mut cursor = CynefinCursor::new(line, line_start);
     let mut parts = Vec::new();
     let mut error = None;
+    let mut iteration = 0usize;
 
     loop {
+        if iteration.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        iteration += 1;
         cursor.skip_ws();
         if cursor.is_eof() {
             break;
@@ -468,11 +495,11 @@ fn parse_cynefin_line_parts(line: &str, line_start: usize) -> CynefinParsedLine 
         break;
     }
 
-    CynefinParsedLine {
+    Ok(CynefinParsedLine {
         parts,
         lexemes: cursor.lexemes,
         error,
-    }
+    })
 }
 
 fn physical_line_at(code: &str, start: usize) -> (&str, usize) {
@@ -681,6 +708,30 @@ fn strip_inline_comment_aware(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn metadata() -> crate::ParseMetadata {
+        crate::ParseMetadata {
+            diagram_type: "cynefin".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn controlled_parse_can_cancel_between_cynefin_lines() {
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            construct_cynefin_parse_outcome_controlled(
+                "cynefin-beta\ncomplex\n\"Probe\"\n",
+                &metadata(),
+                &control,
+            ),
+            Err(crate::ParseCancelled)
+        ));
+    }
 
     #[test]
     fn strips_comment_markers_outside_quoted_strings() {

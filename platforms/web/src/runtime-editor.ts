@@ -102,8 +102,8 @@ class BrowserEditorSessionImpl implements BrowserEditorSession {
     return this.withNative((native) => native.documentSymbols());
   }
 
-  workspaceSymbols(query: string): EditorSymbolInformation[] {
-    return this.withNative((native) => native.workspaceSymbols(query));
+  searchDocumentSymbols(query: string): EditorSymbolInformation[] {
+    return this.withNative((native) => native.searchDocumentSymbols(query));
   }
 
   definition(position: EditorPosition): EditorLocation | null {
@@ -221,17 +221,17 @@ export function editorDocumentSymbols(
   return documentSymbols(source, uri, encodeOptions(options));
 }
 
-export function editorWorkspaceSymbols(
+export function editorSearchDocumentSymbols(
   source: string,
   query: string,
   uri?: string,
   options?: SvgBindingOptions | string
 ): EditorSymbolInformation[] {
-  const workspaceSymbols = requireEditorLanguage(
-    "editorWorkspaceSymbols",
-    getMerman().editorWorkspaceSymbols
+  const searchDocumentSymbols = requireEditorLanguage(
+    "editorSearchDocumentSymbols",
+    getMerman().editorSearchDocumentSymbols
   );
-  return workspaceSymbols(source, query, uri, encodeOptions(options));
+  return searchDocumentSymbols(source, query, uri, encodeOptions(options));
 }
 
 export function editorDefinition(

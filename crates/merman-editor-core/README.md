@@ -22,19 +22,23 @@ merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman
 ```rust
 use merman::editor::{
     DocumentKind, DocumentWorkspace, Position, completion_for_snapshot,
+    search_document_symbols,
 };
 
 let mut workspace = DocumentWorkspace::new();
-let snapshot = workspace.upsert(
-    "file:///workspace/diagram.mmd",
-    1,
-    "flowchart TD\nA --> B\nB -->".to_owned(),
-    DocumentKind::Diagram,
-);
+let snapshot = workspace
+    .upsert(
+        "file:///workspace/diagram.mmd",
+        1,
+        "flowchart TD\nA --> B\nB -->".to_owned(),
+        DocumentKind::Diagram,
+    )
+    .expect("source is within the configured analysis limit");
 let completions = completion_for_snapshot(&snapshot, Position::new(2, 5));
+let symbols = search_document_symbols(&snapshot, "B");
 ```
 
-`DocumentKind::Diagram` handles standalone Mermaid files. Markdown-family documents use the same parser-backed fence indexing and retain original-document source ranges.
+`DocumentWorkspace::upsert` returns `Result<DocumentSnapshot, AnalysisRejection>` and leaves the workspace unchanged when analysis rejects the source. `DocumentKind::Diagram` handles standalone Mermaid files. Markdown-family documents use the same parser-backed fence indexing and retain original-document source ranges.
 
 ## Responsibilities
 

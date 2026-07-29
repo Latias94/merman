@@ -1,9 +1,10 @@
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
+    MermaidConfig, ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
     editor::EditorLexemeJournal,
 };
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,16 @@ use std::collections::HashMap;
 thread_local! {
     static C4_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
 }
+
+const C4_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
+    EditorCompletionCandidate::keyword("TB", "top to bottom"),
+    EditorCompletionCandidate::keyword("BT", "bottom to top"),
+    EditorCompletionCandidate::keyword("LR", "left to right"),
+    EditorCompletionCandidate::keyword("RL", "right to left"),
+];
+
+const C4_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
+    EditorCompletionVocabulary::new(&[], C4_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 pub(crate) fn reset_c4_syntax_construction_count() {
@@ -384,8 +395,9 @@ pub(crate) fn parse_c4_model_for_render(
 pub(crate) fn parse_c4_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    construct_c4_semantic_source(code, meta).into_combined(meta)
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    Ok(construct_c4_semantic_source_controlled(code, meta, control)?.into_combined(meta))
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -687,11 +699,15 @@ fn parse_acc_descr_spanned_c4(
     line: &str,
     line_start: usize,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> Option<SpannedAccDescr> {
+    control: &ParseControl,
+) -> ParseControlResult<Option<SpannedAccDescr>> {
+    control.checkpoint()?;
     let trimmed = line.trim_start();
     let keyword_start = line_start + line.len() - trimmed.len();
     let keyword_end = keyword_start + "accDescr".len();
-    let after_keyword = trimmed.strip_prefix("accDescr")?;
+    let Some(after_keyword) = trimmed.strip_prefix("accDescr") else {
+        return Ok(None);
+    };
     let whitespace = leading_whitespace_len(after_keyword);
     let rest = &after_keyword[whitespace..];
     let rest_start = keyword_end + whitespace;
@@ -708,13 +724,15 @@ fn parse_acc_descr_spanned_c4(
             SourceSpan::new(rest_start, rest_start + 1),
         );
         push_c4_lexeme(lexemes, EditorLexemeKind::String, value.span);
-        return Some(SpannedAccDescr {
+        return Ok(Some(SpannedAccDescr {
             value,
             closed: true,
-        });
+        }));
     }
 
-    let rest = rest.strip_prefix('{')?;
+    let Some(rest) = rest.strip_prefix('{') else {
+        return Ok(None);
+    };
     let content_start = rest_start + 1;
     push_c4_lexeme(
         lexemes,
@@ -735,10 +753,10 @@ fn parse_acc_descr_spanned_c4(
             SourceSpan::new(content_start + end, content_start + end + 1),
         );
         lines.resume_same_line_at(content_start + end + 1);
-        return Some(SpannedAccDescr {
+        return Ok(Some(SpannedAccDescr {
             value,
             closed: true,
-        });
+        }));
     }
 
     let mut parts = Vec::new();
@@ -755,6 +773,7 @@ fn parse_acc_descr_spanned_c4(
 
     let mut closed = false;
     while let Some((next_line, segment_start)) = lines.next_line() {
+        control.checkpoint()?;
         if let Some(close_pos) = next_line.find('}') {
             let before = spanned_trimmed_c4(&next_line[..close_pos], segment_start);
             if !before.text.is_empty() {
@@ -785,13 +804,13 @@ fn parse_acc_descr_spanned_c4(
 
     let start = span_start.unwrap_or(content_start);
     let end = span_end.unwrap_or(start);
-    Some(SpannedAccDescr {
+    Ok(Some(SpannedAccDescr {
         value: SpannedText {
             text: parts.join("\n"),
             span: SourceSpan::new(start, end),
         },
         closed,
-    })
+    }))
 }
 
 fn parse_direction_stmt_facts_c4(
@@ -1974,31 +1993,45 @@ fn value_as_i64(v: &Value) -> Option<i64> {
 }
 
 fn construct_c4_semantic_source(code: &str, meta: &ParseMetadata) -> C4ParseOutcome {
+    construct_c4_semantic_source_controlled(code, meta, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_c4_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<C4ParseOutcome> {
+    control.checkpoint()?;
     #[cfg(test)]
     C4_SYNTAX_CONSTRUCTION_COUNT.set(C4_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
     let mut lexemes = EditorLexemeJournal::family_parser(code);
-    let mut outcome = parse_c4_semantic_source(code, meta, &mut lexemes);
+    let mut outcome = parse_c4_semantic_source(code, meta, &mut lexemes, control)?;
     outcome
         .source
         .editor_facts
         .replace_family_lexemes(lexemes.finish());
-    outcome
+    Ok(outcome)
 }
 
 fn parse_c4_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> C4ParseOutcome {
+    control: &ParseControl,
+) -> ParseControlResult<C4ParseOutcome> {
+    control.checkpoint()?;
     let mut db = C4Db::new(&meta.effective_config);
-    let mut editor_facts = EditorSemanticFacts::new();
+    let mut editor_facts =
+        EditorSemanticFacts::new().with_completion_vocabulary(C4_COMPLETION_VOCABULARY);
     let mut issues = Vec::new();
     let mut pending_boundary_lbrace = None;
 
     let mut lines = LineCursor::new(code);
     let mut saw_header_line = false;
     while let Some((raw, line_start)) = lines.next_line() {
+        control.checkpoint()?;
         let line = strip_inline_comment(raw);
         let header = line.trim();
         if header.is_empty() {
@@ -2036,6 +2069,7 @@ fn parse_c4_semantic_source(
     }
 
     while let Some((raw, line_start)) = lines.next_line() {
+        control.checkpoint()?;
         let raw = strip_inline_comment(raw);
         let t = raw.trim();
         if t.is_empty() {
@@ -2101,7 +2135,9 @@ fn parse_c4_semantic_source(
             continue;
         }
 
-        if let Some(acc_descr) = parse_acc_descr_spanned_c4(&mut lines, raw, line_start, lexemes) {
+        if let Some(acc_descr) =
+            parse_acc_descr_spanned_c4(&mut lines, raw, line_start, lexemes, control)?
+        {
             db.set_acc_description(&acc_descr.value.text);
             editor_facts.push_directive_prefix("accDescr");
             push_c4_payload_fact(
@@ -2183,10 +2219,11 @@ fn parse_c4_semantic_source(
         ));
     }
 
-    C4ParseOutcome {
+    control.checkpoint()?;
+    Ok(C4ParseOutcome {
         source: C4SemanticSource { db, editor_facts },
         issues,
-    }
+    })
 }
 
 fn apply_c4_macro(db: &mut C4Db, stmt: &SpannedMacroStmt, meta: &ParseMetadata) -> Result<bool> {
@@ -2392,9 +2429,10 @@ mod tests {
         let expected_model = parse_c4_model_for_render(text, &meta()).unwrap();
 
         reset_c4_syntax_construction_count();
-        let (json, facts) =
-            crate::family::test_support::into_result(parse_c4_json_and_editor_facts(text, &meta()))
-                .unwrap();
+        let (json, facts) = crate::family::test_support::into_result(
+            parse_c4_json_and_editor_facts(text, &meta(), &ParseControl::new()),
+        )
+        .unwrap();
 
         assert_eq!(c4_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);

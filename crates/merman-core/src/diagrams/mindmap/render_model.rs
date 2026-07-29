@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value, json};
 
-use crate::{Error, ParseMetadata, Result};
+use crate::{Error, ParseControl, ParseControlResult, ParseMetadata, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -80,28 +80,47 @@ pub(crate) fn render_model_to_compat_json(
     model: &MindmapDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let nodes = model
-        .nodes
-        .iter()
-        .map(mindmap_node_to_compat_json)
-        .collect();
-    let edges = model
-        .edges
-        .iter()
-        .map(mindmap_edge_to_compat_json)
-        .collect();
+    let control = ParseControl::new();
+    render_model_to_compat_json_controlled(model, meta, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+pub(crate) fn render_model_to_compat_json_controlled(
+    model: &MindmapDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<Value>> {
+    control.checkpoint()?;
+    let mut nodes = Vec::with_capacity(model.nodes.len());
+    for (index, node) in model.nodes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        nodes.push(mindmap_node_to_compat_json(node));
+    }
+    let mut edges = Vec::with_capacity(model.edges.len());
+    for (index, edge) in model.edges.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        edges.push(mindmap_edge_to_compat_json(edge));
+    }
     let config = mindmap_compat_config(meta);
+    control.checkpoint()?;
 
     if model.nodes.is_empty() {
         let mut root = Map::with_capacity(3);
         root.insert("nodes".to_string(), Value::Array(nodes));
         root.insert("edges".to_string(), Value::Array(edges));
         root.insert("config".to_string(), config);
-        return Ok(Value::Object(root));
+        return Ok(Ok(Value::Object(root)));
     }
 
     let mut shapes = Map::new();
-    for node in &model.nodes {
+    for (index, node) in model.nodes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         shapes.insert(
             node.id.clone(),
             json!({
@@ -120,7 +139,10 @@ pub(crate) fn render_model_to_compat_json(
     root.insert("config".to_string(), config);
     root.insert(
         "rootNode".to_string(),
-        mindmap_root_node_to_compat_json(model, meta)?,
+        match mindmap_root_node_to_compat_json_controlled(model, meta, control)? {
+            Ok(root) => root,
+            Err(error) => return Ok(Err(error)),
+        },
     );
     root.insert("markers".to_string(), json!(["point"]));
     root.insert("direction".to_string(), Value::String("TB".to_string()));
@@ -128,7 +150,8 @@ pub(crate) fn render_model_to_compat_json(
     root.insert("rankSpacing".to_string(), Number::from(50).into());
     root.insert("shapes".to_string(), Value::Object(shapes));
     root.insert("diagramId".to_string(), Value::String(mindmap_diagram_id()));
-    Ok(Value::Object(root))
+    control.checkpoint()?;
+    Ok(Ok(Value::Object(root)))
 }
 
 fn mindmap_diagram_id() -> String {
@@ -238,52 +261,80 @@ fn mindmap_edge_to_compat_json(edge: &MindmapDiagramRenderEdge) -> Value {
     Value::Object(out)
 }
 
-fn mindmap_root_node_to_compat_json(
+fn mindmap_root_node_to_compat_json_controlled(
     model: &MindmapDiagramRenderModel,
     meta: &ParseMetadata,
-) -> Result<Value> {
+    control: &ParseControl,
+) -> ParseControlResult<Result<Value>> {
     let mut node_index = HashMap::with_capacity(model.nodes.len());
     for (index, node) in model.nodes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         if node_index.insert(node.id.as_str(), index).is_some() {
-            return Err(invalid_mindmap_model(
+            return Ok(Err(invalid_mindmap_model(
                 meta,
                 format!("duplicate mindmap node id `{}`", node.id),
-            ));
+            )));
         }
     }
 
-    let root_index = model
-        .nodes
-        .iter()
-        .position(|node| node.level == 0)
-        .ok_or_else(|| invalid_mindmap_model(meta, "mindmap root node is missing"))?;
+    let mut root_index = None;
+    for (index, node) in model.nodes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        if node.level == 0 {
+            root_index = Some(index);
+            break;
+        }
+    }
+    let Some(root_index) = root_index else {
+        return Ok(Err(invalid_mindmap_model(
+            meta,
+            "mindmap root node is missing",
+        )));
+    };
     let mut children = vec![Vec::new(); model.nodes.len()];
-    for edge in &model.edges {
+    control.checkpoint()?;
+    for (index, edge) in model.edges.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         let Some(&parent) = node_index.get(edge.start.as_str()) else {
-            return Err(invalid_mindmap_model(
+            return Ok(Err(invalid_mindmap_model(
                 meta,
                 format!("mindmap edge `{}` references missing start node", edge.id),
-            ));
+            )));
         };
         let Some(&child) = node_index.get(edge.end.as_str()) else {
-            return Err(invalid_mindmap_model(
+            return Ok(Err(invalid_mindmap_model(
                 meta,
                 format!("mindmap edge `{}` references missing end node", edge.id),
-            ));
+            )));
         };
         children[parent].push(child);
     }
 
     let mut values = vec![None; model.nodes.len()];
     let mut stack = vec![(root_index, false)];
-    while let Some((index, visited)) = stack.pop() {
-        if visited {
+    let mut processed = 0usize;
+    while let Some((index, expanded)) = stack.pop() {
+        if processed.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        processed = processed.saturating_add(1);
+        if expanded {
             let node = &model.nodes[index];
             let child_values = children[index]
                 .iter()
                 .map(|child| values[*child].take().unwrap_or(Value::Null))
                 .collect();
-            values[index] = Some(mindmap_root_record(node, child_values, meta)?);
+            let value = match mindmap_root_record(node, child_values, meta) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
+            };
+            values[index] = Some(value);
         } else {
             stack.push((index, true));
             for child in children[index].iter().rev() {
@@ -292,7 +343,8 @@ fn mindmap_root_node_to_compat_json(
         }
     }
 
-    Ok(values[root_index].take().unwrap_or(Value::Null))
+    control.checkpoint()?;
+    Ok(Ok(values[root_index].take().unwrap_or(Value::Null)))
 }
 
 fn mindmap_root_record(

@@ -4,8 +4,9 @@ use crate::diagrams::scan::{
 };
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
-    SourceSpan, editor::EditorLexemeJournal, family::CombinedSemanticFailure,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseControl,
+    ParseControlResult, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    family::CombinedSemanticFailure,
 };
 use serde_json::{Value, json};
 #[cfg(test)]
@@ -199,14 +200,20 @@ fn parse_acc_descr_block_spanned(
     lines: &mut LineCursor<'_>,
     first_line: &str,
     first_line_start: usize,
-) -> Option<JourneyBlockText> {
+    control: &ParseControl,
+) -> ParseControlResult<Option<JourneyBlockText>> {
+    control.checkpoint()?;
     let t = first_line.trim_start();
     if !starts_with_case_insensitive(t, "accDescr") {
-        return None;
+        return Ok(None);
     }
     let rest = t["accDescr".len()..].trim_start();
-    let rest = rest.strip_prefix('{')?;
-    let open = first_line.find('{')?;
+    let Some(rest) = rest.strip_prefix('{') else {
+        return Ok(None);
+    };
+    let Some(open) = first_line.find('{') else {
+        return Ok(None);
+    };
     let content_start = first_line_start + open + 1;
 
     let mut buf = String::new();
@@ -214,12 +221,12 @@ fn parse_acc_descr_block_spanned(
         buf.push_str(&rest[..end]);
         let closing = SourceSpan::new(content_start + end, content_start + end + 1);
         lines.resume_same_line_at(closing.end);
-        return Some(JourneyBlockText {
+        return Ok(Some(JourneyBlockText {
             text: buf.trim().to_string(),
             span: SourceSpan::new(content_start, content_start + end),
             opening: SourceSpan::new(content_start - 1, content_start),
             closing: Some(closing),
-        });
+        }));
     }
     buf.push_str(rest);
     buf.push('\n');
@@ -227,6 +234,7 @@ fn parse_acc_descr_block_spanned(
     let mut content_end = lines.offset();
     let mut closing = None;
     while let Some((line, line_start)) = lines.next_line() {
+        control.checkpoint()?;
         if let Some(end) = line.find('}') {
             buf.push_str(&line[..end]);
             content_end = line_start + end;
@@ -238,12 +246,12 @@ fn parse_acc_descr_block_spanned(
         buf.push('\n');
         content_end = line_start + line.len();
     }
-    Some(JourneyBlockText {
+    Ok(Some(JourneyBlockText {
         text: buf.trim().to_string(),
         span: SourceSpan::new(content_start, content_end.max(content_start)),
         opening: SourceSpan::new(content_start - 1, content_start),
         closing,
-    })
+    }))
 }
 
 fn strip_comment_prefix(line: &str) -> &str {
@@ -374,9 +382,11 @@ pub(crate) fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_journey_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_journey_semantic_source(code, meta),
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_journey_semantic_source_controlled(code, meta, control)?;
+    Ok(crate::family::CombinedSemanticParse::from_construction(
+        construction,
         |JourneySemanticSource {
              model,
              editor_facts,
@@ -388,7 +398,7 @@ pub(crate) fn parse_journey_json_and_editor_facts(
             (model, editor_facts)
         },
         CombinedSemanticFailure::into_parts,
-    )
+    ))
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -426,13 +436,23 @@ fn construct_journey_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<JourneySemanticSource, CombinedSemanticFailure> {
+    construct_journey_semantic_source_controlled(code, meta, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_journey_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<JourneySemanticSource, CombinedSemanticFailure>> {
+    control.checkpoint()?;
     #[cfg(test)]
     JOURNEY_SYNTAX_CONSTRUCTION_COUNT.set(JOURNEY_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
     let mut lexemes = EditorLexemeJournal::family_parser(code);
-    let result = parse_journey_semantic_source(code, meta, &mut lexemes);
+    let result = parse_journey_semantic_source(code, meta, &mut lexemes, control)?;
     let lexemes = lexemes.finish();
-    match result {
+    Ok(match result {
         Ok(mut source) => {
             source.editor_facts.replace_family_lexemes(lexemes);
             Ok(source)
@@ -441,14 +461,16 @@ fn construct_journey_semantic_source(
             failure.replace_family_lexemes(lexemes);
             Err(failure)
         }
-    }
+    })
 }
 
 fn parse_journey_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> std::result::Result<JourneySemanticSource, CombinedSemanticFailure> {
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<JourneySemanticSource, CombinedSemanticFailure>> {
+    control.checkpoint()?;
     let mut db = JourneyDb::default();
     db.clear();
     let mut editor_facts = EditorSemanticFacts::new();
@@ -457,6 +479,7 @@ fn parse_journey_semantic_source(
     let mut first_error = None;
 
     while let Some((line, line_start)) = lines.next_line() {
+        control.checkpoint()?;
         let stripped = strip_comment_prefix(line);
         record_journey_comment_or_terminator(line, line_start, stripped, lexemes);
         let t = stripped.trim();
@@ -583,7 +606,7 @@ fn parse_journey_semantic_source(
             db.acc_descr = v;
             continue;
         }
-        if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start) {
+        if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start, control)? {
             editor_facts.push_directive_prefix("accDescr");
             record_journey_keyword_value(lexemes, line, line_start, "accDescr", None, Some(v.span));
             push_journey_lexeme(lexemes, EditorLexemeKind::Delimiter, v.opening);
@@ -791,13 +814,14 @@ fn parse_journey_semantic_source(
     }
 
     if let Some(error) = first_error {
-        return Err(CombinedSemanticFailure::parser_recovery(
+        return Ok(Err(CombinedSemanticFailure::parser_recovery(
             "journey",
             error,
             editor_facts,
-        ));
+        )));
     }
 
+    control.checkpoint()?;
     let actors = db.actors_sorted();
     let model = header_seen.then(|| JourneyDiagramRenderModel {
         title: (!db.title.is_empty()).then_some(db.title),
@@ -808,10 +832,10 @@ fn parse_journey_semantic_source(
         tasks: db.tasks,
         compatibility_output: CompatibilityOutputState::Model,
     });
-    Ok(JourneySemanticSource {
+    Ok(Ok(JourneySemanticSource {
         model,
         editor_facts,
-    })
+    }))
 }
 
 fn spanned_keyword_value<'a>(
@@ -1075,7 +1099,7 @@ A task: 5: Alice, Bob\n";
 
         reset_journey_syntax_construction_count();
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_journey_json_and_editor_facts(text, &parsed.meta),
+            parse_journey_json_and_editor_facts(text, &parsed.meta, &ParseControl::new()),
         )
         .expect("Journey combined projection succeeds");
         assert_eq!(journey_syntax_construction_count(), 1);

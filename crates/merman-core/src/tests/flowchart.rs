@@ -3096,6 +3096,32 @@ fn parse_flowchart_editor_facts_recover_shape_value_expected_syntax() {
 }
 
 #[test]
+fn parse_flowchart_editor_facts_recover_unterminated_shape_data_value() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA@{ shape: rou";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text)
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+
+    let shape_start = text.find("rou").unwrap();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::ShapeValue
+            && expected.span == SourceSpan::new(shape_start, shape_start + "rou".len())
+    }));
+
+    let error = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("unterminated shape data must fail strict parsing");
+    assert!(
+        error.to_string().contains("Unterminated shape data"),
+        "{error}"
+    );
+}
+
+#[test]
 fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
     let engine = Engine::new();
     let text = concat!(

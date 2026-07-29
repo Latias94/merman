@@ -699,10 +699,13 @@ fn render_core_projection(bundle: &MermaidReferenceBundle) -> Result<String, Xta
          pub const PINNED_MERMAID_BASELINE_TAG: &str = {};\n\n\
          /// Upstream Mermaid semver pinned by this repository.\n\
          pub const PINNED_MERMAID_BASELINE_VERSION: &str = {};\n\n\
+         /// Upstream `@mermaid-js/mermaid-cli` semver used by compatibility surfaces.\n\
+         pub const PINNED_MERMAID_CLI_VERSION: &str = {};\n\n\
          /// Filesystem/module-name-safe baseline version.\n\
          pub const PINNED_MERMAID_BASELINE_VERSION_SUFFIX: &str = {};\n",
         rust_string(&bundle.release.source.reference)?,
         rust_string(&bundle.release.version)?,
+        rust_string(&bundle.reference_cli.package.version)?,
         rust_string(&suffix)?,
     ))
 }

@@ -1,4 +1,5 @@
 use super::{FlowSubGraph, Stmt, SubgraphBlock, TitleKind, strip_wrapping_backticks, unquote};
+use crate::{ParseControl, ParseControlResult};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
@@ -31,11 +32,20 @@ impl SubgraphBuilder {
         }
     }
 
-    pub(super) fn visit_statements(&mut self, statements: &[Stmt]) {
-        let _ = self.eval_statements(statements);
+    pub(super) fn visit_statements(
+        &mut self,
+        statements: &[Stmt],
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
+        let _ = self.eval_statements(statements, control)?;
+        Ok(())
     }
 
-    fn eval_statements(&mut self, statements: &[Stmt]) -> Vec<StatementItem> {
+    fn eval_statements(
+        &mut self,
+        statements: &[Stmt],
+        control: &ParseControl,
+    ) -> ParseControlResult<Vec<StatementItem>> {
         enum EvalStep<'a> {
             Statement(&'a Stmt),
             Finish,
@@ -48,11 +58,16 @@ impl SubgraphBuilder {
             items: Vec::new(),
         }];
         let mut root_items = Vec::new();
+        let mut visited = 0usize;
 
         while !stack.is_empty() {
+            if visited.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            visited = visited.saturating_add(1);
             let step = {
                 let Some(frame) = stack.last_mut() else {
-                    return root_items;
+                    return Ok(root_items);
                 };
                 if frame.index >= frame.statements.len() {
                     EvalStep::Finish
@@ -71,16 +86,18 @@ impl SubgraphBuilder {
                     items: Vec::new(),
                 }),
                 EvalStep::Statement(stmt) => {
-                    if let Some(frame) = stack.last_mut() {
-                        push_statement_items(&mut frame.items, stmt);
+                    if let Some(frame) = stack.last_mut()
+                        && frame.subgraph.is_some()
+                    {
+                        push_statement_items(&mut frame.items, stmt, control)?;
                     }
                 }
                 EvalStep::Finish => {
                     let Some(frame) = stack.pop() else {
-                        return root_items;
+                        return Ok(root_items);
                     };
                     if let Some(sg) = frame.subgraph {
-                        let id = self.eval_subgraph_from_items(sg, frame.items);
+                        let id = self.eval_subgraph_from_items(sg, frame.items, control)?;
                         if let Some(parent) = stack.last_mut() {
                             parent.items.push(StatementItem::Id(id));
                         }
@@ -91,19 +108,24 @@ impl SubgraphBuilder {
             }
         }
 
-        root_items
+        control.checkpoint()?;
+        Ok(root_items)
     }
 
     fn eval_subgraph_from_items(
         &mut self,
         sg: &SubgraphBlock,
         items: Vec<StatementItem>,
-    ) -> String {
+        control: &ParseControl,
+    ) -> ParseControlResult<String> {
         let mut seen: HashSet<String> = HashSet::new();
         let mut members: Vec<String> = Vec::new();
         let mut dir: Option<String> = None;
 
-        for item in items {
+        for (index, item) in items.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
             match item {
                 StatementItem::Dir(d) => dir = Some(d),
                 StatementItem::Id(id) => {
@@ -167,11 +189,31 @@ impl SubgraphBuilder {
 
         self.sub_count += 1;
 
-        members.retain(|m| !subgraphs_exist(&self.subgraphs, m));
+        let mut nested_members = HashSet::new();
+        for (subgraph_index, subgraph) in self.subgraphs.iter().enumerate() {
+            if subgraph_index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            for (member_index, member) in subgraph.nodes.iter().enumerate() {
+                if member_index % 128 == 0 {
+                    control.checkpoint()?;
+                }
+                nested_members.insert(member.as_str());
+            }
+        }
+        let mut retained_members = Vec::with_capacity(members.len());
+        for (index, member) in members.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if !nested_members.contains(member.as_str()) {
+                retained_members.push(member);
+            }
+        }
 
         self.subgraphs.push(FlowSubGraph {
             id: id.clone(),
-            nodes: members,
+            nodes: retained_members,
             title,
             classes: Vec::new(),
             styles: Vec::new(),
@@ -180,11 +222,15 @@ impl SubgraphBuilder {
             label_type,
         });
 
-        id
+        Ok(id)
     }
 }
 
-fn push_statement_items(out: &mut Vec<StatementItem>, stmt: &Stmt) {
+fn push_statement_items(
+    out: &mut Vec<StatementItem>,
+    stmt: &Stmt,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
     match stmt {
         Stmt::Chain { nodes, edges } => {
             // Mermaid FlowDB's subgraph membership list is based on the Jison
@@ -194,11 +240,17 @@ fn push_statement_items(out: &mut Vec<StatementItem>, stmt: &Stmt) {
             // For node-only group statements (e.g. `A & B`), there are no edges and the list
             // preserves the input order.
             if edges.is_empty() {
-                for n in nodes {
+                for (index, n) in nodes.iter().enumerate() {
+                    if index % 128 == 0 {
+                        control.checkpoint()?;
+                    }
                     out.push(StatementItem::Id(n.id.clone()));
                 }
             } else {
-                for n in nodes.iter().rev() {
+                for (index, n) in nodes.iter().rev().enumerate() {
+                    if index % 128 == 0 {
+                        control.checkpoint()?;
+                    }
                     out.push(StatementItem::Id(n.id.clone()));
                 }
             }
@@ -213,8 +265,10 @@ fn push_statement_items(out: &mut Vec<StatementItem>, stmt: &Stmt) {
         | Stmt::Click(_)
         | Stmt::LinkStyle(_) => {}
     }
+    Ok(())
 }
 
+#[cfg(test)]
 pub(super) fn subgraphs_exist(subgraphs: &[FlowSubGraph], node_id: &str) -> bool {
     subgraphs
         .iter()

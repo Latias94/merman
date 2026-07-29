@@ -25,8 +25,11 @@ fn main() {
     let options = AnalysisOptions::default().with_source(
         SourceDescriptor::diagram().with_path("diagram.mmd"),
     );
-    let result = Analyzer::with_options(options)
+    let outcome = Analyzer::with_options(options)
         .analyze_result("flowchart TD\n  A[Start] -->");
+    let result = outcome
+        .into_ready()
+        .expect("source is within the configured analysis limit");
 
     for diagnostic in result.diagnostics() {
         println!("{}: {}", diagnostic.id, diagnostic.message);
@@ -36,7 +39,7 @@ fn main() {
 }
 ```
 
-`AnalysisResult` retains typed per-diagram syntax facts. Call `into_payload()` when a diagnostics-only result is sufficient, or `to_facts_payload()` when a binding or editor needs the serializable facts contract.
+`Analyzer::analyze_result` returns `AnalysisOutcome` so callers can distinguish a completed `AnalysisResult` from an `AnalysisRejection`. Call `into_ready()` when rejection should be an error, `into_payload()` when a diagnostics-only result is sufficient, or `to_facts_payload()` when a binding or editor needs the serializable facts contract.
 
 ## Analyze Markdown And MDX
 
@@ -48,11 +51,14 @@ use merman_analysis::{
 };
 
 let markdown = "```mermaid\nflowchart TD\n  A -->\n```\n";
-let result = analyze_document_result(
+let outcome = analyze_document_result(
     markdown,
     &Analyzer::new(),
     source_descriptor_for_markdown_path(Some("README.md")),
 );
+let result = outcome
+    .into_ready()
+    .expect("source is within the configured analysis limit");
 
 assert_eq!(result.diagrams().len(), 1);
 assert!(!result.diagnostics().is_empty());
@@ -88,7 +94,7 @@ The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are ind
 
 Facts use `fact_source: "unavailable"` when parser-backed body semantics do not exist. They do not invent body symbols, references, or rename targets. Current writers include `rename_policy` on each semantic item; older additive readers that do not see it must treat the item as non-renamable.
 
-`DocumentDiagram::text`, `AnalyzedDiagram::text`, and editor `FenceSnapshot::text` use `SharedTextSlice`, which shares immutable document storage instead of copying every fence body. Use `as_str()` or `AsRef<str>` for borrowed access and `to_owned_text()` only when an owned buffer is required.
+`DocumentDiagram::text`, `AnalyzedDiagram::text()`, and editor `FenceSnapshot::text()` use `SharedTextSlice`, which shares immutable document storage instead of copying every fence body. `AnalysisResult` and `AnalyzedDiagram` are read-only canonical outputs; obtain them from `Analyzer` or the document-analysis entry points. Use `as_str()` or `AsRef<str>` for borrowed access and `to_owned_text()` only when an owned buffer is required.
 
 ## Related Documentation
 

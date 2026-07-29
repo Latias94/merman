@@ -51,19 +51,19 @@ fn merge_duplicate_parse_recovery_diagnostic(
     };
 
     if is_better_primary_parse_span(primary, &recovery.diagnostic) {
-        if let Some(previous_span) = primary.span.clone() {
+        if let Some(previous_span) = primary.span {
             primary.related.push(crate::DiagnosticRelated {
                 message: "Parser reported this original parse location before recovery refinement."
                     .to_string(),
                 span: Some(previous_span),
             });
         }
-        primary.span = recovery.diagnostic.span.clone();
+        primary.span = recovery.diagnostic.span;
     }
     primary.related.push(crate::DiagnosticRelated {
         message: "Parser recovery produced the same syntax problem while preserving editor facts."
             .to_string(),
-        span: recovery.diagnostic.span.clone(),
+        span: recovery.diagnostic.span,
     });
     true
 }

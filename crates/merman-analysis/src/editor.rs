@@ -194,12 +194,6 @@ pub enum FenceTextIndexSource {
     ParserRecovered,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ShapeObjectValuePrefix {
-    pub value_start: usize,
-    pub has_separator_space: bool,
-}
-
 impl FenceTextIndexSource {
     pub fn is_parser_backed(self) -> bool {
         matches!(self, Self::ParserComplete | Self::ParserRecovered)
@@ -233,6 +227,7 @@ pub enum FenceCursorCompletionKind {
 pub enum FenceExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
+    Operator,
     Shape,
     ShapeTrigger,
     Direction,
@@ -320,13 +315,21 @@ pub struct FenceTextIndex {
     lexemes: Vec<FenceLexeme>,
     lexeme_failure: Option<FenceLexemeFailure>,
     expected_syntax: Vec<FenceExpectedSyntax>,
-    completion_dialect: merman_core::EditorCompletionDialect,
+    completion_vocabulary: merman_core::EditorCompletionVocabulary,
     source: FenceTextIndexSource,
 }
 
 impl FenceTextIndex {
+    #[cfg(test)]
     pub(crate) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> Self {
         core_facts::from_core_facts(facts)
+    }
+
+    pub(crate) fn from_core_facts_cancellable(
+        facts: &merman_core::EditorSemanticFacts,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        core_facts::from_core_facts_cancellable(facts, cancellation)
     }
 
     pub fn node_ids(&self) -> impl Iterator<Item = &String> {
@@ -442,6 +445,10 @@ impl FenceTextIndex {
         &self.expected_syntax
     }
 
+    pub fn completion_vocabulary(&self) -> merman_core::EditorCompletionVocabulary {
+        self.completion_vocabulary
+    }
+
     pub fn source(&self) -> FenceTextIndexSource {
         self.source
     }
@@ -467,18 +474,6 @@ impl FenceTextIndex {
 
             if self.source.is_parser_backed() && offer_directive_items(&prefix, directive_prefix) {
                 completion_kinds.push(FenceCursorCompletionKind::Directive);
-            }
-
-            if self.completion_dialect == merman_core::EditorCompletionDialect::Flowchart {
-                if offer_operator_items(&prefix) {
-                    completion_kinds.push(FenceCursorCompletionKind::Operator);
-                }
-                if offer_direction_items(&prefix) {
-                    completion_kinds.push(FenceCursorCompletionKind::Direction);
-                }
-                if offer_shape_items(&prefix) {
-                    completion_kinds.push(FenceCursorCompletionKind::Shape);
-                }
             }
         }
 
@@ -522,7 +517,12 @@ fn clamp_to_char_boundary(text: &str, offset: usize) -> usize {
 
 fn current_line_prefix(text: &str, cursor: usize) -> (usize, String) {
     let before = &text[..cursor];
-    let line_start = before.rfind('\n').map(|index| index + 1).unwrap_or(0);
+    let line_start = before
+        .as_bytes()
+        .iter()
+        .rposition(|byte| matches!(byte, b'\n' | b'\r'))
+        .map(|index| index + 1)
+        .unwrap_or(0);
     let raw_prefix = &before[line_start..];
     let trimmed = raw_prefix.trim_start();
     let prefix_start = line_start + raw_prefix.len().saturating_sub(trimmed.len());
@@ -584,96 +584,11 @@ fn offer_diagram_headers(source_start: bool, prefix: &str) -> bool {
     prefix.is_empty() || diagram_header_prefix_matches(prefix)
 }
 
-fn offer_operator_items(prefix: &str) -> bool {
-    let prefix = prefix.trim_end();
-
-    prefix.ends_with("--") || prefix.ends_with("->")
-}
-
 fn offer_directive_items(prefix: &str, directive_prefix: Option<&str>) -> bool {
     let prefix = prefix.trim_end();
 
     prefix.trim_start().starts_with("%%")
         || directive_prefix.is_some_and(|prefix| DIRECTIVE_HELPER_PREFIXES.contains(&prefix))
-}
-
-fn offer_direction_items(prefix: &str) -> bool {
-    prefix.trim_end() == "direction"
-}
-
-fn offer_shape_items(prefix: &str) -> bool {
-    let prefix = prefix.trim_end();
-
-    shape_object_value_prefix(prefix).is_some()
-        || prefix.ends_with("((")
-        || prefix.ends_with("{{")
-        || prefix.ends_with('[')
-        || prefix.ends_with("[/")
-        || prefix.ends_with("[\\")
-        || prefix.ends_with('>')
-}
-
-pub fn shape_object_value_prefix(prefix: &str) -> Option<ShapeObjectValuePrefix> {
-    let mut search_end = prefix.len();
-    while let Some(marker) = prefix[..search_end].rfind("@{") {
-        let next_search_end = marker;
-        let mut offset = marker + "@{".len();
-        offset += leading_whitespace_len(&prefix[offset..]);
-
-        let tail = &prefix[offset..];
-        if !tail.starts_with("shape") {
-            search_end = next_search_end;
-            continue;
-        }
-        let after_shape = offset + "shape".len();
-        if prefix[after_shape..]
-            .chars()
-            .next()
-            .is_some_and(is_shape_key_continue)
-        {
-            search_end = next_search_end;
-            continue;
-        }
-
-        offset = after_shape;
-        offset += leading_whitespace_len(&prefix[offset..]);
-        if !prefix[offset..].starts_with(':') {
-            search_end = next_search_end;
-            continue;
-        }
-
-        offset += ':'.len_utf8();
-        let whitespace = leading_whitespace_len(&prefix[offset..]);
-        let value_start = offset + whitespace;
-        if !shape_object_prefix_is_inside_shape_value(prefix, value_start) {
-            search_end = next_search_end;
-            continue;
-        }
-        return Some(ShapeObjectValuePrefix {
-            value_start,
-            has_separator_space: whitespace > 0,
-        });
-    }
-
-    None
-}
-
-fn shape_object_prefix_is_inside_shape_value(prefix: &str, value_start: usize) -> bool {
-    prefix[value_start..]
-        .chars()
-        .all(|ch| !matches!(ch, ',' | '}' | '\n' | '\r'))
-}
-
-fn leading_whitespace_len(input: &str) -> usize {
-    input
-        .chars()
-        .take_while(|ch| ch.is_whitespace())
-        .map(char::len_utf8)
-        .sum()
-}
-
-fn is_shape_key_continue(ch: char) -> bool {
-    ch == '_' || ch == '-' || ch.is_ascii_alphanumeric()
 }
 
 fn diagram_header_prefix_matches(prefix: &str) -> bool {
@@ -703,6 +618,10 @@ fn apply_expected_syntax_to_completion(
         FenceExpectedSyntaxKind::NodeIdentifier => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
+        }
+        FenceExpectedSyntaxKind::Operator => {
+            completion_kinds.clear();
+            completion_kinds.push(FenceCursorCompletionKind::Operator);
         }
         FenceExpectedSyntaxKind::Shape => {
             completion_kinds.clear();

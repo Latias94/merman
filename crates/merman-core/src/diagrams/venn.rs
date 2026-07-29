@@ -477,11 +477,12 @@ pub(crate) fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_venn_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
     let VennParseOutcome {
         source,
         first_error,
-    } = construct_venn_parse_outcome(code, meta);
+    } = construct_venn_parse_outcome_controlled(code, meta, control)?;
     let construction = match first_error {
         Some(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
@@ -489,7 +490,7 @@ pub(crate) fn parse_venn_json_and_editor_facts(
         )),
         None => Ok(source),
     };
-    crate::family::CombinedSemanticParse::from_construction(
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
         |source| {
             (
@@ -498,7 +499,9 @@ pub(crate) fn parse_venn_json_and_editor_facts(
             )
         },
         crate::family::CombinedSemanticFailure::into_parts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn parse_venn_model_for_render(
@@ -528,6 +531,16 @@ fn parse_venn_semantic_source(code: &str, meta: &ParseMetadata) -> Result<VennSe
 }
 
 fn construct_venn_parse_outcome(code: &str, meta: &ParseMetadata) -> VennParseOutcome {
+    construct_venn_parse_outcome_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_venn_parse_outcome_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<VennParseOutcome> {
+    control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("venn");
 
@@ -537,6 +550,7 @@ fn construct_venn_parse_outcome(code: &str, meta: &ParseMetadata) -> VennParseOu
     let mut first_error = None;
 
     for segment in code.split_inclusive('\n') {
+        control.checkpoint()?;
         let line_start = offset;
         offset += segment.len();
         let line = segment.trim_end_matches(['\n', '\r']);
@@ -635,13 +649,14 @@ fn construct_venn_parse_outcome(code: &str, meta: &ParseMetadata) -> VennParseOu
 
     state.lexemes.attach(code, &mut state.editor_facts);
 
-    VennParseOutcome {
+    control.checkpoint()?;
+    Ok(VennParseOutcome {
         source: VennSemanticSource {
             model: state.model,
             editor_facts: state.editor_facts,
         },
         first_error,
-    }
+    })
 }
 
 fn recover_venn_error(
@@ -1731,9 +1746,10 @@ style "Frontend Team",Backend fill:rgba(255, 0, 128, 0.5), color:#101010
         let meta = meta();
 
         crate::diagrams::langium_common::reset_family_syntax_construction_count("venn");
-        let (combined_json, combined_editor) =
-            crate::family::test_support::into_result(parse_venn_json_and_editor_facts(text, &meta))
-                .unwrap();
+        let (combined_json, combined_editor) = crate::family::test_support::into_result(
+            parse_venn_json_and_editor_facts(text, &meta, &crate::ParseControl::new()),
+        )
+        .unwrap();
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count("venn"),
             1,

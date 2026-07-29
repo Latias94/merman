@@ -51,7 +51,9 @@ pub(crate) struct NodeLabelToken {
 #[derive(Debug, Clone)]
 pub(crate) struct DirectionStatementToken {
     pub direction: String,
+    pub selection: SourceSpan,
     pub lexeme_components: Vec<FlowchartLexemeComponent>,
+    pub recovery_error: Option<LexError>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -59,6 +61,7 @@ pub(crate) struct DirectionStatementToken {
 pub(crate) struct LexError {
     pub message: String,
     pub span: Option<SourceSpan>,
+    pub expected_syntax: Option<crate::EditorExpectedSyntax>,
 }
 
 impl LexError {
@@ -66,6 +69,7 @@ impl LexError {
         Self {
             message: message.into(),
             span: None,
+            expected_syntax: None,
         }
     }
 
@@ -73,7 +77,17 @@ impl LexError {
         Self {
             message: message.into(),
             span: Some(span),
+            expected_syntax: None,
         }
+    }
+
+    pub(crate) fn expecting(
+        mut self,
+        kind: crate::EditorExpectedSyntaxKind,
+        span: SourceSpan,
+    ) -> Self {
+        self.expected_syntax = Some(crate::EditorExpectedSyntax::new(kind, span));
+        self
     }
 }
 

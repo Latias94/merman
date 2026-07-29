@@ -11,7 +11,7 @@ mod model;
 mod parser;
 mod semantic;
 
-use crate::{EditorSemanticFacts, Error, ParseMetadata, Result};
+use crate::{EditorSemanticFacts, Error, ParseControl, ParseControlResult, ParseMetadata, Result};
 use serde_json::Value;
 
 pub(crate) use model::render_model_to_compat_json;
@@ -41,8 +41,9 @@ pub(crate) fn parse_zenuml_model_for_render(
 pub(crate) fn parse_zenuml_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    let source = construct_semantic_source(code);
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let source = construct_semantic_source(code, control)?;
     let construction = match &source.first_diagnostic {
         Some(diagnostic) => Err(crate::family::CombinedSemanticFailure::new(
             Error::diagram_parse_exact(
@@ -54,7 +55,7 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
         )),
         None => Ok(source),
     };
-    crate::family::CombinedSemanticParse::from_construction(
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
         |source| {
             (
@@ -63,11 +64,14 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
             )
         },
         crate::family::CombinedSemanticFailure::into_parts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSemanticSource> {
-    let source = construct_semantic_source(code);
+    let source = construct_semantic_source(code, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled");
     if let Some(diagnostic) = &source.first_diagnostic {
         return Err(Error::diagram_parse_exact(
             meta.diagram_type.clone(),
@@ -78,24 +82,31 @@ fn parse_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSeman
     Ok(source)
 }
 
-fn construct_semantic_source(code: &str) -> ZenumlSemanticSource {
+fn construct_semantic_source(
+    code: &str,
+    control: &ParseControl,
+) -> ParseControlResult<ZenumlSemanticSource> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("zenuml");
 
-    let tokens = lexer::lex(code);
-    let parsed = parser::parse(code, &tokens);
-    let lexemes = lexer::editor_lexemes(code, &tokens, !parsed.diagnostics.is_empty());
+    control.checkpoint()?;
+    let tokens = lexer::lex_controlled(code, control)?;
+    let parsed = parser::parse_controlled(code, &tokens, control)?;
+    let lexemes =
+        lexer::editor_lexemes_controlled(code, &tokens, !parsed.diagnostics.is_empty(), control)?;
+    control.checkpoint()?;
     let semantic::SemanticBuild {
         model,
         mut editor_facts,
         diagnostics,
-    } = semantic::build(parsed);
+    } = semantic::build_controlled(parsed, control)?;
+    control.checkpoint()?;
     editor_facts.replace_family_lexemes(lexemes);
-    ZenumlSemanticSource {
+    Ok(ZenumlSemanticSource {
         model,
         editor_facts,
         first_diagnostic: diagnostics.into_iter().next(),
-    }
+    })
 }
 
 #[cfg(test)]

@@ -1,15 +1,35 @@
 use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, legacy_warning_messages};
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    MermaidConfig, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
+    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    editor::EditorLexemeJournal,
 };
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, hash_map::Entry};
 
 #[cfg(test)]
 use std::cell::Cell;
+
+// Block spacing is materialized as one semantic placeholder per occupied column to match Mermaid.
+// Bound that expansion before allocation; larger bounded product profiles allow at most this many
+// model items, and an unbounded profile must still not turn a tiny source into an effectively
+// infinite allocation.
+const MAX_BLOCK_SPACE_EXPANSION_ITEMS: i64 = 200_000;
+
+const BLOCK_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
+    EditorCompletionCandidate::keyword("right", "right"),
+    EditorCompletionCandidate::keyword("left", "left"),
+    EditorCompletionCandidate::keyword("up", "up"),
+    EditorCompletionCandidate::keyword("down", "down"),
+    EditorCompletionCandidate::keyword("x", "horizontal"),
+    EditorCompletionCandidate::keyword("y", "vertical"),
+];
+
+const BLOCK_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
+    EditorCompletionVocabulary::new(&[], BLOCK_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 thread_local! {
@@ -168,11 +188,19 @@ fn clone_block_shallow(block: &Block) -> Block {
     }
 }
 
-fn clone_block_tree_nonrecursive(block: &Block) -> Block {
+fn clone_block_tree_nonrecursive(
+    block: &Block,
+    control: &ParseControl,
+) -> ParseControlResult<Block> {
     let mut completed: HashMap<*const Block, Block> = HashMap::new();
     let mut stack = vec![(block, false)];
+    let mut visited_count = 0usize;
 
     while let Some((block, visited)) = stack.pop() {
+        if visited_count.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        visited_count += 1;
         if visited {
             let children = block
                 .children
@@ -190,9 +218,9 @@ fn clone_block_tree_nonrecursive(block: &Block) -> Block {
         }
     }
 
-    completed
+    Ok(completed
         .remove(&(block as *const Block))
-        .unwrap_or_else(|| clone_block_shallow(block))
+        .unwrap_or_else(|| clone_block_shallow(block)))
 }
 
 #[derive(Debug, Clone, Default)]
@@ -308,19 +336,24 @@ impl BlockDb {
         }
     }
 
-    fn set_hierarchy(&mut self, blocks: Vec<Block>, config: &MermaidConfig) -> Result<()> {
+    fn set_hierarchy(
+        &mut self,
+        blocks: Vec<Block>,
+        config: &MermaidConfig,
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
         let root_id = self.root_id.clone();
-        self.populate_block_database(blocks, &root_id, config)?;
-        self.blocks = self
+        self.populate_block_database(blocks, &root_id, config, control)?;
+        let root_children = self
             .block_database
             .get(&self.root_id)
-            .map(|root| {
-                root.children
-                    .iter()
-                    .map(clone_block_tree_nonrecursive)
-                    .collect()
-            })
+            .map(|root| root.children.as_slice())
             .unwrap_or_default();
+        let mut blocks = Vec::with_capacity(root_children.len());
+        for child in root_children {
+            blocks.push(clone_block_tree_nonrecursive(child, control)?);
+        }
+        self.blocks = blocks;
         Ok(())
     }
 
@@ -329,10 +362,16 @@ impl BlockDb {
         blocks: Vec<Block>,
         parent_id: &str,
         config: &MermaidConfig,
-    ) -> Result<()> {
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
         let mut stack = vec![PopulateFrame::new(parent_id.to_string(), blocks)];
+        let mut visited_count = 0usize;
 
         while !stack.is_empty() {
+            if visited_count.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            visited_count += 1;
             let next = {
                 let Some(frame) = stack.last_mut() else {
                     break;
@@ -347,12 +386,12 @@ impl BlockDb {
                 let Some(frame) = stack.pop() else {
                     break;
                 };
-                let child_blocks: Vec<Block> = frame
-                    .child_ids
-                    .iter()
-                    .filter_map(|id| self.block_database.get(id))
-                    .map(clone_block_tree_nonrecursive)
-                    .collect();
+                let mut child_blocks = Vec::with_capacity(frame.child_ids.len());
+                for id in &frame.child_ids {
+                    if let Some(block) = self.block_database.get(id) {
+                        child_blocks.push(clone_block_tree_nonrecursive(block, control)?);
+                    }
+                }
                 if let Some(parent) = self.block_database.get_mut(&frame.parent_id) {
                     parent.children = child_blocks;
                 }
@@ -430,7 +469,8 @@ impl BlockDb {
                 let mut existing = self
                     .block_database
                     .get(&block.id)
-                    .map(clone_block_tree_nonrecursive)
+                    .map(|block| clone_block_tree_nonrecursive(block, control))
+                    .transpose()?
                     .unwrap_or_else(|| Block::new(block.id.clone()));
                 // Mermaid's blockDB only merges a small subset of fields when a block id is
                 // encountered multiple times. In particular, later occurrences do *not* override
@@ -450,6 +490,9 @@ impl BlockDb {
             if block.block_type == "space" {
                 let w = block.width.unwrap_or(1).max(0);
                 for j in 0..w {
+                    if j % 128 == 0 {
+                        control.checkpoint()?;
+                    }
                     let id = format!("{}-{}", block.id, j);
                     let mut new_block = clone_block_shallow(&block);
                     new_block.id = id.clone();
@@ -700,61 +743,59 @@ impl BlockParseFailure {
 fn construct_block_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-) -> std::result::Result<BlockSemanticSource, BlockParseFailure> {
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<BlockSemanticSource, BlockParseFailure>> {
     #[cfg(test)]
     BLOCK_SYNTAX_CONSTRUCTION_COUNT.set(BLOCK_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let mut parser = Parser::new(code);
+    control.checkpoint()?;
+    let mut parser = Parser::new(code, control);
     if let Err(error) = parser.parse_header() {
         let (error, span) = block_error_with_fallback_span(error, parser.current_token_span());
-        return Err(BlockParseFailure {
+        return Ok(Err(BlockParseFailure {
             error: Box::new(error),
             editor_facts: Box::new(parser.into_editor_facts()),
             span,
-        });
+        }));
     }
 
-    let document = match parser.parse_document(false) {
+    let document = match parser.parse_document(false)? {
         Ok(document) => document,
         Err(error) => {
             let (error, span) = block_error_with_fallback_span(error, parser.current_token_span());
-            return Err(BlockParseFailure {
+            return Ok(Err(BlockParseFailure {
                 error: Box::new(error),
                 editor_facts: Box::new(parser.into_editor_facts()),
                 span,
-            });
+            }));
         }
     };
     let editor_facts = parser.into_editor_facts();
 
     if let Some(failure) = document.failure {
-        return Err(BlockParseFailure {
+        return Ok(Err(BlockParseFailure {
             error: Box::new(failure.error),
             editor_facts: Box::new(editor_facts),
             span: failure.span,
-        });
+        }));
     }
 
+    control.checkpoint()?;
     let mut db = BlockDb::default();
     db.clear();
-    if let Err(error) = db.set_hierarchy(document.blocks, &meta.effective_config) {
-        let span = SourceSpan::new(0, code.len());
-        let (error, span) = block_error_with_fallback_span(error, span);
-        return Err(BlockParseFailure {
-            error: Box::new(error),
-            editor_facts: Box::new(editor_facts),
-            span,
-        });
-    }
+    db.set_hierarchy(document.blocks, &meta.effective_config, control)?;
 
-    Ok(BlockSemanticSource { db, editor_facts })
+    control.checkpoint()?;
+    Ok(Ok(BlockSemanticSource { db, editor_facts }))
 }
 
 pub(crate) fn parse_block_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<BlockDiagramRenderModel> {
-    let source = construct_block_semantic_source(code, meta).map_err(|failure| *failure.error)?;
+    let source = construct_block_semantic_source(code, meta, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+        .map_err(|failure| *failure.error)?;
     Ok(block_db_to_render_model(&source.db))
 }
 
@@ -887,6 +928,20 @@ struct BlockSpannedText {
     span: SourceSpan,
 }
 
+fn validate_block_space_width(width: i64, span: SourceSpan) -> Result<()> {
+    if width > MAX_BLOCK_SPACE_EXPANSION_ITEMS {
+        return Err(Error::diagram_parse_exact(
+            "block",
+            format!(
+                "block space width {width} exceeds the materialization limit of \
+                 {MAX_BLOCK_SPACE_EXPANSION_ITEMS}"
+            ),
+            span,
+        ));
+    }
+    Ok(())
+}
+
 fn push_block_entity(
     facts: &mut EditorSemanticFacts,
     text: BlockSpannedText,
@@ -997,9 +1052,11 @@ fn push_block_id_list(
 pub(crate) fn parse_block_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_block_semantic_source(code, meta),
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_block_semantic_source(code, meta, control)?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
         |source| {
             let model = block_db_to_render_model(&source.db);
             (
@@ -1008,7 +1065,9 @@ pub(crate) fn parse_block_json_and_editor_facts(
             )
         },
         BlockParseFailure::into_error_and_editor_facts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 struct NodeDelims {
@@ -1119,7 +1178,7 @@ impl DocumentFrame {
         }
     }
 
-    fn into_block(self, parser: &mut Parser<'_>) -> Block {
+    fn into_block(self, parser: &mut Parser<'_, '_>) -> Block {
         match self.kind {
             DocumentFrameKind::Root => {
                 let mut b = Block::new(parser.generate_id());
@@ -1194,21 +1253,24 @@ fn block_error_with_fallback_span(error: Error, fallback: SourceSpan) -> (Error,
     }
 }
 
-struct Parser<'a> {
-    input: &'a str,
+struct Parser<'input, 'control> {
+    input: &'input str,
+    control: &'control ParseControl,
     pos: usize,
     gen_counter: i64,
     editor_facts: EditorSemanticFacts,
-    lexemes: EditorLexemeJournal<'a>,
+    lexemes: EditorLexemeJournal<'input>,
 }
 
-impl<'a> Parser<'a> {
-    fn new(input: &'a str) -> Self {
+impl<'input, 'control> Parser<'input, 'control> {
+    fn new(input: &'input str, control: &'control ParseControl) -> Self {
         Self {
             input,
+            control,
             pos: 0,
             gen_counter: 0,
-            editor_facts: EditorSemanticFacts::new(),
+            editor_facts: EditorSemanticFacts::new()
+                .with_completion_vocabulary(BLOCK_COMPLETION_VOCABULARY),
             lexemes: EditorLexemeJournal::family_parser(input),
         }
     }
@@ -1324,12 +1386,26 @@ impl<'a> Parser<'a> {
 
     fn skip_ws_and_comments(&mut self) {
         loop {
+            let mut last_checkpoint = self.pos;
             while self.peek_char().is_some_and(|c| c.is_whitespace()) {
                 self.bump();
+                if self.pos.saturating_sub(last_checkpoint) >= 4096 {
+                    if self.control.is_cancelled() {
+                        return;
+                    }
+                    last_checkpoint = self.pos;
+                }
             }
 
             if self.starts_with("%%") {
+                let mut last_checkpoint = self.pos;
                 while let Some(c) = self.bump() {
+                    if self.pos.saturating_sub(last_checkpoint) >= 4096 {
+                        if self.control.is_cancelled() {
+                            return;
+                        }
+                        last_checkpoint = self.pos;
+                    }
                     if c == '\n' {
                         break;
                     }
@@ -1436,12 +1512,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_document(&mut self, stop_on_end: bool) -> Result<BlockDocument> {
+    fn parse_document(&mut self, stop_on_end: bool) -> ParseControlResult<Result<BlockDocument>> {
         let mut frames = vec![DocumentFrame::root()];
         let mut first_failure = None;
 
         loop {
+            self.control.checkpoint()?;
             self.skip_ws_and_comments();
+            self.control.checkpoint()?;
             if self.is_eof() {
                 break;
             }
@@ -1476,16 +1554,20 @@ impl<'a> Parser<'a> {
         }
 
         while frames.len() > 1 {
-            self.finish_document_frame(&mut frames)?;
+            self.control.checkpoint()?;
+            if let Err(error) = self.finish_document_frame(&mut frames) {
+                return Ok(Err(error));
+            }
         }
 
         let Some(frame) = frames.pop() else {
-            return Err(block_document_frame_error());
+            return Ok(Err(block_document_frame_error()));
         };
-        Ok(BlockDocument {
+        self.control.checkpoint()?;
+        Ok(Ok(BlockDocument {
             blocks: frame.children,
             failure: first_failure,
-        })
+        }))
     }
 
     fn parse_document_statement(
@@ -1611,6 +1693,7 @@ impl<'a> Parser<'a> {
         self.skip_ws_and_comments();
         if self.consume_exact(":") {
             let (value, value_fact) = self.parse_int()?;
+            validate_block_space_width(value, value_fact.span)?;
             push_block_payload(
                 &mut self.editor_facts,
                 value_fact,
@@ -1778,7 +1861,14 @@ impl<'a> Parser<'a> {
                     ));
                 }
                 let text = self.input[start..self.pos].to_string();
-                width = text.parse::<i64>().unwrap_or(1);
+                width = text.parse::<i64>().map_err(|_| {
+                    Error::diagram_parse_exact(
+                        "block",
+                        "block space width is outside the supported integer range",
+                        SourceSpan::new(start, self.pos),
+                    )
+                })?;
+                validate_block_space_width(width, SourceSpan::new(start, self.pos))?;
                 self.record_lexeme(EditorLexemeKind::Number, SourceSpan::new(start, self.pos));
                 push_block_payload(
                     &mut self.editor_facts,
@@ -2060,11 +2150,6 @@ impl<'a> Parser<'a> {
         loop {
             self.skip_ws_and_comments();
             let direction = self.parse_direction()?;
-            self.editor_facts
-                .push_expected_syntax(EditorExpectedSyntax::new(
-                    EditorExpectedSyntaxKind::DirectionValue,
-                    direction.span,
-                ));
             push_block_payload(
                 &mut self.editor_facts,
                 direction.clone(),
@@ -2090,6 +2175,11 @@ impl<'a> Parser<'a> {
             }
             self.bump();
         }
+        self.editor_facts
+            .push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::DirectionValue,
+                SourceSpan::new(start, self.pos),
+            ));
         if self.pos == start {
             return Err(Error::diagram_parse_fallback(
                 "block".to_string(),
@@ -2356,7 +2446,9 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 pub(crate) fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let source = construct_block_semantic_source(code, meta).map_err(|failure| *failure.error)?;
+    let source = construct_block_semantic_source(code, meta, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+        .map_err(|failure| *failure.error)?;
     let model = block_db_to_render_model(&source.db);
     render_model_to_compat_json(&model, meta)
 }
@@ -2383,6 +2475,49 @@ mod tests {
             config: MermaidConfig::default(),
             effective_config: MermaidConfig::default(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn block_space_materialization_observes_cancellation() {
+        let mut space = Block::new("space".to_string());
+        space.block_type = "space".to_string();
+        space.label = Some(String::new());
+        space.width = Some(1_024);
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(3);
+        let mut db = BlockDb::default();
+        db.clear();
+
+        assert_eq!(
+            db.set_hierarchy(vec![space], &MermaidConfig::default(), &control),
+            Err(crate::ParseCancelled)
+        );
+        assert!(db.block_database.len() > 2);
+        assert!(db.block_database.len() < 1_024);
+    }
+
+    #[test]
+    fn block_space_width_is_bounded_before_materialization() {
+        let width = MAX_BLOCK_SPACE_EXPANSION_ITEMS + 1;
+        for text in [
+            format!("block\nspace:{width}\n"),
+            format!("block\nA space:{width} B\n"),
+        ] {
+            let error = parse_block(&text, &meta()).expect_err("oversized space must be rejected");
+            let Error::DiagramParse { diagnostic, .. } = error else {
+                panic!("expected structured Block parse error");
+            };
+            let start = text.find(&width.to_string()).expect("width in fixture");
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + width.to_string().len()))
+            );
+            assert!(
+                diagnostic
+                    .message()
+                    .contains("exceeds the materialization limit")
+            );
         }
     }
 
@@ -2510,7 +2645,7 @@ C<["Route"]>(left,down)
 
         reset_block_syntax_construction_count();
         let (combined_json, combined_facts) = crate::family::test_support::into_result(
-            parse_block_json_and_editor_facts(text, &meta),
+            parse_block_json_and_editor_facts(text, &meta, &ParseControl::new()),
         )
         .unwrap();
         assert_eq!(

@@ -319,7 +319,7 @@ impl KanbanDb {
         level: usize,
         spec: KanbanNodeSpec,
         span: SourceSpan,
-        shape_data: Option<KanbanShapeData>,
+        shape_data: Option<(KanbanShapeData, Value)>,
         config: &MermaidConfig,
     ) -> Result<()> {
         let mut padding = get_i64(config, "mindmap.padding").unwrap_or(10);
@@ -353,8 +353,8 @@ impl KanbanDb {
             shape: None,
         };
 
-        if let Some(shape_data) = shape_data {
-            apply_shape_data(&mut node, &shape_data)?;
+        if let Some((shape_data, document)) = shape_data {
+            apply_shape_data(&mut node, &document, shape_data.span)?;
         }
 
         if let Some(section_idx) = self.get_section_index(level)? {
@@ -426,10 +426,8 @@ impl KanbanDb {
     }
 }
 
-fn apply_shape_data(node: &mut KanbanNode, shape_data: &KanbanShapeData) -> Result<()> {
-    let doc = crate::inline_config::parse_mermaid_inline_object(&shape_data.text)
-        .map_err(|e| Error::diagram_parse_exact("kanban", e, shape_data.span))?;
-    let Some(obj) = doc.as_object() else {
+fn apply_shape_data(node: &mut KanbanNode, document: &Value, span: SourceSpan) -> Result<()> {
+    let Some(obj) = document.as_object() else {
         return Ok(());
     };
 
@@ -438,7 +436,7 @@ fn apply_shape_data(node: &mut KanbanNode, shape_data: &KanbanShapeData) -> Resu
             return Err(Error::diagram_parse_exact(
                 "kanban",
                 format!("No such shape: {shape}. Shape names should be lowercase."),
-                shape_data.span,
+                span,
             ));
         }
         if shape == "kanbanItem" {
@@ -1284,6 +1282,16 @@ fn construct_kanban_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<KanbanSemanticSource, KanbanParseFailure> {
+    construct_kanban_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_kanban_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<std::result::Result<KanbanSemanticSource, KanbanParseFailure>> {
+    control.checkpoint()?;
     #[cfg(test)]
     KANBAN_SYNTAX_CONSTRUCTION_COUNT.set(KANBAN_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -1294,10 +1302,11 @@ fn construct_kanban_semantic_source(
 
     let mut lines = KanbanLineCursor::new(code);
     let header_tail = loop {
+        control.checkpoint()?;
         let Some(line) = lines.next() else {
             let span = SourceSpan::new(lines.offset(), lines.offset());
             lexemes.attach(code, &mut editor_facts);
-            return Err(KanbanParseFailure {
+            return Ok(Err(KanbanParseFailure {
                 error: Box::new(Error::diagram_parse_insertion_point(
                     meta.diagram_type.clone(),
                     "expected kanban header",
@@ -1305,7 +1314,7 @@ fn construct_kanban_semantic_source(
                 )),
                 editor_facts: Box::new(editor_facts),
                 span,
-            });
+            }));
         };
         let visible = strip_inline_comment(line.text);
         let visible_start = visible.len() - visible.trim_start().len();
@@ -1335,7 +1344,7 @@ fn construct_kanban_semantic_source(
         let span = SourceSpan::new(trimmed_start, trimmed_start + trimmed.len());
         lexemes.push(EditorLexemeKind::Literal, span);
         lexemes.attach(code, &mut editor_facts);
-        return Err(KanbanParseFailure {
+        return Ok(Err(KanbanParseFailure {
             error: Box::new(Error::diagram_parse_exact(
                 meta.diagram_type.clone(),
                 "expected kanban header",
@@ -1343,34 +1352,43 @@ fn construct_kanban_semantic_source(
             )),
             editor_facts: Box::new(editor_facts),
             span,
-        });
+        }));
     };
 
+    control.checkpoint()?;
     if let Some((tail, tail_start)) = &header_tail
         && let Err(error) = parse_kanban_statement(
             &mut lines,
-            &mut db,
-            &mut editor_facts,
-            &mut lexemes,
+            KanbanStatementContext {
+                db: &mut db,
+                facts: &mut editor_facts,
+                lexemes: &mut lexemes,
+                meta,
+                control,
+            },
             tail,
             *tail_start,
-            meta,
-        )
+        )?
     {
         let fallback = SourceSpan::new(*tail_start, *tail_start + tail.len());
         record_kanban_failure(&mut first_failure, error, fallback);
     }
+    control.checkpoint()?;
 
     while let Some(source_line) = lines.next() {
+        control.checkpoint()?;
         if let Err(error) = parse_kanban_statement(
             &mut lines,
-            &mut db,
-            &mut editor_facts,
-            &mut lexemes,
+            KanbanStatementContext {
+                db: &mut db,
+                facts: &mut editor_facts,
+                lexemes: &mut lexemes,
+                meta,
+                control,
+            },
             source_line.text,
             source_line.start,
-            meta,
-        ) {
+        )? {
             let fallback = SourceSpan::new(
                 source_line.start,
                 source_line.start + source_line.text.len(),
@@ -1381,13 +1399,14 @@ fn construct_kanban_semantic_source(
 
     lexemes.attach(code, &mut editor_facts);
     if let Some((error, span)) = first_failure {
-        Err(KanbanParseFailure {
+        Ok(Err(KanbanParseFailure {
             error: Box::new(error),
             editor_facts: Box::new(editor_facts),
             span,
-        })
+        }))
     } else {
-        Ok(KanbanSemanticSource { db, editor_facts })
+        control.checkpoint()?;
+        Ok(Ok(KanbanSemanticSource { db, editor_facts }))
     }
 }
 
@@ -1402,23 +1421,36 @@ fn record_kanban_failure(
     }
 }
 
+struct KanbanStatementContext<'a> {
+    db: &'a mut KanbanDb,
+    facts: &'a mut EditorSemanticFacts,
+    lexemes: &'a mut KanbanLexemeTrace,
+    meta: &'a ParseMetadata,
+    control: &'a crate::ParseControl,
+}
+
 fn parse_kanban_statement(
     lines: &mut KanbanLineCursor<'_>,
-    db: &mut KanbanDb,
-    facts: &mut EditorSemanticFacts,
-    lexemes: &mut KanbanLexemeTrace,
+    context: KanbanStatementContext<'_>,
     source: &str,
     source_start: usize,
-    meta: &ParseMetadata,
-) -> Result<()> {
+) -> crate::ParseControlResult<Result<()>> {
+    let KanbanStatementContext {
+        db,
+        facts,
+        lexemes,
+        meta,
+        control,
+    } = context;
+    control.checkpoint()?;
     let line = strip_inline_comment(source).trim_end();
     if line.trim().is_empty() {
-        return Ok(());
+        return Ok(Ok(()));
     }
     let (indent, rest) = split_indent(line);
     let rest = rest.trim_end();
     if rest.is_empty() {
-        return Ok(());
+        return Ok(Ok(()));
     }
     let rest_start = source_start + line.len() - rest.len();
 
@@ -1448,11 +1480,11 @@ fn parse_kanban_statement(
             ),
         };
         let Some(close) = close else {
-            return Err(Error::diagram_parse_insertion_point(
+            return Ok(Err(Error::diagram_parse_insertion_point(
                 "kanban",
                 "unterminated icon decoration",
                 rest_start + rest.len(),
-            ));
+            )));
         };
         let close_start = rest_start + value_start + close;
         lexemes.push(
@@ -1467,15 +1499,15 @@ fn parse_kanban_statement(
             let tail_start = close_start + 1;
             let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
             lexemes.push(EditorLexemeKind::Literal, span);
-            return Err(Error::diagram_parse_exact(
+            return Ok(Err(Error::diagram_parse_exact(
                 "kanban",
                 "unexpected trailing input",
                 span,
-            ));
+            )));
         }
         facts.push_directive_prefix("icon");
         if icon.text.is_empty() {
-            return Ok(());
+            return Ok(Ok(()));
         }
         lexemes.push(EditorLexemeKind::String, icon.span);
         db.decorate_last(None, Some(icon.text.clone()), &meta.effective_config);
@@ -1486,7 +1518,7 @@ fn parse_kanban_statement(
             icon.span,
             icon.span,
         ));
-        return Ok(());
+        return Ok(Ok(()));
     }
 
     if let Some(after) = rest.strip_prefix(":::") {
@@ -1519,25 +1551,53 @@ fn parse_kanban_statement(
                 class_name.span,
             ));
         }
-        return Ok(());
+        return Ok(Ok(()));
     }
 
-    let (node_part, shape_data) = split_node_and_shape_data(lines, rest, rest_start, lexemes)?;
+    let (node_part, shape_data) = match split_node_and_shape_data(lines, rest, rest_start, lexemes)
+    {
+        Ok(parsed) => parsed,
+        Err(error) => return Ok(Err(error)),
+    };
     if node_part.trim().is_empty() {
-        return Ok(());
+        return Ok(Ok(()));
     }
-    let parsed = parse_node_spec_for_render(&node_part, rest_start, lexemes)?;
+    let parsed = match parse_node_spec_for_render(&node_part, rest_start, lexemes) {
+        Ok(parsed) => parsed,
+        Err(error) => return Ok(Err(error)),
+    };
     let fact_kind = kanban_node_editor_kind(parsed.spec.ty);
     if let Some(shape_data) = &shape_data {
         push_kanban_metadata_facts(facts, &shape_data.fields);
     }
-    db.add_node(
+    let shape_data = match shape_data {
+        Some(shape_data) => {
+            let document = match crate::inline_config::parse_mermaid_inline_object_controlled(
+                &shape_data.text,
+                control,
+            )? {
+                Ok(document) => document,
+                Err(error) => {
+                    return Ok(Err(Error::diagram_parse_exact(
+                        "kanban",
+                        error,
+                        shape_data.span,
+                    )));
+                }
+            };
+            Some((shape_data, document))
+        }
+        None => None,
+    };
+    if let Err(error) = db.add_node(
         indent,
         parsed.spec,
         parsed.span,
         shape_data,
         &meta.effective_config,
-    )?;
+    ) {
+        return Ok(Err(error));
+    }
     let is_section = db.nodes.last().is_some_and(|node| node.parent_id.is_none());
     if is_section {
         facts.push_symbol(EditorSemanticSymbol::outline(
@@ -1565,7 +1625,8 @@ fn parse_kanban_statement(
             label.span,
         ));
     }
-    Ok(())
+    control.checkpoint()?;
+    Ok(Ok(()))
 }
 
 fn push_kanban_metadata_facts(facts: &mut EditorSemanticFacts, fields: &[KanbanMetadataField]) {
@@ -1618,9 +1679,11 @@ pub(crate) fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_kanban_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_kanban_semantic_source(code, meta),
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control.checkpoint()?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construct_kanban_semantic_source_controlled(code, meta, control)?,
         |source| {
             let model = kanban_db_into_render_model(&source.db, meta);
             (
@@ -1629,7 +1692,9 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
             )
         },
         KanbanParseFailure::into_error_and_editor_facts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 fn kanban_db_into_render_model(db: &KanbanDb, meta: &ParseMetadata) -> KanbanDiagramRenderModel {
@@ -1788,7 +1853,7 @@ mod tests {
 
         reset_kanban_syntax_construction_count();
         let (json, facts) = crate::family::test_support::into_result(
-            parse_kanban_json_and_editor_facts(text, &meta),
+            parse_kanban_json_and_editor_facts(text, &meta, &crate::ParseControl::new()),
         )
         .unwrap();
 
@@ -2229,7 +2294,7 @@ mod tests {
         assert!(sections[0].get("icon").is_none());
 
         let (_, facts) = crate::family::test_support::into_result(
-            parse_kanban_json_and_editor_facts(text, &meta()),
+            parse_kanban_json_and_editor_facts(text, &meta(), &crate::ParseControl::new()),
         )
         .unwrap();
         assert!(facts.directive_prefixes.iter().any(|value| value == "icon"));

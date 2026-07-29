@@ -77,6 +77,14 @@ export function detectDiagramFacts(
       return UNAVAILABLE_DIAGRAM_DETECTION;
     }
 
+    const parseDisposition = diagrams[0].parse_disposition;
+    if (parseDisposition === "unavailable") {
+      return UNAVAILABLE_DIAGRAM_DETECTION;
+    }
+    if (parseDisposition !== "parsed" && parseDisposition !== "recovered") {
+      return UNAVAILABLE_DIAGRAM_DETECTION;
+    }
+
     const syntax = diagrams[0].syntax;
     if (!isRecord(syntax)) {
       return UNAVAILABLE_DIAGRAM_DETECTION;
@@ -100,7 +108,7 @@ export function detectDiagramFacts(
 
     return Object.freeze({
       status: "available",
-      validity: facts.valid ? "valid" : "recoverable-invalid",
+      validity: parseDisposition === "parsed" ? "valid" : "recoverable-invalid",
       diagramType,
       syntaxId,
       effectiveLayoutId,

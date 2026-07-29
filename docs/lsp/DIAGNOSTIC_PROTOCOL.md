@@ -42,7 +42,9 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - `textDocument/diagnostic` is wired for pull clients and reports the same shared analysis payloads
   as the push path. `workspace/diagnostic` is not advertised or implemented until unopened-file
   workspace scanning exists.
-- Workspace symbols are wired from tracked document snapshots.
+- Document symbols are wired from tracked document snapshots. Workspace symbols are not advertised:
+  `ServerCapabilities.workspace_symbol_provider` is `None`, and `workspace/symbol` requests return
+  JSON-RPC `MethodNotFound`.
 - Core config diagnostics include source-backed Mermaid compatibility warnings such as deprecated
   directive usage of `flowchart.htmlLabels` (diagnostic-only because automatic migration can
   change rendering semantics) and

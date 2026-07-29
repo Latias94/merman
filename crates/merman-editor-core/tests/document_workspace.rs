@@ -1,4 +1,7 @@
-use merman_analysis::{AnalysisOptions, Analyzer, FenceMarker, FenceTextIndexSource, SourceKind};
+use merman_analysis::{
+    AnalysisOptions, AnalysisRuleConfig, Analyzer, DiagnosticSeverity, DiagramParseDisposition,
+    FenceMarker, FenceTextIndexSource, SourceKind,
+};
 use merman_editor_core::{
     DiagramDetectionValidity, DocumentKind, DocumentUri, DocumentWorkspace, Position,
 };
@@ -78,6 +81,77 @@ fn recovered_flowchart_keeps_available_detection_in_the_shared_analysis_bundle()
     assert_eq!(detection.diagram_type, "flowchart");
     assert_eq!(detection.syntax_id, "flowchart-v2");
     assert_eq!(detection.effective_layout_id, "dagre");
+}
+
+#[test]
+fn diagram_detection_validity_is_independent_from_diagnostic_severity() {
+    let parsed_source = concat!(
+        "cynefin-beta\n",
+        "  complex\n",
+        "  complicated\n",
+        "  complicated --> complicated : \"Self-loop\"\n",
+    );
+    let recovered_source = "flowchart TD\nA[unterminated\n";
+
+    for severity in [
+        DiagnosticSeverity::Error,
+        DiagnosticSeverity::Warning,
+        DiagnosticSeverity::Info,
+        DiagnosticSeverity::Hint,
+    ] {
+        let parsed = analysis_context_with_rule_severity(
+            parsed_source,
+            "merman.parse.recovered_editor_facts",
+            severity,
+        );
+        assert_eq!(
+            parsed.analysis_result().diagrams()[0].parse_disposition(),
+            DiagramParseDisposition::Parsed
+        );
+        assert_eq!(
+            parsed.detection().expect("parsed detection").validity,
+            DiagramDetectionValidity::Valid,
+            "parsed detection changed for {severity:?}"
+        );
+
+        let recovered = analysis_context_with_rule_severity(
+            recovered_source,
+            "merman.parse.diagram_parse",
+            severity,
+        );
+        assert_eq!(
+            recovered.analysis_result().diagrams()[0].parse_disposition(),
+            DiagramParseDisposition::Recovered
+        );
+        assert_eq!(
+            recovered.detection().expect("recovered detection").validity,
+            DiagramDetectionValidity::RecoverableInvalid,
+            "recovered detection changed for {severity:?}"
+        );
+    }
+}
+
+fn analysis_context_with_rule_severity(
+    source: &str,
+    rule_id: &str,
+    severity: DiagnosticSeverity,
+) -> merman_editor_core::DocumentAnalysisContext {
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity(rule_id, severity)
+                .unwrap(),
+        ),
+    );
+    DocumentWorkspace::build_analysis_context_with_shared_text(
+        &analyzer,
+        "file:///tmp/disposition.mmd",
+        1,
+        Arc::from(source),
+        DocumentKind::Diagram,
+    )
+    .into_ready()
+    .expect("source should remain within the analysis limit")
 }
 
 #[test]

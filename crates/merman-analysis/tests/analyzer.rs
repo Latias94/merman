@@ -343,13 +343,16 @@ fn analyze_result_exposes_complete_parser_syntax_facts() {
     assert_eq!(result.diagrams().len(), 1);
 
     let diagram = &result.diagrams()[0];
-    assert_eq!(diagram.source_id, "document");
-    assert_eq!(diagram.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert_eq!(diagram.source_id(), "document");
     assert_eq!(
-        diagram.syntax.source(),
+        diagram.syntax().diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert_eq!(
+        diagram.syntax().source(),
         FenceTextIndexSource::ParserComplete
     );
-    assert!(diagram.syntax.text_index.node_ids().any(|id| id == "A"));
+    assert!(diagram.syntax().text_index.node_ids().any(|id| id == "A"));
 }
 
 #[test]
@@ -400,12 +403,15 @@ fn analyze_result_exposes_expected_syntax_facts_for_invalid_input() {
     assert_eq!(result.diagrams().len(), 1);
 
     let diagram = &result.diagrams()[0];
-    assert_eq!(diagram.source_id, "document");
-    assert_eq!(diagram.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
-    assert!(diagram.syntax.source().is_parser_backed());
+    assert_eq!(diagram.source_id(), "document");
+    assert_eq!(
+        diagram.syntax().diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert!(diagram.syntax().source().is_parser_backed());
     assert!(
         diagram
-            .syntax
+            .syntax()
             .text_index
             .expected_syntax()
             .iter()
@@ -438,18 +444,59 @@ fn document_analysis_result_keeps_local_fence_syntax_facts() {
     assert_eq!(result.diagrams().len(), 1);
 
     let diagram = &result.diagrams()[0];
-    assert_eq!(diagram.source_id, "mermaid-fence-1");
-    assert_eq!(diagram.source.diagram_index, Some(0));
-    assert_eq!(diagram.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
-    assert!(diagram.syntax.source().is_parser_backed());
+    assert_eq!(diagram.source_id(), "mermaid-fence-1");
+    assert_eq!(diagram.source().diagram_index, Some(0));
+    assert_eq!(
+        diagram.syntax().diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert!(diagram.syntax().source().is_parser_backed());
     assert!(
         diagram
-            .syntax
+            .syntax()
             .text_index
             .expected_syntax()
             .iter()
             .any(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
     );
+}
+
+#[test]
+fn document_diagnostics_match_rich_generation_for_markdown_and_mdx() {
+    let source = concat!(
+        "before\n",
+        "```mermaid\n",
+        "cynefin-beta\n",
+        "  complex\n",
+        "  complicated\n",
+        "  complicated --> complicated : \"Self-loop\"\n",
+        "```\n",
+        "after\n",
+    );
+    let analyzer = Analyzer::new();
+
+    for path in ["doc.md", "doc.mdx"] {
+        let descriptor = source_descriptor_for_markdown_path(Some(path));
+        let diagnostics_only = analyze_document(source, &analyzer, descriptor.clone());
+        let rich = analyze_document_result(source, &analyzer, descriptor)
+            .into_ready()
+            .expect("document source should produce a rich analysis result");
+
+        assert_eq!(diagnostics_only, rich.payload().clone(), "{path}");
+        assert_eq!(diagnostics_only.diagnostics.len(), 1, "{path}");
+        assert_eq!(
+            diagnostics_only.diagnostics[0].id, "merman.parse.recovered_editor_facts",
+            "{path}"
+        );
+        assert_eq!(
+            diagnostics_only.diagnostics[0]
+                .span
+                .as_ref()
+                .map(|span| span.line),
+            Some(6),
+            "{path}"
+        );
+    }
 }
 
 #[test]
@@ -713,7 +760,8 @@ fn flowchart_missing_direction_rule_can_be_disabled() {
     let options = AnalysisOptions::default().with_rule_config(
         AnalysisRuleConfig::default()
             .with_profile(AnalysisRuleProfile::Recommended)
-            .with_rule_disabled("merman.authoring.flowchart.explicit_direction"),
+            .with_rule_disabled("merman.authoring.flowchart.explicit_direction")
+            .unwrap(),
     );
     let payload = Analyzer::with_options(options).analyze("flowchart\nA-->B\n");
 
@@ -877,13 +925,15 @@ fn source_byte_limit_returns_resource_error() {
 }
 
 #[test]
-fn source_byte_limit_remains_hard_guard_when_resource_rule_is_disabled() {
+fn source_byte_limit_rule_cannot_be_disabled() {
+    assert!(
+        AnalysisRuleConfig::default()
+            .with_rule_disabled("merman.resource.source_bytes_exceeded")
+            .is_err()
+    );
     let options = AnalysisOptions::default()
         .with_max_source_bytes(Some(8))
-        .with_rule_config(
-            AnalysisRuleConfig::default()
-                .with_rule_disabled("merman.resource.source_bytes_exceeded"),
-        );
+        .with_rule_config(AnalysisRuleConfig::default());
     let payload = Analyzer::with_options(options).analyze("flowchart TD\nA-->B\n");
 
     assert!(!payload.valid);

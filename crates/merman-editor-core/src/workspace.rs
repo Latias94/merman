@@ -3,8 +3,9 @@ use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentKind, DocumentUri};
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisOutcome, AnalysisPayload,
-    AnalysisRejection, AnalysisResult, AnalyzedDiagram, Analyzer, SourceDescriptor, SourceKind,
-    analyze_document_result_shared, analyze_document_result_shared_cancellable,
+    AnalysisRejection, AnalysisResult, AnalyzedDiagram, Analyzer, DiagramParseDisposition,
+    SourceDescriptor, SourceKind, analyze_document_result_shared,
+    analyze_document_result_shared_cancellable,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -32,6 +33,11 @@ pub struct DocumentWorkspace {
 /// One canonical analysis generation shared by diagnostics and editor projections.
 #[derive(Debug, Clone)]
 pub struct DocumentAnalysisContext {
+    inner: Box<DocumentAnalysisContextInner>,
+}
+
+#[derive(Debug, Clone)]
+struct DocumentAnalysisContextInner {
     snapshot: DocumentSnapshot,
     analysis: Arc<AnalysisResult>,
     diagnostics: Arc<[EditorDiagnostic]>,
@@ -69,31 +75,31 @@ impl DocumentAnalysisOutcome {
 
 impl DocumentAnalysisContext {
     pub fn snapshot(&self) -> &DocumentSnapshot {
-        &self.snapshot
+        &self.inner.snapshot
     }
 
     pub fn payload(&self) -> &AnalysisPayload {
-        self.analysis.payload()
+        self.inner.analysis.payload()
     }
 
     pub fn diagnostics(&self) -> &[EditorDiagnostic] {
-        &self.diagnostics
+        &self.inner.diagnostics
     }
 
     pub fn detection(&self) -> Option<&EditorDiagramDetection> {
-        self.detection.as_ref()
+        self.inner.detection.as_ref()
     }
 
     pub fn analysis_result(&self) -> &AnalysisResult {
-        &self.analysis
+        &self.inner.analysis
     }
 
     pub fn shared_analysis_result(&self) -> Arc<AnalysisResult> {
-        Arc::clone(&self.analysis)
+        Arc::clone(&self.inner.analysis)
     }
 
     pub fn reproject_payload(&self, analyzer: &Analyzer) -> AnalysisPayload {
-        analyzer.reproject_payload(&self.analysis)
+        analyzer.reproject_payload(&self.inner.analysis)
     }
 
     pub fn reproject_diagnostics(&self, analyzer: &Analyzer) -> Arc<[EditorDiagnostic]> {
@@ -101,11 +107,13 @@ impl DocumentAnalysisContext {
     }
 
     pub fn into_parts(self) -> (DocumentSnapshot, AnalysisPayload) {
-        (self.snapshot, self.analysis.payload().clone())
+        let inner = *self.inner;
+        (inner.snapshot, inner.analysis.payload().clone())
     }
 
     pub fn into_canonical_parts(self) -> (DocumentSnapshot, Arc<AnalysisResult>) {
-        (self.snapshot, self.analysis)
+        let inner = *self.inner;
+        (inner.snapshot, inner.analysis)
     }
 }
 
@@ -254,10 +262,14 @@ impl DocumentWorkspace {
         let source_map = analysis.source_map().clone();
         let analysis = Arc::new(analysis);
         DocumentAnalysisContext {
-            snapshot: DocumentSnapshot::new(uri, version, kind, source, text, source_map, fences),
-            analysis,
-            diagnostics,
-            detection,
+            inner: Box::new(DocumentAnalysisContextInner {
+                snapshot: DocumentSnapshot::new(
+                    uri, version, kind, source, text, source_map, fences,
+                ),
+                analysis,
+                diagnostics,
+                detection,
+            }),
         }
     }
 
@@ -274,20 +286,7 @@ impl DocumentWorkspace {
     }
 
     fn fence_snapshot(diagram: &AnalyzedDiagram) -> FenceSnapshot {
-        FenceSnapshot::new(
-            diagram.source_id.clone(),
-            diagram.index,
-            diagram.source.clone(),
-            diagram.start,
-            diagram.body_start,
-            diagram.body_end,
-            diagram.end,
-            diagram.text.clone(),
-            diagram.fence_delimiter,
-            diagram.fence_delimiter_spans.clone(),
-            diagram.syntax.diagram_type.clone(),
-            diagram.syntax.text_index.clone(),
-        )
+        FenceSnapshot::from_analyzed_diagram(diagram)
     }
 }
 
@@ -297,19 +296,20 @@ fn detection_for_analysis(
     let [diagram] = analysis.diagrams() else {
         return None;
     };
-    let syntax_id = diagram.syntax.diagram_type.as_ref()?.trim();
-    let effective_layout_id = diagram.syntax.effective_layout.as_ref()?.trim();
+    let syntax_id = diagram.syntax().diagram_type.as_ref()?.trim();
+    let effective_layout_id = diagram.syntax().effective_layout.as_ref()?.trim();
     if syntax_id.is_empty() || effective_layout_id.is_empty() {
         return None;
     }
     let diagram_type = merman_core::diagram_type_metadata_id(syntax_id)?;
+    let validity = match diagram.parse_disposition() {
+        DiagramParseDisposition::Parsed => DiagramDetectionValidity::Valid,
+        DiagramParseDisposition::Recovered => DiagramDetectionValidity::RecoverableInvalid,
+        DiagramParseDisposition::Unavailable => return None,
+    };
 
     Some(EditorDiagramDetection {
-        validity: if analysis.payload().valid {
-            DiagramDetectionValidity::Valid
-        } else {
-            DiagramDetectionValidity::RecoverableInvalid
-        },
+        validity,
         diagram_type: diagram_type.to_string(),
         syntax_id: syntax_id.to_string(),
         effective_layout_id: effective_layout_id.to_string(),
@@ -347,7 +347,8 @@ mod tests {
             AnalysisOptions::default().with_rule_config(
                 AnalysisRuleConfig::default()
                     .with_profile(AnalysisRuleProfile::Recommended)
-                    .with_rule_disabled("merman.authoring.config.prefer_frontmatter_config"),
+                    .with_rule_disabled("merman.authoring.config.prefer_frontmatter_config")
+                    .unwrap(),
             ),
         );
 

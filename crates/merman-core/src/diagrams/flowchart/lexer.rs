@@ -206,7 +206,9 @@ impl<'input> Lexer<'input> {
         None
     }
 
-    pub(super) fn lex_direction_stmt(&mut self) -> Option<(usize, Tok, usize)> {
+    pub(super) fn lex_direction_stmt(
+        &mut self,
+    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
         if !self.starts_with_kw("direction") {
             return None;
@@ -216,28 +218,12 @@ impl<'input> Lexer<'input> {
         self.skip_ws();
 
         let direction_start = self.pos;
-        let rest = &self.input[self.pos..];
-        let mut dir: Option<&str> = None;
-        for d in ["TB", "TD", "BT", "LR", "RL"] {
-            if rest.starts_with(d) {
-                dir = Some(d);
-                self.pos += d.len();
+        while let Some(b) = self.peek() {
+            if b.is_ascii_whitespace() || b == b';' {
                 break;
             }
+            self.pos += 1;
         }
-        let Some(dir) = dir else {
-            return Some((
-                start,
-                Tok::DirectionStmt(DirectionStatementToken {
-                    direction: String::new(),
-                    lexeme_components: vec![FlowchartLexemeComponent::new(
-                        EditorLexemeKind::Keyword,
-                        SourceSpan::new(start, keyword_end),
-                    )],
-                }),
-                self.pos,
-            ));
-        };
         let direction_end = self.pos;
         while let Some(b) = self.peek() {
             if b == b'\n' || b == b';' {
@@ -245,24 +231,51 @@ impl<'input> Lexer<'input> {
             }
             self.pos += 1;
         }
+        let statement_end = self.pos;
+        let direction = &self.input[direction_start..direction_end];
+        let selection = SourceSpan::new(direction_start, direction_end);
+        let mut lexeme_components = vec![FlowchartLexemeComponent::new(
+            EditorLexemeKind::Keyword,
+            SourceSpan::new(start, keyword_end),
+        )];
+        if selection.start < selection.end {
+            lexeme_components.push(FlowchartLexemeComponent::new(
+                EditorLexemeKind::Literal,
+                selection,
+            ));
+        }
 
-        Some((
+        let Some(dir) = ["TB", "TD", "BT", "LR", "RL"]
+            .into_iter()
+            .find(|candidate| *candidate == direction)
+        else {
+            let error = LexError::with_span("invalid flowchart direction", selection)
+                .expecting(crate::EditorExpectedSyntaxKind::DirectionValue, selection);
+            if self.recover_partial_node_labels {
+                return Some(Ok((
+                    start,
+                    Tok::DirectionStmt(DirectionStatementToken {
+                        direction: String::new(),
+                        selection,
+                        lexeme_components,
+                        recovery_error: Some(error),
+                    }),
+                    statement_end,
+                )));
+            }
+            return Some(Err(error));
+        };
+
+        Some(Ok((
             start,
             Tok::DirectionStmt(DirectionStatementToken {
                 direction: dir.to_string(),
-                lexeme_components: vec![
-                    FlowchartLexemeComponent::new(
-                        EditorLexemeKind::Keyword,
-                        SourceSpan::new(start, keyword_end),
-                    ),
-                    FlowchartLexemeComponent::new(
-                        EditorLexemeKind::Literal,
-                        SourceSpan::new(direction_start, direction_end),
-                    ),
-                ],
+                selection,
+                lexeme_components,
+                recovery_error: None,
             }),
-            self.pos,
-        ))
+            statement_end,
+        )))
     }
 
     pub(super) fn capture_to_stmt_end(&mut self) -> (usize, String, usize) {
@@ -342,7 +355,9 @@ impl<'input> Lexer<'input> {
         None
     }
 
-    pub(super) fn lex_shape_data(&mut self) -> Option<(usize, Tok, usize)> {
+    pub(super) fn lex_shape_data(
+        &mut self,
+    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
         if !self.input[self.pos..].starts_with("@{") {
             return None;
@@ -372,7 +387,7 @@ impl<'input> Lexer<'input> {
                 if b == b'}' {
                     out.push_str(&self.input[segment_start..self.pos]);
                     self.pos += 1;
-                    return Some((start, Tok::ShapeData(out), self.pos));
+                    return Some(Ok((start, Tok::ShapeData(out), self.pos)));
                 }
                 self.pos += 1;
                 continue;
@@ -404,7 +419,17 @@ impl<'input> Lexer<'input> {
         }
 
         out.push_str(&self.input[segment_start..self.pos]);
-        Some((start, Tok::ShapeData(out), self.pos))
+        let span = SourceSpan::new(start, self.pos);
+        let expected = super::shape_value_expected_span(self.input, start, self.pos)
+            .unwrap_or(SourceSpan::new(self.pos, self.pos));
+        Some(Err(LexError::with_span(
+            "Unterminated shape data (missing `}`)",
+            span,
+        )
+        .expecting(
+            crate::EditorExpectedSyntaxKind::ShapeValue,
+            expected,
+        )))
     }
 
     pub(super) fn lex_edge_id(&mut self) -> Option<(usize, Tok, usize)> {
@@ -990,7 +1015,18 @@ impl<'input> Lexer<'input> {
             None
         };
 
-        let (_sstart, family, start_link, after_start) = parse_start_link(self.pos)?;
+        let Some((_sstart, family, start_link, after_start)) = parse_start_link(self.pos) else {
+            if self.input[self.pos..].starts_with("->") {
+                self.pos += 2;
+                let selection = SourceSpan::new(start, self.pos);
+                return Some(Err(LexError::with_span(
+                    "incomplete flowchart edge operator",
+                    selection,
+                )
+                .expecting(crate::EditorExpectedSyntaxKind::Operator, selection)));
+            }
+            return None;
+        };
         let edge_text_start = after_start;
         let mut scan = edge_text_start;
         while scan < self.input.len() {
@@ -1029,9 +1065,14 @@ impl<'input> Lexer<'input> {
             scan += 1;
         }
 
+        self.pos = self.input.len();
         Some(Err(LexError::with_span(
             "Unterminated edge label (missing link terminator)",
-            SourceSpan::new(edge_text_start, self.input.len()),
+            SourceSpan::new(edge_text_start, self.pos),
+        )
+        .expecting(
+            crate::EditorExpectedSyntaxKind::Operator,
+            SourceSpan::new(start, after_start),
         )))
     }
 

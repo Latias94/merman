@@ -1,5 +1,5 @@
 use crate::{
-    EditorLexemeKind, EditorLexemeModifiers, SourceSpan,
+    EditorLexemeKind, EditorLexemeModifiers, ParseControl, ParseControlResult, SourceSpan,
     editor::{EditorLexemeBatchResult, EditorLexemeJournal},
 };
 use unicode_general_category::{GeneralCategory, get_general_category};
@@ -149,29 +149,66 @@ impl Token {
     }
 }
 
+#[cfg(test)]
 pub(super) fn lex(source: &str) -> Vec<Token> {
-    Lexer::new(source).collect()
+    lex_controlled(source, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
+pub(super) fn lex_controlled(
+    source: &str,
+    control: &ParseControl,
+) -> ParseControlResult<Vec<Token>> {
+    let mut tokens = Vec::new();
+    let lexer = Lexer::new(source);
+    for token in lexer {
+        if tokens.len() % 128 == 0 {
+            control.checkpoint()?;
+        }
+        tokens.push(token);
+    }
+    control.checkpoint()?;
+    Ok(tokens)
+}
+
+#[cfg(test)]
 pub(super) fn parser_tokens(tokens: &[Token]) -> Vec<Token> {
-    tokens
-        .iter()
-        .filter(|token| token.channel == TokenChannel::Default)
-        .cloned()
-        .collect()
+    parser_tokens_controlled(tokens, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
-pub(super) fn editor_lexemes(
+pub(super) fn parser_tokens_controlled(
+    tokens: &[Token],
+    control: &ParseControl,
+) -> ParseControlResult<Vec<Token>> {
+    let mut parser_tokens = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        if token.channel == TokenChannel::Default {
+            parser_tokens.push(token.clone());
+        }
+    }
+    control.checkpoint()?;
+    Ok(parser_tokens)
+}
+
+pub(super) fn editor_lexemes_controlled(
     source: &str,
     tokens: &[Token],
     recovered: bool,
-) -> EditorLexemeBatchResult {
+    control: &ParseControl,
+) -> ParseControlResult<EditorLexemeBatchResult> {
     let mut journal = if recovered {
         EditorLexemeJournal::family_recovery(source)
     } else {
         EditorLexemeJournal::family_lexer(source)
     };
-    for token in tokens {
+    for (index, token) in tokens.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         let kind = match &token.kind {
             TokenKind::Keyword(Keyword::True | Keyword::False) => EditorLexemeKind::Boolean,
             TokenKind::Keyword(_) => EditorLexemeKind::Keyword,
@@ -218,7 +255,8 @@ pub(super) fn editor_lexemes(
         };
         journal.push(kind, EditorLexemeModifiers::NONE, token.span);
     }
-    journal.finish()
+    control.checkpoint()?;
+    Ok(journal.finish())
 }
 
 struct Lexer<'a> {

@@ -35,7 +35,7 @@ impl<'input> Iterator for Lexer<'input> {
 
         let start = self.pos;
         if let Some(tok) = self.lex_direction_stmt() {
-            return Some(Ok(tok));
+            return Some(tok);
         }
         if let Some(res) = self.lex_style_stmt() {
             return Some(res);
@@ -52,8 +52,8 @@ impl<'input> Iterator for Lexer<'input> {
         if let Some(res) = self.lex_link_style_stmt() {
             return Some(res);
         }
-        if let Some(tok) = self.lex_shape_data() {
-            return Some(Ok(tok));
+        if let Some(res) = self.lex_shape_data() {
+            return Some(res);
         }
         if self.starts_with_kw("flowchart-elk") {
             self.pos += "flowchart-elk".len();

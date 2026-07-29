@@ -100,15 +100,19 @@ pub(crate) fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> 
 pub(crate) fn parse_ishikawa_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_ishikawa_semantic_source(code, meta),
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_ishikawa_semantic_source_controlled(code, meta, control)?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
         |source| {
             let editor_facts = source.editor_facts();
             (source.into_compat_json(meta), editor_facts)
         },
         IshikawaParseFailure::into_error_and_editor_facts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -181,6 +185,16 @@ fn construct_ishikawa_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<IshikawaSemanticSource, IshikawaParseFailure> {
+    construct_ishikawa_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_ishikawa_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<std::result::Result<IshikawaSemanticSource, IshikawaParseFailure>> {
+    control.checkpoint()?;
     #[cfg(test)]
     ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.set(ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -191,6 +205,7 @@ fn construct_ishikawa_semantic_source(
     let mut first_error = None;
 
     for segment in code.split_inclusive('\n') {
+        control.checkpoint()?;
         let line_start = offset;
         offset += segment.len();
         let line = strip_line_ending(segment);
@@ -251,6 +266,9 @@ fn construct_ishikawa_semantic_source(
 
     let mut editor_facts = EditorSemanticFacts::new();
     for (index, node) in nodes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         push_ishikawa_node_fact(&mut editor_facts, node, index == 0);
     }
     if let Some((error, span)) = first_error {
@@ -259,16 +277,17 @@ fn construct_ishikawa_semantic_source(
             Some(span),
         );
         editor_facts.replace_family_lexemes(lexemes.finish());
-        return Err(IshikawaParseFailure {
+        return Ok(Err(IshikawaParseFailure {
             error: Box::new(error),
             editor_facts: Box::new(editor_facts),
-        });
+        }));
     }
     editor_facts.replace_family_lexemes(lexemes.finish());
-    Ok(IshikawaSemanticSource {
+    control.checkpoint()?;
+    Ok(Ok(IshikawaSemanticSource {
         nodes,
         editor_facts,
-    })
+    }))
 }
 
 fn parse_ishikawa_header_line(
@@ -538,6 +557,21 @@ mod tests {
     }
 
     #[test]
+    fn controlled_parse_can_cancel_between_ishikawa_lines() {
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            construct_ishikawa_semantic_source_controlled(
+                "ishikawa-beta Problem\n  Cause A\n  Cause B\n",
+                &meta(),
+                &control,
+            ),
+            Err(crate::ParseCancelled)
+        ));
+    }
+
+    #[test]
     fn parses_basic_ishikawa_hierarchy() {
         let model = parse_ishikawa_model_for_render(
             r#"ishikawa-beta
@@ -599,7 +633,7 @@ Cause B
 
         reset_ishikawa_syntax_construction_count();
         let (json, facts) = crate::family::test_support::into_result(
-            parse_ishikawa_json_and_editor_facts(text, &meta()),
+            parse_ishikawa_json_and_editor_facts(text, &meta(), &crate::ParseControl::new()),
         )
         .unwrap();
 

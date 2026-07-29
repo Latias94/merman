@@ -1,14 +1,17 @@
 use crate::analysis_executor::AnalysisExecutor;
-use crate::analysis_request::{
-    AnalysisBuildKey, AnalysisBuildRequest, SnapshotBatchCommit, WorkspaceSnapshotBuildPlan,
-};
+#[cfg(test)]
+use crate::analysis_request::SnapshotBatchCommit;
+use crate::analysis_request::{AnalysisBuildKey, AnalysisBuildRequest};
 #[cfg(test)]
 use crate::snapshot::DocumentSnapshot;
 use crate::snapshot::{
     DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotContext,
     SnapshotGeneration,
 };
-use merman_analysis::{AnalysisOptions, Analyzer};
+use merman_analysis::{
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisOptions, Analyzer, DiagnosticSpan,
+    source_limit_diagnostic_span,
+};
 use merman_editor_core::DocumentKind;
 use ropey::{Rope, RopeSlice};
 use std::collections::HashMap;
@@ -17,7 +20,6 @@ use tower_lsp_server::ls_types::{
     Diagnostic, Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
 };
 
-pub const WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE: usize = 8;
 pub(crate) const DEFAULT_LSP_MAX_SOURCE_BYTES: usize = 4 * 1024 * 1024;
 
 pub(crate) fn default_lsp_analysis_options() -> AnalysisOptions {
@@ -37,14 +39,101 @@ pub(crate) fn analysis_options_with_lsp_resource_defaults(
 pub struct DocumentStore {
     analyzer: Analyzer,
     analysis_executor: AnalysisExecutor,
+    diagnostic_reprojection_cancellation: AnalysisCancellationToken,
     snapshot_generation: SnapshotGeneration,
     diagnostic_generation: DiagnosticGeneration,
+    analyzer_configuration_request: AnalyzerConfigurationRequest,
     next_document_epoch: u64,
     documents: HashMap<Uri, DocumentRecord>,
-    analysis_generations: HashMap<Uri, Arc<DocumentAnalysisContext>>,
+    analysis_generations: HashMap<Uri, CachedAnalysisGeneration>,
     diagnostic_state: HashMap<Uri, StoredDiagnosticState>,
     semantic_tokens_state: HashMap<Uri, StoredSemanticTokensState>,
 }
+
+#[derive(Debug)]
+struct CachedAnalysisGeneration {
+    context: Arc<DocumentAnalysisContext>,
+    diagnostic_generation: DiagnosticGeneration,
+}
+
+#[derive(Debug)]
+pub(crate) struct DiagnosticReprojectionPlan {
+    analyzer: Analyzer,
+    cancellation: AnalysisCancellationToken,
+    generation: DiagnosticGeneration,
+    sources: Vec<DiagnosticReprojectionSource>,
+}
+
+#[derive(Debug)]
+pub(crate) struct DiagnosticReprojectionRequest {
+    analyzer: Analyzer,
+    cancellation: AnalysisCancellationToken,
+    generation: DiagnosticGeneration,
+    source: DiagnosticReprojectionSource,
+}
+
+#[derive(Debug)]
+struct DiagnosticReprojectionSource {
+    uri: Uri,
+    document_epoch: DocumentEpoch,
+    context: Arc<DocumentAnalysisContext>,
+}
+
+#[derive(Debug)]
+pub(crate) struct DiagnosticReprojectionBatch {
+    generation: DiagnosticGeneration,
+    projections: Vec<DiagnosticReprojection>,
+}
+
+#[derive(Debug)]
+pub(crate) struct SourceLimitReclassificationPlan {
+    request: AnalyzerConfigurationRequest,
+    expected_options: AnalysisOptions,
+    next_options: AnalysisOptions,
+    documents: Vec<SourceLimitDocumentSnapshot>,
+}
+
+#[derive(Debug)]
+struct SourceLimitDocumentSnapshot {
+    uri: Uri,
+    document_epoch: DocumentEpoch,
+    oversized_source: Option<Arc<str>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct SourceLimitReclassificationBatch {
+    request: AnalyzerConfigurationRequest,
+    expected_options: AnalysisOptions,
+    next_options: AnalysisOptions,
+    documents: Vec<SourceLimitDocumentProjection>,
+}
+
+#[derive(Debug)]
+struct SourceLimitDocumentProjection {
+    uri: Uri,
+    document_epoch: DocumentEpoch,
+    oversized_span: Option<DiagnosticSpan>,
+}
+
+#[derive(Debug)]
+struct DiagnosticReprojection {
+    uri: Uri,
+    document_epoch: DocumentEpoch,
+    original: Arc<DocumentAnalysisContext>,
+    projected: Arc<DocumentAnalysisContext>,
+}
+
+#[derive(Debug)]
+pub(crate) enum AnalyzerOptionsPreparation {
+    Applied(
+        AnalyzerConfigurationChange,
+        Option<DiagnosticReprojectionPlan>,
+    ),
+    RequiresSourceLimitProjection(SourceLimitReclassificationPlan),
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct AnalyzerConfigurationRequest(u64);
 
 impl Default for DocumentStore {
     fn default() -> Self {
@@ -63,21 +152,40 @@ pub struct StoredDocument {
     pub sync_error: Option<DocumentSyncError>,
 }
 
+#[derive(Debug)]
+pub(crate) struct PreparedDocumentText {
+    text: String,
+    span: DiagnosticSpan,
+}
+
+impl PreparedDocumentText {
+    pub(crate) fn new(text: String) -> Self {
+        let span = source_limit_diagnostic_span(&text);
+        Self { text, span }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentResourceLimit {
     pub source_len: usize,
     pub max_source_bytes: usize,
+    pub span: DiagnosticSpan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocumentDiscardedSource {
     pub source_len: usize,
     pub previous_max_source_bytes: usize,
+    pub span: DiagnosticSpan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentSyncError {
     InvalidIncrementalRange,
+    FullReplacementRequired {
+        source_len: usize,
+        last_max_source_bytes: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -102,18 +210,27 @@ impl StoredDocument {
 
 fn resource_state_source_len_and_previous_limit(
     document: &StoredDocument,
-) -> Option<(usize, usize)> {
+) -> Option<(usize, usize, DiagnosticSpan)> {
     if let Some(resource_limit) = document.resource_limit {
-        return Some((resource_limit.source_len, resource_limit.max_source_bytes));
+        return Some((
+            resource_limit.source_len,
+            resource_limit.max_source_bytes,
+            resource_limit.span,
+        ));
     }
-    document
-        .discarded_source
-        .map(|discarded| (discarded.source_len, discarded.previous_max_source_bytes))
+    document.discarded_source.map(|discarded| {
+        (
+            discarded.source_len,
+            discarded.previous_max_source_bytes,
+            discarded.span,
+        )
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextDocumentUpdate {
     Applied,
+    NeedsFullSync,
     MissingDocument,
     EmptyChangeSet,
     InvalidRange,
@@ -125,7 +242,10 @@ pub enum TextDocumentUpdate {
 
 impl TextDocumentUpdate {
     pub fn affects_document_state(self) -> bool {
-        matches!(self, Self::Applied | Self::InvalidRange)
+        matches!(
+            self,
+            Self::Applied | Self::NeedsFullSync | Self::InvalidRange
+        )
     }
 }
 
@@ -141,14 +261,88 @@ impl SemanticTokensState {
     }
 }
 
+impl DiagnosticReprojectionPlan {
+    pub(crate) fn project(self) -> Result<DiagnosticReprojectionBatch, AnalysisCancelled> {
+        project_diagnostics(
+            &self.analyzer,
+            &self.cancellation,
+            self.generation,
+            self.sources,
+        )
+    }
+}
+
+impl DiagnosticReprojectionRequest {
+    pub(crate) fn project(self) -> Result<DiagnosticReprojectionBatch, AnalysisCancelled> {
+        project_diagnostics(
+            &self.analyzer,
+            &self.cancellation,
+            self.generation,
+            vec![self.source],
+        )
+    }
+}
+
+fn project_diagnostics(
+    analyzer: &Analyzer,
+    cancellation: &AnalysisCancellationToken,
+    generation: DiagnosticGeneration,
+    sources: Vec<DiagnosticReprojectionSource>,
+) -> Result<DiagnosticReprojectionBatch, AnalysisCancelled> {
+    let mut projections = Vec::with_capacity(sources.len());
+    for source in sources {
+        cancellation.checkpoint()?;
+        projections.push(DiagnosticReprojection {
+            uri: source.uri,
+            document_epoch: source.document_epoch,
+            projected: Arc::new(
+                source
+                    .context
+                    .reproject_cancellable(analyzer, cancellation)?,
+            ),
+            original: source.context,
+        });
+    }
+    cancellation.checkpoint()?;
+    Ok(DiagnosticReprojectionBatch {
+        generation,
+        projections,
+    })
+}
+
+impl SourceLimitReclassificationPlan {
+    pub(crate) fn project(self) -> SourceLimitReclassificationBatch {
+        let documents = self
+            .documents
+            .into_iter()
+            .map(|document| SourceLimitDocumentProjection {
+                uri: document.uri,
+                document_epoch: document.document_epoch,
+                oversized_span: document
+                    .oversized_source
+                    .as_deref()
+                    .map(source_limit_diagnostic_span),
+            })
+            .collect();
+        SourceLimitReclassificationBatch {
+            request: self.request,
+            expected_options: self.expected_options,
+            next_options: self.next_options,
+            documents,
+        }
+    }
+}
+
 impl DocumentStore {
     pub fn new() -> Self {
         let analyzer = Analyzer::with_options(default_lsp_analysis_options());
         Self {
             analyzer,
             analysis_executor: AnalysisExecutor::new(),
+            diagnostic_reprojection_cancellation: AnalysisCancellationToken::new(),
             snapshot_generation: SnapshotGeneration::default(),
             diagnostic_generation: DiagnosticGeneration::default(),
+            analyzer_configuration_request: AnalyzerConfigurationRequest::default(),
             next_document_epoch: 0,
             documents: HashMap::new(),
             analysis_generations: HashMap::new(),
@@ -157,36 +351,228 @@ impl DocumentStore {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn begin_analyzer_options(
+        &mut self,
+        options: AnalysisOptions,
+    ) -> (
+        AnalyzerConfigurationChange,
+        Option<DiagnosticReprojectionPlan>,
+    ) {
+        let request = self.begin_analyzer_configuration_request();
+        let change = analyzer_configuration_change(self.analyzer.options(), &options);
+        if matches!(change, AnalyzerConfigurationChange::Unchanged) {
+            return (change, None);
+        }
+
+        if change.affects_snapshots() {
+            let batch = self
+                .prepare_source_limit_reclassification_for(request, options)
+                .project();
+            self.commit_source_limit_reclassification(batch)
+                .expect("a synchronous analyzer update cannot become stale")
+        } else {
+            let plan = self.set_diagnostic_analyzer(Analyzer::with_options(options));
+            (change, plan)
+        }
+    }
+
+    pub(crate) fn begin_analyzer_configuration_request(&mut self) -> AnalyzerConfigurationRequest {
+        self.analyzer_configuration_request =
+            AnalyzerConfigurationRequest(self.analyzer_configuration_request.0.wrapping_add(1));
+        self.analyzer_configuration_request
+    }
+
+    pub(crate) fn is_analyzer_configuration_request_current(
+        &self,
+        request: AnalyzerConfigurationRequest,
+    ) -> bool {
+        request == self.analyzer_configuration_request
+    }
+
+    pub(crate) fn prepare_analyzer_options(
+        &mut self,
+        request: AnalyzerConfigurationRequest,
+        options: AnalysisOptions,
+    ) -> Option<AnalyzerOptionsPreparation> {
+        if !self.is_analyzer_configuration_request_current(request) {
+            return None;
+        }
+        let change = analyzer_configuration_change(self.analyzer.options(), &options);
+        if change.affects_snapshots() {
+            Some(AnalyzerOptionsPreparation::RequiresSourceLimitProjection(
+                self.prepare_source_limit_reclassification_for(request, options),
+            ))
+        } else {
+            let reprojection = if matches!(change, AnalyzerConfigurationChange::Unchanged) {
+                None
+            } else {
+                self.set_diagnostic_analyzer(Analyzer::with_options(options))
+            };
+            Some(AnalyzerOptionsPreparation::Applied(change, reprojection))
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn prepare_source_limit_reclassification(
+        &self,
+        next_options: AnalysisOptions,
+    ) -> SourceLimitReclassificationPlan {
+        self.prepare_source_limit_reclassification_for(
+            self.analyzer_configuration_request,
+            next_options,
+        )
+    }
+
+    fn prepare_source_limit_reclassification_for(
+        &self,
+        request: AnalyzerConfigurationRequest,
+        next_options: AnalysisOptions,
+    ) -> SourceLimitReclassificationPlan {
+        let max_source_bytes = next_options.max_source_bytes;
+        let documents = self
+            .documents
+            .iter()
+            .map(|(uri, record)| {
+                let oversized_source = max_source_bytes
+                    .filter(|limit| {
+                        record.document.sync_error.is_none()
+                            && !record.document.has_unavailable_source()
+                            && record.document.text.len() > *limit
+                    })
+                    .map(|_| Arc::clone(&record.document.text));
+                SourceLimitDocumentSnapshot {
+                    uri: uri.clone(),
+                    document_epoch: record.epoch,
+                    oversized_source,
+                }
+            })
+            .collect();
+        SourceLimitReclassificationPlan {
+            request,
+            expected_options: self.analyzer.options().clone(),
+            next_options,
+            documents,
+        }
+    }
+
+    pub(crate) fn commit_source_limit_reclassification(
+        &mut self,
+        batch: SourceLimitReclassificationBatch,
+    ) -> Option<(
+        AnalyzerConfigurationChange,
+        Option<DiagnosticReprojectionPlan>,
+    )> {
+        if !self.is_analyzer_configuration_request_current(batch.request)
+            || self.analyzer.options() != &batch.expected_options
+            || self.documents.len() != batch.documents.len()
+            || batch.documents.iter().any(|document| {
+                !self.is_document_epoch_current(&document.uri, document.document_epoch)
+            })
+        {
+            return None;
+        }
+
+        let change = analyzer_configuration_change(self.analyzer.options(), &batch.next_options);
+        if !change.affects_snapshots() {
+            return None;
+        }
+
+        let oversized_spans = batch
+            .documents
+            .into_iter()
+            .filter_map(|document| document.oversized_span.map(|span| (document.uri, span)))
+            .collect();
+        self.replace_analyzer(Analyzer::with_options(batch.next_options), &oversized_spans);
+        Some((change, None))
+    }
+
+    #[cfg(test)]
     pub fn apply_analyzer_options(
         &mut self,
         options: AnalysisOptions,
     ) -> AnalyzerConfigurationChange {
-        let change = analyzer_configuration_change(self.analyzer.options(), &options);
-        if matches!(change, AnalyzerConfigurationChange::Unchanged) {
-            return change;
-        }
-
-        let analyzer = Analyzer::with_options(options);
-        if change.affects_snapshots() {
-            self.replace_analyzer(analyzer);
-        } else {
-            self.set_diagnostic_analyzer(analyzer);
+        let (change, plan) = self.begin_analyzer_options(options);
+        if let Some(plan) = plan {
+            self.commit_diagnostic_reprojection(
+                plan.project()
+                    .expect("current diagnostic reprojection cannot be stale"),
+            );
         }
         change
     }
 
-    fn set_diagnostic_analyzer(&mut self, analyzer: Analyzer) {
+    fn set_diagnostic_analyzer(
+        &mut self,
+        analyzer: Analyzer,
+    ) -> Option<DiagnosticReprojectionPlan> {
+        self.diagnostic_reprojection_cancellation.cancel();
+        self.diagnostic_reprojection_cancellation = AnalysisCancellationToken::new();
         self.analyzer = analyzer;
         self.advance_diagnostic_generation();
-        for generation in self.analysis_generations.values_mut() {
-            *generation = Arc::new(generation.reproject(&self.analyzer));
-        }
         self.analysis_executor.invalidate_all();
+        let sources = self
+            .analysis_generations
+            .iter()
+            .filter_map(|(uri, cached)| {
+                self.documents
+                    .get(uri)
+                    .map(|record| DiagnosticReprojectionSource {
+                        uri: uri.clone(),
+                        document_epoch: record.epoch,
+                        context: Arc::clone(&cached.context),
+                    })
+            })
+            .collect::<Vec<_>>();
+        (!sources.is_empty()).then(|| DiagnosticReprojectionPlan {
+            analyzer: self.analyzer.clone(),
+            cancellation: self.diagnostic_reprojection_cancellation.clone(),
+            generation: self.diagnostic_generation,
+            sources,
+        })
     }
 
-    fn replace_analyzer(&mut self, analyzer: Analyzer) {
+    pub(crate) fn commit_diagnostic_reprojection(
+        &mut self,
+        batch: DiagnosticReprojectionBatch,
+    ) -> usize {
+        if batch.generation != self.diagnostic_generation {
+            return 0;
+        }
+
+        let mut committed = 0;
+        for projection in batch.projections {
+            if !self.is_document_epoch_current(&projection.uri, projection.document_epoch) {
+                continue;
+            }
+            let Some(cached) = self.analysis_generations.get_mut(&projection.uri) else {
+                continue;
+            };
+            if !Arc::ptr_eq(&cached.context, &projection.original) {
+                continue;
+            }
+            cached.context = projection.projected;
+            cached.diagnostic_generation = batch.generation;
+            committed += 1;
+        }
+        committed
+    }
+
+    pub(crate) fn discard_stale_analysis_generations(&mut self) {
+        let generation = self.diagnostic_generation;
+        self.analysis_generations
+            .retain(|_, cached| cached.diagnostic_generation == generation);
+    }
+
+    fn replace_analyzer(
+        &mut self,
+        analyzer: Analyzer,
+        oversized_spans: &HashMap<Uri, DiagnosticSpan>,
+    ) {
+        self.diagnostic_reprojection_cancellation.cancel();
+        self.diagnostic_reprojection_cancellation = AnalysisCancellationToken::new();
         self.analyzer = analyzer;
-        self.reclassify_documents_for_current_limit();
+        self.reclassify_documents_for_current_limit(oversized_spans);
         self.advance_snapshot_generation();
         self.advance_diagnostic_generation();
         self.analysis_generations.clear();
@@ -231,7 +617,7 @@ impl DocumentStore {
         text: String,
         kind: DocumentKind,
     ) -> StoredDocument {
-        if let Some(resource_limit) = self.resource_limit_for_source_len(text.len()) {
+        if let Some(resource_limit) = self.resource_limit_for_source(&text) {
             return self.upsert_resource_limited(uri, version, kind, resource_limit);
         }
 
@@ -239,6 +625,40 @@ impl DocumentStore {
             uri: uri.clone(),
             version,
             text: Arc::<str>::from(text),
+            kind,
+            resource_limit: None,
+            discarded_source: None,
+            sync_error: None,
+        };
+        self.upsert_document(uri, document)
+    }
+
+    pub(crate) fn open_prepared_text(
+        &mut self,
+        uri: Uri,
+        version: i32,
+        prepared: PreparedDocumentText,
+        kind: DocumentKind,
+    ) -> StoredDocument {
+        if let Some(max_source_bytes) = self.analyzer.options().max_source_bytes
+            && prepared.text.len() > max_source_bytes
+        {
+            return self.upsert_resource_limited(
+                uri,
+                version,
+                kind,
+                DocumentResourceLimit {
+                    source_len: prepared.text.len(),
+                    max_source_bytes,
+                    span: prepared.span,
+                },
+            );
+        }
+
+        let document = StoredDocument {
+            uri: uri.clone(),
+            version,
+            text: Arc::<str>::from(prepared.text),
             kind,
             resource_limit: None,
             discarded_source: None,
@@ -261,25 +681,6 @@ impl DocumentStore {
             kind,
             resource_limit: Some(resource_limit),
             discarded_source: None,
-            sync_error: None,
-        };
-        self.upsert_document(uri, document)
-    }
-
-    fn upsert_discarded_source(
-        &mut self,
-        uri: Uri,
-        version: i32,
-        kind: DocumentKind,
-        discarded_source: DocumentDiscardedSource,
-    ) -> StoredDocument {
-        let document = StoredDocument {
-            uri: uri.clone(),
-            version,
-            text: Arc::<str>::from(""),
-            kind,
-            resource_limit: None,
-            discarded_source: Some(discarded_source),
             sync_error: None,
         };
         self.upsert_document(uri, document)
@@ -319,18 +720,22 @@ impl DocumentStore {
         document
     }
 
-    fn resource_limit_for_source_len(&self, source_len: usize) -> Option<DocumentResourceLimit> {
+    fn resource_limit_for_source(&self, source: &str) -> Option<DocumentResourceLimit> {
         let max_source_bytes = self.analyzer.options().max_source_bytes?;
-        (source_len > max_source_bytes).then_some(DocumentResourceLimit {
-            source_len,
+        (source.len() > max_source_bytes).then(|| DocumentResourceLimit {
+            source_len: source.len(),
             max_source_bytes,
+            span: source_limit_diagnostic_span(source),
         })
     }
 
-    fn reclassify_documents_for_current_limit(&mut self) {
+    fn reclassify_documents_for_current_limit(
+        &mut self,
+        oversized_spans: &HashMap<Uri, DiagnosticSpan>,
+    ) {
         let current_limit = self.analyzer.options().max_source_bytes;
-        for record in self.documents.values_mut() {
-            if let Some((source_len, previous_max_source_bytes)) =
+        for (uri, record) in &mut self.documents {
+            if let Some((source_len, previous_max_source_bytes, span)) =
                 resource_state_source_len_and_previous_limit(&record.document)
             {
                 match current_limit {
@@ -338,6 +743,7 @@ impl DocumentStore {
                         record.document.resource_limit = Some(DocumentResourceLimit {
                             source_len,
                             max_source_bytes,
+                            span,
                         });
                         record.document.discarded_source = None;
                     }
@@ -346,6 +752,7 @@ impl DocumentStore {
                         record.document.discarded_source = Some(DocumentDiscardedSource {
                             source_len,
                             previous_max_source_bytes,
+                            span,
                         });
                     }
                 }
@@ -357,15 +764,20 @@ impl DocumentStore {
             };
             let source_len = record.document.text.len();
             if record.document.sync_error.is_none() && source_len > max_source_bytes {
+                let span = *oversized_spans
+                    .get(uri)
+                    .expect("source-limit projection must cover every newly oversized document");
                 record.document.text = Arc::<str>::from("");
                 record.document.resource_limit = Some(DocumentResourceLimit {
                     source_len,
                     max_source_bytes,
+                    span,
                 });
             }
         }
     }
 
+    #[cfg(test)]
     pub fn open_text(
         &mut self,
         uri: Uri,
@@ -441,16 +853,32 @@ impl DocumentStore {
         let Some(recovery_start) = changes.iter().rposition(|change| change.range.is_none()) else {
             match unavailable_source {
                 UnavailableSourceState::ResourceLimited(resource_limit) => {
-                    self.upsert_resource_limited(uri, version, kind, resource_limit);
+                    self.upsert_sync_error(
+                        uri,
+                        version,
+                        kind,
+                        DocumentSyncError::FullReplacementRequired {
+                            source_len: resource_limit.source_len,
+                            last_max_source_bytes: resource_limit.max_source_bytes,
+                        },
+                    );
                 }
                 UnavailableSourceState::Discarded(discarded_source) => {
-                    self.upsert_discarded_source(uri, version, kind, discarded_source);
+                    self.upsert_sync_error(
+                        uri,
+                        version,
+                        kind,
+                        DocumentSyncError::FullReplacementRequired {
+                            source_len: discarded_source.source_len,
+                            last_max_source_bytes: discarded_source.previous_max_source_bytes,
+                        },
+                    );
                 }
                 UnavailableSourceState::SyncError(sync_error) => {
                     self.upsert_sync_error(uri, version, kind, sync_error);
                 }
             }
-            return TextDocumentUpdate::Applied;
+            return TextDocumentUpdate::NeedsFullSync;
         };
         let mut known_text = None::<Rope>;
 
@@ -501,8 +929,8 @@ impl DocumentStore {
     }
 
     pub fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
-        if let Some(generation) = self.analysis_generations.get(uri) {
-            return Some(self.cached_snapshot_context(generation, self.documents.get(uri)?.epoch));
+        if let Some(cached) = self.analysis_generations.get(uri) {
+            return Some(self.cached_snapshot_context(cached, self.documents.get(uri)?.epoch));
         }
 
         let request = self.snapshot_build_request(uri)?;
@@ -517,6 +945,12 @@ impl DocumentStore {
                     DocumentResourceLimit {
                         source_len: rejection.source_len(),
                         max_source_bytes: rejection.max_source_bytes(),
+                        span: rejection
+                            .payload()
+                            .diagnostics
+                            .first()
+                            .and_then(|diagnostic| diagnostic.span)
+                            .expect("source-limit rejection must retain its source span"),
                     },
                 );
                 return None;
@@ -527,7 +961,7 @@ impl DocumentStore {
 
     pub(crate) fn snapshot_build_request(&self, uri: &Uri) -> Option<AnalysisBuildRequest> {
         let record = self.documents.get(uri)?;
-        if record.document.has_unavailable_source() {
+        if record.document.has_unavailable_source() || self.analysis_generations.contains_key(uri) {
             return None;
         }
         let key = AnalysisBuildKey::new(
@@ -559,8 +993,13 @@ impl DocumentStore {
             return None;
         }
 
-        self.analysis_generations
-            .insert(request.uri().clone(), Arc::clone(&analysis));
+        self.analysis_generations.insert(
+            request.uri().clone(),
+            CachedAnalysisGeneration {
+                context: Arc::clone(&analysis),
+                diagnostic_generation: request.diagnostic_generation(),
+            },
+        );
         Some(SnapshotContext::with_analysis(
             Arc::clone(&analysis.snapshot),
             Arc::clone(&analysis.payload),
@@ -577,9 +1016,10 @@ impl DocumentStore {
 
     pub fn is_analysis_context_current(&self, context: &SnapshotContext) -> bool {
         self.is_snapshot_context_current(context)
-            && context.analysis_generation() == Some(self.diagnostic_generation)
+            && context.analysis_generation() == self.diagnostic_generation
     }
 
+    #[cfg(test)]
     pub fn is_snapshot_contexts_current(&self, contexts: &[SnapshotContext]) -> bool {
         contexts
             .iter()
@@ -597,7 +1037,30 @@ impl DocumentStore {
     }
 
     pub fn has_analysis_payload(&self, uri: &Uri) -> bool {
-        self.analysis_generations.contains_key(uri)
+        self.analysis_generations
+            .get(uri)
+            .is_some_and(|cached| cached.diagnostic_generation == self.diagnostic_generation)
+    }
+
+    pub(crate) fn diagnostic_reprojection_request(
+        &self,
+        uri: &Uri,
+    ) -> Option<DiagnosticReprojectionRequest> {
+        let cached = self.analysis_generations.get(uri)?;
+        if cached.diagnostic_generation == self.diagnostic_generation {
+            return None;
+        }
+        let record = self.documents.get(uri)?;
+        Some(DiagnosticReprojectionRequest {
+            analyzer: self.analyzer.clone(),
+            cancellation: self.diagnostic_reprojection_cancellation.clone(),
+            generation: self.diagnostic_generation,
+            source: DiagnosticReprojectionSource {
+                uri: uri.clone(),
+                document_epoch: record.epoch,
+                context: Arc::clone(&cached.context),
+            },
+        })
     }
 
     #[cfg(test)]
@@ -605,7 +1068,9 @@ impl DocumentStore {
         &self,
         uri: &Uri,
     ) -> Option<&Arc<DocumentAnalysisContext>> {
-        self.analysis_generations.get(uri)
+        self.analysis_generations
+            .get(uri)
+            .map(|cached| &cached.context)
     }
 
     pub(crate) fn analysis_executor(&self) -> AnalysisExecutor {
@@ -639,8 +1104,8 @@ impl DocumentStore {
         let mut requests = Vec::new();
 
         for (uri, record) in &self.documents {
-            if let Some(generation) = self.analysis_generations.get(uri) {
-                contexts.push(self.cached_snapshot_context(generation, record.epoch));
+            if let Some(cached) = self.analysis_generations.get(uri) {
+                contexts.push(self.cached_snapshot_context(cached, record.epoch));
             } else if let Some(request) = self.snapshot_build_request(uri) {
                 requests.push(request);
             }
@@ -649,75 +1114,31 @@ impl DocumentStore {
         (contexts, requests)
     }
 
-    pub fn workspace_symbol_snapshot_build_plan(
-        &self,
-        batch_size: usize,
-    ) -> WorkspaceSnapshotBuildPlan {
-        let mut contexts = Vec::new();
-        let mut requests = Vec::new();
-        let mut documents = self.documents.iter().collect::<Vec<_>>();
-        documents.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
-
-        for (uri, record) in documents {
-            if let Some(generation) = self.analysis_generations.get(uri) {
-                contexts.push(self.cached_snapshot_context(generation, record.epoch));
-            } else if let Some(request) = self.snapshot_build_request(uri) {
-                requests.push(request);
-            }
-        }
-
-        let batch_size = batch_size.max(1);
-        let mut requests = requests.into_iter();
-        let mut batches = Vec::new();
-        loop {
-            let batch = requests.by_ref().take(batch_size).collect::<Vec<_>>();
-            if batch.is_empty() {
-                break;
-            }
-            batches.push(batch);
-        }
-
-        WorkspaceSnapshotBuildPlan { contexts, batches }
-    }
-
-    pub fn workspace_symbol_snapshot_contexts_current(&self, contexts: &[SnapshotContext]) -> bool {
-        contexts.len() == self.snapshot_eligible_document_count()
-            && self.is_snapshot_contexts_current(contexts)
-    }
-
-    fn snapshot_eligible_document_count(&self) -> usize {
-        self.documents
-            .values()
-            .filter(|record| !record.document.has_unavailable_source())
-            .count()
-    }
-
     fn cached_snapshot_context(
         &self,
-        analysis: &Arc<DocumentAnalysisContext>,
+        cached: &CachedAnalysisGeneration,
         document_epoch: DocumentEpoch,
     ) -> SnapshotContext {
         SnapshotContext::with_analysis(
-            Arc::clone(&analysis.snapshot),
-            Arc::clone(&analysis.payload),
+            Arc::clone(&cached.context.snapshot),
+            Arc::clone(&cached.context.payload),
             self.snapshot_generation,
-            self.diagnostic_generation,
+            cached.diagnostic_generation,
             document_epoch,
         )
     }
 
+    #[cfg(test)]
     pub fn snapshot_contexts_for_requests(
         &mut self,
         requests: Vec<(AnalysisBuildRequest, Arc<DocumentAnalysisContext>)>,
     ) -> SnapshotBatchCommit {
-        #[cfg(test)]
         let mut contexts = Vec::new();
         let mut stale_open_documents = false;
 
         for (request, analysis) in requests {
             match self.insert_built_analysis(&request, analysis) {
                 Some(_context) => {
-                    #[cfg(test)]
                     contexts.push(_context);
                 }
                 None if self.get(request.uri()).is_some() => stale_open_documents = true,
@@ -726,7 +1147,6 @@ impl DocumentStore {
         }
 
         SnapshotBatchCommit {
-            #[cfg(test)]
             contexts,
             stale_open_documents,
         }

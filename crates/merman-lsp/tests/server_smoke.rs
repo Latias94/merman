@@ -16,9 +16,9 @@ mod prelude {
         PublishDiagnosticsParams, Range, ReferenceContext, ReferenceParams, RenameParams,
         SelectionRange, SelectionRangeParams, SemanticTokensDeltaParams,
         SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
-        SemanticTokensRangeResult, SemanticTokensResult, SymbolInformation,
-        TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-        TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
+        SemanticTokensRangeResult, SemanticTokensResult, TextDocumentContentChangeEvent,
+        TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
+        VersionedTextDocumentIdentifier,
     };
 }
 

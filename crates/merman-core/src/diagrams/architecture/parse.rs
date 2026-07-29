@@ -831,75 +831,111 @@ pub(super) fn parse_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<ArchitectureSemanticSource> {
-    let trace = parse_trace(code, meta, ArchitectureParseMode::Strict)?;
+    let trace = parse_trace_controlled(
+        code,
+        meta,
+        ArchitectureParseMode::Strict,
+        &crate::ParseControl::new(),
+    )
+    .expect("a private parse control cannot be cancelled")?;
     let db = trace.build_db()?;
     let editor_facts = trace.editor_facts(code, None);
     Ok(ArchitectureSemanticSource { db, editor_facts })
 }
 
-pub(super) fn parse_combined_semantic_source(
+pub(super) fn parse_combined_semantic_source_controlled(
     code: &str,
     meta: &ParseMetadata,
-) -> std::result::Result<ArchitectureSemanticSource, crate::family::CombinedSemanticFailure> {
-    let trace = match parse_trace(code, meta, ArchitectureParseMode::Recovering) {
-        Ok(trace) => trace,
-        Err(error) => {
-            let mut facts = EditorSemanticFacts::new();
-            push_recovery_error(&mut facts, &error);
-            return Err(crate::family::CombinedSemanticFailure::new(error, facts));
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<
+    std::result::Result<ArchitectureSemanticSource, crate::family::CombinedSemanticFailure>,
+> {
+    control.checkpoint()?;
+    let trace =
+        match parse_trace_controlled(code, meta, ArchitectureParseMode::Recovering, control)? {
+            Ok(trace) => trace,
+            Err(error) => {
+                let mut facts = EditorSemanticFacts::new();
+                push_recovery_error(&mut facts, &error);
+                return Ok(Err(crate::family::CombinedSemanticFailure::new(
+                    error, facts,
+                )));
+            }
+        };
+    control.checkpoint()?;
+    let mut syntax_error = None;
+    for (index, entry) in trace.entries.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
         }
-    };
-    let syntax_error = trace.entries.iter().find_map(|entry| {
-        entry
-            .diagnostic
-            .clone()
-            .map(|diagnostic| Error::DiagramParse {
+        if let Some(diagnostic) = entry.diagnostic.clone() {
+            syntax_error = Some(Error::DiagramParse {
                 diagram_type: meta.diagram_type.clone(),
                 diagnostic,
-            })
-    });
-    let db = trace.build_db();
-    let editor_facts = trace.editor_facts(code, db.as_ref().err());
+            });
+            break;
+        }
+    }
+    control.checkpoint()?;
+    let db = trace.build_db_controlled(control)?;
+    let editor_facts = trace.editor_facts_controlled(code, db.as_ref().err(), control)?;
+    control.checkpoint()?;
 
     if let Some(error) = syntax_error {
-        return Err(crate::family::CombinedSemanticFailure::new(
+        return Ok(Err(crate::family::CombinedSemanticFailure::new(
             error,
             editor_facts,
-        ));
+        )));
     }
 
-    match db {
+    control.checkpoint()?;
+    Ok(match db {
         Ok(db) => Ok(ArchitectureSemanticSource { db, editor_facts }),
         Err(error) => Err(crate::family::CombinedSemanticFailure::new(
             error,
             editor_facts,
         )),
-    }
+    })
 }
 
-fn parse_trace(
+fn parse_trace_controlled(
     code: &str,
     meta: &ParseMetadata,
     mode: ArchitectureParseMode,
-) -> Result<ArchitectureTrace> {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<Result<ArchitectureTrace>> {
+    control.checkpoint()?;
     let mut trace = ArchitectureTrace::default();
     let mut lines = ArchitectureLineCursor::new(code);
     let mut found_header = false;
 
     while let Some(line) = lines.next() {
+        control.checkpoint()?;
         let (trimmed, trimmed_start) = trimmed_statement_with_offset(line.text, line.start);
         if trimmed.is_empty() {
             continue;
         }
         let Some(rest_with_ws) = trimmed.strip_prefix("architecture-beta") else {
-            return handle_header_error(&mut trace, mode, meta, trimmed_start, trimmed.len());
+            return Ok(handle_header_error(
+                &mut trace,
+                mode,
+                meta,
+                trimmed_start,
+                trimmed.len(),
+            ));
         };
         if rest_with_ws
             .chars()
             .next()
             .is_some_and(|ch| !matches!(ch, ' ' | '\t'))
         {
-            return handle_header_error(&mut trace, mode, meta, trimmed_start, trimmed.len());
+            return Ok(handle_header_error(
+                &mut trace,
+                mode,
+                meta,
+                trimmed_start,
+                trimmed.len(),
+            ));
         }
         found_header = true;
         trace.lexemes.keyword(SourceSpan::new(
@@ -911,7 +947,7 @@ fn parse_trace(
         if !rest.is_empty() {
             let common_start = trimmed_start + "architecture-beta".len();
             let statement_start = common_start + leading;
-            parse_trace_statement(
+            if let Err(error) = parse_trace_statement(
                 code,
                 &mut lines,
                 rest,
@@ -919,21 +955,24 @@ fn parse_trace(
                 common_start,
                 mode,
                 &mut trace,
-            )?;
+            ) {
+                return Ok(Err(error));
+            }
         }
         break;
     }
 
     if !found_header {
-        return handle_header_error(&mut trace, mode, meta, code.len(), 0);
+        return Ok(handle_header_error(&mut trace, mode, meta, code.len(), 0));
     }
 
     while let Some(line) = lines.next() {
+        control.checkpoint()?;
         let (trimmed, trimmed_start) = trimmed_statement_with_offset(line.text, line.start);
         if trimmed.is_empty() {
             continue;
         }
-        parse_trace_statement(
+        if let Err(error) = parse_trace_statement(
             code,
             &mut lines,
             trimmed,
@@ -941,10 +980,13 @@ fn parse_trace(
             line.start,
             mode,
             &mut trace,
-        )?;
+        ) {
+            return Ok(Err(error));
+        }
     }
 
-    Ok(trace)
+    control.checkpoint()?;
+    Ok(Ok(trace))
 }
 
 fn handle_header_error(
@@ -1187,9 +1229,21 @@ fn push_recovery_error(facts: &mut EditorSemanticFacts, error: &Error) {
 
 impl ArchitectureTrace {
     fn build_db(&self) -> Result<ArchitectureDb> {
+        let control = crate::ParseControl::new();
+        self.build_db_controlled(&control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    fn build_db_controlled(
+        &self,
+        control: &crate::ParseControl,
+    ) -> crate::ParseControlResult<Result<ArchitectureDb>> {
         let mut db = ArchitectureDb::default();
 
-        for entry in &self.entries {
+        for (index, entry) in self.entries.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
             match entry.statement.as_ref() {
                 Some(ArchitectureStatement::Title(value)) => db.set_title(value.value.clone()),
                 Some(ArchitectureStatement::AccTitle(value)) => {
@@ -1201,23 +1255,30 @@ impl ArchitectureTrace {
                 _ => {}
             }
         }
-        for entry in &self.entries {
+        for (index, entry) in self.entries.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
             if let Some(ArchitectureStatement::Group {
                 id,
                 icon,
                 title,
                 in_group,
             }) = entry.statement.as_ref()
-            {
-                db.add_group(
+                && let Err(error) = db.add_group(
                     id.clone(),
                     icon.as_ref().map(|value| value.value.clone()),
                     title.as_ref().map(|value| value.value.clone()),
                     in_group.clone(),
-                )?;
+                )
+            {
+                return Ok(Err(error));
             }
         }
-        for entry in &self.entries {
+        for (index, entry) in self.entries.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
             if let Some(ArchitectureStatement::Service {
                 id,
                 icon,
@@ -1225,49 +1286,82 @@ impl ArchitectureTrace {
                 title,
                 in_group,
             }) = entry.statement.as_ref()
-            {
-                db.add_service(
+                && let Err(error) = db.add_service(
                     id.clone(),
                     icon.as_ref().map(|value| value.value.clone()),
                     icon_text.as_ref().map(|value| value.value.clone()),
                     title.as_ref().map(|value| value.value.clone()),
                     in_group.clone(),
-                )?;
-            }
-        }
-        for entry in &self.entries {
-            if let Some(ArchitectureStatement::Junction { id, in_group }) = entry.statement.as_ref()
+                )
             {
-                db.add_junction(id.clone(), in_group.clone())?;
+                return Ok(Err(error));
             }
         }
-        for entry in &self.entries {
-            if let Some(ArchitectureStatement::Edge(edge)) = entry.statement.as_ref() {
-                db.add_edge(edge.clone())?;
+        for (index, entry) in self.entries.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if let Some(ArchitectureStatement::Junction { id, in_group }) = entry.statement.as_ref()
+                && let Err(error) = db.add_junction(id.clone(), in_group.clone())
+            {
+                return Ok(Err(error));
             }
         }
-        for entry in &self.entries {
+        for (index, entry) in self.entries.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if let Some(ArchitectureStatement::Edge(edge)) = entry.statement.as_ref()
+                && let Err(error) = db.add_edge(edge.clone())
+            {
+                return Ok(Err(error));
+            }
+        }
+        for (index, entry) in self.entries.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
             if let Some(ArchitectureStatement::Alignment { direction, members }) =
                 entry.statement.as_ref()
-            {
-                db.add_layout_hint(
+                && let Err(error) = db.add_layout_hint_controlled(
                     ArchitectureLayoutDirection::parse(&direction.value)
                         .expect("validated alignment direction"),
                     members.clone(),
-                )?;
+                    control,
+                )?
+            {
+                return Ok(Err(error));
             }
         }
-        Ok(db)
+        control.checkpoint()?;
+        Ok(Ok(db))
     }
 
     fn editor_facts(&self, source: &str, validation_error: Option<&Error>) -> EditorSemanticFacts {
+        let control = crate::ParseControl::new();
+        self.editor_facts_controlled(source, validation_error, &control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    fn editor_facts_controlled(
+        &self,
+        source: &str,
+        validation_error: Option<&Error>,
+        control: &crate::ParseControl,
+    ) -> crate::ParseControlResult<EditorSemanticFacts> {
         let mut facts = EditorSemanticFacts::new();
-        for entry in &self.entries {
+        for (entry_index, entry) in self.entries.iter().enumerate() {
+            if entry_index % 128 == 0 {
+                control.checkpoint()?;
+            }
             debug_assert!(entry.span.start <= entry.span.end);
             if let Some(prefix) = entry.directive_prefix {
                 facts.push_directive_prefix(prefix);
             }
-            for fact in &entry.facts {
+            for (fact_index, fact) in entry.facts.iter().enumerate() {
+                if fact_index % 128 == 0 {
+                    control.checkpoint()?;
+                }
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
                     fact.expected,
                     fact.value.selection,
@@ -1298,8 +1392,11 @@ impl ArchitectureTrace {
         if let Some(error) = validation_error {
             push_recovery_error(&mut facts, error);
         }
-        self.lexemes.clone().attach(source, &mut facts);
-        facts
+        self.lexemes
+            .clone()
+            .attach_controlled(source, &mut facts, control)?;
+        control.checkpoint()?;
+        Ok(facts)
     }
 }
 
@@ -1313,7 +1410,20 @@ impl ArchitectureSemanticSource {
         self.db.render_model()
     }
 
+    #[cfg(test)]
     pub(super) fn editor_facts(&self) -> EditorSemanticFacts {
         self.editor_facts.clone()
+    }
+
+    pub(super) fn into_combined_parts_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &crate::ParseControl,
+    ) -> crate::ParseControlResult<(Result<Value>, EditorSemanticFacts)> {
+        control.checkpoint()?;
+        let model = self.db.render_model_controlled(control)?;
+        let json = super::render_model_to_compat_json_controlled(&model, meta, control)?;
+        control.checkpoint()?;
+        Ok((json, self.editor_facts))
     }
 }

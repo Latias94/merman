@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
-use tokio::sync::Notify;
+use tokio::sync::{Notify, Semaphore};
 use tower::{BoxError, Service};
 use tower_lsp_server::Loopback;
 use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
@@ -25,6 +25,8 @@ const MESSAGE_QUEUE_SIZE: usize = 100;
 const MAX_HEADER_BYTES: usize = 8 * 1024;
 // The source limit is 4 MiB. This leaves room for JSON string escaping and protocol metadata.
 const MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
+// Bound queued and executing requests by encoded body size as well as queue cardinality.
+const SERVER_REQUEST_BYTE_BUDGET: usize = MAX_MESSAGE_BYTES * LSP_HANDLER_CONCURRENCY;
 const OUTPUT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 const RUNNING: u8 = 0;
@@ -233,7 +235,10 @@ impl Display for FrameError {
 
 enum FrameRead {
     Eof,
-    Message(IncomingMessage),
+    Message {
+        message: IncomingMessage,
+        body_length: usize,
+    },
     Error(FrameError, Recovery),
 }
 
@@ -326,7 +331,10 @@ where
         };
         tracing::trace!("<- {}", body);
         match serde_json::from_str(body) {
-            Ok(message) => Ok(FrameRead::Message(message)),
+            Ok(message) => Ok(FrameRead::Message {
+                message,
+                body_length: content_length,
+            }),
             Err(error) => Ok(FrameRead::Error(
                 FrameError::InvalidJson(error),
                 Recovery::Continue,
@@ -555,6 +563,7 @@ pub struct StdioServer<I, O, L> {
     stdout: O,
     loopback: L,
     max_concurrency: usize,
+    request_byte_budget: usize,
 }
 
 impl<I, O, L> StdioServer<I, O, L>
@@ -568,6 +577,13 @@ where
     #[must_use]
     pub const fn concurrency_level(mut self, max: usize) -> Self {
         self.max_concurrency = max;
+        self
+    }
+
+    #[cfg(test)]
+    fn request_byte_budget(mut self, max_bytes: usize) -> Self {
+        assert!(max_bytes > 0, "request byte budget must be positive");
+        self.request_byte_budget = max_bytes;
         self
     }
 
@@ -593,8 +609,11 @@ where
         let (mut server_tasks_tx, server_tasks_rx) = mpsc::channel(MESSAGE_QUEUE_SIZE);
         let mut task_responses_tx = responses_tx.clone();
         let max_concurrency = self.max_concurrency.max(1);
+        let request_byte_budget = self.request_byte_budget;
+        let request_budget = Arc::new(Semaphore::new(request_byte_budget));
 
         let (server_tasks_abort, server_tasks_registration) = future::AbortHandle::new_pair();
+        let input_server_tasks_abort = server_tasks_abort.clone();
         let process_server_tasks = future::Abortable::new(
             async move {
                 let mut tasks = server_tasks_rx.buffer_unordered(max_concurrency);
@@ -629,7 +648,12 @@ where
                     };
                     match frame {
                         FrameRead::Eof => break TransportStop::InputClosed,
-                        FrameRead::Message(IncomingMessage::Response(response)) => {
+                        FrameRead::Message {
+                            message: IncomingMessage::Response(response),
+                            ..
+                        } => {
+                            // A handler may be waiting for this response, so request admission
+                            // must never consume or wait for budget on the response path.
                             if let Err(error) = client_responses.send(response).await {
                                 tracing::error!(
                                     error = %display_sources(&error),
@@ -638,7 +662,33 @@ where
                                 break TransportStop::InputClosed;
                             }
                         }
-                        FrameRead::Message(IncomingMessage::Request(request)) => {
+                        FrameRead::Message {
+                            message: IncomingMessage::Request(request),
+                            body_length,
+                        } => {
+                            let will_exit = request.method() == "exit" && request.id().is_none();
+                            let request_budget_permit = if will_exit {
+                                // LifecycleService must observe exit even when active handlers
+                                // consume the entire request budget.
+                                None
+                            } else {
+                                let permits = u32::try_from(body_length)
+                                    .expect("validated LSP body length fits in u32");
+                                match Arc::clone(&request_budget).try_acquire_many_owned(permits) {
+                                    Ok(permit) => Some(permit),
+                                    Err(error) => {
+                                        tracing::error!(
+                                            %error,
+                                            body_length,
+                                            request_byte_budget,
+                                            "LSP request byte budget exhausted"
+                                        );
+                                        input_server_tasks_abort.abort();
+                                        break TransportStop::InputClosed;
+                                    }
+                                }
+                            };
+
                             if let Err(error) = future::poll_fn(|cx| service.poll_ready(cx)).await {
                                 let error: BoxError = error.into();
                                 tracing::error!(
@@ -648,10 +698,9 @@ where
                                 break TransportStop::InputClosed;
                             }
 
-                            let will_exit = request.method() == "exit" && request.id().is_none();
                             let handler = service.call(request);
                             let task = async move {
-                                match handler.await {
+                                let response = match handler.await {
                                     Ok(response) => response,
                                     Err(error) => {
                                         let error: BoxError = error.into();
@@ -661,7 +710,9 @@ where
                                         );
                                         None
                                     }
-                                }
+                                };
+                                drop(request_budget_permit);
+                                response
                             };
                             if server_tasks_tx.send(task).await.is_err() {
                                 break TransportStop::InputClosed;
@@ -742,6 +793,7 @@ where
         stdout,
         loopback: socket,
         max_concurrency: LSP_HANDLER_CONCURRENCY,
+        request_byte_budget: SERVER_REQUEST_BYTE_BUDGET,
     }
 }
 
@@ -777,7 +829,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
+    use std::{
+        convert::Infallible, future::Future, io::Cursor, pin::Pin, sync::atomic::AtomicUsize,
+    };
+    use tokio::sync::oneshot;
+    use tokio::time::timeout;
 
     fn frame(body: &[u8]) -> Vec<u8> {
         let mut frame = format!("Content-Length: {}\r\n\r\n", body.len()).into_bytes();
@@ -787,8 +843,72 @@ mod tests {
 
     fn request_method(frame: FrameRead) -> String {
         match frame {
-            FrameRead::Message(IncomingMessage::Request(request)) => request.method().to_owned(),
+            FrameRead::Message {
+                message: IncomingMessage::Request(request),
+                ..
+            } => request.method().to_owned(),
             _ => panic!("expected JSON-RPC request"),
+        }
+    }
+
+    struct ResponseLoopback {
+        responses: mpsc::UnboundedSender<Response>,
+    }
+
+    impl Loopback for ResponseLoopback {
+        type RequestStream = stream::Empty<Request>;
+        type ResponseSink = mpsc::UnboundedSender<Response>;
+
+        fn split(self) -> (Self::RequestStream, Self::ResponseSink) {
+            (stream::empty(), self.responses)
+        }
+    }
+
+    struct BudgetedService {
+        calls: Arc<AtomicUsize>,
+        first_started: Option<oneshot::Sender<()>>,
+        release_first: Option<oneshot::Receiver<()>>,
+        second_called: Option<oneshot::Sender<()>>,
+    }
+
+    impl Service<Request> for BudgetedService {
+        type Response = Option<Response>;
+        type Error = Infallible;
+        type Future =
+            Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, request: Request) -> Self::Future {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            match request.id() {
+                Some(Id::Number(1)) => {
+                    let first_started = self
+                        .first_started
+                        .take()
+                        .expect("first request is called once");
+                    let release_first = self
+                        .release_first
+                        .take()
+                        .expect("first request is called once");
+                    Box::pin(async move {
+                        let _ = first_started.send(());
+                        let _ = release_first.await;
+                        Ok(None)
+                    })
+                }
+                Some(Id::Number(2)) => {
+                    let second_called = self
+                        .second_called
+                        .take()
+                        .expect("second request is called once");
+                    let _ = second_called.send(());
+                    Box::pin(async { Ok(None) })
+                }
+                id => panic!("unexpected test request id: {id:?}"),
+            }
         }
     }
 
@@ -900,5 +1020,64 @@ mod tests {
             .err()
             .expect("partial frame should fail");
         assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn request_byte_budget_fails_closed_without_blocking_prior_client_responses() {
+        let first = br#"{"jsonrpc":"2.0","id":1,"method":"test/block","params":null}"#;
+        let response = br#"{"jsonrpc":"2.0","id":99,"result":null}"#;
+        let second = br#"{"jsonrpc":"2.0","id":2,"method":"test/block","params":null}"#;
+        assert_eq!(first.len(), second.len());
+
+        let mut input = frame(first);
+        input.extend(frame(response));
+        input.extend(frame(second));
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (first_started_tx, _first_started_rx) = oneshot::channel();
+        let (_release_first_tx, release_first_rx) = oneshot::channel();
+        let (second_called_tx, second_called_rx) = oneshot::channel();
+        let (responses_tx, mut responses_rx) = mpsc::unbounded();
+
+        let server = stdio_server(
+            Cursor::new(input),
+            Vec::<u8>::new(),
+            ResponseLoopback {
+                responses: responses_tx,
+            },
+        )
+        .request_byte_budget(first.len());
+        let server_task = tokio::spawn({
+            let calls = Arc::clone(&calls);
+            async move {
+                server
+                    .serve(BudgetedService {
+                        calls,
+                        first_started: Some(first_started_tx),
+                        release_first: Some(release_first_rx),
+                        second_called: Some(second_called_tx),
+                    })
+                    .await;
+            }
+        });
+
+        let routed_response = timeout(Duration::from_secs(2), responses_rx.next())
+            .await
+            .expect("client response should bypass the request byte budget")
+            .expect("client response sink should remain open");
+        assert_eq!(routed_response.id(), &Id::Number(99));
+        assert!(
+            timeout(Duration::from_secs(2), second_called_rx)
+                .await
+                .expect("server should close the second request signal")
+                .is_err(),
+            "a request beyond the byte budget must not call the service"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("server should stop after exhausting the request byte budget")
+            .expect("server task should not panic");
     }
 }

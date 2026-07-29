@@ -1,7 +1,4 @@
-use crate::{
-    AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, DiagnosticSeverity,
-    configurable_rule_descriptor,
-};
+use crate::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, DiagnosticSeverity};
 use chrono::NaiveDate;
 use merman_core::MermaidConfig;
 use serde::{Deserialize, Serialize};
@@ -210,8 +207,9 @@ impl AnalysisOptionsJson {
                     "lint.enable_rules entries must not be empty",
                 ));
             }
-            validate_configurable_rule_id(rule_id, "lint.enable_rules")?;
-            config.enable_rule(rule_id.clone());
+            config
+                .enable_rule(rule_id.clone())
+                .map_err(|error| rule_config_error("lint.enable_rules", error))?;
         }
 
         for rule_id in &lint.disable_rules {
@@ -220,8 +218,9 @@ impl AnalysisOptionsJson {
                     "lint.disable_rules entries must not be empty",
                 ));
             }
-            validate_configurable_rule_id(rule_id, "lint.disable_rules")?;
-            config.disable_rule(rule_id.clone());
+            config
+                .disable_rule(rule_id.clone())
+                .map_err(|error| rule_config_error("lint.disable_rules", error))?;
         }
 
         for override_ in &lint.rule_severities {
@@ -230,11 +229,12 @@ impl AnalysisOptionsJson {
                     "lint.rule_severities.rule_id must not be empty",
                 ));
             }
-            validate_configurable_rule_id(&override_.rule_id, "lint.rule_severities.rule_id")?;
-            config.set_rule_severity(
-                override_.rule_id.clone(),
-                parse_lint_severity(&override_.severity)?,
-            );
+            config
+                .set_rule_severity(
+                    override_.rule_id.clone(),
+                    parse_lint_severity(&override_.severity)?,
+                )
+                .map_err(|error| rule_config_error("lint.rule_severities.rule_id", error))?;
         }
 
         Ok(config)
@@ -303,16 +303,14 @@ fn parse_lint_severity(value: &str) -> Result<DiagnosticSeverity, AnalysisOption
     }
 }
 
-fn validate_configurable_rule_id(
-    rule_id: &str,
+fn rule_config_error(
     field: &str,
-) -> Result<(), AnalysisOptionsJsonError> {
-    if configurable_rule_descriptor(rule_id).is_none() {
-        return Err(AnalysisOptionsJsonError::new(format!(
-            "{field} entry `{rule_id}` must reference a configurable analysis rule id",
-        )));
-    }
-    Ok(())
+    error: crate::AnalysisRuleConfigError,
+) -> AnalysisOptionsJsonError {
+    AnalysisOptionsJsonError::new(format!(
+        "{field} entry `{}` must reference a configurable analysis rule id",
+        error.rule_id()
+    ))
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use crate::types::{DocumentKind, DocumentUri, Position};
 use merman_analysis::{
-    FenceDelimiter, FenceDelimiterSpans, FenceTextIndex, SharedTextSlice, SourceDescriptor,
-    SourceMap,
+    AnalyzedDiagram, FenceDelimiter, FenceDelimiterSpans, FenceTextIndex, SharedTextSlice,
+    SourceDescriptor, SourceMap,
 };
 use std::ops::Range;
 use std::sync::Arc;
@@ -105,36 +105,26 @@ impl DocumentSnapshot {
 }
 
 impl FenceSnapshot {
-    pub(crate) fn new(
-        source_id: String,
-        index: usize,
-        source: SourceDescriptor,
-        start: usize,
-        body_start: usize,
-        body_end: usize,
-        end: usize,
-        text: SharedTextSlice,
-        fence_delimiter: Option<FenceDelimiter>,
-        fence_delimiter_spans: Option<FenceDelimiterSpans>,
-        diagram_type: Option<String>,
-        text_index: FenceTextIndex,
-    ) -> Self {
-        debug_assert!(start <= body_start);
-        debug_assert!(body_start <= body_end);
-        debug_assert!(body_end <= end);
+    pub(crate) fn from_analyzed_diagram(diagram: &AnalyzedDiagram) -> Self {
+        let document_range = diagram.document_range();
+        let body_range = diagram.body_range();
+        let syntax = diagram.syntax();
+        debug_assert!(document_range.start <= body_range.start);
+        debug_assert!(body_range.start <= body_range.end);
+        debug_assert!(body_range.end <= document_range.end);
         Self {
-            source_id,
-            index,
-            source,
-            start,
-            body_start,
-            body_end,
-            end,
-            text,
-            fence_delimiter,
-            fence_delimiter_spans,
-            diagram_type,
-            text_index,
+            source_id: diagram.source_id().to_owned(),
+            index: diagram.index(),
+            source: diagram.source().clone(),
+            start: document_range.start,
+            body_start: body_range.start,
+            body_end: body_range.end,
+            end: document_range.end,
+            text: diagram.text().clone(),
+            fence_delimiter: diagram.fence_delimiter(),
+            fence_delimiter_spans: diagram.fence_delimiter_spans().cloned(),
+            diagram_type: syntax.diagram_type.clone(),
+            text_index: syntax.text_index.clone(),
         }
     }
 

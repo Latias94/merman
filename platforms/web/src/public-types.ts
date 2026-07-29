@@ -530,6 +530,8 @@ export interface AnalysisDiagramSyntaxFacts {
   expected_syntax: AnalysisExpectedSyntaxFacts[];
 }
 
+export type DiagramParseDisposition = "parsed" | "recovered" | "unavailable";
+
 export interface AnalysisDiagramFacts {
   source_id: string;
   index: number;
@@ -539,6 +541,7 @@ export interface AnalysisDiagramFacts {
   body_span?: AnalysisSpan | null;
   text_len: number;
   fence_delimiter?: AnalysisFenceDelimiterFacts | null;
+  parse_disposition: DiagramParseDisposition;
   syntax: AnalysisDiagramSyntaxFacts;
 }
 
@@ -766,7 +769,7 @@ export interface BrowserEditorSession {
   completions(position: EditorPosition): EditorCompletionList;
   hover(position: EditorPosition): EditorHover | null;
   documentSymbols(): EditorDocumentSymbol[];
-  workspaceSymbols(query: string): EditorSymbolInformation[];
+  searchDocumentSymbols(query: string): EditorSymbolInformation[];
   definition(position: EditorPosition): EditorLocation | null;
   references(position: EditorPosition, includeDeclaration?: boolean): EditorLocation[];
   prepareRename(position: EditorPosition): EditorPrepareRename | null;
@@ -785,7 +788,7 @@ export interface WasmEditorSessionBinding {
   completions(line: number, character: number): EditorCompletionList;
   hover(line: number, character: number): EditorHover | null;
   documentSymbols(): EditorDocumentSymbol[];
-  workspaceSymbols(query: string): EditorSymbolInformation[];
+  searchDocumentSymbols(query: string): EditorSymbolInformation[];
   definition(line: number, character: number): EditorLocation | null;
   references(
     line: number,
@@ -919,7 +922,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
     uri?: string | null,
     optionsJson?: string | null
   ) => EditorDocumentSymbol[];
-  editorWorkspaceSymbols?: (
+  editorSearchDocumentSymbols?: (
     source: string,
     query: string,
     uri?: string | null,

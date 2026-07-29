@@ -14,7 +14,7 @@ use merman_editor_core::{
     EditorLocation, EditorPrepareRename, EditorTextEdit, EditorWorkspaceEdit, Position, Range,
     RenameError, SemanticTokenDescriptor, code_actions_from_fixes, completion_for_snapshot,
     document_symbols, goto_definition, hover, plan_semantic_tokens_for_snapshot, prepare_rename,
-    references, rename, semantic_token_descriptor, workspace_symbols,
+    references, rename, search_document_symbols, semantic_token_descriptor,
 };
 use serde::Serialize;
 use std::{
@@ -155,9 +155,9 @@ impl WasmEditorSession {
         document_symbols_for_context(&self.context)
     }
 
-    #[wasm_bindgen(js_name = workspaceSymbols)]
-    pub fn workspace_symbols(&self, query: &str) -> Result<JsValue, JsValue> {
-        workspace_symbols_for_context(&self.context, query)
+    #[wasm_bindgen(js_name = searchDocumentSymbols)]
+    pub fn search_document_symbols(&self, query: &str) -> Result<JsValue, JsValue> {
+        search_document_symbols_for_context(&self.context, query)
     }
 
     pub fn definition(&self, line: usize, character: usize) -> Result<JsValue, JsValue> {
@@ -568,22 +568,22 @@ fn document_symbols_for_context(context: &EditorDocumentContext) -> Result<JsVal
     js_value(&symbols)
 }
 
-#[wasm_bindgen(js_name = editorWorkspaceSymbols)]
-pub fn editor_workspace_symbols(
+#[wasm_bindgen(js_name = editorSearchDocumentSymbols)]
+pub fn editor_search_document_symbols(
     source: &str,
     query: &str,
     uri: Option<String>,
     options_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let context = editor_document_context(source, uri, options_json.as_deref())?;
-    workspace_symbols_for_context(&context, query)
+    search_document_symbols_for_context(&context, query)
 }
 
-fn workspace_symbols_for_context(
+fn search_document_symbols_for_context(
     context: &EditorDocumentContext,
     query: &str,
 ) -> Result<JsValue, JsValue> {
-    let symbols = workspace_symbols(context.analyzed.snapshot(), query)
+    let symbols = search_document_symbols(context.analyzed.snapshot(), query)
         .into_iter()
         .map(WasmSymbolInformation::from)
         .collect::<Vec<_>>();
@@ -1346,6 +1346,52 @@ mod tests {
         assert_eq!(detection.syntax_id, "flowchart-v2");
         assert_eq!(detection.effective_layout_id, "dagre");
         assert_eq!(editor_document_context_builds_for_tests(), 1);
+    }
+
+    #[test]
+    fn wasm_detection_projection_is_independent_from_diagnostic_severity() {
+        let cases = [
+            (
+                concat!(
+                    "cynefin-beta\n",
+                    "  complex\n",
+                    "  complicated\n",
+                    "  complicated --> complicated : \"Self-loop\"\n",
+                ),
+                "merman.parse.recovered_editor_facts",
+                "error",
+                "valid",
+            ),
+            (
+                "flowchart TD\nA[unterminated\n",
+                "merman.parse.diagram_parse",
+                "hint",
+                "recoverable-invalid",
+            ),
+        ];
+
+        for (source, rule_id, severity, expected_validity) in cases {
+            reset_editor_document_context_cache_for_tests();
+            let options = serde_json::json!({
+                "lint": {
+                    "rule_severities": [{
+                        "rule_id": rule_id,
+                        "severity": severity
+                    }]
+                }
+            })
+            .to_string();
+            let context = editor_document_context(
+                source,
+                Some(format!("file:///tmp/{severity}.mmd")),
+                Some(&options),
+            )
+            .expect("shared editor analysis");
+
+            let projected = WasmEditorDiagramDetection::from(context.analyzed.detection());
+            assert_eq!(projected.status, "available");
+            assert_eq!(projected.validity, expected_validity);
+        }
     }
 
     #[test]

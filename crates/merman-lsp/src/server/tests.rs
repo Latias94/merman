@@ -6,7 +6,7 @@ use super::stale_diagnostic_recompute_error;
 use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::document_store::{
     DocumentDiagnosticState, DocumentStore, DocumentSyncError, StoredDocument,
-    WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE, default_lsp_analysis_options,
+    default_lsp_analysis_options,
 };
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::structure::{
@@ -25,15 +25,15 @@ use tower_lsp_server::jsonrpc::Request;
 use tower_lsp_server::ls_types::SemanticTokensResult;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionParams,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentChanges,
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    DocumentSymbolParams, DocumentSymbolResponse, FoldingRangeParams,
-    FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
-    InitializeParams, NumberOrString, Position, Range, RenameParams, SelectionRangeParams,
-    SelectionRangeProviderCapability, SemanticTokensParams, SemanticTokensRangeParams,
-    SemanticTokensRangeResult, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-    TextDocumentItem, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
-    Uri, VersionedTextDocumentIdentifier, WorkspaceSymbolParams, WorkspaceSymbolResponse,
+    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse,
+    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents,
+    HoverParams, InitializeParams, NumberOrString, Position, Range, RenameParams,
+    SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokensParams,
+    SemanticTokensRangeParams, SemanticTokensRangeResult, TextDocumentContentChangeEvent,
+    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Uri, VersionedTextDocumentIdentifier,
 };
 use tower_lsp_server::ls_types::{HoverProviderCapability, OneOf};
 
@@ -182,7 +182,8 @@ fn analyzer_configuration_change_classifies_diagnostic_only_rule_changes() {
     let current = AnalysisOptions::default();
     let next = AnalysisOptions::default().with_rule_config(
         AnalysisRuleConfig::default()
-            .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
+            .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+            .unwrap(),
     );
 
     assert_eq!(
@@ -247,7 +248,7 @@ fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_
     );
     assert_eq!(
         diagnostics[0].range,
-        Range::new(Position::new(0, 0), Position::new(0, 0))
+        Range::new(Position::new(0, 0), Position::new(2, 0))
     );
     assert_eq!(
         diagnostics[0]
@@ -333,6 +334,40 @@ fn diagnostics_for_unsynced_documents_request_full_replacement() {
             .as_ref()
             .and_then(|data| data.get("documentVersion")),
         Some(&serde_json::json!(9))
+    );
+}
+
+#[test]
+fn diagnostics_for_discarded_sources_preserve_rejection_metadata_after_ranged_edits() {
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+    let document = StoredDocument {
+        uri,
+        version: 10,
+        text: "".into(),
+        kind: DocumentKind::Diagram,
+        resource_limit: None,
+        discarded_source: None,
+        sync_error: Some(DocumentSyncError::FullReplacementRequired {
+            source_len: 21,
+            last_max_source_bytes: 8,
+        }),
+    };
+
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(
+        &document,
+        &merman_analysis::Analyzer::new(),
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0].message.contains("21-byte source"));
+    assert!(diagnostics[0].message.contains("8-byte limit"));
+    assert!(diagnostics[0].message.contains("full document replacement"));
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("documentVersion")),
+        Some(&serde_json::json!(10))
     );
 }
 
@@ -553,7 +588,8 @@ async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
         store.apply_analyzer_options(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
-                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction"),
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
+                    .unwrap(),
             ),
         );
         store.upsert_text(
@@ -738,7 +774,8 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         let change = store.apply_analyzer_options(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
-                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction"),
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
+                    .unwrap(),
             ),
         );
         assert_eq!(
@@ -968,6 +1005,116 @@ async fn did_change_applies_incremental_changes_in_order() {
         .await
         .expect("expected changed snapshot");
     assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn document_sync_notifications_preserve_open_change_and_close_order() {
+    let (service, _socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    let uri = Uri::from_str("file:///tmp/ordered-sync.mmd").unwrap();
+
+    let lane = server.document_sync_lane.lock().await;
+    let open = server.did_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem {
+            uri: uri.clone(),
+            language_id: "mermaid".to_string(),
+            version: 1,
+            text: "flowchart TD\nA-->B\n".to_string(),
+        },
+    });
+    tokio::pin!(open);
+    assert!(futures::poll!(&mut open).is_pending());
+
+    let change = server.did_change(DidChangeTextDocumentParams {
+        text_document: VersionedTextDocumentIdentifier {
+            uri: uri.clone(),
+            version: 2,
+        },
+        content_changes: vec![TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "flowchart TD\nA-->C\n".to_string(),
+        }],
+    });
+    tokio::pin!(change);
+    assert!(futures::poll!(&mut change).is_pending());
+    drop(lane);
+    tokio::join!(open, change);
+
+    {
+        let store = server.store.lock().await;
+        let document = store.get(&uri).expect("change must follow open");
+        assert_eq!(document.version, 2);
+        assert_eq!(document.text.as_ref(), "flowchart TD\nA-->C\n");
+    }
+
+    let lane = server.document_sync_lane.lock().await;
+    let reopen = server.did_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem {
+            uri: uri.clone(),
+            language_id: "mermaid".to_string(),
+            version: 3,
+            text: "flowchart TD\nA-->D\n".to_string(),
+        },
+    });
+    tokio::pin!(reopen);
+    assert!(futures::poll!(&mut reopen).is_pending());
+
+    let close = server.did_close(DidCloseTextDocumentParams {
+        text_document: TextDocumentIdentifier { uri: uri.clone() },
+    });
+    tokio::pin!(close);
+    assert!(futures::poll!(&mut close).is_pending());
+    drop(lane);
+    tokio::join!(reopen, close);
+
+    assert!(
+        server.store.lock().await.get(&uri).is_none(),
+        "close must follow the queued reopen"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn configuration_notifications_share_the_document_sync_lane() {
+    let (service, _socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    let uri = Uri::from_str("file:///tmp/configuration-before-open.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n";
+
+    server
+        .replace_analyzer(
+            default_lsp_analysis_options().with_max_source_bytes(Some(source.len() - 1)),
+        )
+        .await;
+
+    let lane = server.document_sync_lane.lock().await;
+    let configuration = server.did_change_configuration(DidChangeConfigurationParams {
+        settings: serde_json::Value::Null,
+    });
+    tokio::pin!(configuration);
+    assert!(futures::poll!(&mut configuration).is_pending());
+
+    let open = server.did_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem {
+            uri: uri.clone(),
+            language_id: "mermaid".to_string(),
+            version: 1,
+            text: source.to_string(),
+        },
+    });
+    tokio::pin!(open);
+    assert!(futures::poll!(&mut open).is_pending());
+    drop(lane);
+    tokio::join!(configuration, open);
+
+    let store = server.store.lock().await;
+    let document = store
+        .get(&uri)
+        .expect("open must run after the queued configuration");
+    assert_eq!(document.version, 1);
+    assert_eq!(document.text.as_ref(), source);
+    assert_eq!(document.resource_limit, None);
+    assert_eq!(document.sync_error, None);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1429,7 +1576,8 @@ async fn lsp_handlers_return_hover_and_symbols() {
         store.apply_analyzer_options(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
-                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction"),
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
+                    .unwrap(),
             ),
         );
         store.upsert(
@@ -1574,82 +1722,6 @@ async fn lsp_handlers_return_hover_and_symbols() {
         document_symbols,
         Some(DocumentSymbolResponse::Flat(_))
     ));
-
-    let workspace_symbols = server
-        .symbol(WorkspaceSymbolParams {
-            partial_result_params: Default::default(),
-            work_done_progress_params: Default::default(),
-            query: "group".to_string(),
-        })
-        .await
-        .unwrap()
-        .expect("expected workspace symbol response");
-    let WorkspaceSymbolResponse::Flat(workspace_symbols) = workspace_symbols else {
-        panic!("expected flat workspace symbol response");
-    };
-    assert!(!workspace_symbols.is_empty());
-    assert!(
-        workspace_symbols
-            .iter()
-            .any(|symbol| symbol.name == "group")
-    );
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn workspace_symbols_builds_all_missing_snapshots_on_first_request() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let document_count = WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE * 5 + 1;
-    let last_index = document_count - 1;
-    let last_symbol = format!("target_{last_index:02}");
-    let first_symbol = "target_00".to_string();
-    let first_uri = Uri::from_str("file:///tmp/workspace-00.mmd").unwrap();
-
-    {
-        let mut store = server.store.lock().await;
-        for index in 0..document_count {
-            let uri = Uri::from_str(&format!("file:///tmp/workspace-{index:02}.mmd")).unwrap();
-            store.upsert_text(
-                uri,
-                1,
-                format!("flowchart TD\nsubgraph target_{index:02}\nA{index}-->B{index}\nend\n"),
-                DocumentKind::Diagram,
-            );
-        }
-    }
-
-    let workspace_symbols = server
-        .symbol(WorkspaceSymbolParams {
-            partial_result_params: Default::default(),
-            work_done_progress_params: Default::default(),
-            query: "target_".to_string(),
-        })
-        .await
-        .unwrap()
-        .expect("expected workspace symbol response");
-    let WorkspaceSymbolResponse::Flat(workspace_symbols) = workspace_symbols else {
-        panic!("expected flat workspace symbol response");
-    };
-
-    assert!(
-        workspace_symbols
-            .iter()
-            .any(|symbol| symbol.name == first_symbol && symbol.location.uri == first_uri),
-        "workspace symbol request should include the first document"
-    );
-    assert!(
-        workspace_symbols
-            .iter()
-            .any(|symbol| symbol.name == last_symbol),
-        "workspace symbol request should include documents beyond a single snapshot batch"
-    );
-
-    let store = server.store.lock().await;
-    let (_contexts, requests) = store.snapshot_build_requests();
-    assert!(
-        requests.is_empty(),
-        "workspace symbol refresh should build every current document before responding"
-    );
 }
 
 #[tokio::test(flavor = "current_thread")]

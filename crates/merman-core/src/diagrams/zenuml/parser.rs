@@ -1,6 +1,6 @@
 use super::ast::*;
 use super::lexer::{self, Keyword, Token, TokenChannel, TokenKind};
-use crate::{MAX_DIAGRAM_NESTING_DEPTH, SourceSpan};
+use crate::{MAX_DIAGRAM_NESTING_DEPTH, ParseControl, ParseControlResult, SourceSpan};
 use std::cell::Cell;
 use std::collections::{HashSet, VecDeque};
 
@@ -9,10 +9,21 @@ const MISSING_CONSTRUCTOR: &str = "Missing Constructor";
 const MAX_HEAD_PARTICIPANT_PREDICTION_STATES: usize =
     MAX_DIAGRAM_NESTING_DEPTH * MAX_DIAGRAM_NESTING_DEPTH;
 
+#[cfg(test)]
 pub(super) fn parse(source: &str, raw_tokens: &[Token]) -> ParsedSyntax {
-    let tokens = lexer::parser_tokens(raw_tokens);
-    let comments = comments_before_default_tokens(raw_tokens);
-    Parser::new(source, tokens, comments).parse()
+    parse_controlled(source, raw_tokens, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+pub(super) fn parse_controlled(
+    source: &str,
+    raw_tokens: &[Token],
+    control: &ParseControl,
+) -> ParseControlResult<ParsedSyntax> {
+    control.checkpoint()?;
+    let tokens = lexer::parser_tokens_controlled(raw_tokens, control)?;
+    let comments = comments_before_default_tokens(raw_tokens, control)?;
+    Parser::new(source, tokens, comments, control).parse()
 }
 
 struct Parser<'a> {
@@ -21,20 +32,28 @@ struct Parser<'a> {
     comments: Vec<Option<SpannedText>>,
     cursor: usize,
     diagnostics: Vec<SyntaxDiagnostic>,
+    control: ParseControl,
 }
 
 impl<'a> Parser<'a> {
-    fn new(source: &'a str, tokens: Vec<Token>, comments: Vec<Option<SpannedText>>) -> Self {
+    fn new(
+        source: &'a str,
+        tokens: Vec<Token>,
+        comments: Vec<Option<SpannedText>>,
+        control: &ParseControl,
+    ) -> Self {
         Self {
             source,
             tokens,
             comments,
             cursor: 0,
             diagnostics: Vec::new(),
+            control: control.clone(),
         }
     }
 
-    fn parse(mut self) -> ParsedSyntax {
+    fn parse(mut self) -> ParseControlResult<ParsedSyntax> {
+        self.control.checkpoint()?;
         match self.take_name() {
             Some(header)
                 if header
@@ -42,7 +61,7 @@ impl<'a> Parser<'a> {
                     .get(.."zenuml".len())
                     .is_some_and(|prefix| prefix.eq_ignore_ascii_case("zenuml")) =>
             {
-                self.restore_header_suffix(header);
+                self.restore_header_suffix(header)?;
             }
             Some(header) => self.error("expected `zenuml` header", header.span),
             None => self.error("expected `zenuml` header", self.insertion_span()),
@@ -61,6 +80,9 @@ impl<'a> Parser<'a> {
         let mut head_prediction = HeadParticipantPrediction::default();
 
         loop {
+            if !self.parse_active() {
+                break;
+            }
             let comment = self.take_current_comment();
             if self.at_keyword(Keyword::Group) {
                 head.push(HeadItemSyntax::Group(self.parse_group(comment)));
@@ -71,7 +93,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             let participant = {
-                let grammar = Grammar::new(self.source, &self.tokens);
+                let grammar = Grammar::with_control(self.source, &self.tokens, &self.control);
                 head_prediction.select(&grammar, self.cursor)
             };
             if let Some(participant) = participant {
@@ -91,22 +113,24 @@ impl<'a> Parser<'a> {
             starter,
             statements,
         };
-        ParsedSyntax {
+        self.control.checkpoint()?;
+        Ok(ParsedSyntax {
             document,
             diagnostics: self.diagnostics,
-        }
+        })
     }
 
-    fn restore_header_suffix(&mut self, header: SpannedText) {
+    fn restore_header_suffix(&mut self, header: SpannedText) -> ParseControlResult<()> {
         let Some(suffix) = header.value.get("zenuml".len()..) else {
-            return;
+            return Ok(());
         };
         if suffix.is_empty() {
-            return;
+            return Ok(());
         }
 
         let suffix_start = header.span.start + "zenuml".len();
-        let suffix_tokens = lexer::parser_tokens(&lexer::lex(suffix))
+        let raw_tokens = lexer::lex_controlled(suffix, &self.control)?;
+        let suffix_tokens = lexer::parser_tokens_controlled(&raw_tokens, &self.control)?
             .into_iter()
             .filter(|token| !matches!(token.kind, TokenKind::Eof))
             .map(|mut token| {
@@ -122,6 +146,7 @@ impl<'a> Parser<'a> {
             std::iter::repeat_n(None, suffix_tokens.len()),
         );
         self.tokens.splice(self.cursor..self.cursor, suffix_tokens);
+        self.control.checkpoint()
     }
 
     fn parse_title(&mut self) -> SpannedText {
@@ -150,10 +175,13 @@ impl<'a> Parser<'a> {
         let mut participants = Vec::new();
         if matches!(self.peek_kind(), TokenKind::OpenBrace) {
             self.bump();
-            while !self.at_eof() && !matches!(self.peek_kind(), TokenKind::CloseBrace) {
+            while self.parse_active()
+                && !self.at_eof()
+                && !matches!(self.peek_kind(), TokenKind::CloseBrace)
+            {
                 let comment = self.take_current_comment();
                 let candidate = {
-                    let grammar = Grammar::new(self.source, &self.tokens);
+                    let grammar = Grammar::with_control(self.source, &self.tokens, &self.control);
                     grammar
                         .participant_candidates(self.cursor)
                         .into_iter()
@@ -237,7 +265,7 @@ impl<'a> Parser<'a> {
         }
 
         let mut statements = Vec::new();
-        while !self.at_eof() {
+        while self.parse_active() && !self.at_eof() {
             if statement_limit.is_some_and(|limit| statements.len() >= limit) {
                 break;
             }
@@ -366,7 +394,7 @@ impl<'a> Parser<'a> {
                 self.error("expected `{` after ZenUML fragment", self.insertion_span());
             }
             if recover_missing_block && {
-                let grammar = Grammar::new(self.source, &self.tokens);
+                let grammar = Grammar::with_control(self.source, &self.tokens, &self.control);
                 grammar.can_start_statement(self.cursor)
             } {
                 self.parse_block(depth + 1, false, None, Some(1))
@@ -617,7 +645,7 @@ impl<'a> Parser<'a> {
         }
 
         let event = {
-            let grammar = Grammar::new(self.source, &self.tokens);
+            let grammar = Grammar::with_control(self.source, &self.tokens, &self.control);
             grammar.async_message(self.cursor)
         };
         let Some(event) = event else {
@@ -677,14 +705,14 @@ impl<'a> Parser<'a> {
             return None;
         }
         if let Some(message) = message.filter(|message| {
-            let grammar = Grammar::new(self.source, &self.tokens);
+            let grammar = Grammar::with_control(self.source, &self.tokens, &self.control);
             grammar.message_candidate_is_complete(message.end)
         }) {
             return self.consume_message(depth, comment, message);
         }
 
         let event = {
-            let grammar = Grammar::new(self.source, &self.tokens);
+            let grammar = Grammar::with_control(self.source, &self.tokens, &self.control);
             grammar.async_message(self.cursor)
         };
         if let Some(event) = event {
@@ -692,7 +720,7 @@ impl<'a> Parser<'a> {
         }
 
         let returned = {
-            let grammar = Grammar::new(self.source, &self.tokens);
+            let grammar = Grammar::with_control(self.source, &self.tokens, &self.control);
             grammar.return_async_message(self.cursor)
         };
         returned.map(|returned| self.consume_return_async(comment, returned))
@@ -827,7 +855,7 @@ impl<'a> Parser<'a> {
         &self,
         parse: impl FnOnce(&Grammar<'_>, usize) -> Option<T>,
     ) -> (Option<T>, Option<SourceSpan>) {
-        let grammar = Grammar::new(self.source, &self.tokens);
+        let grammar = Grammar::with_control(self.source, &self.tokens, &self.control);
         let value = parse(&grammar, self.cursor);
         (value, grammar.expression_depth_error())
     }
@@ -847,7 +875,7 @@ impl<'a> Parser<'a> {
 
     fn skip_balanced_block(&mut self) {
         let mut depth = 0usize;
-        while !self.at_eof() {
+        while self.parse_active() && !self.at_eof() {
             match self.peek_kind() {
                 TokenKind::OpenBrace => depth += 1,
                 TokenKind::CloseBrace if depth == 0 => {
@@ -867,6 +895,10 @@ impl<'a> Parser<'a> {
 
     fn at_eof(&self) -> bool {
         matches!(self.peek_kind(), TokenKind::Eof)
+    }
+
+    fn parse_active(&self) -> bool {
+        !self.control.is_cancelled()
     }
 
     fn peek(&self) -> &Token {
@@ -903,10 +935,16 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn comments_before_default_tokens(raw_tokens: &[Token]) -> Vec<Option<SpannedText>> {
+fn comments_before_default_tokens(
+    raw_tokens: &[Token],
+    control: &ParseControl,
+) -> ParseControlResult<Vec<Option<SpannedText>>> {
     let mut slots = Vec::new();
     let mut pending = Vec::new();
-    for token in raw_tokens {
+    for (index, token) in raw_tokens.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         match (&token.kind, token.channel) {
             (TokenKind::Comment(value), TokenChannel::Comment) => {
                 pending.push(SpannedText::new(value.clone(), token.span));
@@ -929,7 +967,8 @@ fn comments_before_default_tokens(raw_tokens: &[Token]) -> Vec<Option<SpannedTex
             _ => {}
         }
     }
-    slots
+    control.checkpoint()?;
+    Ok(slots)
 }
 
 #[derive(Debug, Default)]
@@ -1062,6 +1101,7 @@ struct ParExprMatch {
 struct Grammar<'a> {
     source: &'a str,
     tokens: &'a [Token],
+    control: ParseControl,
     expression_depth_error: Cell<Option<SourceSpan>>,
     #[cfg(test)]
     participant_candidate_evaluations: Cell<usize>,
@@ -1253,10 +1293,16 @@ fn take_parameter(result: &mut Option<GrammarValue>) -> Option<ParameterMatch> {
 }
 
 impl<'a> Grammar<'a> {
+    #[cfg(test)]
     fn new(source: &'a str, tokens: &'a [Token]) -> Self {
+        Self::with_control(source, tokens, &ParseControl::new())
+    }
+
+    fn with_control(source: &'a str, tokens: &'a [Token], control: &ParseControl) -> Self {
         Self {
             source,
             tokens,
+            control: control.clone(),
             expression_depth_error: Cell::new(None),
             #[cfg(test)]
             participant_candidate_evaluations: Cell::new(0),
@@ -1278,11 +1324,29 @@ impl<'a> Grammar<'a> {
     }
 
     fn run_grammar_task(&self, initial: GrammarTask) -> GrammarValue {
+        let cancellation_kind = match &initial {
+            GrammarTask::Expression { .. } => 0,
+            GrammarTask::Creation { .. } => 1,
+            GrammarTask::Func { .. } => 2,
+            GrammarTask::Invocation { .. } => 3,
+            _ => unreachable!("only grammar roots may start a grammar task"),
+        };
         self.expression_depth_error.set(None);
         let mut tasks = vec![initial];
         let mut result = None;
+        let mut inspected = 0usize;
 
         while let Some(task) = tasks.pop() {
+            if inspected.is_multiple_of(128) && self.control.checkpoint().is_err() {
+                return match cancellation_kind {
+                    0 => GrammarValue::Expression(None),
+                    1 => GrammarValue::Creation(None),
+                    2 => GrammarValue::Func(None),
+                    3 => GrammarValue::Invocation(None),
+                    _ => unreachable!("known cancellation projection"),
+                };
+            }
+            inspected = inspected.saturating_add(1);
             match task {
                 GrammarTask::Expression {
                     start,
@@ -2570,6 +2634,9 @@ impl HeadParticipantPrediction {
         frames.push(HeadParticipantFrame::new(grammar, start));
 
         'search: loop {
+            if grammar.control.is_cancelled() {
+                return Vec::new();
+            }
             let depth = frames.len().saturating_sub(1);
             // The first token can itself start a message, but head selection must first try its
             // participant candidates. Every later frame is a suffix of an already-selected
@@ -2593,6 +2660,9 @@ impl HeadParticipantPrediction {
                     .last_mut()
                     .and_then(HeadParticipantFrame::next_candidate)
                 {
+                    if grammar.control.is_cancelled() {
+                        return Vec::new();
+                    }
                     if exhausted.contains(&(candidate.end, depth + 1)) {
                         continue;
                     }

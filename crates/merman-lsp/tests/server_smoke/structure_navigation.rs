@@ -3,7 +3,7 @@ use std::str::FromStr;
 use super::prelude::*;
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_handles_hover_and_document_symbols() {
+async fn lsp_service_handles_document_symbols_and_rejects_workspace_symbols() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
@@ -109,44 +109,8 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
         tower_lsp_server::ls_types::DocumentSymbolResponse::Nested(_)
     ));
 
-    let other_uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/second.mmd").unwrap();
-    let second_open = Request::build("textDocument/didOpen")
-        .params(
-            serde_json::to_value(DidOpenTextDocumentParams {
-                text_document: TextDocumentItem {
-                    uri: other_uri.clone(),
-                    language_id: "mermaid".to_string(),
-                    version: 1,
-                    text: "flowchart TD\nsubgraph group\nX-->Y\nend\n".to_string(),
-                },
-            })
-            .unwrap(),
-        )
-        .finish();
-    assert_eq!(
-        service
-            .ready()
-            .await
-            .unwrap()
-            .call(second_open)
-            .await
-            .unwrap(),
-        None
-    );
-    let second = socket.next().await.expect("expected second diagnostics");
-    let second_params: PublishDiagnosticsParams =
-        from_value(second.params().cloned().expect("publish params")).unwrap();
-    assert_eq!(second_params.uri, other_uri);
-
     let workspace_symbol = Request::build("workspace/symbol")
-        .params(
-            serde_json::to_value(WorkspaceSymbolParams {
-                partial_result_params: Default::default(),
-                work_done_progress_params: Default::default(),
-                query: "group".to_string(),
-            })
-            .unwrap(),
-        )
+        .params(serde_json::json!({ "query": "group" }))
         .id(4)
         .finish();
     let workspace_symbol_response = service
@@ -155,26 +119,15 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
         .unwrap()
         .call(workspace_symbol)
         .await
-        .unwrap();
-    let workspace_symbol_value = workspace_symbol_response
-        .and_then(|response| response.result().cloned())
-        .expect("expected workspace symbol result");
-    let workspace_symbols: Vec<SymbolInformation> =
-        serde_json::from_value(workspace_symbol_value).unwrap();
-    assert!(
-        workspace_symbols
-            .iter()
-            .any(|symbol| symbol.name == "group")
-    );
-    assert!(
-        workspace_symbols
-            .iter()
-            .any(|symbol| symbol.location.uri == uri)
-    );
-    assert!(
-        workspace_symbols
-            .iter()
-            .any(|symbol| symbol.location.uri == other_uri)
+        .unwrap()
+        .expect("workspace symbol response");
+    assert!(workspace_symbol_response.is_error());
+    assert_eq!(
+        workspace_symbol_response
+            .error()
+            .expect("workspace symbol error")
+            .code,
+        ErrorCode::MethodNotFound
     );
 }
 

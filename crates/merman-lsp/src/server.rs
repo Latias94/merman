@@ -5,9 +5,10 @@ use crate::completion::{
 };
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics_with_profile;
 use crate::document_store::{
-    AnalyzerConfigurationChange, DiagnosticContext, DocumentDiagnosticState, DocumentStore,
-    DocumentSyncError, SemanticTokensState, StoredDocument, WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
-    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
+    AnalyzerConfigurationChange, AnalyzerOptionsPreparation, DiagnosticContext,
+    DocumentDiagnosticState, DocumentStore, DocumentSyncError, PreparedDocumentText,
+    SemanticTokensState, StoredDocument, analysis_options_with_lsp_resource_defaults,
+    default_lsp_analysis_options,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, DiagnosticVersionData, RULE_CATALOG_METHOD,
@@ -29,12 +30,11 @@ use crate::structure::{
     references as structure_references,
     rename_with_workspace_edit_encoding as structure_rename_with_workspace_edit_encoding,
     selection_ranges as structure_selection_ranges,
-    workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
     AnalysisOptions, AnalysisPayload, SourceKind, options_json::analysis_options_from_json_value,
-    source_descriptor_for_kind, source_discarded_after_limit_change_diagnostic,
-    source_limit_diagnostic_for_len,
+    source_descriptor_for_kind, source_discarded_after_limit_change_diagnostic_with_span,
+    source_limit_diagnostic_for_len_and_span,
 };
 #[cfg(test)]
 use merman_analysis::{Analyzer, analyze_document_result_shared};
@@ -60,8 +60,7 @@ use tower_lsp_server::ls_types::{
     SemanticTokensRangeResult, SemanticTokensResult, SemanticTokensServerCapabilities,
     ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
     TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions,
-    UnchangedDocumentDiagnosticReport, WorkspaceEdit, WorkspaceSymbolParams,
-    WorkspaceSymbolResponse,
+    UnchangedDocumentDiagnosticReport, WorkspaceEdit,
 };
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
@@ -71,6 +70,8 @@ const MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS: usize = 3;
 pub struct MermanLanguageServer {
     client: Client,
     store: Arc<Mutex<DocumentStore>>,
+    /// Preserves notification order across async text and analyzer-state preparation.
+    document_sync_lane: Mutex<()>,
     client_profile: OnceLock<ClientProtocolProfile>,
     refresh_coordinator: RefreshCoordinator,
 }
@@ -80,6 +81,7 @@ impl MermanLanguageServer {
         Self {
             client,
             store: Arc::new(Mutex::new(DocumentStore::new())),
+            document_sync_lane: Mutex::new(()),
             client_profile: OnceLock::new(),
             refresh_coordinator: RefreshCoordinator::new(refresh_client),
         }
@@ -256,14 +258,16 @@ impl MermanLanguageServer {
         profile: &ClientProtocolProfile,
     ) -> Option<Vec<Diagnostic>> {
         let diagnostic = if let Some(resource_limit) = document.resource_limit {
-            source_limit_diagnostic_for_len(
+            source_limit_diagnostic_for_len_and_span(
                 resource_limit.source_len,
                 resource_limit.max_source_bytes,
+                resource_limit.span,
             )
         } else if let Some(discarded_source) = document.discarded_source {
-            source_discarded_after_limit_change_diagnostic(
+            source_discarded_after_limit_change_diagnostic_with_span(
                 discarded_source.source_len,
                 discarded_source.previous_max_source_bytes,
+                discarded_source.span,
             )
         } else if let Some(sync_error) = document.sync_error {
             return Some(vec![document_sync_error_diagnostic(
@@ -351,12 +355,9 @@ impl MermanLanguageServer {
                     let Some(analysis_context) = analysis_context else {
                         return Ok(None);
                     };
-                    let Some(payload) = analysis_context.analysis_payload() else {
-                        return Ok(None);
-                    };
                     let diagnostics = Self::analysis_payload_diagnostics_with_profile(
                         &context.document,
-                        payload,
+                        analysis_context.analysis_payload(),
                         profile,
                     );
                     (diagnostics, Some(analysis_context))
@@ -468,64 +469,57 @@ impl MermanLanguageServer {
         }
     }
 
-    async fn ensure_workspace_symbol_snapshots_current(
-        &self,
-        contexts: &[SnapshotContext],
-    ) -> Result<()> {
-        let store = self.store.lock().await;
-        if store.workspace_symbol_snapshot_contexts_current(contexts) {
-            Ok(())
-        } else {
-            Err(SnapshotContextKind::WorkspaceSymbols.stale_error())
-        }
-    }
-
-    async fn workspace_symbol_snapshot_contexts(&self) -> Result<Vec<SnapshotContext>> {
-        loop {
-            let (plan, executor) = {
-                let store = self.store.lock().await;
-                (
-                    store
-                        .workspace_symbol_snapshot_build_plan(WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE),
-                    store.analysis_executor(),
-                )
-            };
-
-            if plan.batches.is_empty() {
-                return Ok(plan.contexts);
-            }
-
-            for batch in plan.batches {
-                let built = futures::future::join_all(batch.into_iter().map(|request| {
-                    let executor = executor.clone();
-                    async move {
-                        let analysis = executor.execute(&request).await?;
-                        Ok::<_, crate::analysis_executor::AnalysisExecutionError>((
-                            request, analysis,
-                        ))
-                    }
-                }))
+    async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
+        let request = self
+            .store
+            .lock()
+            .await
+            .begin_analyzer_configuration_request();
+        let (change, reprojection) = loop {
+            let preparation = self
+                .store
+                .lock()
                 .await
-                .into_iter()
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(snapshot_context::analysis_execution_error)?;
-                let commit = self
-                    .store
+                .prepare_analyzer_options(request, options.clone());
+            let Some(preparation) = preparation else {
+                return AnalyzerConfigurationChange::Unchanged;
+            };
+            match preparation {
+                AnalyzerOptionsPreparation::Applied(change, reprojection) => {
+                    break (change, reprojection);
+                }
+                AnalyzerOptionsPreparation::RequiresSourceLimitProjection(plan) => {
+                    let batch = tokio::task::spawn_blocking(move || plan.project())
+                        .await
+                        .expect("source-limit projection worker must not panic");
+                    let mut store = self.store.lock().await;
+                    if let Some(applied) = store.commit_source_limit_reclassification(batch) {
+                        break applied;
+                    }
+                    if !store.is_analyzer_configuration_request_current(request) {
+                        return AnalyzerConfigurationChange::Unchanged;
+                    }
+                }
+            }
+        };
+        let Some(reprojection) = reprojection else {
+            return change;
+        };
+
+        match tokio::task::spawn_blocking(move || reprojection.project()).await {
+            Ok(Ok(batch)) => {
+                self.store
                     .lock()
                     .await
-                    .snapshot_contexts_for_requests(built);
-                if commit.stale_open_documents {
-                    return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
-                }
-                // The current tower-lsp-server handler path exposes no explicit cancel token here.
-                tokio::task::yield_now().await;
+                    .commit_diagnostic_reprojection(batch);
+            }
+            Ok(Err(_cancelled)) => {}
+            Err(error) => {
+                tracing::error!(%error, "diagnostic reprojection worker failed");
+                self.store.lock().await.discard_stale_analysis_generations();
             }
         }
-    }
-
-    async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
-        let mut store = self.store.lock().await;
-        store.apply_analyzer_options(options)
+        change
     }
 
     async fn apply_initialization_options(
@@ -591,22 +585,40 @@ impl LanguageServer for MermanLanguageServer {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        let sync_guard = self.document_sync_lane.lock().await;
         let doc = params.text_document;
         let kind = document_kind_for_language_id(&doc.language_id, &doc.uri);
+        let uri = doc.uri;
+        let version = doc.version;
+        let prepared = match tokio::task::spawn_blocking(move || {
+            PreparedDocumentText::new(doc.text)
+        })
+        .await
+        {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                tracing::error!(%error, uri = %uri.as_str(), "source-limit projection worker failed");
+                return;
+            }
+        };
         self.store
             .lock()
             .await
-            .open_text(doc.uri.clone(), doc.version, doc.text, kind);
-        self.publish_for_uri(&doc.uri).await;
+            .open_prepared_text(uri.clone(), version, prepared, kind);
+        drop(sync_guard);
+        self.publish_for_uri(&uri).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let doc = params.text_document;
-        let update = self.store.lock().await.apply_text_changes(
-            doc.uri.clone(),
-            doc.version,
-            params.content_changes,
-        );
+        let update = {
+            let _sync_guard = self.document_sync_lane.lock().await;
+            self.store.lock().await.apply_text_changes(
+                doc.uri.clone(),
+                doc.version,
+                params.content_changes,
+            )
+        };
         if update.affects_document_state() {
             self.publish_for_uri(&doc.uri).await;
         }
@@ -619,7 +631,10 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
-        self.store.lock().await.remove(&uri);
+        {
+            let _sync_guard = self.document_sync_lane.lock().await;
+            self.store.lock().await.remove(&uri);
+        }
         if !self.client_profile().diagnostic_pull {
             self.client.publish_diagnostics(uri, Vec::new(), None).await;
         }
@@ -646,7 +661,10 @@ impl LanguageServer for MermanLanguageServer {
             }
         };
 
-        let change = self.replace_analyzer(options).await;
+        let change = {
+            let _sync_guard = self.document_sync_lane.lock().await;
+            self.replace_analyzer(options).await
+        };
         if change.affects_diagnostics() {
             self.republish_all().await;
         }
@@ -733,10 +751,7 @@ impl LanguageServer for MermanLanguageServer {
         else {
             return Ok(None);
         };
-        let Some(payload) = snapshot_context.analysis_payload() else {
-            return Ok(None);
-        };
-        let diagnostics = analysis_payload_to_diagnostics(payload);
+        let diagnostics = analysis_payload_to_diagnostics(snapshot_context.analysis_payload());
         let actions = code_actions_for_snapshot_diagnostics_with_profile(
             &snapshot_context.snapshot,
             &diagnostics,
@@ -953,24 +968,6 @@ impl LanguageServer for MermanLanguageServer {
         })
         .await
     }
-
-    async fn symbol(
-        &self,
-        params: WorkspaceSymbolParams,
-    ) -> Result<Option<WorkspaceSymbolResponse>> {
-        let contexts = self.workspace_symbol_snapshot_contexts().await?;
-
-        let snapshots = contexts
-            .iter()
-            .map(|context| Arc::clone(&context.snapshot))
-            .collect::<Vec<_>>();
-        let symbols = structure_workspace_symbols_for_snapshots(&snapshots, &params.query);
-
-        self.ensure_workspace_symbol_snapshots_current(&contexts)
-            .await?;
-
-        Ok(Some(symbols.into()))
-    }
 }
 
 fn stale_diagnostic_recompute_error() -> tower_lsp_server::jsonrpc::Error {
@@ -1009,8 +1006,14 @@ fn document_sync_error_diagnostic(
 ) -> Diagnostic {
     let message = match sync_error {
         DocumentSyncError::InvalidIncrementalRange => {
-            "document text is out of sync after an invalid incremental edit range; send a full document replacement or reopen the document"
+            "document text is out of sync after an invalid incremental edit range; send a full document replacement or reopen the document".to_string()
         }
+        DocumentSyncError::FullReplacementRequired {
+            source_len,
+            last_max_source_bytes,
+        } => format!(
+            "document text is unavailable after rejecting a {source_len}-byte source with a {last_max_source_bytes}-byte limit; ranged edits cannot recover discarded text, so send a full document replacement or reopen the document"
+        ),
     };
     Diagnostic {
         range: Range::new(Position::new(0, 0), Position::new(0, 0)),
@@ -1019,7 +1022,7 @@ fn document_sync_error_diagnostic(
             "merman.lsp.document_sync_lost".to_string(),
         )),
         source: Some("merman".to_string()),
-        message: message.to_string(),
+        message,
         related_information: None,
         tags: None,
         code_description: None,

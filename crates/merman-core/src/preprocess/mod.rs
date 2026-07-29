@@ -2,7 +2,10 @@ mod source_edit_map;
 
 pub use source_edit_map::PreprocessedSource;
 
-use crate::{DetectorRegistry, EditorLexemeKind, Error, MermaidConfig, Result, SourceSpan};
+use crate::{
+    DetectorRegistry, EditorLexemeKind, Error, MermaidConfig, ParseControl, ParseControlResult,
+    Result, SourceSpan,
+};
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
 use std::borrow::Cow;
@@ -83,13 +86,35 @@ pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery(
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
 ) -> Result<PreprocessResult> {
-    preprocess_single_pass(
+    let control = ParseControl::new();
+    preprocess_diagram_with_known_type_and_directive_recovery_controlled(
+        input,
+        registry,
+        diagram_type,
+        directive_recovery,
+        &control,
+    )
+    .expect("a private parse control cannot be cancelled")
+}
+
+pub(crate) fn preprocess_diagram_with_known_type_and_directive_recovery_controlled(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
+    control: &ParseControl,
+) -> ParseControlResult<Result<PreprocessResult>> {
+    let preprocessed = preprocess_single_pass_controlled(
         PreprocessedSource::new(input),
         registry,
         diagram_type,
         directive_recovery,
-    )
-    .map(prepare_parser_code)
+        control,
+    )?;
+    control.checkpoint()?;
+    let prepared = preprocessed.map(prepare_parser_code);
+    control.checkpoint()?;
+    Ok(prepared)
 }
 
 #[cfg(test)]
@@ -106,45 +131,86 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery(
     input: &str,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
 ) -> Result<PreprocessResult> {
+    let control = ParseControl::new();
+    preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled(
+        input,
+        registry,
+        diagram_type,
+        directive_recovery,
+        &control,
+    )
+    .expect("a private parse control cannot be cancelled")
+}
+
+pub(crate) fn preprocess_mermaid_public_parse_pipeline_with_directive_recovery_controlled(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+    directive_recovery: DirectiveRecoveryMode,
+    control: &ParseControl,
+) -> ParseControlResult<Result<PreprocessResult>> {
     #[cfg(test)]
     PUBLIC_PARSE_PREPROCESS_COUNT.set(PUBLIC_PARSE_PREPROCESS_COUNT.get() + 1);
 
-    let outer = preprocess_single_pass(
+    control.checkpoint()?;
+    let outer = match preprocess_single_pass_controlled(
         PreprocessedSource::new(input),
         registry,
         diagram_type,
         directive_recovery,
-    )?;
+        control,
+    )? {
+        Ok(outer) => outer,
+        Err(error) => return Ok(Err(error)),
+    };
+    control.checkpoint()?;
     // Mermaid `parse()` calls `preprocessDiagram()` in `processAndSetConfigs()` and again in
     // `getDiagramFromText()`. Only `Diagram.fromText()` prepares entities for the family parser.
-    let inner = preprocess_single_pass(outer.source, registry, diagram_type, directive_recovery)?;
-    Ok(PreprocessResult {
+    let inner = match preprocess_single_pass_controlled(
+        outer.source,
+        registry,
+        diagram_type,
+        directive_recovery,
+        control,
+    )? {
+        Ok(inner) => inner,
+        Err(error) => return Ok(Err(error)),
+    };
+    control.checkpoint()?;
+    let result = PreprocessResult {
         source: prepare_parser_text(inner.source),
         title: outer.title,
         config: outer.config,
-    })
+    };
+    control.checkpoint()?;
+    Ok(Ok(result))
 }
 
-fn preprocess_single_pass(
+fn preprocess_single_pass_controlled(
     mut source: PreprocessedSource,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-) -> Result<PreprocessResult> {
+    control: &ParseControl,
+) -> ParseControlResult<Result<PreprocessResult>> {
+    control.checkpoint()?;
     cleanup_text(&mut source);
-    let (frontmatter_len, title, mut frontmatter_config) = {
-        let (without_frontmatter, title, config) = process_frontmatter(source.text())?;
-        (
+    control.checkpoint()?;
+    let frontmatter = process_frontmatter_controlled(source.text(), control)?;
+    let (frontmatter_len, title, mut frontmatter_config) = match frontmatter {
+        Ok((without_frontmatter, title, config)) => (
             source.text().len() - without_frontmatter.len(),
             title,
             config,
-        )
+        ),
+        Err(error) => return Ok(Err(error)),
     };
     if frontmatter_len > 0 {
         source.record_global_lexeme(
@@ -154,8 +220,17 @@ fn preprocess_single_pass(
         source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)]);
     }
 
-    let processed_directives =
-        process_directives(source.text(), registry, diagram_type, directive_recovery)?;
+    control.checkpoint()?;
+    let processed_directives = match process_directives_controlled(
+        source.text(),
+        registry,
+        diagram_type,
+        directive_recovery,
+        control,
+    )? {
+        Ok(processed) => processed,
+        Err(error) => return Ok(Err(error)),
+    };
     for prefix in processed_directives.editor_prefixes {
         source.record_global_directive_prefix(prefix);
     }
@@ -175,12 +250,14 @@ fn preprocess_single_pass(
 
     frontmatter_config.deep_merge(processed_directives.config.as_value());
 
+    control.checkpoint()?;
     remove_mermaid_comments(&mut source);
-    Ok(PreprocessResult {
+    control.checkpoint()?;
+    Ok(Ok(PreprocessResult {
         source,
         title,
         config: frontmatter_config,
-    })
+    }))
 }
 
 fn prepare_parser_code(mut preprocessed: PreprocessResult) -> PreprocessResult {
@@ -471,19 +548,34 @@ fn find_hex_style_match_end(line: &str, search_start: usize) -> Option<usize> {
     None
 }
 
-fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConfig)> {
+fn process_frontmatter_controlled<'a>(
+    input: &'a str,
+    control: &ParseControl,
+) -> ParseControlResult<Result<(&'a str, Option<String>, MermaidConfig)>> {
+    control.checkpoint()?;
     let Some((yaml_body, stripped)) = split_frontmatter(input) else {
-        return Ok((input, None, MermaidConfig::empty_object()));
+        return Ok(Ok((input, None, MermaidConfig::empty_object())));
     };
 
     if config_nesting_exceeds_limit(yaml_body.as_ref()) {
-        return Err(Error::InvalidFrontMatterYaml {
+        return Ok(Err(Error::InvalidFrontMatterYaml {
             message: format!("config nesting exceeds {MAX_CONFIG_NESTING_DEPTH} levels"),
-        });
+        }));
     }
 
-    let parsed = crate::yaml_config::parse_yaml_value(yaml_body.as_ref(), MAX_CONFIG_NESTING_DEPTH)
-        .map_err(|e| Error::InvalidFrontMatterYaml { message: e })?;
+    control.checkpoint()?;
+    let parsed = match crate::yaml_config::parse_yaml_value_controlled(
+        yaml_body.as_ref(),
+        MAX_CONFIG_NESTING_DEPTH,
+        control,
+    )? {
+        Ok(parsed) => parsed,
+        Err(message) => return Ok(Err(Error::InvalidFrontMatterYaml { message })),
+    };
+    if let Err(cancelled) = control.checkpoint() {
+        crate::config::drop_value_nonrecursive(parsed);
+        return Err(cancelled);
+    }
     let parsed_obj = match parsed {
         Value::Object(obj) => obj,
         other => {
@@ -522,7 +614,8 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
     }
 
     crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
-    Ok((stripped, title, config))
+    control.checkpoint()?;
+    Ok(Ok((stripped, title, config)))
 }
 
 fn split_frontmatter(input: &str) -> Option<(Cow<'_, str>, &str)> {
@@ -667,39 +760,54 @@ struct ProcessedDirectives {
     editor_prefixes: Vec<String>,
 }
 
-fn process_directives(
+fn process_directives_controlled(
     input: &str,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
     directive_recovery: DirectiveRecoveryMode,
-) -> Result<ProcessedDirectives> {
-    let blocks = directive_blocks(input, directive_recovery);
+    control: &ParseControl,
+) -> ParseControlResult<Result<ProcessedDirectives>> {
+    control.checkpoint()?;
+    let blocks = directive_blocks_controlled(input, directive_recovery, control)?;
     if blocks.is_empty() {
-        return Ok(ProcessedDirectives {
+        return Ok(Ok(ProcessedDirectives {
             config: MermaidConfig::empty_object(),
             removals: Vec::new(),
             editor_prefixes: Vec::new(),
-        });
+        }));
     }
     let mut directives = Vec::new();
-    for block in &blocks {
+    for (index, block) in blocks.iter().enumerate() {
+        if index % 32 == 0 {
+            control.checkpoint()?;
+        }
         let Some(raw) = block.raw else {
             continue;
         };
-        if let Some(directive) = parse_directive_like_upstream(raw)? {
-            directives.push(directive);
+        match parse_directive_like_upstream(raw) {
+            Ok(Some(directive)) => directives.push(directive),
+            Ok(None) => {}
+            Err(error) => return Ok(Err(error)),
         }
     }
+    control.checkpoint()?;
     let input_without_directives = remove_directive_blocks(input, &blocks);
-    let init = detect_init(
+    let init = match detect_init_controlled(
         &directives,
         input_without_directives.as_ref(),
         registry,
         diagram_type,
-    )?;
+        control,
+    )? {
+        Ok(init) => init,
+        Err(error) => return Ok(Err(error)),
+    };
     let wrap = directives.iter().any(|d| d.ty == "wrap");
     let mut editor_prefixes = Vec::new();
-    for directive in &directives {
+    for (index, directive) in directives.iter().enumerate() {
+        if index % 32 == 0 {
+            control.checkpoint()?;
+        }
         if matches!(directive.ty.as_str(), "init" | "initialize" | "wrap")
             && !editor_prefixes.contains(&directive.ty)
         {
@@ -712,25 +820,43 @@ fn process_directives(
         merged.set_value("wrap", Value::Bool(true));
     }
 
-    Ok(ProcessedDirectives {
+    control.checkpoint()?;
+    Ok(Ok(ProcessedDirectives {
         config: merged,
         removals: blocks.into_iter().map(|block| block.range).collect(),
         editor_prefixes,
-    })
+    }))
 }
 
+#[cfg(test)]
 fn detect_init(
     directives: &[Directive],
     input: &str,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<MermaidConfig> {
+    let control = ParseControl::new();
+    detect_init_controlled(directives, input, registry, diagram_type, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn detect_init_controlled(
+    directives: &[Directive],
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+    control: &ParseControl,
+) -> ParseControlResult<Result<MermaidConfig>> {
+    control.checkpoint()?;
     let mut merged = MermaidConfig::empty_object();
     let mut config_for_detect = MermaidConfig::empty_object();
     let mut detected_type = diagram_type.map(str::to_owned);
     let mut detection_attempted = diagram_type.is_some();
 
-    for d in directives {
+    for (index, d) in directives.iter().enumerate() {
+        if index % 16 == 0 {
+            control.checkpoint()?;
+        }
         if d.ty != "init" && d.ty != "initialize" {
             continue;
         }
@@ -743,17 +869,21 @@ fn detect_init(
             .as_object_mut()
             .and_then(|object| object.remove("config"));
 
-        sanitize_directive(&mut args);
+        sanitize_directive_controlled(&mut args, control)?;
 
         // Mermaid moves a top-level `config` directive field into the diagram-type-specific config.
         if let Some(mut diagram_specific_value) = diagram_specific.take() {
-            sanitize_directive(&mut diagram_specific_value);
+            sanitize_directive_controlled(&mut diagram_specific_value, control)?;
             if !detection_attempted {
                 detection_attempted = true;
-                detected_type = registry
-                    .detect_type(input, &mut config_for_detect)
-                    .ok()
-                    .map(ToString::to_string);
+                detected_type = match registry.detect_type_controlled(
+                    input,
+                    &mut config_for_detect,
+                    control,
+                )? {
+                    Ok(diagram_type) => Some(diagram_type.to_string()),
+                    Err(_) => None,
+                };
             }
 
             if let Some(ty) = detected_type.as_deref() {
@@ -772,7 +902,8 @@ fn detect_init(
         merged.deep_merge(&args);
     }
 
-    Ok(merged)
+    control.checkpoint()?;
+    Ok(Ok(merged))
 }
 
 #[derive(Debug, Clone)]
@@ -805,13 +936,26 @@ fn remove_directive_blocks<'a>(input: &'a str, blocks: &[DirectiveBlock<'_>]) ->
     Cow::Owned(output)
 }
 
+#[cfg(test)]
 fn directive_blocks(
     input: &str,
     directive_recovery: DirectiveRecoveryMode,
 ) -> Vec<DirectiveBlock<'_>> {
+    let control = ParseControl::new();
+    directive_blocks_controlled(input, directive_recovery, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn directive_blocks_controlled<'a>(
+    input: &'a str,
+    directive_recovery: DirectiveRecoveryMode,
+    control: &ParseControl,
+) -> ParseControlResult<Vec<DirectiveBlock<'a>>> {
+    control.checkpoint()?;
     let mut blocks = Vec::new();
     let mut pos = 0;
     while let Some(rel) = input[pos..].find("%%{") {
+        control.checkpoint()?;
         let start = pos + rel;
         let content_start = start + 3;
         let close = input[content_start..]
@@ -854,7 +998,8 @@ fn directive_blocks(
         pos = end;
     }
 
-    blocks
+    control.checkpoint()?;
+    Ok(blocks)
 }
 
 fn parse_directive_like_upstream(raw: &str) -> Result<Option<Directive>> {
@@ -892,10 +1037,26 @@ enum DirectiveDictionaryKind {
     IconReferences,
 }
 
+#[cfg(test)]
 fn sanitize_directive(value: &mut Value) {
+    let control = ParseControl::new();
+    sanitize_directive_controlled(value, &control)
+        .expect("a private parse control cannot be cancelled");
+}
+
+fn sanitize_directive_controlled(
+    value: &mut Value,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    control.checkpoint()?;
     let mut stack = vec![Vec::<DirectiveValuePathSegment>::new()];
+    let mut visited = 0usize;
 
     while let Some(path) = stack.pop() {
+        if visited.is_multiple_of(64) {
+            control.checkpoint()?;
+        }
+        visited = visited.saturating_add(1);
         let Some(current) = directive_value_at_path_mut(value, &path) else {
             continue;
         };
@@ -960,6 +1121,7 @@ fn sanitize_directive(value: &mut Value) {
             _ => {}
         }
     }
+    control.checkpoint()
 }
 
 fn directive_path_is_css(path: &[DirectiveValuePathSegment]) -> bool {
@@ -1148,11 +1310,16 @@ fn directive_value_at_path_mut<'a>(
     Some(value)
 }
 
-pub(crate) fn directive_removal_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
-    directive_blocks(text, DirectiveRecoveryMode::Strict)
-        .into_iter()
-        .map(|block| block.range)
-        .collect()
+pub(crate) fn directive_removal_ranges_controlled(
+    text: &str,
+    control: &ParseControl,
+) -> ParseControlResult<Vec<std::ops::Range<usize>>> {
+    Ok(
+        directive_blocks_controlled(text, DirectiveRecoveryMode::Strict, control)?
+            .into_iter()
+            .map(|block| block.range)
+            .collect(),
+    )
 }
 
 fn parse_directive(raw: &str) -> Result<Option<Directive>> {

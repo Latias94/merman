@@ -19,8 +19,8 @@ mod editor_language;
 pub use editor_language::{
     WasmEditorSession, editor_code_actions, editor_completions, editor_definition,
     editor_diagnostics, editor_diagram_detection, editor_document_symbols, editor_hover,
-    editor_prepare_rename, editor_references, editor_rename, editor_semantic_token_descriptor,
-    editor_semantic_tokens, editor_workspace_symbols,
+    editor_prepare_rename, editor_references, editor_rename, editor_search_document_symbols,
+    editor_semantic_token_descriptor, editor_semantic_tokens,
 };
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]

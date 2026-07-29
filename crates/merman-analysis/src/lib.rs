@@ -35,7 +35,7 @@ pub use editor::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceExpectedSyntax,
     FenceExpectedSyntaxKind, FenceLexeme, FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier,
     FenceLineItem, FenceReferenceGroup, FenceRenamePolicy, FenceSemanticItem, FenceSemanticRole,
-    FenceTextIndex, FenceTextIndexSource, ShapeObjectValuePrefix, shape_object_value_prefix,
+    FenceTextIndex, FenceTextIndexSource,
 };
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,
@@ -52,17 +52,20 @@ pub use result::{
     AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts, AnalysisFlowchartFacts,
     AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts, AnalysisLineItemFacts,
     AnalysisOutcome, AnalysisReferenceFacts, AnalysisRejection, AnalysisResult,
-    AnalysisSemanticItemFacts, AnalysisSyntaxFacts, AnalyzedDiagram,
+    AnalysisSemanticItemFacts, AnalysisSyntaxFacts, AnalyzedDiagram, DiagramParseDisposition,
 };
 pub use rules::{
-    AnalysisRuleConfig, AnalysisRuleProfile, RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry,
-    RuleCatalogResponse, RuleDescriptor, RuleOrigin, configurable_rule_catalog,
-    configurable_rule_catalog_response, configurable_rule_catalog_response_json_bytes,
-    configurable_rule_descriptor, configurable_rule_descriptors, rule_catalog,
-    rule_catalog_response, rule_catalog_response_json_bytes, rule_descriptors,
+    AnalysisRuleConfig, AnalysisRuleConfigError, AnalysisRuleProfile,
+    RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse, RuleDescriptor,
+    RuleOrigin, configurable_rule_catalog, configurable_rule_catalog_response,
+    configurable_rule_catalog_response_json_bytes, configurable_rule_descriptor,
+    configurable_rule_descriptors, rule_catalog, rule_catalog_response,
+    rule_catalog_response_json_bytes, rule_descriptors,
 };
 pub use source_limits::{
-    source_discarded_after_limit_change_diagnostic, source_limit_diagnostic_for_len,
+    source_discarded_after_limit_change_diagnostic,
+    source_discarded_after_limit_change_diagnostic_with_span, source_limit_diagnostic_for_len,
+    source_limit_diagnostic_for_len_and_span, source_limit_diagnostic_span,
 };
 pub use source_map::{LineCol, SourceMap, SourceMapError};
 pub use status::AnalysisStatus;

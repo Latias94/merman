@@ -1,8 +1,8 @@
 use merman_analysis::FenceTextIndexSource;
 use merman_editor_core::{
     DocumentKind, DocumentWorkspace, Position, Range, RenameError, document_symbols,
-    folding_ranges, goto_definition, hover, prepare_rename, references, rename, selection_range,
-    workspace_symbols,
+    folding_ranges, goto_definition, hover, prepare_rename, references, rename,
+    search_document_symbols, selection_range,
 };
 
 #[test]
@@ -48,7 +48,7 @@ fn unavailable_body_does_not_manufacture_structure_or_navigation() {
         FenceTextIndexSource::Unavailable
     );
     assert!(document_symbols(&snapshot).is_empty());
-    assert!(workspace_symbols(&snapshot, "").is_empty());
+    assert!(search_document_symbols(&snapshot, "").is_empty());
     assert!(hover(&snapshot, position).is_none());
     assert!(goto_definition(&snapshot, position).is_none());
     assert!(references(&snapshot, position, true).is_none());
@@ -466,7 +466,7 @@ fn typed_reference_groups_keep_same_name_different_kinds_separate() {
 }
 
 #[test]
-fn workspace_symbols_filter_and_include_outline_items() {
+fn document_symbol_search_filters_and_includes_outline_items() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace
         .upsert(
@@ -477,11 +477,11 @@ fn workspace_symbols_filter_and_include_outline_items() {
         )
         .expect("test source should be accepted");
 
-    let all_symbols = workspace_symbols(&snapshot, "");
+    let all_symbols = search_document_symbols(&snapshot, "");
     assert!(all_symbols.iter().any(|symbol| symbol.name == "group"));
     assert!(all_symbols.iter().any(|symbol| symbol.name == "A"));
 
-    let group_symbols = workspace_symbols(&snapshot, "group");
+    let group_symbols = search_document_symbols(&snapshot, "group");
     assert_eq!(group_symbols.len(), 1);
     assert_eq!(group_symbols[0].name, "group");
     assert_eq!(
@@ -489,10 +489,10 @@ fn workspace_symbols_filter_and_include_outline_items() {
         FenceTextIndexSource::ParserComplete
     );
 
-    let uppercase_symbols = workspace_symbols(&snapshot, "A");
+    let uppercase_symbols = search_document_symbols(&snapshot, "A");
     assert!(
         uppercase_symbols.iter().any(|symbol| symbol.name == "A"),
-        "workspace symbol query should be case-insensitive for Mermaid identifiers"
+        "document symbol query should be case-insensitive for Mermaid identifiers"
     );
 }
 

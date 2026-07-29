@@ -2,7 +2,7 @@ use super::ast::*;
 use super::model::*;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
+    EditorSemanticRole, EditorSemanticSymbol, ParseControl, ParseControlResult, SourceSpan,
 };
 use indexmap::IndexMap;
 
@@ -12,8 +12,17 @@ pub(super) struct SemanticBuild {
     pub(super) diagnostics: Vec<SyntaxDiagnostic>,
 }
 
+#[cfg(test)]
 pub(super) fn build(parsed: ParsedSyntax) -> SemanticBuild {
-    SemanticBuilder::new(parsed).build()
+    build_controlled(parsed, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+pub(super) fn build_controlled(
+    parsed: ParsedSyntax,
+    control: &ParseControl,
+) -> ParseControlResult<SemanticBuild> {
+    SemanticBuilder::new(parsed, control).build()
 }
 
 struct ParticipantAccumulator {
@@ -29,6 +38,7 @@ struct SemanticBuilder {
     generated_statement_id: usize,
     ownable_statement_count: usize,
     some_statement_misses_from: bool,
+    control: ParseControl,
 }
 
 #[derive(Clone)]
@@ -39,7 +49,7 @@ struct ResolveContext {
 }
 
 impl SemanticBuilder {
-    fn new(parsed: ParsedSyntax) -> Self {
+    fn new(parsed: ParsedSyntax, control: &ParseControl) -> Self {
         Self {
             syntax: parsed.document,
             diagnostics: parsed.diagnostics,
@@ -49,16 +59,21 @@ impl SemanticBuilder {
             generated_statement_id: 0,
             ownable_statement_count: 0,
             some_statement_misses_from: false,
+            control: control.clone(),
         }
     }
 
-    fn build(mut self) -> SemanticBuild {
+    fn build(mut self) -> ParseControlResult<SemanticBuild> {
+        self.control.checkpoint()?;
         self.facts.push_directive_prefix("title");
         if let Some(title) = self.syntax.title.clone() {
             self.push_payload(&title, "zenuml title", EditorSemanticKind::String);
         }
 
-        for item in self.syntax.head.clone() {
+        for (index, item) in self.syntax.head.clone().into_iter().enumerate() {
+            if index % 128 == 0 {
+                self.control.checkpoint()?;
+            }
             match item {
                 HeadItemSyntax::Participant(participant) => {
                     self.declare_participant(&participant, None);
@@ -73,7 +88,10 @@ impl SemanticBuilder {
                         );
                     }
                     let mut participant_names = Vec::new();
-                    for participant in &group.participants {
+                    for (index, participant) in group.participants.iter().enumerate() {
+                        if index % 128 == 0 {
+                            self.control.checkpoint()?;
+                        }
                         participant_names.push(participant.name.value.clone());
                         self.declare_participant(participant, group_id.clone());
                     }
@@ -104,7 +122,7 @@ impl SemanticBuilder {
             owner: None,
             return_to: starter_name.as_ref().map(|starter| starter.value.clone()),
         };
-        let statements = self.resolve_statements(&self.syntax.statements.clone(), &context);
+        let statements = self.resolve_statements(&self.syntax.statements.clone(), &context)?;
 
         let needs_default_starter = (self.ownable_statement_count == 0
             && self.participants.is_empty())
@@ -122,7 +140,10 @@ impl SemanticBuilder {
                 .shift_insert(0, "_STARTER_".to_string(), starter);
         }
 
-        for diagnostic in &self.diagnostics {
+        for (index, diagnostic) in self.diagnostics.iter().enumerate() {
+            if index % 128 == 0 {
+                self.control.checkpoint()?;
+            }
             self.facts.mark_recovered_from_parse_error(
                 format!(
                     "zenuml parser recovered after parse error: {}",
@@ -147,11 +168,12 @@ impl SemanticBuilder {
             groups: self.groups,
             statements,
         };
-        SemanticBuild {
+        self.control.checkpoint()?;
+        Ok(SemanticBuild {
             model,
             editor_facts: self.facts,
             diagnostics: self.diagnostics,
-        }
+        })
     }
 
     fn declare_participant(&mut self, syntax: &ParticipantSyntax, group_id: Option<String>) {
@@ -254,18 +276,22 @@ impl SemanticBuilder {
         &mut self,
         statements: &[StatementSyntax],
         context: &ResolveContext,
-    ) -> Vec<ZenumlStatement> {
-        statements
-            .iter()
-            .map(|statement| self.resolve_statement(statement, context))
-            .collect()
+    ) -> ParseControlResult<Vec<ZenumlStatement>> {
+        let mut resolved = Vec::with_capacity(statements.len());
+        for (index, statement) in statements.iter().enumerate() {
+            if index % 128 == 0 {
+                self.control.checkpoint()?;
+            }
+            resolved.push(self.resolve_statement(statement, context)?);
+        }
+        Ok(resolved)
     }
 
     fn resolve_statement(
         &mut self,
         statement: &StatementSyntax,
         context: &ResolveContext,
-    ) -> ZenumlStatement {
+    ) -> ParseControlResult<ZenumlStatement> {
         let id = format!("zenuml-statement-{}", self.generated_statement_id);
         self.generated_statement_id += 1;
         let kind = match &statement.kind {
@@ -307,7 +333,7 @@ impl SemanticBuilder {
                     owner: resolved_to.clone().or_else(|| context.owner.clone()),
                     return_to: explicit_from.clone().or_else(|| context.origin.clone()),
                 };
-                let body = self.resolve_statements(&message.body, &nested_context);
+                let body = self.resolve_statements(&message.body, &nested_context)?;
                 ZenumlStatementKind::Message {
                     explicit_from,
                     resolved_from,
@@ -358,7 +384,7 @@ impl SemanticBuilder {
                     owner: Some(resolved_to.clone()),
                     return_to: resolved_from.clone(),
                 };
-                let body = self.resolve_statements(&creation.body, &nested_context);
+                let body = self.resolve_statements(&creation.body, &nested_context)?;
                 let parameters = creation
                     .parameters
                     .as_ref()
@@ -440,7 +466,8 @@ impl SemanticBuilder {
                 let sections = fragment
                     .sections
                     .iter()
-                    .map(|section| {
+                    .map(|section| -> ParseControlResult<ZenumlFragmentSection> {
+                        self.control.checkpoint()?;
                         if let Some(label) = &section.label {
                             self.push_payload(
                                 label,
@@ -448,17 +475,17 @@ impl SemanticBuilder {
                                 EditorSemanticKind::String,
                             );
                         }
-                        ZenumlFragmentSection {
+                        Ok(ZenumlFragmentSection {
                             label: section.label.as_ref().map(|label| label.value.clone()),
-                            statements: self.resolve_statements(&section.statements, context),
+                            statements: self.resolve_statements(&section.statements, context)?,
                             body_comment: section
                                 .body_comment
                                 .as_ref()
                                 .map(|comment| comment.value.clone()),
                             span: section.span,
-                        }
+                        })
                     })
-                    .collect();
+                    .collect::<ParseControlResult<Vec<_>>>()?;
                 ZenumlStatementKind::Fragment {
                     fragment_kind,
                     label: fragment.label.as_ref().map(|label| label.value.clone()),
@@ -492,7 +519,8 @@ impl SemanticBuilder {
                 }
             }
         };
-        ZenumlStatement {
+        self.control.checkpoint()?;
+        Ok(ZenumlStatement {
             id,
             comment: statement
                 .comment
@@ -500,7 +528,7 @@ impl SemanticBuilder {
                 .map(|comment| comment.value.clone()),
             span: statement.span,
             kind,
-        }
+        })
     }
 
     fn reference_participant(&mut self, value: &SpannedText, starter: bool, detail: &str) {

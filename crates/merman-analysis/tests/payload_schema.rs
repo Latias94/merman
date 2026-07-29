@@ -1,10 +1,9 @@
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisFactsPayload, AnalysisPayload, AnalysisResult, AnalysisSyntaxFacts,
-    AnalyzedDiagram, Analyzer, DiagnosticCategory, DocumentDiagramKind, SharedTextSlice,
+    AnalysisDiagnostic, AnalysisFactsPayload, AnalysisPayload, Analyzer, DiagnosticCategory,
     SourceDescriptor, SourceMap,
 };
 use serde_json::{Value, json};
-use std::sync::Arc;
+use std::collections::BTreeSet;
 
 #[test]
 fn analysis_payload_matches_adr_0070_schema_shape() {
@@ -68,102 +67,68 @@ fn analysis_payload_matches_adr_0070_schema_shape() {
 
 #[test]
 fn analysis_facts_payload_matches_v1_schema_shape() {
-    let source = Arc::<str>::from("");
-    let source_descriptor = SourceDescriptor::diagram();
-    let result = AnalysisResult::new(
-        source_descriptor.clone(),
-        SourceMap::new(Arc::clone(&source)),
-        Vec::new(),
-        vec![AnalyzedDiagram::from_document_diagram(
-            &merman_analysis::DocumentDiagram {
-                id: "document".to_string(),
-                index: 0,
-                kind: DocumentDiagramKind::WholeDocument,
-                source: source_descriptor,
-                start: 0,
-                body_start: 0,
-                body_end: 0,
-                end: 0,
-                text: SharedTextSlice::whole(source),
-                fence_delimiter: None,
-                fence_delimiter_spans: None,
-            },
-            Vec::new(),
-            AnalysisSyntaxFacts::unavailable(None),
-        )],
-    );
-
+    let value = serde_json::to_value(Analyzer::new().analyze_facts("flowchart TD\nA\n")).unwrap();
+    let root = value
+        .as_object()
+        .expect("facts payload should be an object");
     assert_eq!(
-        serde_json::to_value(result.to_facts_payload()).unwrap(),
-        json!({
-            "version": 1,
-            "valid": true,
-            "summary": {
-                "errors": 0,
-                "warnings": 0,
-                "infos": 0,
-                "hints": 0
-            },
-            "source": {
-                "kind": "diagram",
-                "path": null,
-                "diagram_index": null,
-                "language": "mermaid"
-            },
-            "diagnostics": [],
-            "diagrams": [{
-                "source_id": "document",
-                "index": 0,
-                "kind": "whole_document",
-                "source": {
-                    "kind": "diagram",
-                    "path": null,
-                    "diagram_index": null,
-                    "language": "mermaid"
-                },
-                "span": {
-                    "byte_start": 0,
-                    "byte_end": 0,
-                    "line": 1,
-                    "column": 1,
-                    "end_line": 1,
-                    "end_column": 1,
-                    "lsp_range": {
-                        "start": { "line": 0, "character": 0 },
-                        "end": { "line": 0, "character": 0 }
-                    }
-                },
-                "body_span": {
-                    "byte_start": 0,
-                    "byte_end": 0,
-                    "line": 1,
-                    "column": 1,
-                    "end_line": 1,
-                    "end_column": 1,
-                    "lsp_range": {
-                        "start": { "line": 0, "character": 0 },
-                        "end": { "line": 0, "character": 0 }
-                    }
-                },
-                "text_len": 0,
-                "fence_delimiter": null,
-                "syntax": {
-                    "diagram_type": null,
-                    "fact_source": "unavailable",
-                    "parser_backed": false,
-                    "recovered": false,
-                    "source_mapped_spans": false,
-                    "node_ids": [],
-                    "class_names": [],
-                    "directive_prefixes": [],
-                    "references": [],
-                    "outline_items": [],
-                    "semantic_items": [],
-                    "expected_syntax": []
-                }
-            }]
-        })
+        root.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "diagnostics",
+            "diagrams",
+            "source",
+            "summary",
+            "valid",
+            "version",
+        ])
     );
+    assert_eq!(value["version"], json!(1));
+    assert_eq!(value["valid"], json!(true));
+
+    let diagram = value["diagrams"][0]
+        .as_object()
+        .expect("diagram facts should be an object");
+    assert_eq!(
+        diagram.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "body_span",
+            "fence_delimiter",
+            "index",
+            "kind",
+            "parse_disposition",
+            "source",
+            "source_id",
+            "span",
+            "syntax",
+            "text_len",
+        ])
+    );
+    assert_eq!(diagram["parse_disposition"], json!("parsed"));
+
+    let syntax = diagram["syntax"]
+        .as_object()
+        .expect("syntax facts should be an object");
+    assert_eq!(
+        syntax.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+        BTreeSet::from([
+            "class_names",
+            "diagram_type",
+            "directive_prefixes",
+            "effective_layout",
+            "expected_syntax",
+            "fact_source",
+            "flowchart",
+            "node_ids",
+            "outline_items",
+            "parser_backed",
+            "recovered",
+            "references",
+            "semantic_items",
+            "source_mapped_spans",
+        ])
+    );
+    assert_eq!(syntax["fact_source"], json!("parser_complete"));
+    assert_eq!(syntax["parser_backed"], json!(true));
 }
 
 #[test]
@@ -216,6 +181,22 @@ fn analysis_facts_v1_accepts_payload_without_additive_effective_layout() {
         .expect("a compatible facts v1 payload should remain readable");
     assert_eq!(payload.version, 1);
     assert_eq!(payload.diagrams[0].syntax.effective_layout, None);
+}
+
+#[test]
+fn analysis_facts_v1_defaults_missing_additive_parse_disposition_to_unavailable() {
+    let mut value = parser_backed_facts_json();
+    let diagram = value["diagrams"][0]
+        .as_object_mut()
+        .expect("diagram facts should be an object");
+    assert_eq!(diagram.remove("parse_disposition"), Some(json!("parsed")));
+
+    let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
+        .expect("a compatible facts v1 payload should remain readable");
+    assert_eq!(
+        payload.diagrams[0].parse_disposition,
+        merman_analysis::DiagramParseDisposition::Unavailable
+    );
 }
 
 #[test]

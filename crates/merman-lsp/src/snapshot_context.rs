@@ -1,5 +1,5 @@
 use crate::analysis_request::AnalysisBuildRequest;
-use crate::document_store::DocumentStore;
+use crate::document_store::{DiagnosticReprojectionBatch, DocumentStore};
 use crate::snapshot::SnapshotContext;
 use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot};
 use std::sync::Arc;
@@ -13,7 +13,6 @@ pub(crate) enum SnapshotContextKind {
     Diagnostics,
     SemanticTokens,
     Structure,
-    WorkspaceSymbols,
 }
 
 impl SnapshotContextKind {
@@ -28,7 +27,6 @@ impl SnapshotContextKind {
             Self::Diagnostics => "diagnostic document changed while computing",
             Self::SemanticTokens => "semantic tokens document changed while computing",
             Self::Structure => "structure document changed while computing",
-            Self::WorkspaceSymbols => "workspace symbol documents changed while computing",
         }
         .into();
         error
@@ -40,7 +38,7 @@ pub(crate) async fn snapshot_context_for_uri(
     uri: &Uri,
     kind: SnapshotContextKind,
 ) -> Result<Option<SnapshotContext>> {
-    let (request, executor) = {
+    let (reprojection, request, executor) = {
         let mut store = store.lock().await;
         let cache_ready = if kind.requires_analysis_payload() {
             store.has_analysis_payload(uri)
@@ -50,8 +48,30 @@ pub(crate) async fn snapshot_context_for_uri(
         if cache_ready {
             return Ok(store.snapshot_context(uri));
         }
-        (store.snapshot_build_request(uri), store.analysis_executor())
+        let reprojection = kind
+            .requires_analysis_payload()
+            .then(|| store.diagnostic_reprojection_request(uri))
+            .flatten();
+        let request = if reprojection.is_none() {
+            store.snapshot_build_request(uri)
+        } else {
+            None
+        };
+        (reprojection, request, store.analysis_executor())
     };
+    if let Some(reprojection) = reprojection {
+        let projection = tokio::task::spawn_blocking(move || reprojection.project())
+            .await
+            .map_err(diagnostic_reprojection_execution_error)?;
+        let batch = match projection {
+            Ok(batch) => batch,
+            Err(_) => {
+                let store = store.lock().await;
+                return stale_or_retry(kind, store.get(uri).is_some());
+            }
+        };
+        return commit_diagnostic_reprojection_context(store, uri, batch, kind).await;
+    }
     let Some(request) = request else {
         return Ok(None);
     };
@@ -61,6 +81,39 @@ pub(crate) async fn snapshot_context_for_uri(
         .await
         .map_err(analysis_execution_error)?;
     commit_snapshot_context(store, &request, analysis, kind).await
+}
+
+pub(crate) async fn commit_diagnostic_reprojection_context(
+    store: &Arc<Mutex<DocumentStore>>,
+    uri: &Uri,
+    batch: DiagnosticReprojectionBatch,
+    kind: SnapshotContextKind,
+) -> Result<Option<SnapshotContext>> {
+    let mut store = store.lock().await;
+    store.commit_diagnostic_reprojection(batch);
+    if store.has_analysis_payload(uri) {
+        return Ok(store.snapshot_context(uri));
+    }
+    stale_or_retry(kind, store.get(uri).is_some())
+}
+
+fn stale_or_retry(
+    kind: SnapshotContextKind,
+    document_exists: bool,
+) -> Result<Option<SnapshotContext>> {
+    if !document_exists || kind == SnapshotContextKind::Diagnostics {
+        Ok(None)
+    } else {
+        Err(kind.stale_error())
+    }
+}
+
+fn diagnostic_reprojection_execution_error(
+    error: tokio::task::JoinError,
+) -> tower_lsp_server::jsonrpc::Error {
+    let mut response = tower_lsp_server::jsonrpc::Error::internal_error();
+    response.message = format!("diagnostic reprojection worker failed: {error}").into();
+    response
 }
 
 pub(crate) fn analysis_execution_error(

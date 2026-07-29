@@ -1,12 +1,14 @@
-use super::{AnalysisOptions, Analyzer};
+use super::{AnalysisOptions, Analyzer, DiagramProjectionInput};
 use crate::rules::{AnalysisRuleConfig, AnalysisRuleProfile};
 use crate::{
-    AnalysisStatus, DiagnosticCategory, DiagnosticSeverity, FenceTextIndexSource, SourceMap,
+    AnalysisCancellationToken, AnalysisStatus, DiagnosticCategory, DiagnosticSeverity,
+    FenceTextIndexSource, SourceMap,
 };
 use merman_core::{
     EditorSemanticDiagnostic, MermaidConfig, ParseMetadata, ParsedDiagram, SourceSpan,
 };
 use serde_json::json;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static REPROJECTION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -24,6 +26,13 @@ fn panicking_flowchart_parser(
     _metadata: &ParseMetadata,
 ) -> merman_core::Result<serde_json::Value> {
     panic!("fixture parser panic")
+}
+
+fn malformed_flowchart_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+) -> merman_core::Result<serde_json::Value> {
+    Ok(malformed_flowchart_parsed_diagram().model)
 }
 
 #[test]
@@ -264,17 +273,105 @@ fn rich_facts_mode_projects_valid_syntax_facts() {
 }
 
 #[test]
+fn cynefin_self_loop_diagnostics_match_between_diagnostics_and_rich_analysis() {
+    let source = concat!(
+        "cynefin-beta\n",
+        "  complex\n",
+        "  complicated\n",
+        "  complex --> complicated : \"Pattern emerges\"\n",
+        "  complicated --> complicated : \"Self-loop\"\n",
+    );
+    let analyzer = Analyzer::new();
+
+    let diagnostics_only = analyzer.analyze(source);
+    let rich = analyzer
+        .analyze_result(source)
+        .into_ready()
+        .expect("Cynefin source should produce a rich analysis result");
+
+    assert_eq!(diagnostics_only, rich.payload().clone());
+    assert_eq!(diagnostics_only.diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics_only.diagnostics[0].id,
+        crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID
+    );
+    assert!(
+        diagnostics_only.diagnostics[0]
+            .message
+            .contains("self-loop transition on domain \"complicated\" is skipped")
+    );
+}
+
+#[test]
+fn parse_disposition_is_independent_from_diagnostic_severity() {
+    let parsed_source = concat!(
+        "cynefin-beta\n",
+        "  complex\n",
+        "  complicated\n",
+        "  complicated --> complicated : \"Self-loop\"\n",
+    );
+    let recovered_source = "flowchart TD\nA[unterminated\n";
+
+    for severity in [
+        DiagnosticSeverity::Error,
+        DiagnosticSeverity::Warning,
+        DiagnosticSeverity::Info,
+        DiagnosticSeverity::Hint,
+    ] {
+        let parsed = Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_severity(crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID, severity)
+                    .unwrap(),
+            ),
+        )
+        .analyze_facts(parsed_source);
+        assert_eq!(
+            parsed.diagrams[0].parse_disposition,
+            crate::DiagramParseDisposition::Parsed,
+            "parsed disposition changed for {severity:?}"
+        );
+        assert_eq!(
+            parsed.valid,
+            severity != DiagnosticSeverity::Error,
+            "parsed diagnostic validity did not reflect {severity:?}"
+        );
+
+        let recovered = Analyzer::with_options(
+            AnalysisOptions::default().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_severity(crate::rules::DIAGRAM_PARSE_RULE_ID, severity)
+                    .unwrap(),
+            ),
+        )
+        .analyze_facts(recovered_source);
+        assert_eq!(
+            recovered.diagrams[0].parse_disposition,
+            crate::DiagramParseDisposition::Recovered,
+            "recovered disposition changed for {severity:?}"
+        );
+        assert_eq!(
+            recovered.valid,
+            severity != DiagnosticSeverity::Error,
+            "recovered diagnostic validity did not reflect {severity:?}"
+        );
+    }
+}
+
+#[test]
 fn rich_facts_mode_reports_flowchart_facts_projection_failure() {
     let analyzer = Analyzer::new();
     let source = "flowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
     let parsed = malformed_flowchart_parsed_diagram();
     let local = analyzer.analyze_parsed_diagram(
-        source,
-        &source_map,
-        &parsed.meta,
+        DiagramProjectionInput {
+            source,
+            source_map: &source_map,
+            metadata: &parsed.meta,
+            editor_facts: None,
+        },
         &parsed.model,
-        None,
         Vec::new(),
         super::AnalysisMode::RichFacts,
     );
@@ -292,6 +389,77 @@ fn rich_facts_mode_reports_flowchart_facts_projection_failure() {
         diagnostic
             .message
             .contains("failed to project flowchart facts from parser model")
+    );
+}
+
+#[test]
+fn flowchart_facts_projection_observes_cancellation_inside_the_model_walk() {
+    let analyzer = Analyzer::new();
+    let source_map = SourceMap::new("flowchart TD\nA-->B\n");
+    let model = json!({
+        "type": "flowchart-v2",
+        "nodes": vec![serde_json::Value::Null; 1_024],
+    });
+    let cancellation = AnalysisCancellationToken::new();
+    cancellation.cancel_after_checkpoints(2);
+
+    assert!(matches!(
+        analyzer.flowchart_facts_projection_cancellable(
+            &model,
+            "flowchart-v2",
+            &source_map,
+            &cancellation,
+        ),
+        Err(crate::AnalysisCancelled)
+    ));
+}
+
+#[test]
+fn diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure() {
+    let analyzer = Analyzer::new();
+    let source = "flowchart TD\nA-->B\n";
+    let source_descriptor = crate::SourceDescriptor::diagram();
+    let text = Arc::<str>::from(source);
+    let source_map = SourceMap::new(Arc::clone(&text));
+    let document = crate::document::whole_document_diagram(Arc::clone(&text), &source_descriptor);
+    let parsed = malformed_flowchart_parsed_diagram();
+    let local = analyzer.analyze_parsed_diagram(
+        DiagramProjectionInput {
+            source,
+            source_map: &source_map,
+            metadata: &parsed.meta,
+            editor_facts: None,
+        },
+        &parsed.model,
+        Vec::new(),
+        super::AnalysisMode::RichFacts,
+    );
+    let diagnostics = local.diagnostics.clone();
+    let diagram = crate::AnalyzedDiagram::from_document_diagram_with_evidence(
+        &document,
+        local.diagnostics,
+        local.syntax,
+        Arc::new(crate::result::DiagramAnalysisEvidence::Parsed {
+            metadata: parsed.meta,
+            model: Arc::new(parsed.model),
+            editor_facts: None,
+        }),
+    );
+    let result =
+        crate::AnalysisResult::new(source_descriptor, source_map, diagnostics, vec![diagram]);
+
+    let reprojected = analyzer.reproject_payload(&result);
+
+    assert_eq!(reprojected, result.payload().clone());
+    assert_eq!(
+        reprojected
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.id == crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID
+            })
+            .count(),
+        1
     );
 }
 
@@ -315,25 +483,27 @@ fn rich_facts_mode_reports_editor_facts_preprocess_failure() {
 }
 
 #[test]
-fn diagnostics_mode_does_not_project_flowchart_facts_failures() {
+fn diagnostics_mode_reports_the_canonical_flowchart_projection_failure() {
     let analyzer = Analyzer::new();
     let source = "flowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
     let parsed = malformed_flowchart_parsed_diagram();
     let local = analyzer.analyze_parsed_diagram(
-        source,
-        &source_map,
-        &parsed.meta,
+        DiagramProjectionInput {
+            source,
+            source_map: &source_map,
+            metadata: &parsed.meta,
+            editor_facts: None,
+        },
         &parsed.model,
-        None,
         Vec::new(),
         super::AnalysisMode::Diagnostics,
     );
 
-    assert!(
-        local.diagnostics.iter().all(|diagnostic| {
-            diagnostic.id != crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID
-        })
+    assert_eq!(local.diagnostics.len(), 1);
+    assert_eq!(
+        local.diagnostics[0].id,
+        crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID
     );
     assert_eq!(local.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
     assert_eq!(local.syntax.source(), FenceTextIndexSource::Unavailable);
@@ -341,14 +511,35 @@ fn diagnostics_mode_does_not_project_flowchart_facts_failures() {
 }
 
 #[test]
-fn disabled_resource_limit_rule_still_returns_hard_resource_diagnostic() {
+fn public_analysis_entries_share_flowchart_projection_diagnostics() {
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", malformed_flowchart_parser);
+    let analyzer = Analyzer::with_engine(engine, AnalysisOptions::default());
+    let source = "flowchart TD\nA-->B\n";
+
+    let diagnostics_only = analyzer.analyze(source);
+    let rich = analyzer
+        .analyze_result(source)
+        .into_ready()
+        .expect("source is within the analysis limit");
+
+    assert_eq!(diagnostics_only, rich.payload().clone());
+    assert_eq!(analyzer.reproject_payload(&rich), diagnostics_only);
+}
+
+#[test]
+fn protected_resource_limit_rule_still_returns_hard_resource_diagnostic() {
+    assert!(
+        AnalysisRuleConfig::default()
+            .with_rule_disabled(crate::rules::RESOURCE_LIMIT_RULE_ID)
+            .is_err()
+    );
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_max_source_bytes(Some(8))
-            .with_rule_config(
-                AnalysisRuleConfig::default()
-                    .with_rule_disabled(crate::rules::RESOURCE_LIMIT_RULE_ID),
-            ),
+            .with_rule_config(AnalysisRuleConfig::default()),
     );
     let local = analyzer.analyze_local("flowchart TD\nA-->B\n", super::AnalysisMode::RichFacts);
 
@@ -392,7 +583,7 @@ fn fallback_recovery_merge_uses_structured_location_metadata() {
     )
     .unwrap()
     .with_diagram_type("flowchart-v2")
-    .with_span(span.clone());
+    .with_span(span);
     let recovery = crate::diagnostic_projection::rule_diagnostic_without_default_span(
         crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID,
         AnalysisStatus::ParseError,
@@ -451,7 +642,8 @@ fn analyze_init_directive_alias_emits_safe_fix() {
         AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended)
-                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
+                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                .unwrap(),
         ),
     );
     let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
@@ -479,7 +671,9 @@ fn analysis_rule_config_can_disable_source_lints() {
             AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended)
                 .with_rule_disabled(crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID)
-                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
+                .unwrap()
+                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                .unwrap(),
         ),
     );
     let payload =
@@ -491,9 +685,13 @@ fn analysis_rule_config_can_disable_source_lints() {
 
 #[test]
 fn analysis_rule_config_can_disable_no_diagram_rule() {
-    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
-        AnalysisRuleConfig::default().with_rule_disabled(crate::rules::NO_DIAGRAM_RULE_ID),
-    ));
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_disabled(crate::rules::NO_DIAGRAM_RULE_ID)
+                .unwrap(),
+        ),
+    );
     let payload = analyzer.analyze("");
 
     assert!(payload.valid);
@@ -502,13 +700,15 @@ fn analysis_rule_config_can_disable_no_diagram_rule() {
 
 #[test]
 fn analysis_rule_config_cannot_disable_resource_limit_rule() {
+    assert!(
+        AnalysisRuleConfig::default()
+            .with_rule_disabled(crate::rules::RESOURCE_LIMIT_RULE_ID)
+            .is_err()
+    );
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_max_source_bytes(Some(8))
-            .with_rule_config(
-                AnalysisRuleConfig::default()
-                    .with_rule_disabled(crate::rules::RESOURCE_LIMIT_RULE_ID),
-            ),
+            .with_rule_config(AnalysisRuleConfig::default()),
     );
     let payload = analyzer.analyze("flowchart TD\nA-->B\n");
 
@@ -523,13 +723,18 @@ fn analysis_rule_config_cannot_disable_resource_limit_rule() {
 
 #[test]
 fn analysis_rule_config_cannot_override_resource_limit_severity() {
+    assert!(
+        AnalysisRuleConfig::default()
+            .with_rule_severity(
+                crate::rules::RESOURCE_LIMIT_RULE_ID,
+                DiagnosticSeverity::Hint,
+            )
+            .is_err()
+    );
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default()
             .with_max_source_bytes(Some(8))
-            .with_rule_config(AnalysisRuleConfig::default().with_rule_severity(
-                crate::rules::RESOURCE_LIMIT_RULE_ID,
-                DiagnosticSeverity::Hint,
-            )),
+            .with_rule_config(AnalysisRuleConfig::default()),
     );
     let payload = analyzer.analyze("flowchart TD\nA-->B\n");
 
@@ -550,10 +755,12 @@ fn analysis_rule_config_can_override_source_lint_severity() {
             AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended)
                 .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                .unwrap()
                 .with_rule_severity(
                     crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
                     DiagnosticSeverity::Warning,
-                ),
+                )
+                .unwrap(),
         ),
     );
     let payload =
@@ -588,7 +795,8 @@ fn rule_changes_reproject_from_one_parse_generation() {
         AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended)
-                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
+                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                .unwrap(),
         ),
     )
     .reproject_payload(&result);
@@ -597,7 +805,9 @@ fn rule_changes_reproject_from_one_parse_generation() {
             AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended)
                 .with_rule_disabled(crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID)
-                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
+                .unwrap()
+                .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                .unwrap(),
         ),
     )
     .reproject_payload(&result);
@@ -606,10 +816,12 @@ fn rule_changes_reproject_from_one_parse_generation() {
             AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended)
                 .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                .unwrap()
                 .with_rule_severity(
                     crate::rules::PREFER_INIT_DIRECTIVE_RULE_ID,
                     DiagnosticSeverity::Error,
-                ),
+                )
+                .unwrap(),
         ),
     )
     .reproject_payload(&result);
@@ -681,7 +893,8 @@ fn analysis_rule_config_can_disable_git_graph_warning_rules() {
     let analyzer = Analyzer::with_options(
         AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default()
-                .with_rule_disabled(crate::rules::GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID),
+                .with_rule_disabled(crate::rules::GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID)
+                .unwrap(),
         ),
     );
     let payload =
@@ -693,12 +906,16 @@ fn analysis_rule_config_can_disable_git_graph_warning_rules() {
 
 #[test]
 fn analysis_rule_config_can_override_git_graph_warning_severity() {
-    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
-        AnalysisRuleConfig::default().with_rule_severity(
-            crate::rules::GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
-            DiagnosticSeverity::Hint,
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity(
+                    crate::rules::GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
+                    DiagnosticSeverity::Hint,
+                )
+                .unwrap(),
         ),
-    ));
+    );
     let payload =
         analyzer.analyze("gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n");
 

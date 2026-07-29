@@ -7,12 +7,12 @@ use crate::diagrams::scan::physical_line_at;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    family::CombinedSemanticFailure,
+    EditorSemanticSymbol, Error, ParseControl, ParseControlResult, ParseMetadata, Result,
+    SourceSpan, family::CombinedSemanticFailure,
 };
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 const HEADER: &str = "wardley-beta";
 
@@ -212,15 +212,20 @@ pub(crate) fn parse_wardley(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_wardley_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_wardley_semantic_source(code, meta),
-        |source| {
-            let editor_facts = source.editor_facts.clone();
-            (source.into_compat_json(meta), editor_facts)
-        },
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control.checkpoint()?;
+    let construction = match construct_wardley_semantic_source_controlled(code, meta, control)? {
+        Ok(source) => Ok(source.into_combined_parts_controlled(meta, control)?),
+        Err(error) => Err(error),
+    };
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |parts| parts,
         CombinedSemanticFailure::into_parts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn parse_wardley_model_for_render(
@@ -236,23 +241,113 @@ pub(crate) fn render_model_to_compat_json(
     model: &WardleyDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": &model.title,
-        "accTitle": &model.acc_title,
-        "accDescr": &model.acc_descr,
-        "nodes": &model.nodes,
-        "links": &model.links,
-        "trends": &model.trends,
-        "pipelines": &model.pipelines,
-        "annotations": &model.annotations,
-        "notes": &model.notes,
-        "accelerators": &model.accelerators,
-        "deaccelerators": &model.deaccelerators,
-        "annotationsBox": &model.annotations_box,
-        "axes": &model.axes,
-        "size": &model.size,
-    }))
+    let control = ParseControl::new();
+    render_model_to_compat_json_controlled(model, meta, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn render_model_to_compat_json_controlled(
+    model: &WardleyDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<Value>> {
+    control.checkpoint()?;
+    let nodes = serialize_wardley_items_controlled(&model.nodes, control)?;
+    let links = serialize_wardley_items_controlled(&model.links, control)?;
+    let trends = serialize_wardley_items_controlled(&model.trends, control)?;
+    let annotations = serialize_wardley_items_controlled(&model.annotations, control)?;
+    let notes = serialize_wardley_items_controlled(&model.notes, control)?;
+    let accelerators = serialize_wardley_items_controlled(&model.accelerators, control)?;
+    let deaccelerators = serialize_wardley_items_controlled(&model.deaccelerators, control)?;
+
+    let mut pipelines = Vec::with_capacity(model.pipelines.len());
+    for (pipeline_index, pipeline) in model.pipelines.iter().enumerate() {
+        if pipeline_index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let mut component_ids = Vec::with_capacity(pipeline.component_ids.len());
+        for (component_index, component_id) in pipeline.component_ids.iter().enumerate() {
+            if component_index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            component_ids.push(Value::String(component_id.clone()));
+        }
+        pipelines.push(json!({
+            "nodeId": pipeline.node_id,
+            "componentIds": component_ids,
+        }));
+    }
+
+    let mut axes = Map::new();
+    if let Some(x_label) = &model.axes.x_label {
+        axes.insert("xLabel".to_string(), Value::String(x_label.clone()));
+    }
+    if let Some(y_label) = &model.axes.y_label {
+        axes.insert("yLabel".to_string(), Value::String(y_label.clone()));
+    }
+    if !model.axes.stages.is_empty() {
+        axes.insert(
+            "stages".to_string(),
+            Value::Array(strings_to_json_controlled(&model.axes.stages, control)?),
+        );
+    }
+    if !model.axes.stage_boundaries.is_empty() {
+        let mut boundaries = Vec::with_capacity(model.axes.stage_boundaries.len());
+        for (index, boundary) in model.axes.stage_boundaries.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            boundaries.push(json!(boundary));
+        }
+        axes.insert("stageBoundaries".to_string(), Value::Array(boundaries));
+    }
+
+    let mut out = Map::with_capacity(14);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("title".to_string(), json!(&model.title));
+    out.insert("accTitle".to_string(), json!(&model.acc_title));
+    out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert("nodes".to_string(), Value::Array(nodes));
+    out.insert("links".to_string(), Value::Array(links));
+    out.insert("trends".to_string(), Value::Array(trends));
+    out.insert("pipelines".to_string(), Value::Array(pipelines));
+    out.insert("annotations".to_string(), Value::Array(annotations));
+    out.insert("notes".to_string(), Value::Array(notes));
+    out.insert("accelerators".to_string(), Value::Array(accelerators));
+    out.insert("deaccelerators".to_string(), Value::Array(deaccelerators));
+    out.insert("annotationsBox".to_string(), json!(&model.annotations_box));
+    out.insert("axes".to_string(), Value::Object(axes));
+    out.insert("size".to_string(), json!(&model.size));
+    control.checkpoint()?;
+    Ok(Ok(Value::Object(out)))
+}
+
+fn serialize_wardley_items_controlled<T: Serialize>(
+    items: &[T],
+    control: &ParseControl,
+) -> ParseControlResult<Vec<Value>> {
+    let mut values = Vec::with_capacity(items.len());
+    for (index, item) in items.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        values.push(json!(item));
+    }
+    Ok(values)
+}
+
+fn strings_to_json_controlled(
+    strings: &[String],
+    control: &ParseControl,
+) -> ParseControlResult<Vec<Value>> {
+    let mut values = Vec::with_capacity(strings.len());
+    for (index, value) in strings.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        values.push(Value::String(value.clone()));
+    }
+    Ok(values)
 }
 
 #[derive(Debug)]
@@ -267,9 +362,46 @@ impl WardleySemanticSource {
         self.model
     }
 
+    fn into_render_model_controlled(
+        mut self,
+        meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<WardleyDiagramRenderModel> {
+        control.checkpoint()?;
+        self.model.sanitize_common_db_fields(&meta.effective_config);
+        control.checkpoint()?;
+        Ok(self.model)
+    }
+
     fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
-        let model = self.into_render_model(meta);
-        render_model_to_compat_json(&model, meta)
+        let control = ParseControl::new();
+        self.into_compat_json_controlled(meta, &control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    fn into_compat_json_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<Value>> {
+        let model = self.into_render_model_controlled(meta, control)?;
+        render_model_to_compat_json_controlled(&model, meta, control)
+    }
+
+    fn into_combined_parts_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<(Result<Value>, EditorSemanticFacts)> {
+        let Self {
+            mut model,
+            editor_facts,
+        } = self;
+        control.checkpoint()?;
+        model.sanitize_common_db_fields(&meta.effective_config);
+        let json = render_model_to_compat_json_controlled(&model, meta, control)?;
+        control.checkpoint()?;
+        Ok((json, editor_facts))
     }
 }
 
@@ -480,41 +612,72 @@ impl WardleyBuilder {
         }
     }
 
-    fn resolve_node_id(&self, name: &str) -> String {
+    fn resolve_node_id_controlled(
+        &self,
+        name: &str,
+        control: &ParseControl,
+    ) -> ParseControlResult<String> {
         if self.nodes.contains_key(name) {
-            return name.to_string();
+            return Ok(name.to_string());
         }
-        self.nodes
-            .iter()
-            .find_map(|(id, node)| (node.label == name).then(|| id.clone()))
-            .unwrap_or_else(|| name.to_string())
+        for (index, (id, node)) in self.nodes.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if node.label == name {
+                return Ok(id.clone());
+            }
+        }
+        Ok(name.to_string())
     }
 
-    fn finish(self, common: LangiumCommonDbFields) -> WardleyDiagramRenderModel {
-        WardleyDiagramRenderModel {
+    fn finish_controlled(
+        self,
+        common: LangiumCommonDbFields,
+        control: &ParseControl,
+    ) -> ParseControlResult<WardleyDiagramRenderModel> {
+        let mut nodes = Vec::with_capacity(self.nodes.len());
+        for (index, node) in self.nodes.into_values().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            nodes.push(WardleyNodeRenderModel {
+                id: node.id,
+                label: node.label,
+                x: node.x,
+                y: node.y,
+                class_name: node.class_name,
+                label_offset_x: node.label_offset_x,
+                label_offset_y: node.label_offset_y,
+                in_pipeline: node.in_pipeline,
+                is_pipeline_parent: node.is_pipeline_parent,
+                inertia: node.inertia,
+                source_strategy: node.source_strategy,
+            });
+        }
+        let mut trends = Vec::with_capacity(self.trends.len());
+        for (index, trend) in self.trends.into_values().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            trends.push(trend);
+        }
+        let mut pipelines = Vec::with_capacity(self.pipelines.len());
+        for (index, pipeline) in self.pipelines.into_values().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            pipelines.push(pipeline);
+        }
+        control.checkpoint()?;
+        Ok(WardleyDiagramRenderModel {
             title: common.title,
             acc_title: common.acc_title,
             acc_descr: common.acc_descr,
-            nodes: self
-                .nodes
-                .into_values()
-                .map(|node| WardleyNodeRenderModel {
-                    id: node.id,
-                    label: node.label,
-                    x: node.x,
-                    y: node.y,
-                    class_name: node.class_name,
-                    label_offset_x: node.label_offset_x,
-                    label_offset_y: node.label_offset_y,
-                    in_pipeline: node.in_pipeline,
-                    is_pipeline_parent: node.is_pipeline_parent,
-                    inertia: node.inertia,
-                    source_strategy: node.source_strategy,
-                })
-                .collect(),
+            nodes,
             links: self.links,
-            trends: self.trends.into_values().collect(),
-            pipelines: self.pipelines.into_values().collect(),
+            trends,
+            pipelines,
             annotations: self.annotations,
             notes: self.notes,
             accelerators: self.accelerators,
@@ -522,7 +685,7 @@ impl WardleyBuilder {
             annotations_box: self.annotations_box,
             axes: self.axes,
             size: self.size,
-        }
+        })
     }
 }
 
@@ -597,6 +760,16 @@ fn construct_wardley_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<WardleySemanticSource, CombinedSemanticFailure> {
+    construct_wardley_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_wardley_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<WardleySemanticSource, CombinedSemanticFailure>> {
+    control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("wardley");
 
@@ -604,21 +777,23 @@ fn construct_wardley_semantic_source(
         ast,
         editor_facts,
         first_problem,
-    } = parse_wardley_ast(code);
+    } = parse_wardley_ast(code, control)?;
     if let Some(problem) = first_problem {
-        return Err(wardley_failure(meta, problem, editor_facts));
+        return Ok(Err(wardley_failure(meta, problem, editor_facts)));
     }
-    let model = match build_wardley_model(&ast) {
+    control.checkpoint()?;
+    let model = match build_wardley_model_controlled(&ast, control)? {
         Ok(model) => model,
         Err(problem) => {
-            return Err(wardley_failure(meta, problem, editor_facts));
+            return Ok(Err(wardley_failure(meta, problem, editor_facts)));
         }
     };
 
-    Ok(WardleySemanticSource {
+    control.checkpoint()?;
+    Ok(Ok(WardleySemanticSource {
         model,
         editor_facts,
-    })
+    }))
 }
 
 fn wardley_failure(
@@ -633,7 +808,11 @@ fn wardley_failure(
     )
 }
 
-fn parse_wardley_ast(code: &str) -> WardleyParseOutcome {
+fn parse_wardley_ast(
+    code: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<WardleyParseOutcome> {
+    control.checkpoint()?;
     let mut ast = WardleyAst::default();
     let mut editor_facts = EditorSemanticFacts::new();
     let mut lexemes = LangiumLexemeTrace::default();
@@ -643,6 +822,7 @@ fn parse_wardley_ast(code: &str) -> WardleyParseOutcome {
     let mut saw_header = false;
 
     while offset < code.len() {
+        control.checkpoint()?;
         let line_start = offset;
         let (line, next_offset) = physical_line_at(code, offset);
         offset = next_offset;
@@ -753,12 +933,13 @@ fn parse_wardley_ast(code: &str) -> WardleyParseOutcome {
         );
     }
 
-    lexemes.attach(code, &mut editor_facts);
-    WardleyParseOutcome {
+    lexemes.attach_controlled(code, &mut editor_facts, control)?;
+    control.checkpoint()?;
+    Ok(WardleyParseOutcome {
         ast,
         editor_facts,
         first_problem,
-    }
+    })
 }
 
 fn remember_wardley_problem(
@@ -2264,9 +2445,20 @@ fn trimmed_span(input: &str, base: usize) -> SourceSpan {
     SourceSpan::new(start, start + trimmed.len())
 }
 
-fn build_wardley_model(
+fn build_wardley_model_controlled(
     ast: &WardleyAst,
-) -> std::result::Result<WardleyDiagramRenderModel, WardleyParseProblem> {
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<WardleyDiagramRenderModel, WardleyParseProblem>> {
+    macro_rules! wardley_try {
+        ($expression:expr) => {
+            match $expression {
+                Ok(value) => value,
+                Err(problem) => return Ok(Err(problem)),
+            }
+        };
+    }
+
+    control.checkpoint()?;
     let mut builder = WardleyBuilder::default();
     if let Some(size) = &ast.size {
         builder.size = Some(WardleySizeRenderModel {
@@ -2275,27 +2467,34 @@ fn build_wardley_model(
         });
     }
     if let Some(evolution) = &ast.evolution {
-        builder.axes.stages = evolution
-            .stages
-            .iter()
-            .map(|stage| match &stage.second_name {
+        builder.axes.stages.reserve(evolution.stages.len());
+        builder
+            .axes
+            .stage_boundaries
+            .reserve(evolution.stages.len());
+        for (index, stage) in evolution.stages.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            builder.axes.stages.push(match &stage.second_name {
                 Some(second) => format!("{} / {}", stage.name.text.trim(), second.text.trim()),
                 None => stage.name.text.trim().to_string(),
-            })
-            .collect();
-        builder.axes.stage_boundaries = evolution
-            .stages
-            .iter()
-            .filter_map(|stage| stage.boundary.map(|boundary| boundary.value))
-            .collect();
+            });
+            if let Some(boundary) = stage.boundary {
+                builder.axes.stage_boundaries.push(boundary.value);
+            }
+        }
     }
 
-    for anchor in &ast.anchors {
-        let point = to_coordinates(
+    for (index, anchor) in ast.anchors.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let point = wardley_try!(to_coordinates(
             anchor.visibility,
             anchor.evolution,
             &format!("Anchor \"{}\"", anchor.name.text),
-        )?;
+        ));
         builder.add_node(PendingWardleyNode {
             id: anchor.name.text.clone(),
             label: anchor.name.text.clone(),
@@ -2311,12 +2510,15 @@ fn build_wardley_model(
         });
     }
 
-    for component in &ast.components {
-        let point = to_coordinates(
+    for (index, component) in ast.components.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let point = wardley_try!(to_coordinates(
             component.positioned.visibility,
             component.positioned.evolution,
             &format!("Component \"{}\"", component.positioned.name.text),
-        )?;
+        ));
         builder.add_node(PendingWardleyNode {
             id: component.positioned.name.text.clone(),
             label: component.positioned.name.text.clone(),
@@ -2332,12 +2534,15 @@ fn build_wardley_model(
         });
     }
 
-    for note in &ast.notes {
-        let point = to_coordinates(
+    for (index, note) in ast.notes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let point = wardley_try!(to_coordinates(
             note.visibility,
             note.evolution,
             &format!("Note \"{}\"", note.text.text),
-        )?;
+        ));
         builder.notes.push(WardleyNoteRenderModel {
             text: note.text.text.clone(),
             x: point.x,
@@ -2345,23 +2550,29 @@ fn build_wardley_model(
         });
     }
 
-    for pipeline in &ast.pipelines {
+    for (pipeline_index, pipeline) in ast.pipelines.iter().enumerate() {
+        if pipeline_index % 128 == 0 {
+            control.checkpoint()?;
+        }
         let Some(parent_y) = builder.nodes.get(&pipeline.parent.text).map(|node| node.y) else {
-            return Err(WardleyParseProblem::new(
+            return Ok(Err(WardleyParseProblem::new(
                 format!(
                     "Pipeline \"{}\" must reference an existing component with coordinates.",
                     pipeline.parent.text
                 ),
                 pipeline.parent.span,
-            ));
+            )));
         };
         builder.start_pipeline(&pipeline.parent.text);
-        for component in &pipeline.components {
+        for (component_index, component) in pipeline.components.iter().enumerate() {
+            if component_index % 128 == 0 {
+                control.checkpoint()?;
+            }
             let component_id = format!("{}_{}", pipeline.parent.text, component.name.text);
-            let x = to_percent(
+            let x = wardley_try!(to_percent(
                 component.evolution,
                 &format!("Pipeline component \"{}\" evolution", component.name.text),
-            )?;
+            ));
             builder.add_node(PendingWardleyNode {
                 id: component_id.clone(),
                 label: component.name.text.clone(),
@@ -2379,7 +2590,10 @@ fn build_wardley_model(
         }
     }
 
-    for link in &ast.links {
+    for (index, link) in ast.links.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         let dashed = link
             .arrow
             .as_deref()
@@ -2399,22 +2613,25 @@ fn build_wardley_model(
         }
         let label = flow_label.or_else(|| link.label.as_ref().map(|label| label.text.clone()));
         builder.links.push(WardleyLinkRenderModel {
-            source: builder.resolve_node_id(&link.from.text),
-            target: builder.resolve_node_id(&link.to.text),
+            source: builder.resolve_node_id_controlled(&link.from.text, control)?,
+            target: builder.resolve_node_id_controlled(&link.to.text, control)?,
             dashed,
             label,
             flow,
         });
     }
 
-    for evolve in &ast.evolves {
+    for (index, evolve) in ast.evolves.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         let Some(node_y) = builder.nodes.get(&evolve.component.text).map(|node| node.y) else {
             continue;
         };
-        let target_x = to_percent(
+        let target_x = wardley_try!(to_percent(
             evolve.target,
             &format!("Evolve target for \"{}\"", evolve.component.text),
-        )?;
+        ));
         builder.trends.insert(
             evolve.component.text.clone(),
             WardleyTrendRenderModel {
@@ -2426,42 +2643,51 @@ fn build_wardley_model(
     }
 
     if let Some(annotations_box) = ast.annotations_boxes.first() {
-        builder.annotations_box = Some(to_coordinates(
+        builder.annotations_box = Some(wardley_try!(to_coordinates(
             annotations_box.x,
             annotations_box.y,
             "Annotations box",
-        )?);
+        )));
     }
-    for annotation in &ast.annotations {
-        let point = to_coordinates(
+    for (index, annotation) in ast.annotations.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let point = wardley_try!(to_coordinates(
             annotation.x,
             annotation.y,
             &format!("Annotation {}", annotation.number),
-        )?;
+        ));
         builder.annotations.push(WardleyAnnotationRenderModel {
             number: annotation.number,
             coordinates: vec![point],
             text: Some(annotation.text.text.clone()),
         });
     }
-    for accelerator in &ast.accelerators {
-        let point = to_coordinates(
+    for (index, accelerator) in ast.accelerators.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let point = wardley_try!(to_coordinates(
             accelerator.x,
             accelerator.y,
             &format!("Accelerator \"{}\"", accelerator.name.text),
-        )?;
+        ));
         builder.accelerators.push(WardleyAcceleratorRenderModel {
             name: accelerator.name.text.clone(),
             x: point.x,
             y: point.y,
         });
     }
-    for deaccelerator in &ast.deaccelerators {
-        let point = to_coordinates(
+    for (index, deaccelerator) in ast.deaccelerators.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let point = wardley_try!(to_coordinates(
             deaccelerator.x,
             deaccelerator.y,
             &format!("Deaccelerator \"{}\"", deaccelerator.name.text),
-        )?;
+        ));
         builder
             .deaccelerators
             .push(WardleyDeacceleratorRenderModel {
@@ -2471,7 +2697,8 @@ fn build_wardley_model(
             });
     }
 
-    Ok(builder.finish(LangiumCommonDbFields::from_facts(&ast.common)))
+    let common = LangiumCommonDbFields::from_facts(&ast.common);
+    Ok(Ok(builder.finish_controlled(common, control)?))
 }
 
 fn to_coordinates(
@@ -2748,6 +2975,63 @@ mod tests {
 
     fn parse(source: &str) -> WardleyDiagramRenderModel {
         parse_wardley_model_for_render(source, &meta()).unwrap()
+    }
+
+    #[test]
+    fn wardley_model_construction_observes_cancellation_inside_large_ast_collections() {
+        let span = SourceSpan::new(0, 1);
+        let ast = WardleyAst {
+            components: (0..512)
+                .map(|index| WardleyComponentAst {
+                    positioned: WardleyPositionedNodeAst {
+                        name: SpannedText {
+                            text: format!("component-{index}"),
+                            span,
+                            selection: span,
+                            quoted: false,
+                        },
+                        visibility: SpannedNumber { value: 0.5, span },
+                        evolution: SpannedNumber { value: 0.5, span },
+                    },
+                    label: None,
+                    source_strategy: None,
+                    source_strategy_span: None,
+                    inertia: false,
+                    inertia_span: None,
+                })
+                .collect(),
+            ..WardleyAst::default()
+        };
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(build_wardley_model_controlled(&ast, &control).is_err());
+    }
+
+    #[test]
+    fn wardley_json_projection_observes_cancellation_inside_large_model_collections() {
+        let model = WardleyDiagramRenderModel {
+            nodes: (0..512)
+                .map(|index| WardleyNodeRenderModel {
+                    id: format!("node-{index}"),
+                    label: format!("Node {index}"),
+                    x: 50.0,
+                    y: 50.0,
+                    class_name: None,
+                    label_offset_x: None,
+                    label_offset_y: None,
+                    in_pipeline: false,
+                    is_pipeline_parent: false,
+                    inertia: None,
+                    source_strategy: None,
+                })
+                .collect(),
+            ..WardleyDiagramRenderModel::default()
+        };
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(render_model_to_compat_json_controlled(&model, &meta(), &control).is_err());
     }
 
     #[test]

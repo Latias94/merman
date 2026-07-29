@@ -248,7 +248,7 @@ mod tests {
             DiagnosticCategory::Parse,
             "boom",
         )
-        .with_span(span.clone());
+        .with_span(span);
         let payload = AnalysisPayload::new(
             SourceDescriptor::diagram(),
             vec![AnalysisDiagnostic {

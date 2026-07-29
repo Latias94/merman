@@ -17,7 +17,7 @@ fn diagnostics_projection_omits_unnegotiated_extension_fields() {
     let diagnostic = AnalysisDiagnostic {
         related: vec![DiagnosticRelated {
             message: "related".to_string(),
-            span: Some(span.clone()),
+            span: Some(span),
         }],
         ..AnalysisDiagnostic::new(
             "merman.compatibility.config.deprecated_test",

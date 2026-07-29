@@ -78,6 +78,7 @@ pub(crate) enum Tok {
 pub(crate) struct LexError {
     pub message: String,
     pub span: Option<crate::SourceSpan>,
+    pub expected_syntax: Option<crate::EditorExpectedSyntax>,
 }
 
 impl LexError {
@@ -85,6 +86,7 @@ impl LexError {
         Self {
             message: message.into(),
             span: None,
+            expected_syntax: None,
         }
     }
 
@@ -92,7 +94,13 @@ impl LexError {
         Self {
             message: message.into(),
             span: Some(span),
+            expected_syntax: None,
         }
+    }
+
+    fn expecting(mut self, kind: crate::EditorExpectedSyntaxKind, span: crate::SourceSpan) -> Self {
+        self.expected_syntax = Some(crate::EditorExpectedSyntax::new(kind, span));
+        self
     }
 }
 
@@ -777,12 +785,13 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         None
     }
 
-    fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
+    fn lex_direction(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
         if !self.starts_with_word_ci("direction") {
             return None;
         }
         self.pos += "direction".len();
+        let keyword_end = self.pos;
         self.skip_ws();
         let dir_start = self.pos;
         while let Some(b) = self.peek() {
@@ -795,9 +804,22 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         let dir = self.input[dir_start..self.pos].trim().to_string();
         if matches!(dir.as_str(), "TB" | "BT" | "RL" | "LR") {
             let _ = self.read_to_newline();
-            return Some((start, Tok::Direction(dir), self.pos));
+            return Some(Ok((start, Tok::Direction(dir), self.pos)));
         }
-        None
+        let selection = crate::SourceSpan::new(dir_start, self.pos);
+        self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
+        if selection.start < selection.end {
+            self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
+        }
+        let _ = self.read_to_newline();
+        Some(Err(LexError::with_span(
+            "invalid state direction",
+            selection,
+        )
+        .expecting(
+            crate::EditorExpectedSyntaxKind::DirectionValue,
+            selection,
+        )))
     }
 
     fn lex_accessibility(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
@@ -1352,7 +1374,7 @@ impl Iterator for Lexer<'_, '_> {
         }
 
         if let Some(dir) = self.lex_direction() {
-            return Some(self.emit_token(dir));
+            return Some(self.emit_result(dir));
         }
 
         if let Some(acc) = self.lex_accessibility() {

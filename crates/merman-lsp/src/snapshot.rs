@@ -1,4 +1,6 @@
-use merman_analysis::{AnalysisPayload, AnalysisResult, Analyzer};
+use merman_analysis::{
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisPayload, AnalysisResult, Analyzer,
+};
 #[cfg(test)]
 use merman_editor_core::EditorDiagramDetection;
 use std::sync::Arc;
@@ -35,7 +37,7 @@ pub(crate) struct DiagnosticGeneration(pub(crate) u64);
 #[derive(Debug, Clone)]
 pub(crate) struct SnapshotContext {
     pub(crate) snapshot: Arc<DocumentSnapshot>,
-    analysis: Option<SnapshotAnalysis>,
+    analysis: SnapshotAnalysis,
     pub(crate) generation: SnapshotGeneration,
     pub(crate) document_epoch: DocumentEpoch,
 }
@@ -56,23 +58,21 @@ impl SnapshotContext {
     ) -> Self {
         Self {
             snapshot,
-            analysis: Some(SnapshotAnalysis {
+            analysis: SnapshotAnalysis {
                 payload,
                 generation: diagnostic_generation,
-            }),
+            },
             generation,
             document_epoch,
         }
     }
 
-    pub(crate) fn analysis_payload(&self) -> Option<&AnalysisPayload> {
-        self.analysis
-            .as_ref()
-            .map(|analysis| analysis.payload.as_ref())
+    pub(crate) fn analysis_payload(&self) -> &AnalysisPayload {
+        self.analysis.payload.as_ref()
     }
 
-    pub(crate) fn analysis_generation(&self) -> Option<DiagnosticGeneration> {
-        self.analysis.as_ref().map(|analysis| analysis.generation)
+    pub(crate) fn analysis_generation(&self) -> DiagnosticGeneration {
+        self.analysis.generation
     }
 }
 
@@ -95,12 +95,19 @@ impl DocumentAnalysisContext {
         }
     }
 
-    pub fn reproject(&self, analyzer: &Analyzer) -> Self {
-        Self {
+    pub fn reproject_cancellable(
+        &self,
+        analyzer: &Analyzer,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        let payload =
+            Arc::new(analyzer.reproject_payload_cancellable(&self.canonical, cancellation)?);
+        cancellation.checkpoint()?;
+        Ok(Self {
             snapshot: Arc::clone(&self.snapshot),
             canonical: Arc::clone(&self.canonical),
-            payload: Arc::new(analyzer.reproject_payload(&self.canonical)),
-        }
+            payload,
+        })
     }
 
     #[cfg(test)]

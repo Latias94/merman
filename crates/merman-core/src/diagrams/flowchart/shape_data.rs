@@ -1,8 +1,11 @@
 use super::{Node, TitleKind};
 use serde_json::Value;
 
-pub(super) fn parse_shape_data(input: &str) -> std::result::Result<Value, String> {
-    crate::inline_config::parse_mermaid_inline_object(input)
+pub(super) fn apply_shape_data_value_to_node(
+    node: &mut Node,
+    value: &Value,
+) -> std::result::Result<(), String> {
+    apply_shape_data_document_to_node(node, value)
 }
 
 const PINNED_MERMAID_SHAPES: &[&str] = &[
@@ -205,13 +208,11 @@ fn sanitize_shape_label_type(label_type: Option<&str>) -> TitleKind {
     }
 }
 
-pub(super) fn apply_shape_data_to_node(
+fn apply_shape_data_document_to_node(
     node: &mut Node,
-    yaml_body: &str,
+    document: &Value,
 ) -> std::result::Result<(), String> {
-    // If shapeData is attached to a node reference, Mermaid has already decided this is a node.
-    let v = parse_shape_data(yaml_body)?;
-    let map = match v.as_object() {
+    let map = match document.as_object() {
         Some(m) => m,
         None => return Ok(()),
     };

@@ -5,7 +5,7 @@ use super::{
     NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT,
 };
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, Result};
+use crate::{Error, MermaidConfig, ParseControl, ParseControlResult, Result};
 
 const MINDMAP_SECTION_COUNT: usize = 11;
 
@@ -149,6 +149,7 @@ fn mindmap_render_edge(
 pub(super) struct MindmapDb {
     pub(super) nodes: Vec<MindmapNode>,
     base_level: Option<i32>,
+    ancestry: Vec<(i32, usize)>,
 }
 
 pub(super) struct MindmapNodeInput<'a> {
@@ -164,22 +165,33 @@ impl MindmapDb {
     pub(super) fn clear(&mut self) {
         self.nodes.clear();
         self.base_level = None;
+        self.ancestry.clear();
     }
 
     pub(super) fn get_mindmap(&self) -> Option<&MindmapNode> {
         self.nodes.first()
     }
 
-    fn get_parent_index(&self, level: i32) -> Option<usize> {
-        self.nodes.iter().rposition(|n| n.level < level)
-    }
-
+    #[cfg(test)]
     pub(super) fn add_node(
         &mut self,
         input: MindmapNodeInput<'_>,
         config: &MermaidConfig,
         parse_config: MindmapParseConfig,
     ) -> Result<()> {
+        let control = ParseControl::new();
+        self.add_node_controlled(input, config, parse_config, &control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    pub(super) fn add_node_controlled(
+        &mut self,
+        input: MindmapNodeInput<'_>,
+        config: &MermaidConfig,
+        parse_config: MindmapParseConfig,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<()>> {
+        control.checkpoint()?;
         let mut level = input.indent_level;
         let is_root;
         if self.nodes.is_empty() {
@@ -204,6 +216,7 @@ impl MindmapDb {
         }
 
         let id = self.nodes.len() as i32;
+        control.checkpoint()?;
         let node = MindmapNode {
             id,
             node_id: sanitize_text(input.id_raw, config),
@@ -226,24 +239,41 @@ impl MindmapDb {
             is_root,
         };
 
-        if let Some(parent_idx) = self.get_parent_index(level) {
+        let mut popped = 0usize;
+        while self
+            .ancestry
+            .last()
+            .is_some_and(|(ancestor_level, _)| *ancestor_level >= level)
+        {
+            if popped.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            self.ancestry.pop();
+            popped = popped.saturating_add(1);
+        }
+
+        if let Some((_, parent_idx)) = self.ancestry.last().copied() {
             self.nodes[parent_idx].children.push(id);
             self.nodes.push(node);
-            return Ok(());
+            self.ancestry.push((level, id as usize));
+            control.checkpoint()?;
+            return Ok(Ok(()));
         }
 
         if is_root {
             self.nodes.push(node);
-            return Ok(());
+            self.ancestry.push((level, id as usize));
+            control.checkpoint()?;
+            return Ok(Ok(()));
         }
 
-        Err(Error::diagram_parse_fallback(
+        Ok(Err(Error::diagram_parse_fallback(
             input.diagram_type.to_string(),
             format!(
                 "There can be only one root. No parent could be found for (\"{}\")",
                 node.descr
             ),
-        ))
+        )))
     }
 
     pub(super) fn decorate_last(
@@ -263,9 +293,26 @@ impl MindmapDb {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn assign_sections(&mut self, node_id: i32, section: Option<i32>) {
+        let control = ParseControl::new();
+        self.assign_sections_controlled(node_id, section, &control)
+            .expect("a private parse control cannot be cancelled");
+    }
+
+    pub(super) fn assign_sections_controlled(
+        &mut self,
+        node_id: i32,
+        section: Option<i32>,
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
         let mut stack = vec![(node_id, section)];
+        let mut visited = 0usize;
         while let Some((node_id, section)) = stack.pop() {
+            if visited.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            visited = visited.saturating_add(1);
             let Ok(node_idx) = usize::try_from(node_id) else {
                 continue;
             };
@@ -279,8 +326,12 @@ impl MindmapDb {
                 node.section = section;
             }
 
-            let children = node.children.clone();
-            for (index, child_id) in children.into_iter().enumerate().rev() {
+            let child_count = node.children.len();
+            for index in (0..child_count).rev() {
+                if index % 128 == 0 {
+                    control.checkpoint()?;
+                }
+                let child_id = self.nodes[node_idx].children[index];
                 let child_section = if node_level == 0 {
                     Some((index % MINDMAP_SECTION_COUNT) as i32)
                 } else {
@@ -289,18 +340,25 @@ impl MindmapDb {
                 stack.push((child_id, child_section));
             }
         }
+        control.checkpoint()
     }
 
-    pub(super) fn to_layout_nodes_for_render(
+    pub(super) fn to_layout_nodes_for_render_controlled(
         &self,
         root_id: i32,
         config: &MermaidConfig,
-    ) -> Vec<MindmapDiagramRenderNode> {
+        control: &ParseControl,
+    ) -> ParseControlResult<Vec<MindmapDiagramRenderNode>> {
         let mut out = Vec::new();
         let look = mindmap_look(config);
         let default_shape = mindmap_default_shape(config);
         let mut stack = vec![root_id];
+        let mut visited = 0usize;
         while let Some(node_id) = stack.pop() {
+            if visited.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            visited = visited.saturating_add(1);
             let Ok(node_idx) = usize::try_from(node_id) else {
                 continue;
             };
@@ -314,14 +372,16 @@ impl MindmapDb {
                 stack.push(*child);
             }
         }
-        out
+        control.checkpoint()?;
+        Ok(out)
     }
 
-    pub(super) fn to_edges_for_render(
+    pub(super) fn to_edges_for_render_controlled(
         &self,
         root_id: i32,
         config: &MermaidConfig,
-    ) -> Vec<MindmapDiagramRenderEdge> {
+        control: &ParseControl,
+    ) -> ParseControlResult<Vec<MindmapDiagramRenderEdge>> {
         struct EdgeFrame {
             node_id: i32,
             next_child_index: usize,
@@ -333,7 +393,12 @@ impl MindmapDb {
             node_id: root_id,
             next_child_index: 0,
         }];
+        let mut visited = 0usize;
         while let Some(frame) = stack.last_mut() {
+            if visited.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            visited = visited.saturating_add(1);
             let Ok(node_idx) = usize::try_from(frame.node_id) else {
                 stack.pop();
                 continue;
@@ -361,7 +426,8 @@ impl MindmapDb {
                 next_child_index: 0,
             });
         }
-        edges
+        control.checkpoint()?;
+        Ok(edges)
     }
 }
 

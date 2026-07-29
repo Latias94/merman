@@ -1,6 +1,7 @@
+#[cfg(test)]
+use crate::snapshot::SnapshotContext;
 use crate::snapshot::{
-    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotContext,
-    SnapshotGeneration,
+    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotGeneration,
 };
 #[cfg(test)]
 use crate::sync::{lock_recovering_poison, recover_poison};
@@ -153,32 +154,15 @@ fn document_analysis_context(
     outcome: DocumentAnalysisOutcome,
     uri: Uri,
 ) -> Result<Arc<DocumentAnalysisContext>, AnalysisRejection> {
-    match outcome {
-        DocumentAnalysisOutcome::Ready(context) => {
-            Ok(Arc::new(DocumentAnalysisContext::from_editor(context, uri)))
-        }
-        DocumentAnalysisOutcome::Rejected(rejection) => Err(rejection),
-    }
+    let context = outcome.into_ready()?;
+    Ok(Arc::new(DocumentAnalysisContext::from_editor(context, uri)))
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub(crate) struct SnapshotBatchCommit {
-    #[cfg(test)]
     pub(crate) contexts: Vec<SnapshotContext>,
     pub(crate) stale_open_documents: bool,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct WorkspaceSnapshotBuildPlan {
-    pub(crate) contexts: Vec<SnapshotContext>,
-    pub(crate) batches: Vec<Vec<AnalysisBuildRequest>>,
-}
-
-impl WorkspaceSnapshotBuildPlan {
-    #[cfg(test)]
-    pub(crate) fn new_snapshot_request_count(&self) -> usize {
-        self.batches.iter().map(Vec::len).sum()
-    }
 }
 
 #[cfg(test)]

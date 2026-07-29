@@ -6,7 +6,9 @@ fn source_lint_prefers_init_directive_and_provides_fix() {
     let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
     let config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended);
-    let config = config.with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID);
+    let config = config
+        .with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .unwrap();
 
     let diagnostics = source_lint_diagnostics(source, &source_map, &config);
 
@@ -70,7 +72,8 @@ fn source_lint_prefers_frontmatter_config_over_initialize_directive() {
     let source_map = SourceMap::new(source);
     let config = AnalysisRuleConfig::default()
         .with_profile(AnalysisRuleProfile::Recommended)
-        .with_rule_disabled(PREFER_INIT_DIRECTIVE_RULE_ID);
+        .with_rule_disabled(PREFER_INIT_DIRECTIVE_RULE_ID)
+        .unwrap();
 
     let diagnostics = source_lint_diagnostics(source, &source_map, &config);
 
@@ -106,7 +109,8 @@ fn source_lint_leaves_canonical_init_directive_alone() {
     let source_map = SourceMap::new(source);
     let config = AnalysisRuleConfig::default()
         .with_profile(AnalysisRuleProfile::Recommended)
-        .with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID);
+        .with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .unwrap();
 
     assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
 }
@@ -128,7 +132,9 @@ fn rule_config_can_disable_source_lint_rules() {
     let config = AnalysisRuleConfig::default()
         .with_profile(AnalysisRuleProfile::Recommended)
         .with_rule_disabled(PREFER_INIT_DIRECTIVE_RULE_ID)
-        .with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID);
+        .unwrap()
+        .with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .unwrap();
 
     assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
 }
@@ -137,7 +143,9 @@ fn rule_config_can_disable_source_lint_rules() {
 fn rule_config_can_enable_authoring_rules_without_recommended_profile() {
     let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
-    let config = AnalysisRuleConfig::default().with_rule_enabled(PREFER_INIT_DIRECTIVE_RULE_ID);
+    let config = AnalysisRuleConfig::default()
+        .with_rule_enabled(PREFER_INIT_DIRECTIVE_RULE_ID)
+        .unwrap();
 
     let diagnostics = source_lint_diagnostics(source, &source_map, &config);
 
@@ -152,12 +160,81 @@ fn rule_config_can_override_rule_severity() {
     let config = AnalysisRuleConfig::default()
         .with_profile(AnalysisRuleProfile::Recommended)
         .with_rule_disabled(PREFER_FRONTMATTER_CONFIG_RULE_ID)
-        .with_rule_severity(PREFER_INIT_DIRECTIVE_RULE_ID, DiagnosticSeverity::Warning);
+        .unwrap()
+        .with_rule_severity(PREFER_INIT_DIRECTIVE_RULE_ID, DiagnosticSeverity::Warning)
+        .unwrap();
 
     let diagnostics = source_lint_diagnostics(source, &source_map, &config);
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].severity, DiagnosticSeverity::Warning);
+}
+
+#[test]
+fn rule_config_rejects_internal_resource_and_unknown_rule_mutations() {
+    let resource = rule_descriptor(RESOURCE_LIMIT_RULE_ID).unwrap();
+    let internal = rule_descriptor(PANIC_RULE_ID).unwrap();
+    let mut config = AnalysisRuleConfig::default();
+
+    let resource_error = config.disable_rule(RESOURCE_LIMIT_RULE_ID).unwrap_err();
+    assert_eq!(resource_error.rule_id(), RESOURCE_LIMIT_RULE_ID);
+    assert!(config.is_rule_enabled(resource));
+
+    let internal_error = config.enable_rule(PANIC_RULE_ID).unwrap_err();
+    assert_eq!(internal_error.rule_id(), PANIC_RULE_ID);
+    assert!(config.is_rule_enabled(internal));
+
+    let severity_error = config
+        .set_rule_severity(PANIC_RULE_ID, DiagnosticSeverity::Hint)
+        .unwrap_err();
+    assert_eq!(severity_error.rule_id(), PANIC_RULE_ID);
+    assert_eq!(
+        config.severity_for(internal),
+        internal.default_severity,
+        "protected diagnostics keep their internally owned severity"
+    );
+
+    let unknown_error = config.disable_rule("example.unknown").unwrap_err();
+    assert_eq!(unknown_error.rule_id(), "example.unknown");
+    assert!(
+        AnalysisRuleConfig::default()
+            .with_rule_disabled(RESOURCE_LIMIT_RULE_ID)
+            .is_err()
+    );
+}
+
+#[test]
+fn rule_config_deserialization_enforces_the_same_rule_boundary() {
+    let config: AnalysisRuleConfig = serde_json::from_value(json!({
+        "profile": "core",
+        "enabled_rules": [PREFER_INIT_DIRECTIVE_RULE_ID],
+        "disabled_rules": [PREFER_FRONTMATTER_CONFIG_RULE_ID],
+        "severity_overrides": {
+            BLOCK_WIDTH_RULE_ID: "hint"
+        }
+    }))
+    .unwrap();
+
+    assert!(config.is_rule_enabled(rule_descriptor(PREFER_INIT_DIRECTIVE_RULE_ID).unwrap()));
+    assert!(!config.is_rule_enabled(rule_descriptor(PREFER_FRONTMATTER_CONFIG_RULE_ID).unwrap()));
+    assert_eq!(
+        config.severity_for(rule_descriptor(BLOCK_WIDTH_RULE_ID).unwrap()),
+        DiagnosticSeverity::Hint
+    );
+
+    for value in [
+        json!({ "enabled_rules": [PANIC_RULE_ID] }),
+        json!({ "disabled_rules": [RESOURCE_LIMIT_RULE_ID] }),
+        json!({ "severity_overrides": { "example.unknown": "warning" } }),
+    ] {
+        let error = serde_json::from_value::<AnalysisRuleConfig>(value).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("must reference a configurable analysis rule id"),
+            "unexpected deserialization error: {error}"
+        );
+    }
 }
 
 #[test]
@@ -304,8 +381,9 @@ fn source_lint_leaves_root_html_labels_alone() {
 fn rule_config_can_disable_deprecated_flowchart_html_labels_rule() {
     let source = "%%{init: { \"flowchart\": { \"htmlLabels\": false } }}%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
-    let config =
-        AnalysisRuleConfig::default().with_rule_disabled(DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
+    let config = AnalysisRuleConfig::default()
+        .with_rule_disabled(DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID)
+        .unwrap();
 
     assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
 }
@@ -492,7 +570,8 @@ fn rule_config_can_disable_deprecated_external_diagram_loading_rule() {
     let source = "%%{init: { \"lazyLoadedDiagrams\": true }}%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
     let config = AnalysisRuleConfig::default()
-        .with_rule_disabled(DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID);
+        .with_rule_disabled(DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID)
+        .unwrap();
 
     assert!(source_lint_diagnostics(source, &source_map, &config).is_empty());
 }
@@ -501,7 +580,9 @@ fn rule_config_can_disable_deprecated_external_diagram_loading_rule() {
 fn rule_config_can_disable_block_warning_rules() {
     let source = "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n";
     let source_map = SourceMap::new(source);
-    let config = AnalysisRuleConfig::default().with_rule_disabled(BLOCK_WIDTH_RULE_ID);
+    let config = AnalysisRuleConfig::default()
+        .with_rule_disabled(BLOCK_WIDTH_RULE_ID)
+        .unwrap();
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
@@ -641,7 +722,8 @@ fn rule_config_can_override_block_warning_severity() {
     let source = "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n";
     let source_map = SourceMap::new(source);
     let config = AnalysisRuleConfig::default()
-        .with_rule_severity(BLOCK_WIDTH_RULE_ID, DiagnosticSeverity::Hint);
+        .with_rule_severity(BLOCK_WIDTH_RULE_ID, DiagnosticSeverity::Hint)
+        .unwrap();
 
     let diagnostics = semantic_warning_diagnostics(
         "block",
@@ -1020,6 +1102,61 @@ fn semantic_warning_facts_surface_unknown_rule_ids_as_internal_errors() {
     assert_eq!(
         diagnostics[0].code,
         Some(AnalysisStatus::InternalError.code())
+    );
+}
+
+#[test]
+fn semantic_warning_fact_projection_observes_cancellation_between_facts() {
+    let source = "flowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+    source_map
+        .whole_source_span()
+        .expect("prewarm the line metric cache");
+    let warning = json!({
+        "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+        "message": "Use an explicit direction"
+    });
+    let model = json!({
+        "warningFacts": vec![warning; 1_024]
+    });
+    let cancellation = crate::AnalysisCancellationToken::new();
+    cancellation.cancel_after_checkpoints(8);
+
+    assert!(matches!(
+        semantic_warning_diagnostics_cancellable(
+            "flowchart-v2",
+            &model,
+            &source_map,
+            &AnalysisRuleConfig::default(),
+            &cancellation,
+        ),
+        Err(crate::AnalysisCancelled)
+    ));
+    assert!(cancellation.is_cancelled());
+}
+
+#[test]
+fn malformed_warning_fact_keeps_projection_all_or_nothing() {
+    let source = "flowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+    let model = json!({
+        "warningFacts": [
+            {
+                "ruleId": FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+                "message": "Use an explicit direction"
+            },
+            null
+        ]
+    });
+
+    assert!(
+        semantic_warning_diagnostics(
+            "flowchart-v2",
+            &model,
+            &source_map,
+            &AnalysisRuleConfig::default(),
+        )
+        .is_empty()
     );
 }
 

@@ -2,12 +2,13 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::document_store::{
-    DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiscardedSource, DocumentResourceLimit, DocumentStore,
-    DocumentSyncError, SemanticTokensState, TextDocumentUpdate, default_lsp_analysis_options,
+    AnalyzerOptionsPreparation, DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiscardedSource,
+    DocumentResourceLimit, DocumentStore, DocumentSyncError, PreparedDocumentText,
+    SemanticTokensState, TextDocumentUpdate, default_lsp_analysis_options,
 };
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
-    FenceTextIndexSource,
+    FenceTextIndexSource, source_limit_diagnostic_span,
 };
 use merman_editor_core::DocumentKind;
 use tower_lsp_server::ls_types::{
@@ -201,14 +202,110 @@ fn upsert_text_limits_oversized_documents_without_retaining_source() {
         Some(DocumentResourceLimit {
             source_len: source.len(),
             max_source_bytes: 8,
+            span: source_limit_diagnostic_span(&source),
         })
     );
     assert_eq!(document.discarded_source, None);
     assert!(store.snapshot(&uri).is_none());
-    let plan = store.workspace_symbol_snapshot_build_plan(8);
-    assert!(plan.contexts.is_empty());
-    assert!(plan.batches.is_empty());
-    assert!(store.workspace_symbol_snapshot_contexts_current(&[]));
+}
+
+#[test]
+fn prepared_text_limits_oversized_documents_without_scanning_under_the_store_lock() {
+    let mut store = DocumentStore::new();
+    let uri = Uri::from_str("file:///tmp/large-prepared.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n".to_string();
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    let prepared = PreparedDocumentText::new(source.clone());
+    let document = store.open_prepared_text(uri, 1, prepared, DocumentKind::Diagram);
+
+    assert_eq!(document.text.as_ref(), "");
+    assert_eq!(
+        document.resource_limit,
+        Some(DocumentResourceLimit {
+            source_len: source.len(),
+            max_source_bytes: 8,
+            span: source_limit_diagnostic_span(&source),
+        })
+    );
+}
+
+#[test]
+fn source_limit_reclassification_rejects_a_stale_document_epoch() {
+    let mut store = DocumentStore::new();
+    let uri = Uri::from_str("file:///tmp/reclassified.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n".to_string();
+    store.open_text(uri.clone(), 1, source.clone(), DocumentKind::Diagram);
+
+    let batch = store
+        .prepare_source_limit_reclassification(
+            default_lsp_analysis_options().with_max_source_bytes(Some(8)),
+        )
+        .project();
+    store.open_text(
+        uri.clone(),
+        2,
+        "flowchart TD\nC-->D\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert!(store.commit_source_limit_reclassification(batch).is_none());
+    let document = store.get(&uri).expect("replacement document should remain");
+    assert_eq!(document.version, 2);
+    assert_eq!(document.resource_limit, None);
+    assert_eq!(
+        store.analyzer_options().max_source_bytes,
+        Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
+    );
+}
+
+#[test]
+fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
+    let mut store = DocumentStore::new();
+    let uri = Uri::from_str("file:///tmp/configuration-order.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n".to_string();
+    store.open_text(uri.clone(), 1, source.clone(), DocumentKind::Diagram);
+
+    let older_request = store.begin_analyzer_configuration_request();
+    let older_plan = match store
+        .prepare_analyzer_options(
+            older_request,
+            default_lsp_analysis_options().with_max_source_bytes(Some(8)),
+        )
+        .expect("the first request is current")
+    {
+        AnalyzerOptionsPreparation::RequiresSourceLimitProjection(plan) => plan,
+        AnalyzerOptionsPreparation::Applied(_, _) => {
+            panic!("the lower source limit must require source projection")
+        }
+    };
+    let older_batch = older_plan.project();
+
+    let latest_request = store.begin_analyzer_configuration_request();
+    let latest = store
+        .prepare_analyzer_options(latest_request, default_lsp_analysis_options())
+        .expect("the latest request is current");
+    assert!(matches!(
+        latest,
+        AnalyzerOptionsPreparation::Applied(
+            crate::document_store::AnalyzerConfigurationChange::Unchanged,
+            None
+        )
+    ));
+
+    assert!(!store.is_analyzer_configuration_request_current(older_request));
+    assert!(
+        store
+            .commit_source_limit_reclassification(older_batch)
+            .is_none()
+    );
+    assert_eq!(
+        store.analyzer_options().max_source_bytes,
+        Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
+    );
+    let document = store.get(&uri).expect("latest configuration keeps source");
+    assert_eq!(document.text.as_ref(), source);
+    assert_eq!(document.resource_limit, None);
 }
 
 #[test]
@@ -261,18 +358,19 @@ fn ranged_changes_on_resource_limited_documents_keep_lightweight_state() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert_eq!(update, TextDocumentUpdate::NeedsFullSync);
     let stored = store.get(&uri).expect("expected limited document");
     assert_eq!(stored.version, 2);
     assert_eq!(stored.text.as_ref(), "");
+    assert_eq!(stored.resource_limit, None);
+    assert_eq!(stored.discarded_source, None);
     assert_eq!(
-        stored.resource_limit,
-        Some(DocumentResourceLimit {
+        stored.sync_error,
+        Some(DocumentSyncError::FullReplacementRequired {
             source_len: source.len(),
-            max_source_bytes: 8,
+            last_max_source_bytes: 8,
         })
     );
-    assert_eq!(stored.discarded_source, None);
     assert!(store.snapshot(&uri).is_none());
 }
 
@@ -292,6 +390,7 @@ fn resource_limited_documents_update_limit_when_configuration_still_excludes_the
         Some(DocumentResourceLimit {
             source_len: source.len(),
             max_source_bytes: 16,
+            span: source_limit_diagnostic_span(&source),
         })
     );
     assert_eq!(stored.discarded_source, None);
@@ -315,10 +414,10 @@ fn resource_limited_documents_become_discarded_when_configuration_would_allow_th
         Some(DocumentDiscardedSource {
             source_len: source.len(),
             previous_max_source_bytes: 8,
+            span: source_limit_diagnostic_span(&source),
         })
     );
     assert!(store.snapshot(&uri).is_none());
-    assert!(store.workspace_symbol_snapshot_contexts_current(&[]));
 
     let update = store.apply_text_changes(
         uri.clone(),
@@ -762,7 +861,7 @@ fn ranged_changes_on_unsynced_documents_keep_lightweight_state() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::Applied);
+    assert_eq!(update, TextDocumentUpdate::NeedsFullSync);
     let stored = store.get(&uri).expect("expected unsynced document");
     assert_eq!(stored.version, 3);
     assert_eq!(stored.text.as_ref(), "");
@@ -936,82 +1035,6 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
 }
 
 #[test]
-fn workspace_symbol_build_plan_batches_all_missing_snapshots() {
-    let mut store = DocumentStore::new();
-    for index in 0..40 {
-        let uri = Uri::from_str(&format!("file:///tmp/workspace-{index}.mmd")).unwrap();
-        store.upsert_text(
-            uri,
-            1,
-            format!("flowchart TD\nN{index}-->B\n"),
-            DocumentKind::Diagram,
-        );
-    }
-
-    let plan = store.workspace_symbol_snapshot_build_plan(8);
-
-    assert!(plan.contexts.is_empty());
-    assert_eq!(plan.batches.len(), 5);
-    assert!(plan.batches.iter().all(|batch| batch.len() <= 8));
-    assert_eq!(plan.new_snapshot_request_count(), 40);
-}
-
-#[test]
-fn workspace_symbol_build_plan_keeps_cached_contexts_with_all_missing_snapshots() {
-    let mut store = DocumentStore::new();
-    let cached_uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
-    let cached_snapshot = store.upsert(
-        cached_uri.clone(),
-        1,
-        "flowchart TD\nCached-->B\n".to_string(),
-    );
-    for index in 0..5 {
-        let uri = Uri::from_str(&format!("file:///tmp/missing-{index}.mmd")).unwrap();
-        store.upsert_text(
-            uri,
-            1,
-            format!("flowchart TD\nMissing{index}-->B\n"),
-            DocumentKind::Diagram,
-        );
-    }
-
-    let plan = store.workspace_symbol_snapshot_build_plan(2);
-
-    assert_eq!(plan.contexts.len(), 1);
-    assert!(std::sync::Arc::ptr_eq(
-        &plan.contexts[0].snapshot,
-        &cached_snapshot
-    ));
-    assert_eq!(plan.batches.len(), 3);
-    assert_eq!(plan.batches[0].len(), 2);
-    assert_eq!(plan.batches[1].len(), 2);
-    assert_eq!(plan.batches[2].len(), 1);
-    assert_eq!(plan.new_snapshot_request_count(), 5);
-    assert!(store.is_snapshot_contexts_current(&plan.contexts));
-}
-
-#[test]
-fn workspace_symbol_contexts_current_requires_complete_document_set() {
-    let mut store = DocumentStore::new();
-    let cached_uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
-    store.upsert(cached_uri, 1, "flowchart TD\nCached-->B\n".to_string());
-
-    let plan = store.workspace_symbol_snapshot_build_plan(8);
-    assert_eq!(plan.contexts.len(), 1);
-    assert!(plan.batches.is_empty());
-    assert!(store.workspace_symbol_snapshot_contexts_current(&plan.contexts));
-
-    store.upsert_text(
-        Uri::from_str("file:///tmp/added.mmd").unwrap(),
-        1,
-        "flowchart TD\nAdded-->B\n".to_string(),
-        DocumentKind::Diagram,
-    );
-
-    assert!(!store.workspace_symbol_snapshot_contexts_current(&plan.contexts));
-}
-
-#[test]
 fn cached_snapshot_build_context_stales_after_text_replacement() {
     let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
@@ -1108,17 +1131,35 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
 
-    store.apply_analyzer_options(
+    let (change, plan) = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
-                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                .unwrap(),
         ),
     );
 
+    assert_eq!(
+        change,
+        crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
+    );
     assert!(store.is_snapshot_context_current(&snapshot_context));
     assert!(!store.is_analysis_context_current(&snapshot_context));
     assert!(!store.is_diagnostic_context_current(&diagnostic_context));
     assert!(store.has_snapshot(&uri));
+    assert!(!store.has_analysis_payload(&uri));
+    assert!(
+        store.snapshot_build_request(&uri).is_none(),
+        "a stale diagnostic projection must not trigger another parse"
+    );
+
+    let committed = store.commit_diagnostic_reprojection(
+        plan.expect("cached analysis should produce a reprojection plan")
+            .project()
+            .expect("current reprojection should complete"),
+    );
+
+    assert_eq!(committed, 1);
     assert!(store.has_analysis_payload(&uri));
     let current_context = store
         .snapshot_context(&uri)
@@ -1141,6 +1182,97 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
             .and_then(|state| state.result_id.as_deref()),
         Some("tokens-1")
     );
+}
+
+#[test]
+fn diagnostic_reprojection_does_not_overwrite_a_newer_document_epoch() {
+    let mut store = DocumentStore::new();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    let (_, plan) = store.begin_analyzer_options(
+        default_lsp_analysis_options().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                .unwrap(),
+        ),
+    );
+    let batch = plan
+        .expect("cached analysis should produce a reprojection plan")
+        .project()
+        .expect("current reprojection should complete");
+
+    store.upsert_text(
+        uri.clone(),
+        2,
+        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert_eq!(store.commit_diagnostic_reprojection(batch), 0);
+    assert!(!store.has_snapshot(&uri));
+    assert!(!store.has_analysis_payload(&uri));
+    assert_eq!(
+        store
+            .get(&uri)
+            .expect("expected replacement document")
+            .version,
+        2
+    );
+}
+
+#[test]
+fn diagnostic_reprojection_does_not_commit_a_superseded_policy_epoch() {
+    let mut store = DocumentStore::new();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    store
+        .snapshot_context(&uri)
+        .expect("expected initial snapshot context");
+    let (_, first_plan) = store.begin_analyzer_options(
+        default_lsp_analysis_options().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                .unwrap(),
+        ),
+    );
+    let (_, second_plan) = store.begin_analyzer_options(
+        default_lsp_analysis_options().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Warning)
+                .unwrap(),
+        ),
+    );
+
+    let first_projection = first_plan
+        .expect("first policy should produce a reprojection plan")
+        .project();
+    let second_batch = second_plan
+        .expect("second policy should produce a reprojection plan")
+        .project()
+        .expect("current reprojection should complete");
+
+    assert!(matches!(
+        first_projection,
+        Err(merman_analysis::AnalysisCancelled)
+    ));
+    assert!(!store.has_analysis_payload(&uri));
+    assert_eq!(store.commit_diagnostic_reprojection(second_batch), 1);
+    assert!(store.has_analysis_payload(&uri));
 }
 
 #[test]
@@ -1365,6 +1497,7 @@ fn snapshot_affecting_source_limit_update_rejects_the_cached_generation() {
         Some(DocumentResourceLimit {
             source_len: "flowchart TD\nA-->B\n".len(),
             max_source_bytes: "flowchart TD\nA-->B\n".len() - 1,
+            span: source_limit_diagnostic_span("flowchart TD\nA-->B\n"),
         })
     );
     assert!(store.snapshot_build_request(&uri).is_none());

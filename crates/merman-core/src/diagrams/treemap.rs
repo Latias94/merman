@@ -152,7 +152,11 @@ impl TreemapParseOutcome {
         }
     }
 
-    fn into_combined(self, meta: &ParseMetadata) -> family::CombinedSemanticParse {
+    fn into_combined_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &crate::ParseControl,
+    ) -> crate::ParseControlResult<family::CombinedSemanticParse> {
         let Self {
             parsed,
             first_issue,
@@ -162,9 +166,11 @@ impl TreemapParseOutcome {
                 treemap_error(meta, issue.message, issue.span),
                 parsed.editor_facts,
             )),
-            None => Ok(treemap_semantic_source_from_parsed(parsed)),
+            None => Ok(treemap_semantic_source_from_parsed_controlled(
+                parsed, control,
+            )?),
         };
-        family::CombinedSemanticParse::from_construction(
+        let combined = family::CombinedSemanticParse::from_construction(
             construction,
             |source| {
                 let model = source.render_model();
@@ -174,7 +180,9 @@ impl TreemapParseOutcome {
                 )
             },
             family::CombinedSemanticFailure::into_parts,
-        )
+        );
+        control.checkpoint()?;
+        Ok(combined)
     }
 }
 
@@ -299,8 +307,13 @@ pub(crate) fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_treemap_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> family::CombinedSemanticParse {
-    parse_treemap_outcome(code).into_combined(meta)
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    control.checkpoint()?;
+    let parsed =
+        parse_treemap_outcome_controlled(code, control)?.into_combined_controlled(meta, control)?;
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn parse_treemap_model_for_render(
@@ -452,15 +465,25 @@ fn construct_treemap_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<TreemapSemanticSource> {
-    let parsed = parse_treemap_outcome(code).into_strict(meta)?;
-    Ok(treemap_semantic_source_from_parsed(parsed))
+    let control = crate::ParseControl::new();
+    let parsed = parse_treemap_outcome_controlled(code, &control)
+        .expect("a private parse control cannot be cancelled")
+        .into_strict(meta)?;
+    Ok(
+        treemap_semantic_source_from_parsed_controlled(parsed, &control)
+            .expect("a private parse control cannot be cancelled"),
+    )
 }
 
-fn treemap_semantic_source_from_parsed(parsed: TreemapParsedInput) -> TreemapSemanticSource {
-    let class_defs = class_defs_from_rows(&parsed.rows);
-    let flat_items = flat_items_from_rows(&parsed.rows, &class_defs);
-    let (arena, roots) = build_hierarchy(&flat_items);
-    TreemapSemanticSource {
+fn treemap_semantic_source_from_parsed_controlled(
+    parsed: TreemapParsedInput,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<TreemapSemanticSource> {
+    let class_defs = class_defs_from_rows_controlled(&parsed.rows, control)?;
+    let flat_items = flat_items_from_rows_controlled(&parsed.rows, &class_defs, control)?;
+    let (arena, roots) = build_hierarchy_controlled(&flat_items, control)?;
+    control.checkpoint()?;
+    Ok(TreemapSemanticSource {
         present: parsed.present,
         title: parsed.title,
         acc_title: parsed.acc_title,
@@ -469,10 +492,14 @@ fn treemap_semantic_source_from_parsed(parsed: TreemapParsedInput) -> TreemapSem
         arena,
         roots,
         editor_facts: parsed.editor_facts,
-    }
+    })
 }
 
-fn parse_treemap_outcome(code: &str) -> TreemapParseOutcome {
+fn parse_treemap_outcome_controlled(
+    code: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<TreemapParseOutcome> {
+    control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("treemap");
 
@@ -489,11 +516,11 @@ fn parse_treemap_outcome(code: &str) -> TreemapParseOutcome {
     };
     let mut lexemes = LangiumLexemeTrace::default();
 
-    let body = match treemap_body_start(code) {
+    let body = match treemap_body_start_controlled(code, control)? {
         Ok(Some(body)) => body,
         Ok(None) => {
             lexemes.attach(code, &mut outcome.parsed.editor_facts);
-            return outcome;
+            return Ok(outcome);
         }
         Err(issue) => {
             if let Some(span) = issue.span {
@@ -501,7 +528,7 @@ fn parse_treemap_outcome(code: &str) -> TreemapParseOutcome {
             }
             outcome.record_issue(issue.message, issue.span);
             lexemes.attach(code, &mut outcome.parsed.editor_facts);
-            return outcome;
+            return Ok(outcome);
         }
     };
     outcome.parsed.present = true;
@@ -512,6 +539,7 @@ fn parse_treemap_outcome(code: &str) -> TreemapParseOutcome {
     let mut trailing_whitespace_span = None;
 
     while offset < code.len() {
+        control.checkpoint()?;
         if let Some(parsed) = parse_langium_common(code, offset) {
             saw_statement = true;
             trailing_whitespace_span = parsed.trailing_whitespace_span;
@@ -592,7 +620,8 @@ fn parse_treemap_outcome(code: &str) -> TreemapParseOutcome {
     }
     lexemes.attach(code, &mut outcome.parsed.editor_facts);
 
-    outcome
+    control.checkpoint()?;
+    Ok(outcome)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -601,11 +630,13 @@ struct TreemapBodyStart {
     header_span: SourceSpan,
 }
 
-fn treemap_body_start(
+fn treemap_body_start_controlled(
     code: &str,
-) -> std::result::Result<Option<TreemapBodyStart>, TreemapParseIssue> {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<std::result::Result<Option<TreemapBodyStart>, TreemapParseIssue>> {
     let mut offset = 0usize;
     while offset < code.len() {
+        control.checkpoint()?;
         let (line, next_offset) = physical_line_at(code, offset);
         let visible = strip_inline_comment_aware(line);
         let trimmed = visible.trim();
@@ -616,17 +647,17 @@ fn treemap_body_start(
         let leading = visible.len().saturating_sub(visible.trim_start().len());
         let span = SourceSpan::new(offset + leading, offset + leading + trimmed.len());
         if !is_treemap_header(trimmed) {
-            return Err(TreemapParseIssue {
+            return Ok(Err(TreemapParseIssue {
                 message: "expected treemap".to_string(),
                 span: Some(span),
-            });
+            }));
         }
-        return Ok(Some(TreemapBodyStart {
+        return Ok(Ok(Some(TreemapBodyStart {
             offset: next_offset,
             header_span: SourceSpan::new(offset + leading, offset + leading + trimmed.len()),
-        }));
+        })));
     }
-    Ok(None)
+    Ok(Ok(None))
 }
 
 fn treemap_error(
@@ -641,10 +672,16 @@ fn treemap_error(
     }
 }
 
-fn class_defs_from_rows(rows: &[TreemapRow]) -> std::collections::HashMap<String, StyleClassDef> {
+fn class_defs_from_rows_controlled(
+    rows: &[TreemapRow],
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<std::collections::HashMap<String, StyleClassDef>> {
     let mut class_defs: std::collections::HashMap<String, StyleClassDef> =
         std::collections::HashMap::new();
-    for row in rows {
+    for (index, row) in rows.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         let TreemapRow::ClassDef(c) = row else {
             continue;
         };
@@ -658,15 +695,20 @@ fn class_defs_from_rows(rows: &[TreemapRow]) -> std::collections::HashMap<String
         );
     }
 
-    class_defs
+    control.checkpoint()?;
+    Ok(class_defs)
 }
 
-fn flat_items_from_rows(
+fn flat_items_from_rows_controlled(
     rows: &[TreemapRow],
     class_defs: &std::collections::HashMap<String, StyleClassDef>,
-) -> Vec<FlatItem> {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<Vec<FlatItem>> {
     let mut flat_items: Vec<FlatItem> = Vec::new();
-    for row in rows {
+    for (index, row) in rows.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         let TreemapRow::Item(item) = row else {
             continue;
         };
@@ -696,7 +738,8 @@ fn flat_items_from_rows(
         });
     }
 
-    flat_items
+    control.checkpoint()?;
+    Ok(flat_items)
 }
 
 #[derive(Debug, Clone)]
@@ -709,16 +752,28 @@ struct FlatItem {
     css_compiled_styles: Option<String>,
 }
 
+#[cfg(test)]
 fn build_hierarchy(items: &[FlatItem]) -> (Arena, Vec<usize>) {
+    build_hierarchy_controlled(items, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn build_hierarchy_controlled(
+    items: &[FlatItem],
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<(Arena, Vec<usize>)> {
     if items.is_empty() {
-        return (Arena { nodes: Vec::new() }, Vec::new());
+        return Ok((Arena { nodes: Vec::new() }, Vec::new()));
     }
 
     let mut arena = Arena { nodes: Vec::new() };
     let mut roots: Vec<usize> = Vec::new();
     let mut stack: Vec<(usize, usize)> = Vec::new(); // (node_idx, item.level)
 
-    for item in items {
+    for (index, item) in items.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         let mut node = NodeRecord {
             name: item.name.clone(),
             value: None,
@@ -756,7 +811,8 @@ fn build_hierarchy(items: &[FlatItem]) -> (Arena, Vec<usize>) {
         }
     }
 
-    (arena, roots)
+    control.checkpoint()?;
+    Ok((arena, roots))
 }
 
 #[cfg(test)]
@@ -1671,6 +1727,21 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     }
 
     #[test]
+    fn treemap_parser_can_cancel_between_rows() {
+        let mut text = String::from("treemap\n");
+        for index in 0..512 {
+            text.push_str(&format!("\"item-{index}\": 1\n"));
+        }
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(4);
+
+        assert!(matches!(
+            parse_treemap_outcome_controlled(&text, &control),
+            Err(crate::ParseCancelled)
+        ));
+    }
+
+    #[test]
     fn treemap_combined_parse_constructs_source_once_and_preserves_projections() {
         let text = concat!(
             "treemap\n",
@@ -1685,7 +1756,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 
         crate::diagrams::langium_common::reset_family_syntax_construction_count("treemap");
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_treemap_json_and_editor_facts(text, &meta),
+            parse_treemap_json_and_editor_facts(text, &meta, &crate::ParseControl::new()),
         )
         .unwrap();
         assert_eq!(
@@ -1925,7 +1996,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         let complete = "treemap\naccDescr {\nline one\nline two\n}\n\"Root\"\n";
         let meta = meta();
         let (json, facts) = crate::family::test_support::into_result(
-            parse_treemap_json_and_editor_facts(complete, &meta),
+            parse_treemap_json_and_editor_facts(complete, &meta, &crate::ParseControl::new()),
         )
         .unwrap();
         assert_eq!(json["accDescr"], json!("line one\nline two"));

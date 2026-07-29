@@ -22,6 +22,7 @@ pub mod generated;
 pub mod geom;
 mod inline_config;
 pub mod models;
+mod parse_control;
 mod parse_pipeline;
 pub mod preprocess;
 pub mod resources;
@@ -44,17 +45,19 @@ pub use diagram::{
     ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
 };
 pub use editor::{
-    EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexeme,
-    EditorLexemeFailure, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
-    EditorLexemeProducer, EditorLexemeProducerKind, EditorRenamePolicy, EditorSemanticCompleteness,
-    EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeFailure, EditorLexemeKind,
+    EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducer, EditorLexemeProducerKind,
+    EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticDiagnostic,
+    EditorSemanticDiagnosticKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
     DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_kind,
     diagram_type_metadata_id, diagram_type_render_model_kind,
 };
+pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
 pub use preprocess::{
     PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
 };
@@ -394,8 +397,22 @@ impl Engine {
     /// Error suppression is deliberately absent from this API; suppression remains limited to
     /// model-producing JSON and render facades.
     pub fn parse_diagram_snapshot_sync(&self, text: &str) -> Result<Option<DiagramParseSnapshot>> {
+        let control = ParseControl::new();
+        self.parse_diagram_snapshot_controlled_sync(text, &control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    /// Captures an editor-facing parse operation with cooperative cancellation.
+    ///
+    /// Cancellation is returned through the outer [`ParseControlResult`] and is never converted
+    /// into a Mermaid parse error, failed snapshot, or recovery diagnostic.
+    pub fn parse_diagram_snapshot_controlled_sync(
+        &self,
+        text: &str,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<Option<DiagramParseSnapshot>>> {
         parse_pipeline::ParsePipeline::detect(self, text, ParseOptions::strict())
-            .parse_editor_snapshot(parse_pipeline::ParseTiming::Json)
+            .parse_editor_snapshot_controlled(parse_pipeline::ParseTiming::Json, control)
     }
 
     /// Captures one editor-facing parse operation when the diagram type is already known.

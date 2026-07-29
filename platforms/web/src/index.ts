@@ -107,7 +107,7 @@ export {
   editorPrepareRename,
   editorReferences,
   editorRename,
+  editorSearchDocumentSymbols,
   editorSemanticTokenDescriptor,
   editorSemanticTokens,
-  editorWorkspaceSymbols,
 } from "./runtime-editor.js";

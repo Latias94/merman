@@ -43,9 +43,11 @@ pub(crate) fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_info_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> family::CombinedSemanticParse {
-    family::CombinedSemanticParse::from_construction(
-        construct_info_semantic_source(code, meta),
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    let construction = construct_info_semantic_source_controlled(code, meta, control)?;
+    let parsed = family::CombinedSemanticParse::from_construction(
+        construction,
         |source| {
             let model = info_output_into_render_model(source.output);
             (
@@ -54,7 +56,9 @@ pub(crate) fn parse_info_json_and_editor_facts(
             )
         },
         family::CombinedSemanticFailure::into_parts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 fn info_output_into_render_model(output: InfoParseOutput) -> InfoDiagramRenderModel {
@@ -102,21 +106,33 @@ fn construct_info_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure> {
+    construct_info_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_info_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<
+    std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure>,
+> {
+    control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("info");
 
-    let body = match info_body_start(code) {
+    let body = match info_body_start_controlled(code, control)? {
         InfoHeader::Empty => {
-            return Ok(InfoSemanticSource {
+            return Ok(Ok(InfoSemanticSource {
                 output: InfoParseOutput::Empty,
                 editor_facts: EditorSemanticFacts::new(),
-            });
+            }));
         }
         InfoHeader::ExpectedInfo => {
-            return Ok(InfoSemanticSource {
+            return Ok(Ok(InfoSemanticSource {
                 output: InfoParseOutput::ExpectedInfoError,
                 editor_facts: EditorSemanticFacts::new(),
-            });
+            }));
         }
         InfoHeader::Body(body) => body,
     };
@@ -129,6 +145,7 @@ fn construct_info_semantic_source(
     let mut first_error = None;
 
     while offset < code.len() {
+        control.checkpoint()?;
         match parse_info_statement(code, offset, !show_info && !common_seen) {
             InfoStatement::Common(parsed) => {
                 if let Some(diagnostic) = &parsed.diagnostic {
@@ -178,16 +195,20 @@ fn construct_info_semantic_source(
     lexemes.attach(code, &mut editor_facts);
 
     if let Some(error) = first_error {
-        return Err(family::CombinedSemanticFailure::new(error, editor_facts));
+        return Ok(Err(family::CombinedSemanticFailure::new(
+            error,
+            editor_facts,
+        )));
     }
 
-    Ok(InfoSemanticSource {
+    control.checkpoint()?;
+    Ok(Ok(InfoSemanticSource {
         output: InfoParseOutput::Model(InfoDiagramRenderModel {
             show_info,
             compat_output: InfoCompatOutput::Model,
         }),
         editor_facts,
-    })
+    }))
 }
 
 enum InfoStatement {
@@ -268,9 +289,13 @@ struct InfoBodyStart {
     header_span: SourceSpan,
 }
 
-fn info_body_start(code: &str) -> InfoHeader {
+fn info_body_start_controlled(
+    code: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<InfoHeader> {
     let mut offset = 0usize;
     while offset < code.len() {
+        control.checkpoint()?;
         let (line, next_offset) = physical_line(code, offset);
         let visible = strip_inline_comment(line);
         let trimmed = visible.trim_start();
@@ -279,16 +304,16 @@ fn info_body_start(code: &str) -> InfoHeader {
             continue;
         }
         let Some(header_len) = keyword_token_len(trimmed, "info") else {
-            return InfoHeader::ExpectedInfo;
+            return Ok(InfoHeader::ExpectedInfo);
         };
         let leading = visible.len() - trimmed.len();
         let header_start = offset + leading;
-        return InfoHeader::Body(InfoBodyStart {
+        return Ok(InfoHeader::Body(InfoBodyStart {
             offset: header_start + header_len,
             header_span: SourceSpan::new(header_start, header_start + header_len),
-        });
+        }));
     }
-    InfoHeader::Empty
+    Ok(InfoHeader::Empty)
 }
 
 fn keyword_token_len(input: &str, keyword: &str) -> Option<usize> {
@@ -330,6 +355,21 @@ mod tests {
             effective_config: MermaidConfig::default(),
             title: None,
         }
+    }
+
+    #[test]
+    fn controlled_parse_can_cancel_after_the_info_header() {
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            construct_info_semantic_source_controlled(
+                "info\nshowInfo\ntitle Version\n",
+                &test_meta(),
+                &control,
+            ),
+            Err(crate::ParseCancelled)
+        ));
     }
 
     #[test]

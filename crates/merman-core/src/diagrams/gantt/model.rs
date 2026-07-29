@@ -1,4 +1,5 @@
 use super::*;
+use crate::{ParseControl, ParseControlResult};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct GanttDiagramRenderModel {
@@ -398,13 +399,22 @@ impl GanttDb {
         self.task_index.insert(task_info.id, pos);
     }
 
-    fn compile_tasks(&mut self) -> Result<bool> {
+    fn compile_tasks_controlled(
+        &mut self,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<bool>> {
         let mut all_processed = true;
         for i in 0..self.raw_tasks.len() {
-            let processed = self.compile_task(i)?;
+            if i % 128 == 0 {
+                control.checkpoint()?;
+            }
+            let processed = match self.compile_task(i) {
+                Ok(processed) => processed,
+                Err(error) => return Ok(Err(error)),
+            };
             all_processed = all_processed && processed;
         }
-        Ok(all_processed)
+        Ok(Ok(all_processed))
     }
 
     fn compile_task(&mut self, pos: usize) -> Result<bool> {
@@ -475,15 +485,27 @@ impl GanttDb {
         Ok(())
     }
 
-    pub(super) fn finalize_tasks(&mut self) -> Result<()> {
-        let mut all = self.compile_tasks()?;
+    pub(super) fn finalize_tasks_controlled(
+        &mut self,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<()>> {
+        control.checkpoint()?;
+        let mut all = match self.compile_tasks_controlled(control)? {
+            Ok(all) => all,
+            Err(error) => return Ok(Err(error)),
+        };
         let max_depth = 10;
         let mut iters = 0;
         while !all && iters < max_depth {
-            all = self.compile_tasks()?;
+            control.checkpoint()?;
+            all = match self.compile_tasks_controlled(control)? {
+                Ok(all) => all,
+                Err(error) => return Ok(Err(error)),
+            };
             iters += 1;
         }
-        Ok(())
+        control.checkpoint()?;
+        Ok(Ok(()))
     }
 
     pub(super) fn take_tasks(&mut self) -> Vec<RawTask> {

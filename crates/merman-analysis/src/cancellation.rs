@@ -1,10 +1,29 @@
+#[cfg(test)]
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[cfg(test)]
+const NO_SCHEDULED_CANCELLATION: usize = usize::MAX;
 
 /// A cheap, runtime-independent cancellation signal for CPU-bound analysis.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AnalysisCancellationToken {
-    cancelled: Arc<AtomicBool>,
+    parse_control: merman_core::ParseControl,
+    #[cfg(test)]
+    successful_checkpoints_before_cancellation: Arc<AtomicUsize>,
+}
+
+impl Default for AnalysisCancellationToken {
+    fn default() -> Self {
+        Self {
+            parse_control: merman_core::ParseControl::new(),
+            #[cfg(test)]
+            successful_checkpoints_before_cancellation: Arc::new(AtomicUsize::new(
+                NO_SCHEDULED_CANCELLATION,
+            )),
+        }
+    }
 }
 
 impl AnalysisCancellationToken {
@@ -13,19 +32,41 @@ impl AnalysisCancellationToken {
     }
 
     pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
+        self.parse_control.cancel();
     }
 
     pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
+        self.parse_control.is_cancelled()
     }
 
     pub fn checkpoint(&self) -> Result<(), AnalysisCancelled> {
-        if self.is_cancelled() {
-            Err(AnalysisCancelled)
-        } else {
-            Ok(())
+        self.parse_control
+            .checkpoint()
+            .map_err(|_| AnalysisCancelled)?;
+
+        #[cfg(test)]
+        if let Ok(remaining) = self
+            .successful_checkpoints_before_cancellation
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| {
+                (remaining != NO_SCHEDULED_CANCELLATION).then(|| remaining.saturating_sub(1))
+            })
+            && remaining == 0
+        {
+            self.cancel();
+            return Err(AnalysisCancelled);
         }
+
+        Ok(())
+    }
+
+    pub(crate) fn parse_control(&self) -> &merman_core::ParseControl {
+        &self.parse_control
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cancel_after_checkpoints(&self, successful_checkpoints: usize) {
+        self.successful_checkpoints_before_cancellation
+            .store(successful_checkpoints, Ordering::Relaxed);
     }
 }
 

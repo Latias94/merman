@@ -148,7 +148,11 @@ impl DocumentSource {
         let text = text.into();
         let source_map = SourceMap::new(Arc::clone(&text));
         let diagrams = match source.kind {
-            SourceKind::Markdown | SourceKind::Mdx => extract_markdown_diagrams(&text, &source),
+            SourceKind::Markdown | SourceKind::Mdx => {
+                let cancellation = crate::AnalysisCancellationToken::new();
+                extract_markdown_diagrams(&text, &source, &cancellation)
+                    .expect("a private analysis cancellation token cannot be cancelled")
+            }
             SourceKind::Diagram => vec![whole_document_diagram(Arc::clone(&text), &source)],
         };
 
@@ -158,6 +162,29 @@ impl DocumentSource {
             source_map,
             diagrams,
         }
+    }
+
+    pub(crate) fn new_cancellable(
+        text: impl Into<Arc<str>>,
+        source: SourceDescriptor,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        cancellation.checkpoint()?;
+        let text = text.into();
+        let source_map = SourceMap::new_cancellable(Arc::clone(&text), cancellation)?;
+        let diagrams = match source.kind {
+            SourceKind::Markdown | SourceKind::Mdx => {
+                extract_markdown_diagrams(&text, &source, cancellation)?
+            }
+            SourceKind::Diagram => vec![whole_document_diagram(Arc::clone(&text), &source)],
+        };
+        cancellation.checkpoint()?;
+        Ok(Self {
+            source,
+            text,
+            source_map,
+            diagrams,
+        })
     }
 
     pub fn source(&self) -> &SourceDescriptor {
@@ -221,7 +248,7 @@ fn remap_diagnostic(
         .then(|| source_map.span(diagram_start, diagram_end).ok())
         .flatten();
 
-    diagnostic.span = diagnostic.span.and_then(&remap_span).or(fence_span.clone());
+    diagnostic.span = diagnostic.span.and_then(&remap_span).or(fence_span);
 
     for related in &mut diagnostic.related {
         related.span = related.span.take().and_then(&remap_span);
@@ -339,12 +366,9 @@ pub fn analyze_document_result_shared(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisOutcome {
-    match analyze_document_result_shared_inner(text, analyzer, source, || {
-        Ok::<(), std::convert::Infallible>(())
-    }) {
-        Ok(result) => result,
-        Err(never) => match never {},
-    }
+    let cancellation = crate::AnalysisCancellationToken::new();
+    analyze_document_result_shared_inner(text, analyzer, source, &cancellation)
+        .expect("a private analysis cancellation token cannot be cancelled")
 }
 
 pub fn analyze_document_result_shared_cancellable(
@@ -353,22 +377,22 @@ pub fn analyze_document_result_shared_cancellable(
     source: SourceDescriptor,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<AnalysisOutcome, crate::AnalysisCancelled> {
-    analyze_document_result_shared_inner(text, analyzer, source, || cancellation.checkpoint())
+    analyze_document_result_shared_inner(text, analyzer, source, cancellation)
 }
 
-fn analyze_document_result_shared_inner<E>(
+fn analyze_document_result_shared_inner(
     text: Arc<str>,
     analyzer: &Analyzer,
     source: SourceDescriptor,
-    mut checkpoint: impl FnMut() -> Result<(), E>,
-) -> Result<AnalysisOutcome, E> {
-    checkpoint()?;
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<AnalysisOutcome, crate::AnalysisCancelled> {
+    cancellation.checkpoint()?;
     if let Some(rejection) = analyzer.source_limit_rejection(text.as_ref(), source.clone()) {
         return Ok(AnalysisOutcome::Rejected(rejection));
     }
 
-    let document = DocumentSource::new(text, source.clone());
-    checkpoint()?;
+    let document = DocumentSource::new_cancellable(text, source.clone(), cancellation)?;
+    cancellation.checkpoint()?;
 
     if document.diagrams().is_empty() {
         return Ok(AnalysisOutcome::Ready(AnalysisResult::new(
@@ -401,14 +425,18 @@ fn analyze_document_result_shared_inner<E>(
             ));
         }
     };
-    checkpoint()?;
+    cancellation.checkpoint()?;
 
     let mut diagnostics = Vec::new();
     let mut analyzed_diagrams = Vec::new();
     for diagram in document.diagrams() {
-        checkpoint()?;
-        let analyzed = operation_analyzer.analyze_diagram(diagram, document.source_map());
-        checkpoint()?;
+        cancellation.checkpoint()?;
+        let analyzed = operation_analyzer.analyze_diagram_cancellable(
+            diagram,
+            document.source_map(),
+            cancellation,
+        )?;
+        cancellation.checkpoint()?;
         extend_document_diagnostics(
             &mut diagnostics,
             &document,
@@ -417,7 +445,7 @@ fn analyze_document_result_shared_inner<E>(
         );
         analyzed_diagrams.push(analyzed);
     }
-    checkpoint()?;
+    cancellation.checkpoint()?;
     Ok(AnalysisOutcome::Ready(AnalysisResult::new(
         source,
         document.source_map().clone(),
@@ -507,18 +535,24 @@ pub(crate) fn whole_document_diagram(text: Arc<str>, source: &SourceDescriptor) 
     }
 }
 
-fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<DocumentDiagram> {
+fn extract_markdown_diagrams(
+    text: &Arc<str>,
+    source: &SourceDescriptor,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<DocumentDiagram>, crate::AnalysisCancelled> {
     let mut diagrams = Vec::new();
     let mut cursor = 0;
     let document_text = text.as_ref();
 
     while cursor < document_text.len() {
-        let line_end = next_line_end(document_text, cursor);
+        cancellation.checkpoint()?;
+        let line_end = next_line_end_cancellable(document_text, cursor, cancellation)?;
         let line = trim_line_ending(&document_text[cursor..line_end]);
 
         if let Some(opening) = markdown_fence_opening(line) {
             if !opening.is_mermaid {
-                cursor = skip_markdown_fence(document_text, line_end, opening.delimiter);
+                cursor =
+                    skip_markdown_fence(document_text, line_end, opening.delimiter, cancellation)?;
                 continue;
             }
 
@@ -528,7 +562,9 @@ fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<
             let mut search_start = body_start;
 
             while search_start < document_text.len() {
-                let closing_end = next_line_end(document_text, search_start);
+                cancellation.checkpoint()?;
+                let closing_end =
+                    next_line_end_cancellable(document_text, search_start, cancellation)?;
                 let closing_line = trim_line_ending(&document_text[search_start..closing_end]);
                 if let Some(closing_marker) = matching_closing_fence_marker(closing_line, delimiter)
                 {
@@ -582,7 +618,8 @@ fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<
         };
     }
 
-    diagrams
+    cancellation.checkpoint()?;
+    Ok(diagrams)
 }
 
 struct MarkdownFenceBounds {
@@ -691,16 +728,22 @@ fn matching_closing_fence_marker(
         .then_some(marker_offset..marker_offset + len)
 }
 
-fn skip_markdown_fence(text: &str, mut cursor: usize, delimiter: FenceDelimiter) -> usize {
+fn skip_markdown_fence(
+    text: &str,
+    mut cursor: usize,
+    delimiter: FenceDelimiter,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<usize, crate::AnalysisCancelled> {
     while cursor < text.len() {
-        let line_end = next_line_end(text, cursor);
+        cancellation.checkpoint()?;
+        let line_end = next_line_end_cancellable(text, cursor, cancellation)?;
         let line = trim_line_ending(&text[cursor..line_end]);
         if matching_closing_fence_marker(line, delimiter).is_some() {
-            return line_end;
+            return Ok(line_end);
         }
         cursor = line_end;
     }
-    text.len()
+    Ok(text.len())
 }
 
 fn trim_fence_indent(line: &str) -> Option<&str> {
@@ -726,18 +769,27 @@ fn trim_line_ending(line: &str) -> &str {
         .unwrap_or_else(|| line.strip_suffix('\r').unwrap_or(line))
 }
 
-fn next_line_end(source: &str, start: usize) -> usize {
+fn next_line_end_cancellable(
+    source: &str,
+    start: usize,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<usize, crate::AnalysisCancelled> {
     let bytes = source.as_bytes();
     let mut index = start;
+    let mut next_checkpoint = start;
     while index < bytes.len() {
+        if index >= next_checkpoint {
+            cancellation.checkpoint()?;
+            next_checkpoint = index.saturating_add(4096);
+        }
         match bytes[index] {
-            b'\n' => return index + 1,
-            b'\r' if bytes.get(index + 1) == Some(&b'\n') => return index + 2,
-            b'\r' => return index + 1,
+            b'\n' => return Ok(index + 1),
+            b'\r' if bytes.get(index + 1) == Some(&b'\n') => return Ok(index + 2),
+            b'\r' => return Ok(index + 1),
             _ => index += 1,
         }
     }
-    source.len()
+    Ok(source.len())
 }
 
 #[cfg(test)]
@@ -757,6 +809,23 @@ mod tests {
         assert_eq!(payload.source, source);
         assert!(payload.valid);
         assert!(payload.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn cancellable_document_analysis_never_turns_cancellation_into_a_diagnostic() {
+        let analyzer = Analyzer::new();
+        let source = SourceDescriptor::diagram().with_path("file:///tmp/cancelled.mmd");
+        let cancellation = crate::AnalysisCancellationToken::new();
+        cancellation.cancel();
+
+        let result = analyze_document_result_shared_cancellable(
+            Arc::from("flowchart TD\nA-->B\n"),
+            &analyzer,
+            source,
+            &cancellation,
+        );
+
+        assert!(matches!(result, Err(crate::AnalysisCancelled)));
     }
 
     #[test]
@@ -1090,7 +1159,7 @@ mod tests {
             DiagnosticCategory::Config,
             "prefer init",
         )
-        .with_span(local_span.clone())
+        .with_span(local_span)
         .with_fix(DiagnosticFix::new(
             "Replace `initialize` with `init`",
             vec![DiagnosticFixEdit::new(local_span, "init")],
@@ -1118,7 +1187,8 @@ mod tests {
             AnalysisOptions::default().with_rule_config(
                 crate::AnalysisRuleConfig::default()
                     .with_profile(crate::AnalysisRuleProfile::Recommended)
-                    .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID),
+                    .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
+                    .unwrap(),
             ),
         );
 
@@ -1151,7 +1221,7 @@ mod tests {
         let diagram = &document.diagrams()[0];
         let local_map = SourceMap::new(diagram.text.as_str());
         let valid_span = local_map.span(0, "flowchart".len()).unwrap();
-        let mut invalid_span = valid_span.clone();
+        let mut invalid_span = valid_span;
         invalid_span.byte_start = usize::MAX;
         invalid_span.byte_end = usize::MAX;
         let diagnostic = AnalysisDiagnostic::error(

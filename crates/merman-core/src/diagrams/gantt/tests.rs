@@ -1,11 +1,35 @@
 use super::*;
 use crate::{
     EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, Error,
-    MermaidConfig, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel, SourceSpan,
+    MermaidConfig, ParseControl, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel,
+    SourceSpan,
 };
 use chrono::NaiveDate;
 use futures::executor::block_on;
 use serde_json::json;
+
+fn meta() -> ParseMetadata {
+    ParseMetadata {
+        diagram_type: "gantt".to_string(),
+        config: MermaidConfig::empty_object(),
+        effective_config: MermaidConfig::empty_object(),
+        title: None,
+    }
+}
+
+fn large_gantt_db(task_count: usize) -> GanttDb {
+    let mut db = GanttDb::default();
+    db.clear();
+    db.set_date_format("YYYY-MM-DD");
+    db.add_section("Delivery");
+    for index in 0..task_count {
+        let id = format!("task-{index}");
+        let fields = [id.as_str(), "2026-01-01", "1d"];
+        let task_info = db.parse_task_info(&fields);
+        db.add_task(&format!("Task {index}"), &fields.join(","), task_info);
+    }
+    db
+}
 
 fn parse(text: &str) -> Value {
     parse_with_site_config(text, None)
@@ -93,13 +117,49 @@ fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints(
     };
     let standalone_json = parse_gantt(text, &meta).unwrap();
     reset_gantt_syntax_construction_count();
-    let (combined_json, combined_editor) =
-        crate::family::test_support::into_result(parse_gantt_json_and_editor_facts(text, &meta))
-            .unwrap();
+    let (combined_json, combined_editor) = crate::family::test_support::into_result(
+        parse_gantt_json_and_editor_facts(text, &meta, &ParseControl::new()),
+    )
+    .unwrap();
 
     assert_eq!(gantt_syntax_construction_count(), 1);
     assert_eq!(combined_json, standalone_json);
     assert!(!combined_editor.symbols.is_empty());
+}
+
+#[test]
+fn gantt_task_finalization_observes_cancellation_inside_large_task_sets() {
+    let mut db = large_gantt_db(512);
+    let control = ParseControl::new();
+    control.cancel_after_checkpoints(2);
+
+    assert!(db.finalize_tasks_controlled(&control).is_err());
+}
+
+#[test]
+fn gantt_model_projection_observes_cancellation_inside_large_task_sets() {
+    let mut db = large_gantt_db(512);
+    db.finalize_tasks_controlled(&ParseControl::new())
+        .unwrap()
+        .unwrap();
+    let control = ParseControl::new();
+    control.cancel_after_checkpoints(2);
+
+    assert!(super::parse::gantt_db_to_render_model_controlled(db, &control).is_err());
+}
+
+#[test]
+fn gantt_json_projection_observes_cancellation_inside_large_task_sets() {
+    let model = GanttDiagramRenderModel {
+        tasks: vec![GanttRenderTask::default(); 512],
+        ..GanttDiagramRenderModel::default()
+    };
+    let control = ParseControl::new();
+    control.cancel_after_checkpoints(2);
+
+    assert!(
+        super::parse::render_model_to_compat_json_controlled(&model, &meta(), &control).is_err()
+    );
 }
 
 #[test]

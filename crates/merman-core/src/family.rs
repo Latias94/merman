@@ -5,13 +5,19 @@
 
 use crate::detect::DetectorFn;
 use crate::diagram::{BuiltInRenderSemanticParser, DiagramSemanticParser, RenderSemanticModel};
-use crate::{EditorSemanticFacts, Error, MermaidConfig, ParseMetadata, Result};
+use crate::{
+    EditorSemanticFacts, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
+    Result,
+};
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::OnceLock;
 
-pub(crate) type CombinedSemanticParser =
-    fn(code: &str, meta: &ParseMetadata) -> CombinedSemanticParse;
+pub(crate) type CombinedSemanticParser = fn(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<CombinedSemanticParse>;
 
 /// Closed result of one family semantic construction.
 ///
@@ -146,13 +152,15 @@ impl CombinedSemanticParse {
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::{CombinedSemanticParse, CombinedSemanticParser};
-    use crate::{EditorSemanticFacts, Error, ParseMetadata};
+    use crate::{EditorSemanticFacts, Error, ParseControl, ParseControlResult, ParseMetadata};
     use serde_json::Value;
 
     pub(crate) fn into_result(
-        parsed: CombinedSemanticParse,
+        parsed: ParseControlResult<CombinedSemanticParse>,
     ) -> std::result::Result<(Value, EditorSemanticFacts), Error> {
-        let (model, editor_facts) = parsed.into_parts();
+        let (model, editor_facts) = parsed
+            .expect("a private parse control cannot be cancelled")
+            .into_parts();
         model.map(|model| (model, editor_facts))
     }
 
@@ -161,7 +169,10 @@ pub(crate) mod test_support {
         code: &str,
         meta: &ParseMetadata,
     ) -> EditorSemanticFacts {
-        parser(code, meta).into_parts().1
+        parser(code, meta, &ParseControl::new())
+            .expect("a private parse control cannot be cancelled")
+            .into_parts()
+            .1
     }
 }
 

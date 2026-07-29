@@ -791,10 +791,19 @@ fn parse_xychart_statement(
 }
 
 fn construct_xychart_semantic_source(code: &str, meta: &ParseMetadata) -> XyChartParseOutcome {
+    construct_xychart_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_xychart_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<XyChartParseOutcome> {
     #[cfg(test)]
     XYCHART_SYNTAX_CONSTRUCTION_COUNT.set(XYCHART_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let syntax = split_statements_spanned(code);
+    let syntax = split_statements_spanned_controlled(code, control)?;
     let mut lexemes = EditorLexemeJournal::family_parser(code);
     if let Some(unterminated) = syntax.unterminated_accessibility {
         push_xychart_lexeme(
@@ -824,13 +833,13 @@ fn construct_xychart_semantic_source(code: &str, meta: &ParseMetadata) -> XyChar
     let Some(header) = statements.next() else {
         let mut editor_facts = EditorSemanticFacts::new();
         editor_facts.replace_family_lexemes(lexemes.finish());
-        return XyChartParseOutcome {
+        return Ok(XyChartParseOutcome {
             source: XyChartSemanticSource {
                 model: None,
                 editor_facts,
             },
             first_error: None,
-        };
+        });
     };
 
     let mut editor_facts = EditorSemanticFacts::new();
@@ -855,7 +864,10 @@ fn construct_xychart_semantic_source(code: &str, meta: &ParseMetadata) -> XyChar
     let mut acc_title = None;
     let mut acc_descr = None;
 
-    for statement in statements {
+    for (index, statement) in statements.enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         let statement_start = statement.trimmed_start();
         let statement_text = statement.text.trim();
         if statement_text.is_empty() {
@@ -949,13 +961,14 @@ fn construct_xychart_semantic_source(code: &str, meta: &ParseMetadata) -> XyChar
     }
 
     editor_facts.replace_family_lexemes(lexemes.finish());
-    XyChartParseOutcome {
+    control.checkpoint()?;
+    Ok(XyChartParseOutcome {
         source: XyChartSemanticSource {
             model: Some(state.into_render_model(title, acc_title, acc_descr, meta)),
             editor_facts,
         },
         first_error,
-    }
+    })
 }
 
 pub(crate) fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
@@ -971,9 +984,10 @@ pub(crate) fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_xychart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_xychart_semantic_source(code, meta).into_strict_result(),
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construct_xychart_semantic_source_controlled(code, meta, control)?.into_strict_result(),
         |XyChartSemanticSource {
              model,
              editor_facts,
@@ -985,7 +999,9 @@ pub(crate) fn parse_xychart_json_and_editor_facts(
             (model, editor_facts)
         },
         CombinedSemanticFailure::into_parts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn parse_xychart_model_for_render(
@@ -2188,7 +2204,11 @@ impl SpannedStatement {
     }
 }
 
-fn split_statements_spanned(input: &str) -> XyChartSyntaxFragments {
+fn split_statements_spanned_controlled(
+    input: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<XyChartSyntaxFragments> {
+    control.checkpoint()?;
     let mut out = Vec::new();
     let mut comments = Vec::new();
     let mut delimiters = Vec::new();
@@ -2199,8 +2219,13 @@ fn split_statements_spanned(input: &str) -> XyChartSyntaxFragments {
     let mut in_acc_descr_block = false;
     let mut acc_descr_opening = None;
     let mut iter = input.char_indices().peekable();
+    let mut next_checkpoint = 0usize;
 
     while let Some((idx, ch)) = iter.next() {
+        if idx >= next_checkpoint {
+            control.checkpoint()?;
+            next_checkpoint = idx.saturating_add(4096);
+        }
         if cur.is_empty() {
             cur_start = idx;
         }
@@ -2324,12 +2349,13 @@ fn split_statements_spanned(input: &str) -> XyChartSyntaxFragments {
             start: cur_start,
         });
     }
-    XyChartSyntaxFragments {
+    control.checkpoint()?;
+    Ok(XyChartSyntaxFragments {
         statements: out,
         comments,
         delimiters,
         unterminated_accessibility,
-    }
+    })
 }
 
 fn is_xychart_accessibility_block_prefix(statement: &str) -> bool {
@@ -2610,7 +2636,7 @@ bar [1, 2]
 
         reset_xychart_syntax_construction_count();
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_xychart_json_and_editor_facts(text, &parsed.meta),
+            parse_xychart_json_and_editor_facts(text, &parsed.meta, &crate::ParseControl::new()),
         )
         .expect("XYChart combined projection succeeds");
         assert_eq!(xychart_syntax_construction_count(), 1);

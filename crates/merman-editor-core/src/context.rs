@@ -1,9 +1,6 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{Position, Range};
-use merman_analysis::{
-    FenceCursorCompletionKind, FenceExpectedSyntaxKind, FenceTextIndexSource,
-    shape_object_value_prefix,
-};
+use merman_analysis::{FenceCursorCompletionKind, FenceExpectedSyntaxKind, FenceTextIndexSource};
 use merman_core::preprocess::split_frontmatter_block;
 
 #[derive(Debug)]
@@ -85,6 +82,10 @@ impl<'a> CompletionContext<'a> {
         self.source_start
     }
 
+    pub fn completion_vocabulary(&self) -> merman_core::EditorCompletionVocabulary {
+        self.fence.text_index().completion_vocabulary()
+    }
+
     pub fn prefix_range(&self) -> Option<Range> {
         self.range_for_offsets(self.prefix_start_offset, self.cursor_offset)
     }
@@ -101,13 +102,11 @@ impl<'a> CompletionContext<'a> {
         None
     }
 
-    pub fn is_block_diagram(&self) -> bool {
-        self.fence.diagram_type() == Some("block")
-    }
-
     pub fn operator_range(&self) -> Option<Range> {
-        let suffix_start = operator_suffix_start(&self.prefix)?;
-        self.range_for_offsets(self.prefix_start_offset + suffix_start, self.cursor_offset)
+        (self.expected_syntax == Some(FenceExpectedSyntaxKind::Operator))
+            .then_some(self.expected_syntax_span)
+            .flatten()
+            .and_then(|(start, end)| self.range_for_offsets(start, end))
     }
 
     pub fn shape_value_range(&self) -> Option<Range> {
@@ -132,31 +131,10 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn shape_trigger_range(&self) -> Option<Range> {
-        if matches!(
-            self.expected_syntax,
-            Some(FenceExpectedSyntaxKind::ShapeTrigger)
-        ) && let Some((start, end)) = self.expected_syntax_span
-        {
-            return self.range_for_offsets(start, end);
-        }
-
-        let prefix = self.prefix.trim_end();
-        let trigger_len = if prefix.ends_with("((")
-            || prefix.ends_with("{{")
-            || prefix.ends_with("[/")
-            || prefix.ends_with("[\\")
-        {
-            2
-        } else if prefix.ends_with('[') || prefix.ends_with('>') {
-            1
-        } else {
-            return None;
-        };
-
-        self.range_for_offsets(
-            self.prefix_start_offset + prefix.len().saturating_sub(trigger_len),
-            self.cursor_offset,
-        )
+        (self.expected_syntax == Some(FenceExpectedSyntaxKind::ShapeTrigger))
+            .then_some(self.expected_syntax_span)
+            .flatten()
+            .and_then(|(start, end)| self.range_for_offsets(start, end))
     }
 
     pub fn offer_diagram_headers(&self) -> bool {
@@ -330,31 +308,9 @@ impl<'a> CompletionContext<'a> {
     }
 
     fn shape_value_edit_parts(&self) -> Option<(Range, bool, bool)> {
-        if self.expected_syntax == Some(FenceExpectedSyntaxKind::Shape) {
-            return self.shape_value_edit_parts_from_expected_span();
-        }
-
-        let prefix = self.prefix.as_str();
-        if let Some((range, has_separator_space)) = self.shape_value_edit_parts_from_prefix(prefix)
-        {
-            return Some((
-                range,
-                has_separator_space,
-                self.should_append_shape_closing_brace(self.cursor_offset),
-            ));
-        }
-
-        None
-    }
-
-    fn shape_value_edit_parts_from_prefix(&self, prefix: &str) -> Option<(Range, bool)> {
-        let shape_prefix = shape_object_value_prefix(prefix)?;
-        let range = self.range_for_offsets(
-            self.prefix_start_offset + shape_prefix.value_start,
-            self.cursor_offset,
-        )?;
-
-        Some((range, shape_prefix.has_separator_space))
+        (self.expected_syntax == Some(FenceExpectedSyntaxKind::Shape))
+            .then_some(())
+            .and_then(|()| self.shape_value_edit_parts_from_expected_span())
     }
 
     fn shape_value_edit_parts_from_expected_span(&self) -> Option<(Range, bool, bool)> {
@@ -412,22 +368,6 @@ impl<'a> CompletionContext<'a> {
 pub struct CompletionTextEditParts {
     pub range: Range,
     pub replacement: String,
-}
-
-fn operator_suffix_start(prefix: &str) -> Option<usize> {
-    let mut start = prefix.len();
-    let mut seen_operator = false;
-
-    for (idx, ch) in prefix.char_indices().rev() {
-        if matches!(ch, '-' | '>' | '.' | '=') {
-            start = idx;
-            seen_operator = true;
-        } else {
-            break;
-        }
-    }
-
-    seen_operator.then_some(start)
 }
 
 const TEMPLATE_PREFIXES: &[&str] = &[

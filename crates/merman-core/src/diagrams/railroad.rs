@@ -2,7 +2,8 @@ use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
     EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MAX_DIAGRAM_NESTING_DEPTH, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, MAX_DIAGRAM_NESTING_DEPTH, ParseControl, ParseControlResult,
+    ParseMetadata, Result, SourceSpan,
     editor::{EditorLexemeBatchResult, EditorLexemeJournal},
 };
 use serde::de::{self, Visitor};
@@ -495,29 +496,33 @@ pub(crate) fn parse_railroad_peg_model_for_render(
 pub(crate) fn parse_railroad_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ir)
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ir, control)
 }
 
 pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ebnf)
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ebnf, control)
 }
 
 pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Abnf)
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Abnf, control)
 }
 
 pub(crate) fn parse_railroad_peg_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Peg)
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Peg, control)
 }
 
 struct RailroadSemanticSource {
@@ -596,15 +601,19 @@ fn parse_railroad_json_and_editor_facts_for_dialect(
     code: &str,
     meta: &ParseMetadata,
     dialect: RailroadDialect,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_railroad_semantic_source(code, meta, dialect),
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_railroad_semantic_source(code, meta, dialect, control)?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
         |source| {
             let editor_facts = source.editor_facts();
             (source.into_compat_json(meta), editor_facts)
         },
         |failure| (*failure.error, *failure.editor_facts),
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -625,18 +634,23 @@ fn parse_railroad_semantic_source(
     meta: &ParseMetadata,
     dialect: RailroadDialect,
 ) -> Result<RailroadSemanticSource> {
-    construct_railroad_semantic_source(code, meta, dialect).map_err(|failure| *failure.error)
+    construct_railroad_semantic_source(code, meta, dialect, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+        .map_err(|failure| *failure.error)
 }
 
 fn construct_railroad_semantic_source(
     code: &str,
     meta: &ParseMetadata,
     dialect: RailroadDialect,
-) -> std::result::Result<RailroadSemanticSource, RailroadParseFailure> {
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<RailroadSemanticSource, RailroadParseFailure>> {
     #[cfg(test)]
     RAILROAD_SYNTAX_CONSTRUCTION_COUNT.set(RAILROAD_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let lexer = Lexer::new(code, dialect, meta.diagram_type.as_str()).tokenize_recovering();
+    let lexer =
+        Lexer::new(code, dialect, meta.diagram_type.as_str()).tokenize_recovering(control)?;
+    control.checkpoint()?;
     let lexemes = build_railroad_lexemes(
         code,
         dialect,
@@ -650,9 +664,10 @@ fn construct_railroad_semantic_source(
         meta.diagram_type.as_str(),
         dialect,
     )
-    .parse_recovering();
+    .parse_recovering(control)?;
     let mut editor_facts = editor_facts_from_model(&parser.model, dialect, &parser.trace);
     editor_facts.replace_family_lexemes(lexemes);
+    control.checkpoint()?;
 
     if let Some(error) = earliest_railroad_error(lexer.first_error, parser.first_error) {
         let span = railroad_error_span(&error, SourceSpan::new(0, code.len()));
@@ -663,16 +678,17 @@ fn construct_railroad_semantic_source(
             ),
             Some(span),
         );
-        return Err(RailroadParseFailure {
+        return Ok(Err(RailroadParseFailure {
             error: Box::new(error),
             editor_facts: Box::new(editor_facts),
-        });
+        }));
     }
 
-    Ok(RailroadSemanticSource {
+    control.checkpoint()?;
+    Ok(Ok(RailroadSemanticSource {
         model: parser.model,
         editor_facts,
-    })
+    }))
 }
 
 fn earliest_railroad_error(left: Option<Error>, right: Option<Error>) -> Option<Error> {
@@ -1127,18 +1143,23 @@ impl<'a> RailroadParser<'a> {
         }
     }
 
-    fn parse_recovering(mut self) -> RailroadParserOutcome {
+    fn parse_recovering(
+        mut self,
+        control: &ParseControl,
+    ) -> ParseControlResult<RailroadParserOutcome> {
+        control.checkpoint()?;
         let mut model = RailroadDiagramModel::new();
         let mut first_error = None;
         if let Err(error) = self.expect_header() {
-            return RailroadParserOutcome {
+            return Ok(RailroadParserOutcome {
                 model,
                 trace: self.trace,
                 first_error: Some(error),
-            };
+            });
         }
 
         while let Ok(Some(field)) = self.take_common_field() {
+            control.checkpoint()?;
             match field.kind {
                 CommonFieldKind::Title => {
                     model.title = Some(field.value);
@@ -1156,34 +1177,44 @@ impl<'a> RailroadParser<'a> {
         }
 
         while !self.is_eof() {
+            control.checkpoint()?;
             let checkpoint = self.pos;
             match self.parse_rule() {
                 Ok(rule) => model.rules.push(rule),
                 Err(error) => {
                     first_error.get_or_insert(error);
-                    self.recover_to_next_rule(checkpoint);
+                    self.recover_to_next_rule(checkpoint, control)?;
                 }
             }
         }
 
-        RailroadParserOutcome {
+        control.checkpoint()?;
+        Ok(RailroadParserOutcome {
             model,
             trace: self.trace,
             first_error,
-        }
+        })
     }
 
-    fn recover_to_next_rule(&mut self, checkpoint: usize) {
+    fn recover_to_next_rule(
+        &mut self,
+        checkpoint: usize,
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
         let start = checkpoint.saturating_add(1).min(self.tokens.len());
         for index in start..self.tokens.len().saturating_sub(1) {
+            if (index - start).is_multiple_of(128) {
+                control.checkpoint()?;
+            }
             if matches!(self.tokens[index].kind, TokenKind::Ident(_))
                 && self.assignment_follows(index + 1)
             {
                 self.pos = index;
-                return;
+                return Ok(());
             }
         }
         self.pos = self.tokens.len();
+        Ok(())
     }
 
     fn assignment_follows(&self, index: usize) -> bool {
@@ -2320,11 +2351,15 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn tokenize_recovering(mut self) -> RailroadLexerOutcome {
+    fn tokenize_recovering(
+        mut self,
+        control: &ParseControl,
+    ) -> ParseControlResult<RailroadLexerOutcome> {
         let mut tokens = Vec::new();
         let mut first_error = None;
         loop {
-            match self.skip_trivia() {
+            control.checkpoint()?;
+            match self.skip_trivia(control) {
                 Ok(true) => {}
                 Ok(false) => break,
                 Err(error) => {
@@ -2415,19 +2450,30 @@ impl<'a> Lexer<'a> {
             self.advance_char();
         }
 
-        RailroadLexerOutcome {
+        control.checkpoint()?;
+        Ok(RailroadLexerOutcome {
             tokens,
             comments: self.comments,
             recovery_lexemes: self.recovery_lexemes,
             first_error,
-        }
+        })
     }
 
-    fn skip_trivia(&mut self) -> Result<bool> {
+    fn skip_trivia(&mut self, control: &ParseControl) -> Result<bool> {
         loop {
             let before = self.pos;
+            let mut last_checkpoint = self.pos;
             while self.current_char().is_some_and(char::is_whitespace) {
                 self.advance_char();
+                if self.pos.saturating_sub(last_checkpoint) >= 4096 {
+                    if control.is_cancelled() {
+                        return Ok(false);
+                    }
+                    last_checkpoint = self.pos;
+                }
+            }
+            if control.is_cancelled() {
+                return Ok(false);
             }
 
             if self.starts_with("%%{") {

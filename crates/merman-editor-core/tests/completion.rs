@@ -308,6 +308,223 @@ fn non_flowchart_parser_facts_do_not_offer_flowchart_body_completions() {
 }
 
 #[test]
+fn directional_families_project_partial_values_from_recovery_facts() {
+    for (source, line, line_text, expected_labels) in [
+        (
+            "flowchart TD\nsubgraph group\ndirection L\nend\n",
+            2,
+            "direction L",
+            &["TB", "TD", "BT", "LR", "RL"][..],
+        ),
+        (
+            "C4Context\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+        (
+            "requirementDiagram\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+        (
+            "erDiagram\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+        (
+            "classDiagram\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+        (
+            "stateDiagram-v2\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(line, line_text.len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "partial direction must remain a strict parse failure: {source}"
+        );
+        let labels = completion
+            .items
+            .iter()
+            .filter(|item| {
+                item.data
+                    .as_ref()
+                    .is_some_and(|data| data.kind == CompletionDataKind::Direction)
+            })
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, expected_labels, "{source}");
+        let edit = completion
+            .items
+            .iter()
+            .find(|item| item.label == "LR")
+            .and_then(|item| item.text_edit.as_ref())
+            .expect("partial direction must produce an LR text edit");
+        assert_eq!(edit.range.start.line, line, "{source}");
+        assert_eq!(edit.range.start.character, "direction ".len(), "{source}");
+        assert_eq!(edit.range.end.line, line, "{source}");
+        assert_eq!(edit.range.end.character, line_text.len(), "{source}");
+    }
+}
+
+#[test]
+fn directional_families_reject_prefixed_values_from_recovery_facts() {
+    for (source, line) in [
+        ("flowchart TD\nsubgraph group\ndirection LRfoo\nend\n", 2),
+        ("erDiagram\ndirection LRfoo", 1),
+        ("classDiagram\ndirection LRfoo", 1),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+        let line_text = source.lines().nth(line).expect("direction line");
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(line, line_text.len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "{source}"
+        );
+        let edit = completion
+            .items
+            .iter()
+            .find(|item| item.label == "LR")
+            .and_then(|item| item.text_edit.as_ref())
+            .expect("invalid direction must produce an LR text edit");
+
+        assert_eq!(edit.range.start.line, line, "{source}");
+        assert_eq!(edit.range.start.character, "direction ".len(), "{source}");
+        assert_eq!(edit.range.end.line, line, "{source}");
+        assert_eq!(edit.range.end.character, line_text.len(), "{source}");
+        assert_eq!(edit.new_text, "LR", "{source}");
+    }
+}
+
+#[test]
+fn flowchart_direction_keeps_legacy_trailing_text_compatibility() {
+    let source = "flowchart TD\nsubgraph group\ndirection LR trailing\nend\n";
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            source.to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
+
+    let completion = completion_for_snapshot(&snapshot, Position::new(2, "direction LR".len()));
+    assert_eq!(
+        completion.fact_source,
+        Some(FenceTextIndexSource::ParserComplete)
+    );
+}
+
+#[test]
+fn flowchart_partial_operator_completion_comes_from_recovery_facts() {
+    for source in ["flowchart TD\nA ->", "flowchart TD\nA --"] {
+        let line = source.lines().last().expect("edge line");
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "{source}"
+        );
+        let edit = completion
+            .items
+            .iter()
+            .find(|item| item.label == "-->")
+            .and_then(|item| item.text_edit.as_ref())
+            .expect("partial operator must produce an arrow text edit");
+
+        assert_eq!(edit.range.start.line, 1, "{source}");
+        assert_eq!(edit.range.start.character, "A ".len(), "{source}");
+        assert_eq!(edit.range.end.line, 1, "{source}");
+        assert_eq!(edit.range.end.character, line.len(), "{source}");
+        assert_eq!(edit.new_text, "-->", "{source}");
+    }
+}
+
+#[test]
+fn flowchart_partial_shape_completion_comes_from_recovery_facts() {
+    for (source, line, expected_start, expected_replacement) in [
+        ("flowchart TD\nA((", "A((", 1, "@{ shape: circle }"),
+        (
+            "flowchart TD\nA@{ shape: rou",
+            "A@{ shape: rou",
+            "A@{ shape: ".len(),
+            "circle }",
+        ),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "{source}"
+        );
+        let edit = completion
+            .items
+            .iter()
+            .find(|item| item.label == "@{ shape: circle }")
+            .and_then(|item| item.text_edit.as_ref())
+            .expect("partial shape must produce a text edit");
+
+        assert_eq!(edit.range.start.line, 1, "{source}");
+        assert_eq!(edit.range.start.character, expected_start, "{source}");
+        assert_eq!(edit.range.end.line, 1, "{source}");
+        assert_eq!(edit.range.end.character, line.len(), "{source}");
+        assert_eq!(edit.new_text, expected_replacement, "{source}");
+    }
+}
+
+#[test]
 fn completion_after_pipe_edge_label_inserts_after_the_label() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace

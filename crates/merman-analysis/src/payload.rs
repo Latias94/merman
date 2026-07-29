@@ -160,7 +160,7 @@ impl LspRange {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiagnosticSpan {
     pub byte_start: usize,
     pub byte_end: usize,

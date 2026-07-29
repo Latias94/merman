@@ -730,7 +730,11 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
 
     crate::diagrams::state::reset_state_syntax_construction_count();
     let (combined_json, mut combined_editor) = crate::family::test_support::into_result(
-        crate::diagrams::state::parse_state_json_and_editor_facts(input, &standalone.meta),
+        crate::diagrams::state::parse_state_json_and_editor_facts(
+            input,
+            &standalone.meta,
+            &crate::ParseControl::new(),
+        ),
     )
     .expect("combined State parse succeeds");
     let family = crate::family::diagram_type_family_id(&standalone.meta.diagram_type)

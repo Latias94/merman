@@ -1,5 +1,6 @@
 use crate::payload::{DiagnosticSpan, LspRange, SourcePosition, Utf16Position};
-use std::sync::{Arc, OnceLock};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 pub type LineCol = SourcePosition;
 
@@ -17,20 +18,31 @@ pub enum SourceMapError {
 pub struct SourceMap {
     source: Arc<str>,
     line_starts: Arc<[usize]>,
-    line_metrics: Arc<[OnceLock<LineMetric>]>,
+    line_metrics: Arc<RwLock<HashMap<usize, Arc<LineMetric>>>>,
 }
 
 impl SourceMap {
     pub fn new(source: impl Into<Arc<str>>) -> Self {
         let source = source.into();
         let line_starts = line_starts(source.as_ref());
-        let line_metrics = (0..line_starts.len())
-            .map(|_| OnceLock::new())
-            .collect::<Vec<_>>();
+        Self::from_source_and_line_starts(source, line_starts)
+    }
+
+    pub(crate) fn new_cancellable(
+        source: impl Into<Arc<str>>,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        let source = source.into();
+        let line_starts = line_starts_cancellable(source.as_ref(), cancellation)?;
+        cancellation.checkpoint()?;
+        Ok(Self::from_source_and_line_starts(source, line_starts))
+    }
+
+    fn from_source_and_line_starts(source: Arc<str>, line_starts: Vec<usize>) -> Self {
         Self {
             source,
             line_starts: Arc::from(line_starts.into_boxed_slice()),
-            line_metrics: Arc::from(line_metrics.into_boxed_slice()),
+            line_metrics: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -84,8 +96,50 @@ impl SourceMap {
         ))
     }
 
+    pub(crate) fn span_cancellable(
+        &self,
+        start: usize,
+        end: usize,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Result<DiagnosticSpan, SourceMapError>, crate::AnalysisCancelled> {
+        if start > end {
+            return Ok(Err(SourceMapError::ReversedRange { start, end }));
+        }
+
+        let start_lc = match self.line_col_cancellable(start, cancellation)? {
+            Ok(position) => position,
+            Err(error) => return Ok(Err(error)),
+        };
+        let end_lc = match self.line_col_cancellable(end, cancellation)? {
+            Ok(position) => position,
+            Err(error) => return Ok(Err(error)),
+        };
+        let lsp_start = match self.utf16_position_cancellable(start, cancellation)? {
+            Ok(position) => position,
+            Err(error) => return Ok(Err(error)),
+        };
+        let lsp_end = match self.utf16_position_cancellable(end, cancellation)? {
+            Ok(position) => position,
+            Err(error) => return Ok(Err(error)),
+        };
+
+        Ok(Ok(DiagnosticSpan::new(
+            start..end,
+            start_lc,
+            end_lc,
+            LspRange::new(lsp_start, lsp_end),
+        )))
+    }
+
     pub fn whole_source_span(&self) -> Result<DiagnosticSpan, SourceMapError> {
         self.span(0, self.source.len())
+    }
+
+    pub(crate) fn whole_source_span_cancellable(
+        &self,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Result<DiagnosticSpan, SourceMapError>, crate::AnalysisCancelled> {
+        self.span_cancellable(0, self.source.len(), cancellation)
     }
 
     pub fn line_bounds(&self, line_index: usize) -> Option<(usize, usize)> {
@@ -145,32 +199,119 @@ impl SourceMap {
         })
     }
 
-    fn line_metric(&self, line_index: usize) -> Option<&LineMetric> {
-        let slot = self.line_metrics.get(line_index)?;
-        Some(slot.get_or_init(|| {
-            let start = self.line_starts[line_index];
-            let next_start = self
-                .line_starts
-                .get(line_index + 1)
-                .copied()
-                .unwrap_or(self.source.len());
-            line_metric(self.source.as_ref(), start, next_start)
+    fn line_col_cancellable(
+        &self,
+        offset: usize,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Result<LineCol, SourceMapError>, crate::AnalysisCancelled> {
+        Ok(self
+            .offset_metrics_cancellable(offset, cancellation)?
+            .map(|metrics| LineCol::new(metrics.line_index + 1, metrics.char_column + 1)))
+    }
+
+    fn utf16_position_cancellable(
+        &self,
+        offset: usize,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Result<Utf16Position, SourceMapError>, crate::AnalysisCancelled> {
+        Ok(self
+            .offset_metrics_cancellable(offset, cancellation)?
+            .map(|metrics| Utf16Position {
+                line: metrics.line_index,
+                character: metrics.utf16_column,
+            }))
+    }
+
+    fn offset_metrics_cancellable(
+        &self,
+        offset: usize,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Result<OffsetMetrics, SourceMapError>, crate::AnalysisCancelled> {
+        if let Err(error) = self.validate_offset(offset) {
+            return Ok(Err(error));
+        }
+        let line_index = self.line_index_for_offset(offset);
+        let line = self
+            .line_metric_cancellable(line_index, cancellation)?
+            .expect("validated source offset should map to a cached line");
+        let clamped = offset.clamp(line.start, line.content_end);
+        let relative = clamped - line.start;
+        let boundary_index = line
+            .byte_boundaries
+            .binary_search(&relative)
+            .expect("validated source offset should map to a cached line boundary");
+
+        Ok(Ok(OffsetMetrics {
+            line_index,
+            char_column: boundary_index,
+            utf16_column: line.utf16_columns[boundary_index],
         }))
+    }
+
+    fn line_metric(&self, line_index: usize) -> Option<Arc<LineMetric>> {
+        self.line_metric_with_checkpoint(line_index, || Ok::<_, std::convert::Infallible>(()))
+            .expect("infallible line-metric scan")
+    }
+
+    fn line_metric_cancellable(
+        &self,
+        line_index: usize,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Option<Arc<LineMetric>>, crate::AnalysisCancelled> {
+        self.line_metric_with_checkpoint(line_index, || cancellation.checkpoint())
+    }
+
+    fn line_metric_with_checkpoint<E>(
+        &self,
+        line_index: usize,
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<Arc<LineMetric>>, E> {
+        checkpoint()?;
+        let Some(&start) = self.line_starts.get(line_index) else {
+            return Ok(None);
+        };
+        if let Some(metric) = self
+            .line_metrics
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&line_index)
+            .cloned()
+        {
+            return Ok(Some(metric));
+        }
+
+        let next_start = self
+            .line_starts
+            .get(line_index + 1)
+            .copied()
+            .unwrap_or(self.source.len());
+        let computed = Arc::new(line_metric_with_checkpoint(
+            self.source.as_ref(),
+            start,
+            next_start,
+            &mut checkpoint,
+        )?);
+        let mut metrics = self
+            .line_metrics
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        Ok(Some(metrics.entry(line_index).or_insert(computed).clone()))
     }
 
     #[cfg(test)]
     fn cached_line_metric_count(&self) -> usize {
         self.line_metrics
-            .iter()
-            .filter(|metric| metric.get().is_some())
-            .count()
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len()
     }
 
     #[cfg(test)]
     fn cached_line_boundary_count(&self, line_index: usize) -> Option<usize> {
         self.line_metrics
-            .get(line_index)
-            .and_then(OnceLock::get)
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&line_index)
             .map(|line| line.byte_boundaries.len())
     }
 }
@@ -239,10 +380,33 @@ pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan 
 }
 
 fn line_starts(source: &str) -> Vec<usize> {
+    line_starts_with_checkpoint(source, |_| Ok::<_, std::convert::Infallible>(()))
+        .expect("infallible line-start scan")
+}
+
+fn line_starts_cancellable(
+    source: &str,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<usize>, crate::AnalysisCancelled> {
+    line_starts_with_checkpoint(source, |_| {
+        cancellation.checkpoint()?;
+        Ok(())
+    })
+}
+
+fn line_starts_with_checkpoint<E>(
+    source: &str,
+    mut checkpoint: impl FnMut(usize) -> Result<(), E>,
+) -> Result<Vec<usize>, E> {
     let mut starts = vec![0];
     let bytes = source.as_bytes();
     let mut idx = 0usize;
+    let mut next_checkpoint = 0usize;
     while idx < bytes.len() {
+        if idx >= next_checkpoint {
+            checkpoint(idx)?;
+            next_checkpoint = idx.saturating_add(4096);
+        }
         match bytes[idx] {
             b'\r' => {
                 idx += 1;
@@ -260,31 +424,43 @@ fn line_starts(source: &str) -> Vec<usize> {
             }
         }
     }
-    starts
+    checkpoint(idx)?;
+    Ok(starts)
 }
 
-fn line_metric(source: &str, start: usize, next_start: usize) -> LineMetric {
+fn line_metric_with_checkpoint<E>(
+    source: &str,
+    start: usize,
+    next_start: usize,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
+) -> Result<LineMetric, E> {
     let content_end = line_content_end(source.as_bytes(), start, next_start);
     let line = &source[start..content_end];
-    let mut byte_boundaries = Vec::with_capacity(line.chars().count() + 1);
-    let mut utf16_columns = Vec::with_capacity(byte_boundaries.capacity());
+    let mut byte_boundaries = Vec::new();
+    let mut utf16_columns = Vec::new();
     let mut utf16 = 0usize;
+    let mut next_checkpoint = 0usize;
 
     byte_boundaries.push(0);
     utf16_columns.push(0);
 
     for (relative, ch) in line.char_indices() {
+        if relative >= next_checkpoint {
+            checkpoint()?;
+            next_checkpoint = relative.saturating_add(4096);
+        }
         utf16 += ch.len_utf16();
         byte_boundaries.push(relative + ch.len_utf8());
         utf16_columns.push(utf16);
     }
+    checkpoint()?;
 
-    LineMetric {
+    Ok(LineMetric {
         start,
         content_end,
         byte_boundaries,
         utf16_columns,
-    }
+    })
 }
 
 fn line_content_end(bytes: &[u8], start: usize, next_start: usize) -> usize {
@@ -430,6 +606,45 @@ mod tests {
             map.cached_line_boundary_count(0),
             Some(source.chars().count() + 1)
         );
+    }
+
+    #[test]
+    fn dense_line_sources_cache_only_queried_line_metrics() {
+        let source = "\n".repeat(100_000);
+        let map = SourceMap::new(source);
+
+        assert_eq!(map.line_starts().len(), 100_001);
+        assert_eq!(map.cached_line_metric_count(), 0);
+        assert_eq!(map.line_bounds(99_999), Some((99_999, 99_999)));
+        assert_eq!(map.cached_line_metric_count(), 1);
+    }
+
+    #[test]
+    fn dense_line_scan_observes_scheduled_cancellation() {
+        let source = "\n".repeat(32 * 1024);
+        let cancellation = crate::AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            SourceMap::new_cancellable(source, &cancellation),
+            Err(crate::AnalysisCancelled)
+        ));
+        assert!(cancellation.is_cancelled());
+    }
+
+    #[test]
+    fn long_single_line_metric_observes_scheduled_cancellation() {
+        let source = "a".repeat(32 * 1024);
+        let map = SourceMap::new(source);
+        let cancellation = crate::AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            map.whole_source_span_cancellable(&cancellation),
+            Err(crate::AnalysisCancelled)
+        ));
+        assert!(cancellation.is_cancelled());
+        assert_eq!(map.cached_line_metric_count(), 0);
     }
 
     #[test]

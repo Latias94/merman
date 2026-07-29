@@ -40,18 +40,29 @@ pub(crate) fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_mindmap_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_mindmap_semantic_source(code, meta),
-        |source| {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control.checkpoint()?;
+    let construction = match construct_mindmap_semantic_source_controlled(code, meta, control)? {
+        Ok(source) => {
             let editor_facts = source.editor_facts.clone();
-            let model = source
-                .into_render_model(meta)
-                .and_then(|model| super::render_model_to_compat_json(&model, meta));
-            (model, editor_facts)
-        },
+            let model = match source.into_render_model_controlled(meta, control)? {
+                Ok(model) => super::render_model::render_model_to_compat_json_controlled(
+                    &model, meta, control,
+                )?,
+                Err(error) => Err(error),
+            };
+            Ok((model, editor_facts))
+        }
+        Err(error) => Err(error),
+    };
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |parts| parts,
         CombinedSemanticFailure::into_parts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn parse_mindmap_model_for_render(
@@ -68,17 +79,29 @@ struct MindmapSemanticSource {
 
 impl MindmapSemanticSource {
     fn into_render_model(self, meta: &ParseMetadata) -> Result<MindmapDiagramRenderModel> {
+        let control = crate::ParseControl::new();
+        self.into_render_model_controlled(meta, &control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    fn into_render_model_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &crate::ParseControl,
+    ) -> crate::ParseControlResult<Result<MindmapDiagramRenderModel>> {
+        control.checkpoint()?;
         let mut db = self.db;
         let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
-            return Ok(MindmapDiagramRenderModel::default());
+            return Ok(Ok(MindmapDiagramRenderModel::default()));
         };
 
-        db.assign_sections(root_id, None);
+        db.assign_sections_controlled(root_id, None, control)?;
 
-        Ok(MindmapDiagramRenderModel {
-            nodes: db.to_layout_nodes_for_render(root_id, &meta.effective_config),
-            edges: db.to_edges_for_render(root_id, &meta.effective_config),
-        })
+        let nodes =
+            db.to_layout_nodes_for_render_controlled(root_id, &meta.effective_config, control)?;
+        let edges = db.to_edges_for_render_controlled(root_id, &meta.effective_config, control)?;
+        control.checkpoint()?;
+        Ok(Ok(MindmapDiagramRenderModel { nodes, edges }))
     }
 }
 
@@ -93,6 +116,17 @@ fn construct_mindmap_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<MindmapSemanticSource, CombinedSemanticFailure> {
+    construct_mindmap_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_mindmap_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<std::result::Result<MindmapSemanticSource, CombinedSemanticFailure>>
+{
+    control.checkpoint()?;
     #[cfg(test)]
     MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -100,44 +134,50 @@ fn construct_mindmap_semantic_source(
     let MindmapParseOutcome {
         parsed,
         first_error,
-    } = parse_mindmap_lines(code, meta, &mut lexemes);
-    let mut editor_facts = mindmap_editor_facts_from_parsed(&parsed);
-    editor_facts.replace_family_lexemes(lexemes.finish());
+    } = parse_mindmap_lines(code, meta, &mut lexemes, control)?;
+    control.checkpoint()?;
+    let mut editor_facts = mindmap_editor_facts_from_parsed(&parsed, control)?;
+    editor_facts.replace_family_lexemes(lexemes.finish_controlled(control)?);
 
     if let Some(error) = first_error {
-        return Err(CombinedSemanticFailure::parser_recovery(
+        return Ok(Err(CombinedSemanticFailure::parser_recovery(
             "mindmap",
             error,
             editor_facts,
-        ));
+        )));
     }
 
-    let db = match mindmap_db_from_events(parsed.events, meta) {
+    let db = match mindmap_db_from_events(parsed.events, meta, control)? {
         Ok(db) => db,
         Err(error) => {
-            return Err(CombinedSemanticFailure::parser_recovery(
+            return Ok(Err(CombinedSemanticFailure::parser_recovery(
                 "mindmap",
                 error,
                 editor_facts,
-            ));
+            )));
         }
     };
-    Ok(MindmapSemanticSource { db, editor_facts })
+    control.checkpoint()?;
+    Ok(Ok(MindmapSemanticSource { db, editor_facts }))
 }
 
 fn mindmap_db_from_events(
     events: Vec<MindmapParsedEvent>,
     meta: &ParseMetadata,
-) -> Result<MindmapDb> {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<Result<MindmapDb>> {
     let mut db = MindmapDb::default();
     db.clear();
     let parse_config = MindmapParseConfig::from_config(&meta.effective_config);
 
-    for event in events {
+    for (index, event) in events.into_iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         match event {
             MindmapParsedEvent::Node(node) => {
                 let selection = node.selection;
-                db.add_node(
+                if let Err(error) = db.add_node_controlled(
                     super::db::MindmapNodeInput {
                         indent_level: node.indent as i32,
                         id_raw: &node.id_raw,
@@ -148,8 +188,10 @@ fn mindmap_db_from_events(
                     },
                     &meta.effective_config,
                     parse_config,
-                )
-                .map_err(|error| error.with_exact_span_if_missing(selection))?;
+                    control,
+                )? {
+                    return Ok(Err(error.with_exact_span_if_missing(selection)));
+                }
             }
             MindmapParsedEvent::Class(class) => {
                 db.decorate_last(Some(class.value), None, &meta.effective_config);
@@ -160,7 +202,8 @@ fn mindmap_db_from_events(
         }
     }
 
-    Ok(db)
+    control.checkpoint()?;
+    Ok(Ok(db))
 }
 
 #[derive(Debug, Clone)]
@@ -206,12 +249,21 @@ struct MindmapParseOutcome {
     first_error: Option<Error>,
 }
 
-fn mindmap_editor_facts_from_parsed(parsed: &MindmapParsedLines) -> EditorSemanticFacts {
+fn mindmap_editor_facts_from_parsed(
+    parsed: &MindmapParsedLines,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<EditorSemanticFacts> {
     let mut facts = EditorSemanticFacts::new();
-    for prefix in &parsed.directive_prefixes {
+    for (index, prefix) in parsed.directive_prefixes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         facts.push_directive_prefix(prefix.clone());
     }
-    for event in &parsed.events {
+    for (index, event) in parsed.events.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         match event {
             MindmapParsedEvent::Node(node) => {
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -240,7 +292,10 @@ fn mindmap_editor_facts_from_parsed(parsed: &MindmapParsedLines) -> EditorSemant
                 ));
             }
             MindmapParsedEvent::Class(class) => {
-                for token in &class.tokens {
+                for (index, token) in class.tokens.iter().enumerate() {
+                    if index % 128 == 0 {
+                        control.checkpoint()?;
+                    }
                     facts.push_symbol(EditorSemanticSymbol::payload(
                         token.value.clone(),
                         Some("mindmap class".to_string()),
@@ -251,7 +306,10 @@ fn mindmap_editor_facts_from_parsed(parsed: &MindmapParsedLines) -> EditorSemant
                 }
             }
             MindmapParsedEvent::Icon(icon) => {
-                for token in &icon.tokens {
+                for (index, token) in icon.tokens.iter().enumerate() {
+                    if index % 128 == 0 {
+                        control.checkpoint()?;
+                    }
                     facts.push_symbol(EditorSemanticSymbol::payload(
                         token.value.clone(),
                         Some("mindmap icon".to_string()),
@@ -263,7 +321,8 @@ fn mindmap_editor_facts_from_parsed(parsed: &MindmapParsedLines) -> EditorSemant
             }
         }
     }
-    facts
+    control.checkpoint()?;
+    Ok(facts)
 }
 
 fn push_mindmap_lexeme(
@@ -661,7 +720,9 @@ fn parse_mindmap_lines(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> MindmapParseOutcome {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<MindmapParseOutcome> {
+    control.checkpoint()?;
     let mut lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut parsed = MindmapParsedLines::default();
@@ -670,6 +731,7 @@ fn parse_mindmap_lines(
     let mut found_header = false;
 
     for segment in lines.by_ref() {
+        control.checkpoint()?;
         let line_start = offset;
         offset += segment.len();
         let line = segment.strip_suffix('\n').unwrap_or(segment);
@@ -717,10 +779,10 @@ fn parse_mindmap_lines(
                 code.len(),
             ));
         }
-        return MindmapParseOutcome {
+        return Ok(MindmapParseOutcome {
             parsed,
             first_error,
-        };
+        });
     }
 
     let mut pending = None;
@@ -736,6 +798,7 @@ fn parse_mindmap_lines(
         );
     }
     for segment in lines {
+        control.checkpoint()?;
         let line_start = offset;
         offset += segment.len();
         let line = segment.strip_suffix('\n').unwrap_or(segment);
@@ -753,8 +816,9 @@ fn parse_mindmap_lines(
         finish_pending_mindmap_line(pending, &mut first_error, lexemes, meta);
     }
 
-    MindmapParseOutcome {
+    control.checkpoint()?;
+    Ok(MindmapParseOutcome {
         parsed,
         first_error,
-    }
+    })
 }

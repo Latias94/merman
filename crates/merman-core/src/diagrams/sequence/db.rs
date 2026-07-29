@@ -1,4 +1,4 @@
-use crate::ParseMetadata;
+use crate::{ParseControl, ParseControlResult, ParseMetadata};
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -127,12 +127,11 @@ impl SequenceDb {
         id: &str,
         description: Option<String>,
         actor_type: &str,
-        config: Option<String>,
+        participant_meta: Option<Value>,
     ) -> std::result::Result<(), String> {
         let mut actor_type = actor_type.to_string();
         let mut config_alias = None;
-        if let Some(config) = config.as_deref() {
-            let meta = parse_participant_meta(config)?;
+        if let Some(meta) = participant_meta.as_ref() {
             if let Some(obj) = meta.as_object()
                 && let Some(t) = obj
                     .get("type")
@@ -348,7 +347,39 @@ impl SequenceDb {
         });
     }
 
-    pub(super) fn apply(&mut self, action: Action) -> std::result::Result<(), String> {
+    pub(super) fn apply_controlled(
+        &mut self,
+        action: Action,
+        control: &ParseControl,
+    ) -> ParseControlResult<std::result::Result<(), String>> {
+        control.checkpoint()?;
+        let participant_meta = match &action {
+            Action::AddParticipant { config, .. } => {
+                match parse_participant_meta_controlled(config.as_deref(), control)? {
+                    Ok(meta) => meta,
+                    Err(error) => return Ok(Err(error)),
+                }
+            }
+            Action::CreateParticipant { id, config, .. } => {
+                if self.actors.contains_key(id) {
+                    return Ok(Err("It is not possible to have actors with the same id, even if one is destroyed before the next is created. Use 'AS' aliases to simulate the behavior".to_string()));
+                }
+                match parse_participant_meta_controlled(config.as_deref(), control)? {
+                    Ok(meta) => meta,
+                    Err(error) => return Ok(Err(error)),
+                }
+            }
+            _ => None,
+        };
+        control.checkpoint()?;
+        Ok(self.apply_prepared(action, participant_meta))
+    }
+
+    fn apply_prepared(
+        &mut self,
+        action: Action,
+        participant_meta: Option<Value>,
+    ) -> std::result::Result<(), String> {
         match action {
             Action::SetTitle(t) => {
                 self.title = Some(t.trim().to_string());
@@ -372,7 +403,10 @@ impl SequenceDb {
                 description,
                 draw,
                 config,
-            } => self.add_actor(&id, description, &draw, config),
+            } => {
+                let _ = config;
+                self.add_actor(&id, description, &draw, participant_meta)
+            }
 
             Action::CreateParticipant {
                 id,
@@ -384,7 +418,8 @@ impl SequenceDb {
                     return Err("It is not possible to have actors with the same id, even if one is destroyed before the next is created. Use 'AS' aliases to simulate the behavior".to_string());
                 }
                 self.last_created = Some(id.clone());
-                self.add_actor(&id, description, &draw, config)?;
+                let _ = config;
+                self.add_actor(&id, description, &draw, participant_meta)?;
                 self.created_actors.insert(id, self.messages.len());
                 Ok(())
             }
@@ -703,6 +738,16 @@ impl SequenceDb {
     }
 }
 
+fn parse_participant_meta_controlled(
+    input: Option<&str>,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<Option<Value>, String>> {
+    let Some(input) = input else {
+        return Ok(Ok(None));
+    };
+    Ok(crate::inline_config::parse_mermaid_inline_object_controlled(input, control)?.map(Some))
+}
+
 #[derive(Debug, Clone)]
 struct BoxData {
     text: Option<String>,
@@ -735,10 +780,6 @@ pub(super) fn split_box_color_and_title(input: &str) -> (&str, &str) {
         break;
     }
     (&input[..end], &input[end..])
-}
-
-fn parse_participant_meta(input: &str) -> std::result::Result<Value, String> {
-    crate::inline_config::parse_mermaid_inline_object(input)
 }
 
 pub(super) fn is_css_color_value(input: &str) -> bool {
@@ -914,3 +955,40 @@ static CSS_COLOR_KEYWORDS: &[&str] = &[
     "yellow",
     "yellowgreen",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_created_participant_wins_over_invalid_inline_config() {
+        let control = ParseControl::new();
+        let mut db = SequenceDb::new(None);
+        db.apply_controlled(
+            Action::AddParticipant {
+                id: "A".to_string(),
+                description: None,
+                draw: "participant".to_string(),
+                config: None,
+            },
+            &control,
+        )
+        .unwrap()
+        .unwrap();
+
+        let error = db
+            .apply_controlled(
+                Action::CreateParticipant {
+                    id: "A".to_string(),
+                    description: None,
+                    draw: "participant".to_string(),
+                    config: Some(r#"{ "type" "control" }"#.to_string()),
+                },
+                &control,
+            )
+            .unwrap()
+            .unwrap_err();
+
+        assert!(error.contains("same id"), "{error}");
+    }
+}

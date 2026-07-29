@@ -7,9 +7,9 @@ use crate::recovery::{
 };
 use crate::rules::AnalysisRuleConfig;
 use crate::{
-    AnalysisDiagnostic, AnalysisFlowchartFacts, AnalysisOutcome, AnalysisPayload,
-    AnalysisRejection, AnalysisResult, AnalysisSyntaxFacts, AnalyzedDiagram, DocumentDiagram,
-    FenceTextIndex, SourceDescriptor, SourceMap,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnostic, AnalysisFlowchartFacts,
+    AnalysisOutcome, AnalysisPayload, AnalysisRejection, AnalysisResult, AnalysisSyntaxFacts,
+    AnalyzedDiagram, DocumentDiagram, FenceTextIndex, SourceDescriptor, SourceMap,
 };
 use merman_core::{
     DiagramParseOutcome, EditorSemanticFacts, Engine, Error as CoreError, MermaidConfig,
@@ -219,34 +219,62 @@ impl Analyzer {
     /// Only this analyzer's rule configuration participates in reprojection. Parsing, Mermaid
     /// configuration, runtime policy, and editor facts remain frozen in `result`.
     pub fn reproject_payload(&self, result: &AnalysisResult) -> AnalysisPayload {
+        let cancellation = AnalysisCancellationToken::new();
+        self.reproject_payload_cancellable(result, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
+    }
+
+    pub fn reproject_payload_cancellable(
+        &self,
+        result: &AnalysisResult,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisPayload, AnalysisCancelled> {
+        cancellation.checkpoint()?;
         let diagnostics = if let Some(error) = result.document_error() {
             self.runtime_error_diagnostics(error, result.source_map())
         } else {
-            result
-                .diagrams()
-                .iter()
-                .flat_map(|diagram| {
-                    let source_map = if diagram.kind == crate::DocumentDiagramKind::MermaidFence {
-                        SourceMap::new(diagram.text.as_str())
-                    } else {
-                        result.source_map().clone()
-                    };
-                    let local = self.project_evidence(
-                        diagram.text.as_str(),
-                        &source_map,
-                        diagram.evidence.as_ref(),
-                        AnalysisMode::DiagnosticReprojection,
-                    );
-                    crate::document::remap_analyzed_diagnostics(
-                        result.source_map(),
-                        result.payload().source.kind,
-                        diagram,
-                        local.diagnostics,
+            let mut diagnostics = Vec::new();
+            for diagram in result.diagrams() {
+                cancellation.checkpoint()?;
+                let source_map = if diagram.kind == crate::DocumentDiagramKind::MermaidFence {
+                    SourceMap::new_cancellable(diagram.text.as_str(), cancellation)?
+                } else {
+                    result.source_map().clone()
+                };
+                let local = self.project_evidence_cancellable(
+                    diagram.text.as_str(),
+                    &source_map,
+                    diagram.evidence.as_ref(),
+                    AnalysisMode::DiagnosticReprojection,
+                    cancellation,
+                )?;
+                let local_diagnostics = local
+                    .diagnostics
+                    .into_iter()
+                    .chain(
+                        diagram
+                            .diagnostics
+                            .iter()
+                            .filter(|diagnostic| {
+                                diagnostic.id == crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID
+                            })
+                            .cloned(),
                     )
-                })
-                .collect()
+                    .collect();
+                diagnostics.extend(crate::document::remap_analyzed_diagnostics(
+                    result.source_map(),
+                    result.payload().source.kind,
+                    diagram,
+                    local_diagnostics,
+                ));
+            }
+            diagnostics
         };
-        AnalysisPayload::new(result.payload().source.clone(), diagnostics)
+        cancellation.checkpoint()?;
+        Ok(AnalysisPayload::new(
+            result.payload().source.clone(),
+            diagnostics,
+        ))
     }
 
     pub(crate) fn analyze_diagram(
@@ -254,24 +282,40 @@ impl Analyzer {
         diagram: &DocumentDiagram,
         document_source_map: &SourceMap,
     ) -> AnalyzedDiagram {
+        let cancellation = AnalysisCancellationToken::new();
+        self.analyze_diagram_cancellable(diagram, document_source_map, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
+    }
+
+    pub(crate) fn analyze_diagram_cancellable(
+        &self,
+        diagram: &DocumentDiagram,
+        document_source_map: &SourceMap,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalyzedDiagram, AnalysisCancelled> {
+        cancellation.checkpoint()?;
         let source_map = if diagram.is_fence() {
-            SourceMap::new(diagram.text.as_str())
+            SourceMap::new_cancellable(diagram.text.as_str(), cancellation)?
         } else {
             document_source_map.clone()
         };
-        let evidence = Arc::new(self.capture_evidence(diagram.text.as_str()));
-        let local = self.project_evidence(
+        let evidence =
+            Arc::new(self.capture_evidence_cancellable(diagram.text.as_str(), cancellation)?);
+        cancellation.checkpoint()?;
+        let local = self.project_evidence_cancellable(
             diagram.text.as_str(),
             &source_map,
             evidence.as_ref(),
             AnalysisMode::RichFacts,
-        );
-        AnalyzedDiagram::from_document_diagram_with_evidence(
+            cancellation,
+        )?;
+        cancellation.checkpoint()?;
+        Ok(AnalyzedDiagram::from_document_diagram_with_evidence(
             diagram,
             local.diagnostics,
             local.syntax,
             evidence,
-        )
+        ))
     }
 
     pub(crate) fn analyze_diagram_diagnostics(
@@ -319,20 +363,33 @@ impl Analyzer {
     }
 
     fn capture_evidence(&self, source: &str) -> DiagramAnalysisEvidence {
+        let cancellation = AnalysisCancellationToken::new();
+        self.capture_evidence_cancellable(source, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
+    }
+
+    fn capture_evidence_cancellable(
+        &self,
+        source: &str,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<DiagramAnalysisEvidence, AnalysisCancelled> {
+        cancellation.checkpoint()?;
         if self.source_limit_diagnostics(source).is_some() {
-            return DiagramAnalysisEvidence::SourceLimit;
+            return Ok(DiagramAnalysisEvidence::SourceLimit);
         }
         if source.trim().is_empty() {
-            return DiagramAnalysisEvidence::EmptySource;
+            return Ok(DiagramAnalysisEvidence::EmptySource);
         }
         let parse_result = panic::catch_unwind(AssertUnwindSafe(|| {
-            self.engine.parse_diagram_snapshot_sync(source)
+            self.engine
+                .parse_diagram_snapshot_controlled_sync(source, cancellation.parse_control())
         }));
-        match parse_result {
+        let evidence = match parse_result {
             Err(panic_payload) => DiagramAnalysisEvidence::Panic {
                 message: panic_message(panic_payload.as_ref()).to_string(),
             },
-            Ok(parse_result) => match parse_result {
+            Ok(Err(_)) => return Err(AnalysisCancelled),
+            Ok(Ok(parse_result)) => match parse_result {
                 Ok(Some(snapshot)) => {
                     let (meta, outcome, editor_facts) = snapshot.into_parts();
                     let editor_facts = match editor_facts {
@@ -359,7 +416,9 @@ impl Analyzer {
                     error: Arc::new(error),
                 },
             },
-        }
+        };
+        cancellation.checkpoint()?;
+        Ok(evidence)
     }
 
     fn project_evidence(
@@ -369,21 +428,40 @@ impl Analyzer {
         evidence: &DiagramAnalysisEvidence,
         mode: AnalysisMode,
     ) -> LocalAnalysis {
+        let cancellation = AnalysisCancellationToken::new();
+        self.project_evidence_cancellable(source, source_map, evidence, mode, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
+    }
+
+    fn project_evidence_cancellable(
+        &self,
+        source: &str,
+        source_map: &SourceMap,
+        evidence: &DiagramAnalysisEvidence,
+        mode: AnalysisMode,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<LocalAnalysis, AnalysisCancelled> {
+        cancellation.checkpoint()?;
         if matches!(evidence, DiagramAnalysisEvidence::SourceLimit) {
-            return LocalAnalysis::empty_syntax(
+            return Ok(LocalAnalysis::empty_syntax(
                 self.source_limit_diagnostics(source).unwrap_or_default(),
-            );
+            ));
         }
 
-        let source_lints =
-            crate::rules::source_lint_diagnostics(source, source_map, &self.options.rule_config);
+        let source_lints = crate::rules::source_lint_diagnostics_cancellable(
+            source,
+            source_map,
+            &self.options.rule_config,
+            cancellation,
+        )?;
+        cancellation.checkpoint()?;
         match evidence {
             DiagramAnalysisEvidence::SourceLimit => unreachable!("handled above"),
             DiagramAnalysisEvidence::EmptySource => {
                 let diagnostics = no_diagram_diagnostic(source_map, &self.options.rule_config)
                     .into_iter()
                     .collect();
-                mode.unavailable_syntax(None, diagnostics)
+                Ok(mode.unavailable_syntax(None, diagnostics))
             }
             DiagramAnalysisEvidence::Panic { message } => {
                 let mut diagnostics = source_lints;
@@ -392,136 +470,197 @@ impl Analyzer {
                 {
                     diagnostics.push(diagnostic);
                 }
-                mode.unavailable_syntax(None, diagnostics)
+                Ok(mode.unavailable_syntax(None, diagnostics))
             }
-            DiagramAnalysisEvidence::NoSnapshot => mode.unavailable_syntax(None, source_lints),
+            DiagramAnalysisEvidence::NoSnapshot => Ok(mode.unavailable_syntax(None, source_lints)),
             DiagramAnalysisEvidence::OperationError { error } => {
-                self.analyze_operation_error(source_map, source_lints, error, mode)
+                Ok(self.analyze_operation_error(source_map, source_lints, error, mode))
             }
             DiagramAnalysisEvidence::Parsed {
                 metadata,
                 model,
                 editor_facts,
-            } => self.analyze_parsed_diagram(
-                source,
-                source_map,
-                metadata,
+            } => self.analyze_parsed_diagram_cancellable(
+                DiagramProjectionInput {
+                    source,
+                    source_map,
+                    metadata,
+                    editor_facts: editor_facts.as_deref(),
+                },
                 model,
-                editor_facts.as_deref(),
                 source_lints,
                 mode,
+                cancellation,
             ),
             DiagramAnalysisEvidence::ParseFailed {
                 metadata,
                 error,
                 editor_facts,
-            } => self.analyze_parse_error(
-                source_map,
+            } => self.analyze_parse_error_cancellable(
+                DiagramProjectionInput {
+                    source,
+                    source_map,
+                    metadata,
+                    editor_facts: editor_facts.as_deref(),
+                },
                 source_lints,
-                metadata,
-                editor_facts.as_deref(),
                 error,
                 mode,
+                cancellation,
             ),
         }
     }
 
+    #[cfg(test)]
     fn analyze_parsed_diagram(
         &self,
-        source: &str,
-        source_map: &SourceMap,
-        metadata: &ParseMetadata,
+        input: DiagramProjectionInput<'_>,
         model: &serde_json::Value,
-        editor_facts: Option<&EditorSemanticFacts>,
-        mut diagnostics: Vec<AnalysisDiagnostic>,
+        diagnostics: Vec<AnalysisDiagnostic>,
         mode: AnalysisMode,
     ) -> LocalAnalysis {
+        let cancellation = AnalysisCancellationToken::new();
+        self.analyze_parsed_diagram_cancellable(input, model, diagnostics, mode, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
+    }
+
+    fn analyze_parsed_diagram_cancellable(
+        &self,
+        input: DiagramProjectionInput<'_>,
+        model: &serde_json::Value,
+        mut diagnostics: Vec<AnalysisDiagnostic>,
+        mode: AnalysisMode,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<LocalAnalysis, AnalysisCancelled> {
+        let DiagramProjectionInput {
+            source,
+            source_map,
+            metadata,
+            editor_facts,
+        } = input;
+        cancellation.checkpoint()?;
         let diagram_type = metadata.diagram_type.as_str();
-        diagnostics.extend(crate::rules::parsed_source_lint_diagnostics(
+        diagnostics.extend(crate::rules::parsed_source_lint_diagnostics_cancellable(
             source,
             source_map,
             &self.options.rule_config,
             diagram_type,
-        ));
-        diagnostics.extend(crate::rules::semantic_warning_diagnostics(
+            cancellation,
+        )?);
+        diagnostics.extend(crate::rules::semantic_warning_diagnostics_cancellable(
             diagram_type,
             model,
             source_map,
             &self.options.rule_config,
-        ));
+            cancellation,
+        )?);
+        let editor_diagnostics = self.editor_recovery_diagnostics_from_facts_cancellable(
+            diagram_type,
+            source_map,
+            editor_facts,
+            cancellation,
+        )?;
+        let flowchart_projection = (mode != AnalysisMode::DiagnosticReprojection)
+            .then(|| {
+                self.flowchart_facts_projection_cancellable(
+                    model,
+                    diagram_type,
+                    source_map,
+                    cancellation,
+                )
+            })
+            .transpose()?;
+        diagnostics.extend(
+            flowchart_projection
+                .as_ref()
+                .into_iter()
+                .flat_map(|projection| projection.diagnostics.iter().cloned()),
+        );
 
-        match mode {
-            AnalysisMode::Diagnostics => {
+        let local = match mode {
+            AnalysisMode::Diagnostics | AnalysisMode::DiagnosticReprojection => {
+                diagnostics.extend(
+                    editor_diagnostics
+                        .into_iter()
+                        .map(|recovery| recovery.diagnostic),
+                );
                 LocalAnalysis::empty_syntax_with_type(Some(diagram_type.to_string()), diagnostics)
             }
-            AnalysisMode::RichFacts | AnalysisMode::DiagnosticReprojection => {
+            AnalysisMode::RichFacts => {
                 let effective_layout = metadata
                     .effective_config
                     .get_str("layout")
                     .map(str::to_owned);
-                let flowchart_projection =
-                    self.flowchart_facts_projection(model, diagram_type, source_map);
-                diagnostics.extend(flowchart_projection.diagnostics);
-                let editor_projection = self.editor_facts_projection_from_facts(
-                    diagram_type,
-                    source_map,
-                    mode,
-                    editor_facts,
-                );
                 diagnostics.extend(
-                    editor_projection
-                        .diagnostics
+                    editor_diagnostics
                         .into_iter()
                         .map(|recovery| recovery.diagnostic),
                 );
-                if mode == AnalysisMode::DiagnosticReprojection {
-                    return LocalAnalysis::empty_syntax_with_type(
-                        Some(diagram_type.to_string()),
-                        diagnostics,
-                    );
-                }
                 LocalAnalysis {
                     diagnostics,
                     syntax: AnalysisSyntaxFacts::new(
                         Some(diagram_type.to_string()),
-                        editor_projection.text_index,
+                        Self::editor_text_index_from_facts_cancellable(editor_facts, cancellation)?,
                     )
                     .with_effective_layout(effective_layout)
-                    .with_flowchart(flowchart_projection.facts),
+                    .with_flowchart(flowchart_projection.and_then(|projection| projection.facts)),
                 }
             }
-        }
+        };
+        cancellation.checkpoint()?;
+        Ok(local)
     }
 
-    fn analyze_parse_error(
+    fn analyze_parse_error_cancellable(
         &self,
-        source_map: &SourceMap,
+        input: DiagramProjectionInput<'_>,
         mut diagnostics: Vec<AnalysisDiagnostic>,
-        meta: &ParseMetadata,
-        editor_facts: Option<&EditorSemanticFacts>,
         error: &CoreError,
         mode: AnalysisMode,
-    ) -> LocalAnalysis {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<LocalAnalysis, AnalysisCancelled> {
+        let DiagramProjectionInput {
+            source: _,
+            source_map,
+            metadata: meta,
+            editor_facts,
+        } = input;
+        cancellation.checkpoint()?;
         let core_diagnostic = core_error_diagnostic(error, source_map, &self.options.rule_config);
         if let Some(diagnostic) = core_diagnostic.diagnostic {
             diagnostics.push(diagnostic);
         }
         let diagram_type = meta.diagram_type.as_str();
-        let editor_projection =
-            self.editor_facts_projection_from_facts(diagram_type, source_map, mode, editor_facts);
+        let editor_diagnostics = self.editor_recovery_diagnostics_from_facts_cancellable(
+            diagram_type,
+            source_map,
+            editor_facts,
+            cancellation,
+        )?;
         merge_recovery_diagnostics(
             &mut diagnostics,
-            editor_projection.diagnostics,
+            editor_diagnostics,
             core_diagnostic.parse_location,
         );
-        let effective_layout = meta.effective_config.get_str("layout").map(str::to_owned);
-        let syntax =
-            AnalysisSyntaxFacts::new(Some(diagram_type.to_string()), editor_projection.text_index)
+        let local = match mode {
+            AnalysisMode::Diagnostics | AnalysisMode::DiagnosticReprojection => {
+                LocalAnalysis::empty_syntax_with_type(Some(diagram_type.to_string()), diagnostics)
+            }
+            AnalysisMode::RichFacts => {
+                let effective_layout = meta.effective_config.get_str("layout").map(str::to_owned);
+                let syntax = AnalysisSyntaxFacts::new(
+                    Some(diagram_type.to_string()),
+                    Self::editor_text_index_from_facts_cancellable(editor_facts, cancellation)?,
+                )
                 .with_effective_layout(effective_layout);
-        LocalAnalysis {
-            diagnostics,
-            syntax,
-        }
+                LocalAnalysis {
+                    diagnostics,
+                    syntax,
+                }
+            }
+        };
+        cancellation.checkpoint()?;
+        Ok(local)
     }
 
     fn analyze_operation_error(
@@ -538,57 +677,71 @@ impl Analyzer {
         mode.unavailable_syntax(core_diagnostic.diagram_type, diagnostics)
     }
 
-    fn editor_facts_projection_from_facts(
+    fn editor_recovery_diagnostics_from_facts_cancellable(
         &self,
         diagram_type: &str,
         source_map: &SourceMap,
-        mode: AnalysisMode,
         facts: Option<&EditorSemanticFacts>,
-    ) -> EditorFactsProjection {
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Vec<AnalysisRecoveryDiagnostic>, AnalysisCancelled> {
         let Some(facts) = facts else {
-            return EditorFactsProjection::unavailable(Vec::new());
+            return Ok(Vec::new());
         };
 
-        let diagnostics = editor_recovery_diagnostics(
-            facts.diagnostics.iter().cloned(),
-            diagram_type,
-            source_map,
-            &self.options.rule_config,
-        );
-        EditorFactsProjection {
-            text_index: match mode {
-                AnalysisMode::Diagnostics | AnalysisMode::DiagnosticReprojection => {
-                    FenceTextIndex::default()
-                }
-                AnalysisMode::RichFacts => FenceTextIndex::from_core_facts(facts.clone()),
-            },
-            diagnostics,
+        let mut diagnostics = Vec::with_capacity(facts.diagnostics.len());
+        for batch in facts.diagnostics.chunks(128) {
+            cancellation.checkpoint()?;
+            diagnostics.extend(editor_recovery_diagnostics(
+                batch.iter().cloned(),
+                diagram_type,
+                source_map,
+                &self.options.rule_config,
+            ));
+        }
+        cancellation.checkpoint()?;
+        Ok(diagnostics)
+    }
+
+    fn editor_text_index_from_facts_cancellable(
+        facts: Option<&EditorSemanticFacts>,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<FenceTextIndex, AnalysisCancelled> {
+        match facts {
+            Some(facts) => FenceTextIndex::from_core_facts_cancellable(facts, cancellation),
+            None => Ok(FenceTextIndex::default()),
         }
     }
 
-    fn flowchart_facts_projection(
+    fn flowchart_facts_projection_cancellable(
         &self,
         model: &serde_json::Value,
         diagram_type: &str,
         source_map: &SourceMap,
-    ) -> FlowchartFactsProjection {
-        match AnalysisFlowchartFacts::try_from_model(model) {
-            Ok(facts) => FlowchartFactsProjection {
-                facts,
-                diagnostics: Vec::new(),
-            },
-            Err(error) => FlowchartFactsProjection {
-                facts: None,
-                diagnostics: flowchart_facts_projection_diagnostic(
-                    error,
-                    diagram_type,
-                    source_map,
-                    &self.options.rule_config,
-                )
-                .into_iter()
-                .collect(),
-            },
-        }
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<FlowchartFactsProjection, AnalysisCancelled> {
+        let projection =
+            match AnalysisFlowchartFacts::try_from_model_cancellable(model, cancellation)? {
+                Ok(facts) => FlowchartFactsProjection {
+                    facts,
+                    diagnostics: Vec::new(),
+                },
+                Err(error) => {
+                    let _ = source_map.whole_source_span_cancellable(cancellation)?;
+                    FlowchartFactsProjection {
+                        facts: None,
+                        diagnostics: flowchart_facts_projection_diagnostic(
+                            error,
+                            diagram_type,
+                            source_map,
+                            &self.options.rule_config,
+                        )
+                        .into_iter()
+                        .collect(),
+                    }
+                }
+            };
+        cancellation.checkpoint()?;
+        Ok(projection)
     }
 
     pub(crate) fn source_limit_rejection(
@@ -634,6 +787,14 @@ enum AnalysisMode {
     RichFacts,
 }
 
+#[derive(Clone, Copy)]
+struct DiagramProjectionInput<'a> {
+    source: &'a str,
+    source_map: &'a SourceMap,
+    metadata: &'a ParseMetadata,
+    editor_facts: Option<&'a EditorSemanticFacts>,
+}
+
 impl AnalysisMode {
     fn unavailable_syntax(
         self,
@@ -677,21 +838,6 @@ impl LocalAnalysis {
         Self {
             diagnostics,
             syntax: AnalysisSyntaxFacts::unavailable(diagram_type),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct EditorFactsProjection {
-    text_index: FenceTextIndex,
-    diagnostics: Vec<AnalysisRecoveryDiagnostic>,
-}
-
-impl EditorFactsProjection {
-    fn unavailable(diagnostics: Vec<AnalysisRecoveryDiagnostic>) -> Self {
-        Self {
-            text_index: FenceTextIndex::default(),
-            diagnostics,
         }
     }
 }

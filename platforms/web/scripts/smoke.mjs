@@ -1048,6 +1048,13 @@ function assertEditorLanguageSurface(enabled) {
   assert.equal(editorSession.version, 1);
   assert.equal(editorSession.uri, editorUri);
   assert.equal(Array.isArray(editorSession.diagnostics().diagnostics), true);
+  assert.equal(typeof editorSession.searchDocumentSymbols, "function");
+  assert.equal(typeof editorSession.workspaceSymbols, "undefined");
+  assert.ok(
+    editorSession
+      .searchDocumentSymbols("A")
+      .some((symbol) => symbol.name === "A"),
+  );
   editorSession.update("flowchart TD\nA-->B\nB-->C\n", 2);
   assert.equal(editorSession.version, 2);
   assert.ok(editorSession.semanticTokens() instanceof Uint32Array);
@@ -1064,6 +1071,11 @@ function assertEditorLanguageSurface(enabled) {
 
   const diagnostics = api.editorDiagnostics(editorSource, deterministicTime, editorUri);
   assert.equal(Array.isArray(diagnostics.diagnostics), true);
+  assert.ok(
+    api
+      .editorSearchDocumentSymbols(editorSource, "A", editorUri, deterministicTime)
+      .some((symbol) => symbol.name === "A"),
+  );
 
   const editorLintOptions = {
     ...deterministicTime,
@@ -1260,7 +1272,7 @@ function assertEditorLanguageSurface(enabled) {
     "editorCompletions",
     "editorHover",
     "editorDocumentSymbols",
-    "editorWorkspaceSymbols",
+    "editorSearchDocumentSymbols",
     "editorDefinition",
     "editorReferences",
     "editorPrepareRename",
@@ -1270,6 +1282,7 @@ function assertEditorLanguageSurface(enabled) {
   ]) {
     assert.equal(typeof exportedWasmModule[apiName], "function");
   }
+  assert.equal(typeof exportedWasmModule.editorWorkspaceSymbols, "undefined");
 }
 
 function sha256(value) {

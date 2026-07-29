@@ -133,7 +133,7 @@ test("worker owns one native editor session across document updates and queries"
     documentSymbols() {
       return [];
     },
-    workspaceSymbols() {
+    searchDocumentSymbols() {
       return [];
     },
     definition() {

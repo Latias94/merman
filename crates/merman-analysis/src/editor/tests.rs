@@ -1,15 +1,16 @@
 use super::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceExpectedSyntaxKind,
     FenceRenamePolicy, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
-    shape_object_value_prefix,
 };
 use merman_core::{
-    EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, SourceSpan,
 };
 
-fn flowchart_facts() -> EditorSemanticFacts {
-    EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart)
+fn facts_expecting(kind: EditorExpectedSyntaxKind, span: SourceSpan) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    facts.push_expected_syntax(EditorExpectedSyntax::new(kind, span));
+    facts
 }
 
 #[test]
@@ -60,8 +61,11 @@ fn unavailable_index_offers_only_source_start_headers() {
 }
 
 #[test]
-fn parser_backed_cursor_context_allows_prefix_limited_helpers() {
-    let index = FenceTextIndex::from_core_facts(flowchart_facts());
+fn parser_backed_cursor_context_projects_expected_operator_and_directive_helpers() {
+    let index = FenceTextIndex::from_core_facts(facts_expecting(
+        EditorExpectedSyntaxKind::Operator,
+        SourceSpan::new(14, 16),
+    ));
 
     let operator = index.cursor_context("flowchart TD\nA-->B", "flowchart TD\nA--".len());
     assert_eq!(operator.source(), FenceTextIndexSource::ParserComplete);
@@ -77,8 +81,12 @@ fn parser_backed_cursor_context_allows_prefix_limited_helpers() {
 
 #[test]
 fn cursor_context_uses_fence_local_offsets_and_parser_backed_shape_context() {
-    let index = FenceTextIndex::from_core_facts(flowchart_facts());
-    let context = index.cursor_context("  A@{ shape: ", "  A@{ shape: ".len());
+    let source = "  A@{ shape: ";
+    let index = FenceTextIndex::from_core_facts(facts_expecting(
+        EditorExpectedSyntaxKind::ShapeValue,
+        SourceSpan::new(source.len(), source.len()),
+    ));
+    let context = index.cursor_context(source, source.len());
 
     assert_eq!(context.prefix(), "A@{ shape: ");
     assert_eq!(context.prefix_start(), 2);
@@ -88,37 +96,41 @@ fn cursor_context_uses_fence_local_offsets_and_parser_backed_shape_context() {
 }
 
 #[test]
-fn cursor_context_accepts_mermaid_shape_object_whitespace_variants() {
-    let index = FenceTextIndex::from_core_facts(flowchart_facts());
+fn cursor_context_treats_lf_crlf_and_bare_cr_as_line_boundaries() {
+    for line_ending in ["\n", "\r\n", "\r"] {
+        let source = format!("flowchart TD{line_ending}  A@{{ shape: rou");
+        let value_start = source.find("rou").unwrap();
+        let index = FenceTextIndex::from_core_facts(facts_expecting(
+            EditorExpectedSyntaxKind::ShapeValue,
+            SourceSpan::new(value_start, source.len()),
+        ));
+        let context = index.cursor_context(&source, source.len());
 
-    for source in ["A@{shape: rou", "A@{       shape: rou", "A@{ shape : rou"] {
-        let context = index.cursor_context(source, source.len());
+        assert_eq!(context.prefix(), "A@{ shape: rou", "{line_ending:?}");
+        assert_eq!(
+            context.prefix_start(),
+            "flowchart TD".len() + line_ending.len() + 2,
+            "{line_ending:?}"
+        );
         assert!(
             context.offers(FenceCursorCompletionKind::Shape),
-            "expected shape completion for {source:?}"
+            "{line_ending:?}"
         );
     }
 }
 
 #[test]
-fn shape_object_value_prefix_reports_replacement_start() {
-    let prefix = "A@{       shape : rou";
-    let parsed = shape_object_value_prefix(prefix).expect("shape object prefix");
-
-    assert_eq!(parsed.value_start, prefix.find("rou").unwrap());
-    assert!(parsed.has_separator_space);
-}
-
-#[test]
-fn shape_object_value_prefix_stops_after_shape_field_boundary() {
-    for prefix in [
-        "A@{ shape: rect, label: rou",
-        "A@{ shape: rect, icon: \"rou",
-        "A@{\n  shape: rect\n  label: rou",
-    ] {
+fn cursor_context_accepts_mermaid_shape_object_whitespace_variants() {
+    for source in ["A@{shape: rou", "A@{       shape: rou", "A@{ shape : rou"] {
+        let value_start = source.find("rou").unwrap();
+        let index = FenceTextIndex::from_core_facts(facts_expecting(
+            EditorExpectedSyntaxKind::ShapeValue,
+            SourceSpan::new(value_start, source.len()),
+        ));
+        let context = index.cursor_context(source, source.len());
         assert!(
-            shape_object_value_prefix(prefix).is_none(),
-            "shape object completion must not cross into later fields: {prefix:?}"
+            context.offers(FenceCursorCompletionKind::Shape),
+            "expected shape completion for {source:?}"
         );
     }
 }

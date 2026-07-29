@@ -78,15 +78,25 @@ pub(crate) fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Va
 pub(crate) fn parse_eventmodeling_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_eventmodeling_semantic_source(code, meta),
-        |source| {
-            let editor_facts = source.editor_facts();
-            (source.into_compat_json(meta), editor_facts)
-        },
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control.checkpoint()?;
+    let construction =
+        match construct_eventmodeling_semantic_source_controlled(code, meta, control)? {
+            Ok(source) => {
+                let editor_facts = source.editor_facts();
+                let json = source.into_compat_json_controlled(meta, control)?;
+                Ok((json, editor_facts))
+            }
+            Err(failure) => Err(failure),
+        };
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |(json, editor_facts)| (json, editor_facts),
         EventModelingParseFailure::into_error_and_editor_facts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 pub(crate) fn render_model_to_compat_json(
@@ -266,7 +276,12 @@ struct EventModelingParseFailure {
 }
 
 impl EventModelingSyntaxFacts {
-    fn editor_facts(&self, source: &str) -> EditorSemanticFacts {
+    fn editor_facts_controlled(
+        &self,
+        source: &str,
+        control: &crate::ParseControl,
+    ) -> crate::ParseControlResult<EditorSemanticFacts> {
+        control.checkpoint()?;
         let mut facts = EditorSemanticFacts::new();
         if let Some(header) = &self.header {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -282,9 +297,11 @@ impl EventModelingSyntaxFacts {
             ));
         }
         for common in self.common.iter() {
+            control.checkpoint()?;
             push_langium_common_editor_fact(&mut facts, common, "eventmodeling");
         }
         for entity in &self.model_entities {
+            control.checkpoint()?;
             facts.push_symbol(
                 EditorSemanticSymbol::new(
                     entity.text.clone(),
@@ -297,22 +314,31 @@ impl EventModelingSyntaxFacts {
             );
         }
         for frame in &self.frames {
-            push_eventmodeling_frame_facts(&mut facts, frame);
+            control.checkpoint()?;
+            push_eventmodeling_frame_facts(&mut facts, frame, control)?;
         }
         for data_entity in &self.data_entities {
+            control.checkpoint()?;
             push_eventmodeling_data_facts(&mut facts, data_entity);
+            control.checkpoint()?;
         }
         for note in &self.note_entities {
+            control.checkpoint()?;
             push_eventmodeling_note_facts(&mut facts, note);
+            control.checkpoint()?;
         }
         for gwt in &self.gwt_entities {
-            push_eventmodeling_gwt_facts(&mut facts, gwt);
+            control.checkpoint()?;
+            push_eventmodeling_gwt_facts(&mut facts, gwt, control)?;
         }
         for diagnostic in &self.validation_diagnostics {
+            control.checkpoint()?;
             facts.push_diagnostic(&diagnostic.message, Some(diagnostic.span));
         }
+        control.checkpoint()?;
         self.lexemes.attach(source, &mut facts);
-        facts
+        control.checkpoint()?;
+        Ok(facts)
     }
 }
 
@@ -322,37 +348,56 @@ impl EventModelingSemanticSource {
     }
 
     fn into_render_model(self, meta: &ParseMetadata) -> EventModelingDiagramRenderModel {
+        self.into_render_model_controlled(meta, &crate::ParseControl::new())
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    fn into_render_model_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &crate::ParseControl,
+    ) -> crate::ParseControlResult<EventModelingDiagramRenderModel> {
+        control.checkpoint()?;
         let common = LangiumCommonDbFields::from_facts(&self.syntax.common);
-        let frames = self
-            .syntax
-            .frames
-            .into_iter()
-            .map(|frame| EventModelingFrameRenderModel {
+        let mut frames = Vec::with_capacity(self.syntax.frames.len());
+        for frame in self.syntax.frames {
+            control.checkpoint()?;
+            let mut source_frames = Vec::with_capacity(frame.source_frames.len());
+            for source in frame.source_frames {
+                control.checkpoint()?;
+                source_frames.push(source.text);
+            }
+            let data_inline_value = if let Some(data) = frame.data_inline_value {
+                control.checkpoint()?;
+                let value = sanitize_text(&data.text, &meta.effective_config);
+                control.checkpoint()?;
+                Some(value)
+            } else {
+                None
+            };
+            frames.push(EventModelingFrameRenderModel {
                 name: frame.name,
                 frame_kind: frame.frame_kind,
                 model_entity_type: frame.model_entity_type,
                 entity_identifier: sanitize_text(&frame.entity_identifier, &meta.effective_config),
-                source_frames: frame
-                    .source_frames
-                    .into_iter()
-                    .map(|source| source.text)
-                    .collect(),
-                data_inline_value: frame
-                    .data_inline_value
-                    .map(|data| sanitize_text(&data.text, &meta.effective_config)),
+                source_frames,
+                data_inline_value,
                 data_reference: frame.data_reference.map(|data| data.text),
-            })
-            .collect();
-        let data_entities = self
-            .syntax
-            .data_entities
-            .into_iter()
-            .map(|data| EventModelingDataEntityRenderModel {
+            });
+            control.checkpoint()?;
+        }
+        let mut data_entities = Vec::with_capacity(self.syntax.data_entities.len());
+        for data in self.syntax.data_entities {
+            control.checkpoint()?;
+            let data_block_value = sanitize_text(&data.block_text, &meta.effective_config);
+            control.checkpoint()?;
+            data_entities.push(EventModelingDataEntityRenderModel {
                 name: data.name.text,
-                data_block_value: sanitize_text(&data.block_text, &meta.effective_config),
-            })
-            .collect();
-        EventModelingDiagramRenderModel {
+                data_block_value,
+            });
+        }
+        control.checkpoint()?;
+        Ok(EventModelingDiagramRenderModel {
             title: common
                 .title
                 .map(|value| sanitize_text(&value, &meta.effective_config)),
@@ -364,12 +409,22 @@ impl EventModelingSemanticSource {
                 .map(|value| sanitize_acc_descr(&value, &meta.effective_config)),
             frames,
             data_entities,
-        }
+        })
     }
 
     fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
         let model = self.into_render_model(meta);
         render_model_to_compat_json(&model, meta)
+    }
+
+    fn into_compat_json_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &crate::ParseControl,
+    ) -> crate::ParseControlResult<Result<Value>> {
+        let model = self.into_render_model_controlled(meta, control)?;
+        control.checkpoint()?;
+        Ok(render_model_to_compat_json(&model, meta))
     }
 }
 
@@ -391,28 +446,50 @@ fn construct_eventmodeling_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<EventModelingSemanticSource, EventModelingParseFailure> {
+    construct_eventmodeling_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_eventmodeling_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<
+    std::result::Result<EventModelingSemanticSource, EventModelingParseFailure>,
+> {
+    control.checkpoint()?;
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("eventmodeling");
 
     let mut syntax = EventModelingSyntaxFacts::default();
-    let mut cursor = EventModelingCursor::new(code);
+    let mut cursor = EventModelingCursor::new(code, control);
     if let Err(error) = cursor.skip_hidden(meta) {
+        control.checkpoint()?;
         let fallback = cursor.insertion_span();
         syntax.lexemes = cursor.into_lexemes();
-        return Err(eventmodeling_failure(error, syntax, fallback, code));
+        return Ok(Err(eventmodeling_failure_controlled(
+            error, syntax, fallback, code, control,
+        )?));
     }
-    match parse_eventmodeling_header_cursor(&mut cursor, meta) {
+    control.checkpoint()?;
+    let header = parse_eventmodeling_header_cursor(&mut cursor, meta);
+    control.checkpoint()?;
+    match header {
         Ok(header) => syntax.header = Some(header),
         Err(error) => {
             let fallback = cursor.insertion_span();
             syntax.lexemes = cursor.into_lexemes();
-            return Err(eventmodeling_failure(error, syntax, fallback, code));
+            return Ok(Err(eventmodeling_failure_controlled(
+                error, syntax, fallback, code, control,
+            )?));
         }
     }
 
     let mut first_failure = None;
     loop {
+        control.checkpoint()?;
         if let Err(error) = cursor.skip_hidden(meta) {
+            control.checkpoint()?;
             let span = eventmodeling_error_span(&error, cursor.insertion_span());
             first_failure.get_or_insert((error, span));
             break;
@@ -484,6 +561,7 @@ fn construct_eventmodeling_semantic_source(
             ))
         };
 
+        control.checkpoint()?;
         if let Err(error) = result {
             let span = eventmodeling_error_span(&error, cursor.insertion_span());
             first_failure.get_or_insert((error, span));
@@ -491,19 +569,22 @@ fn construct_eventmodeling_semantic_source(
                 break;
             }
             cursor.recover_to_next_statement(statement_start);
+            control.checkpoint()?;
         }
     }
 
-    validate_eventmodeling_semantics(&mut syntax);
+    validate_eventmodeling_semantics(&mut syntax, control)?;
     syntax.lexemes = cursor.into_lexemes();
     if let Some((error, span)) = first_failure {
-        return Err(eventmodeling_failure(error, syntax, span, code));
+        return Ok(Err(eventmodeling_failure_controlled(
+            error, syntax, span, code, control,
+        )?));
     }
-    let editor_facts = syntax.editor_facts(code);
-    Ok(EventModelingSemanticSource {
+    let editor_facts = syntax.editor_facts_controlled(code, control)?;
+    Ok(Ok(EventModelingSemanticSource {
         syntax,
         editor_facts,
-    })
+    }))
 }
 
 const EVENTMODELING_ENTITY_TYPES: &[&str] = &[
@@ -523,14 +604,16 @@ const EVENTMODELING_DATA_TYPES: &[&str] = &[
 
 struct EventModelingCursor<'a> {
     source: &'a str,
+    control: &'a crate::ParseControl,
     offset: usize,
     lexemes: EventModelingLexemeTrace,
 }
 
 impl<'a> EventModelingCursor<'a> {
-    fn new(source: &'a str) -> Self {
+    fn new(source: &'a str, control: &'a crate::ParseControl) -> Self {
         Self {
             source,
+            control,
             offset: 0,
             lexemes: EventModelingLexemeTrace::default(),
         }
@@ -606,12 +689,19 @@ impl<'a> EventModelingCursor<'a> {
 
     fn recover_to_next_statement(&mut self, statement_start: usize) {
         self.offset = statement_start.min(self.source.len());
+        let mut next_checkpoint = self.offset.saturating_add(4096);
         while self.offset < self.source.len() {
             let ch = self.source[self.offset..]
                 .chars()
                 .next()
                 .expect("eventmodeling recovery offset must be a character boundary");
             self.offset += ch.len_utf8();
+            if self.offset >= next_checkpoint {
+                if self.control.checkpoint().is_err() {
+                    break;
+                }
+                next_checkpoint = self.offset.saturating_add(4096);
+            }
             if ch == '\n' || ch == '\r' {
                 break;
             }
@@ -640,21 +730,37 @@ impl<'a> EventModelingCursor<'a> {
         modifier: Option<EditorLexemeModifier>,
     ) {
         for span in segments {
+            if self.control.checkpoint().is_err() {
+                return;
+            }
             self.record_identifier(*span, modifier);
         }
         for span in delimiters {
+            if self.control.checkpoint().is_err() {
+                return;
+            }
             self.lexemes.push(EditorLexemeKind::Delimiter, *span);
         }
     }
 
     fn skip_hidden(&mut self, meta: &ParseMetadata) -> Result<()> {
         loop {
+            if self.control.checkpoint().is_err() {
+                return Ok(());
+            }
+            let mut next_checkpoint = self.offset.saturating_add(4096);
             while self.offset < self.source.len() {
                 let ch = self.source[self.offset..].chars().next().unwrap();
                 if !ch.is_whitespace() {
                     break;
                 }
                 self.offset += ch.len_utf8();
+                if self.offset >= next_checkpoint {
+                    if self.control.checkpoint().is_err() {
+                        return Ok(());
+                    }
+                    next_checkpoint = self.offset.saturating_add(4096);
+                }
             }
             if self.is_eof() {
                 return Ok(());
@@ -706,7 +812,7 @@ impl<'a> EventModelingCursor<'a> {
                 continue;
             }
             if rest.starts_with("---")
-                && let Some(end) = eventmodeling_yaml_end(self.source, self.offset)
+                && let Some(end) = eventmodeling_yaml_end(self.source, self.offset, self.control)
             {
                 self.offset = end;
                 continue;
@@ -722,6 +828,7 @@ impl<'a> EventModelingCursor<'a> {
     ) -> Result<EventModelingFieldSpan> {
         self.skip_hidden(meta)?;
         let start = self.offset;
+        let mut next_checkpoint = self.offset.saturating_add(4096);
         while self.offset < self.source.len() {
             let rest = &self.source[self.offset..];
             let ch = rest.chars().next().unwrap();
@@ -734,6 +841,12 @@ impl<'a> EventModelingCursor<'a> {
                 break;
             }
             self.offset += ch.len_utf8();
+            if self.offset >= next_checkpoint {
+                if self.control.checkpoint().is_err() {
+                    break;
+                }
+                next_checkpoint = self.offset.saturating_add(4096);
+            }
         }
         if start == self.offset {
             return Err(Error::diagram_parse_insertion_point(
@@ -749,7 +862,11 @@ impl<'a> EventModelingCursor<'a> {
     }
 }
 
-fn eventmodeling_yaml_end(source: &str, start: usize) -> Option<usize> {
+fn eventmodeling_yaml_end(
+    source: &str,
+    start: usize,
+    control: &crate::ParseControl,
+) -> Option<usize> {
     let rest = source.get(start..)?;
     let opening_newline = rest.find('\n')?;
     let opening = rest[..opening_newline]
@@ -765,6 +882,9 @@ fn eventmodeling_yaml_end(source: &str, start: usize) -> Option<usize> {
 
     let mut cursor = start + opening_newline + 1;
     while cursor <= source.len() {
+        if control.checkpoint().is_err() {
+            return None;
+        }
         let (line, next) = physical_line_at(source, cursor);
         if line.trim_end_matches([' ', '\t']) == "---" {
             return Some(next);
@@ -777,19 +897,20 @@ fn eventmodeling_yaml_end(source: &str, start: usize) -> Option<usize> {
     None
 }
 
-fn eventmodeling_failure(
+fn eventmodeling_failure_controlled(
     error: Error,
     syntax: EventModelingSyntaxFacts,
     fallback: SourceSpan,
     source: &str,
-) -> EventModelingParseFailure {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<EventModelingParseFailure> {
     let span = eventmodeling_error_span(&error, fallback);
-    let editor_facts = syntax.editor_facts(source);
-    EventModelingParseFailure {
+    let editor_facts = syntax.editor_facts_controlled(source, control)?;
+    Ok(EventModelingParseFailure {
         error: Box::new(error),
         editor_facts: Box::new(editor_facts),
         span,
-    }
+    })
 }
 
 fn eventmodeling_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
@@ -843,6 +964,9 @@ fn take_eventmodeling_qualified_name_cursor(
     let mut delimiters = Vec::new();
 
     loop {
+        if cursor.control.checkpoint().is_err() {
+            break;
+        }
         let segment_start = cursor.offset;
         let Some(first) = cursor.source[cursor.offset..].chars().next() else {
             return Err(Error::diagram_parse_insertion_point(
@@ -858,11 +982,18 @@ fn take_eventmodeling_qualified_name_cursor(
             return Err(eventmodeling_exact_error(meta, expected, span));
         }
         cursor.offset += first.len_utf8();
+        let mut next_checkpoint = cursor.offset.saturating_add(4096);
         while let Some(ch) = cursor.source[cursor.offset..].chars().next() {
             if ch != '_' && !ch.is_ascii_alphanumeric() {
                 break;
             }
             cursor.offset += ch.len_utf8();
+            if cursor.offset >= next_checkpoint {
+                if cursor.control.checkpoint().is_err() {
+                    break;
+                }
+                next_checkpoint = cursor.offset.saturating_add(4096);
+            }
         }
         let segment_span = SourceSpan::new(segment_start, cursor.offset);
         if !text.is_empty() {
@@ -996,6 +1127,9 @@ fn parse_eventmodeling_frame_cursor(
 
     let mut source_frames = Vec::new();
     loop {
+        if cursor.control.checkpoint().is_err() {
+            break;
+        }
         cursor.skip_hidden(meta)?;
         if !cursor.starts_literal("->>") {
             break;
@@ -1255,6 +1389,9 @@ fn parse_eventmodeling_block_cursor(
 
     let mut line_start = cursor.offset;
     while line_start < cursor.source.len() {
+        if cursor.control.checkpoint().is_err() {
+            break;
+        }
         if cursor.source[line_start..].starts_with('}') {
             let block_end = line_start + 1;
             let after = &cursor.source[block_end..];
@@ -1427,6 +1564,9 @@ fn parse_eventmodeling_gwt_group(
 ) -> Result<Vec<EventModelingGwtStatementFacts>> {
     let mut statements = Vec::new();
     loop {
+        if cursor.control.checkpoint().is_err() {
+            break;
+        }
         cursor.skip_hidden(meta)?;
         if cursor.is_eof()
             || stop_keywords
@@ -1501,26 +1641,31 @@ fn parse_eventmodeling_gwt_cursor(
     })
 }
 
-fn validate_eventmodeling_semantics(syntax: &mut EventModelingSyntaxFacts) {
-    let frame_types: HashMap<String, String> = syntax
-        .frames
-        .iter()
-        .map(|frame| (frame.name.clone(), frame.model_entity_type.clone()))
-        .collect();
-    let data_names: HashSet<&str> = syntax
-        .data_entities
-        .iter()
-        .map(|data| data.name.text.as_str())
-        .collect();
-    let model_entity_names: HashSet<&str> = syntax
-        .model_entities
-        .iter()
-        .map(|entity| entity.text.as_str())
-        .collect();
+fn validate_eventmodeling_semantics(
+    syntax: &mut EventModelingSyntaxFacts,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<()> {
+    let mut frame_types = HashMap::with_capacity(syntax.frames.len());
+    for frame in &syntax.frames {
+        control.checkpoint()?;
+        frame_types.insert(frame.name.clone(), frame.model_entity_type.clone());
+    }
+    let mut data_names = HashSet::with_capacity(syntax.data_entities.len());
+    for data in &syntax.data_entities {
+        control.checkpoint()?;
+        data_names.insert(data.name.text.as_str());
+    }
+    let mut model_entity_names = HashSet::with_capacity(syntax.model_entities.len());
+    for entity in &syntax.model_entities {
+        control.checkpoint()?;
+        model_entity_names.insert(entity.text.as_str());
+    }
     let mut diagnostics = Vec::new();
 
     for frame in &syntax.frames {
+        control.checkpoint()?;
         for source in &frame.source_frames {
+            control.checkpoint()?;
             let Some(source_type) = frame_types.get(&source.text) else {
                 diagnostics.push(EventModelingValidationDiagnostic {
                     message: format!("unknown eventmodeling frame reference '{}'", source.text),
@@ -1550,6 +1695,7 @@ fn validate_eventmodeling_semantics(syntax: &mut EventModelingSyntaxFacts) {
         }
     }
     for note in &syntax.note_entities {
+        control.checkpoint()?;
         if !frame_types.contains_key(&note.source_frame.text) {
             diagnostics.push(EventModelingValidationDiagnostic {
                 message: format!(
@@ -1561,6 +1707,7 @@ fn validate_eventmodeling_semantics(syntax: &mut EventModelingSyntaxFacts) {
         }
     }
     for gwt in &syntax.gwt_entities {
+        control.checkpoint()?;
         if !frame_types.contains_key(&gwt.source_frame.text) {
             diagnostics.push(EventModelingValidationDiagnostic {
                 message: format!(
@@ -1571,6 +1718,7 @@ fn validate_eventmodeling_semantics(syntax: &mut EventModelingSyntaxFacts) {
             });
         }
         for statement in gwt.given.iter().chain(&gwt.when).chain(&gwt.then) {
+            control.checkpoint()?;
             if !model_entity_names.contains(statement.entity_reference.text.as_str()) {
                 diagnostics.push(EventModelingValidationDiagnostic {
                     message: format!(
@@ -1583,6 +1731,7 @@ fn validate_eventmodeling_semantics(syntax: &mut EventModelingSyntaxFacts) {
         }
     }
     syntax.validation_diagnostics = diagnostics;
+    Ok(())
 }
 
 fn eventmodeling_allowed_source_types(
@@ -1601,7 +1750,8 @@ fn eventmodeling_allowed_source_types(
 fn push_eventmodeling_frame_facts(
     facts: &mut EditorSemanticFacts,
     frame: &EventModelingFrameFacts,
-) {
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<()> {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
         frame.name_span,
@@ -1631,6 +1781,7 @@ fn push_eventmodeling_frame_facts(
         frame.entity_identifier_span,
     ));
     for source in &frame.source_frames {
+        control.checkpoint()?;
         facts.push_symbol(
             EditorSemanticSymbol::new(
                 source.text.clone(),
@@ -1647,6 +1798,7 @@ fn push_eventmodeling_frame_facts(
         (&frame.data_type, "eventmodeling data type"),
         (&frame.data_inline_value, "eventmodeling inline data"),
     ] {
+        control.checkpoint()?;
         if let Some(field) = field {
             let symbol = if detail == "eventmodeling data reference" {
                 EditorSemanticSymbol::new(
@@ -1669,6 +1821,7 @@ fn push_eventmodeling_frame_facts(
             facts.push_symbol(symbol);
         }
     }
+    Ok(())
 }
 
 fn push_eventmodeling_data_facts(
@@ -1744,7 +1897,11 @@ fn push_eventmodeling_note_facts(facts: &mut EditorSemanticFacts, note: &EventMo
     ));
 }
 
-fn push_eventmodeling_gwt_facts(facts: &mut EditorSemanticFacts, gwt: &EventModelingGwtFacts) {
+fn push_eventmodeling_gwt_facts(
+    facts: &mut EditorSemanticFacts,
+    gwt: &EventModelingGwtFacts,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<()> {
     facts.push_symbol(
         EditorSemanticSymbol::new(
             gwt.source_frame.text.clone(),
@@ -1756,6 +1913,7 @@ fn push_eventmodeling_gwt_facts(facts: &mut EditorSemanticFacts, gwt: &EventMode
         .with_rename_policy(EditorRenamePolicy::EventModelingFrameId),
     );
     for statement in gwt.given.iter().chain(&gwt.when).chain(&gwt.then) {
+        control.checkpoint()?;
         facts.push_symbol(EditorSemanticSymbol::payload(
             statement.model_entity_type.text.clone(),
             Some("eventmodeling entity type".to_string()),
@@ -1774,6 +1932,7 @@ fn push_eventmodeling_gwt_facts(facts: &mut EditorSemanticFacts, gwt: &EventMode
             .with_rename_policy(EditorRenamePolicy::EventModelingId),
         );
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1791,6 +1950,78 @@ mod tests {
             effective_config: MermaidConfig::empty_object(),
             title: None,
         }
+    }
+
+    #[test]
+    fn eventmodeling_parser_can_cancel_inside_a_gwt_group() {
+        let mut text = String::from("eventmodeling\ntf 001 evt Root\ngwt 001 given ");
+        for index in 0..512 {
+            text.push_str(&format!("evt Entity{index} "));
+        }
+        text.push_str("then evt Entity0\n");
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(40);
+
+        assert!(matches!(
+            construct_eventmodeling_semantic_source_controlled(&text, &meta(), &control),
+            Err(crate::ParseCancelled)
+        ));
+    }
+
+    #[test]
+    fn eventmodeling_projection_can_cancel_between_frames() {
+        let mut text = String::from("eventmodeling\n");
+        for index in 0..512 {
+            text.push_str(&format!("tf {:03} evt Entity{index}\n", index % 1000));
+        }
+        let source = construct_eventmodeling_semantic_source(&text, &meta())
+            .unwrap_or_else(|_| panic!("large eventmodeling source"));
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(20);
+
+        assert!(matches!(
+            source.into_render_model_controlled(&meta(), &control),
+            Err(crate::ParseCancelled)
+        ));
+    }
+
+    #[test]
+    fn late_syntax_error_recovery_can_cancel_while_projecting_prefix_facts() {
+        let header = "eventmodeling";
+        let mut source = format!("{header}\n");
+        let mut syntax = EventModelingSyntaxFacts {
+            header: Some(EventModelingFieldSpan {
+                text: header.to_string(),
+                span: SourceSpan::new(0, header.len()),
+            }),
+            ..EventModelingSyntaxFacts::default()
+        };
+        for index in 0..512 {
+            let name = format!("Entity{index}");
+            let name_start = source.len() + "entity ".len();
+            source.push_str("entity ");
+            source.push_str(&name);
+            source.push('\n');
+            syntax.model_entities.push(EventModelingFieldSpan {
+                text: name,
+                span: SourceSpan::new(name_start, source.len() - 1),
+            });
+        }
+        let invalid_start = source.len();
+        source.push_str("not-a-statement");
+        let invalid_span = SourceSpan::new(invalid_start, source.len());
+        let error = Error::diagram_parse_exact(
+            "eventmodeling".to_string(),
+            "late eventmodeling syntax error",
+            invalid_span,
+        );
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(20);
+
+        assert!(matches!(
+            eventmodeling_failure_controlled(error, syntax, invalid_span, &source, &control),
+            Err(crate::ParseCancelled)
+        ));
     }
 
     #[test]
@@ -1932,7 +2163,7 @@ data ItemAddedData {
 
         reset_eventmodeling_syntax_construction_count();
         let (json, facts) = crate::family::test_support::into_result(
-            parse_eventmodeling_json_and_editor_facts(text, &meta()),
+            parse_eventmodeling_json_and_editor_facts(text, &meta(), &crate::ParseControl::new()),
         )
         .unwrap();
 
@@ -1971,7 +2202,11 @@ data ItemAddedData {
             let block_end = text.rfind('}').expect("closing brace") + 1;
 
             let (json, facts) = crate::family::test_support::into_result(
-                parse_eventmodeling_json_and_editor_facts(&text, &meta()),
+                parse_eventmodeling_json_and_editor_facts(
+                    &text,
+                    &meta(),
+                    &crate::ParseControl::new(),
+                ),
             )
             .expect("EM_DATA_BLOCK accepts whitespace after its closing brace");
             let typed = parse_eventmodeling_model_for_render(&text, &meta())

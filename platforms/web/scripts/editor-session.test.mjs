@@ -69,7 +69,7 @@ class FakeNativeEditorSession {
     return [];
   }
 
-  workspaceSymbols(query) {
+  searchDocumentSymbols(query) {
     return [{ name: query }];
   }
 
@@ -108,6 +108,9 @@ await webApi.initMerman({
     transportApiVersion: () => 3,
     runtimeCatalog: runtimeCatalogFixture,
     EditorSession: FakeNativeEditorSession,
+    editorSearchDocumentSymbols(source, query, uri, optionsJson) {
+      return [{ name: query, source, uri, optionsJson }];
+    },
     editorSemanticTokenDescriptor() {
       descriptorCalls += 1;
       return runtimeDescriptor(webApi.SEMANTIC_TOKEN_DESCRIPTOR);
@@ -179,7 +182,23 @@ test("browser editor session owns one native analyzed document", () => {
     isIncomplete: false,
     items: [{ label: "2:7" }],
   });
-  assert.deepEqual(session.workspaceSymbols("Alpha"), [{ name: "Alpha" }]);
+  assert.deepEqual(session.searchDocumentSymbols("Alpha"), [{ name: "Alpha" }]);
+  assert.equal("workspaceSymbols" in session, false);
+  assert.deepEqual(
+    webApi.editorSearchDocumentSymbols(
+      "flowchart TD\nAlpha",
+      "Alpha",
+      "file:///workspace/search.mmd",
+      { site_config: { layout: "dagre" } },
+    ),
+    [{
+      name: "Alpha",
+      source: "flowchart TD\nAlpha",
+      uri: "file:///workspace/search.mmd",
+      optionsJson: JSON.stringify({ site_config: { layout: "dagre" } }),
+    }],
+  );
+  assert.equal("editorWorkspaceSymbols" in webApi, false);
 
   session.update("flowchart TD\nA-->C", 2);
   assert.equal(native.source, "flowchart TD\nA-->C");
@@ -204,7 +223,7 @@ test("browser editor session owns one native analyzed document", () => {
     () => session.completions({ line: 0, character: 0 }),
     () => session.hover({ line: 0, character: 0 }),
     () => session.documentSymbols(),
-    () => session.workspaceSymbols(""),
+    () => session.searchDocumentSymbols(""),
     () => session.definition({ line: 0, character: 0 }),
     () => session.references({ line: 0, character: 0 }),
     () => session.prepareRename({ line: 0, character: 0 }),

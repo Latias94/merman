@@ -1,16 +1,27 @@
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
-    ParseMetadata, Result, SourceSpan,
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseControl,
+    ParseControlResult, ParseMetadata, Result, SourceSpan,
     editor::{
-        EditorLexemeBatchResult, EditorLexemeJournal, format_lalrpop_parse_error,
-        lalrpop_parse_diagnostic, lalrpop_recovery_span,
+        EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
+        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
     },
 };
 use serde_json::{Value, json};
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
+
+const ER_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
+    EditorCompletionCandidate::keyword("TB", "top to bottom"),
+    EditorCompletionCandidate::keyword("BT", "bottom to top"),
+    EditorCompletionCandidate::keyword("LR", "left to right"),
+    EditorCompletionCandidate::keyword("RL", "right to left"),
+];
+
+const ER_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
+    EditorCompletionVocabulary::new(&[], ER_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 thread_local! {
@@ -392,36 +403,63 @@ struct ErSyntax {
 }
 
 impl ErSyntax {
-    fn lex(code: &str) -> Self {
+    fn lex(code: &str, control: &ParseControl) -> ParseControlResult<Self> {
         let mut journal = EditorLexemeJournal::family_lexer(code);
         let events = {
             let lexer = Lexer::new(code, &mut journal);
-            lexer.collect()
+            let mut events = Vec::new();
+            for event in lexer {
+                if events.len() % 128 == 0 {
+                    control.checkpoint()?;
+                }
+                events.push(event);
+            }
+            events
         };
-        Self {
+        control.checkpoint()?;
+        Ok(Self {
             events,
             lexemes: journal.finish(),
-        }
+        })
     }
 
     fn into_editor_facts_and_actions(
         self,
-    ) -> (
+        code: &str,
+        control: &ParseControl,
+    ) -> ParseControlResult<(
         EditorSemanticFacts,
         std::result::Result<Vec<Action>, ErGrammarError>,
-    ) {
-        let mut facts = EditorSemanticFacts::new();
+    )> {
+        let mut facts =
+            EditorSemanticFacts::new().with_completion_vocabulary(ER_COMPLETION_VOCABULARY);
         let mut collector = ErEditorFactCollector::default();
-        for event in &self.events {
+        for (index, event) in self.events.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
             match event {
-                Ok((start, token, end)) => collector.accept(token, *start, *end, &mut facts),
-                Err(_) => facts.mark_recovered(),
+                Ok((start, token, end)) => collector.accept(code, token, *start, *end, &mut facts),
+                Err(error) => {
+                    facts.mark_recovered();
+                    if let Some(expected) = error.expected_syntax.as_ref() {
+                        facts.push_expected_syntax(expected.clone());
+                    }
+                }
             }
         }
         collector.finish(&mut facts);
         facts.replace_family_lexemes(self.lexemes);
-        let actions = er_grammar::ActionsParser::new().parse(self.events);
-        (facts, actions)
+        control.checkpoint()?;
+        let mut emitted = 0usize;
+        let controlled_events = self.events.into_iter().take_while(|_| {
+            let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+            emitted = emitted.saturating_add(1);
+            active
+        });
+        let actions = er_grammar::ActionsParser::new().parse(controlled_events);
+        control.checkpoint()?;
+        Ok((facts, actions))
     }
 }
 
@@ -478,28 +516,34 @@ impl ErSemanticFailure {
 
 fn construct_er_semantic_source(
     code: &str,
-) -> std::result::Result<ErSemanticSource, Box<ErSemanticFailure>> {
-    let syntax = ErSyntax::lex(code);
-    let (editor_facts, actions) = syntax.into_editor_facts_and_actions();
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<ErSemanticSource, Box<ErSemanticFailure>>> {
+    let syntax = ErSyntax::lex(code, control)?;
+    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
     let actions = match actions {
         Ok(actions) => actions,
         Err(error) => {
-            return Err(Box::new(ErSemanticFailure {
+            return Ok(Err(Box::new(ErSemanticFailure {
                 error,
                 editor_facts,
-            }));
+            })));
         }
     };
 
     let mut db = ErDb::new();
-    for a in actions {
+    for (index, a) in actions.into_iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         db.apply(a);
     }
-    Ok(ErSemanticSource { db, editor_facts })
+    control.checkpoint()?;
+    Ok(Ok(ErSemanticSource { db, editor_facts }))
 }
 
 fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemanticSource> {
-    construct_er_semantic_source(code)
+    construct_er_semantic_source(code, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
         .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
 
@@ -517,12 +561,16 @@ pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
 pub(crate) fn parse_er_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_er_semantic_source(code),
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_er_semantic_source(code, control)?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
         |ErSemanticSource { db, editor_facts }| (db.into_model(meta), editor_facts),
         |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 #[derive(Debug, Default)]
@@ -563,7 +611,14 @@ enum ExpectedErIdList {
 }
 
 impl ErEditorFactCollector {
-    fn accept(&mut self, token: &Tok, start: usize, end: usize, facts: &mut EditorSemanticFacts) {
+    fn accept(
+        &mut self,
+        code: &str,
+        token: &Tok,
+        start: usize,
+        end: usize,
+        facts: &mut EditorSemanticFacts,
+    ) {
         match token {
             Tok::ErDiagram => self.reset_line_state(),
             Tok::Newline => {
@@ -714,7 +769,15 @@ impl ErEditorFactCollector {
                     self.push_context_payload(facts, value.clone(), detail, start, end);
                 }
             }
-            Tok::Direction(_) | Tok::RestOfLine(_) => {}
+            Tok::Direction(_) => {
+                if let Some(span) = editor_keyword_value_span(code, start, end, "direction") {
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::DirectionValue,
+                        span,
+                    ));
+                }
+            }
+            Tok::RestOfLine(_) => {}
         }
     }
 
@@ -904,6 +967,7 @@ enum Tok {
 struct LexError {
     message: String,
     span: SourceSpan,
+    expected_syntax: Option<EditorExpectedSyntax>,
 }
 
 impl LexError {
@@ -911,7 +975,13 @@ impl LexError {
         Self {
             message: message.into(),
             span,
+            expected_syntax: None,
         }
+    }
+
+    fn expecting(mut self, kind: EditorExpectedSyntaxKind, span: SourceSpan) -> Self {
+        self.expected_syntax = Some(EditorExpectedSyntax::new(kind, span));
+        self
     }
 }
 
@@ -1336,31 +1406,42 @@ impl<'input, 'journal> Lexer<'input, 'journal> {
         Some(Ok((start, Tok::AccDescr(s.trim().to_string()), self.pos)))
     }
 
-    fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
+    fn lex_direction(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
         if !self.starts_with_word_ci("direction") {
             return None;
         }
         self.pos += "direction".len();
+        let keyword_end = self.pos;
         self.skip_ws_default();
-        let rest = &self.input[self.pos..].to_ascii_uppercase();
-        let dir = if rest.starts_with("TB") {
-            self.pos += 2;
+        let value_start = self.pos;
+        while self
+            .peek()
+            .is_some_and(|byte| !byte.is_ascii_whitespace() && byte != b';')
+        {
+            self.pos += 1;
+        }
+        let value_end = self.pos;
+        let _ = self.read_to_newline();
+        let value = &self.input[value_start..value_end];
+        let selection = SourceSpan::new(value_start, value_end);
+        let dir = if value.eq_ignore_ascii_case("TB") {
             "TB"
-        } else if rest.starts_with("BT") {
-            self.pos += 2;
+        } else if value.eq_ignore_ascii_case("BT") {
             "BT"
-        } else if rest.starts_with("LR") {
-            self.pos += 2;
+        } else if value.eq_ignore_ascii_case("LR") {
             "LR"
-        } else if rest.starts_with("RL") {
-            self.pos += 2;
+        } else if value.eq_ignore_ascii_case("RL") {
             "RL"
         } else {
-            return None;
+            self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
+            if selection.start < selection.end {
+                self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
+            }
+            return Some(Err(LexError::new("invalid ER direction", selection)
+                .expecting(EditorExpectedSyntaxKind::DirectionValue, selection)));
         };
-        let _ = self.read_to_newline();
-        Some((start, Tok::Direction(dir.to_string()), self.pos))
+        Some(Ok((start, Tok::Direction(dir.to_string()), self.pos)))
     }
 
     fn lex_keyword(&mut self) -> Option<(usize, Tok, usize)> {
@@ -1853,7 +1934,7 @@ impl Iterator for Lexer<'_, '_> {
             }
 
             if let Some(tok) = self.lex_direction() {
-                return Some(self.emit_token(tok));
+                return Some(self.emit_result(tok));
             }
 
             if let Some(tok) = self.lex_keyword() {

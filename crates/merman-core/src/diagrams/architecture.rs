@@ -1,7 +1,8 @@
 use crate::diagrams::scan::strip_line_ending;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticKind, EditorSemanticSymbol, Error, ParseControl, ParseControlResult,
+    ParseMetadata, Result, SourceSpan,
     family::{CombinedSemanticFailure, CombinedSemanticParse},
 };
 use serde::{Deserialize, Serialize};
@@ -113,15 +114,30 @@ impl ArchitectureDb {
     }
 
     fn render_model(&self) -> ArchitectureDiagramRenderModel {
+        let control = ParseControl::new();
+        self.render_model_controlled(&control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    fn render_model_controlled(
+        &self,
+        control: &ParseControl,
+    ) -> ParseControlResult<ArchitectureDiagramRenderModel> {
+        control.checkpoint()?;
         let title = (!self.title.trim().is_empty()).then(|| self.title.clone());
         let acc_title = (!self.acc_title.trim().is_empty()).then(|| self.acc_title.clone());
         let acc_descr = (!self.acc_descr.trim().is_empty()).then(|| self.acc_descr.clone());
 
-        let nodes: Vec<ArchitectureRenderNode> = self
-            .ordered_node_ids()
-            .into_iter()
-            .filter_map(|id| self.nodes.get(id))
-            .map(|n| ArchitectureRenderNode {
+        let node_ids = javascript_object_value_keys_controlled(&self.node_order, control)?;
+        let mut nodes = Vec::with_capacity(node_ids.len());
+        for (index, id) in node_ids.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            let Some(n) = self.nodes.get(id) else {
+                continue;
+            };
+            nodes.push(ArchitectureRenderNode {
                 id: n.id.clone(),
                 node_type: match n.ty {
                     ArchitectureNodeType::Service => ArchitectureRenderNodeType::Service,
@@ -132,25 +148,32 @@ impl ArchitectureDb {
                 icon_text: n.icon_text.clone(),
                 title: n.title.clone(),
                 in_group: n.in_group.clone(),
-            })
-            .collect();
+            });
+        }
 
-        let groups: Vec<ArchitectureRenderGroup> = self
-            .ordered_group_ids()
-            .into_iter()
-            .filter_map(|id| self.groups.get(id))
-            .map(|g| ArchitectureRenderGroup {
+        let group_ids = javascript_object_value_keys_controlled(&self.group_order, control)?;
+        let mut groups = Vec::with_capacity(group_ids.len());
+        for (index, id) in group_ids.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            let Some(g) = self.groups.get(id) else {
+                continue;
+            };
+            groups.push(ArchitectureRenderGroup {
                 id: g.id.clone(),
                 icon: g.icon.clone(),
                 title: g.title.clone(),
                 in_group: g.in_group.clone(),
-            })
-            .collect();
+            });
+        }
 
-        let edges: Vec<ArchitectureRenderEdge> = self
-            .edges
-            .iter()
-            .map(|e| ArchitectureRenderEdge {
+        let mut edges = Vec::with_capacity(self.edges.len());
+        for (index, e) in self.edges.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            edges.push(ArchitectureRenderEdge {
                 lhs_id: e.lhs_id.clone(),
                 lhs_dir: e.lhs_dir,
                 lhs_into: e.lhs_into,
@@ -160,18 +183,30 @@ impl ArchitectureDb {
                 rhs_into: e.rhs_into,
                 rhs_group: e.rhs_group,
                 title: e.title.clone(),
-            })
-            .collect();
+            });
+        }
 
-        ArchitectureDiagramRenderModel {
+        let mut layout_hints = Vec::with_capacity(self.layout_hints.len());
+        for (index, hint) in self.layout_hints.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            layout_hints.push(ArchitectureRenderLayoutHint {
+                direction: hint.direction,
+                members: hint.members.clone(),
+            });
+        }
+
+        control.checkpoint()?;
+        Ok(ArchitectureDiagramRenderModel {
             title,
             acc_title,
             acc_descr,
             nodes,
             groups,
             edges,
-            layout_hints: self.layout_hints_json_model(),
-        }
+            layout_hints,
+        })
     }
 
     fn add_service(
@@ -468,26 +503,31 @@ impl ArchitectureDb {
         Ok(())
     }
 
-    fn add_layout_hint(
+    fn add_layout_hint_controlled(
         &mut self,
         direction: ArchitectureLayoutDirection,
         members: Vec<ArchitectureIdentifier>,
-    ) -> Result<()> {
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<()>> {
+        control.checkpoint()?;
         if members.len() < 2 {
-            return Err(Error::diagram_parse_fallback(
+            return Ok(Err(Error::diagram_parse_fallback(
                 "architecture".to_string(),
                 format!(
                     "An align directive requires at least two members; got {}",
                     members.len()
                 ),
-            ));
+            )));
         }
 
         let mut seen = std::collections::HashSet::new();
         let mut member_texts = Vec::with_capacity(members.len());
-        for member in members {
+        for (index, member) in members.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
             if self.registered_ids.get(&member.text).copied() != Some(RegisteredIdType::Node) {
-                return Err(Error::diagram_parse_exact(
+                return Ok(Err(Error::diagram_parse_exact(
                     "architecture",
                     format!(
                         "align {} references [{}], which is not a service or junction",
@@ -495,10 +535,10 @@ impl ArchitectureDb {
                         member.text
                     ),
                     member.span,
-                ));
+                )));
             }
             if !seen.insert(member.text.clone()) {
-                return Err(Error::diagram_parse_exact(
+                return Ok(Err(Error::diagram_parse_exact(
                     "architecture",
                     format!(
                         "align {} lists [{}] more than once",
@@ -506,7 +546,7 @@ impl ArchitectureDb {
                         member.text
                     ),
                     member.span,
-                ));
+                )));
             }
             member_texts.push(member.text);
         }
@@ -515,45 +555,36 @@ impl ArchitectureDb {
             direction,
             members: member_texts,
         });
-        Ok(())
-    }
-
-    fn layout_hints_json_model(&self) -> Vec<ArchitectureRenderLayoutHint> {
-        self.layout_hints
-            .iter()
-            .map(|hint| ArchitectureRenderLayoutHint {
-                direction: hint.direction,
-                members: hint.members.clone(),
-            })
-            .collect()
-    }
-
-    fn ordered_node_ids(&self) -> Vec<&str> {
-        javascript_object_value_keys(&self.node_order)
-    }
-
-    fn ordered_group_ids(&self) -> Vec<&str> {
-        javascript_object_value_keys(&self.group_order)
+        control.checkpoint()?;
+        Ok(Ok(()))
     }
 }
 
-fn javascript_object_value_keys(keys: &[String]) -> Vec<&str> {
+fn javascript_object_value_keys_controlled<'a>(
+    keys: &'a [String],
+    control: &ParseControl,
+) -> ParseControlResult<Vec<&'a str>> {
     let mut indices = Vec::new();
     let mut strings = Vec::new();
 
-    for key in keys {
+    for (index, key) in keys.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         if let Some(index) = javascript_array_index(key) {
             indices.push((index, key.as_str()));
         } else {
             strings.push(key.as_str());
         }
     }
+    control.checkpoint()?;
     indices.sort_unstable_by_key(|(index, _)| *index);
-    indices
+    control.checkpoint()?;
+    Ok(indices
         .into_iter()
         .map(|(_, key)| key)
         .chain(strings)
-        .collect()
+        .collect())
 }
 
 fn javascript_array_index(key: &str) -> Option<u32> {
@@ -690,12 +721,21 @@ pub(crate) fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Val
 pub(crate) fn parse_architecture_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> CombinedSemanticParse {
-    CombinedSemanticParse::from_construction(
-        parse::parse_combined_semantic_source(code, meta),
-        |source| (Ok(source.compat_json(meta)), source.editor_facts()),
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<CombinedSemanticParse> {
+    control.checkpoint()?;
+    let construction = match parse::parse_combined_semantic_source_controlled(code, meta, control)?
+    {
+        Ok(source) => Ok(source.into_combined_parts_controlled(meta, control)?),
+        Err(error) => Err(error),
+    };
+    let parsed = CombinedSemanticParse::from_construction(
+        construction,
+        |parts| parts,
         CombinedSemanticFailure::into_parts,
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -728,77 +768,90 @@ pub(crate) fn render_model_to_compat_json(
     model: &ArchitectureDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
+    let control = ParseControl::new();
+    render_model_to_compat_json_controlled(model, meta, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+pub(crate) fn render_model_to_compat_json_controlled(
+    model: &ArchitectureDiagramRenderModel,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<Value>> {
+    control.checkpoint()?;
     let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none()
         && let Some(obj) = config.as_object_mut()
     {
         obj.insert("layout".to_string(), Value::String("dagre".to_string()));
     }
+    control.checkpoint()?;
 
-    let edges = model
-        .edges
-        .iter()
-        .map(architecture_render_edge_to_compat_json)
-        .collect::<Vec<_>>();
-    let nodes = model
-        .nodes
-        .iter()
-        .map(|node| architecture_render_node_to_compat_json(node, &edges))
-        .collect::<Vec<_>>();
-    let services = nodes
-        .iter()
-        .filter(|node| node.get("type").and_then(Value::as_str) == Some("service"))
-        .cloned()
-        .collect();
-    let junctions = nodes
-        .iter()
-        .filter(|node| node.get("type").and_then(Value::as_str) == Some("junction"))
-        .cloned()
-        .collect();
+    let mut edges = Vec::with_capacity(model.edges.len());
+    for (index, edge) in model.edges.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        edges.push(architecture_render_edge_to_compat_json(edge));
+    }
+    let mut nodes = Vec::with_capacity(model.nodes.len());
+    let mut services = Vec::new();
+    let mut junctions = Vec::new();
+    for (index, node) in model.nodes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let value = architecture_render_node_to_compat_json(node, &edges, control)?;
+        match node.node_type {
+            ArchitectureRenderNodeType::Service => services.push(value.clone()),
+            ArchitectureRenderNodeType::Junction => junctions.push(value.clone()),
+        }
+        nodes.push(value);
+    }
+    let mut groups = Vec::with_capacity(model.groups.len());
+    for (index, group) in model.groups.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        groups.push(json!({
+            "id": group.id,
+            "icon": group.icon,
+            "title": group.title,
+            "in": group.in_group,
+        }));
+    }
+    let mut layout_hints = Vec::with_capacity(model.layout_hints.len());
+    for (hint_index, hint) in model.layout_hints.iter().enumerate() {
+        if hint_index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let mut members = Vec::with_capacity(hint.members.len());
+        for (member_index, member) in hint.members.iter().enumerate() {
+            if member_index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            members.push(Value::String(member.clone()));
+        }
+        layout_hints.push(json!({
+            "direction": hint.direction.as_str(),
+            "members": members,
+        }));
+    }
 
     let mut out = Map::with_capacity(11);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("title".to_string(), json!(&model.title));
     out.insert("accTitle".to_string(), json!(&model.acc_title));
     out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert(
-        "groups".to_string(),
-        Value::Array(
-            model
-                .groups
-                .iter()
-                .map(|group| {
-                    json!({
-                        "id": group.id,
-                        "icon": group.icon,
-                        "title": group.title,
-                        "in": group.in_group,
-                    })
-                })
-                .collect(),
-        ),
-    );
+    out.insert("groups".to_string(), Value::Array(groups));
     out.insert("nodes".to_string(), Value::Array(nodes));
     out.insert("services".to_string(), Value::Array(services));
     out.insert("junctions".to_string(), Value::Array(junctions));
     out.insert("edges".to_string(), Value::Array(edges));
-    out.insert(
-        "layoutHints".to_string(),
-        Value::Array(
-            model
-                .layout_hints
-                .iter()
-                .map(|hint| {
-                    json!({
-                        "direction": hint.direction.as_str(),
-                        "members": hint.members,
-                    })
-                })
-                .collect(),
-        ),
-    );
+    out.insert("layoutHints".to_string(), Value::Array(layout_hints));
     out.insert("config".to_string(), config);
-    Ok(Value::Object(out))
+    control.checkpoint()?;
+    Ok(Ok(Value::Object(out)))
 }
 
 fn architecture_render_edge_to_compat_json(edge: &ArchitectureRenderEdge) -> Value {
@@ -818,21 +871,26 @@ fn architecture_render_edge_to_compat_json(edge: &ArchitectureRenderEdge) -> Val
 fn architecture_render_node_to_compat_json(
     node: &ArchitectureRenderNode,
     edges: &[Value],
-) -> Value {
-    json!({
+    control: &ParseControl,
+) -> ParseControlResult<Value> {
+    let mut node_edges = Vec::with_capacity(node.edge_indices.len());
+    for (index, edge_index) in node.edge_indices.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        if let Some(edge) = edges.get(*edge_index) {
+            node_edges.push(edge.clone());
+        }
+    }
+    Ok(json!({
         "id": node.id,
         "type": node.node_type,
-        "edges": node
-            .edge_indices
-            .iter()
-            .filter_map(|index| edges.get(*index))
-            .cloned()
-            .collect::<Vec<_>>(),
+        "edges": node_edges,
         "icon": node.icon,
         "iconText": node.icon_text,
         "title": node.title,
         "in": node.in_group,
-    })
+    }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

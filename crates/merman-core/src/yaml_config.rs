@@ -1,3 +1,4 @@
+use crate::{ParseControl, ParseControlResult};
 use granit_parser::{Event, Parser, ScalarStyle, Tag};
 use serde_json::{Map, Number, Value};
 use std::collections::{HashMap, HashSet};
@@ -6,18 +7,38 @@ const YAML_MATERIALIZATION_MIN_BYTES: usize = 64 * 1024;
 const YAML_MATERIALIZATION_INPUT_MULTIPLIER: usize = 16;
 
 pub(crate) fn parse_yaml_value(input: &str, max_nesting_depth: usize) -> Result<Value, String> {
+    let control = ParseControl::new();
+    parse_yaml_value_controlled(input, max_nesting_depth, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+pub(crate) fn parse_yaml_value_controlled(
+    input: &str,
+    max_nesting_depth: usize,
+    control: &ParseControl,
+) -> ParseControlResult<Result<Value, String>> {
+    control.checkpoint()?;
     let materialization_budget = input
         .len()
         .saturating_mul(YAML_MATERIALIZATION_INPUT_MULTIPLIER)
         .max(YAML_MATERIALIZATION_MIN_BYTES);
     let mut builder = YamlValueBuilder::new(max_nesting_depth, materialization_budget);
 
-    for event in Parser::new_from_str(input) {
-        let (event, _) = event.map_err(|e| e.to_string())?;
-        builder.on_event(event)?;
+    for (index, event) in Parser::new_from_str(input).enumerate() {
+        if index % 64 == 0 {
+            control.checkpoint()?;
+        }
+        let (event, _) = match event {
+            Ok(event) => event,
+            Err(error) => return Ok(Err(error.to_string())),
+        };
+        if let Err(error) = builder.on_event(event) {
+            return Ok(Err(error));
+        }
     }
 
-    builder.finish()
+    control.checkpoint()?;
+    builder.finish_controlled(control)
 }
 
 struct YamlValueBuilder {
@@ -200,19 +221,23 @@ impl YamlValueBuilder {
         }
     }
 
-    fn finish(self) -> Result<Value, String> {
+    fn finish_controlled(
+        self,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<Value, String>> {
         if !self.stack.is_empty() {
-            return Err("incomplete YAML document".to_string());
+            return Ok(Err("incomplete YAML document".to_string()));
         }
 
         let Some(root) = self.root else {
-            return Ok(Value::Null);
+            return Ok(Ok(Value::Null));
         };
-        materialize_yaml(
+        materialize_yaml_controlled(
             &self.arena,
             root,
             self.max_nesting_depth,
             self.materialization_budget,
+            control,
         )
     }
 }
@@ -272,27 +297,37 @@ enum MaterializeTask {
     CompleteMapping { node: NodeId, len: usize },
 }
 
-fn materialize_yaml(
+fn materialize_yaml_controlled(
     arena: &[YamlNode],
     root: NodeId,
     max_nesting_depth: usize,
     materialization_budget: usize,
-) -> Result<Value, String> {
+    control: &ParseControl,
+) -> ParseControlResult<Result<Value, String>> {
+    control.checkpoint()?;
     let mut tasks = vec![MaterializeTask::Visit {
         node: root,
         depth: 0,
     }];
     let mut values = Vec::new();
     let mut materialized_bytes = 0usize;
+    let mut visited = 0usize;
 
     while let Some(task) = tasks.pop() {
+        if visited.is_multiple_of(64)
+            && let Err(cancelled) = control.checkpoint()
+        {
+            drop_materialized_values(values);
+            return Err(cancelled);
+        }
+        visited = visited.saturating_add(1);
         match task {
             MaterializeTask::Visit { node, depth } => {
                 if depth > max_nesting_depth {
                     drop_materialized_values(values);
-                    return Err(format!(
+                    return Ok(Err(format!(
                         "config nesting exceeds {max_nesting_depth} levels after resolving YAML aliases"
-                    ));
+                    )));
                 }
 
                 let yaml_node = &arena[node.0];
@@ -300,9 +335,9 @@ fn materialize_yaml(
                     materialized_bytes.saturating_add(yaml_node_materialized_cost(yaml_node));
                 if materialized_bytes > materialization_budget {
                     drop_materialized_values(values);
-                    return Err(
-                        "YAML aliases expand beyond the safe materialization budget".to_string()
-                    );
+                    return Ok(Err(
+                        "YAML aliases expand beyond the safe materialization budget".to_string(),
+                    ));
                 }
 
                 match yaml_node {
@@ -311,7 +346,13 @@ fn materialize_yaml(
                     }
                     YamlNode::Sequence(items) => {
                         tasks.push(MaterializeTask::CompleteSequence { len: items.len() });
-                        for child in items.iter().rev() {
+                        for (index, child) in items.iter().rev().enumerate() {
+                            if index % 64 == 0
+                                && let Err(cancelled) = control.checkpoint()
+                            {
+                                drop_materialized_values(values);
+                                return Err(cancelled);
+                            }
                             tasks.push(MaterializeTask::Visit {
                                 node: *child,
                                 depth: depth.saturating_add(1),
@@ -323,7 +364,13 @@ fn materialize_yaml(
                             node,
                             len: entries.len(),
                         });
-                        for (_, child) in entries.iter().rev() {
+                        for (index, (_, child)) in entries.iter().rev().enumerate() {
+                            if index % 64 == 0
+                                && let Err(cancelled) = control.checkpoint()
+                            {
+                                drop_materialized_values(values);
+                                return Err(cancelled);
+                            }
                             tasks.push(MaterializeTask::Visit {
                                 node: *child,
                                 depth: depth.saturating_add(1),
@@ -343,10 +390,25 @@ fn materialize_yaml(
                 let YamlNode::Mapping(entries) = &arena[node.0] else {
                     drop_materialized_values(values);
                     drop_materialized_values(children);
-                    return Err("invalid YAML materialization state".to_string());
+                    return Ok(Err("invalid YAML materialization state".to_string()));
                 };
                 let mut map = Map::with_capacity(len);
-                for ((key, _), value) in entries.iter().zip(children) {
+                let mut children = children.into_iter();
+                for (index, (key, _)) in entries.iter().enumerate() {
+                    if index % 64 == 0
+                        && let Err(cancelled) = control.checkpoint()
+                    {
+                        drop_materialized_values(values);
+                        drop_materialized_values(children.collect());
+                        crate::config::drop_value_nonrecursive(Value::Object(map));
+                        return Err(cancelled);
+                    }
+                    let Some(value) = children.next() else {
+                        drop_materialized_values(values);
+                        drop_materialized_values(children.collect());
+                        crate::config::drop_value_nonrecursive(Value::Object(map));
+                        return Ok(Err("invalid YAML materialization state".to_string()));
+                    };
                     map.insert(key.clone(), value);
                 }
                 values.push(Value::Object(map));
@@ -356,9 +418,13 @@ fn materialize_yaml(
 
     if values.len() != 1 {
         drop_materialized_values(values);
-        return Err("invalid YAML materialization state".to_string());
+        return Ok(Err("invalid YAML materialization state".to_string()));
     }
-    Ok(values.pop().unwrap_or(Value::Null))
+    if let Err(cancelled) = control.checkpoint() {
+        drop_materialized_values(values);
+        return Err(cancelled);
+    }
+    Ok(Ok(values.pop().unwrap_or(Value::Null)))
 }
 
 fn yaml_node_materialized_cost(node: &YamlNode) -> usize {
@@ -576,7 +642,18 @@ fn is_yaml_float_body(body: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ParseCancelled;
     use serde_json::json;
+
+    #[test]
+    fn controlled_yaml_parse_stops_before_consuming_events() {
+        let control = ParseControl::new();
+        control.cancel();
+
+        let result = parse_yaml_value_controlled("value: 1\n", 16, &control);
+
+        assert!(matches!(result, Err(ParseCancelled)));
+    }
 
     #[test]
     fn parses_nested_yaml_without_recursion() {

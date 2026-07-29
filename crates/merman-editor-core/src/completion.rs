@@ -26,7 +26,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     }
 
     if context.offer_operator_items() {
-        items.extend(operator_items(context.operator_range()));
+        items.extend(operator_items(&context, context.operator_range()));
     }
 
     if context.offer_frontmatter_items() {
@@ -93,65 +93,31 @@ fn diagram_header_items(range: Option<Range>) -> Vec<CompletionItem> {
         .collect()
 }
 
-fn operator_items(range: Option<Range>) -> Vec<CompletionItem> {
-    vec![
-        keyword_completion(
-            "-->",
-            "edge operator",
-            range,
-            None,
-            CompletionDataKind::Operator,
-        ),
-        keyword_completion(
-            "---",
-            "edge operator",
-            range,
-            None,
-            CompletionDataKind::Operator,
-        ),
-        keyword_completion(
-            "-.->",
-            "edge operator",
-            range,
-            None,
-            CompletionDataKind::Operator,
-        ),
-        keyword_completion(
-            "==>",
-            "edge operator",
-            range,
-            None,
-            CompletionDataKind::Operator,
-        ),
-        snippet_completion(
-            "-->|label|",
-            "labeled edge operator",
-            range,
-            "-->|${1:label}|",
-            CompletionDataKind::Operator,
-        ),
-        keyword_completion(
-            "<|--",
-            "inheritance operator",
-            range,
-            None,
-            CompletionDataKind::Operator,
-        ),
-        keyword_completion(
-            "*--",
-            "composition operator",
-            range,
-            None,
-            CompletionDataKind::Operator,
-        ),
-        keyword_completion(
-            "o--",
-            "aggregation operator",
-            range,
-            None,
-            CompletionDataKind::Operator,
-        ),
-    ]
+fn operator_items(context: &CompletionContext<'_>, range: Option<Range>) -> Vec<CompletionItem> {
+    context
+        .completion_vocabulary()
+        .operators()
+        .iter()
+        .map(|candidate| {
+            if let Some(snippet) = candidate.snippet_text() {
+                snippet_completion(
+                    candidate.label(),
+                    candidate.detail(),
+                    range,
+                    snippet,
+                    CompletionDataKind::Operator,
+                )
+            } else {
+                keyword_completion(
+                    candidate.label(),
+                    candidate.detail(),
+                    range,
+                    None,
+                    CompletionDataKind::Operator,
+                )
+            }
+        })
+        .collect()
 }
 
 fn directive_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
@@ -206,36 +172,15 @@ fn is_directive_helper_prefix(prefix: &str) -> bool {
     )
 }
 
-const FLOW_DIRECTION_VALUES: [(&str, &str); 4] = [
-    ("TB", "top to bottom"),
-    ("BT", "bottom to top"),
-    ("LR", "left to right"),
-    ("RL", "right to left"),
-];
-
-const BLOCK_DIRECTION_VALUES: [(&str, &str); 6] = [
-    ("right", "right"),
-    ("left", "left"),
-    ("up", "up"),
-    ("down", "down"),
-    ("x", "horizontal"),
-    ("y", "vertical"),
-];
-
 fn direction_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
+    let values = context.completion_vocabulary().directions();
     if let Some(range) = context.direction_value_range() {
-        let values: &[(&str, &str)] = if context.is_block_diagram() {
-            &BLOCK_DIRECTION_VALUES
-        } else {
-            &FLOW_DIRECTION_VALUES
-        };
-
         return values
             .iter()
-            .map(|(value, detail)| {
+            .map(|candidate| {
                 keyword_completion(
-                    value,
-                    detail,
+                    candidate.label(),
+                    candidate.detail(),
                     Some(range),
                     None,
                     CompletionDataKind::Direction,
@@ -244,12 +189,12 @@ fn direction_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
             .collect();
     }
 
-    FLOW_DIRECTION_VALUES
+    values
         .iter()
-        .map(|(value, detail)| {
+        .map(|candidate| {
             keyword_completion(
-                &format!("direction {value}"),
-                detail,
+                &format!("direction {}", candidate.label()),
+                candidate.detail(),
                 context.prefix_range(),
                 None,
                 CompletionDataKind::Direction,
@@ -531,7 +476,7 @@ pub fn completion_documentation(data: &CompletionResolveData) -> String {
             data.label
         ),
         CompletionDataKind::Direction => format!(
-            "Sets flow direction with `{}`. Direction statements are valid inside flowchart subgraphs and supported flowchart contexts.",
+            "Sets the diagram direction with `{}` in the current Mermaid family and syntax context.",
             data.label
         ),
         CompletionDataKind::Directive => format!(
@@ -757,7 +702,7 @@ mod tests {
 
     #[test]
     fn parser_expected_flowchart_direction_edits_only_direction_value() {
-        let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";
+        let text = "flowchart TD\nsubgraph group\ndirection L\nend\n";
         let mut workspace = DocumentWorkspace::new();
         let snapshot = workspace
             .upsert(
@@ -780,7 +725,7 @@ mod tests {
             })
             .map(|item| item.label.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(labels, vec!["TB", "BT", "LR", "RL"]);
+        assert_eq!(labels, vec!["TB", "TD", "BT", "LR", "RL"]);
 
         let item = completion
             .items
@@ -792,12 +737,12 @@ mod tests {
         assert_eq!(edit.range.start.line, 2);
         assert_eq!(edit.range.start.character, "direction ".len());
         assert_eq!(edit.range.end.line, 2);
-        assert_eq!(edit.range.end.character, "direction LR".len());
+        assert_eq!(edit.range.end.character, "direction L".len());
     }
 
     #[test]
     fn parser_expected_block_arrow_direction_uses_block_values() {
-        let text = "block\n  blockArrow<[\"&nbsp;\"]>(right)\n";
+        let text = "block\n  blockArrow<[\"&nbsp;\"]>(r";
         let mut workspace = DocumentWorkspace::new();
         let snapshot = workspace
             .upsert(
@@ -811,6 +756,10 @@ mod tests {
         let completion = completion_for_snapshot(
             &snapshot,
             Position::new(1, "  blockArrow<[\"&nbsp;\"]>(r".len()),
+        );
+        assert_eq!(
+            completion.fact_source,
+            Some(merman_analysis::FenceTextIndexSource::ParserRecovered)
         );
 
         let labels = completion
@@ -842,7 +791,7 @@ mod tests {
         assert_eq!(edit.range.end.line, 1);
         assert_eq!(
             edit.range.end.character,
-            "  blockArrow<[\"&nbsp;\"]>(right".len()
+            "  blockArrow<[\"&nbsp;\"]>(r".len()
         );
     }
 }

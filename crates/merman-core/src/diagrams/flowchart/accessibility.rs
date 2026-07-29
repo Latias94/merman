@@ -1,7 +1,7 @@
 #[cfg(test)]
 use std::cell::Cell;
 
-use crate::{EditorLexemeKind, SourceSpan};
+use crate::{EditorLexemeKind, ParseControl, ParseControlResult, SourceSpan};
 
 #[cfg(test)]
 thread_local! {
@@ -58,18 +58,30 @@ pub(super) struct FlowchartAccessibilityScan {
 }
 
 pub(super) fn scan_flowchart_accessibility(code: &str) -> FlowchartAccessibilityScan {
+    let control = ParseControl::new();
+    scan_flowchart_accessibility_controlled(code, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+pub(super) fn scan_flowchart_accessibility_controlled(
+    code: &str,
+    control: &ParseControl,
+) -> ParseControlResult<FlowchartAccessibilityScan> {
     #[cfg(test)]
     FLOWCHART_ACCESSIBILITY_SCAN_COUNT
         .set(FLOWCHART_ACCESSIBILITY_SCAN_COUNT.get().saturating_add(1));
 
+    control.checkpoint()?;
     let mut masked = code.as_bytes().to_vec();
+    control.checkpoint()?;
     let mut title = None;
     let mut description = None;
     let mut statements = Vec::new();
     let mut start = 0usize;
 
     while start < code.len() {
-        let line_end = next_line_end(code, start);
+        control.checkpoint()?;
+        let line_end = next_line_end_controlled(code, start, control)?;
         let line = &code[start..line_end];
         let trimmed = line.trim_start();
         let prefix_start = start + line.len().saturating_sub(trimmed.len());
@@ -88,7 +100,7 @@ pub(super) fn scan_flowchart_accessibility(code: &str) -> FlowchartAccessibility
                     prefix_start + "accTitle".len() + whitespace,
                     line_end,
                 ));
-                mask_range_preserving_newlines(&mut masked, start, line_end);
+                mask_range_preserving_newlines(&mut masked, start, line_end, control)?;
                 start = line_end;
                 continue;
             }
@@ -121,7 +133,7 @@ pub(super) fn scan_flowchart_accessibility(code: &str) -> FlowchartAccessibility
                 delimiter_start,
                 line_end,
             ));
-            mask_range_preserving_newlines(&mut masked, start, line_end);
+            mask_range_preserving_newlines(&mut masked, start, line_end, control)?;
             start = line_end;
             continue;
         }
@@ -132,9 +144,7 @@ pub(super) fn scan_flowchart_accessibility(code: &str) -> FlowchartAccessibility
         };
         let content_start = delimiter_start + 1;
         debug_assert_eq!(content_start, line_end - after_open.len());
-        let closing_brace = code[content_start..]
-            .find('}')
-            .map(|relative| content_start + relative);
+        let closing_brace = find_byte_controlled(code, content_start, b'}', control)?;
         let content_end = closing_brace.unwrap_or(code.len());
         if closing_brace.is_some() {
             description = Some(code[content_start..content_end].trim().to_string());
@@ -168,18 +178,19 @@ pub(super) fn scan_flowchart_accessibility(code: &str) -> FlowchartAccessibility
             complete: closing_brace.is_some(),
             lexemes,
         });
-        mask_range_preserving_newlines(&mut masked, start, statement_end);
+        mask_range_preserving_newlines(&mut masked, start, statement_end, control)?;
         start = statement_end;
     }
 
+    control.checkpoint()?;
     let parser_input = String::from_utf8(masked)
         .expect("replacing non-newline source bytes with ASCII spaces preserves UTF-8");
-    FlowchartAccessibilityScan {
+    Ok(FlowchartAccessibilityScan {
         parser_input,
         title,
         description,
         statements,
-    }
+    })
 }
 
 fn inline_statement(
@@ -220,18 +231,46 @@ fn trimmed_nonempty_span(code: &str, start: usize, end: usize) -> Option<SourceS
     (span.start < span.end).then_some(span)
 }
 
-fn next_line_end(code: &str, start: usize) -> usize {
-    code[start..]
-        .find('\n')
-        .map_or(code.len(), |relative| start + relative + 1)
+fn next_line_end_controlled(
+    code: &str,
+    start: usize,
+    control: &ParseControl,
+) -> ParseControlResult<usize> {
+    Ok(find_byte_controlled(code, start, b'\n', control)?
+        .map_or(code.len(), |position| position + 1))
 }
 
-fn mask_range_preserving_newlines(bytes: &mut [u8], start: usize, end: usize) {
-    for byte in &mut bytes[start..end] {
-        if *byte != b'\n' && *byte != b'\r' {
-            *byte = b' ';
+fn find_byte_controlled(
+    code: &str,
+    start: usize,
+    needle: u8,
+    control: &ParseControl,
+) -> ParseControlResult<Option<usize>> {
+    for (chunk_index, chunk) in code.as_bytes()[start..].chunks(4096).enumerate() {
+        control.checkpoint()?;
+        if let Some(relative) = chunk.iter().position(|byte| *byte == needle) {
+            return Ok(Some(start + chunk_index * 4096 + relative));
         }
     }
+    control.checkpoint()?;
+    Ok(None)
+}
+
+fn mask_range_preserving_newlines(
+    bytes: &mut [u8],
+    start: usize,
+    end: usize,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    for chunk in bytes[start..end].chunks_mut(4096) {
+        control.checkpoint()?;
+        for byte in chunk {
+            if *byte != b'\n' && *byte != b'\r' {
+                *byte = b' ';
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -293,6 +332,19 @@ mod tests {
         assert!(lexemes.contains(&(EditorLexemeKind::String, "Checkout")));
         assert!(lexemes.contains(&(EditorLexemeKind::String, "First line\n  second line")));
         assert!(scan.parser_input.contains("A --> B"));
+    }
+
+    #[test]
+    fn scan_observes_cancellation_inside_long_accessibility_payloads() {
+        let source = format!("flowchart TD\naccDescr {{\n{}", "x".repeat(32 * 1024));
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(5);
+
+        assert!(matches!(
+            scan_flowchart_accessibility_controlled(&source, &control),
+            Err(crate::ParseCancelled)
+        ));
+        assert!(control.is_cancelled());
     }
 
     #[test]

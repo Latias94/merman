@@ -2,6 +2,7 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
 pub use crate::generated::editor_rename_policy::EditorRenamePolicy;
 use crate::{
+    ParseControl, ParseControlResult,
     error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan},
     family::DiagramFamilyId,
 };
@@ -298,9 +299,19 @@ impl<'source> EditorLexemeJournal<'source> {
         ));
     }
 
-    pub(crate) fn finish(mut self) -> EditorLexemeBatchResult {
+    pub(crate) fn finish(self) -> EditorLexemeBatchResult {
+        let control = ParseControl::new();
+        self.finish_controlled(&control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    pub(crate) fn finish_controlled(
+        mut self,
+        control: &ParseControl,
+    ) -> ParseControlResult<EditorLexemeBatchResult> {
+        control.checkpoint()?;
         if let Some(error) = self.error {
-            return Err(error);
+            return Ok(Err(error));
         }
         self.lexemes.sort_by(|left, right| {
             (left.span.start, left.span.end, left.kind).cmp(&(
@@ -309,18 +320,21 @@ impl<'source> EditorLexemeJournal<'source> {
                 right.kind,
             ))
         });
+        control.checkpoint()?;
         self.lexemes.dedup();
-        if let Some(pair) = self
-            .lexemes
-            .windows(2)
-            .find(|pair| pair[0].span.end > pair[1].span.start)
-        {
-            return Err(EditorLexemeFailure::Overlap {
-                left: pair[0].span,
-                right: pair[1].span,
-            });
+        control.checkpoint()?;
+        for (index, pair) in self.lexemes.windows(2).enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if pair[0].span.end > pair[1].span.start {
+                return Ok(Err(EditorLexemeFailure::Overlap {
+                    left: pair[0].span,
+                    right: pair[1].span,
+                }));
+            }
         }
-        Ok(EditorLexemeBatch(self.lexemes))
+        Ok(Ok(EditorLexemeBatch(self.lexemes)))
     }
 }
 
@@ -412,12 +426,69 @@ fn is_ascii_identifier(value: &str) -> bool {
         && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
 }
 
-/// Family syntax that may use bounded line-prefix completion inference.
+/// One family-owned body completion candidate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditorCompletionCandidate {
+    label: &'static str,
+    detail: &'static str,
+    snippet: Option<&'static str>,
+}
+
+impl EditorCompletionCandidate {
+    pub const fn keyword(label: &'static str, detail: &'static str) -> Self {
+        Self {
+            label,
+            detail,
+            snippet: None,
+        }
+    }
+
+    pub const fn snippet(label: &'static str, detail: &'static str, snippet: &'static str) -> Self {
+        Self {
+            label,
+            detail,
+            snippet: Some(snippet),
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        self.label
+    }
+
+    pub const fn detail(self) -> &'static str {
+        self.detail
+    }
+
+    pub const fn snippet_text(self) -> Option<&'static str> {
+        self.snippet
+    }
+}
+
+/// Family-owned candidates that editor consumers may project for the current parse generation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum EditorCompletionDialect {
-    #[default]
-    None,
-    Flowchart,
+pub struct EditorCompletionVocabulary {
+    operators: &'static [EditorCompletionCandidate],
+    directions: &'static [EditorCompletionCandidate],
+}
+
+impl EditorCompletionVocabulary {
+    pub const fn new(
+        operators: &'static [EditorCompletionCandidate],
+        directions: &'static [EditorCompletionCandidate],
+    ) -> Self {
+        Self {
+            operators,
+            directions,
+        }
+    }
+
+    pub const fn operators(self) -> &'static [EditorCompletionCandidate] {
+        self.operators
+    }
+
+    pub const fn directions(self) -> &'static [EditorCompletionCandidate] {
+        self.directions
+    }
 }
 
 impl EditorSemanticRole {
@@ -566,6 +637,7 @@ impl EditorSemanticDiagnostic {
 pub enum EditorExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
+    Operator,
     ShapeValue,
     ShapeTrigger,
     DirectionValue,
@@ -598,7 +670,7 @@ pub enum EditorSemanticCompleteness {
 #[non_exhaustive]
 pub struct EditorSemanticFacts {
     pub completeness: EditorSemanticCompleteness,
-    pub completion_dialect: EditorCompletionDialect,
+    pub completion_vocabulary: EditorCompletionVocabulary,
     pub symbols: Vec<EditorSemanticSymbol>,
     lexemes: Vec<EditorLexeme>,
     lexeme_failure: Option<EditorLexemeFailure>,
@@ -645,47 +717,74 @@ impl EditorSemanticFacts {
         }
     }
 
-    pub(crate) fn remap_lexemes(
+    pub(crate) fn remap_lexemes_controlled(
         &mut self,
         mut remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
-    ) -> usize {
+        control: &ParseControl,
+    ) -> ParseControlResult<usize> {
         let original_count = self.lexemes.len();
-        self.lexemes = self
-            .lexemes
-            .drain(..)
-            .filter_map(|mut lexeme| {
-                lexeme.span = remap(lexeme.span)?;
-                Some(lexeme)
-            })
-            .collect();
-        original_count - self.lexemes.len()
+        let mut remapped = Vec::with_capacity(original_count);
+        for (index, mut lexeme) in std::mem::take(&mut self.lexemes).into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if let Some(span) = remap(lexeme.span) {
+                lexeme.span = span;
+                remapped.push(lexeme);
+            }
+        }
+        self.lexemes = remapped;
+        control.checkpoint()?;
+        Ok(original_count - self.lexemes.len())
     }
 
+    #[cfg(test)]
     pub(crate) fn finalize_lexemes(
         &mut self,
         family: DiagramFamilyId,
         global_lexemes: &[EditorLexeme],
     ) {
+        let control = ParseControl::new();
+        self.finalize_lexemes_controlled(family, global_lexemes, &control)
+            .expect("a private parse control cannot be cancelled");
+    }
+
+    pub(crate) fn finalize_lexemes_controlled(
+        &mut self,
+        family: DiagramFamilyId,
+        global_lexemes: &[EditorLexeme],
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
+        control.checkpoint()?;
         if self.lexeme_failure.is_some() {
             self.lexemes.clear();
-            return;
+            return Ok(());
         }
-        let result = self.try_finalize_lexemes(family, global_lexemes);
+        let result = self.try_finalize_lexemes_controlled(family, global_lexemes, control)?;
         if let Err(error) = result {
             self.lexemes.clear();
             self.lexeme_failure = Some(error);
         }
+        control.checkpoint()
     }
 
-    fn try_finalize_lexemes(
+    fn try_finalize_lexemes_controlled(
         &mut self,
         family: DiagramFamilyId,
         global_lexemes: &[EditorLexeme],
-    ) -> Result<(), EditorLexemeFailure> {
-        for lexeme in &mut self.lexemes {
-            lexeme.producer.seal_family(family)?;
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<(), EditorLexemeFailure>> {
+        for (index, lexeme) in self.lexemes.iter_mut().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if let Err(error) = lexeme.producer.seal_family(family) {
+                return Ok(Err(error));
+            }
         }
+        control.checkpoint()?;
         self.lexemes.extend_from_slice(global_lexemes);
+        control.checkpoint()?;
         self.lexemes.sort_by(|left, right| {
             (left.span.start, left.span.end, left.kind, left.modifiers).cmp(&(
                 right.span.start,
@@ -694,22 +793,28 @@ impl EditorSemanticFacts {
                 right.modifiers,
             ))
         });
+        control.checkpoint()?;
         self.lexemes.dedup();
-        if let Some(pair) = self
-            .lexemes
-            .windows(2)
-            .find(|pair| pair[0].span.end > pair[1].span.start)
-        {
-            return Err(EditorLexemeFailure::Overlap {
-                left: pair[0].span,
-                right: pair[1].span,
-            });
+        control.checkpoint()?;
+        for (index, pair) in self.lexemes.windows(2).enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if pair[0].span.end > pair[1].span.start {
+                return Ok(Err(EditorLexemeFailure::Overlap {
+                    left: pair[0].span,
+                    right: pair[1].span,
+                }));
+            }
         }
-        Ok(())
+        Ok(Ok(()))
     }
 
-    pub fn with_completion_dialect(mut self, completion_dialect: EditorCompletionDialect) -> Self {
-        self.completion_dialect = completion_dialect;
+    pub fn with_completion_vocabulary(
+        mut self,
+        completion_vocabulary: EditorCompletionVocabulary,
+    ) -> Self {
+        self.completion_vocabulary = completion_vocabulary;
         self
     }
 
@@ -752,8 +857,45 @@ impl EditorSemanticFacts {
     }
 
     pub fn push_expected_syntax(&mut self, expected: EditorExpectedSyntax) {
-        self.expected_syntax.push(expected);
+        if !self.expected_syntax.contains(&expected) {
+            self.expected_syntax.push(expected);
+        }
     }
+}
+
+pub(crate) fn editor_keyword_value_span(
+    source: &str,
+    statement_start: usize,
+    statement_end: usize,
+    keyword: &str,
+) -> Option<SourceSpan> {
+    let raw = source.get(statement_start..statement_end)?;
+    let trimmed = raw.trim_start();
+    let leading = raw.len().saturating_sub(trimmed.len());
+    let keyword_source = trimmed.get(..keyword.len())?;
+    if !keyword_source.eq_ignore_ascii_case(keyword) {
+        return None;
+    }
+    let after_keyword = trimmed.get(keyword.len()..)?;
+    if after_keyword
+        .chars()
+        .next()
+        .is_some_and(|ch| !ch.is_whitespace())
+    {
+        return None;
+    }
+    let whitespace = after_keyword
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .map(char::len_utf8)
+        .sum::<usize>();
+    let value_start = statement_start + leading + keyword.len() + whitespace;
+    let value_len = after_keyword[whitespace..]
+        .chars()
+        .take_while(|ch| !ch.is_whitespace())
+        .map(char::len_utf8)
+        .sum::<usize>();
+    Some(SourceSpan::new(value_start, value_start + value_len))
 }
 
 pub(crate) fn editor_recovery_fallback_span(source: &str) -> SourceSpan {
@@ -968,7 +1110,7 @@ mod tests {
         EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducerKind, EditorRenamePolicy,
         EditorSemanticFacts, lalrpop_parse_diagnostic,
     };
-    use crate::ParseDiagnosticSpanKind;
+    use crate::{ParseControl, ParseDiagnosticSpanKind};
 
     #[test]
     fn rename_policies_follow_family_identifier_grammars() {
@@ -1131,6 +1273,32 @@ mod tests {
 
         assert_eq!(facts.lexeme_failure(), Some(failure));
         assert!(facts.lexemes().is_empty());
+    }
+
+    #[test]
+    fn family_lexeme_finalization_observes_cancellation_during_large_batches() {
+        let source = "a ".repeat(256);
+        let mut journal = EditorLexemeJournal::family_lexer(&source);
+        for index in 0..256 {
+            let start = index * 2;
+            journal.push(
+                EditorLexemeKind::Identifier,
+                EditorLexemeModifiers::NONE,
+                crate::SourceSpan::new(start, start + 1),
+            );
+        }
+        let mut facts = EditorSemanticFacts::new();
+        facts.replace_family_lexemes(journal.finish());
+        let family =
+            crate::family::diagram_type_family_id("flowchart").expect("flowchart family identity");
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            facts.finalize_lexemes_controlled(family, &[], &control),
+            Err(crate::ParseCancelled)
+        ));
+        assert!(control.is_cancelled());
     }
 
     #[test]

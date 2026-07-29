@@ -34,7 +34,7 @@ The server handles document lifecycle notifications and advertises the supported
 
 Capabilities are negotiated. Code actions require compatible diagnostic-data and quick-fix literal support, while semantic-token legends and modifiers are projected onto the client's supported set.
 
-Workspace symbols are not part of the current advertised protocol surface: `ServerCapabilities.workspace_symbol_provider` is `None`. Internal workspace-symbol projection and tests do not constitute a client-facing capability promise.
+Workspace symbols are not part of the current protocol surface: `ServerCapabilities.workspace_symbol_provider` is `None`, and `workspace/symbol` requests return JSON-RPC `MethodNotFound`.
 
 The server advertises editor-agnostic Merman requests under `ServerCapabilities.experimental.merman`, including `merman/ruleCatalog` and `merman/configSchema`. Clients must feature-detect these requests instead of assuming that a particular server version exposes them.
 

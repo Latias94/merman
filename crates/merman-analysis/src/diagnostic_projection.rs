@@ -155,7 +155,7 @@ fn parse_diagnostic(
                 out.related.push(crate::DiagnosticRelated {
                     message: "Parser reported a fallback location for this syntax error."
                         .to_string(),
-                    span: Some(span.clone()),
+                    span: Some(span),
                 });
                 out = out.with_span(span);
                 location = ParseDiagnosticLocation::Fallback;
@@ -165,7 +165,7 @@ fn parse_diagnostic(
         out.related.push(crate::DiagnosticRelated {
             message: "Parser did not report a precise source location for this syntax error."
                 .to_string(),
-            span: Some(span.clone()),
+            span: Some(span),
         });
         out = out.with_span(span);
         location = ParseDiagnosticLocation::Fallback;

@@ -66,6 +66,22 @@ pub(crate) enum Tok {
 pub(crate) struct LexError {
     pub message: String,
     pub span: crate::SourceSpan,
+    pub expected_syntax: Option<crate::EditorExpectedSyntax>,
+}
+
+impl LexError {
+    fn new(message: impl Into<String>, span: crate::SourceSpan) -> Self {
+        Self {
+            message: message.into(),
+            span,
+            expected_syntax: None,
+        }
+    }
+
+    fn expecting(mut self, kind: crate::EditorExpectedSyntaxKind, span: crate::SourceSpan) -> Self {
+        self.expected_syntax = Some(crate::EditorExpectedSyntax::new(kind, span));
+        self
+    }
 }
 
 impl crate::error::ParseErrorSourceSpan for LexError {
@@ -240,10 +256,10 @@ impl<'input> Lexer<'input> {
                 self.push_lexeme(EditorLexemeKind::Delimiter, opening, opening + 1);
                 self.push_trimmed_lexeme(EditorLexemeKind::String, self.pos, self.input.len());
                 self.pos = self.input.len();
-                return Some(Err(LexError {
-                    message: "Unterminated accDescr block; missing '}'".to_string(),
-                    span: crate::SourceSpan::new(opening, opening + 1),
-                }));
+                return Some(Err(LexError::new(
+                    "Unterminated accDescr block; missing '}'",
+                    crate::SourceSpan::new(opening, opening + 1),
+                )));
             };
             let body_start = self.pos;
             let closing = self.pos + end_rel;
@@ -283,33 +299,6 @@ impl<'input> Lexer<'input> {
         if self.starts_with_word("classDiagram") {
             self.pos += "classDiagram".len();
             return Some((start, Tok::ClassDiagram, self.pos));
-        }
-
-        if self.starts_with_word("direction") {
-            let after = self.pos + "direction".len();
-            self.pos = after;
-            self.skip_ws();
-            let direction_start = self.pos;
-            let dir = if self.input[self.pos..].starts_with("TB") {
-                self.pos += 2;
-                "TB"
-            } else if self.input[self.pos..].starts_with("BT") {
-                self.pos += 2;
-                "BT"
-            } else if self.input[self.pos..].starts_with("LR") {
-                self.pos += 2;
-                "LR"
-            } else if self.input[self.pos..].starts_with("RL") {
-                self.pos += 2;
-                "RL"
-            } else {
-                return None;
-            };
-            let direction_end = self.pos;
-            let _ = self.read_to_newline();
-            self.push_lexeme(EditorLexemeKind::Keyword, start, after);
-            self.push_lexeme(EditorLexemeKind::Literal, direction_start, direction_end);
-            return Some((start, Tok::Direction(dir.to_string()), self.pos));
         }
 
         if self.starts_with_word("namespace") {
@@ -364,6 +353,49 @@ impl<'input> Lexer<'input> {
         }
 
         None
+    }
+
+    fn lex_direction(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+        let start = self.pos;
+        if !self.starts_with_word("direction") {
+            return None;
+        }
+        self.pos += "direction".len();
+        let keyword_end = self.pos;
+        self.skip_ws();
+        let direction_start = self.pos;
+        while self
+            .peek()
+            .is_some_and(|byte| !byte.is_ascii_whitespace() && byte != b';')
+        {
+            self.pos += 1;
+        }
+        let direction_end = self.pos;
+        let _ = self.read_to_newline();
+        let direction = &self.input[direction_start..direction_end];
+        let selection = crate::SourceSpan::new(direction_start, direction_end);
+        let dir = if direction == "TB" {
+            "TB"
+        } else if direction == "BT" {
+            "BT"
+        } else if direction == "LR" {
+            "LR"
+        } else if direction == "RL" {
+            "RL"
+        } else {
+            self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
+            if selection.start < selection.end {
+                self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
+            }
+            return Some(Err(LexError::new("invalid class direction", selection)
+                .expecting(
+                    crate::EditorExpectedSyntaxKind::DirectionValue,
+                    selection,
+                )));
+        };
+        self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
+        self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
+        Some(Ok((start, Tok::Direction(dir.to_string()), self.pos)))
     }
 
     fn lex_link_target(&mut self) -> Option<(usize, Tok, usize)> {
@@ -425,10 +457,10 @@ impl<'input> Lexer<'input> {
         }
         self.pos += 1;
         let Some(end_rel) = self.input[self.pos..].find(')') else {
-            return Some(Err(LexError {
-                message: "Unterminated callback arguments; missing ')'".to_string(),
-                span: crate::SourceSpan::new(start, self.pos),
-            }));
+            return Some(Err(LexError::new(
+                "Unterminated callback arguments; missing ')'",
+                crate::SourceSpan::new(start, self.pos),
+            )));
         };
         let args = self.input[self.pos..self.pos + end_rel].trim().to_string();
         self.pos = self.pos + end_rel + 1;
@@ -569,10 +601,10 @@ impl<'input> Lexer<'input> {
         }
         self.pos += 1;
         let Some(rel_end) = self.input[self.pos..].find('"') else {
-            return Some(Err(LexError {
-                message: "Unterminated string literal; missing '\"'".to_string(),
-                span: crate::SourceSpan::new(start, self.pos),
-            }));
+            return Some(Err(LexError::new(
+                "Unterminated string literal; missing '\"'",
+                crate::SourceSpan::new(start, self.pos),
+            )));
         };
         let s = self.input[self.pos..self.pos + rel_end].to_string();
         self.pos = self.pos + rel_end + 1;
@@ -659,19 +691,19 @@ impl<'input> Lexer<'input> {
         }
         self.skip_ws();
         if self.pos >= self.input.len() {
-            return Some(Err(LexError {
-                message: "EOF inside class body".to_string(),
-                span: crate::SourceSpan::new(self.pos, self.pos),
-            }));
+            return Some(Err(LexError::new(
+                "EOF inside class body",
+                crate::SourceSpan::new(self.pos, self.pos),
+            )));
         }
         if self.peek() == Some(b'}') {
             return None;
         }
         if self.peek() == Some(b'{') {
-            return Some(Err(LexError {
-                message: "Unexpected '{' inside class body".to_string(),
-                span: crate::SourceSpan::new(self.pos, self.pos + 1),
-            }));
+            return Some(Err(LexError::new(
+                "Unexpected '{' inside class body",
+                crate::SourceSpan::new(self.pos, self.pos + 1),
+            )));
         }
         // Newlines inside a class body are ignored by Mermaid's lexer.
         while self.peek() == Some(b'\n') {
@@ -714,10 +746,10 @@ impl<'input> Iterator for Lexer<'input> {
             self.skip_ws();
             if self.pos >= self.input.len() {
                 if self.mode == Mode::ClassBody {
-                    return Some(Err(LexError {
-                        message: "EOF inside class body".to_string(),
-                        span: crate::SourceSpan::new(self.pos, self.pos),
-                    }));
+                    return Some(Err(LexError::new(
+                        "EOF inside class body",
+                        crate::SourceSpan::new(self.pos, self.pos),
+                    )));
                 }
                 return None;
             }
@@ -763,6 +795,10 @@ impl<'input> Iterator for Lexer<'input> {
                 return self.emit_result(tok);
             }
 
+            if let Some(tok) = self.lex_direction() {
+                return self.emit_result(tok);
+            }
+
             if let Some(tok) = self.lex_keyword() {
                 return self.emit(tok);
             }
@@ -789,10 +825,10 @@ impl<'input> Iterator for Lexer<'input> {
 
             let start = self.pos;
             let _ = self.bump();
-            return Some(Err(LexError {
-                message: format!("Unexpected character at {start}"),
-                span: crate::SourceSpan::new(start, self.pos),
-            }));
+            return Some(Err(LexError::new(
+                format!("Unexpected character at {start}"),
+                crate::SourceSpan::new(start, self.pos),
+            )));
         }
     }
 }

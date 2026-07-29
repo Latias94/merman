@@ -2,7 +2,9 @@ use std::str::FromStr;
 
 use crate::document_store::{DocumentStore, default_lsp_analysis_options};
 use crate::snapshot_context::{self, SnapshotContextKind};
-use merman_analysis::{AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity};
+use merman_analysis::{
+    AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, source_limit_diagnostic_span,
+};
 use merman_editor_core::DocumentKind;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -19,7 +21,6 @@ fn stale_message(kind: SnapshotContextKind) -> &'static str {
         SnapshotContextKind::Diagnostics => "diagnostic document changed",
         SnapshotContextKind::SemanticTokens => "semantic tokens document changed",
         SnapshotContextKind::Structure => "structure document changed",
-        SnapshotContextKind::WorkspaceSymbols => "workspace symbol documents changed",
     }
 }
 
@@ -171,7 +172,8 @@ async fn diagnostic_only_change_stales_analysis_context_but_preserves_snapshot_c
         store.apply_analyzer_options(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
-                    .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
+                    .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                    .unwrap(),
             ),
         );
     }
@@ -199,6 +201,179 @@ async fn diagnostic_only_change_stales_analysis_context_but_preserves_snapshot_c
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn diagnostic_reprojection_recovers_a_stale_cache_without_reparsing() {
+    let store = test_store();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+
+    {
+        let mut store = store.lock().await;
+        store.upsert_text(uri.clone(), 1, String::new(), DocumentKind::Diagram);
+    }
+    let initial =
+        snapshot_context::snapshot_context_for_uri(&store, &uri, SnapshotContextKind::Diagnostics)
+            .await
+            .expect("initial analysis should succeed")
+            .expect("expected initial analysis context");
+
+    let (canonical, executor, plan) = {
+        let mut store = store.lock().await;
+        let canonical = Arc::clone(
+            store
+                .cached_analysis_generation(&uri)
+                .expect("initial analysis should be cached")
+                .canonical(),
+        );
+        let executor = store.analysis_executor();
+        let (change, plan) = store.begin_analyzer_options(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                    .unwrap(),
+            ),
+        );
+        assert_eq!(
+            change,
+            crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
+        );
+        assert!(!store.has_analysis_payload(&uri));
+        assert!(store.snapshot_build_request(&uri).is_none());
+        (
+            canonical,
+            executor,
+            plan.expect("cached analysis needs reprojection"),
+        )
+    };
+    let execution_count = executor.execution_count();
+
+    let recovered =
+        snapshot_context::snapshot_context_for_uri(&store, &uri, SnapshotContextKind::Diagnostics)
+            .await
+            .expect("stale cached diagnostics should reproject")
+            .expect("expected reprojected analysis context");
+    let code_actions =
+        snapshot_context::snapshot_context_for_uri(&store, &uri, SnapshotContextKind::CodeActions)
+            .await
+            .expect("reprojected cache should serve code actions")
+            .expect("expected code action context");
+
+    assert!(Arc::ptr_eq(&initial.snapshot, &recovered.snapshot));
+    assert!(Arc::ptr_eq(&recovered.snapshot, &code_actions.snapshot));
+    assert!(
+        recovered
+            .analysis_payload()
+            .diagnostics
+            .iter()
+            .any(|diagnostic| {
+                diagnostic.id == "merman.parse.no_diagram"
+                    && diagnostic.severity == DiagnosticSeverity::Hint
+            })
+    );
+    assert_eq!(
+        executor.execution_count(),
+        execution_count,
+        "diagnostic reprojection must not rebuild the document analysis"
+    );
+
+    let mut store = store.lock().await;
+    assert!(store.is_analysis_context_current(&recovered));
+    assert!(Arc::ptr_eq(
+        &canonical,
+        store
+            .cached_analysis_generation(&uri)
+            .expect("reprojected analysis should be cached")
+            .canonical()
+    ));
+    assert_eq!(
+        store.commit_diagnostic_reprojection(
+            plan.project()
+                .expect("superseded batch can still finish safely")
+        ),
+        0,
+        "a late batch must not overwrite the request-local reprojection"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn edit_during_diagnostic_reprojection_retries_without_building_under_the_store_lock() {
+    let store = test_store();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+
+    {
+        let mut store = store.lock().await;
+        store.upsert_text(
+            uri.clone(),
+            1,
+            "flowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        );
+    }
+    snapshot_context::snapshot_context_for_uri(&store, &uri, SnapshotContextKind::Diagnostics)
+        .await
+        .expect("initial analysis should succeed")
+        .expect("expected initial analysis context");
+
+    let (batch, executor, execution_count) = {
+        let mut store = store.lock().await;
+        let executor = store.analysis_executor();
+        let execution_count = executor.execution_count();
+        let (change, _) = store.begin_analyzer_options(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                    .unwrap(),
+            ),
+        );
+        assert_eq!(
+            change,
+            crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
+        );
+        let request = store
+            .diagnostic_reprojection_request(&uri)
+            .expect("stale cache should produce a request-local reprojection");
+        (
+            request
+                .project()
+                .expect("diagnostic reprojection should complete"),
+            executor,
+            execution_count,
+        )
+    };
+
+    {
+        let mut store = store.lock().await;
+        store.upsert_text(
+            uri.clone(),
+            2,
+            "flowchart TD\nA-->C\n".to_string(),
+            DocumentKind::Diagram,
+        );
+    }
+
+    let stale = snapshot_context::commit_diagnostic_reprojection_context(
+        &store,
+        &uri,
+        batch,
+        SnapshotContextKind::Diagnostics,
+    )
+    .await
+    .expect("pull diagnostics should retry a stale reprojection");
+    assert!(stale.is_none());
+    assert_eq!(
+        executor.execution_count(),
+        execution_count,
+        "a stale reprojection must not synchronously rebuild while holding the store lock"
+    );
+
+    let current =
+        snapshot_context::snapshot_context_for_uri(&store, &uri, SnapshotContextKind::Diagnostics)
+            .await
+            .expect("latest document analysis should succeed")
+            .expect("expected latest analysis context");
+    assert_eq!(current.snapshot.version(), 2);
+    assert_eq!(executor.execution_count(), execution_count + 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lowered_source_limit_rejects_open_document_before_async_analysis() {
     let store = test_store();
     let uri = Uri::from_str("file:///tmp/large-after-config.mmd").unwrap();
@@ -219,6 +394,7 @@ async fn lowered_source_limit_rejects_open_document_before_async_analysis() {
             Some(crate::document_store::DocumentResourceLimit {
                 source_len: source.len(),
                 max_source_bytes: source.len() - 1,
+                span: source_limit_diagnostic_span(source),
             })
         );
     }

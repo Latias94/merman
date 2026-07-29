@@ -1,8 +1,12 @@
 use crate::models::class_diagram as class_typed;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    editor::{
+        editor_keyword_value_span, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
+        lalrpop_recovery_span,
+    },
 };
 use serde_json::Value;
 #[cfg(test)]
@@ -12,6 +16,16 @@ use super::class_grammar;
 use super::db::ClassDb;
 use super::lexer::Lexer;
 use super::{MERMAID_DOM_ID_PREFIX, Tok};
+
+const CLASS_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
+    EditorCompletionCandidate::keyword("TB", "top to bottom"),
+    EditorCompletionCandidate::keyword("BT", "bottom to top"),
+    EditorCompletionCandidate::keyword("LR", "left to right"),
+    EditorCompletionCandidate::keyword("RL", "right to left"),
+];
+
+const CLASS_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
+    EditorCompletionVocabulary::new(&[], CLASS_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 thread_local! {
@@ -37,7 +51,7 @@ struct ClassSyntax {
 }
 
 impl ClassSyntax {
-    fn lex(code: &str) -> Self {
+    fn lex(code: &str, control: &ParseControl) -> ParseControlResult<Self> {
         #[cfg(test)]
         CLASS_SYNTAX_CONSTRUCTION_COUNT.set(CLASS_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -45,6 +59,9 @@ impl ClassSyntax {
         let mut lexer = Lexer::new(code);
         let mut last_position = lexer.position();
         while let Some(event) = lexer.next() {
+            if events.len() % 128 == 0 {
+                control.checkpoint()?;
+            }
             let current_position = lexer.position();
             let must_stop = event.is_err() && current_position == last_position;
             events.push(event);
@@ -55,20 +72,30 @@ impl ClassSyntax {
         }
         let lexemes = lexer.finish_lexemes();
 
-        Self { events, lexemes }
+        control.checkpoint()?;
+        Ok(Self { events, lexemes })
     }
 
     fn into_editor_facts_and_actions(
         self,
         code: &str,
-    ) -> (
+        control: &ParseControl,
+    ) -> ParseControlResult<(
         EditorSemanticFacts,
         std::result::Result<Vec<super::Action>, ClassGrammarError>,
-    ) {
+    )> {
         let Self { events, lexemes } = self;
-        let editor_facts = collect_class_editor_facts_from_events(&events, code, lexemes);
-        let actions = class_grammar::ActionsParser::new().parse(events);
-        (editor_facts, actions)
+        let editor_facts = collect_class_editor_facts_from_events(&events, code, lexemes, control)?;
+        control.checkpoint()?;
+        let mut emitted = 0usize;
+        let controlled_events = events.into_iter().take_while(|_| {
+            let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+            emitted = emitted.saturating_add(1);
+            active
+        });
+        let actions = class_grammar::ActionsParser::new().parse(controlled_events);
+        control.checkpoint()?;
+        Ok((editor_facts, actions))
     }
 }
 
@@ -147,37 +174,43 @@ impl ClassSemanticFailure {
 fn construct_class_semantic_source<'a>(
     code: &str,
     meta: &'a ParseMetadata,
-) -> std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>> {
-    let syntax = ClassSyntax::lex(code);
-    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code);
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>>> {
+    let syntax = ClassSyntax::lex(code, control)?;
+    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
     let actions = match actions {
         Ok(actions) => actions,
         Err(error) => {
-            return Err(Box::new(ClassSemanticFailure::Grammar {
+            return Ok(Err(Box::new(ClassSemanticFailure::Grammar {
                 error,
                 editor_facts,
-            }));
+            })));
         }
     };
 
     let mut db = ClassDb::new(&meta.effective_config);
-    for action in actions {
+    for (index, action) in actions.into_iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         if let Err(message) = db.apply(action) {
-            return Err(Box::new(ClassSemanticFailure::Db {
+            return Ok(Err(Box::new(ClassSemanticFailure::Db {
                 message,
                 editor_facts,
-            }));
+            })));
         }
     }
 
-    Ok(ClassSemanticSource { db, editor_facts })
+    control.checkpoint()?;
+    Ok(Ok(ClassSemanticSource { db, editor_facts }))
 }
 
 fn parse_class_semantic_source<'a>(
     code: &str,
     meta: &'a ParseMetadata,
 ) -> Result<ClassSemanticSource<'a>> {
-    construct_class_semantic_source(code, meta)
+    construct_class_semantic_source(code, meta, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
         .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
 
@@ -197,31 +230,46 @@ pub(crate) fn parse_class_typed(
 pub(crate) fn parse_class_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_class_semantic_source(code, meta),
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_class_semantic_source(code, meta, control)?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
         |ClassSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
         |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
-    )
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 fn collect_class_editor_facts_from_events(
     events: &[ClassLexicalEvent],
     code: &str,
     lexemes: crate::editor::EditorLexemeBatchResult,
-) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
+    control: &ParseControl,
+) -> ParseControlResult<EditorSemanticFacts> {
+    let mut facts =
+        EditorSemanticFacts::new().with_completion_vocabulary(CLASS_COMPLETION_VOCABULARY);
     facts.replace_family_lexemes(lexemes);
     let mut collector = ClassEditorFactCollector::new(code);
 
-    for event in events {
+    for (index, event) in events.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         match event {
             Ok((start, token, end)) => collector.accept(token, *start, *end, &mut facts),
-            Err(_) => facts.mark_recovered(),
+            Err(error) => {
+                facts.mark_recovered();
+                if let Some(expected) = error.expected_syntax.as_ref() {
+                    facts.push_expected_syntax(expected.clone());
+                }
+            }
         }
     }
 
-    facts
+    control.checkpoint()?;
+    Ok(facts)
 }
 
 #[derive(Debug)]
@@ -541,7 +589,15 @@ impl<'a> ClassEditorFactCollector<'a> {
                     EditorSemanticKind::String,
                 );
             }
-            Tok::Direction(_) | Tok::HrefKw | Tok::StructStart => {}
+            Tok::Direction(_) => {
+                if let Some(span) = editor_keyword_value_span(self.code, start, end, "direction") {
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::DirectionValue,
+                        span,
+                    ));
+                }
+            }
+            Tok::HrefKw | Tok::StructStart => {}
             Tok::SquareStart => {
                 self.class_label_pending = true;
             }

@@ -5,19 +5,15 @@ use crate::protocol::{
 };
 use crate::snapshot::DocumentSnapshot;
 use merman_analysis::EditorSymbolKind;
-#[cfg(test)]
-use merman_editor_core::workspace_symbols as core_workspace_symbols;
 use merman_editor_core::{
     EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover,
-    EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation, EditorWorkspaceEdit,
-    RenameError, document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
+    EditorPrepareRename, EditorSelectionRange, EditorWorkspaceEdit, RenameError,
+    document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
     goto_definition as core_goto_definition, hover as core_hover,
     prepare_rename as core_prepare_rename, references as core_references, rename as core_rename,
     selection_ranges as core_selection_ranges,
-    workspace_symbols_for_snapshots as core_workspace_symbols_for_snapshots,
 };
 use std::collections::HashMap;
-use std::sync::Arc;
 use tower_lsp_server::jsonrpc::{Error, Result};
 use tower_lsp_server::ls_types::{DocumentChanges, OneOf};
 use tower_lsp_server::ls_types::{
@@ -46,38 +42,6 @@ pub fn document_symbols_with_hierarchy_support(
     }
 
     DocumentSymbolResponse::Nested(symbols.into_iter().map(document_symbol_to_lsp).collect())
-}
-
-#[allow(deprecated)]
-#[cfg(test)]
-pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<SymbolInformation> {
-    core_workspace_symbols(snapshot.as_editor(), query)
-        .into_iter()
-        .filter_map(|symbol| symbol_information_to_lsp(symbol, Some(snapshot.uri())))
-        .collect()
-}
-
-pub fn workspace_symbols_for_snapshots(
-    snapshots: &[Arc<DocumentSnapshot>],
-    query: &str,
-) -> Vec<SymbolInformation> {
-    let uri_lookup = snapshots
-        .iter()
-        .map(|snapshot| (snapshot.uri().as_str().to_string(), snapshot.uri().clone()))
-        .collect::<HashMap<_, _>>();
-
-    core_workspace_symbols_for_snapshots(
-        snapshots
-            .iter()
-            .map(|snapshot| snapshot.as_ref().as_editor()),
-        query,
-    )
-    .into_iter()
-    .filter_map(|symbol| {
-        let uri = uri_lookup.get(symbol.location.uri.as_str());
-        symbol_information_to_lsp(symbol, uri)
-    })
-    .collect()
 }
 
 #[cfg(test)]
@@ -286,22 +250,6 @@ fn flatten_document_symbols(
     }
 }
 
-#[allow(deprecated)]
-fn symbol_information_to_lsp(
-    symbol: EditorSymbolInformation,
-    fallback_uri: Option<&Uri>,
-) -> Option<SymbolInformation> {
-    let location = location_to_lsp(symbol.location, fallback_uri?);
-    Some(SymbolInformation {
-        name: symbol.name,
-        kind: symbol_kind(symbol.kind),
-        tags: None,
-        deprecated: None,
-        location,
-        container_name: symbol.container_name,
-    })
-}
-
 fn prepare_to_lsp(rename: EditorPrepareRename) -> PrepareRenameResponse {
     PrepareRenameResponse::RangeWithPlaceholder {
         range: range_to_lsp(rename.range),
@@ -383,7 +331,7 @@ mod tests {
     use super::{
         document_symbols, document_symbols_with_hierarchy_support, folding_ranges, goto_definition,
         hover, prepare_rename, references, rename, rename_with_workspace_edit_encoding,
-        selection_ranges, workspace_symbols,
+        selection_ranges,
     };
     use crate::document_store::DocumentStore;
     use crate::protocol::WorkspaceEditEncoding;
@@ -573,24 +521,5 @@ mod tests {
         assert!(edit.document_changes.is_none());
         let changes = edit.changes.as_ref().expect("plain changes");
         assert_eq!(changes[&uri].len(), 2);
-    }
-
-    #[test]
-    fn workspace_symbols_filter_and_include_outline_items() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
-
-        let all_symbols = workspace_symbols(&snapshot, "");
-        assert!(all_symbols.iter().any(|symbol| symbol.name == "group"));
-        assert!(all_symbols.iter().any(|symbol| symbol.name == "A"));
-
-        let group_symbols = workspace_symbols(&snapshot, "group");
-        assert_eq!(group_symbols.len(), 1);
-        assert_eq!(group_symbols[0].name, "group");
     }
 }

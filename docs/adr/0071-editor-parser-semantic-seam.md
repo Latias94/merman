@@ -7,7 +7,7 @@ Accepted
 ## Dates
 
 - Accepted: 2026-06-24
-- Updated: 2026-07-19
+- Updated: 2026-07-28
 
 ## Context
 
@@ -99,8 +99,15 @@ the coordinated refactor: consumers must regenerate against the current package,
 other than version `1` is rejected before its body is decoded.
 
 `AnalysisFactsPayload` is a binding wire projection, not the internal exchange format between
-analysis, editor-core, and LSP. Those modules share typed `AnalysisResult`, `DocumentSnapshot`,
-`AnalyzedDocumentSnapshot`, and `FenceTextIndex` data without a JSON round trip.
+analysis, editor-core, and LSP. Those modules share typed `AnalysisResult`,
+`merman_editor_core::DocumentAnalysisContext` / `DocumentSnapshot`, the LSP-owned
+`DocumentAnalysisContext` / request-scoped `SnapshotContext`, and `FenceTextIndex` data without a
+JSON round trip.
+
+`AnalysisResult` and `AnalyzedDiagram` are sealed canonical outputs. Public callers may inspect
+their source map, payload, ranges, syntax, and parser disposition through read-only accessors, but
+only the analyzer and document-analysis pipeline can construct a generation or attach parser
+evidence.
 
 The facts schema version is unrelated to:
 
@@ -114,28 +121,33 @@ The facts schema version is unrelated to:
 - `merman-analysis::FenceTextIndex` is the shared semantic index and owns diagnostic/fact payload
   construction and source mapping.
 - `merman-editor-core` owns protocol-neutral completion, hover, symbols, navigation, references,
-  rename, selection, folding, code-action metadata, one analyzed document bundle, and the sole
+  rename, selection, folding, code-action metadata, `DocumentAnalysisContext`, and the sole
   semantic-token planner.
 - One generated token descriptor owns token codes, modifiers, precedence, LSP legend indices, and
   the five-word LSP-relative UTF-16 packed representation. Editor-core validates, sorts, resolves
   overlaps, splits multiline spans, converts UTF-16 positions, and packs the sequence once.
-- `merman-lsp` owns request lifecycle, URI/range projection, full/delta result state, capability
-  advertising, and stale-result suppression. It does not sort tokens, assign legend indices, or
-  define language semantics.
+- `merman-lsp` owns its transport `DocumentAnalysisContext`, request-scoped `SnapshotContext`,
+  request lifecycle, URI/range projection, full/delta result state, capability advertising, and
+  stale-result suppression. It does not sort tokens, assign legend indices, or define language
+  semantics.
 - WASM validates the same descriptor and returns the same packed words. Monaco and VS Code consume
   that descriptor without a second enum, lookup table, sort, or regex grammar.
 
-One cached `AnalyzedDocumentSnapshot` owns the document parse snapshot, diagnostics, fixes,
-detection, and token input for a source version and analyzer-configuration epoch. Completion,
-hover/structure, rename, code actions, diagnostics, detection, and tokens all borrow that bundle.
-No capability invokes analysis independently for the same document epoch.
+One cached LSP `DocumentAnalysisContext` pairs an editor-core `DocumentSnapshot` with its canonical
+`AnalysisResult` and current diagnostic `AnalysisPayload` for a source version and analyzer
+configuration. Each request borrows a `SnapshotContext`, which captures the document epoch and
+snapshot generation together with the diagnostic generation. The request kind determines whether
+currentness requires only the snapshot or both the snapshot and diagnostic payload. Completion,
+hover/structure, rename, code actions, diagnostics, detection, and tokens therefore use one coherent
+parse generation.
 
-The current `Analyzer` applies rule configuration while constructing diagnostics, so a diagnostic
-rule change rebuilds one coherent analyzed bundle rather than retaining an old semantic snapshot
-and running an independent diagnostic parse. Only changes that can alter language facts require a
-client semantic-token refresh; a rule-only rebuild produces the same token meaning. Site
-configuration, fixed date/time, resource limits, and source descriptors are language-fact
-changes because they can alter parser facts or source mapping.
+A rule-only analyzer change advances the diagnostic generation and reprojects `AnalysisPayload`
+from the cached canonical `AnalysisResult` through `Analyzer::reproject_payload`; it retains the
+same snapshot, parser evidence, and semantic-token state and does not invoke another parse.
+Snapshot-affecting changes instead advance both generations, clear cached analysis contexts and
+semantic-token state, and require a new analysis build. Site configuration, runtime policy
+including fixed date/time, source limits, and source descriptors are snapshot-affecting because
+they can alter parser facts, source availability, or source mapping.
 
 ## User-Visible Behavior
 

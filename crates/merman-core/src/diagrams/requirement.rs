@@ -1,9 +1,10 @@
 use crate::diagrams::scan::{LineCursor, leading_whitespace_len};
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
-    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
-    family::CombinedSemanticFailure,
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
+    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    editor::EditorLexemeJournal, family::CombinedSemanticFailure,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -14,6 +15,16 @@ use std::collections::{BTreeMap, HashMap};
 thread_local! {
     static REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
 }
+
+const REQUIREMENT_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
+    EditorCompletionCandidate::keyword("TB", "top to bottom"),
+    EditorCompletionCandidate::keyword("BT", "bottom to top"),
+    EditorCompletionCandidate::keyword("LR", "left to right"),
+    EditorCompletionCandidate::keyword("RL", "right to left"),
+];
+
+const REQUIREMENT_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
+    EditorCompletionVocabulary::new(&[], REQUIREMENT_COMPLETION_DIRECTIONS);
 
 #[cfg(test)]
 pub(crate) fn reset_requirement_syntax_construction_count() {
@@ -357,15 +368,17 @@ pub(crate) fn parse_requirement_model_for_render(
 pub(crate) fn parse_requirement_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> crate::family::CombinedSemanticParse {
-    crate::family::CombinedSemanticParse::from_construction(
-        construct_requirement_semantic_source(code, meta),
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_requirement_semantic_source_controlled(code, meta, control)?;
+    Ok(crate::family::CombinedSemanticParse::from_construction(
+        construction,
         |RequirementSemanticSource {
              model,
              editor_facts,
          }| (render_model_to_compat_json(&model, meta), editor_facts),
         CombinedSemanticFailure::into_parts,
-    )
+    ))
 }
 
 struct RequirementSemanticSource {
@@ -565,13 +578,23 @@ fn construct_requirement_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> std::result::Result<RequirementSemanticSource, CombinedSemanticFailure> {
+    construct_requirement_semantic_source_controlled(code, meta, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_requirement_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>> {
+    control.checkpoint()?;
     #[cfg(test)]
     REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.set(REQUIREMENT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
     let mut lexemes = EditorLexemeJournal::family_parser(code);
-    let result = parse_requirement_semantic_source_once(code, meta, &mut lexemes);
+    let result = parse_requirement_semantic_source_once(code, meta, &mut lexemes, control)?;
     let lexemes = lexemes.finish();
-    match result {
+    Ok(match result {
         Ok(mut source) => {
             source.editor_facts.replace_family_lexemes(lexemes);
             Ok(source)
@@ -580,23 +603,27 @@ fn construct_requirement_semantic_source(
             failure.replace_family_lexemes(lexemes);
             Err(failure)
         }
-    }
+    })
 }
 
 fn parse_requirement_semantic_source_once(
     code: &str,
     meta: &ParseMetadata,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> std::result::Result<RequirementSemanticSource, CombinedSemanticFailure> {
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<RequirementSemanticSource, CombinedSemanticFailure>> {
+    control.checkpoint()?;
     let mut db = RequirementDb::new();
     let mut acc_title: Option<String> = None;
     let mut acc_descr: Option<String> = None;
-    let mut editor_facts = EditorSemanticFacts::new();
+    let mut editor_facts =
+        EditorSemanticFacts::new().with_completion_vocabulary(REQUIREMENT_COMPLETION_VOCABULARY);
     let mut lines = LineCursor::new(code);
     let mut saw_header = false;
     let mut first_error = None;
 
     while let Some((raw, line_start)) = lines.next_line() {
+        control.checkpoint()?;
         let parsed_line = split_requirement_line(raw, line_start);
         if let Some(comment) = parsed_line.family_comment {
             push_requirement_lexeme(lexemes, EditorLexemeKind::Comment, comment);
@@ -652,7 +679,7 @@ fn parse_requirement_semantic_source_once(
             continue;
         }
         if let Some(parsed) =
-            parse_requirement_acc_descr(stripped, raw, line_start, &mut lines, lexemes)
+            parse_requirement_acc_descr(stripped, raw, line_start, &mut lines, lexemes, control)?
         {
             editor_facts.push_directive_prefix("accDescr");
             parsed.emit_editor_fact(&mut editor_facts);
@@ -700,7 +727,15 @@ fn parse_requirement_semantic_source_once(
                 &mut editor_facts,
                 requirement_statement_span(raw, line_start),
             );
-            db.set_direction(direction.value);
+            if let Some(value) = direction.value {
+                db.set_direction(value);
+            } else {
+                first_error.get_or_insert(Error::diagram_parse_exact(
+                    meta.diagram_type.clone(),
+                    "invalid requirement direction",
+                    direction.selection,
+                ));
+            }
             continue;
         }
 
@@ -730,7 +765,8 @@ fn parse_requirement_semantic_source_once(
                 &ty.to_lowercase(),
                 EditorSemanticKind::Struct,
             );
-            let body = parse_requirement_body(&mut lines, meta, &mut editor_facts, lexemes);
+            let body =
+                parse_requirement_body(&mut lines, meta, &mut editor_facts, lexemes, control)?;
             if let Some(error) = body.error {
                 first_error.get_or_insert(error);
             }
@@ -762,7 +798,7 @@ fn parse_requirement_semantic_source_once(
                 "requirement element",
                 EditorSemanticKind::Object,
             );
-            let body = parse_element_body(&mut lines, meta, &mut editor_facts, lexemes);
+            let body = parse_element_body(&mut lines, meta, &mut editor_facts, lexemes, control)?;
             if let Some(error) = body.error {
                 first_error.get_or_insert(error);
             }
@@ -901,17 +937,18 @@ fn parse_requirement_semantic_source_once(
     }
 
     if let Some(error) = first_error {
-        return Err(CombinedSemanticFailure::parser_recovery(
+        return Ok(Err(CombinedSemanticFailure::parser_recovery(
             "requirement",
             error,
             editor_facts,
-        ));
+        )));
     }
 
-    Ok(RequirementSemanticSource {
+    control.checkpoint()?;
+    Ok(Ok(RequirementSemanticSource {
         model: db.to_render_model(acc_title, acc_descr),
         editor_facts,
-    })
+    }))
 }
 
 fn requirement_exact_error(error: Error, meta: &ParseMetadata, span: SourceSpan) -> Error {
@@ -960,8 +997,12 @@ fn parse_requirement_acc_descr(
     line_start: usize,
     cursor: &mut LineCursor<'_>,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> Option<RequirementAccDescr> {
-    let (rest, rest_start) = parse_keyword_rest_ci(line, "accDescr")?;
+    control: &ParseControl,
+) -> ParseControlResult<Option<RequirementAccDescr>> {
+    control.checkpoint()?;
+    let Some((rest, rest_start)) = parse_keyword_rest_ci(line, "accDescr") else {
+        return Ok(None);
+    };
     let statement_start = requirement_statement_span(raw_line, line_start).start;
     push_requirement_lexeme(
         lexemes,
@@ -987,7 +1028,7 @@ fn parse_requirement_acc_descr(
                 value.start + value.text.len(),
             );
         }
-        return Some(RequirementAccDescr {
+        return Ok(Some(RequirementAccDescr {
             value: value
                 .map(|value| value.text)
                 .unwrap_or_default()
@@ -1000,10 +1041,12 @@ fn parse_requirement_acc_descr(
                 )
             }),
             complete: true,
-        });
+        }));
     }
 
-    let after_brace = rest.strip_prefix('{')?;
+    let Some(after_brace) = rest.strip_prefix('{') else {
+        return Ok(None);
+    };
     push_requirement_local_lexeme(
         lexemes,
         EditorLexemeKind::Delimiter,
@@ -1038,6 +1081,7 @@ fn parse_requirement_acc_descr(
             &mut last_content_end,
         );
         while let Some((next, next_start)) = cursor.next_line() {
+            control.checkpoint()?;
             statement_end = next_start + next.len();
             if let Some(close) = next.find('}') {
                 append_requirement_acc_descr_line(
@@ -1080,7 +1124,7 @@ fn parse_requirement_acc_descr(
             SourceSpan::new(parsed.statement_span.end - 1, parsed.statement_span.end),
         );
     }
-    Some(parsed)
+    Ok(Some(parsed))
 }
 
 fn append_requirement_acc_descr_line(
@@ -1289,14 +1333,16 @@ fn split_requirement_line(line: &str, line_start: usize) -> RequirementLine<'_> 
 }
 
 struct ParsedRequirementDirection {
-    value: &'static str,
+    value: Option<&'static str>,
     selection: SourceSpan,
 }
 
 impl ParsedRequirementDirection {
     fn record(&self, lexemes: &mut EditorLexemeJournal<'_>, keyword: SourceSpan) {
         push_requirement_lexeme(lexemes, EditorLexemeKind::Keyword, keyword);
-        push_requirement_lexeme(lexemes, EditorLexemeKind::Literal, self.selection);
+        if self.selection.start < self.selection.end {
+            push_requirement_lexeme(lexemes, EditorLexemeKind::Literal, self.selection);
+        }
     }
 
     fn emit_editor_fact(&self, facts: &mut EditorSemanticFacts, statement_span: SourceSpan) {
@@ -1304,13 +1350,15 @@ impl ParsedRequirementDirection {
             EditorExpectedSyntaxKind::DirectionValue,
             self.selection,
         ));
-        facts.push_symbol(EditorSemanticSymbol::payload(
-            self.value,
-            Some("requirement direction".to_string()),
-            EditorSemanticKind::String,
-            statement_span,
-            self.selection,
-        ));
+        if let Some(value) = self.value {
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                value,
+                Some("requirement direction".to_string()),
+                EditorSemanticKind::String,
+                statement_span,
+                self.selection,
+            ));
+        }
     }
 }
 
@@ -1319,16 +1367,16 @@ fn parse_direction(t: &str, statement_start: usize) -> Option<ParsedRequirementD
     if !keyword.eq_ignore_ascii_case("direction") {
         return None;
     }
-    let (dir, _) = split_first_word(rest)?;
-    let value = match dir.to_ascii_uppercase().as_str() {
-        "TB" => "TB",
-        "BT" => "BT",
-        "LR" => "LR",
-        "RL" => "RL",
-        _ => return None,
-    };
     let rest_start = t.len() - rest.len();
     let value_start = statement_start + rest_start + leading_whitespace_len(rest);
+    let dir = split_first_word(rest).map_or("", |(dir, _)| dir);
+    let value = match dir.to_ascii_uppercase().as_str() {
+        "TB" => Some("TB"),
+        "BT" => Some("BT"),
+        "LR" => Some("LR"),
+        "RL" => Some("RL"),
+        _ => None,
+    };
     Some(ParsedRequirementDirection {
         value,
         selection: SourceSpan::new(value_start, value_start + dir.len()),
@@ -1566,10 +1614,13 @@ fn parse_requirement_body(
     meta: &ParseMetadata,
     facts: &mut EditorSemanticFacts,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> RequirementBodyParse<RequirementBuilder> {
+    control: &ParseControl,
+) -> ParseControlResult<RequirementBodyParse<RequirementBuilder>> {
+    control.checkpoint()?;
     let mut b = RequirementBuilder::new();
     let mut error = None;
     while let Some((raw, line_start)) = lines.next_line() {
+        control.checkpoint()?;
         let parsed_line = split_requirement_line(raw, line_start);
         if let Some(comment) = parsed_line.family_comment {
             push_requirement_lexeme(lexemes, EditorLexemeKind::Comment, comment);
@@ -1585,7 +1636,7 @@ fn parse_requirement_body(
                 EditorLexemeKind::Delimiter,
                 requirement_statement_span(line, line_start),
             );
-            return RequirementBodyParse { value: b, error };
+            return Ok(RequirementBodyParse { value: b, error });
         }
 
         let Some(key_value) = split_key_value_spanned(line) else {
@@ -1687,7 +1738,7 @@ fn parse_requirement_body(
         "unterminated requirement block",
         lines.offset(),
     ));
-    RequirementBodyParse { value: b, error }
+    Ok(RequirementBodyParse { value: b, error })
 }
 
 fn parse_element_body(
@@ -1695,10 +1746,13 @@ fn parse_element_body(
     meta: &ParseMetadata,
     facts: &mut EditorSemanticFacts,
     lexemes: &mut EditorLexemeJournal<'_>,
-) -> RequirementBodyParse<ElementBuilder> {
+    control: &ParseControl,
+) -> ParseControlResult<RequirementBodyParse<ElementBuilder>> {
+    control.checkpoint()?;
     let mut b = ElementBuilder::new();
     let mut error = None;
     while let Some((raw, line_start)) = lines.next_line() {
+        control.checkpoint()?;
         let parsed_line = split_requirement_line(raw, line_start);
         if let Some(comment) = parsed_line.family_comment {
             push_requirement_lexeme(lexemes, EditorLexemeKind::Comment, comment);
@@ -1714,7 +1768,7 @@ fn parse_element_body(
                 EditorLexemeKind::Delimiter,
                 requirement_statement_span(line, line_start),
             );
-            return RequirementBodyParse { value: b, error };
+            return Ok(RequirementBodyParse { value: b, error });
         }
 
         let Some(key_value) = split_key_value_spanned(line) else {
@@ -1796,7 +1850,7 @@ fn parse_element_body(
         "unterminated element block",
         lines.offset(),
     ));
-    RequirementBodyParse { value: b, error }
+    Ok(RequirementBodyParse { value: b, error })
 }
 
 struct SpannedKeyValue<'a> {
@@ -2888,7 +2942,7 @@ mod tests {
         let standalone_json = parse_requirement(text, &meta).unwrap();
         reset_requirement_syntax_construction_count();
         let (combined_json, combined_editor) = crate::family::test_support::into_result(
-            parse_requirement_json_and_editor_facts(text, &meta),
+            parse_requirement_json_and_editor_facts(text, &meta, &ParseControl::new()),
         )
         .unwrap();
 
