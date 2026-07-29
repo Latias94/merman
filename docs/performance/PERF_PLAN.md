@@ -177,6 +177,11 @@ does; do not add a global cache or syntax classifier.
 Exit: Kanban semantic/layout/SVG goldens and hostile Markdown/HTML behavior remain identical, and a
 decision-grade adjacent A/B confirmation shows the exact stage and absolute saving.
 
+Completed on 2026-07-29. The accepted private artifact reuses prepared section/card-title XHTML and
+geometry while leaving detail-only measurements in SVG emission. The public medium lane improved
+from 51.65 us to 40.71 us (-21.19%, -10.94 us); see
+[the U5 receipt](kanban_prepared_labels_candidate_2026-07-29.md).
+
 ### P1.4: Avoid editor-only bookkeeping in render-only parsing
 
 Several typed render parsers reuse semantic constructors that also populate editor facts and lexeme

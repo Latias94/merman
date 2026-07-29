@@ -200,9 +200,9 @@ than 50 us.
 
 The ordinary absolute threshold is structurally unreachable when the complete public-operation
 baseline is below 50 us and dominates the relative threshold for every baseline below 500 us. A
-candidate may preregister this alternative only before collecting confirmation samples and only for
-a complete public operation with frozen base/head revisions and inputs. Private stages remain
-attribution evidence.
+candidate with a frozen baseline below 500 us may preregister this alternative only before
+collecting confirmation samples and only for a complete public operation with frozen base/head
+revisions and inputs. Private stages remain attribution evidence.
 
 Let `B` be the frozen baseline estimate in nanoseconds per logical operation. Let `e_r` and `e_d` be
 the maximum absolute endpoints from the independent base and head A/A simultaneous 95% intervals
