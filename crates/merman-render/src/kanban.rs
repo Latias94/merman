@@ -54,6 +54,105 @@ mod config;
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
 
+#[derive(Debug)]
+pub(crate) struct KanbanPreparedArtifact {
+    layout: KanbanDiagramLayout,
+    sections: Vec<KanbanPreparedMarkdownLabel>,
+    items: Vec<KanbanPreparedItemLabel>,
+}
+
+impl KanbanPreparedArtifact {
+    pub(crate) fn layout(&self) -> &KanbanDiagramLayout {
+        &self.layout
+    }
+
+    pub(crate) fn render_parts(
+        &self,
+    ) -> (
+        &KanbanDiagramLayout,
+        &[KanbanPreparedMarkdownLabel],
+        &[KanbanPreparedItemLabel],
+    ) {
+        (&self.layout, &self.sections, &self.items)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct KanbanPreparedMarkdownLabel {
+    pub(crate) html: String,
+    pub(crate) geometry: KanbanPreparedLabelGeometry,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct KanbanPreparedLabelGeometry {
+    pub(crate) content_height: f64,
+    pub(crate) foreign_object_width: f64,
+    pub(crate) wrapped: bool,
+}
+
+impl KanbanPreparedLabelGeometry {
+    pub(crate) fn empty() -> Self {
+        Self {
+            content_height: 0.0,
+            foreign_object_width: 0.0,
+            wrapped: false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct KanbanPreparedItemLabel {
+    pub(crate) title: KanbanPreparedMarkdownLabel,
+}
+
+fn prepare_kanban_markdown_label(
+    markdown: &KanbanMarkdown<'_>,
+    measurer: &dyn TextMeasurer,
+    raw: &str,
+    style: &TextStyle,
+    max_width: f64,
+) -> (KanbanPreparedMarkdownLabel, TextMetrics) {
+    let html = markdown.render(raw);
+    let raw_metrics = markdown.measure_html(measurer, &html, style, None);
+    let wrapped = max_width > 0.0 && raw_metrics.width > max_width;
+    let metrics = if wrapped {
+        markdown.measure_html(measurer, &html, style, Some(max_width))
+    } else {
+        raw_metrics
+    };
+
+    (
+        KanbanPreparedMarkdownLabel {
+            html,
+            geometry: KanbanPreparedLabelGeometry {
+                content_height: metrics.height,
+                foreign_object_width: if wrapped {
+                    max_width.max(0.0)
+                } else {
+                    metrics.width.max(0.0)
+                },
+                wrapped,
+            },
+        },
+        metrics,
+    )
+}
+
+fn prepare_kanban_title_label(
+    markdown: &KanbanMarkdown<'_>,
+    measurer: &dyn TextMeasurer,
+    raw: &str,
+    style: &TextStyle,
+    max_width: f64,
+) -> (KanbanPreparedMarkdownLabel, TextMetrics) {
+    let (mut prepared, metrics) =
+        prepare_kanban_markdown_label(markdown, measurer, raw, style, max_width);
+    if raw.is_empty() {
+        prepared.geometry.foreign_object_width = 0.0;
+    }
+    (prepared, metrics)
+}
+
 fn kanban_layout_work_units(model: &KanbanDiagramRenderModel) -> usize {
     let sections = model.nodes.iter().filter(|node| node.is_group).count();
     let items = model
@@ -76,21 +175,22 @@ pub(crate) fn layout_kanban_diagram_typed(
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
     let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
-    layout_kanban_diagram_typed_with_resource_policy(
+    prepare_kanban_diagram_typed_with_resource_policy(
         model,
         &effective_config,
         measurer,
         RenderResourcePolicy::interactive(),
     )
+    .map(|prepared| prepared.layout)
 }
 
-/// Lays out a Kanban model under the resource policy owned by the render operation.
-pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
+/// Prepares a Kanban model under the resource policy owned by the render operation.
+pub(crate) fn prepare_kanban_diagram_typed_with_resource_policy(
     model: &KanbanDiagramRenderModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
     resource_limits: RenderResourcePolicy,
-) -> Result<KanbanDiagramLayout> {
+) -> Result<KanbanPreparedArtifact> {
     resource_limits.check_model_complexity(ModelComplexity::from_kanban(model))?;
     resource_limits.check_layout_work_units(kanban_layout_work_units(model))?;
     let cfg = KanbanConfigView::new(effective_config.as_value()).layout_settings();
@@ -107,12 +207,20 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
     let item_two_row_height = KANBAN_ITEM_TWO_ROW_HEIGHT_PX * font_scale;
     let markdown = KanbanMarkdown::new(effective_config);
 
-    let mut max_label_height = section_label_height_baseline;
-    let mut sections: Vec<KanbanSectionLayout> = Vec::new();
-    let mut items: Vec<KanbanItemLayout> = Vec::new();
-
     let section_nodes: Vec<&KanbanRenderNode> = model.nodes.iter().filter(|n| n.is_group).collect();
-    let mut items_by_section: HashMap<&str, Vec<&KanbanRenderNode>> = HashMap::new();
+    let item_capacity = model
+        .nodes
+        .iter()
+        .filter(|node| node.parent_id.is_some())
+        .count();
+    let mut max_label_height = section_label_height_baseline;
+    let mut sections: Vec<KanbanSectionLayout> = Vec::with_capacity(section_nodes.len());
+    let mut items: Vec<KanbanItemLayout> = Vec::with_capacity(item_capacity);
+    let mut prepared_sections = Vec::with_capacity(section_nodes.len());
+    let mut prepared_items = Vec::with_capacity(item_capacity);
+
+    let mut items_by_section: HashMap<&str, Vec<&KanbanRenderNode>> =
+        HashMap::with_capacity(section_nodes.len());
     for node in &model.nodes {
         if let Some(parent_id) = node.parent_id.as_deref() {
             items_by_section.entry(parent_id).or_default().push(node);
@@ -123,13 +231,13 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
         let center_x = section_width * (index as f64) + ((index - 1) as f64 * padding) / 2.0;
         let center_y = 0.0;
 
-        let label_html = markdown.render(&section.label);
-        let raw_label_metrics = markdown.measure_html(measurer, &label_html, &legend_style, None);
-        let label_metrics = if section_width > 0.0 && raw_label_metrics.width > section_width {
-            markdown.measure_html(measurer, &label_html, &legend_style, Some(section_width))
-        } else {
-            raw_label_metrics
-        };
+        let (prepared_label, label_metrics) = prepare_kanban_markdown_label(
+            &markdown,
+            measurer,
+            &section.label,
+            &legend_style,
+            section_width,
+        );
         let label_height = label_metrics.height.max(label_foreign_object_height);
         max_label_height = max_label_height.max(label_height);
 
@@ -147,6 +255,7 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
             label_width: label_metrics.width.max(0.0),
             label_height,
         });
+        prepared_sections.push(prepared_label);
     }
 
     for section in sections.iter_mut() {
@@ -164,15 +273,13 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
             // Mermaid's kanban items are rendered via `kanbanItem.ts`, which uses HTML labels for
             // the title and applies `max-width` clamping when the content needs wrapping. Mirror
             // that behavior so item heights match the upstream bbox-based layout.
-            let item_label_style = legend_style.clone();
-            let title_html = markdown.render(&item.label);
-            let raw_title_metrics =
-                markdown.measure_html(measurer, &title_html, &item_label_style, None);
-            let title_metrics = if inner_max_w > 0.0 && raw_title_metrics.width > inner_max_w {
-                markdown.measure_html(measurer, &title_html, &item_label_style, Some(inner_max_w))
-            } else {
-                raw_title_metrics
-            };
+            let (prepared_title, title_metrics) = prepare_kanban_title_label(
+                &markdown,
+                measurer,
+                &item.label,
+                &legend_style,
+                inner_max_w,
+            );
 
             let has_details_row = item.ticket.is_some() || item.assigned.is_some();
             let base_height = if has_details_row {
@@ -200,6 +307,9 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
                 assigned: item.assigned.clone(),
                 priority: item.priority.clone(),
                 icon: item.icon.clone(),
+            });
+            prepared_items.push(KanbanPreparedItemLabel {
+                title: prepared_title,
             });
 
             y = center_y + height / 2.0 + padding / 2.0;
@@ -249,7 +359,7 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
         None
     };
 
-    Ok(KanbanDiagramLayout {
+    let layout = KanbanDiagramLayout {
         bounds,
         section_width,
         padding,
@@ -258,7 +368,56 @@ pub(crate) fn layout_kanban_diagram_typed_with_resource_policy(
         use_max_width: cfg.use_max_width,
         sections,
         items,
+    };
+    Ok(KanbanPreparedArtifact {
+        layout,
+        sections: prepared_sections,
+        items: prepared_items,
     })
+}
+
+#[cfg(test)]
+pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
+    layout: &KanbanDiagramLayout,
+    effective_config: &merman_core::MermaidConfig,
+    measurer: &dyn TextMeasurer,
+) -> KanbanPreparedArtifact {
+    let settings = KanbanConfigView::new(effective_config.as_value()).layout_settings();
+    let markdown = KanbanMarkdown::new(effective_config);
+    let sections = layout
+        .sections
+        .iter()
+        .map(|section| {
+            prepare_kanban_markdown_label(
+                &markdown,
+                measurer,
+                &section.label,
+                &settings.text_style,
+                section.width,
+            )
+            .0
+        })
+        .collect();
+    let items = layout
+        .items
+        .iter()
+        .map(|item| KanbanPreparedItemLabel {
+            title: prepare_kanban_title_label(
+                &markdown,
+                measurer,
+                &item.label,
+                &settings.text_style,
+                (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
+            )
+            .0,
+        })
+        .collect();
+
+    KanbanPreparedArtifact {
+        layout: layout.clone(),
+        sections,
+        items,
+    }
 }
 
 #[cfg(test)]

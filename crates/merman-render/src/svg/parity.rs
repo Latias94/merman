@@ -563,13 +563,7 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         BuiltinFamilyArtifact::Kanban(pair) => {
-            let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
-            kanban::render_kanban_diagram_svg(
-                pair.layout(),
-                effective_config,
-                &text_measurer,
-                options,
-            )
+            kanban::render_kanban_diagram_svg(pair.layout(), effective_config, options)
         }
         BuiltinFamilyArtifact::Gantt(pair) => gantt::render_gantt_diagram_svg_model(
             pair.layout(),

@@ -213,7 +213,14 @@ pub(crate) enum BuiltinFamilyArtifact {
     Railroad(
         Box<FamilyPair<diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>>,
     ),
-    Kanban(Box<FamilyPair<diagrams::kanban::KanbanDiagramRenderModel, KanbanDiagramLayout>>),
+    Kanban(
+        Box<
+            FamilyPair<
+                diagrams::kanban::KanbanDiagramRenderModel,
+                crate::kanban::KanbanPreparedArtifact,
+            >,
+        >,
+    ),
     Gantt(Box<FamilyPair<diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout>>),
     Pie(Box<FamilyPair<diagrams::pie::PieDiagramRenderModel, PieDiagramLayout>>),
     Packet(Box<FamilyPair<diagrams::packet::PacketDiagramRenderModel, PacketDiagramLayout>>),
@@ -457,7 +464,7 @@ impl BuiltinFamilyArtifact {
             Self::Cynefin(pair) => LayoutProjection::CynefinDiagram(pair.layout()),
             Self::Wardley(pair) => LayoutProjection::WardleyDiagram(pair.layout()),
             Self::Railroad(pair) => LayoutProjection::RailroadDiagram(pair.layout()),
-            Self::Kanban(pair) => LayoutProjection::KanbanDiagram(pair.layout()),
+            Self::Kanban(pair) => LayoutProjection::KanbanDiagram(pair.layout().layout()),
             Self::Gantt(pair) => LayoutProjection::GanttDiagram(pair.layout()),
             Self::Pie(pair) => LayoutProjection::PieDiagram(pair.layout()),
             Self::Packet(pair) => LayoutProjection::PacketDiagram(pair.layout()),
@@ -1173,7 +1180,7 @@ fn prepare_non_class_render(
         }
         RenderSemanticModel::Kanban(model) => {
             BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
-                crate::kanban::layout_kanban_diagram_typed_with_resource_policy(
+                crate::kanban::prepare_kanban_diagram_typed_with_resource_policy(
                     model,
                     &meta.effective_config,
                     execution.text_measurer(),

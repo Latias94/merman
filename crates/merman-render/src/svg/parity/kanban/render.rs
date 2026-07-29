@@ -1,6 +1,7 @@
 use super::super::*;
 use crate::kanban::{
-    KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_PADDING_PX, KanbanMarkdown,
+    KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_PADDING_PX, KanbanPreparedArtifact,
+    KanbanPreparedLabelGeometry,
 };
 
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
@@ -95,36 +96,22 @@ fn kanban_dom_id(diagram_id: &str, raw_id: &str) -> String {
 
 fn measure_kanban_plain_label(
     text_measurer: &dyn crate::text::TextMeasurer,
-    text: &str,
+    text: Option<&str>,
     style: &crate::text::TextStyle,
-    max_width: Option<f64>,
-) -> crate::text::TextMetrics {
-    text_measurer.measure_wrapped(text, style, max_width, crate::text::WrapMode::HtmlLike)
-}
-
-fn measure_kanban_label_content(
-    text_measurer: &dyn crate::text::TextMeasurer,
-    text: &str,
-    html: Option<&str>,
-    style: &crate::text::TextStyle,
-    max_width: Option<f64>,
-) -> crate::text::TextMetrics {
-    match html {
-        Some(html) => crate::text::measure_xhtml_label_fragment(
-            text_measurer,
-            html,
-            style,
-            max_width,
-            crate::text::WrapMode::HtmlLike,
-        ),
-        None => measure_kanban_plain_label(text_measurer, text, style, max_width),
+) -> KanbanPreparedLabelGeometry {
+    let Some(text) = text.filter(|text| !text.is_empty()) else {
+        return KanbanPreparedLabelGeometry::empty();
+    };
+    let metrics = text_measurer.measure_wrapped(text, style, None, crate::text::WrapMode::HtmlLike);
+    KanbanPreparedLabelGeometry {
+        content_height: metrics.height,
+        foreign_object_width: metrics.width,
+        wrapped: false,
     }
 }
 
-struct KanbanLabelRenderContext<'a> {
+struct KanbanLabelRenderContext {
     max_width: f64,
-    text_measurer: &'a dyn crate::text::TextMeasurer,
-    style: &'a crate::text::TextStyle,
     min_height: f64,
 }
 
@@ -132,80 +119,35 @@ struct KanbanLabelGroup<'a> {
     position: (f64, f64),
     text: Option<&'a str>,
     html: Option<&'a str>,
+    geometry: KanbanPreparedLabelGeometry,
     div_class: Option<&'a str>,
     wrap_title: bool,
 }
 
 fn write_kanban_label_group(
     out: &mut String,
-    context: &KanbanLabelRenderContext<'_>,
+    context: &KanbanLabelRenderContext,
     group: KanbanLabelGroup<'_>,
 ) {
     let KanbanLabelGroup {
         position: (x, y),
         text,
         html,
+        geometry,
         div_class,
         wrap_title,
     } = group;
     let max_width = context.max_width;
-    let (foreign_object_width, foreign_object_height, div_style_overrides) = match text {
-        Some(text) if !text.is_empty() => {
-            if wrap_title && max_width > 0.0 {
-                let raw = measure_kanban_label_content(
-                    context.text_measurer,
-                    text,
-                    html,
-                    context.style,
-                    None,
-                );
-                // Keep the title clip region at card content width. A narrow deterministic
-                // glyph estimate can otherwise crop the browser-rendered HTML label.
-                if raw.width > max_width {
-                    let wrapped = measure_kanban_label_content(
-                        context.text_measurer,
-                        text,
-                        html,
-                        context.style,
-                        Some(max_width),
-                    );
-                    (
-                        max_width,
-                        wrapped.height.max(context.min_height),
-                        Some(format!(
-                            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; width: {width}px;",
-                            width = fmt(max_width),
-                        )),
-                    )
-                } else {
-                    (
-                        raw.width,
-                        raw.height.max(context.min_height),
-                        Some(format!(
-                            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px;",
-                            width = fmt(max_width),
-                        )),
-                    )
-                }
-            } else {
-                let raw = measure_kanban_label_content(
-                    context.text_measurer,
-                    text,
-                    html,
-                    context.style,
-                    None,
-                );
-                (
-                    raw.width,
-                    raw.height.max(context.min_height),
-                    Some(format!(
-                        "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px;",
-                        width = fmt(max_width),
-                    )),
-                )
-            }
-        }
-        _ => (0.0, 0.0, None),
+    let div_style_overrides = match text {
+        Some(text) if !text.is_empty() && wrap_title && geometry.wrapped => Some(format!(
+            "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; width: {width}px;",
+            width = fmt(max_width),
+        )),
+        Some(text) if !text.is_empty() => Some(format!(
+            "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {width}px;",
+            width = fmt(max_width),
+        )),
+        _ => None,
     };
     let class_attr = div_class
         .map(|class| format!(r#" class="{}""#, escape_attr(class)))
@@ -223,12 +165,17 @@ fn write_kanban_label_group(
     } else {
         "nodeLabel"
     };
+    let foreign_object_height = if text.is_some_and(|text| !text.is_empty()) {
+        geometry.content_height.max(context.min_height)
+    } else {
+        0.0
+    };
     let _ = write!(
         out,
         r##"<g class="label" style="text-align:left !important" transform="translate({x}, {y})"><rect/><foreignObject width="{width}" height="{height}"><div style="{div_style}" xmlns="http://www.w3.org/1999/xhtml"{class_attr}><span style="text-align:left !important" class="{span_class}">"##,
         x = fmt(x),
         y = fmt(y),
-        width = fmt(foreign_object_width),
+        width = fmt(geometry.foreign_object_width),
         height = fmt(foreign_object_height),
         div_style = escape_attr(&div_style),
         class_attr = class_attr,
@@ -243,12 +190,14 @@ fn write_kanban_label_group(
 }
 
 pub(crate) fn render_kanban_diagram_svg(
-    layout: &crate::model::KanbanDiagramLayout,
-    sanitize_config: &merman_core::MermaidConfig,
-    text_measurer: &dyn crate::text::TextMeasurer,
+    prepared: &KanbanPreparedArtifact,
+    effective_config: &merman_core::MermaidConfig,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let effective_config = sanitize_config.as_value();
+    let (layout, prepared_sections, prepared_items) = prepared.render_parts();
+    debug_assert_eq!(layout.sections.len(), prepared_sections.len());
+    debug_assert_eq!(layout.items.len(), prepared_items.len());
+    let effective_config = effective_config.as_value();
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
@@ -289,30 +238,17 @@ pub(crate) fn render_kanban_diagram_svg(
     let render_settings = config_view.render_settings();
     let data_look = render_settings.look;
     let data_look_attr = escape_attr(data_look.as_str());
-    let markdown = KanbanMarkdown::new(sanitize_config);
 
     // Mermaid emits a single empty <g/> before the diagram content for kanban.
     out.push_str(r#"<g/>"#);
 
     out.push_str(r#"<g class="sections">"#);
-    for s in &layout.sections {
+    for (s, prepared_label) in layout.sections.iter().zip(prepared_sections) {
         let left = s.center_x - s.width / 2.0;
-        let label = markdown.render(&s.label);
-        let raw_metrics = markdown.measure_html(text_measurer, &label, &label_style, None);
-        let needs_wrap = s.width > 0.0 && raw_metrics.width > s.width;
-        let label_metrics = if needs_wrap {
-            markdown.measure_html(text_measurer, &label, &label_style, Some(s.width))
-        } else {
-            raw_metrics
-        };
-        let label_width = if needs_wrap {
-            s.width.max(0.0)
-        } else {
-            label_metrics.width.max(0.0)
-        };
-        let label_height = label_metrics.height.max(label_min_height);
+        let geometry = prepared_label.geometry;
+        let label_width = geometry.foreign_object_width;
         let label_x = left + (s.width - label_width) / 2.0;
-        let section_div_style = if needs_wrap {
+        let section_div_style = if geometry.wrapped {
             format!(
                 "display: table; white-space: break-spaces; line-height: 1.5; max-width: {width}px; text-align: center; width: {width}px;",
                 width = fmt(s.width.max(0.0)),
@@ -339,15 +275,16 @@ pub(crate) fn render_kanban_diagram_svg(
             lx = fmt(label_x),
             ly = fmt(s.rect_y),
             lw = fmt(label_width),
-            fo_h = fmt(label_height),
+            fo_h = fmt(s.label_height),
             div_style = escape_attr(&section_div_style),
-            label = label,
+            label = prepared_label.html.as_str(),
         );
     }
     out.push_str("</g>");
 
     out.push_str(r#"<g class="items">"#);
     let item_label_inset_x = KANBAN_SECTION_PADDING_PX;
+    let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
 
     fn kanban_ticket_url(ticket_base_url: Option<&str>, ticket: &str) -> Option<String> {
         Some(ticket_base_url?.replace("#TICKET#", ticket))
@@ -364,50 +301,29 @@ pub(crate) fn render_kanban_diagram_svg(
         }
     }
 
-    for n in &layout.items {
+    for (n, prepared_labels) in layout.items.iter().zip(prepared_items) {
         let max_w = (n.width - item_label_inset_x).max(0.0);
         let rect_x = -n.width / 2.0;
         let rect_y = -n.height / 2.0;
-        let title_html = markdown.render(&n.label);
-
-        // The upstream kanban item shape (`kanbanItem.ts`) positions labels relative to the title
-        // bbox and the "details row" bbox (ticket/assigned). Recompute the same anchor points here
-        // so wrapped titles match exactly.
-        let title_raw = markdown.measure_html(text_measurer, &title_html, &label_style, None);
-        let title_needs_wrap = max_w > 0.0 && title_raw.width > max_w;
-        let title_metrics = if title_needs_wrap {
-            markdown.measure_html(text_measurer, &title_html, &label_style, Some(max_w))
-        } else {
-            title_raw
-        };
-
-        let ticket_h = n
-            .ticket
-            .as_deref()
-            .filter(|t| !t.is_empty())
-            .map(|t| measure_kanban_plain_label(text_measurer, t, &label_style, None).height)
-            .unwrap_or(0.0);
-        let assigned_metrics = n
-            .assigned
-            .as_deref()
-            .filter(|t| !t.is_empty())
-            .map(|t| measure_kanban_plain_label(text_measurer, t, &label_style, None))
-            .unwrap_or(crate::text::TextMetrics {
-                width: 0.0,
-                height: 0.0,
-                line_count: 0,
-            });
-        let height_adj = (ticket_h.max(assigned_metrics.height)) / 2.0;
+        let title_geometry = prepared_labels.title.geometry;
+        let ticket_geometry =
+            measure_kanban_plain_label(&text_measurer, n.ticket.as_deref(), &label_style);
+        let assigned_geometry =
+            measure_kanban_plain_label(&text_measurer, n.assigned.as_deref(), &label_style);
+        let height_adj = ticket_geometry
+            .content_height
+            .max(assigned_geometry.content_height)
+            / 2.0;
 
         let left_x = rect_x + item_label_inset_x;
-        let right_x = if assigned_metrics.width > 0.0 {
-            n.width / 2.0 - item_label_inset_x - assigned_metrics.width
+        let right_x = if assigned_geometry.foreign_object_width > 0.0 {
+            n.width / 2.0 - item_label_inset_x - assigned_geometry.foreign_object_width
         } else {
             n.width / 2.0 - item_label_inset_x
         };
 
-        let title_y = -height_adj - title_metrics.height / 2.0;
-        let details_y = -height_adj + title_metrics.height / 2.0;
+        let title_y = -height_adj - title_geometry.content_height / 2.0;
+        let details_y = -height_adj + title_geometry.content_height / 2.0;
 
         let _ = write!(
             &mut out,
@@ -429,8 +345,6 @@ pub(crate) fn render_kanban_diagram_svg(
 
         let label_context = KanbanLabelRenderContext {
             max_width: max_w,
-            text_measurer,
-            style: &label_style,
             min_height: label_min_height,
         };
 
@@ -441,7 +355,8 @@ pub(crate) fn render_kanban_diagram_svg(
             KanbanLabelGroup {
                 position: (left_x, title_y),
                 text: Some(n.label.as_str()),
-                html: Some(title_html.as_str()),
+                html: Some(prepared_labels.title.html.as_str()),
+                geometry: title_geometry,
                 div_class: n.icon.as_deref().map(|_| "labelBkg"),
                 wrap_title: true,
             },
@@ -463,6 +378,7 @@ pub(crate) fn render_kanban_diagram_svg(
                         position: (left_x, details_y),
                         text: Some(t),
                         html: None,
+                        geometry: ticket_geometry,
                         div_class: None,
                         wrap_title: false,
                     },
@@ -476,6 +392,7 @@ pub(crate) fn render_kanban_diagram_svg(
                         position: (left_x, details_y),
                         text: Some(t),
                         html: None,
+                        geometry: ticket_geometry,
                         div_class: None,
                         wrap_title: false,
                     },
@@ -489,6 +406,7 @@ pub(crate) fn render_kanban_diagram_svg(
                     position: (left_x, details_y),
                     text: None,
                     html: None,
+                    geometry: ticket_geometry,
                     div_class: None,
                     wrap_title: false,
                 },
@@ -503,6 +421,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 position: (right_x, details_y),
                 text: n.assigned.as_deref(),
                 html: None,
+                geometry: assigned_geometry,
                 div_class: None,
                 wrap_title: false,
             },
@@ -541,7 +460,9 @@ mod tests {
         MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
         TextMeasurementPolicy, TextMeasurementProfileIdentity, TextMeasurementSource,
     };
-    use crate::kanban::KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX;
+    use crate::kanban::{
+        KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX, prepare_kanban_artifact_from_layout_for_test,
+    };
     use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
     use crate::text::TextMetrics;
     use std::sync::Arc;
@@ -570,8 +491,10 @@ mod tests {
     ) -> Result<String> {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+        let prepared =
+            prepare_kanban_artifact_from_layout_for_test(layout, &effective_config, &measurer);
         with_test_svg_execution(options, |options| {
-            render_kanban_diagram_svg(layout, &effective_config, &measurer, options)
+            render_kanban_diagram_svg(&prepared, &effective_config, options)
         })
         .and_then(|svg| svg.into_string_for(crate::family::RenderFamilyKind::Kanban))
     }
@@ -668,7 +591,7 @@ mod tests {
                 },
                 KanbanItemLayout {
                     id: "__proto__".to_string(),
-                    label: "Prototype".to_string(),
+                    label: String::new(),
                     parent_id: "constructor".to_string(),
                     center_x: 100.0,
                     center_y: -190.0,
@@ -699,6 +622,18 @@ mod tests {
         assert!(!svg.contains(r#"id="constructor""#));
         assert!(!svg.contains(r#"id="task1""#));
         assert!(!svg.contains(r#"id="__proto__""#));
+        let empty_item = svg
+            .split_once(r#"id="kanban_fixture-__proto__""#)
+            .expect("empty-label item")
+            .1;
+        let empty_title = empty_item
+            .split_once("<foreignObject ")
+            .expect("empty title foreignObject")
+            .1;
+        assert!(
+            empty_title.starts_with(r#"width="0" height="0""#),
+            "empty item titles retain Mermaid's zero-sized label geometry: {empty_title}"
+        );
     }
 
     #[test]
@@ -1016,7 +951,17 @@ mod tests {
         let options = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
 
         let config = merman_core::MermaidConfig::default();
-        let svg = render_kanban_diagram_svg(&layout, &config, &measurer, &options).unwrap();
+        let prepared = prepare_kanban_artifact_from_layout_for_test(&layout, &config, &measurer);
+        let measurement_count_before_render: u64 = session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .map(|entry| entry.count())
+            .sum();
+        let svg = render_kanban_diagram_svg(&prepared, &config, &options).unwrap();
+        let report = session.text_measurement_report();
+        let measurement_count_after_render: u64 =
+            report.entries().iter().map(|entry| entry.count()).sum();
 
         let title_fo = foreign_object_before_text(&svg, "<p>Implement renderer</p>");
         assert_eq!(
@@ -1024,15 +969,14 @@ mod tests {
             layout.items[0].width - KANBAN_SECTION_PADDING_PX
         );
         assert_eq!(attr_f64(title_fo, "height"), 40.0);
-        assert!(
-            session
-                .text_measurement_report()
-                .entries()
-                .iter()
-                .any(|entry| {
-                    entry.provenance().phase == TextMeasurementPhase::Wrap
-                        && entry.provenance().source == TextMeasurementSource::Host
-                })
+        assert_eq!(
+            measurement_count_after_render,
+            measurement_count_before_render + 2,
+            "SVG emission must measure each non-empty detail label exactly once"
         );
+        assert!(report.entries().iter().any(|entry| {
+            entry.provenance().phase == TextMeasurementPhase::Wrap
+                && entry.provenance().source == TextMeasurementSource::Host
+        }));
     }
 }
