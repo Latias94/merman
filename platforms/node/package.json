@@ -7,7 +7,8 @@
     "test": "node --test tests/*.test.mjs",
     "check:packages": "node scripts/verify-packages.mjs",
     "build:candidate": "node scripts/build-candidate.mjs",
-    "benchmark": "node scripts/benchmark/run.mjs"
+    "benchmark": "node scripts/benchmark/run.mjs",
+    "benchmark:request-overlay": "node scripts/benchmark/request-overlay-run.mjs"
   },
   "devDependencies": {
     "@napi-rs/cli": "3.7.4",

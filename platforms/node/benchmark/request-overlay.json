@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "lane_id": "binding-request-overlay-node-owner",
+  "owner": "merman-bindings-core",
+  "transport_admission": "not-evaluated",
+  "timing_contract": {
+    "clock": "process.hrtime.bigint",
+    "operation": "executeSync",
+    "request_json": "pre-encoded-before-timing",
+    "base_options_json": "pre-encoded-before-timing",
+    "evidence_projection": "excluded-from-timing",
+    "engine_disposal": "excluded-from-timing",
+    "sample_fields": ["construct_ns", "batch_ns", "total_ns"]
+  },
+  "operation": {
+    "operation_id": "semantic-json",
+    "source": "info\nshowInfo\n",
+    "uri": null
+  },
+  "base_options": {
+    "version": 1,
+    "runtime_policy": "deterministic",
+    "resources": {
+      "profile": "trusted-native"
+    }
+  },
+  "overlays": [
+    {
+      "id": "empty",
+      "request_options": null
+    },
+    {
+      "id": "version-only",
+      "request_options": {
+        "version": 1
+      }
+    },
+    {
+      "id": "real-resource-override",
+      "request_options": {
+        "version": 1,
+        "resources": {
+          "limits": {
+            "max_source_bytes": 4096
+          }
+        }
+      }
+    }
+  ],
+  "error_probe": {
+    "id": "forbidden-runtime-policy",
+    "request_options": {
+      "version": 1,
+      "runtime_policy": "native"
+    },
+    "expected": {
+      "version": 1,
+      "ok": false,
+      "error": {
+        "code": 3,
+        "code_name": "MERMAN_OPTIONS_JSON_ERROR",
+        "kind": "generic",
+        "capability_id": null,
+        "message": "request options_json cannot set runtime_policy; configure it when creating the engine"
+      }
+    }
+  },
+  "success_contract": {
+    "version": 1,
+    "ok": true,
+    "result": {
+      "operation_id": "semantic-json",
+      "media_type": "application/json",
+      "data": "{\"type\":\"info\",\"showInfo\":true}",
+      "metadata_json": "{\"version\":1,\"operation_id\":\"semantic-json\",\"media_type\":\"application/json\",\"runtime_policy\":\"deterministic\",\"byte_length\":31}"
+    }
+  },
+  "scaling": {
+    "batch_sizes": [1, 2, 4, 10, 32, 100],
+    "base_size_units": [1, 2, 4, 10, 32, 100],
+    "base_size_bytes_per_unit": 1024,
+    "overlay_id": "version-only"
+  },
+  "sampling_defaults": {
+    "aa_pairs": 8,
+    "maximum_confirmation_pairs": 32,
+    "cold_samples": 5,
+    "warmup_iterations": 10,
+    "reused_samples": 20
+  },
+  "statistics": {
+    "method": "deterministic-paired-bootstrap-v1",
+    "confidence_level": 0.95,
+    "bootstrap_seed": 84960128876878,
+    "bootstrap_resamples": 10000,
+    "multiplicity_adjustment": "bonferroni",
+    "aa_family_size": 16,
+    "confirmation_family_size": 4
+  },
+  "decision_rule": {
+    "primary_overlay_id": "version-only",
+    "primary_engine_lifecycle": "reused",
+    "primary_batch_size": 1,
+    "minimum_relative_effect": 0.1,
+    "minimum_absolute_effect_ns": 50000,
+    "one_sided_confidence": 0.95,
+    "power": 0.8
+  }
+}
