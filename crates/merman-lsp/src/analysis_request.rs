@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub(crate) struct AnalysisGeneration(pub(crate) u64);
+pub(crate) struct AnalysisJobGeneration(pub(crate) u64);
 
 #[derive(Debug, Clone)]
 pub(crate) struct AnalysisBuildRequest {
@@ -27,7 +27,7 @@ pub(crate) struct AnalysisBuildRequest {
 pub(crate) struct AnalysisBuildKey {
     uri: Uri,
     version: i32,
-    analysis_generation: AnalysisGeneration,
+    analysis_job_generation: AnalysisJobGeneration,
     snapshot_generation: SnapshotGeneration,
     diagnostic_generation: DiagnosticGeneration,
     document_epoch: DocumentEpoch,
@@ -43,7 +43,7 @@ impl AnalysisBuildKey {
     pub(crate) fn new(
         uri: Uri,
         version: i32,
-        analysis_generation: AnalysisGeneration,
+        analysis_job_generation: AnalysisJobGeneration,
         snapshot_generation: SnapshotGeneration,
         diagnostic_generation: DiagnosticGeneration,
         document_epoch: DocumentEpoch,
@@ -51,7 +51,7 @@ impl AnalysisBuildKey {
         Self {
             uri,
             version,
-            analysis_generation,
+            analysis_job_generation,
             snapshot_generation,
             diagnostic_generation,
             document_epoch,
@@ -88,8 +88,8 @@ impl AnalysisBuildRequest {
         self.key.clone()
     }
 
-    pub(crate) fn analysis_generation(&self) -> AnalysisGeneration {
-        self.key.analysis_generation
+    pub(crate) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
+        self.key.analysis_job_generation
     }
 
     pub(crate) fn snapshot_generation(&self) -> SnapshotGeneration {

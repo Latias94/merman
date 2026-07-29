@@ -25,43 +25,46 @@ fn main() {
     let options = AnalysisOptions::default().with_source(
         SourceDescriptor::diagram().with_path("diagram.mmd"),
     );
-    let outcome = Analyzer::with_options(options)
-        .analyze_result("flowchart TD\n  A[Start] -->");
-    let result = outcome
+    let analyzer = Analyzer::with_options(options);
+    let outcome = analyzer.analyze_generation("flowchart TD\n  A[Start] -->");
+    let generation = outcome
         .into_ready()
         .expect("source is within the configured analysis limit");
+    let payload = generation.project(analyzer.options().diagnostic_policy());
 
-    for diagnostic in result.diagnostics() {
+    for diagnostic in &payload.diagnostics {
         println!("{}: {}", diagnostic.id, diagnostic.message);
     }
 
-    assert!(!result.payload().valid);
+    assert!(!payload.valid);
 }
 ```
 
-`Analyzer::analyze_result` returns `AnalysisOutcome` so callers can distinguish a completed `AnalysisResult` from an `AnalysisRejection`. Call `into_ready()` when rejection should be an error, `into_payload()` when a diagnostics-only result is sufficient, or `to_facts_payload()` when a binding or editor needs the serializable facts contract.
+`Analyzer::analyze_generation` returns `AnalysisCaptureOutcome` so callers can distinguish a completed `AnalysisGeneration` from an `AnalysisRejection`. A generation freezes the parser environment and snapshot policy but does not retain an initial diagnostics payload. Call `AnalysisGeneration::project` with a diagnostic policy, use `Analyzer::analyze` for the smaller diagnostics-only path, or use `Analyzer::analyze_facts` when a binding needs the serializable facts contract.
 
 ## Analyze Markdown And MDX
 
-`analyze_document_result` extracts Mermaid fences and maps every diagnostic back to the enclosing document:
+`analyze_document_generation` extracts Mermaid fences and maps projected diagnostics back to the enclosing document:
 
 ````rust
 use merman_analysis::{
-    Analyzer, analyze_document_result, source_descriptor_for_markdown_path,
+    Analyzer, analyze_document_generation, source_descriptor_for_markdown_path,
 };
 
 let markdown = "```mermaid\nflowchart TD\n  A -->\n```\n";
-let outcome = analyze_document_result(
+let analyzer = Analyzer::new();
+let outcome = analyze_document_generation(
     markdown,
-    &Analyzer::new(),
+    &analyzer,
     source_descriptor_for_markdown_path(Some("README.md")),
 );
-let result = outcome
+let generation = outcome
     .into_ready()
     .expect("source is within the configured analysis limit");
+let payload = generation.project(analyzer.options().diagnostic_policy());
 
-assert_eq!(result.diagrams().len(), 1);
-assert!(!result.diagnostics().is_empty());
+assert_eq!(generation.diagrams().len(), 1);
+assert!(!payload.diagnostics.is_empty());
 ````
 
 Use `analyze_document` for the smaller diagnostics payload and `analyze_document_facts` for the versioned binding payload.
@@ -94,7 +97,7 @@ The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are ind
 
 Facts use `fact_source: "unavailable"` when parser-backed body semantics do not exist. They do not invent body symbols, references, or rename targets. Current writers include `rename_policy` on each semantic item; older additive readers that do not see it must treat the item as non-renamable.
 
-`DocumentDiagram::text`, `AnalyzedDiagram::text()`, and editor `FenceSnapshot::text()` use `SharedTextSlice`, which shares immutable document storage instead of copying every fence body. `AnalysisResult` and `AnalyzedDiagram` are read-only canonical outputs; obtain them from `Analyzer` or the document-analysis entry points. Use `as_str()` or `AsRef<str>` for borrowed access and `to_owned_text()` only when an owned buffer is required.
+`DocumentDiagram::text`, `AnalyzedDiagram::text()`, and editor `FenceSnapshot::text()` use `SharedTextSlice`, which shares immutable document storage instead of copying every fence body. `AnalysisGeneration` and `AnalyzedDiagram` are read-only canonical outputs; obtain them from `Analyzer` or the document-analysis entry points. Use `as_str()` or `AsRef<str>` for borrowed access and `to_owned_text()` only when an owned buffer is required.
 
 ## Related Documentation
 

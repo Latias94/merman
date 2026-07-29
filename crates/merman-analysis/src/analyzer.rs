@@ -7,14 +7,17 @@ use crate::recovery::{
 };
 use crate::rules::AnalysisRuleConfig;
 use crate::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisDiagnostic, AnalysisFlowchartFacts,
-    AnalysisOutcome, AnalysisPayload, AnalysisRejection, AnalysisResult, AnalysisSyntaxFacts,
-    AnalyzedDiagram, DocumentDiagram, FenceTextIndex, SourceDescriptor, SourceMap,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisDiagnostic,
+    AnalysisFlowchartFacts, AnalysisGeneration, AnalysisPayload, AnalysisRejection,
+    AnalysisSyntaxFacts, AnalyzedDiagram, DocumentDiagram, FenceTextIndex, SourceDescriptor,
+    SourceMap,
 };
 use merman_core::{
     DiagramParseOutcome, EditorSemanticFacts, Engine, Error as CoreError, MermaidConfig,
     ParseMetadata, ParsedEditorFacts,
 };
+use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 
@@ -160,10 +163,41 @@ impl AnalysisOptions {
     }
 }
 
+/// Opaque identity for one analyzer environment and its snapshot-affecting policy.
+#[derive(Clone)]
+pub struct AnalysisEnvironmentIdentity(Arc<()>);
+
+impl AnalysisEnvironmentIdentity {
+    fn new() -> Self {
+        Self(Arc::new(()))
+    }
+}
+
+impl fmt::Debug for AnalysisEnvironmentIdentity {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("AnalysisEnvironmentIdentity(..)")
+    }
+}
+
+impl PartialEq for AnalysisEnvironmentIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for AnalysisEnvironmentIdentity {}
+
+impl Hash for AnalysisEnvironmentIdentity {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.0).hash(state);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Analyzer {
     engine: Engine,
     options: AnalysisOptions,
+    environment_identity: AnalysisEnvironmentIdentity,
 }
 
 impl Default for Analyzer {
@@ -179,7 +213,11 @@ impl Analyzer {
 
     pub fn with_options(options: AnalysisOptions) -> Self {
         let engine = engine_from_options(&options);
-        Self { engine, options }
+        Self {
+            engine,
+            options,
+            environment_identity: AnalysisEnvironmentIdentity::new(),
+        }
     }
 
     /// Creates an analyzer with a customized engine while keeping `options` authoritative.
@@ -189,11 +227,53 @@ impl Analyzer {
     /// the one used by the parser.
     pub fn with_engine(engine: Engine, options: AnalysisOptions) -> Self {
         let engine = apply_options_to_engine(engine, &options);
-        Self { engine, options }
+        Self {
+            engine,
+            options,
+            environment_identity: AnalysisEnvironmentIdentity::new(),
+        }
     }
 
     pub fn options(&self) -> &AnalysisOptions {
         &self.options
+    }
+
+    pub fn environment_identity(&self) -> &AnalysisEnvironmentIdentity {
+        &self.environment_identity
+    }
+
+    /// Derives a diagnostics-only view without changing the parser environment identity.
+    pub fn with_diagnostic_policy(&self, policy: AnalysisDiagnosticPolicy) -> Self {
+        let mut options = self.options.clone();
+        options.diagnostics = policy;
+        Self {
+            engine: self.engine.clone(),
+            options,
+            environment_identity: self.environment_identity.clone(),
+        }
+    }
+
+    /// Derives an analyzer with an exact snapshot policy and a new environment identity.
+    pub fn with_snapshot_policy(&self, policy: AnalysisSnapshotPolicy) -> Self {
+        let options = AnalysisOptions {
+            snapshot: policy,
+            diagnostics: self.options.diagnostics.clone(),
+        };
+        Self {
+            engine: apply_options_to_engine(self.engine.clone(), &options),
+            options,
+            environment_identity: AnalysisEnvironmentIdentity::new(),
+        }
+    }
+
+    pub(crate) fn with_capture_source(&self, source: SourceDescriptor) -> Self {
+        let mut options = self.options.clone();
+        options.snapshot.source = source;
+        Self {
+            engine: self.engine.clone(),
+            options,
+            environment_identity: AnalysisEnvironmentIdentity::new(),
+        }
     }
 
     pub(crate) fn try_for_operation(
@@ -203,6 +283,7 @@ impl Analyzer {
         Ok(Self {
             engine: self.engine.clone().with_operation_context(context.clone()),
             options: self.options.clone().with_operation_context(context),
+            environment_identity: self.environment_identity.clone(),
         })
     }
 
@@ -221,22 +302,63 @@ impl Analyzer {
         .collect()
     }
 
-    pub fn analyze_result(&self, source: &str) -> AnalysisOutcome {
+    pub fn analyze_generation(&self, source: &str) -> AnalysisCaptureOutcome {
         if let Some(rejection) = self.source_limit_rejection(source, self.options.source().clone())
         {
-            return AnalysisOutcome::Rejected(rejection);
+            return AnalysisCaptureOutcome::Rejected(rejection);
         }
 
         let source_text = Arc::<str>::from(source);
         let source_map = SourceMap::new(Arc::clone(&source_text));
+        let operation_analyzer = match self.try_for_operation() {
+            Ok(analyzer) => analyzer,
+            Err(error) => {
+                return AnalysisCaptureOutcome::Ready(
+                    AnalysisGeneration::new(source_map, Vec::new(), self)
+                        .with_document_error(Arc::new(CoreError::from(error))),
+                );
+            }
+        };
         let diagram = crate::document::whole_document_diagram(source_text, self.options.source());
-        let analyzed = self.analyze_diagram(&diagram, &source_map);
-        AnalysisOutcome::Ready(AnalysisResult::new(
-            self.options.source().clone(),
+        let analyzed = operation_analyzer.analyze_diagram(&diagram, &source_map);
+        AnalysisCaptureOutcome::Ready(AnalysisGeneration::new(
             source_map,
-            analyzed.diagnostics.clone(),
             vec![analyzed],
+            &operation_analyzer,
         ))
+    }
+
+    pub fn analyze_generation_cancellable(
+        &self,
+        source: &str,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisCaptureOutcome, AnalysisCancelled> {
+        cancellation.checkpoint()?;
+        if let Some(rejection) = self.source_limit_rejection(source, self.options.source().clone())
+        {
+            return Ok(AnalysisCaptureOutcome::Rejected(rejection));
+        }
+
+        let source_text = Arc::<str>::from(source);
+        let source_map = SourceMap::new_cancellable(Arc::clone(&source_text), cancellation)?;
+        let operation_analyzer = match self.try_for_operation() {
+            Ok(analyzer) => analyzer,
+            Err(error) => {
+                return Ok(AnalysisCaptureOutcome::Ready(
+                    AnalysisGeneration::new(source_map, Vec::new(), self)
+                        .with_document_error(Arc::new(CoreError::from(error))),
+                ));
+            }
+        };
+        let diagram = crate::document::whole_document_diagram(source_text, self.options.source());
+        let analyzed =
+            operation_analyzer.analyze_diagram_cancellable(&diagram, &source_map, cancellation)?;
+        cancellation.checkpoint()?;
+        Ok(AnalysisCaptureOutcome::Ready(AnalysisGeneration::new(
+            source_map,
+            vec![analyzed],
+            &operation_analyzer,
+        )))
     }
 
     pub fn analyze(&self, source: &str) -> AnalysisPayload {
@@ -252,7 +374,14 @@ impl Analyzer {
     }
 
     pub fn analyze_facts(&self, source: &str) -> crate::AnalysisFactsPayload {
-        self.analyze_result(source).to_facts_payload()
+        match self.analyze_generation(source) {
+            AnalysisCaptureOutcome::Ready(generation) => {
+                generation.to_facts_payload(self.options.diagnostic_policy())
+            }
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                crate::AnalysisFactsPayload::from_rejection(&rejection)
+            }
+        }
     }
 
     pub fn analyze_json(&self, source: &str) -> Result<Vec<u8>, serde_json::Error> {
@@ -263,32 +392,22 @@ impl Analyzer {
         self.analyze_facts(source).to_json_bytes()
     }
 
-    /// Reprojects diagnostics from one canonical rich analysis generation.
-    ///
-    /// Only this analyzer's rule configuration participates in reprojection. Parsing, Mermaid
-    /// configuration, runtime policy, and editor facts remain frozen in `result`.
-    pub fn reproject_payload(&self, result: &AnalysisResult) -> AnalysisPayload {
-        let cancellation = AnalysisCancellationToken::new();
-        self.reproject_payload_cancellable(result, &cancellation)
-            .expect("a private analysis cancellation token cannot be cancelled")
-    }
-
-    pub fn reproject_payload_cancellable(
+    pub(crate) fn project_generation_cancellable(
         &self,
-        result: &AnalysisResult,
+        generation: &AnalysisGeneration,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<AnalysisPayload, AnalysisCancelled> {
         cancellation.checkpoint()?;
-        let diagnostics = if let Some(error) = result.document_error() {
-            self.runtime_error_diagnostics(error, result.source_map())
+        let diagnostics = if let Some(error) = generation.document_error() {
+            self.runtime_error_diagnostics(error, generation.source_map())
         } else {
             let mut diagnostics = Vec::new();
-            for diagram in result.diagrams() {
+            for diagram in generation.diagrams() {
                 cancellation.checkpoint()?;
                 let source_map = if diagram.kind == crate::DocumentDiagramKind::MermaidFence {
                     SourceMap::new_cancellable(diagram.text.as_str(), cancellation)?
                 } else {
-                    result.source_map().clone()
+                    generation.source_map().clone()
                 };
                 let local = self.project_evidence_cancellable(
                     diagram.text.as_str(),
@@ -297,31 +416,18 @@ impl Analyzer {
                     AnalysisMode::DiagnosticReprojection,
                     cancellation,
                 )?;
-                let local_diagnostics = local
-                    .diagnostics
-                    .into_iter()
-                    .chain(
-                        diagram
-                            .diagnostics
-                            .iter()
-                            .filter(|diagnostic| {
-                                diagnostic.id == crate::rules::FLOWCHART_FACTS_PROJECTION_RULE_ID
-                            })
-                            .cloned(),
-                    )
-                    .collect();
                 diagnostics.extend(crate::document::remap_analyzed_diagnostics(
-                    result.source_map(),
-                    result.payload().source.kind,
+                    generation.source_map(),
+                    generation.snapshot_policy().source.kind,
                     diagram,
-                    local_diagnostics,
+                    local.diagnostics,
                 ));
             }
             diagnostics
         };
         cancellation.checkpoint()?;
         Ok(AnalysisPayload::new(
-            result.payload().source.clone(),
+            generation.snapshot_policy().source.clone(),
             diagnostics,
         ))
     }
@@ -343,12 +449,7 @@ impl Analyzer {
             evidence.as_ref(),
             AnalysisMode::RichFacts,
         );
-        AnalyzedDiagram::from_document_diagram_with_evidence(
-            diagram,
-            local.diagnostics,
-            local.syntax,
-            evidence,
-        )
+        AnalyzedDiagram::from_document_diagram_with_evidence(diagram, local.syntax, evidence)
     }
 
     pub(crate) fn analyze_diagram_cancellable(
@@ -376,7 +477,6 @@ impl Analyzer {
         cancellation.checkpoint()?;
         Ok(AnalyzedDiagram::from_document_diagram_with_evidence(
             diagram,
-            local.diagnostics,
             local.syntax,
             evidence,
         ))
@@ -626,16 +726,12 @@ impl Analyzer {
             editor_facts,
             cancellation,
         )?;
-        let flowchart_projection = (mode != AnalysisMode::DiagnosticReprojection)
-            .then(|| {
-                self.flowchart_facts_projection_cancellable(
-                    model,
-                    diagram_type,
-                    source_map,
-                    cancellation,
-                )
-            })
-            .transpose()?;
+        let flowchart_projection = Some(self.flowchart_facts_projection_cancellable(
+            model,
+            diagram_type,
+            source_map,
+            cancellation,
+        )?);
         diagnostics.extend(
             flowchart_projection
                 .as_ref()

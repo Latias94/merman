@@ -2,10 +2,10 @@ use crate::diagnostics::{EditorDiagnostic, analysis_payload_to_diagnostics};
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentKind, DocumentUri};
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisOutcome, AnalysisPayload,
-    AnalysisRejection, AnalysisResult, AnalyzedDiagram, Analyzer, DiagramParseDisposition,
-    SourceDescriptor, SourceKind, analyze_document_result_shared,
-    analyze_document_result_shared_cancellable,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisCaptureOutcome, AnalysisDiagnosticPolicy,
+    AnalysisGeneration, AnalysisPayload, AnalysisRejection, AnalyzedDiagram, Analyzer,
+    DiagramParseDisposition, SourceDescriptor, SourceKind, analyze_document_generation_shared,
+    analyze_document_generation_shared_cancellable,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -39,7 +39,8 @@ pub struct DocumentAnalysisContext {
 #[derive(Debug, Clone)]
 struct DocumentAnalysisContextInner {
     snapshot: DocumentSnapshot,
-    analysis: Arc<AnalysisResult>,
+    generation: Arc<AnalysisGeneration>,
+    payload: Arc<AnalysisPayload>,
     diagnostics: Arc<[EditorDiagnostic]>,
     detection: Option<EditorDiagramDetection>,
 }
@@ -79,7 +80,7 @@ impl DocumentAnalysisContext {
     }
 
     pub fn payload(&self) -> &AnalysisPayload {
-        self.inner.analysis.payload()
+        self.inner.payload.as_ref()
     }
 
     pub fn diagnostics(&self) -> &[EditorDiagnostic] {
@@ -90,30 +91,39 @@ impl DocumentAnalysisContext {
         self.inner.detection.as_ref()
     }
 
-    pub fn analysis_result(&self) -> &AnalysisResult {
-        &self.inner.analysis
+    pub fn analysis_generation(&self) -> &AnalysisGeneration {
+        &self.inner.generation
     }
 
-    pub fn shared_analysis_result(&self) -> Arc<AnalysisResult> {
-        Arc::clone(&self.inner.analysis)
+    pub fn shared_analysis_generation(&self) -> Arc<AnalysisGeneration> {
+        Arc::clone(&self.inner.generation)
     }
 
-    pub fn reproject_payload(&self, analyzer: &Analyzer) -> AnalysisPayload {
-        analyzer.reproject_payload(&self.inner.analysis)
+    pub fn reproject_payload(&self, policy: &AnalysisDiagnosticPolicy) -> AnalysisPayload {
+        self.inner.generation.project(policy)
     }
 
-    pub fn reproject_diagnostics(&self, analyzer: &Analyzer) -> Arc<[EditorDiagnostic]> {
-        analysis_payload_to_diagnostics(&self.reproject_payload(analyzer)).into()
+    pub fn reproject_diagnostics(
+        &self,
+        policy: &AnalysisDiagnosticPolicy,
+    ) -> Arc<[EditorDiagnostic]> {
+        analysis_payload_to_diagnostics(&self.reproject_payload(policy)).into()
     }
 
     pub fn into_parts(self) -> (DocumentSnapshot, AnalysisPayload) {
         let inner = *self.inner;
-        (inner.snapshot, inner.analysis.payload().clone())
+        (inner.snapshot, Arc::unwrap_or_clone(inner.payload))
     }
 
-    pub fn into_canonical_parts(self) -> (DocumentSnapshot, Arc<AnalysisResult>) {
+    pub fn into_canonical_parts(
+        self,
+    ) -> (
+        DocumentSnapshot,
+        Arc<AnalysisGeneration>,
+        Arc<AnalysisPayload>,
+    ) {
         let inner = *self.inner;
-        (inner.snapshot, inner.analysis)
+        (inner.snapshot, inner.generation, inner.payload)
     }
 }
 
@@ -203,8 +213,9 @@ impl DocumentWorkspace {
     ) -> DocumentAnalysisOutcome {
         let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
-        let analysis = analyze_document_result_shared(Arc::clone(&text), analyzer, source.clone());
-        Self::analysis_context(uri, version, text, kind, source, analysis)
+        let analysis =
+            analyze_document_generation_shared(Arc::clone(&text), analyzer, source.clone());
+        Self::analysis_context(uri, version, text, kind, source, analyzer, analysis)
     }
 
     pub fn build_analysis_context_with_shared_text_cancellable(
@@ -217,14 +228,14 @@ impl DocumentWorkspace {
     ) -> Result<DocumentAnalysisOutcome, AnalysisCancelled> {
         let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
-        let analysis = analyze_document_result_shared_cancellable(
+        let analysis = analyze_document_generation_shared_cancellable(
             Arc::clone(&text),
             analyzer,
             source.clone(),
             cancellation,
         )?;
         Ok(Self::analysis_context(
-            uri, version, text, kind, source, analysis,
+            uri, version, text, kind, source, analyzer, analysis,
         ))
     }
 
@@ -234,13 +245,18 @@ impl DocumentWorkspace {
         text: Arc<str>,
         kind: DocumentKind,
         source: SourceDescriptor,
-        analysis: AnalysisOutcome,
+        analyzer: &Analyzer,
+        analysis: AnalysisCaptureOutcome,
     ) -> DocumentAnalysisOutcome {
         match analysis {
-            AnalysisOutcome::Ready(analysis) => DocumentAnalysisOutcome::Ready(
-                Self::analysis_context_ready(uri, version, text, kind, source, analysis),
-            ),
-            AnalysisOutcome::Rejected(rejection) => DocumentAnalysisOutcome::Rejected(rejection),
+            AnalysisCaptureOutcome::Ready(generation) => {
+                DocumentAnalysisOutcome::Ready(Self::analysis_context_ready(
+                    uri, version, text, kind, source, analyzer, generation,
+                ))
+            }
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                DocumentAnalysisOutcome::Rejected(rejection)
+            }
         }
     }
 
@@ -250,23 +266,26 @@ impl DocumentWorkspace {
         text: Arc<str>,
         kind: DocumentKind,
         source: SourceDescriptor,
-        analysis: AnalysisResult,
+        analyzer: &Analyzer,
+        generation: AnalysisGeneration,
     ) -> DocumentAnalysisContext {
-        let diagnostics = analysis_payload_to_diagnostics(analysis.payload()).into();
-        let detection = detection_for_analysis(&analysis);
-        let fences = analysis
+        let payload = Arc::new(generation.project(analyzer.options().diagnostic_policy()));
+        let diagnostics = analysis_payload_to_diagnostics(payload.as_ref()).into();
+        let detection = detection_for_generation(&generation);
+        let fences = generation
             .diagrams()
             .iter()
             .map(Self::fence_snapshot)
             .collect::<Vec<_>>();
-        let source_map = analysis.source_map().clone();
-        let analysis = Arc::new(analysis);
+        let source_map = generation.source_map().clone();
+        let generation = Arc::new(generation);
         DocumentAnalysisContext {
             inner: Box::new(DocumentAnalysisContextInner {
                 snapshot: DocumentSnapshot::new(
                     uri, version, kind, source, text, source_map, fences,
                 ),
-                analysis,
+                generation,
+                payload,
                 diagnostics,
                 detection,
             }),
@@ -290,10 +309,10 @@ impl DocumentWorkspace {
     }
 }
 
-fn detection_for_analysis(
-    analysis: &merman_analysis::AnalysisResult,
+fn detection_for_generation(
+    generation: &merman_analysis::AnalysisGeneration,
 ) -> Option<EditorDiagramDetection> {
-    let [diagram] = analysis.diagrams() else {
+    let [diagram] = generation.diagrams() else {
         return None;
     };
     let syntax_id = diagram.syntax().diagram_type.as_ref()?.trim();
@@ -342,7 +361,7 @@ mod tests {
         .into_ready()
         .expect("source is within the analysis limit");
         let snapshot = context.snapshot() as *const DocumentSnapshot;
-        let analysis = context.analysis_result() as *const AnalysisResult;
+        let analysis = context.analysis_generation() as *const AnalysisGeneration;
         let analyzer = Analyzer::with_options(
             AnalysisOptions::default().with_rule_config(
                 AnalysisRuleConfig::default()
@@ -352,10 +371,13 @@ mod tests {
             ),
         );
 
-        let diagnostics = context.reproject_diagnostics(&analyzer);
+        let diagnostics = context.reproject_diagnostics(analyzer.options().diagnostic_policy());
 
         assert_eq!(context.snapshot() as *const DocumentSnapshot, snapshot);
-        assert_eq!(context.analysis_result() as *const AnalysisResult, analysis);
+        assert_eq!(
+            context.analysis_generation() as *const AnalysisGeneration,
+            analysis
+        );
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "merman.authoring.config.prefer_init_directive"
         }));

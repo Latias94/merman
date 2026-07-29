@@ -1,5 +1,5 @@
 use crate::{
-    AnalysisDiagnostic, AnalysisOutcome, AnalysisPayload, AnalysisResult, Analyzer,
+    AnalysisCaptureOutcome, AnalysisDiagnostic, AnalysisGeneration, AnalysisPayload, Analyzer,
     DiagnosticRelated, DiagnosticSpan, SourceDescriptor, SourceKind, SourceMap,
 };
 use std::path::Path;
@@ -350,76 +350,74 @@ pub fn analyze_document_facts(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> crate::AnalysisFactsPayload {
-    analyze_document_result(text, analyzer, source).to_facts_payload()
+    match analyze_document_generation(text, analyzer, source) {
+        AnalysisCaptureOutcome::Ready(generation) => {
+            generation.to_facts_payload(analyzer.options().diagnostic_policy())
+        }
+        AnalysisCaptureOutcome::Rejected(rejection) => {
+            crate::AnalysisFactsPayload::from_rejection(&rejection)
+        }
+    }
 }
 
-pub fn analyze_document_result(
+pub fn analyze_document_generation(
     text: &str,
     analyzer: &Analyzer,
     source: SourceDescriptor,
-) -> AnalysisOutcome {
-    analyze_document_result_shared(Arc::from(text), analyzer, source)
+) -> AnalysisCaptureOutcome {
+    analyze_document_generation_shared(Arc::from(text), analyzer, source)
 }
 
-pub fn analyze_document_result_shared(
+pub fn analyze_document_generation_shared(
     text: Arc<str>,
     analyzer: &Analyzer,
     source: SourceDescriptor,
-) -> AnalysisOutcome {
+) -> AnalysisCaptureOutcome {
     let cancellation = crate::AnalysisCancellationToken::new();
-    analyze_document_result_shared_inner(text, analyzer, source, &cancellation)
+    analyze_document_generation_shared_inner(text, analyzer, source, &cancellation)
         .expect("a private analysis cancellation token cannot be cancelled")
 }
 
-pub fn analyze_document_result_shared_cancellable(
+pub fn analyze_document_generation_shared_cancellable(
     text: Arc<str>,
     analyzer: &Analyzer,
     source: SourceDescriptor,
     cancellation: &crate::AnalysisCancellationToken,
-) -> Result<AnalysisOutcome, crate::AnalysisCancelled> {
-    analyze_document_result_shared_inner(text, analyzer, source, cancellation)
+) -> Result<AnalysisCaptureOutcome, crate::AnalysisCancelled> {
+    analyze_document_generation_shared_inner(text, analyzer, source, cancellation)
 }
 
-fn analyze_document_result_shared_inner(
+fn analyze_document_generation_shared_inner(
     text: Arc<str>,
     analyzer: &Analyzer,
     source: SourceDescriptor,
     cancellation: &crate::AnalysisCancellationToken,
-) -> Result<AnalysisOutcome, crate::AnalysisCancelled> {
+) -> Result<AnalysisCaptureOutcome, crate::AnalysisCancelled> {
     cancellation.checkpoint()?;
     if let Some(rejection) = analyzer.source_limit_rejection(text.as_ref(), source.clone()) {
-        return Ok(AnalysisOutcome::Rejected(rejection));
+        return Ok(AnalysisCaptureOutcome::Rejected(rejection));
     }
 
     let document = DocumentSource::new_cancellable(text, source.clone(), cancellation)?;
+    let request_analyzer = analyzer.with_capture_source(source);
     cancellation.checkpoint()?;
 
     if document.diagrams().is_empty() {
-        return Ok(AnalysisOutcome::Ready(AnalysisResult::new(
-            source,
+        return Ok(AnalysisCaptureOutcome::Ready(AnalysisGeneration::new(
             document.source_map().clone(),
             Vec::new(),
-            Vec::new(),
+            &request_analyzer,
         )));
     }
-    let operation_analyzer = match analyzer.try_for_operation() {
+    let operation_analyzer = match request_analyzer.try_for_operation() {
         Ok(analyzer) => analyzer,
         Err(error) => {
             let error = Arc::new(merman_core::Error::from(error));
-            let diagnostics = crate::diagnostic_projection::core_error_diagnostic(
-                error.as_ref(),
-                document.source_map(),
-                analyzer.options().rule_config(),
-            )
-            .diagnostic
-            .into_iter()
-            .collect();
-            return Ok(AnalysisOutcome::Ready(
-                AnalysisResult::new(
-                    source,
+            return Ok(AnalysisCaptureOutcome::Ready(
+                AnalysisGeneration::new(
                     document.source_map().clone(),
-                    diagnostics,
                     Vec::new(),
+                    &request_analyzer,
                 )
                 .with_document_error(error),
             ));
@@ -427,7 +425,6 @@ fn analyze_document_result_shared_inner(
     };
     cancellation.checkpoint()?;
 
-    let mut diagnostics = Vec::new();
     let mut analyzed_diagrams = Vec::new();
     for diagram in document.diagrams() {
         cancellation.checkpoint()?;
@@ -437,20 +434,13 @@ fn analyze_document_result_shared_inner(
             cancellation,
         )?;
         cancellation.checkpoint()?;
-        extend_document_diagnostics(
-            &mut diagnostics,
-            &document,
-            diagram,
-            analyzed.diagnostics.iter().cloned(),
-        );
         analyzed_diagrams.push(analyzed);
     }
     cancellation.checkpoint()?;
-    Ok(AnalysisOutcome::Ready(AnalysisResult::new(
-        source,
+    Ok(AnalysisCaptureOutcome::Ready(AnalysisGeneration::new(
         document.source_map().clone(),
-        diagnostics,
         analyzed_diagrams,
+        &operation_analyzer,
     )))
 }
 
@@ -818,7 +808,7 @@ mod tests {
         let cancellation = crate::AnalysisCancellationToken::new();
         cancellation.cancel();
 
-        let result = analyze_document_result_shared_cancellable(
+        let result = analyze_document_generation_shared_cancellable(
             Arc::from("flowchart TD\nA-->B\n"),
             &analyzer,
             source,
@@ -864,7 +854,7 @@ mod tests {
             merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(i64::MAX),
         ));
         let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
-        let result = analyze_document_result(
+        let result = analyze_document_generation(
             "```mermaid\nflowchart TD\nA-->B\n```\n```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
             &analyzer,
             source,
@@ -873,15 +863,12 @@ mod tests {
         .expect("runtime failure is still a complete analysis generation");
 
         assert!(result.diagrams().is_empty());
-        assert_eq!(result.diagnostics().len(), 1);
+        let payload = result.project(analyzer.options().diagnostic_policy());
+        assert_eq!(payload.diagnostics.len(), 1);
         assert!(
-            result.diagnostics()[0]
+            payload.diagnostics[0]
                 .message
                 .contains("outside the supported")
-        );
-        assert_eq!(
-            analyzer.reproject_payload(&result),
-            result.payload().clone()
         );
     }
 
@@ -1180,7 +1167,7 @@ mod tests {
     fn diagnostic_reprojection_preserves_markdown_spans_and_fixes() {
         let text = "before\n```mermaid\n%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter";
         let source = source_descriptor_for_markdown_path(Some("example.md"));
-        let result = analyze_document_result(text, &Analyzer::new(), source.clone())
+        let result = analyze_document_generation(text, &Analyzer::new(), source.clone())
             .into_ready()
             .expect("source is within the analysis limit");
         let analyzer = Analyzer::with_options(
@@ -1192,7 +1179,7 @@ mod tests {
             ),
         );
 
-        let reprojected = analyzer.reproject_payload(&result);
+        let reprojected = result.project(analyzer.options().diagnostic_policy());
         let freshly_parsed = analyze_document(text, &analyzer, source);
 
         assert_eq!(reprojected, freshly_parsed);

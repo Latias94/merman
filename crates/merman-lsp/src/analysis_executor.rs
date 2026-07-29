@@ -1,5 +1,5 @@
 use crate::analysis_request::{
-    AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, AnalysisGeneration,
+    AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, AnalysisJobGeneration,
 };
 use crate::snapshot::DocumentAnalysisContext;
 use crate::sync::lock_recovering_poison;
@@ -44,22 +44,22 @@ struct AnalysisExecutorInner {
 struct AnalysisRegistry {
     jobs: HashMap<AnalysisBuildKey, Arc<AnalysisJob>>,
     next_generation: u64,
-    document_generations: HashMap<Uri, AnalysisGeneration>,
+    document_generations: HashMap<Uri, AnalysisJobGeneration>,
 }
 
 impl AnalysisRegistry {
-    fn generation_for(&mut self, uri: &Uri) -> AnalysisGeneration {
+    fn generation_for(&mut self, uri: &Uri) -> AnalysisJobGeneration {
         if let Some(generation) = self.document_generations.get(uri) {
             return *generation;
         }
 
         self.next_generation = self.next_generation.wrapping_add(1);
-        let generation = AnalysisGeneration(self.next_generation);
+        let generation = AnalysisJobGeneration(self.next_generation);
         self.document_generations.insert(uri.clone(), generation);
         generation
     }
 
-    fn current_generation_for(&self, uri: &Uri) -> Option<AnalysisGeneration> {
+    fn current_generation_for(&self, uri: &Uri) -> Option<AnalysisJobGeneration> {
         self.document_generations.get(uri).copied()
     }
 }
@@ -269,7 +269,7 @@ impl AnalysisExecutor {
         }
     }
 
-    pub(crate) fn generation_for(&self, uri: &Uri) -> AnalysisGeneration {
+    pub(crate) fn generation_for(&self, uri: &Uri) -> AnalysisJobGeneration {
         lock_recovering_poison(&self.inner.registry).generation_for(uri)
     }
 
@@ -282,7 +282,7 @@ impl AnalysisExecutor {
             let capacity_changed = self.inner.capacity_changed.notified();
             let admission = {
                 let mut registry = lock_recovering_poison(&self.inner.registry);
-                if Some(request.analysis_generation())
+                if Some(request.analysis_job_generation())
                     != registry.current_generation_for(request.uri())
                 {
                     return Err(AnalysisExecutionError::stale());
@@ -768,7 +768,7 @@ mod tests {
         let stale_request = store
             .snapshot_build_request(&uri)
             .expect("expected request before close");
-        let stale_generation = stale_request.analysis_generation();
+        let stale_generation = stale_request.analysis_job_generation();
         let executor = store.analysis_executor();
 
         store.remove(&uri);
@@ -789,7 +789,7 @@ mod tests {
         let fresh_request = store
             .snapshot_build_request(&uri)
             .expect("expected request after reopen");
-        assert_ne!(fresh_request.analysis_generation(), stale_generation);
+        assert_ne!(fresh_request.analysis_job_generation(), stale_generation);
 
         assert!(executor.execute(&stale_request).await.is_err());
         assert_eq!(executor.execution_count(), 0);

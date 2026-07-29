@@ -221,7 +221,7 @@ async fn diagnostic_reprojection_recovers_a_stale_cache_without_reparsing() {
             store
                 .cached_analysis_generation(&uri)
                 .expect("initial analysis should be cached")
-                .canonical(),
+                .generation(),
         );
         let executor = store.analysis_executor();
         let (change, plan) = store.begin_analyzer_options(
@@ -281,7 +281,7 @@ async fn diagnostic_reprojection_recovers_a_stale_cache_without_reparsing() {
         store
             .cached_analysis_generation(&uri)
             .expect("reprojected analysis should be cached")
-            .canonical()
+            .generation()
     ));
     assert_eq!(
         store.commit_diagnostic_reprojection(

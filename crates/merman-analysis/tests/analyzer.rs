@@ -2,7 +2,7 @@ use merman_analysis::{
     ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisOptions, AnalysisRuleConfig,
     AnalysisRuleProfile, AnalysisStatus, Analyzer, DiagnosticCategory, DiagnosticSeverity,
     FenceExpectedSyntaxKind, FenceTextIndexSource, SourceDescriptor, analyze_document_facts,
-    document::{analyze_document, analyze_document_result},
+    document::{analyze_document, analyze_document_generation},
     source_descriptor_for_markdown_path,
 };
 
@@ -45,9 +45,7 @@ fn facts_and_diagnostics_payloads_use_independent_version_constants() {
 
 #[test]
 fn unknown_source_exposes_unavailable_facts_without_inventing_body_semantics() {
-    let facts = Analyzer::new()
-        .analyze_result("unknownDiagram\nPretendNode --> OtherNode\n")
-        .to_facts_payload();
+    let facts = Analyzer::new().analyze_facts("unknownDiagram\nPretendNode --> OtherNode\n");
     let syntax = &facts.diagrams[0].syntax;
 
     assert_eq!(syntax.fact_source, FenceTextIndexSource::Unavailable);
@@ -331,15 +329,17 @@ fn recovered_mindmap_editor_diagnostic_is_merged_into_the_primary_error() {
 }
 
 #[test]
-fn analyze_result_exposes_complete_parser_syntax_facts() {
+fn analysis_generation_exposes_complete_parser_syntax_facts() {
     let source = "flowchart TD\nA-->B\n";
-    let result = Analyzer::new()
-        .analyze_result(source)
+    let analyzer = Analyzer::new();
+    let result = analyzer
+        .analyze_generation(source)
         .into_ready()
         .expect("source is within the analysis limit");
+    let payload = result.project(analyzer.options().diagnostic_policy());
 
-    assert!(result.payload().valid);
-    assert!(result.diagnostics().is_empty());
+    assert!(payload.valid);
+    assert!(payload.diagnostics.is_empty());
     assert_eq!(result.diagrams().len(), 1);
 
     let diagram = &result.diagrams()[0];
@@ -356,7 +356,7 @@ fn analyze_result_exposes_complete_parser_syntax_facts() {
 }
 
 #[test]
-fn analyze_result_preserves_exact_spans_through_entity_normalization() {
+fn analysis_generation_preserves_exact_spans_through_entity_normalization() {
     let source = concat!(
         "---\n",
         "title: quoted\n",
@@ -392,14 +392,16 @@ fn analyze_result_preserves_exact_spans_through_entity_normalization() {
 }
 
 #[test]
-fn analyze_result_exposes_expected_syntax_facts_for_invalid_input() {
+fn analysis_generation_exposes_expected_syntax_facts_for_invalid_input() {
     let source = "flowchart TD\nA@{\n  shape: rou\n}\n";
-    let result = Analyzer::new()
-        .analyze_result(source)
+    let analyzer = Analyzer::new();
+    let result = analyzer
+        .analyze_generation(source)
         .into_ready()
         .expect("source is within the analysis limit");
+    let payload = result.project(analyzer.options().diagnostic_policy());
 
-    assert!(!result.payload().valid);
+    assert!(!payload.valid);
     assert_eq!(result.diagrams().len(), 1);
 
     let diagram = &result.diagrams()[0];
@@ -420,7 +422,7 @@ fn analyze_result_exposes_expected_syntax_facts_for_invalid_input() {
 }
 
 #[test]
-fn document_analysis_result_keeps_local_fence_syntax_facts() {
+fn document_analysis_generation_keeps_local_fence_syntax_facts() {
     let source = concat!(
         "before\n",
         "```mermaid\n",
@@ -432,7 +434,7 @@ fn document_analysis_result_keeps_local_fence_syntax_facts() {
         "after\n",
     );
     let analyzer = Analyzer::new();
-    let result = analyze_document_result(
+    let result = analyze_document_generation(
         source,
         &analyzer,
         source_descriptor_for_markdown_path(Some("doc.md")),
@@ -440,7 +442,7 @@ fn document_analysis_result_keeps_local_fence_syntax_facts() {
     .into_ready()
     .expect("source is within the analysis limit");
 
-    assert!(!result.payload().valid);
+    assert!(!result.project(analyzer.options().diagnostic_policy()).valid);
     assert_eq!(result.diagrams().len(), 1);
 
     let diagram = &result.diagrams()[0];
@@ -478,11 +480,15 @@ fn document_diagnostics_match_rich_generation_for_markdown_and_mdx() {
     for path in ["doc.md", "doc.mdx"] {
         let descriptor = source_descriptor_for_markdown_path(Some(path));
         let diagnostics_only = analyze_document(source, &analyzer, descriptor.clone());
-        let rich = analyze_document_result(source, &analyzer, descriptor)
+        let rich = analyze_document_generation(source, &analyzer, descriptor)
             .into_ready()
             .expect("document source should produce a rich analysis result");
 
-        assert_eq!(diagnostics_only, rich.payload().clone(), "{path}");
+        assert_eq!(
+            diagnostics_only,
+            rich.project(analyzer.options().diagnostic_policy()),
+            "{path}"
+        );
         assert_eq!(diagnostics_only.diagnostics.len(), 1, "{path}");
         assert_eq!(
             diagnostics_only.diagnostics[0].id, "merman.parse.recovered_editor_facts",
@@ -964,7 +970,7 @@ fn plain_source_byte_limit_rejects_without_constructing_a_source_map() {
         Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
 
     let rejection = analyzer
-        .analyze_result(&source)
+        .analyze_generation(&source)
         .into_ready()
         .expect_err("source must be rejected before rich facts are constructed");
 
@@ -987,7 +993,7 @@ fn markdown_document_source_byte_limit_applies_before_fence_analysis() {
         Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
 
-    let rejection = analyze_document_result(&source, &analyzer, descriptor.clone())
+    let rejection = analyze_document_generation(&source, &analyzer, descriptor.clone())
         .into_ready()
         .expect_err("document source must be rejected before fence analysis");
     assert_eq!(rejection.source_len(), source.len());
@@ -1040,11 +1046,16 @@ fn markdown_document_source_byte_limit_allows_exact_boundary() {
     );
     let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
 
-    let result = analyze_document_result(source, &analyzer, descriptor)
+    let result = analyze_document_generation(source, &analyzer, descriptor)
         .into_ready()
         .expect("source at the limit remains analyzable");
 
-    assert_eq!(result.diagnostics().len(), 0);
+    assert!(
+        result
+            .project(analyzer.options().diagnostic_policy())
+            .diagnostics
+            .is_empty()
+    );
     assert_eq!(result.diagrams().len(), 1);
 }
 
@@ -1055,7 +1066,7 @@ fn mdx_document_source_byte_limit_applies_before_fence_analysis() {
         Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     let descriptor = source_descriptor_for_markdown_path(Some("doc.mdx"));
 
-    let rejection = analyze_document_result(&source, &analyzer, descriptor)
+    let rejection = analyze_document_generation(&source, &analyzer, descriptor)
         .into_ready()
         .expect_err("document source must be rejected before fence analysis");
 

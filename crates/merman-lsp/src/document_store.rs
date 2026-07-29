@@ -1162,7 +1162,7 @@ impl DocumentStore {
 
     pub fn is_analysis_context_current(&self, context: &SnapshotContext) -> bool {
         self.is_snapshot_context_current(context)
-            && context.analysis_generation() == self.diagnostic_generation
+            && context.diagnostic_generation() == self.diagnostic_generation
     }
 
     #[cfg(test)]

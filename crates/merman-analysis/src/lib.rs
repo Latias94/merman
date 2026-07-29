@@ -22,13 +22,16 @@ mod source_limits;
 mod source_map;
 mod status;
 
-pub use analyzer::{AnalysisDiagnosticPolicy, AnalysisOptions, AnalysisSnapshotPolicy, Analyzer};
+pub use analyzer::{
+    AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, AnalysisOptions, AnalysisSnapshotPolicy,
+    Analyzer,
+};
 pub use cancellation::{AnalysisCancellationToken, AnalysisCancelled};
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceDelimiterSpans,
     FenceMarker, SharedTextSlice, analyze_document, analyze_document_facts,
-    analyze_document_result, analyze_document_result_shared,
-    analyze_document_result_shared_cancellable, source_descriptor_for_kind,
+    analyze_document_generation, analyze_document_generation_shared,
+    analyze_document_generation_shared_cancellable, source_descriptor_for_kind,
     source_descriptor_for_markdown_path, source_descriptor_for_uri, source_language,
 };
 pub use editor::{
@@ -47,11 +50,11 @@ pub use payload::{
     DiagnosticSpan, LspRange, SourceDescriptor, SourceKind, SourcePosition, Summary, Utf16Position,
 };
 pub use result::{
-    AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts, AnalysisExpectedSyntaxFacts,
-    AnalysisFactSpan, AnalysisFactsPayload, AnalysisFenceDelimiterFacts,
-    AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts, AnalysisFlowchartFacts,
-    AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts, AnalysisLineItemFacts,
-    AnalysisOutcome, AnalysisReferenceFacts, AnalysisRejection, AnalysisResult,
+    AnalysisCaptureOutcome, AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts,
+    AnalysisExpectedSyntaxFacts, AnalysisFactSpan, AnalysisFactsPayload,
+    AnalysisFenceDelimiterFacts, AnalysisFlowchartEdgeDefaults, AnalysisFlowchartEdgeFacts,
+    AnalysisFlowchartFacts, AnalysisFlowchartNodeFacts, AnalysisFlowchartSubgraphFacts,
+    AnalysisGeneration, AnalysisLineItemFacts, AnalysisReferenceFacts, AnalysisRejection,
     AnalysisSemanticItemFacts, AnalysisSyntaxFacts, AnalyzedDiagram, DiagramParseDisposition,
 };
 pub use rules::{

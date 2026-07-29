@@ -1,5 +1,5 @@
 use merman_analysis::{
-    AnalysisCancellationToken, AnalysisCancelled, AnalysisPayload, AnalysisResult, Analyzer,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisGeneration, AnalysisPayload, Analyzer,
 };
 #[cfg(test)]
 use merman_editor_core::EditorDiagramDetection;
@@ -21,7 +21,7 @@ pub struct DocumentSnapshot {
 #[derive(Debug)]
 pub struct DocumentAnalysisContext {
     pub snapshot: Arc<DocumentSnapshot>,
-    canonical: Arc<AnalysisResult>,
+    generation: Arc<AnalysisGeneration>,
     pub payload: Arc<AnalysisPayload>,
 }
 
@@ -71,7 +71,7 @@ impl SnapshotContext {
         self.analysis.payload.as_ref()
     }
 
-    pub(crate) fn analysis_generation(&self) -> DiagnosticGeneration {
+    pub(crate) fn diagnostic_generation(&self) -> DiagnosticGeneration {
         self.analysis.generation
     }
 }
@@ -81,8 +81,7 @@ impl DocumentAnalysisContext {
         debug_assert_eq!(context.snapshot().uri().as_str(), uri.as_str());
         #[cfg(test)]
         let detection = context.detection().cloned();
-        let (editor, canonical) = context.into_canonical_parts();
-        let payload = canonical.shared_payload();
+        let (editor, generation, payload) = context.into_canonical_parts();
         Self {
             snapshot: Arc::new(DocumentSnapshot {
                 uri,
@@ -90,7 +89,7 @@ impl DocumentAnalysisContext {
                 #[cfg(test)]
                 detection,
             }),
-            canonical,
+            generation,
             payload,
         }
     }
@@ -100,19 +99,21 @@ impl DocumentAnalysisContext {
         analyzer: &Analyzer,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<Self, AnalysisCancelled> {
-        let payload =
-            Arc::new(analyzer.reproject_payload_cancellable(&self.canonical, cancellation)?);
+        let payload = Arc::new(
+            self.generation
+                .project_cancellable(analyzer.options().diagnostic_policy(), cancellation)?,
+        );
         cancellation.checkpoint()?;
         Ok(Self {
             snapshot: Arc::clone(&self.snapshot),
-            canonical: Arc::clone(&self.canonical),
+            generation: Arc::clone(&self.generation),
             payload,
         })
     }
 
     #[cfg(test)]
-    pub fn canonical(&self) -> &Arc<AnalysisResult> {
-        &self.canonical
+    pub fn generation(&self) -> &Arc<AnalysisGeneration> {
+        &self.generation
     }
 }
 

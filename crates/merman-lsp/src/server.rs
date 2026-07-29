@@ -41,7 +41,7 @@ use merman_analysis::{
     source_limit_diagnostic_for_len_and_span,
 };
 #[cfg(test)]
-use merman_analysis::{Analyzer, analyze_document_result_shared};
+use merman_analysis::{Analyzer, analyze_document};
 use merman_editor_core::{DocumentKind, TokenPlanError, analysis_payload_to_diagnostics};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
@@ -295,8 +295,8 @@ impl MermanLanguageServer {
         }
 
         let source = source_descriptor_for_document(&document.uri, document.kind);
-        let analysis = analyze_document_result_shared(Arc::clone(&document.text), analyzer, source);
-        Self::analysis_payload_diagnostics_with_profile(document, analysis.payload(), &profile)
+        let payload = analyze_document(document.text.as_ref(), analyzer, source);
+        Self::analysis_payload_diagnostics_with_profile(document, &payload, &profile)
     }
 
     fn unavailable_document_diagnostics_with_profile(

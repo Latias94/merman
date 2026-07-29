@@ -105,7 +105,7 @@ fn diagram_detection_validity_is_independent_from_diagnostic_severity() {
             severity,
         );
         assert_eq!(
-            parsed.analysis_result().diagrams()[0].parse_disposition(),
+            parsed.analysis_generation().diagrams()[0].parse_disposition(),
             DiagramParseDisposition::Parsed
         );
         assert_eq!(
@@ -120,7 +120,7 @@ fn diagram_detection_validity_is_independent_from_diagnostic_severity() {
             severity,
         );
         assert_eq!(
-            recovered.analysis_result().diagrams()[0].parse_disposition(),
+            recovered.analysis_generation().diagrams()[0].parse_disposition(),
             DiagramParseDisposition::Recovered
         );
         assert_eq!(

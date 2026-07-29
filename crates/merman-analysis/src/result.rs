@@ -1,9 +1,13 @@
+use crate::analyzer::{
+    AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, AnalysisOptions, AnalysisSnapshotPolicy,
+    Analyzer,
+};
 use crate::editor::FenceExpectedSyntax;
 use crate::{
-    ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisDiagnostic, AnalysisPayload, DocumentDiagram,
-    DocumentDiagramKind, FenceDelimiter, FenceDelimiterSpans, FenceLineItem, FenceMarker,
-    FenceReferenceGroup, FenceSemanticItem, FenceTextIndex, FenceTextIndexSource, SharedTextSlice,
-    SourceDescriptor, SourceMap, Summary,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisCancellationToken, AnalysisCancelled,
+    AnalysisDiagnostic, AnalysisPayload, DocumentDiagram, DocumentDiagramKind, FenceDelimiter,
+    FenceDelimiterSpans, FenceLineItem, FenceMarker, FenceReferenceGroup, FenceSemanticItem,
+    FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -12,17 +16,19 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
-pub struct AnalysisResult {
-    payload: Arc<AnalysisPayload>,
+/// One sealed rich capture bound to an exact parser environment and snapshot policy.
+#[derive(Debug)]
+pub struct AnalysisGeneration {
     source_map: SourceMap,
     diagrams: Vec<AnalyzedDiagram>,
     document_error: Option<Arc<merman_core::Error>>,
+    environment_identity: AnalysisEnvironmentIdentity,
+    snapshot_policy: AnalysisSnapshotPolicy,
 }
 
-#[derive(Debug, Clone)]
-pub enum AnalysisOutcome {
-    Ready(AnalysisResult),
+#[derive(Debug)]
+pub enum AnalysisCaptureOutcome {
+    Ready(AnalysisGeneration),
     Rejected(AnalysisRejection),
 }
 
@@ -33,35 +39,17 @@ pub struct AnalysisRejection {
     max_source_bytes: usize,
 }
 
-impl AnalysisOutcome {
-    pub fn payload(&self) -> &AnalysisPayload {
+impl AnalysisCaptureOutcome {
+    pub fn as_ready(&self) -> Option<&AnalysisGeneration> {
         match self {
-            Self::Ready(result) => result.payload(),
-            Self::Rejected(rejection) => rejection.payload(),
-        }
-    }
-
-    pub fn into_payload(self) -> AnalysisPayload {
-        match self {
-            Self::Ready(result) => result.into_payload(),
-            Self::Rejected(rejection) => rejection.into_payload(),
-        }
-    }
-
-    pub fn diagnostics(&self) -> &[AnalysisDiagnostic] {
-        &self.payload().diagnostics
-    }
-
-    pub fn as_ready(&self) -> Option<&AnalysisResult> {
-        match self {
-            Self::Ready(result) => Some(result),
+            Self::Ready(generation) => Some(generation),
             Self::Rejected(_) => None,
         }
     }
 
-    pub fn into_ready(self) -> Result<AnalysisResult, AnalysisRejection> {
+    pub fn into_ready(self) -> Result<AnalysisGeneration, AnalysisRejection> {
         match self {
-            Self::Ready(result) => Ok(result),
+            Self::Ready(generation) => Ok(generation),
             Self::Rejected(rejection) => Err(rejection),
         }
     }
@@ -70,13 +58,6 @@ impl AnalysisOutcome {
         match self {
             Self::Ready(_) => None,
             Self::Rejected(rejection) => Some(rejection),
-        }
-    }
-
-    pub fn to_facts_payload(&self) -> AnalysisFactsPayload {
-        match self {
-            Self::Ready(result) => result.to_facts_payload(),
-            Self::Rejected(rejection) => AnalysisFactsPayload::from_rejection(rejection),
         }
     }
 }
@@ -112,18 +93,20 @@ impl AnalysisRejection {
     }
 }
 
-impl AnalysisResult {
+impl AnalysisGeneration {
     pub(crate) fn new(
-        source: SourceDescriptor,
         source_map: SourceMap,
-        diagnostics: Vec<AnalysisDiagnostic>,
         diagrams: Vec<AnalyzedDiagram>,
+        analyzer: &Analyzer,
     ) -> Self {
+        let environment_identity = analyzer.environment_identity().clone();
+        let snapshot_policy = analyzer.options().snapshot_policy().clone();
         Self {
-            payload: Arc::new(AnalysisPayload::new(source, diagnostics)),
             source_map,
             diagrams,
             document_error: None,
+            environment_identity,
+            snapshot_policy,
         }
     }
 
@@ -136,21 +119,32 @@ impl AnalysisResult {
         self.document_error.as_deref()
     }
 
-    pub fn payload(&self) -> &AnalysisPayload {
-        self.payload.as_ref()
+    /// Projects diagnostics without parsing or mutating this generation.
+    pub fn project(&self, policy: &AnalysisDiagnosticPolicy) -> AnalysisPayload {
+        let cancellation = AnalysisCancellationToken::new();
+        self.project_cancellable(policy, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
     }
 
-    pub fn into_payload(self) -> AnalysisPayload {
-        Arc::unwrap_or_clone(self.payload)
+    /// Cancellable form of [`Self::project`].
+    pub fn project_cancellable(
+        &self,
+        policy: &AnalysisDiagnosticPolicy,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisPayload, AnalysisCancelled> {
+        Analyzer::with_options(AnalysisOptions {
+            snapshot: self.snapshot_policy.clone(),
+            diagnostics: policy.clone(),
+        })
+        .project_generation_cancellable(self, cancellation)
     }
 
-    /// Returns shared ownership of this generation's immutable diagnostics payload.
-    ///
-    /// The returned [`Arc`] points to the same allocation exposed by [`Self::payload`].
-    /// [`Self::into_payload`] unwraps that allocation when uniquely owned and clones only when
-    /// another owner remains.
-    pub fn shared_payload(&self) -> Arc<AnalysisPayload> {
-        Arc::clone(&self.payload)
+    pub fn environment_identity(&self) -> &AnalysisEnvironmentIdentity {
+        &self.environment_identity
+    }
+
+    pub fn snapshot_policy(&self) -> &AnalysisSnapshotPolicy {
+        &self.snapshot_policy
     }
 
     pub fn source_map(&self) -> &SourceMap {
@@ -161,12 +155,12 @@ impl AnalysisResult {
         &self.diagrams
     }
 
-    pub fn diagnostics(&self) -> &[AnalysisDiagnostic] {
-        &self.payload.diagnostics
-    }
-
-    pub fn to_facts_payload(&self) -> AnalysisFactsPayload {
-        AnalysisFactsPayload::from_result(self)
+    pub(crate) fn to_facts_payload(
+        &self,
+        policy: &AnalysisDiagnosticPolicy,
+    ) -> AnalysisFactsPayload {
+        let payload = self.project(policy);
+        AnalysisFactsPayload::from_generation(self, &payload)
     }
 }
 
@@ -193,7 +187,6 @@ pub struct AnalyzedDiagram {
     pub(crate) text: SharedTextSlice,
     pub(crate) fence_delimiter: Option<FenceDelimiter>,
     pub(crate) fence_delimiter_spans: Option<FenceDelimiterSpans>,
-    pub(crate) diagnostics: Vec<AnalysisDiagnostic>,
     pub(crate) syntax: AnalysisSyntaxFacts,
     pub(crate) evidence: Arc<DiagramAnalysisEvidence>,
 }
@@ -235,17 +228,12 @@ impl AnalyzedDiagram {
         self.fence_delimiter_spans.as_ref()
     }
 
-    pub fn diagnostics(&self) -> &[AnalysisDiagnostic] {
-        &self.diagnostics
-    }
-
     pub fn syntax(&self) -> &AnalysisSyntaxFacts {
         &self.syntax
     }
 
     pub(crate) fn from_document_diagram_with_evidence(
         diagram: &DocumentDiagram,
-        diagnostics: Vec<AnalysisDiagnostic>,
         syntax: AnalysisSyntaxFacts,
         evidence: Arc<DiagramAnalysisEvidence>,
     ) -> Self {
@@ -261,7 +249,6 @@ impl AnalyzedDiagram {
             text: diagram.text.clone(),
             fence_delimiter: diagram.fence_delimiter,
             fence_delimiter_spans: diagram.fence_delimiter_spans.clone(),
-            diagnostics,
             syntax,
             evidence,
         }
@@ -406,17 +393,20 @@ impl<'de> Deserialize<'de> for AnalysisFactsPayload {
 }
 
 impl AnalysisFactsPayload {
-    pub fn from_result(result: &AnalysisResult) -> Self {
+    pub(crate) fn from_generation(
+        generation: &AnalysisGeneration,
+        payload: &AnalysisPayload,
+    ) -> Self {
         Self {
             version: ANALYSIS_FACTS_PAYLOAD_VERSION,
-            valid: result.payload.valid,
-            summary: result.payload.summary,
-            source: result.payload.source.clone(),
-            diagnostics: result.payload.diagnostics.clone(),
-            diagrams: result
+            valid: payload.valid,
+            summary: payload.summary,
+            source: payload.source.clone(),
+            diagnostics: payload.diagnostics.clone(),
+            diagrams: generation
                 .diagrams
                 .iter()
-                .map(|diagram| AnalysisDiagramFacts::from_diagram(diagram, &result.source_map))
+                .map(|diagram| AnalysisDiagramFacts::from_diagram(diagram, &generation.source_map))
                 .collect(),
         }
     }

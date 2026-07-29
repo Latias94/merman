@@ -52,7 +52,7 @@ let symbols = search_document_symbols(&snapshot, "B");
 
 ## Data Contract
 
-Editor queries operate directly on typed snapshots and `AnalysisResult`; they do not serialize and deserialize an analysis payload internally. Bindings expose the separate `AnalysisFactsPayload` schema 1, and reject other schema versions at their boundary.
+Editor queries operate directly on typed snapshots and shared `AnalysisGeneration` storage; they do not serialize and deserialize an analysis payload internally. Bindings expose the separate `AnalysisFactsPayload` schema 1, and reject other schema versions at their boundary.
 
 The removed TextScan implementation is not maintained in parallel. This does not change LSP document revision numbers or Mermaid's own `*-v2` diagram IDs.
 

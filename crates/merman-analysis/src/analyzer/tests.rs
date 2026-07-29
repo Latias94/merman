@@ -1,8 +1,8 @@
-use super::{AnalysisOptions, Analyzer, DiagramProjectionInput};
+use super::{AnalysisDiagnosticPolicy, AnalysisOptions, Analyzer, DiagramProjectionInput};
 use crate::rules::{AnalysisRuleConfig, AnalysisRuleProfile};
 use crate::{
     AnalysisCancellationToken, AnalysisStatus, DiagnosticCategory, DiagnosticSeverity,
-    FenceTextIndexSource, SourceMap,
+    FenceTextIndexSource, SourceDescriptor, SourceMap,
 };
 use merman_core::{
     EditorSemanticDiagnostic, MermaidConfig, ParseMetadata, ParsedDiagram, SourceSpan,
@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static REPROJECTION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
+static DERIVED_ANALYZER_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 fn counting_flowchart_parser(
     _source: &str,
@@ -20,6 +21,16 @@ fn counting_flowchart_parser(
 ) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
     REPROJECTION_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
+    Ok(Ok(json!({ "warningFacts": [] })))
+}
+
+fn derived_analyzer_counting_flowchart_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    DERIVED_ANALYZER_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(json!({ "warningFacts": [] })))
 }
 
@@ -84,6 +95,80 @@ fn custom_engine_uses_the_exact_site_config_owned_by_analysis_options() {
             Some("dagre")
         );
     }
+}
+
+#[test]
+fn analyzer_derivations_preserve_custom_registries_and_exact_identity_scope() {
+    DERIVED_ANALYZER_PARSE_CALLS.store(0, Ordering::SeqCst);
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", derived_analyzer_counting_flowchart_parser);
+    let base = Analyzer::with_engine(engine, AnalysisOptions::default());
+    let cloned = base.clone();
+    let diagnostics = base.with_diagnostic_policy(AnalysisDiagnosticPolicy {
+        rule_config: AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+    });
+
+    assert_eq!(base.environment_identity(), cloned.environment_identity());
+    assert_eq!(
+        base.environment_identity(),
+        diagnostics.environment_identity()
+    );
+    assert!(diagnostics.analyze("flowchart TD\nA-->B\n").valid);
+
+    let mut snapshot_policy = base.options().snapshot_policy().clone();
+    snapshot_policy.source = SourceDescriptor::diagram().with_path("file:///derived.mmd");
+    snapshot_policy.max_source_bytes = Some(4_096);
+    snapshot_policy.runtime_policy =
+        merman_core::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(42_000);
+    let snapshot = base.with_snapshot_policy(snapshot_policy.clone());
+
+    assert_ne!(base.environment_identity(), snapshot.environment_identity());
+    let generation = snapshot
+        .analyze_generation("flowchart TD\nA-->B\n")
+        .into_ready()
+        .expect("derived analyzer should preserve its custom parser registry");
+    assert_eq!(DERIVED_ANALYZER_PARSE_CALLS.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        generation.environment_identity(),
+        snapshot.environment_identity()
+    );
+    assert_eq!(generation.snapshot_policy().source, snapshot_policy.source);
+    assert_eq!(
+        generation.snapshot_policy().max_source_bytes,
+        snapshot_policy.max_source_bytes
+    );
+    assert_eq!(
+        generation
+            .snapshot_policy()
+            .runtime_policy
+            .begin_operation()
+            .unwrap()
+            .unix_millis(),
+        42_000
+    );
+
+    let other = Analyzer::with_engine(merman_core::Engine::new(), snapshot.options().clone());
+    assert_ne!(
+        snapshot.environment_identity(),
+        other.environment_identity()
+    );
+}
+
+#[test]
+fn cancellable_generation_capture_preserves_parser_cancellation_as_an_outcome() {
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", cancelling_flowchart_parser);
+    let analyzer = Analyzer::with_engine(engine, AnalysisOptions::default());
+    let cancellation = AnalysisCancellationToken::new();
+
+    assert!(matches!(
+        analyzer.analyze_generation_cancellable("flowchart TD\nA-->B\n", &cancellation,),
+        Err(crate::AnalysisCancelled)
+    ));
 }
 
 #[test]
@@ -322,11 +407,14 @@ fn cynefin_self_loop_diagnostics_match_between_diagnostics_and_rich_analysis() {
 
     let diagnostics_only = analyzer.analyze(source);
     let rich = analyzer
-        .analyze_result(source)
+        .analyze_generation(source)
         .into_ready()
         .expect("Cynefin source should produce a rich analysis result");
 
-    assert_eq!(diagnostics_only, rich.payload().clone());
+    assert_eq!(
+        diagnostics_only,
+        rich.project(analyzer.options().diagnostic_policy())
+    );
     assert_eq!(diagnostics_only.diagnostics.len(), 1);
     assert_eq!(
         diagnostics_only.diagnostics[0].id,
@@ -471,10 +559,8 @@ fn diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure() {
         Vec::new(),
         super::AnalysisMode::RichFacts,
     );
-    let diagnostics = local.diagnostics.clone();
     let diagram = crate::AnalyzedDiagram::from_document_diagram_with_evidence(
         &document,
-        local.diagnostics,
         local.syntax,
         Arc::new(crate::result::DiagramAnalysisEvidence::Parsed {
             metadata: parsed.meta,
@@ -482,12 +568,10 @@ fn diagnostic_reprojection_reuses_the_canonical_flowchart_projection_failure() {
             editor_facts: None,
         }),
     );
-    let result =
-        crate::AnalysisResult::new(source_descriptor, source_map, diagnostics, vec![diagram]);
+    let result = crate::AnalysisGeneration::new(source_map, vec![diagram], &analyzer);
 
-    let reprojected = analyzer.reproject_payload(&result);
+    let reprojected = result.project(analyzer.options().diagnostic_policy());
 
-    assert_eq!(reprojected, result.payload().clone());
     assert_eq!(
         reprojected
             .diagnostics
@@ -505,12 +589,13 @@ fn rich_facts_mode_reports_editor_facts_preprocess_failure() {
     let analyzer = Analyzer::new();
     let source = "---\nconfig: [\n---\nflowchart TD\nA-->B\n";
     let result = analyzer
-        .analyze_result(source)
+        .analyze_generation(source)
         .into_ready()
         .expect("source is within the analysis limit");
 
-    let diagnostic = result
-        .diagnostics()
+    let payload = result.project(analyzer.options().diagnostic_policy());
+    let diagnostic = payload
+        .diagnostics
         .iter()
         .find(|diagnostic| diagnostic.id == crate::rules::INVALID_FRONT_MATTER_YAML_RULE_ID)
         .expect("editor facts preprocess diagnostic");
@@ -558,12 +643,14 @@ fn public_analysis_entries_share_flowchart_projection_diagnostics() {
 
     let diagnostics_only = analyzer.analyze(source);
     let rich = analyzer
-        .analyze_result(source)
+        .analyze_generation(source)
         .into_ready()
         .expect("source is within the analysis limit");
 
-    assert_eq!(diagnostics_only, rich.payload().clone());
-    assert_eq!(analyzer.reproject_payload(&rich), diagnostics_only);
+    assert_eq!(
+        diagnostics_only,
+        rich.project(analyzer.options().diagnostic_policy())
+    );
 }
 
 #[test]
@@ -577,7 +664,7 @@ fn non_cancellable_analysis_reports_custom_parser_cancellation_without_panicking
 
     let diagnostics = analyzer.analyze(source);
     let result = analyzer
-        .analyze_result(source)
+        .analyze_generation(source)
         .into_ready()
         .expect("parser cancellation is an analysis failure, not a source rejection");
     let facts = analyzer.analyze_facts(source);
@@ -588,7 +675,10 @@ fn non_cancellable_analysis_reports_custom_parser_cancellation_without_panicking
         diagnostics.diagnostics[0].id,
         crate::rules::DIAGRAM_PARSE_RULE_ID
     );
-    assert_eq!(result.payload(), &diagnostics);
+    assert_eq!(
+        result.project(analyzer.options().diagnostic_policy()),
+        diagnostics
+    );
     assert_eq!(facts.diagnostics, diagnostics.diagnostics);
 }
 
@@ -848,22 +938,22 @@ fn rule_changes_reproject_from_one_parse_generation() {
     let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
     let base = Analyzer::with_engine(engine, AnalysisOptions::default());
     let result = base
-        .analyze_result(source)
+        .analyze_generation(source)
         .into_ready()
         .expect("source is within the analysis limit");
     let evidence = std::sync::Arc::as_ptr(&result.diagrams()[0].evidence);
-    assert_eq!(base.reproject_payload(&result), result.payload().clone());
+    let base_payload = result.project(base.options().diagnostic_policy());
 
-    let enabled = Analyzer::with_options(
+    let enabled_analyzer = Analyzer::with_options(
         AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended)
                 .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
                 .unwrap(),
         ),
-    )
-    .reproject_payload(&result);
-    let disabled = Analyzer::with_options(
+    );
+    let enabled = result.project(enabled_analyzer.options().diagnostic_policy());
+    let disabled_analyzer = Analyzer::with_options(
         AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended)
@@ -872,9 +962,9 @@ fn rule_changes_reproject_from_one_parse_generation() {
                 .with_rule_disabled(crate::rules::PREFER_FRONTMATTER_CONFIG_RULE_ID)
                 .unwrap(),
         ),
-    )
-    .reproject_payload(&result);
-    let severity = Analyzer::with_options(
+    );
+    let disabled = result.project(disabled_analyzer.options().diagnostic_policy());
+    let severity_analyzer = Analyzer::with_options(
         AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_profile(AnalysisRuleProfile::Recommended)
@@ -886,10 +976,11 @@ fn rule_changes_reproject_from_one_parse_generation() {
                 )
                 .unwrap(),
         ),
-    )
-    .reproject_payload(&result);
+    );
+    let severity = result.project(severity_analyzer.options().diagnostic_policy());
 
     assert_eq!(REPROJECTION_PARSE_CALLS.load(Ordering::SeqCst), 1);
+    assert!(base_payload.valid);
     assert_eq!(
         std::sync::Arc::as_ptr(&result.diagrams()[0].evidence),
         evidence
@@ -908,19 +999,14 @@ fn rule_changes_reproject_from_one_parse_generation() {
 fn parse_failure_reprojects_without_changing_diagnostics() {
     let analyzer = Analyzer::new();
     let result = analyzer
-        .analyze_result("flowchart TD\nA[unterminated")
+        .analyze_generation("flowchart TD\nA[unterminated")
         .into_ready()
         .expect("parse failures retain a canonical analysis generation");
 
-    assert_eq!(
-        analyzer.reproject_payload(&result),
-        result.payload().clone()
-    );
-    assert_eq!(result.payload().diagnostics.len(), 1);
-    assert_eq!(
-        result.payload().diagnostics[0].id,
-        "merman.parse.diagram_parse"
-    );
+    let payload = result.project(analyzer.options().diagnostic_policy());
+    assert_eq!(payload, analyzer.analyze("flowchart TD\nA[unterminated"));
+    assert_eq!(payload.diagnostics.len(), 1);
+    assert_eq!(payload.diagnostics[0].id, "merman.parse.diagram_parse");
 }
 
 #[test]
@@ -931,21 +1017,16 @@ fn parser_panic_reprojects_from_captured_evidence() {
         .insert("flowchart-v2", panicking_flowchart_parser);
     let analyzer = Analyzer::with_engine(engine, AnalysisOptions::default());
     let result = analyzer
-        .analyze_result("flowchart TD\nA-->B\n")
+        .analyze_generation("flowchart TD\nA-->B\n")
         .into_ready()
         .expect("parser panics retain a canonical analysis generation");
 
-    assert_eq!(
-        analyzer.reproject_payload(&result),
-        result.payload().clone()
-    );
-    assert_eq!(result.payload().diagnostics.len(), 1);
-    assert_eq!(
-        result.payload().diagnostics[0].id,
-        crate::rules::PANIC_RULE_ID
-    );
+    let payload = result.project(analyzer.options().diagnostic_policy());
+    assert_eq!(payload, analyzer.analyze("flowchart TD\nA-->B\n"));
+    assert_eq!(payload.diagnostics.len(), 1);
+    assert_eq!(payload.diagnostics[0].id, crate::rules::PANIC_RULE_ID);
     assert!(
-        result.payload().diagnostics[0]
+        payload.diagnostics[0]
             .message
             .contains("fixture parser panic")
     );

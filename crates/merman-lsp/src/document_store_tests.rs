@@ -1133,7 +1133,7 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
 }
 
 #[test]
-fn initial_lsp_payload_shares_the_canonical_generation_allocation() {
+fn initial_lsp_payload_matches_the_sealed_generation_source() {
     let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/shared-payload.mmd").unwrap();
 
@@ -1147,9 +1147,10 @@ fn initial_lsp_payload_shares_the_canonical_generation_allocation() {
     let context = store
         .cached_analysis_generation(&uri)
         .expect("expected cached analysis generation");
-    let canonical_payload = context.canonical().shared_payload();
-
-    assert!(Arc::ptr_eq(&context.payload, &canonical_payload));
+    assert_eq!(
+        context.payload.source,
+        context.generation().snapshot_policy().source
+    );
 }
 
 #[test]
@@ -1239,7 +1240,7 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         store
             .cached_analysis_generation(&uri)
             .expect("expected cached analysis generation")
-            .canonical(),
+            .generation(),
     );
     let diagnostic_context = store
         .diagnostic_context(&uri)
@@ -1292,7 +1293,7 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         store
             .cached_analysis_generation(&uri)
             .expect("expected reprojected analysis generation")
-            .canonical()
+            .generation()
     ));
     assert_eq!(
         store
