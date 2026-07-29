@@ -276,7 +276,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 2);
+    assert_eq!(payload["cli_contract_version"], 3);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -536,7 +536,7 @@ fn workflow_analysis() {
     #[cfg(feature = "analysis")]
     {
         let lint = run(
-            &["lint", "-"],
+            &["lint", "--format", "json", "-"],
             b"sequenceDiagram\nAlice->>Bob: Hello\n",
             None,
         );
@@ -594,6 +594,70 @@ fn workflow_svg() {
     }
     #[cfg(not(feature = "svg"))]
     panic!("SVG matrix case was built without feature svg");
+}
+
+fn workflow_mmdc_native_format_guidance() {
+    #[cfg(feature = "svg")]
+    {
+        for (format, feature, available) in [
+            ("jpg", "jpeg", cfg!(feature = "jpeg")),
+            ("ascii", "ascii", cfg!(feature = "ascii")),
+            ("unicode", "ascii", cfg!(feature = "ascii")),
+        ] {
+            let output = run(
+                &["mmdc", "-i", "-", "-o", "-", "-e", format],
+                SIMPLE_SOURCE.as_bytes(),
+                None,
+            );
+            assert_eq!(
+                output.status.code(),
+                Some(2),
+                "mmdc native-only {format} should remain a usage error"
+            );
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if available {
+                assert!(
+                    stderr.contains(&format!("merman-cli render -f {format}")),
+                    "compiled native output needs an executable replacement: {stderr}"
+                );
+            } else {
+                assert!(
+                    stderr.contains(&format!("without the `{feature}` feature"))
+                        && !stderr.contains(&format!("merman-cli render -f {format}")),
+                    "slim builds must not recommend unavailable output: {stderr}"
+                );
+            }
+        }
+
+        let temp = tempfile::tempdir().expect("create mmdc extension fixture");
+        fs::write(temp.path().join("diagram.mmd"), SIMPLE_SOURCE).expect("write Mermaid input");
+        let output = run_without_stdin(
+            &["mmdc", "-i", "diagram.mmd", "-o", "out.jpg"],
+            Some(temp.path()),
+        );
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "mmdc native-only output extension should remain a usage error"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if cfg!(feature = "jpeg") {
+            assert!(
+                stderr.contains("merman-cli render -f jpg"),
+                "compiled JPEG output needs an executable extension replacement: {stderr}"
+            );
+        } else {
+            assert!(
+                stderr.contains("without the `jpeg` feature")
+                    && !stderr.contains("merman-cli render -f jpg"),
+                "slim builds must not recommend unavailable extension output: {stderr}"
+            );
+        }
+        assert!(
+            !temp.path().join("out.jpg").exists(),
+            "extension guidance must precede output effects"
+        );
+    }
 }
 
 fn workflow_ascii() {
@@ -1062,4 +1126,5 @@ fn exact_compiled_profile_is_callable() {
     let case = selected_case();
     assert_compiled_surface(&case);
     execute_primary_workflow(&case);
+    workflow_mmdc_native_format_guidance();
 }

@@ -201,6 +201,42 @@ fn mmdc_theme_values_match_the_pinned_upstream_contract() {
 }
 
 #[test]
+fn native_theme_values_match_the_compiled_runtime_catalog() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let rejected = Command::new(exe)
+        .args(["render", "missing.mmd", "--theme", "not-a-runtime-theme"])
+        .output()
+        .expect("run cli");
+
+    assert_eq!(support::exit_code(rejected.status), 2);
+    assert!(
+        rejected.stdout.is_empty(),
+        "failure must not write a payload"
+    );
+    let stderr = String::from_utf8(rejected.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("not-a-runtime-theme") && !stderr.contains("missing.mmd:"),
+        "theme validation must precede input acquisition:\n{stderr}"
+    );
+    for theme in merman::supported_themes() {
+        assert!(
+            stderr.contains(theme),
+            "native theme validation should list `{theme}`:\n{stderr}"
+        );
+    }
+
+    let accepted = run_with_stdin(
+        &["render", "--theme", "redux", "-"],
+        "flowchart LR\nA-->B\n",
+    );
+    assert!(
+        accepted.status.success(),
+        "compiled runtime theme should be accepted: {}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+}
+
+#[test]
 fn native_render_rejects_options_for_a_different_output_kind() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let output = support::run_with_stdin_in_dir(
@@ -683,6 +719,10 @@ fn native_render_rejects_markdown_inputs_in_favor_of_batch() {
 fn developer_commands_reject_render_only_options() {
     for args in [
         ["detect", "--suppress-errors", "-"].as_slice(),
+        ["detect", "--config-file", "missing.json", "-"].as_slice(),
+        ["detect", "--theme", "dark", "-"].as_slice(),
+        ["detect", "--runtime", "deterministic", "-"].as_slice(),
+        ["detect", "--resource-limit", "max_css_bytes=1", "-"].as_slice(),
         ["layout", "--svg-id", "diagram", "-"].as_slice(),
         ["layout", "--hand-drawn-seed", "7", "-"].as_slice(),
     ] {
@@ -697,6 +737,40 @@ fn developer_commands_reject_render_only_options() {
             "argument rejection must precede reading stdin: {args:?}"
         );
     }
+}
+
+#[test]
+fn developer_short_help_points_to_advanced_controls() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    for command in ["detect", "parse", "layout"] {
+        let output = Command::new(exe)
+            .args([command, "-h"])
+            .output()
+            .expect("run short help");
+        assert!(output.status.success(), "{command}: {:?}", output.stderr);
+        let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+        assert!(
+            stdout.contains(&format!("merman-cli {command} --help")),
+            "{command} short help should expose the long-help path:\n{stdout}"
+        );
+        assert!(
+            !stdout.contains("--resource-limit"),
+            "{command} short help should hide resource controls:\n{stdout}"
+        );
+    }
+}
+
+#[test]
+fn detect_still_handles_frontmatter_and_directives_without_configuration_flags() {
+    let source =
+        "---\ntitle: Directed\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart LR\nA-->B\n";
+    let output = run_with_stdin(&["detect", "-"], source);
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8(output.stdout).expect("stdout should be utf8"),
+        "flowchart-v2\n"
+    );
 }
 
 #[test]
@@ -716,7 +790,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 2);
+    assert_eq!(payload["cli_contract_version"], 3);
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(

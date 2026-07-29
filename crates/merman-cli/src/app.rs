@@ -5,7 +5,7 @@ use crate::invocation::ColorEnvironment;
 use crate::invocation::InvocationFacts;
 use crate::runtime::{ExecutionContext, SharedWriter};
 use clap::error::ErrorKind;
-use clap::{CommandFactory, FromArgMatches};
+use clap::{CommandFactory, FromArgMatches, ValueEnum};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, IsTerminal};
@@ -90,6 +90,11 @@ impl CliApp {
         {
             return CliError::stream("stderr", source).exit_code();
         }
+        if let Some(warning) = parsed.deprecated_native_format_warning()
+            && let Err(source) = execution.stderr.write_all(warning.as_bytes())
+        {
+            return CliError::stream("stderr", source).exit_code();
+        }
         let cli = parsed.cli;
         let facts = match process.into_facts(command_needs_working_directory(&cli.command)) {
             Ok(facts) => facts,
@@ -150,7 +155,68 @@ fn command_needs_working_directory(command: &RawCommand) -> bool {
 }
 
 pub(crate) fn cli_command() -> clap::Command {
-    let command = Cli::command();
+    let mut command = Cli::command()
+        .mut_subcommand("detect", |subcommand| {
+            subcommand.after_help(
+                "More options: `merman-cli detect --help` shows source resource controls.",
+            )
+        })
+        .mut_subcommand("parse", |subcommand| {
+            subcommand.after_help(
+                "More options: `merman-cli parse --help` shows configuration, runtime, and resource controls.",
+            )
+        });
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    {
+        command = command.mut_subcommand("render", |subcommand| {
+            subcommand.after_help(
+                "Examples:\n  merman-cli render diagram.mmd\n\nMore options: `merman-cli render --help` shows advanced renderer, resource, and security controls.",
+            )
+        });
+    }
+    #[cfg(feature = "markdown")]
+    {
+        command = command.mut_subcommand("batch", |subcommand| {
+            subcommand.after_help(
+                "Examples:\n  merman-cli batch README.md\n\nMore options: `merman-cli batch --help` shows advanced renderer, resource, and security controls.",
+            )
+        });
+    }
+    #[cfg(feature = "analysis")]
+    {
+        command = command
+            .mut_subcommand("lint", |subcommand| {
+                subcommand.after_help(
+                    "Examples:\n  merman-cli lint diagram.mmd\n  merman-cli lint --format json diagram.mmd\n\nMore options: `merman-cli lint --help` shows advanced rule, runtime, and resource controls.",
+                )
+            })
+            .mut_subcommand("fix", |subcommand| {
+                subcommand.after_help(
+                    "Examples:\n  merman-cli fix --check diagram.mmd\n  merman-cli fix --diff diagram.mmd\n\nMore options: `merman-cli fix --help` shows advanced rule, runtime, and resource controls.",
+                )
+            });
+    }
+    #[cfg(feature = "shell-completions")]
+    {
+        command = command.mut_subcommand("completion", |subcommand| {
+            subcommand
+                .after_help("Examples:\n  merman-cli completion bash\n  merman-cli completion zsh")
+        });
+    }
+    #[cfg(feature = "svg")]
+    {
+        command = command
+            .mut_subcommand("layout", |subcommand| {
+                subcommand.after_help(
+                    "More options: `merman-cli layout --help` shows layout, configuration, runtime, and resource controls.",
+                )
+            })
+            .mut_subcommand("mmdc", |subcommand| {
+                subcommand.after_help(
+                    "Examples:\n  merman-cli mmdc -i diagram.mmd -o diagram.svg\n\nMore options: `merman-cli mmdc --help` shows advanced compatibility, renderer, resource, and security controls.",
+                )
+            });
+    }
     let help = root_help(&command);
     command.override_help(help)
 }
@@ -173,6 +239,32 @@ impl ParsedCli {
         {
             let _ = self.deprecated_root_mmdc;
             false
+        }
+    }
+
+    fn deprecated_native_format_warning(&self) -> Option<String> {
+        match &self.cli.command {
+            #[cfg(any(feature = "svg", feature = "ascii"))]
+            RawCommand::Render(args) => args.options.deprecated_format.and_then(|format| {
+                format.to_possible_value().map(|value| {
+                    format!(
+                        "warning: native `render -e {}` is deprecated and will be removed in v0.9.0\nhelp: use `merman-cli render -f {}`\n",
+                        value.get_name(),
+                        value.get_name()
+                    )
+                })
+            }),
+            #[cfg(feature = "markdown")]
+            RawCommand::Batch(args) => args.options.deprecated_format.and_then(|format| {
+                format.to_possible_value().map(|value| {
+                    format!(
+                        "warning: native `batch -e {}` is deprecated and will be removed in v0.9.0\nhelp: use `merman-cli batch -f {}`\n",
+                        value.get_name(),
+                        value.get_name()
+                    )
+                })
+            }),
+            _ => None,
         }
     }
 }
@@ -390,9 +482,7 @@ fn removed_root_render_message(argument: &str) -> String {
         ));
     }
     if cfg!(any(feature = "svg", feature = "ascii")) {
-        message.push_str(
-            "\nuse `merman-cli render ...` for native single-diagram, JPEG, or text output",
-        );
+        message.push_str("\nuse `merman-cli render ...` for native single-diagram output");
     }
     if cfg!(feature = "markdown") {
         message.push_str("\nuse `merman-cli batch ...` for native Markdown documents");

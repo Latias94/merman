@@ -154,7 +154,7 @@ fn run_detect(args: ResolvedDetect, context: &mut ExecutionContext) -> Result<()
         context.stdin.as_mut(),
         &context.stderr,
     )?;
-    let engine = engine_for(&args.engine.into_parse_args(), &args.resources)?;
+    let engine = engine_for(&crate::cli::ParseCliArgs::default(), &args.resources)?;
     let meta = engine.parse_metadata_sync(&text)?;
     write_stdout_line(&meta.diagram_type, &context.stdout)?;
     Ok(())

@@ -4,7 +4,7 @@ use crate::runtime::SharedWriter;
 use serde::Serialize;
 
 const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
-const CLI_CONTRACT_VERSION: u32 = 2;
+const CLI_CONTRACT_VERSION: u32 = 3;
 
 #[allow(dead_code)]
 mod descriptor {

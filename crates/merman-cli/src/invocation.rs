@@ -87,7 +87,6 @@ pub(crate) enum ResolvedInvocation {
 #[derive(Debug)]
 pub(crate) struct ResolvedDetect {
     pub(crate) input: ResolvedInput,
-    pub(crate) engine: crate::cli::EngineCliArgs,
     pub(crate) resources: ResolvedResourcePolicy,
 }
 
@@ -441,11 +440,9 @@ fn validate_parse_args(args: &ParseCliArgs) -> Result<(), CliError> {
 }
 
 fn normalize_detect(args: DetectArgs, facts: &InvocationFacts) -> Result<ResolvedDetect, CliError> {
-    validate_runtime_args(&args.engine.runtime)?;
     Ok(ResolvedDetect {
         input: resolve_native_input(args.input, facts.stdin_is_terminal, "detect")?,
-        engine: args.engine,
-        resources: resolve_resource_policy(args.resources)?,
+        resources: resolve_resource_policy(args.resources.into())?,
     })
 }
 
@@ -558,7 +555,7 @@ fn validate_analysis_output(
 ) -> Result<(), CliError> {
     if pretty && matches!(format, crate::cli::LintOutputFormat::Text) {
         return Err(CliError::InvalidInput(
-            "--pretty is only valid with --format json".to_string(),
+            "--pretty requires JSON output; use `--format json --pretty`".to_string(),
         ));
     }
     Ok(())
@@ -678,7 +675,10 @@ fn normalize_render(
             "render accepts one Mermaid diagram, not Markdown; use `merman-cli batch`".to_string(),
         ));
     }
-    let format = infer_native_format(args.output.as_deref(), args.options.format)?;
+    let format = infer_native_format(
+        args.output.as_deref(),
+        args.options.format.or(args.options.deprecated_format),
+    )?;
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     let input_kind = resolve_input_kind(args.input_kind, &input);
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -771,7 +771,11 @@ fn normalize_batch(
         }
     };
 
-    let format = args.options.format.unwrap_or_default();
+    let format = args
+        .options
+        .format
+        .or(args.options.deprecated_format)
+        .unwrap_or_default();
     let render_format = RenderFormat::from(format);
     validate_graphical_output_options(render_format, &args.options.graphical)?;
     let output_path = output_dir.join(&source_file_name);
@@ -1009,7 +1013,7 @@ fn infer_mmdc_format(
         return Ok(RenderFormat::Svg);
     };
     let Some(extension) = output.extension().and_then(OsStr::to_str) else {
-        return Err(invalid_mmdc_output_extension());
+        return Err(invalid_mmdc_output_extension(output));
     };
     match extension {
         "md" | "markdown" | "svg" => Ok(RenderFormat::Svg),
@@ -1017,7 +1021,7 @@ fn infer_mmdc_format(
         "png" => Ok(RenderFormat::Png),
         #[cfg(feature = "pdf")]
         "pdf" => Ok(RenderFormat::Pdf),
-        _ => Err(invalid_mmdc_output_extension()),
+        _ => Err(invalid_mmdc_output_extension(output)),
     }
 }
 
@@ -1752,7 +1756,7 @@ fn validate_mmdc_output_path(path: &Path) -> Result<(), CliError> {
         return Ok(());
     }
     let Some(extension) = path.extension().and_then(OsStr::to_str) else {
-        return Err(invalid_mmdc_output_extension());
+        return Err(invalid_mmdc_output_extension(path));
     };
     if matches!(extension, "md" | "markdown" | "svg") {
         return Ok(());
@@ -1765,11 +1769,29 @@ fn validate_mmdc_output_path(path: &Path) -> Result<(), CliError> {
     if extension == "pdf" {
         return Ok(());
     }
-    Err(invalid_mmdc_output_extension())
+    Err(invalid_mmdc_output_extension(path))
 }
 
 #[cfg(feature = "svg")]
-fn invalid_mmdc_output_extension() -> CliError {
+fn invalid_mmdc_output_extension(path: &Path) -> CliError {
+    if let Some(format) = path
+        .extension()
+        .and_then(OsStr::to_str)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+        .and_then(crate::cli::native_only_render_format)
+    {
+        if format.available {
+            return CliError::InvalidInput(format!(
+                "`mmdc` does not support .{} output; use `merman-cli render -f {} ...`",
+                format.canonical, format.canonical
+            ));
+        }
+        return CliError::InvalidInput(format!(
+            "`mmdc` does not support .{} output, and native `{}` output is unavailable because this binary was built without the `{}` feature",
+            format.canonical, format.canonical, format.feature
+        ));
+    }
     CliError::InvalidInput(
         "Output file must end with .md, .markdown, or a compiled SVG/PNG/PDF extension".to_string(),
     )

@@ -176,7 +176,7 @@ def valid_capabilities_payload(
     ]
     return {
         "schema_version": 2,
-        "cli_contract_version": 2,
+        "cli_contract_version": 3,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],

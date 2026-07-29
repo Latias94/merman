@@ -685,7 +685,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
         self.assertNotIn("brew info", command)
         self.assertNotIn("formula_version", command)
         for contract in [
-            ".cli_contract_version == 2",
+            ".cli_contract_version == 3",
             '"analysis", "ascii", "icons", "jpeg", "layout-cytoscape"',
             '"parallel-markdown", "pdf", "png", "shell-completions", "svg"',
             '["ascii", "jpeg", "pdf", "png", "svg"]',

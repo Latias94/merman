@@ -51,6 +51,53 @@ fn render_help_excludes_mmdc_and_batch_only_options() {
 }
 
 #[test]
+fn render_short_help_prioritizes_the_common_workflow() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let short = Command::new(exe)
+        .args(["render", "-h"])
+        .output()
+        .expect("run short help");
+    let long = Command::new(exe)
+        .args(["render", "--help"])
+        .output()
+        .expect("run long help");
+
+    assert!(short.status.success(), "stderr: {:?}", short.stderr);
+    assert!(long.status.success(), "stderr: {:?}", long.stderr);
+    let short = String::from_utf8(short.stdout).expect("stdout should be utf8");
+    let long = String::from_utf8(long.stdout).expect("stdout should be utf8");
+
+    for common in ["--output", "--format", "--theme", "--quiet"] {
+        assert!(
+            short.contains(common),
+            "short help should retain common option {common}:\n{short}"
+        );
+    }
+    for advanced in [
+        "--resource-limit",
+        "--raster-max-width",
+        "--pdf-filter-scale",
+        "--embedded-image-max-bytes",
+        "--text-measurer",
+        "--system-timing",
+        "--allow-private-network",
+    ] {
+        assert!(
+            !short.contains(advanced),
+            "short help should hide advanced option {advanced}:\n{short}"
+        );
+        assert!(
+            long.contains(advanced),
+            "long help should retain advanced option {advanced}:\n{long}"
+        );
+    }
+    assert!(
+        short.contains("merman-cli render") && short.contains("--help"),
+        "short help should end with a copyable example and long-help cue:\n{short}"
+    );
+}
+
+#[test]
 fn batch_help_exposes_only_graphical_batch_options() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let output = Command::new(exe)
@@ -95,6 +142,69 @@ fn batch_help_exposes_only_graphical_batch_options() {
         stderr.contains("invalid value 'unicode'") && !stderr.contains("missing.md:"),
         "batch must reject text formats during argument parsing:\n{stderr}"
     );
+}
+
+#[test]
+fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    for (command, common, advanced) in [
+        (
+            "batch",
+            &["--output-dir", "--format", "--jobs"][..],
+            &[
+                "--resource-limit",
+                "--raster-max-width",
+                "--pdf-filter-scale",
+                "--svg-pipeline",
+            ][..],
+        ),
+        (
+            "mmdc",
+            &["--input", "--output", "--outputFormat"][..],
+            &[
+                "--artefacts",
+                "--jobs",
+                "--resource-limit",
+                "--raster-max-width",
+                "--pdf-filter-scale",
+                "--svg-pipeline",
+                "--puppeteerConfigFile",
+            ][..],
+        ),
+    ] {
+        let short = Command::new(exe)
+            .args([command, "-h"])
+            .output()
+            .expect("run short help");
+        let long = Command::new(exe)
+            .args([command, "--help"])
+            .output()
+            .expect("run long help");
+        assert!(short.status.success(), "{command}: {:?}", short.stderr);
+        assert!(long.status.success(), "{command}: {:?}", long.stderr);
+        let short = String::from_utf8(short.stdout).expect("stdout should be utf8");
+        let long = String::from_utf8(long.stdout).expect("stdout should be utf8");
+        for option in common {
+            assert!(
+                short.contains(option),
+                "{command} short help should retain {option}:\n{short}"
+            );
+        }
+        for option in advanced {
+            assert!(
+                !short.contains(option),
+                "{command} short help should hide {option}:\n{short}"
+            );
+            assert!(
+                long.contains(option),
+                "{command} long help should retain {option}:\n{long}"
+            );
+        }
+        assert!(
+            short.contains(&format!("merman-cli {command}")) && short.contains("--help"),
+            "{command} short help needs an example and long-help cue:\n{short}"
+        );
+    }
 }
 
 #[test]

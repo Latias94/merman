@@ -30,6 +30,50 @@ fn cli_lint_valid_mermaid_returns_zero_and_json_payload() {
 }
 
 #[test]
+fn cli_lint_defaults_to_text_while_json_remains_explicit() {
+    let source = "flowchart TD\nA[Hello] --> B[World]\n";
+    let text = run_with_stdin(&["lint", "-"], source);
+    assert!(text.status.success(), "stderr: {:?}", text.stderr);
+    assert_eq!(
+        String::from_utf8(text.stdout).expect("lint stdout should be utf8"),
+        "No Mermaid diagnostics.\n"
+    );
+
+    let json = run_with_stdin(&["lint", "--format", "json", "-"], source);
+    assert!(json.status.success(), "stderr: {:?}", json.stderr);
+    let payload: Value =
+        serde_json::from_slice(&json.stdout).expect("explicit JSON should remain machine-readable");
+    assert_eq!(payload["version"], 1);
+    assert_eq!(payload["valid"], true);
+}
+
+#[test]
+fn lint_pretty_error_explains_how_to_enable_json() {
+    let output = run_with_stdin(&["lint", "--pretty", "missing.mmd"], "");
+
+    assert_eq!(support::exit_code(output.status), 2);
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("--format json --pretty") && !stderr.contains("missing.mmd:"),
+        "pretty validation must be actionable and precede input acquisition:\n{stderr}"
+    );
+}
+
+#[test]
+fn lint_explicit_json_pretty_output_succeeds() {
+    let output = run_with_stdin(
+        &["lint", "--format", "json", "--pretty", "-"],
+        "flowchart TD\nA-->B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(stdout.contains("\n  \"version\": 1,"));
+    serde_json::from_str::<Value>(&stdout).expect("pretty lint output should remain valid JSON");
+}
+
+#[test]
 fn cli_lint_rules_lists_rule_catalog_json() {
     let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
         .args(["lint-rules", "--format", "json"])
@@ -513,7 +557,7 @@ Shifted midnight: id1,2013-01-01,1d
 #[test]
 fn cli_commands_reject_out_of_range_fixed_local_midnight_consistently() {
     let source = "flowchart TD\nA-->B\n";
-    for command in ["detect", "parse", "layout"] {
+    for command in ["parse", "layout"] {
         let output = run_with_stdin(
             &[
                 command,

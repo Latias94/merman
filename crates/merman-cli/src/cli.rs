@@ -74,7 +74,8 @@ pub(crate) struct ResourceCliArgs {
         long = "resource-profile",
         value_parser = resource_profile_value_parser(),
         default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
-        help_heading = "Resource controls"
+        help_heading = "Resource controls",
+        hide_short_help = true
     )]
     pub(crate) profile: ResourceProfile,
 
@@ -83,7 +84,8 @@ pub(crate) struct ResourceCliArgs {
         long = "resource-limit",
         value_name = "STABLE_ID=POSITIVE_U64",
         value_parser = parse_resource_limit_override,
-        help_heading = "Resource controls"
+        help_heading = "Resource controls",
+        hide_short_help = true
     )]
     pub(crate) limits: Vec<ResourceLimitOverride>,
 }
@@ -93,6 +95,38 @@ impl Default for ResourceCliArgs {
         Self {
             profile: merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
             limits: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, ClapArgs)]
+pub(crate) struct DetectResourceCliArgs {
+    /// Resource policy used to bound source acquisition.
+    #[arg(
+        long = "resource-profile",
+        value_parser = resource_profile_value_parser(),
+        default_value_t = merman::resources::CLI_DEFAULT_RESOURCE_PROFILE,
+        help_heading = "Source limits",
+        hide_short_help = true
+    )]
+    pub(crate) profile: ResourceProfile,
+
+    /// Override source bytes as max_source_bytes=POSITIVE_U64.
+    #[arg(
+        long = "resource-limit",
+        value_name = "max_source_bytes=POSITIVE_U64",
+        value_parser = parse_detect_resource_limit_override,
+        help_heading = "Source limits",
+        hide_short_help = true
+    )]
+    pub(crate) limits: Vec<ResourceLimitOverride>,
+}
+
+impl From<DetectResourceCliArgs> for ResourceCliArgs {
+    fn from(value: DetectResourceCliArgs) -> Self {
+        Self {
+            profile: value.profile,
+            limits: value.limits,
         }
     }
 }
@@ -110,10 +144,7 @@ pub(crate) struct DetectArgs {
     pub(crate) input: Option<PathBuf>,
 
     #[command(flatten)]
-    pub(crate) engine: EngineCliArgs,
-
-    #[command(flatten)]
-    pub(crate) resources: ResourceCliArgs,
+    pub(crate) resources: DetectResourceCliArgs,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -177,7 +208,7 @@ pub(crate) struct LintArgs {
     #[arg(
         long,
         value_enum,
-        default_value_t = LintOutputFormat::Json,
+        default_value_t = LintOutputFormat::Text,
         help_heading = "Output"
     )]
     pub(crate) format: LintOutputFormat,
@@ -283,7 +314,8 @@ pub(crate) struct AnalysisCliArgs {
         short = 'c',
         long = "config-file",
         value_hint = ValueHint::FilePath,
-        help_heading = "Mermaid configuration"
+        help_heading = "Mermaid configuration",
+        hide_short_help = true
     )]
     pub(crate) config_file: Option<PathBuf>,
 
@@ -295,7 +327,8 @@ pub(crate) struct AnalysisCliArgs {
         long = "lint-profile",
         value_name = "PROFILE",
         value_parser = parse_lint_profile,
-        help_heading = "Lint rules"
+        help_heading = "Lint rules",
+        hide_short_help = true
     )]
     pub(crate) lint_profile: Option<AnalysisRuleProfile>,
 
@@ -304,7 +337,8 @@ pub(crate) struct AnalysisCliArgs {
         long = "enable-rule",
         value_name = "RULE_ID",
         value_parser = parse_lint_rule_id,
-        help_heading = "Lint rules"
+        help_heading = "Lint rules",
+        hide_short_help = true
     )]
     pub(crate) enable_rules: Vec<String>,
 
@@ -313,7 +347,8 @@ pub(crate) struct AnalysisCliArgs {
         long = "disable-rule",
         value_name = "RULE_ID",
         value_parser = parse_lint_rule_id,
-        help_heading = "Lint rules"
+        help_heading = "Lint rules",
+        hide_short_help = true
     )]
     pub(crate) disable_rules: Vec<String>,
 
@@ -322,7 +357,8 @@ pub(crate) struct AnalysisCliArgs {
         long = "rule-severity",
         value_name = "RULE_ID=SEVERITY",
         value_parser = parse_lint_rule_severity_override,
-        help_heading = "Lint rules"
+        help_heading = "Lint rules",
+        hide_short_help = true
     )]
     pub(crate) rule_severities: Vec<LintRuleSeverityOverride>,
 }
@@ -351,8 +387,8 @@ pub(crate) struct LintRulesArgs {
 #[cfg(feature = "analysis")]
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
 pub(crate) enum LintOutputFormat {
-    #[default]
     Json,
+    #[default]
     Text,
 }
 
@@ -385,7 +421,8 @@ pub(crate) struct RenderArgs {
     #[arg(
         long = "input-kind",
         value_enum,
-        help_heading = "Render input and output"
+        help_heading = "Render input and output",
+        hide_short_help = true
     )]
     pub(crate) input_kind: Option<RenderInputKind>,
 
@@ -448,7 +485,11 @@ pub(crate) struct CompletionArgs {
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct ParseCliArgs {
     /// Emit an error diagram instead of failing on parse errors.
-    #[arg(long = "suppress-errors", help_heading = "Mermaid configuration")]
+    #[arg(
+        long = "suppress-errors",
+        help_heading = "Mermaid configuration",
+        hide_short_help = true
+    )]
     pub(crate) suppress_errors: bool,
 
     /// JSON Mermaid configuration file.
@@ -456,46 +497,22 @@ pub(crate) struct ParseCliArgs {
         short = 'c',
         long = "config-file",
         value_hint = ValueHint::FilePath,
-        help_heading = "Mermaid configuration"
+        help_heading = "Mermaid configuration",
+        hide_short_help = true
     )]
     pub(crate) config_file: Option<PathBuf>,
 
     /// Mermaid theme override.
-    #[arg(short = 't', long, help_heading = "Mermaid configuration")]
-    pub(crate) theme: Option<String>,
-
-    #[command(flatten)]
-    pub(crate) runtime: RuntimeCliArgs,
-}
-
-#[derive(Debug, Clone, ClapArgs, Default)]
-pub(crate) struct EngineCliArgs {
-    /// JSON Mermaid configuration file.
     #[arg(
-        short = 'c',
-        long = "config-file",
-        value_hint = ValueHint::FilePath,
+        short = 't',
+        long,
+        value_parser = theme_value_parser(),
         help_heading = "Mermaid configuration"
     )]
-    pub(crate) config_file: Option<PathBuf>,
-
-    /// Mermaid theme override.
-    #[arg(short = 't', long, help_heading = "Mermaid configuration")]
     pub(crate) theme: Option<String>,
 
     #[command(flatten)]
     pub(crate) runtime: RuntimeCliArgs,
-}
-
-impl EngineCliArgs {
-    pub(crate) fn into_parse_args(self) -> ParseCliArgs {
-        ParseCliArgs {
-            suppress_errors: false,
-            config_file: self.config_file,
-            theme: self.theme,
-            runtime: self.runtime,
-        }
-    }
 }
 
 #[derive(Debug, Clone, ClapArgs, Default)]
@@ -505,35 +522,53 @@ pub(crate) struct RuntimeCliArgs {
         long = "runtime",
         value_enum,
         default_value_t = RuntimePolicyKind::Deterministic,
-        help_heading = "Runtime policy"
+        help_heading = "Runtime policy",
+        hide_short_help = true
     )]
     pub(crate) policy: RuntimePolicyKind,
 
     #[cfg(feature = "system-clock")]
     /// Use the system clock while keeping other runtime sources deterministic.
-    #[arg(long = "system-clock", help_heading = "Runtime policy")]
+    #[arg(
+        long = "system-clock",
+        help_heading = "Runtime policy",
+        hide_short_help = true
+    )]
     pub(crate) system_clock: bool,
 
     #[cfg(feature = "system-timezone")]
     /// Use the system local timezone while keeping other runtime sources deterministic.
-    #[arg(long = "system-timezone", help_heading = "Runtime policy")]
+    #[arg(
+        long = "system-timezone",
+        help_heading = "Runtime policy",
+        hide_short_help = true
+    )]
     pub(crate) system_timezone: bool,
 
     #[cfg(feature = "system-random")]
     /// Use system randomness while keeping other runtime sources deterministic.
-    #[arg(long = "system-random", help_heading = "Runtime policy")]
+    #[arg(
+        long = "system-random",
+        help_heading = "Runtime policy",
+        hide_short_help = true
+    )]
     pub(crate) system_random: bool,
 
     #[cfg(feature = "system-timing")]
     /// Enable operation timing diagnostics through the compiled system timing adapter.
-    #[arg(long = "system-timing", help_heading = "Runtime policy")]
+    #[arg(
+        long = "system-timing",
+        help_heading = "Runtime policy",
+        hide_short_help = true
+    )]
     pub(crate) system_timing: bool,
 
     /// Override the local "today" date for time-dependent diagrams.
     #[arg(
         long = "fixed-today",
         value_parser = parse_naive_date,
-        help_heading = "Runtime policy"
+        help_heading = "Runtime policy",
+        hide_short_help = true
     )]
     pub(crate) fixed_today: Option<chrono::NaiveDate>,
 
@@ -541,7 +576,8 @@ pub(crate) struct RuntimeCliArgs {
     #[arg(
         long = "fixed-local-offset-minutes",
         value_parser = parse_fixed_local_offset_minutes,
-        help_heading = "Runtime policy"
+        help_heading = "Runtime policy",
+        hide_short_help = true
     )]
     pub(crate) fixed_local_offset_minutes: Option<i32>,
 }
@@ -566,7 +602,8 @@ pub(crate) struct RenderCliArgs {
     #[arg(
         long = "text-measurer",
         value_enum,
-        help_heading = "Merman renderer controls"
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
     )]
     pub(crate) text_measurer: Option<TextMeasurerKind>,
 
@@ -575,38 +612,50 @@ pub(crate) struct RenderCliArgs {
     #[arg(
         long = "math-renderer",
         value_enum,
-        help_heading = "Merman renderer controls"
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
     )]
     pub(crate) math_renderer: Option<MathRendererKind>,
 
     #[cfg(feature = "svg")]
-    /// Available container width for size-sensitive layouts. `mmdc` defaults to 800.
+    /// Available container width for size-sensitive layouts.
     #[arg(
         short = 'w',
         long = "width",
         value_parser = parse_positive_f64,
-        help_heading = "Layout viewport"
+        help_heading = "Layout viewport",
+        hide_short_help = true
     )]
     pub(crate) container_width: Option<f64>,
 
     #[cfg(feature = "svg")]
-    /// Available container height for size-sensitive layouts. `mmdc` defaults to 600.
+    /// Available container height for size-sensitive layouts.
     #[arg(
         short = 'H',
         long = "height",
         value_parser = parse_positive_f64,
-        help_heading = "Layout viewport"
+        help_heading = "Layout viewport",
+        hide_short_help = true
     )]
     pub(crate) container_height: Option<f64>,
 
     #[cfg(feature = "svg")]
     /// Root SVG id and internal marker prefix.
-    #[arg(short = 'I', long = "svg-id", help_heading = "SVG output")]
+    #[arg(
+        short = 'I',
+        long = "svg-id",
+        help_heading = "SVG output",
+        hide_short_help = true
+    )]
     pub(crate) svg_id: Option<String>,
 
     #[cfg(feature = "svg")]
     /// Stabilize rough/hand-drawn rendering where supported.
-    #[arg(long = "hand-drawn-seed", help_heading = "Deterministic rendering")]
+    #[arg(
+        long = "hand-drawn-seed",
+        help_heading = "Deterministic rendering",
+        hide_short_help = true
+    )]
     pub(crate) hand_drawn_seed: Option<u64>,
 }
 
@@ -689,7 +738,8 @@ pub(crate) struct MmdcParseCliArgs {
         short = 'c',
         long = "configFile",
         value_hint = ValueHint::FilePath,
-        help_heading = "mmdc-compatible export"
+        help_heading = "mmdc-compatible export",
+        hide_short_help = true
     )]
     pub(crate) config_file: Option<PathBuf>,
 
@@ -715,7 +765,8 @@ pub(crate) struct MmdcRenderCliArgs {
         long = "text-measurer",
         value_enum,
         default_value_t = TextMeasurerKind::Vendored,
-        help_heading = "Merman renderer controls"
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
     )]
     pub(crate) text_measurer: TextMeasurerKind,
 
@@ -723,7 +774,8 @@ pub(crate) struct MmdcRenderCliArgs {
     #[arg(
         long = "math-renderer",
         value_enum,
-        help_heading = "Merman renderer controls"
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
     )]
     pub(crate) math_renderer: Option<MathRendererKind>,
 
@@ -733,7 +785,8 @@ pub(crate) struct MmdcRenderCliArgs {
         long = "width",
         value_parser = parse_mmdc_positive_integer,
         default_value_t = 800.0,
-        help_heading = "mmdc-compatible export"
+        help_heading = "mmdc-compatible export",
+        hide_short_help = true
     )]
     pub(crate) container_width: f64,
 
@@ -743,16 +796,26 @@ pub(crate) struct MmdcRenderCliArgs {
         long = "height",
         value_parser = parse_mmdc_positive_integer,
         default_value_t = 600.0,
-        help_heading = "mmdc-compatible export"
+        help_heading = "mmdc-compatible export",
+        hide_short_help = true
     )]
     pub(crate) container_height: f64,
 
     /// Root SVG id and internal marker prefix.
-    #[arg(short = 'I', long = "svgId", help_heading = "mmdc-compatible export")]
+    #[arg(
+        short = 'I',
+        long = "svgId",
+        help_heading = "mmdc-compatible export",
+        hide_short_help = true
+    )]
     pub(crate) svg_id: Option<String>,
 
     /// Stabilize rough/hand-drawn rendering where supported.
-    #[arg(long = "hand-drawn-seed", help_heading = "Deterministic rendering")]
+    #[arg(
+        long = "hand-drawn-seed",
+        help_heading = "Deterministic rendering",
+        hide_short_help = true
+    )]
     pub(crate) hand_drawn_seed: Option<u64>,
 }
 
@@ -801,7 +864,8 @@ pub(crate) struct MmdcArgs {
         long = "artefacts",
         alias = "artifacts",
         value_hint = ValueHint::DirPath,
-        help_heading = "Markdown batch export"
+        help_heading = "Markdown batch export",
+        hide_short_help = true
     )]
     pub(crate) artefacts: Option<PathBuf>,
 
@@ -811,7 +875,8 @@ pub(crate) struct MmdcArgs {
         short = 'j',
         long = "jobs",
         value_parser = parse_positive_usize,
-        help_heading = "Markdown batch export"
+        help_heading = "Markdown batch export",
+        hide_short_help = true
     )]
     pub(crate) jobs: Option<usize>,
 
@@ -821,7 +886,7 @@ pub(crate) struct MmdcArgs {
         long = "outputFormat",
         alias = "output-format",
         visible_alias = "format",
-        value_enum,
+        value_parser = mmdc_output_format_value_parser(),
         help_heading = "mmdc-compatible export"
     )]
     pub(crate) output_format: Option<MmdcOutputFormat>,
@@ -830,7 +895,8 @@ pub(crate) struct MmdcArgs {
     #[arg(
         long = "svg-pipeline",
         value_enum,
-        help_heading = "Merman renderer controls"
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
     )]
     pub(crate) svg_pipeline: Option<SvgPipelineKind>,
 
@@ -850,7 +916,8 @@ pub(crate) struct MmdcArgs {
         long = "cssFile",
         alias = "css-file",
         value_hint = ValueHint::FilePath,
-        help_heading = "Mermaid configuration"
+        help_heading = "Mermaid configuration",
+        hide_short_help = true
     )]
     pub(crate) css_file: Option<PathBuf>,
 
@@ -860,7 +927,8 @@ pub(crate) struct MmdcArgs {
         short = 'f',
         long = "pdfFit",
         alias = "pdf-fit",
-        help_heading = "mmdc-compatible export"
+        help_heading = "mmdc-compatible export",
+        hide_short_help = true
     )]
     pub(crate) pdf_fit: bool,
 
@@ -874,7 +942,8 @@ pub(crate) struct MmdcArgs {
         long = "puppeteerConfigFile",
         alias = "puppeteer-config-file",
         value_hint = ValueHint::FilePath,
-        help_heading = "Accepted browser compatibility flags"
+        help_heading = "Accepted browser compatibility flags",
+        hide_short_help = true
     )]
     pub(crate) puppeteer_config_file: Option<PathBuf>,
 
@@ -909,12 +978,16 @@ pub(crate) struct MmdcArgs {
 pub(crate) struct NativeRenderOptions {
     /// Output format. Defaults to the first compiled output format.
     #[arg(
-        short = 'e',
+        short = 'f',
         long = "format",
         value_enum,
         help_heading = "Render input and output"
     )]
     pub(crate) format: Option<RenderFormat>,
+
+    /// Deprecated native output format spelling retained through v0.8.x.
+    #[arg(short = 'e', value_enum, hide = true, conflicts_with = "format")]
+    pub(crate) deprecated_format: Option<RenderFormat>,
 
     #[command(flatten)]
     pub(crate) graphical: GraphicalRenderCliArgs,
@@ -929,12 +1002,16 @@ pub(crate) struct NativeRenderOptions {
 pub(crate) struct BatchRenderOptions {
     /// Output format. Defaults to SVG.
     #[arg(
-        short = 'e',
+        short = 'f',
         long = "format",
         value_enum,
         help_heading = "Batch output"
     )]
     pub(crate) format: Option<BatchRenderFormat>,
+
+    /// Deprecated native output format spelling retained through v0.8.x.
+    #[arg(short = 'e', value_enum, hide = true, conflicts_with = "format")]
+    pub(crate) deprecated_format: Option<BatchRenderFormat>,
 
     #[command(flatten)]
     pub(crate) graphical: GraphicalRenderCliArgs,
@@ -948,7 +1025,8 @@ pub(crate) struct GraphicalRenderCliArgs {
     #[arg(
         long = "svg-pipeline",
         value_enum,
-        help_heading = "Merman renderer controls"
+        help_heading = "Merman renderer controls",
+        hide_short_help = true
     )]
     pub(crate) svg_pipeline: Option<SvgPipelineKind>,
 
@@ -963,7 +1041,8 @@ pub(crate) struct GraphicalRenderCliArgs {
         short = 'C',
         long = "css-file",
         value_hint = ValueHint::FilePath,
-        help_heading = "Mermaid configuration"
+        help_heading = "Mermaid configuration",
+        hide_short_help = true
     )]
     pub(crate) css_file: Option<PathBuf>,
 
@@ -997,60 +1076,67 @@ pub(crate) struct GraphicalRenderCliArgs {
 #[cfg(any(feature = "png", feature = "jpeg"))]
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct RasterCliArgs {
-    /// PNG/JPG scale factor. Defaults to 1.
+    /// Raster output scale factor. Defaults to 1.
     #[arg(
         short = 's',
         long = "scale",
         value_parser = parse_positive_f32,
-        help_heading = "mmdc-compatible export"
+        help_heading = "Raster output",
+        hide_short_help = true
     )]
     pub(crate) scale: Option<f32>,
 
-    /// Fit PNG/JPG raster output to this CSS-pixel width before applying --scale.
+    /// Fit raster output to this CSS-pixel width before applying --scale.
     #[arg(
         long = "raster-fit-width",
         value_parser = parse_positive_u32,
-        help_heading = "Merman raster controls"
+        help_heading = "Merman raster controls",
+        hide_short_help = true
     )]
     pub(crate) raster_fit_width: Option<u32>,
 
-    /// Fit PNG/JPG raster output to this CSS-pixel height before applying --scale.
+    /// Fit raster output to this CSS-pixel height before applying --scale.
     #[arg(
         long = "raster-fit-height",
         value_parser = parse_positive_u32,
-        help_heading = "Merman raster controls"
+        help_heading = "Merman raster controls",
+        hide_short_help = true
     )]
     pub(crate) raster_fit_height: Option<u32>,
 
-    /// Maximum PNG/JPG output width after scale and fit. Defaults to 4096.
+    /// Maximum raster output width after scale and fit. Defaults to 4096.
     #[arg(
         long = "raster-max-width",
         value_parser = parse_positive_u32,
-        help_heading = "Merman raster controls"
+        help_heading = "Merman raster controls",
+        hide_short_help = true
     )]
     pub(crate) raster_max_width: Option<u32>,
 
-    /// Maximum PNG/JPG output height after scale and fit. Defaults to 4096.
+    /// Maximum raster output height after scale and fit. Defaults to 4096.
     #[arg(
         long = "raster-max-height",
         value_parser = parse_positive_u32,
-        help_heading = "Merman raster controls"
+        help_heading = "Merman raster controls",
+        hide_short_help = true
     )]
     pub(crate) raster_max_height: Option<u32>,
 
-    /// Maximum PNG/JPG output pixels after scale and fit. Defaults to 4096*4096.
+    /// Maximum raster output pixels after scale and fit. Defaults to 4096*4096.
     #[arg(
         long = "raster-max-pixels",
         value_parser = parse_positive_u64,
-        help_heading = "Merman raster controls"
+        help_heading = "Merman raster controls",
+        hide_short_help = true
     )]
     pub(crate) raster_max_pixels: Option<u64>,
 
-    /// Disable PNG/JPG raster size limits. Use only for trusted oversized exports.
+    /// Disable raster size limits. Use only for trusted oversized exports.
     #[arg(
         long = "raster-unbounded",
         conflicts_with_all = ["raster_max_width", "raster_max_height", "raster_max_pixels"],
-        help_heading = "Merman raster controls"
+        help_heading = "Merman raster controls",
+        hide_short_help = true
     )]
     pub(crate) raster_unbounded: bool,
 }
@@ -1062,7 +1148,8 @@ pub(crate) struct PdfCliArgs {
     #[arg(
         long = "pdf-filter-scale",
         value_parser = parse_positive_f32,
-        help_heading = "Merman PDF controls"
+        help_heading = "Merman PDF controls",
+        hide_short_help = true
     )]
     pub(crate) filter_scale: Option<f32>,
 
@@ -1072,7 +1159,8 @@ pub(crate) struct PdfCliArgs {
         visible_alias = "pdf-max-filter-pixels",
         value_parser = parse_positive_u64,
         conflicts_with = "filter_images_unbounded",
-        help_heading = "Merman PDF controls"
+        help_heading = "Merman PDF controls",
+        hide_short_help = true
     )]
     pub(crate) max_filter_image_pixels: Option<u64>,
 
@@ -1081,7 +1169,8 @@ pub(crate) struct PdfCliArgs {
         long = "pdf-filter-images-unbounded",
         visible_alias = "pdf-filter-unbounded",
         conflicts_with = "max_filter_image_pixels",
-        help_heading = "Merman PDF controls"
+        help_heading = "Merman PDF controls",
+        hide_short_help = true
     )]
     pub(crate) filter_images_unbounded: bool,
 }
@@ -1094,7 +1183,8 @@ pub(crate) struct EmbeddedImageCliArgs {
         long = "embedded-image-max-bytes",
         value_parser = parse_positive_u64,
         conflicts_with = "embedded_images_unbounded",
-        help_heading = "Merman embedded-image controls"
+        help_heading = "Merman embedded-image controls",
+        hide_short_help = true
     )]
     pub(crate) max_image_bytes: Option<u64>,
 
@@ -1103,7 +1193,8 @@ pub(crate) struct EmbeddedImageCliArgs {
         long = "embedded-image-max-total-bytes",
         value_parser = parse_positive_u64,
         conflicts_with = "embedded_images_unbounded",
-        help_heading = "Merman embedded-image controls"
+        help_heading = "Merman embedded-image controls",
+        hide_short_help = true
     )]
     pub(crate) max_total_bytes: Option<u64>,
 
@@ -1112,7 +1203,8 @@ pub(crate) struct EmbeddedImageCliArgs {
         long = "embedded-image-max-pixels",
         value_parser = parse_positive_u64,
         conflicts_with = "embedded_images_unbounded",
-        help_heading = "Merman embedded-image controls"
+        help_heading = "Merman embedded-image controls",
+        hide_short_help = true
     )]
     pub(crate) max_image_pixels: Option<u64>,
 
@@ -1121,7 +1213,8 @@ pub(crate) struct EmbeddedImageCliArgs {
         long = "embedded-image-max-total-pixels",
         value_parser = parse_positive_u64,
         conflicts_with = "embedded_images_unbounded",
-        help_heading = "Merman embedded-image controls"
+        help_heading = "Merman embedded-image controls",
+        hide_short_help = true
     )]
     pub(crate) max_total_pixels: Option<u64>,
 
@@ -1134,7 +1227,8 @@ pub(crate) struct EmbeddedImageCliArgs {
             "max_image_pixels",
             "max_total_pixels"
         ],
-        help_heading = "Merman embedded-image controls"
+        help_heading = "Merman embedded-image controls",
+        hide_short_help = true
     )]
     pub(crate) embedded_images_unbounded: bool,
 }
@@ -1144,7 +1238,11 @@ pub(crate) struct EmbeddedImageCliArgs {
 pub(crate) struct MmdcIconCliArgs {
     #[cfg(feature = "network-icons")]
     /// Allow icon pack loading from HTTP(S) URLs.
-    #[arg(long = "allow-network", help_heading = "Icon packs")]
+    #[arg(
+        long = "allow-network",
+        help_heading = "Icon packs",
+        hide_short_help = true
+    )]
     pub(crate) allow_network: bool,
 
     #[cfg(feature = "network-icons")]
@@ -1152,19 +1250,26 @@ pub(crate) struct MmdcIconCliArgs {
     #[arg(
         long = "allow-private-network",
         requires = "allow_network",
-        help_heading = "Icon packs"
+        help_heading = "Icon packs",
+        hide_short_help = true
     )]
     pub(crate) allow_private_network: bool,
 
     /// Iconify package names.
-    #[arg(long = "iconPacks", num_args = 1.., help_heading = "Icon packs")]
+    #[arg(
+        long = "iconPacks",
+        num_args = 1..,
+        help_heading = "Icon packs",
+        hide_short_help = true
+    )]
     pub(crate) icon_packs: Vec<String>,
 
     /// Iconify prefix#url definitions.
     #[arg(
         long = "iconPacksNamesAndUrls",
         num_args = 1..,
-        help_heading = "Icon packs"
+        help_heading = "Icon packs",
+        hide_short_help = true
     )]
     pub(crate) icon_packs_names_and_urls: Vec<String>,
 }
@@ -1174,7 +1279,11 @@ pub(crate) struct MmdcIconCliArgs {
 pub(crate) struct NativeIconCliArgs {
     #[cfg(feature = "network-icons")]
     /// Allow icon pack loading from public HTTP(S) destinations.
-    #[arg(long = "allow-network", help_heading = "Icon packs")]
+    #[arg(
+        long = "allow-network",
+        help_heading = "Icon packs",
+        hide_short_help = true
+    )]
     pub(crate) allow_network: bool,
 
     #[cfg(feature = "network-icons")]
@@ -1182,7 +1291,8 @@ pub(crate) struct NativeIconCliArgs {
     #[arg(
         long = "allow-private-network",
         requires = "allow_network",
-        help_heading = "Icon packs"
+        help_heading = "Icon packs",
+        hide_short_help = true
     )]
     pub(crate) allow_private_network: bool,
 
@@ -1191,7 +1301,8 @@ pub(crate) struct NativeIconCliArgs {
         long = "icon-pack",
         value_name = "PACKAGE_OR_PATH",
         action = clap::ArgAction::Append,
-        help_heading = "Icon packs"
+        help_heading = "Icon packs",
+        hide_short_help = true
     )]
     pub(crate) icon_packs: Vec<String>,
 
@@ -1200,7 +1311,8 @@ pub(crate) struct NativeIconCliArgs {
         long = "icon-pack-source",
         value_name = "PREFIX#SOURCE",
         action = clap::ArgAction::Append,
-        help_heading = "Icon packs"
+        help_heading = "Icon packs",
+        hide_short_help = true
     )]
     pub(crate) icon_packs_names_and_urls: Vec<String>,
 }
@@ -1209,26 +1321,46 @@ pub(crate) struct NativeIconCliArgs {
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct TextOutputCliArgs {
     /// Mirror sequence participants below lifelines for ASCII/Unicode output.
-    #[arg(long = "sequence-mirror-actors", help_heading = "Text output")]
+    #[arg(
+        long = "sequence-mirror-actors",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
     pub(crate) sequence_mirror_actors: bool,
 
     /// Override the text renderer character set.
-    #[arg(long = "ascii-charset", value_enum, help_heading = "Text output")]
+    #[arg(
+        long = "ascii-charset",
+        value_enum,
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
     pub(crate) ascii_charset: Option<TextCharset>,
 
     /// Override the default graph direction when Mermaid input omits one.
-    #[arg(long = "ascii-direction", value_enum, help_heading = "Text output")]
+    #[arg(
+        long = "ascii-direction",
+        value_enum,
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
     pub(crate) ascii_direction: Option<TextDirection>,
 
     /// Color mode for terminal text output.
-    #[arg(long = "ascii-color", value_enum, help_heading = "Text output")]
+    #[arg(
+        long = "ascii-color",
+        value_enum,
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
     pub(crate) ascii_color: Option<TextColorMode>,
 
     /// XYChart vertical plot height for text output.
     #[arg(
         long = "xychart-vertical-plot-height",
         value_parser = parse_positive_usize,
-        help_heading = "Text output"
+        help_heading = "Text output",
+        hide_short_help = true
     )]
     pub(crate) xychart_vertical_plot_height: Option<usize>,
 
@@ -1236,7 +1368,8 @@ pub(crate) struct TextOutputCliArgs {
     #[arg(
         long = "xychart-category-band-width",
         value_parser = parse_positive_usize,
-        help_heading = "Text output"
+        help_heading = "Text output",
+        hide_short_help = true
     )]
     pub(crate) xychart_category_band_width: Option<usize>,
 
@@ -1244,7 +1377,8 @@ pub(crate) struct TextOutputCliArgs {
     #[arg(
         long = "xychart-horizontal-plot-width",
         value_parser = parse_positive_usize,
-        help_heading = "Text output"
+        help_heading = "Text output",
+        hide_short_help = true
     )]
     pub(crate) xychart_horizontal_plot_width: Option<usize>,
 
@@ -1252,7 +1386,8 @@ pub(crate) struct TextOutputCliArgs {
     #[arg(
         long = "ascii-max-grid-cells",
         value_parser = parse_positive_usize,
-        help_heading = "Text output"
+        help_heading = "Text output",
+        hide_short_help = true
     )]
     pub(crate) ascii_max_grid_cells: Option<usize>,
 }
@@ -1321,6 +1456,10 @@ fn resource_profile_value_parser() -> impl TypedValueParser<Value = ResourceProf
     })
 }
 
+fn theme_value_parser() -> impl TypedValueParser<Value = String> {
+    PossibleValuesParser::new(merman::supported_themes().iter().copied())
+}
+
 fn parse_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, String> {
     let Some((stable_id, raw_value)) = value.split_once('=') else {
         return Err("expected STABLE_ID=POSITIVE_U64".to_string());
@@ -1337,6 +1476,18 @@ fn parse_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, S
         stable_id: stable_id.to_string(),
         value: parse_positive_u64(raw_value)?,
     })
+}
+
+fn parse_detect_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, String> {
+    let resource_override = parse_resource_limit_override(value)?;
+    if resource_override.stable_id
+        != merman::resources::InputResourceLimitId::MaxSourceBytes.as_str()
+    {
+        return Err(
+            "detect only accepts the `max_source_bytes` resource limit override".to_string(),
+        );
+    }
+    Ok(resource_override)
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -1397,6 +1548,98 @@ pub(crate) enum MmdcOutputFormat {
     Png,
     #[cfg(feature = "pdf")]
     Pdf,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Clone)]
+struct MmdcOutputFormatParser {
+    values: PossibleValuesParser,
+}
+
+#[cfg(feature = "svg")]
+impl TypedValueParser for MmdcOutputFormatParser {
+    type Value = MmdcOutputFormat;
+
+    fn parse_ref(
+        &self,
+        command: &clap::Command,
+        argument: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        if let Some(format) = value.to_str().and_then(native_only_render_format) {
+            let message = if format.available {
+                format!(
+                    "`mmdc` does not support `{}` output\n\nhelp: use `merman-cli render -f {} ...`",
+                    format.canonical, format.canonical
+                )
+            } else {
+                format!(
+                    "`mmdc` does not support `{}` output, and native `{}` output is unavailable because this binary was built without the `{}` feature",
+                    format.canonical, format.canonical, format.feature
+                )
+            };
+            return Err(
+                clap::Error::raw(clap::error::ErrorKind::InvalidValue, message).with_cmd(command),
+            );
+        }
+
+        let value = self.values.parse_ref(command, argument, value)?;
+        match value.as_str() {
+            "svg" => Ok(MmdcOutputFormat::Svg),
+            #[cfg(feature = "png")]
+            "png" => Ok(MmdcOutputFormat::Png),
+            #[cfg(feature = "pdf")]
+            "pdf" => Ok(MmdcOutputFormat::Pdf),
+            _ => unreachable!("possible values and mmdc formats must stay aligned"),
+        }
+    }
+
+    fn possible_values(&self) -> Option<Box<dyn Iterator<Item = PossibleValue> + '_>> {
+        self.values.possible_values()
+    }
+}
+
+#[cfg(feature = "svg")]
+fn mmdc_output_format_value_parser() -> MmdcOutputFormatParser {
+    let values = vec![
+        PossibleValue::new("svg"),
+        #[cfg(feature = "png")]
+        PossibleValue::new("png"),
+        #[cfg(feature = "pdf")]
+        PossibleValue::new("pdf"),
+    ];
+    MmdcOutputFormatParser {
+        values: PossibleValuesParser::new(values),
+    }
+}
+
+#[cfg(feature = "svg")]
+pub(crate) struct NativeOnlyRenderFormat {
+    pub(crate) canonical: &'static str,
+    pub(crate) feature: &'static str,
+    pub(crate) available: bool,
+}
+
+#[cfg(feature = "svg")]
+pub(crate) fn native_only_render_format(value: &str) -> Option<NativeOnlyRenderFormat> {
+    match value {
+        "jpg" | "jpeg" => Some(NativeOnlyRenderFormat {
+            canonical: "jpg",
+            feature: "jpeg",
+            available: cfg!(feature = "jpeg"),
+        }),
+        "ascii" | "txt" => Some(NativeOnlyRenderFormat {
+            canonical: "ascii",
+            feature: "ascii",
+            available: cfg!(feature = "ascii"),
+        }),
+        "unicode" => Some(NativeOnlyRenderFormat {
+            canonical: "unicode",
+            feature: "ascii",
+            available: cfg!(feature = "ascii"),
+        }),
+        _ => None,
+    }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]

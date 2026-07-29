@@ -65,7 +65,7 @@ jobs:
           if (( formula_major > 0 || formula_minor >= 8 )); then
             merman-cli capabilities --json | jq -e '
               .schema_version == 2
-              and .cli_contract_version == 2
+              and .cli_contract_version == 3
               and .package.name == "merman-cli"
               and .package.version == $version
               and (.compatibility.mermaid | type == "string" and length > 0)

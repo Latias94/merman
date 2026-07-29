@@ -245,6 +245,135 @@ fn native_render_uses_piped_stdin_and_stdout_by_default() {
 }
 
 #[test]
+fn native_render_uses_f_for_format_and_warns_for_the_temporary_e_spelling() {
+    let source = "flowchart LR\nA-->B\n";
+    let current = run_with_stdin(&["render", "-f", "svg"], source);
+    assert!(current.status.success(), "stderr: {:?}", current.stderr);
+    assert!(
+        current.stderr.is_empty(),
+        "the native spelling should not warn: {}",
+        String::from_utf8_lossy(&current.stderr)
+    );
+
+    let legacy = run_with_stdin(&["render", "-e", "svg"], source);
+    assert!(legacy.status.success(), "stderr: {:?}", legacy.stderr);
+    let stderr = String::from_utf8(legacy.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("deprecated")
+            && stderr.contains("v0.9.0")
+            && stderr.contains("merman-cli render -f svg"),
+        "the temporary spelling needs exact migration guidance:\n{stderr}"
+    );
+
+    let compatible = run_with_stdin(&["mmdc", "-i", "-", "-o", "-", "-e", "svg"], source);
+    assert!(
+        compatible.status.success(),
+        "stderr: {:?}",
+        compatible.stderr
+    );
+    assert!(
+        !String::from_utf8_lossy(&compatible.stderr).contains("deprecated"),
+        "explicit mmdc -e is a permanent compatibility contract"
+    );
+
+    let quiet_legacy = run_with_stdin(&["render", "--quiet", "-e", "svg"], source);
+    assert!(quiet_legacy.status.success());
+    assert!(
+        String::from_utf8_lossy(&quiet_legacy.stderr).contains("deprecated"),
+        "quiet must not hide a bounded public-contract migration warning"
+    );
+}
+
+#[test]
+fn native_format_spellings_conflict_before_input_acquisition() {
+    for args in [
+        ["render", "-e", "svg", "-f", "svg", "missing.mmd"].as_slice(),
+        ["render", "-f", "svg", "-e", "svg", "missing.mmd"].as_slice(),
+        ["render", "-e", "svg", "--format", "svg", "missing.mmd"].as_slice(),
+        ["render", "--format", "svg", "-e", "svg", "missing.mmd"].as_slice(),
+        ["batch", "-e", "svg", "-f", "svg", "missing.md"].as_slice(),
+        ["batch", "-f", "svg", "-e", "svg", "missing.md"].as_slice(),
+        ["batch", "-e", "svg", "--format", "svg", "missing.md"].as_slice(),
+        ["batch", "--format", "svg", "-e", "svg", "missing.md"].as_slice(),
+    ] {
+        let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+            .args(args)
+            .output()
+            .expect("run cli");
+        assert_eq!(exit_code(output.status), 2, "args: {args:?}");
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains("cannot be used with") && !stderr.contains("missing."),
+            "format conflicts must fail before input acquisition: {args:?}\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn native_batch_temporary_e_spelling_maps_and_warns() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        tmp.path().join("input.md"),
+        "```mermaid\nflowchart LR\nA-->B\n```\n",
+    )
+    .expect("write Markdown");
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .current_dir(tmp.path())
+        .args(["batch", "input.md", "-e", "svg"])
+        .output()
+        .expect("run batch");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("merman-cli batch -f svg") && stderr.contains("v0.9.0"),
+        "batch migration warning should include the exact replacement:\n{stderr}"
+    );
+    assert!(tmp.path().join("input.merman").join("input.md").exists());
+}
+
+#[test]
+fn mmdc_native_only_formats_point_to_the_native_command() {
+    for (format, replacement) in [
+        ("jpg", "merman-cli render -f jpg"),
+        ("ascii", "merman-cli render -f ascii"),
+        ("unicode", "merman-cli render -f unicode"),
+    ] {
+        let output = run_with_stdin(
+            &["mmdc", "-i", "-", "-o", "-", "-e", format],
+            "flowchart LR\nA-->B\n",
+        );
+        assert_eq!(exit_code(output.status), 2, "format: {format}");
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains(replacement),
+            "mmdc should point native-only {format} users to an executable replacement:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn mmdc_native_only_output_extension_points_to_the_native_command() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    fs::write(tmp.path().join("diagram.mmd"), "flowchart LR\nA-->B\n").expect("write input");
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .current_dir(tmp.path())
+        .args(["mmdc", "-i", "diagram.mmd", "-o", "out.jpg"])
+        .output()
+        .expect("run cli");
+
+    assert_eq!(exit_code(output.status), 2);
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("merman-cli render -f jpg") && !tmp.path().join("out.jpg").exists(),
+        "native-only extensions need an executable replacement before output effects:\n{stderr}"
+    );
+}
+
+#[test]
 fn native_render_replaces_the_named_input_extension_by_default() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(tmp.path().join("diagram.mmd"), "flowchart LR\nA-->B\n").expect("write input");

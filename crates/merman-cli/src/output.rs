@@ -557,7 +557,6 @@ fn anchor_acquisition_paths(invocation: &mut ResolvedInvocation, cwd: &Path) {
         ResolvedInvocation::Capabilities(_) => {}
         ResolvedInvocation::Detect(args) => {
             anchor_input(&mut args.input, cwd);
-            anchor_optional_path(&mut args.engine.config_file, cwd);
         }
         ResolvedInvocation::Parse(args) => {
             anchor_input(&mut args.input, cwd);
