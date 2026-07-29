@@ -418,6 +418,7 @@ Dependency direction remains `merman-bindings-core -> merman facade -> merman-re
 - **Test scenarios:** Raw SVG, prepared SVG, direct Swimlane SVG/report control, custom environment, explicit readable/ResvgSafe pipeline, sealed Resvg output, PNG/JPEG/PDF handoff, success/failure, custom time/runtime providers, host measurer, report provenance/counts, repeated byte equality, and compile-time sealed-type restrictions.
 - **Verification:** Facade, prepared-render, pipeline, export, and report suites pass; success/failure stage traces match exactly except for final report projection; instrumentation proves report materialization is absent only on no-report paths. An accepted candidate clears the power-sized public-operation confirmation and six-point memory gates. Rejected/inconclusive evidence restores the original terminal, removes candidate-only code, and retains reusable lanes plus the correct receipt/queue state.
 - **Deletion:** For accepted code, remove report-then-discard conversions, redundant extraction wrappers, and temporary counters. For rejected/inconclusive code, remove the no-report candidate and its production-only helpers.
+- **Outcome (2026-07-29):** Rejected. The minimal raw-string terminal saved 0.391 us (9.76%) on the smallest public Info path, below the 1 us and 10% low-latency minima. The candidate was removed without expanding terminals or tests; see `docs/performance/runtime_hypothesis_closures_2026-07-29.md`.
 
 ### U8. Fuse ResvgSafe terminal validation
 

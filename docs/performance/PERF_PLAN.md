@@ -211,6 +211,11 @@ cause; reject it if the absolute saving is below the active threshold.
 Exit: report APIs retain identical evidence, string APIs retain identical SVG/error behavior, and
 the stage benchmark demonstrates any saving.
 
+Completed on 2026-07-29. A minimal raw-string terminal candidate improved the smallest public Info
+path by 0.391 us (9.76%), below the low-latency gate's 1 us and 10% minima. It was removed without
+expanding the API surface or tests; see
+[the closure receipt](runtime_hypothesis_closures_2026-07-29.md).
+
 ### P1.6: Optimize large Flowchart scaling
 
 Build a size/density curve rather than tuning against one 420-line fixture. Attribute ordering,

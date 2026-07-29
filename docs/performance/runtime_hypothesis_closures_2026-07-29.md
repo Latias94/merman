@@ -2,7 +2,7 @@
 
 Date: 2026-07-29
 
-Status: U3, U9, U11, and U12 are rejected at discovery. No candidate code remains.
+Status: U3, U7, U9, U11, and U12 are rejected at discovery. No candidate code remains.
 
 ## Scope and identities
 
@@ -65,6 +65,35 @@ gate was 4,015.358 ns and 10%, so the observed effect reached only about one qua
 threshold. Confirmation sampling could not change that effect-size mismatch. The candidate was
 removed without adding tests or retaining a parser-purpose abstraction.
 
+## U7 no-report terminal
+
+The smallest no-report candidate changed only the existing raw-string terminal. It moved the
+already resource-checked SVG directly out of `RenderedSvgParts` instead of projecting and then
+discarding `RenderOperationReport`. Report-returning, pipeline, and Resvg APIs were untouched.
+
+- Base executable SHA-256: `d1902b22e76cff6cc7c50280b34aa1bb51e41f19437ec1e17600cbbc11e4876e`.
+- Candidate executable SHA-256: `464248d13cc0509cf8a68929347cf0fd67e93b99da71fb5c59b214743af4b4ae`.
+- Existing lane: `end_to_end/info_medium`, selected because Info has no text-measurement entries and
+  therefore exposes the fixed report-projection cost on the smallest public operation.
+- Diagnostic schedule: four alternating BH/HB pairs with the same settings as the U3 probe.
+
+| Pair | Order | Base ns | Candidate ns | Delta ns |
+|---:|:---:|---:|---:|---:|
+| 1 | BH | 3,985.163 | 3,639.726 | -345.437 |
+| 2 | HB | 3,959.823 | 3,580.500 | -379.323 |
+| 3 | BH | 4,008.457 | 3,634.678 | -373.779 |
+| 4 | HB | 4,075.447 | 3,610.320 | -465.127 |
+
+The means were 4,007.222 ns and 3,616.306 ns: -390.916 ns and -9.76%. The low-latency gate requires
+at least 1,000 ns absolute improvement and 10% relative improvement before any A/A noise multiplier.
+This most favorable public path failed both. The smaller candidate executable is linker dead-code
+behavior in the benchmark artifact, not a library-size claim. Expanding the same fixed projection
+skip across pipeline and Resvg terminals cannot make the owner-local cost larger, so the candidate
+was removed without tests.
+
+Session recorder initialization and per-measurement atomic updates are a different hypothesis. They
+remain in every path and were intentionally excluded from U7 to keep the A/B causal.
+
 ## U9 Requirement residual
 
 The retained sampling profile is
@@ -88,6 +117,8 @@ closes without production code or new tests.
 
 - U3: rejected; explicit render-only editor bookkeeping saved about 1.0 us, below both low-latency
   thresholds.
+- U7: rejected; the most favorable public no-report terminal saved 0.391 us (9.76%), below both
+  low-latency thresholds.
 - U11 and U12: rejected by strict whole-parser upper bounds.
 - U9: rejected because the complete profile names only excluded dominant owners and sub-threshold
   dispersed residuals.
