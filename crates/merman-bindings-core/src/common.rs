@@ -613,58 +613,6 @@ fn validate_resource_contract_ids(
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) fn merge_request_options(
-    base_options_json: &[u8],
-    request_options_json: &[u8],
-    resource_scope: BindingResourceScope,
-) -> Result<Vec<u8>, BindingError> {
-    parse_options(request_options_json)?;
-    let request_value: Value = serde_json::from_slice(request_options_json).map_err(|err| {
-        BindingError::new(
-            BindingStatus::OptionsJsonError,
-            format!("invalid request options_json: {err}"),
-        )
-    })?;
-    if request_selects_runtime_policy(&request_value) {
-        return Err(BindingError::new(
-            BindingStatus::OptionsJsonError,
-            "request options_json cannot set runtime_policy; configure it when creating the engine",
-        ));
-    }
-    let mut request_value = normalize_analysis_wrapper(request_value);
-    let requested_resources = take_request_resource_options(&mut request_value, resource_scope)?;
-
-    let mut merged = if base_options_json.is_empty() {
-        Value::Object(Map::new())
-    } else {
-        serde_json::from_slice(base_options_json)
-            .map_err(|err| {
-                BindingError::new(
-                    BindingStatus::InternalError,
-                    format!("stored engine options_json is invalid: {err}"),
-                )
-            })
-            .map(normalize_analysis_wrapper)?
-    };
-    merge_json_value(&mut merged, request_value);
-    if let Some(requested_resources) = requested_resources {
-        let ceiling = parse_options(base_options_json)?
-            .analysis
-            .resources
-            .unwrap_or_default();
-        let resources = tighten_resource_options(&ceiling, &requested_resources)?;
-        merged
-            .as_object_mut()
-            .expect("validated binding options always normalize to an object")
-            .insert(
-                "resources".to_string(),
-                serde_json::to_value(resources).map_err(internal_json_error)?,
-            );
-    }
-    serde_json::to_vec(&merged).map_err(internal_json_error)
-}
-
 pub(crate) fn validate_one_shot_resource_options(
     options_json: &[u8],
     resource_scope: BindingResourceScope,
@@ -1465,139 +1413,19 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
-    fn typed_overlay_signature(
+    fn resolve_request_options(
         base: &[u8],
         request: &[u8],
         scope: BindingResourceScope,
-    ) -> Result<String, BindingError> {
+    ) -> Result<BindingOptions, BindingError> {
         let (_, base) = parse_base_options(base)?;
-        let options = match parse_request_overlay(request, scope)? {
+        Ok(match parse_request_overlay(request, scope)? {
             BindingRequestOverlay::Unchanged => {
                 base.validate_unchanged_request()?;
                 parse_options_value(&base.normalized_wire)?
             }
             overlay => base.apply_overlay(overlay)?,
-        };
-        Ok(format!("{options:#?}"))
-    }
-
-    fn merge_oracle_signature(
-        base: &[u8],
-        request: &[u8],
-        scope: BindingResourceScope,
-    ) -> Result<String, BindingError> {
-        parse_options(base)?;
-        let merged = merge_request_options(base, request, scope)?;
-        let options = parse_options(&merged)?;
-        Ok(format!("{options:#?}"))
-    }
-
-    #[test]
-    fn typed_request_overlays_match_the_recursive_merge_oracle() {
-        let cases = vec![
-            (
-                "nested override",
-                br#"{
-                    "version": 1,
-                    "parse": { "suppress_errors": false },
-                    "resources": {
-                        "profile": "interactive",
-                        "limits": {
-                            "max_source_bytes": 4096,
-                            "max_model_items": 128
-                        }
-                    }
-                }"#
-                .as_slice(),
-                br#"{
-                    "parse": { "suppress_errors": true },
-                    "resources": {
-                        "limits": { "max_source_bytes": 2048 }
-                    }
-                }"#
-                .as_slice(),
-                BindingResourceScope::Model,
-            ),
-            (
-                "version-only latent wrapper conflict",
-                br#"{
-                    "merman": { "fixed_today": "2025-01-01" },
-                    "analysis": { "future_option": true }
-                }"#
-                .as_slice(),
-                br#"{"version":1}"#.as_slice(),
-                BindingResourceScope::Model,
-            ),
-            (
-                "runtime policy",
-                b"".as_slice(),
-                br#"{"runtime_policy":"native"}"#.as_slice(),
-                BindingResourceScope::Model,
-            ),
-            (
-                "wrapped runtime policy",
-                b"".as_slice(),
-                br#"{"analysis":{"runtime_policy":"native"}}"#.as_slice(),
-                BindingResourceScope::Analysis,
-            ),
-            (
-                "malformed request JSON",
-                b"".as_slice(),
-                b"{".as_slice(),
-                BindingResourceScope::Model,
-            ),
-            (
-                "cleared resource ceiling",
-                b"".as_slice(),
-                br#"{"resources":null}"#.as_slice(),
-                BindingResourceScope::Model,
-            ),
-            (
-                "out-of-scope resource limit",
-                b"".as_slice(),
-                br#"{"resources":{"limits":{"max_svg_bytes":1024}}}"#.as_slice(),
-                BindingResourceScope::Model,
-            ),
-        ];
-
-        #[cfg(feature = "ascii")]
-        let cases = {
-            let mut cases = cases;
-            cases.extend([
-                (
-                    "ASCII alias collision",
-                    br#"{"ascii":{"color_mode":"none"}}"#.as_slice(),
-                    br#"{"ascii":{"colorMode":"ansi"}}"#.as_slice(),
-                    BindingResourceScope::Model,
-                ),
-                (
-                    "resource ceiling precedes alias collision",
-                    br#"{
-                        "resources": {
-                            "profile": "constrained",
-                            "limits": { "max_source_bytes": 64 }
-                        },
-                        "ascii": { "color_mode": "none" }
-                    }"#
-                    .as_slice(),
-                    br#"{
-                        "resources": { "limits": { "max_source_bytes": 65 } },
-                        "ascii": { "colorMode": "ansi" }
-                    }"#
-                    .as_slice(),
-                    BindingResourceScope::Model,
-                ),
-            ]);
-            cases
-        };
-
-        for (case, base, request, scope) in cases {
-            assert_eq!(
-                typed_overlay_signature(base, request, scope),
-                merge_oracle_signature(base, request, scope),
-                "case={case}"
-            );
-        }
+        })
     }
 
     #[test]
@@ -1644,7 +1472,7 @@ mod tests {
 
     #[test]
     fn request_options_deeply_override_engine_options() {
-        let merged = merge_request_options(
+        let options = resolve_request_options(
             br#"{
                 "version": 1,
                 "parse": { "suppress_errors": false },
@@ -1665,18 +1493,20 @@ mod tests {
             BindingResourceScope::Model,
         )
         .unwrap();
-        let value: Value = serde_json::from_slice(&merged).unwrap();
-
-        assert_eq!(value["version"], 1);
-        assert_eq!(value["parse"]["suppress_errors"], true);
-        assert_eq!(value["resources"]["profile"], "interactive");
-        assert_eq!(value["resources"]["limits"]["max_source_bytes"], 2048);
-        assert_eq!(value["resources"]["limits"]["max_model_items"], 128);
+        assert_eq!(options.version, Some(1));
+        assert_eq!(
+            options.parse.and_then(|parse| parse.suppress_errors),
+            Some(true)
+        );
+        let resources = options.analysis.resources.unwrap();
+        assert_eq!(resources.profile.as_deref(), Some("interactive"));
+        assert_eq!(resources.limits.get("max_source_bytes"), Some(&2048));
+        assert_eq!(resources.limits.get("max_model_items"), Some(&128));
     }
 
     #[test]
     fn request_options_cannot_select_runtime_policy() {
-        let error = merge_request_options(
+        let error = resolve_request_options(
             br#"{"runtime_policy":"deterministic"}"#,
             br#"{"runtime_policy":"native"}"#,
             BindingResourceScope::Model,
@@ -1692,7 +1522,7 @@ mod tests {
         for wrapper in ["analysis", "merman"] {
             let request = format!(r#"{{"{wrapper}":{{"runtime_policy":"native"}}}}"#);
             let error =
-                merge_request_options(b"", request.as_bytes(), BindingResourceScope::Analysis)
+                resolve_request_options(b"", request.as_bytes(), BindingResourceScope::Analysis)
                     .unwrap_err();
 
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
@@ -1702,24 +1532,23 @@ mod tests {
 
     #[test]
     fn request_options_normalize_wrapped_analysis_before_merging() {
-        let merged = merge_request_options(
+        let options = resolve_request_options(
             br#"{"resources":{"limits":{"max_source_bytes":4096}}}"#,
             br#"{"analysis":{"lint":{"profile":"recommended"}}}"#,
             BindingResourceScope::Analysis,
         )
         .unwrap();
-        let value: Value = serde_json::from_slice(&merged).unwrap();
-        let _options = parse_options(&merged).unwrap();
-
         assert_eq!(
-            value["resources"]["limits"]["max_source_bytes"],
-            Value::from(4096)
+            options
+                .analysis
+                .resources
+                .as_ref()
+                .and_then(|resources| resources.limits.get("max_source_bytes")),
+            Some(&4096)
         );
-        assert_eq!(value["lint"]["profile"], "recommended");
-        assert!(value.get("analysis").is_none());
         #[cfg(feature = "analysis")]
         assert_eq!(
-            _options
+            options
                 .analysis
                 .lint
                 .as_ref()
@@ -1730,19 +1559,16 @@ mod tests {
 
     #[test]
     fn request_options_normalize_wrapped_engine_options_before_merging() {
-        let merged = merge_request_options(
+        let options = resolve_request_options(
             br#"{"merman":{"resources":{"profile":"interactive","limits":{"max_source_bytes":4096}}}}"#,
             br#"{"resources":{"limits":{"max_source_bytes":2048,"max_model_items":128}}}"#,
             BindingResourceScope::Model,
         )
         .unwrap();
-        let value: Value = serde_json::from_slice(&merged).unwrap();
-        parse_options(&merged).unwrap();
-
-        assert_eq!(value["resources"]["profile"], "interactive");
-        assert_eq!(value["resources"]["limits"]["max_source_bytes"], 2048);
-        assert_eq!(value["resources"]["limits"]["max_model_items"], 128);
-        assert!(value.get("merman").is_none());
+        let resources = options.analysis.resources.unwrap();
+        assert_eq!(resources.profile.as_deref(), Some("interactive"));
+        assert_eq!(resources.limits.get("max_source_bytes"), Some(&2048));
+        assert_eq!(resources.limits.get("max_model_items"), Some(&128));
     }
 
     #[test]
@@ -1753,11 +1579,10 @@ mod tests {
         }"#;
         parse_options(base).expect("the constructor accepts exactly one analysis wrapper");
 
-        let merged = merge_request_options(base, br#"{"version":1}"#, BindingResourceScope::Model)
-            .expect("the byte-level merge itself succeeds");
-        let error = parse_options(&merged).expect_err(
-            "normalizing the selected wrapper exposes the retained object wrapper conflict",
-        );
+        let error = resolve_request_options(base, br#"{"version":1}"#, BindingResourceScope::Model)
+            .expect_err(
+                "normalizing the selected wrapper exposes the retained object wrapper conflict",
+            );
 
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
         assert!(
@@ -1788,9 +1613,7 @@ mod tests {
                 "color_mode",
             ),
         ] {
-            let merged = merge_request_options(base, request, BindingResourceScope::Model)
-                .expect("each document is independently valid");
-            let error = parse_options(&merged)
+            let error = resolve_request_options(base, request, BindingResourceScope::Model)
                 .expect_err("different wire spellings survive recursive object merge");
 
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
@@ -1802,13 +1625,12 @@ mod tests {
             );
         }
 
-        let merged = merge_request_options(
+        let options = resolve_request_options(
             br#"{"ascii":{"colorMode":null}}"#,
             br#"{"ascii":{"colorMode":"ansi"}}"#,
             BindingResourceScope::Model,
         )
         .expect("the same raw key replaces its null base value");
-        let options = parse_options(&merged).expect("same-spelling replacement is not a duplicate");
         assert_eq!(
             options
                 .ascii
@@ -1838,9 +1660,8 @@ mod tests {
                 "default_direction",
             ),
         ] {
-            let merged = merge_request_options(base, request, BindingResourceScope::Model)
-                .expect("each alias spelling is independently valid");
-            let error = parse_options(&merged).expect_err("both aliases collide after merge");
+            let error = resolve_request_options(base, request, BindingResourceScope::Model)
+                .expect_err("both aliases collide after merge");
 
             assert!(
                 error
@@ -1854,7 +1675,7 @@ mod tests {
     #[cfg(feature = "ascii")]
     #[test]
     fn request_ascii_nested_theme_alias_error_precedes_later_top_level_alias_error() {
-        let merged = merge_request_options(
+        let error = resolve_request_options(
             br##"{
                 "ascii": {
                     "color_mode": "none",
@@ -1872,8 +1693,7 @@ mod tests {
             }"##,
             BindingResourceScope::Model,
         )
-        .expect("each alias spelling is independently valid");
-        let error = parse_options(&merged).expect_err("theme and top-level aliases both collide");
+        .expect_err("theme and top-level aliases both collide");
 
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
         assert!(
@@ -1885,7 +1705,7 @@ mod tests {
     #[cfg(feature = "ascii")]
     #[test]
     fn request_resource_ceiling_error_precedes_cross_document_alias_error() {
-        let error = merge_request_options(
+        let error = resolve_request_options(
             br#"{
                 "resources": {
                     "profile": "constrained",
