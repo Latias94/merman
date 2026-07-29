@@ -12,7 +12,7 @@ import stat
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -21,7 +21,6 @@ import perf_runner
 import compare_self
 import compare_mermaid_renderers
 import render_perf_comment
-import run_native_memory
 import stage_spotcheck
 import verify_pipeline_bench_list
 from corpus_utils import (
@@ -255,77 +254,6 @@ class CorpusContractsTest(unittest.TestCase):
 
         self.assertEqual(select_corpus_fixtures(corpus, "full"), list(corpus.fixtures))
 
-    def test_flowchart_adapter_memory_lanes_match_candidate_contract_identities(self) -> None:
-        corpus = load_corpus(CORPUS_PATH)
-        lanes = {lane.id: lane for lane in corpus.lanes}
-        expected = {
-            "flowchart-adapter-low-cluster-memory": {
-                "selector": "memory/adapter_low_clusters/{fixture}",
-                "workload": "flowchart-adapter-low-cluster-generator-v1",
-                "contract": (
-                    "docs/performance/contracts/"
-                    "flowchart-u4-adapter-low-cluster-memory-v1.json"
-                ),
-            },
-            "flowchart-adapter-high-cluster-memory": {
-                "selector": "memory/adapter_high_clusters/{fixture}",
-                "workload": "flowchart-adapter-high-cluster-generator-v1",
-                "contract": (
-                    "docs/performance/contracts/"
-                    "flowchart-u4-adapter-high-cluster-memory-v1.json"
-                ),
-            },
-        }
-        metrics = ("allocation_count", "allocated_bytes", "peak_growth_bytes")
-        semantic_dimensions = (
-            "input_nodes",
-            "input_edges",
-            "svg_sha256",
-            "svg_viewbox_width",
-            "svg_viewbox_height",
-        )
-
-        for lane_id, identity in expected.items():
-            with self.subTest(lane=lane_id):
-                lane = lanes[lane_id]
-                self.assertEqual(lane.kind, "public")
-                self.assertEqual(lane.public_operation, "render-svg")
-                self.assertEqual(lane.process_lifecycle, "fresh-process")
-                self.assertEqual(lane.engine_lifecycle, "reused-engine")
-                self.assertEqual(lane.transport, "native-system-allocator-subprocess")
-                self.assertEqual(lane.logical_operations_per_estimate, 1)
-                self.assertEqual(lane.selector, identity["selector"])
-                self.assertEqual(lane.size_vector, (1, 2, 4, 10, 32, 100))
-                self.assertEqual(lane.workload, identity["workload"])
-                self.assertEqual(lane.evidence_contract, identity["contract"])
-                self.assertEqual(lane.measurement_metrics, metrics)
-                self.assertEqual(lane.semantic_output_dimensions, semantic_dimensions)
-
-                contract_path = ROOT / str(lane.evidence_contract)
-                contract = json.loads(contract_path.read_text(encoding="utf-8"))
-                self.assertEqual(contract["schema_version"], 1)
-                self.assertEqual(contract["lane_id"], lane.id)
-                self.assertEqual(contract["workload"], lane.workload)
-                self.assertEqual(contract["evidence_class"], "candidate-bound")
-                self.assertIs(contract["candidate_admission"], True)
-                self.assertEqual(
-                    contract["generator"],
-                    {
-                        "id": lane.workload,
-                        "nodes_per_scale": 4,
-                        "edges_per_scale": 4,
-                    },
-                )
-                self.assertEqual(tuple(contract["metrics"]), metrics)
-                for metric in metrics:
-                    self.assertEqual(
-                        set(contract["metrics"][metric]),
-                        {"slope_cap", "max_scale_cap"},
-                    )
-                    self.assertGreater(contract["metrics"][metric]["slope_cap"], 0)
-                    self.assertGreater(contract["metrics"][metric]["max_scale_cap"], 0)
-
-
 class PerfRunnerContractsTest(unittest.TestCase):
     def test_canary_dry_run_uses_corpus_suite_for_comparison(self) -> None:
         buf = io.StringIO()
@@ -422,82 +350,6 @@ class PerfRunnerContractsTest(unittest.TestCase):
             f"target/bench/perf-runner/{perf_runner.today_stamp()}_triage_native_memory.json",
             out,
         )
-
-
-class NativeMemoryDriverSelectionContractsTest(unittest.TestCase):
-    @staticmethod
-    def _dry_run_driver(*, lane: str, corpus: Path = CORPUS_PATH) -> tuple[int, str, str]:
-        stdout = io.StringIO()
-        stderr = io.StringIO()
-        source = {
-            "commit": "a" * 40,
-            "tree": "b" * 40,
-            "clean": True,
-            "dirty_status_sha256": "c" * 64,
-            "dirty_disposition": "clean",
-        }
-        with (
-            mock.patch.object(run_native_memory, "_git_provenance", return_value=source),
-            mock.patch.object(run_native_memory, "best_effort_cpu_model", return_value="test-cpu"),
-            redirect_stdout(stdout),
-            redirect_stderr(stderr),
-        ):
-            result = run_native_memory.main(
-                ["--corpus", str(corpus), "--lane", lane, "--dry-run"]
-            )
-        return result, stdout.getvalue(), stderr.getvalue()
-
-    def test_registered_adapter_memory_lanes_accept_only_their_registered_workloads(self) -> None:
-        expected = {
-            "flowchart-adapter-low-cluster-memory": "flowchart-adapter-low-cluster-generator-v1",
-            "flowchart-adapter-high-cluster-memory": "flowchart-adapter-high-cluster-generator-v1",
-        }
-        self.assertEqual(
-            {
-                lane: run_native_memory._SUPPORTED_LANE_WORKLOADS[lane]
-                for lane in expected
-            },
-            expected,
-        )
-
-        for lane in expected:
-            with self.subTest(lane=lane):
-                result, stdout, stderr = self._dry_run_driver(lane=lane)
-                self.assertEqual(result, 0)
-                self.assertIn("$ cargo bench", stdout)
-                self.assertEqual(stderr, "")
-
-    def test_native_memory_driver_rejects_unknown_or_mismatched_adapter_lane_workloads(self) -> None:
-        unknown_result, _stdout, unknown_stderr = self._dry_run_driver(
-            lane="flowchart-adapter-unregistered-memory"
-        )
-        self.assertEqual(unknown_result, 2)
-        self.assertIn("unknown lane selector", unknown_stderr)
-
-        source_corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
-        mismatches = {
-            "flowchart-adapter-low-cluster-memory": (
-                "flowchart-adapter-high-cluster-generator-v1"
-            ),
-            "flowchart-adapter-high-cluster-memory": (
-                "flowchart-adapter-low-cluster-generator-v1"
-            ),
-        }
-        for lane_id, wrong_workload in mismatches.items():
-            with self.subTest(lane=lane_id, workload=wrong_workload):
-                corpus = copy.deepcopy(source_corpus)
-                lane = next(item for item in corpus["lanes"] if item["id"] == lane_id)
-                lane["workload"] = wrong_workload
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    mismatched_corpus = Path(temp_dir) / "corpus.json"
-                    mismatched_corpus.write_text(json.dumps(corpus), encoding="utf-8")
-                    result, _stdout, stderr = self._dry_run_driver(
-                        lane=lane_id,
-                        corpus=mismatched_corpus,
-                    )
-
-                self.assertEqual(result, 2)
-                self.assertIn("selected lane semantics are unsupported", stderr)
 
 
 class CompareSelfContractsTest(unittest.TestCase):

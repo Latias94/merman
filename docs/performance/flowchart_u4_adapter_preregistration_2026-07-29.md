@@ -6,6 +6,11 @@ This receipt freezes the latency, work-curve, semantic, and native-memory admiss
 the Flowchart adapter candidate before production adapter code is changed or candidate evidence is
 collected. It is intentionally separate from the admitted Dugong batch-retirement subcandidate.
 
+Retirement note: the candidate was rejected before native-memory confirmation. Its two
+candidate-bound memory lanes, contracts, and generators were subsequently removed from the active
+benchmark surface. The values below preserve the historical preregistration only and are not a
+runnable admission contract for a future candidate.
+
 ## Frozen comparison
 
 - Adjacent base commit: `6b5f3e0ef2bc1b3162712b5a2de71fe8f887e213`.
@@ -15,9 +20,8 @@ collected. It is intentionally separate from the admitted Dugong batch-retiremen
 - Public controls: `flowchart_medium`, ports-heavy Flowchart, and `class_medium`.
 - Diagnostic panels: fixed-node cluster/edge interaction, boundary-connected clusters,
   extractable clusters, bounded-degree growth, and true edge-density growth.
-- Native-memory contracts:
-  `contracts/flowchart-u4-adapter-low-cluster-memory-v1.json` and
-  `contracts/flowchart-u4-adapter-high-cluster-memory-v1.json`.
+- Historical native-memory contract IDs: `flowchart-u4-adapter-low-cluster-memory-v1` and
+  `flowchart-u4-adapter-high-cluster-memory-v1` (retired after rejection).
 - Low-cluster contract SHA-256:
   `2c9291e89e60a06763a2e872328233176a16c557f9c8c8ed3cc8b1ab9336d056`.
 - High-cluster contract SHA-256:
@@ -28,8 +32,8 @@ collected. It is intentionally separate from the admitted Dugong batch-retiremen
 
 The two memory workloads keep exactly four nodes and four edges per scale. The low-cluster lane
 keeps two clusters while the high-cluster lane grows clusters with scale. Even clusters have
-boundary edges to an unclustered hub; odd clusters remain extractable. Both contracts are required
-for candidate admission.
+boundary edges to an unclustered hub; odd clusters remain extractable. Both contracts would have
+been required for this candidate's admission.
 
 ## Frozen memory bounds
 
@@ -49,7 +53,7 @@ of peak growth. These exploratory values are not admission evidence.
 
 A metric passes only when the bootstrap upper bounds for both slope and max-scale value are at or
 below their caps. A crossing interval is inconclusive; a lower bound above a cap fails. Contract
-files and their digests are immutable after the adjacent base is committed.
+files and their digests were frozen before the adjacent candidate was measured.
 
 ## Admission rules
 

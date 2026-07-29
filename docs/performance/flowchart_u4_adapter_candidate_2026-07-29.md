@@ -64,7 +64,9 @@ CARGO_BUILD_JOBS=1 cargo +1.95.0 test --locked -p merman-render --lib flowchart
 67 passed; 0 failed; 794 filtered out
 ```
 
-The retained public and diagnostic benchmark lanes remain useful for future adapter designs. Any
-new production candidate requires a new adjacent base, preregistration, discovery anchor, and
+The candidate-bound low/high-cluster memory lanes, contracts, generators, and their dedicated
+tests were retired with the rejected implementation. The generic Flowchart public scaling/stress
+coverage and `flowchart-end-to-end-memory` lane remain useful for future adapter designs. Any new
+production candidate requires a new adjacent base, preregistration, discovery anchor, and
 confirmation receipt; this result must not be reinterpreted as evidence that the original adapter
 is optimal.
