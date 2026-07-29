@@ -143,6 +143,7 @@ fn selected_case() -> String {
         "elk-layout",
         "math",
         "completions",
+        "svg-completions",
         "system-clock",
         "system-timezone",
         "system-random",
@@ -174,6 +175,7 @@ fn expected_capabilities(case: &str) -> Vec<&'static str> {
         "elk-layout" => vec!["layout-elk", "svg"],
         "math" => vec!["math", "svg"],
         "completions" => vec!["shell-completions"],
+        "svg-completions" => vec!["shell-completions", "svg"],
         "system-clock" => vec!["system-clock"],
         "system-timezone" => vec!["system-timezone"],
         "system-random" => vec!["system-random"],
@@ -949,7 +951,8 @@ fn workflow_completions() {
         let output = run_without_stdin(&["completion", "bash"], None);
         assert_success(&output, "Bash completion");
         let script = String::from_utf8(output.stdout).expect("completion UTF-8");
-        let commands = expected_commands(&expected_capabilities(&selected_case()))
+        let capabilities = expected_capabilities(&selected_case());
+        let commands = expected_commands(&capabilities)
             .into_iter()
             .collect::<BTreeSet<_>>();
         for command in ALL_OPTIONAL_COMMANDS {
@@ -960,9 +963,88 @@ fn workflow_completions() {
                 "completion command surface drifted for {command:?}"
             );
         }
+
+        #[cfg(feature = "svg")]
+        {
+            let render = bash_completion_options(&script, "render");
+            assert!(
+                render.contains("-f") && !render.contains("-e"),
+                "native completion must expose -f without deprecated -e: {render:?}"
+            );
+            let mmdc = bash_completion_options(&script, "mmdc");
+            assert!(
+                mmdc.contains("-e"),
+                "mmdc completion must retain its permanent -e: {mmdc:?}"
+            );
+
+            let format_values = bash_completion_values(&script, "render", "--format");
+            let expected_formats = [
+                ("svg", cfg!(feature = "svg")),
+                ("ascii", cfg!(feature = "ascii")),
+                ("unicode", cfg!(feature = "ascii")),
+                ("png", cfg!(feature = "png")),
+                ("jpg", cfg!(feature = "jpeg")),
+                ("pdf", cfg!(feature = "pdf")),
+            ]
+            .into_iter()
+            .filter_map(|(format, enabled)| enabled.then_some(format.to_owned()))
+            .collect::<BTreeSet<_>>();
+            assert_eq!(format_values, expected_formats);
+
+            let theme_values = bash_completion_values(&script, "render", "--theme");
+            assert_eq!(
+                theme_values,
+                merman::supported_themes()
+                    .iter()
+                    .map(|theme| (*theme).to_owned())
+                    .collect()
+            );
+        }
     }
     #[cfg(not(feature = "shell-completions"))]
     panic!("completion matrix case lacks shell-completions");
+}
+
+#[cfg(all(feature = "shell-completions", feature = "svg"))]
+fn bash_completion_block<'a>(script: &'a str, command: &str) -> &'a str {
+    let marker = format!("\n        merman__cli__subcmd__{command})");
+    let start = script
+        .find(&marker)
+        .unwrap_or_else(|| panic!("Bash completion omits {command:?} state"));
+    let rest = &script[start + marker.len()..];
+    let end = rest
+        .find("\n        merman__cli__subcmd__")
+        .or_else(|| rest.find("\n    esac"))
+        .unwrap_or(rest.len());
+    &rest[..end]
+}
+
+#[cfg(all(feature = "shell-completions", feature = "svg"))]
+fn bash_completion_options(script: &str, command: &str) -> BTreeSet<String> {
+    bash_completion_block(script, command)
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("opts=\""))
+        .and_then(|line| line.strip_suffix('"'))
+        .unwrap_or_else(|| panic!("Bash completion omits {command:?} options"))
+        .split_ascii_whitespace()
+        .map(str::to_owned)
+        .collect()
+}
+
+#[cfg(all(feature = "shell-completions", feature = "svg"))]
+fn bash_completion_values(script: &str, command: &str, option: &str) -> BTreeSet<String> {
+    let block = bash_completion_block(script, command);
+    let marker = format!("                {option})");
+    let rest = block
+        .split_once(&marker)
+        .map(|(_, rest)| rest)
+        .unwrap_or_else(|| panic!("Bash completion omits {command} {option}"));
+    rest.split_once("compgen -W \"")
+        .and_then(|(_, rest)| rest.split_once('"').map(|(values, _)| values))
+        .unwrap_or_else(|| panic!("Bash completion omits {command} {option} values"))
+        .split_ascii_whitespace()
+        .map(str::to_owned)
+        .collect()
 }
 
 fn workflow_adapter(flag: &str) {
@@ -1111,6 +1193,7 @@ fn execute_primary_workflow(case: &str) {
         "elk-layout" => workflow_elk(),
         "math" => workflow_math(),
         "completions" => workflow_completions(),
+        "svg-completions" => workflow_completions(),
         "system-clock" => workflow_adapter("--system-clock"),
         "system-timezone" => workflow_adapter("--system-timezone"),
         "system-random" => workflow_adapter("--system-random"),

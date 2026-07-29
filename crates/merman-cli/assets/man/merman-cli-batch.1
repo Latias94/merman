@@ -1,10 +1,10 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH merman-cli-batch 1  "batch 0.8.0-alpha.4"
+.TH MERMAN-CLI-BATCH 1 2026-07-29 "Merman 0.8.0-alpha.4" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-batch \- Render every Mermaid diagram in one Markdown document
 .SH SYNOPSIS
-\fBmerman\-cli batch\fR [\fB\-\-stdin\-file\-name\fR] [\fB\-o\fR|\fB\-\-output\-dir\fR] [\fB\-j\fR|\fB\-\-jobs\fR] [\fB\-e\fR|\fB\-\-format\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-background\fR] [\fB\-C\fR|\fB\-\-css\-file\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-icon\-pack\fR] [\fB\-\-icon\-pack\-source\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-text\-measurer\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svg\-id\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+\fBmerman\-cli batch\fR [\fB\-\-stdin\-file\-name\fR] [\fB\-o\fR|\fB\-\-output\-dir\fR] [\fB\-j\fR|\fB\-\-jobs\fR] [\fB\-f\fR|\fB\-\-format\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-background\fR] [\fB\-C\fR|\fB\-\-css\-file\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-icon\-pack\fR] [\fB\-\-icon\-pack\-source\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-text\-measurer\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svg\-id\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
 .SH DESCRIPTION
 Render every Mermaid diagram in one Markdown document
 .SH OPTIONS
@@ -29,11 +29,9 @@ Tool\-owned directory for the rewritten document and generated artifacts
 Maximum number of Markdown charts rendered concurrently
 .SH "BATCH OUTPUT"
 .TP
-\fB\-e\fR, \fB\-\-format\fR \fI<FORMAT>\fR
+\fB\-f\fR, \fB\-\-format\fR \fI<FORMAT>\fR
 Output format. Defaults to SVG
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -49,9 +47,7 @@ pdf
 .TP
 \fB\-\-svg\-pipeline\fR \fI<SVG_PIPELINE>\fR
 SVG output pipeline. Compiled binary exports always start from resvg\-safe
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -64,9 +60,7 @@ resvg\-safe
 .TP
 \fB\-\-text\-measurer\fR \fI<TEXT_MEASURER>\fR
 Text measurement strategy
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -77,9 +71,7 @@ vendored
 .TP
 \fB\-\-math\-renderer\fR \fI<MATH_RENDERER>\fR
 Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -104,33 +96,59 @@ JSON Mermaid configuration file
 .TP
 \fB\-t\fR, \fB\-\-theme\fR \fI<THEME>\fR
 Mermaid theme override
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+default
+.IP \(bu 2
+base
+.IP \(bu 2
+dark
+.IP \(bu 2
+forest
+.IP \(bu 2
+neutral
+.IP \(bu 2
+neo
+.IP \(bu 2
+neo\-dark
+.IP \(bu 2
+redux
+.IP \(bu 2
+redux\-dark
+.IP \(bu 2
+redux\-color
+.IP \(bu 2
+redux\-dark\-color
+.RE
 .SH "RENDER INPUT AND OUTPUT"
 .TP
 \fB\-q\fR, \fB\-\-quiet\fR
 Suppress non\-error log output
-.SH "MMDC-COMPATIBLE EXPORT"
+.SH "RASTER OUTPUT"
 .TP
 \fB\-s\fR, \fB\-\-scale\fR \fI<SCALE>\fR
-PNG/JPG scale factor. Defaults to 1
+Raster output scale factor. Defaults to 1
 .SH "MERMAN RASTER CONTROLS"
 .TP
 \fB\-\-raster\-fit\-width\fR \fI<RASTER_FIT_WIDTH>\fR
-Fit PNG/JPG raster output to this CSS\-pixel width before applying \-\-scale
+Fit raster output to this CSS\-pixel width before applying \-\-scale
 .TP
 \fB\-\-raster\-fit\-height\fR \fI<RASTER_FIT_HEIGHT>\fR
-Fit PNG/JPG raster output to this CSS\-pixel height before applying \-\-scale
+Fit raster output to this CSS\-pixel height before applying \-\-scale
 .TP
 \fB\-\-raster\-max\-width\fR \fI<RASTER_MAX_WIDTH>\fR
-Maximum PNG/JPG output width after scale and fit. Defaults to 4096
+Maximum raster output width after scale and fit. Defaults to 4096
 .TP
 \fB\-\-raster\-max\-height\fR \fI<RASTER_MAX_HEIGHT>\fR
-Maximum PNG/JPG output height after scale and fit. Defaults to 4096
+Maximum raster output height after scale and fit. Defaults to 4096
 .TP
 \fB\-\-raster\-max\-pixels\fR \fI<RASTER_MAX_PIXELS>\fR
-Maximum PNG/JPG output pixels after scale and fit. Defaults to 4096*4096
+Maximum raster output pixels after scale and fit. Defaults to 4096*4096
 .TP
 \fB\-\-raster\-unbounded\fR
-Disable PNG/JPG raster size limits. Use only for trusted oversized exports
+Disable raster size limits. Use only for trusted oversized exports
 .SH "MERMAN PDF CONTROLS"
 .TP
 \fB\-\-pdf\-filter\-scale\fR \fI<FILTER_SCALE>\fR
@@ -174,9 +192,7 @@ Iconify prefix and source as PREFIX#SOURCE. Can be repeated
 .TP
 \fB\-\-runtime\fR \fI<POLICY>\fR [default: deterministic]
 Runtime source for clock, local timezone, and operation randomness
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -205,10 +221,10 @@ Override the local timezone offset in minutes for time\-dependent diagrams
 .SH "LAYOUT VIEWPORT"
 .TP
 \fB\-w\fR, \fB\-\-width\fR \fI<CONTAINER_WIDTH>\fR
-Available container width for size\-sensitive layouts. `mmdc` defaults to 800
+Available container width for size\-sensitive layouts
 .TP
 \fB\-H\fR, \fB\-\-height\fR \fI<CONTAINER_HEIGHT>\fR
-Available container height for size\-sensitive layouts. `mmdc` defaults to 600
+Available container height for size\-sensitive layouts
 .SH "SVG OUTPUT"
 .TP
 \fB\-I\fR, \fB\-\-svg\-id\fR \fI<SVG_ID>\fR
@@ -223,9 +239,7 @@ Stabilize rough/hand\-drawn rendering where supported
 Resource policy for input, semantic models, output, and CLI acquisition.
 
 Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. The unbounded profile retains hard implementation and protocol guards.
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -240,5 +254,10 @@ unbounded\-for\-trusted\-input: Explicitly disable policy budgets while retainin
 .TP
 \fB\-\-resource\-limit\fR \fI<STABLE_ID=POSITIVE_U64>\fR
 Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
+.SH EXTRA
+Examples:
+  merman\-cli batch README.md
+
+More options: `merman\-cli batch \-\-help` shows advanced renderer, resource, and security controls.
 .SH VERSION
 v0.8.0\-alpha.4

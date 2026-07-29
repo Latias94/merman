@@ -479,7 +479,7 @@ pub(crate) struct BatchArgs {
 pub(crate) struct CompletionArgs {
     /// Shell to generate completions for.
     #[arg(value_enum)]
-    pub(crate) shell: clap_complete::Shell,
+    pub(crate) shell: clap_complete::aot::Shell,
 }
 
 #[derive(Debug, Clone, ClapArgs, Default)]
@@ -979,15 +979,12 @@ pub(crate) struct NativeRenderOptions {
     /// Output format. Defaults to the first compiled output format.
     #[arg(
         short = 'f',
+        short_alias = 'e',
         long = "format",
         value_enum,
         help_heading = "Render input and output"
     )]
     pub(crate) format: Option<RenderFormat>,
-
-    /// Deprecated native output format spelling retained through v0.8.x.
-    #[arg(short = 'e', value_enum, hide = true, conflicts_with = "format")]
-    pub(crate) deprecated_format: Option<RenderFormat>,
 
     #[command(flatten)]
     pub(crate) graphical: GraphicalRenderCliArgs,
@@ -1003,15 +1000,12 @@ pub(crate) struct BatchRenderOptions {
     /// Output format. Defaults to SVG.
     #[arg(
         short = 'f',
+        short_alias = 'e',
         long = "format",
         value_enum,
         help_heading = "Batch output"
     )]
     pub(crate) format: Option<BatchRenderFormat>,
-
-    /// Deprecated native output format spelling retained through v0.8.x.
-    #[arg(short = 'e', value_enum, hide = true, conflicts_with = "format")]
-    pub(crate) deprecated_format: Option<BatchRenderFormat>,
 
     #[command(flatten)]
     pub(crate) graphical: GraphicalRenderCliArgs,

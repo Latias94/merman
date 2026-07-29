@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH merman-cli-mmdc 1  "mmdc 0.8.0-alpha.4"
+.TH MERMAN-CLI-MMDC 1 2026-07-29 "Merman 0.8.0-alpha.4" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-mmdc \- Render through the pinned mmdc\-compatible interface
 .SH SYNOPSIS
@@ -24,9 +24,7 @@ Output file. Use `\-` for stdout
 .TP
 \fB\-e\fR, \fB\-\-outputFormat\fR \fI<OUTPUT_FORMAT>\fR
 Output format. Defaults to the output extension, then SVG
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -46,17 +44,12 @@ Scale PDF to fit chart. Accepted for mmdc compatibility
 \fB\-q\fR, \fB\-\-quiet\fR
 Suppress non\-error log output
 .TP
-\fB\-s\fR, \fB\-\-scale\fR \fI<SCALE>\fR
-PNG/JPG scale factor. Defaults to 1
-.TP
 \fB\-c\fR, \fB\-\-configFile\fR \fI<CONFIG_FILE>\fR
 JSON Mermaid configuration file
 .TP
 \fB\-t\fR, \fB\-\-theme\fR \fI<THEME>\fR [default: default]
 Theme of the chart
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -88,9 +81,7 @@ Parallel jobs for Markdown input. Defaults and maxima come from the resource pro
 .TP
 \fB\-\-svg\-pipeline\fR \fI<SVG_PIPELINE>\fR
 SVG output pipeline. Compiled binary exports always start from resvg\-safe
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -103,9 +94,7 @@ resvg\-safe
 .TP
 \fB\-\-text\-measurer\fR \fI<TEXT_MEASURER>\fR [default: vendored]
 Text measurement strategy
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -116,9 +105,7 @@ vendored
 .TP
 \fB\-\-math\-renderer\fR \fI<MATH_RENDERER>\fR
 Math renderer override. Unspecified uses the compiled default
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -134,25 +121,29 @@ CSS file injected into SVG output before export
 .TP
 \fB\-p\fR, \fB\-\-puppeteerConfigFile\fR \fI<PUPPETEER_CONFIG_FILE>\fR
 JSON Puppeteer configuration file. Accepted for mmdc compatibility
+.SH "RASTER OUTPUT"
+.TP
+\fB\-s\fR, \fB\-\-scale\fR \fI<SCALE>\fR
+Raster output scale factor. Defaults to 1
 .SH "MERMAN RASTER CONTROLS"
 .TP
 \fB\-\-raster\-fit\-width\fR \fI<RASTER_FIT_WIDTH>\fR
-Fit PNG/JPG raster output to this CSS\-pixel width before applying \-\-scale
+Fit raster output to this CSS\-pixel width before applying \-\-scale
 .TP
 \fB\-\-raster\-fit\-height\fR \fI<RASTER_FIT_HEIGHT>\fR
-Fit PNG/JPG raster output to this CSS\-pixel height before applying \-\-scale
+Fit raster output to this CSS\-pixel height before applying \-\-scale
 .TP
 \fB\-\-raster\-max\-width\fR \fI<RASTER_MAX_WIDTH>\fR
-Maximum PNG/JPG output width after scale and fit. Defaults to 4096
+Maximum raster output width after scale and fit. Defaults to 4096
 .TP
 \fB\-\-raster\-max\-height\fR \fI<RASTER_MAX_HEIGHT>\fR
-Maximum PNG/JPG output height after scale and fit. Defaults to 4096
+Maximum raster output height after scale and fit. Defaults to 4096
 .TP
 \fB\-\-raster\-max\-pixels\fR \fI<RASTER_MAX_PIXELS>\fR
-Maximum PNG/JPG output pixels after scale and fit. Defaults to 4096*4096
+Maximum raster output pixels after scale and fit. Defaults to 4096*4096
 .TP
 \fB\-\-raster\-unbounded\fR
-Disable PNG/JPG raster size limits. Use only for trusted oversized exports
+Disable raster size limits. Use only for trusted oversized exports
 .SH "MERMAN PDF CONTROLS"
 .TP
 \fB\-\-pdf\-filter\-scale\fR \fI<FILTER_SCALE>\fR
@@ -196,9 +187,7 @@ Iconify prefix#url definitions
 .TP
 \fB\-\-runtime\fR \fI<POLICY>\fR [default: deterministic]
 Runtime source for clock, local timezone, and operation randomness
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -234,9 +223,7 @@ Stabilize rough/hand\-drawn rendering where supported
 Resource policy for input, semantic models, output, and CLI acquisition.
 
 Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. The unbounded profile retains hard implementation and protocol guards.
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -251,5 +238,10 @@ unbounded\-for\-trusted\-input: Explicitly disable policy budgets while retainin
 .TP
 \fB\-\-resource\-limit\fR \fI<STABLE_ID=POSITIVE_U64>\fR
 Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
+.SH EXTRA
+Examples:
+  merman\-cli mmdc \-i diagram.mmd \-o diagram.svg
+
+More options: `merman\-cli mmdc \-\-help` shows advanced compatibility, renderer, resource, and security controls.
 .SH VERSION
 v0.8.0\-alpha.4

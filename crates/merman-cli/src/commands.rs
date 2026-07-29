@@ -384,9 +384,7 @@ fn run_lint_rules(args: LintRulesArgs, stdout: &SharedWriter) -> Result<(), CliE
 
 #[cfg(feature = "shell-completions")]
 fn run_completion(args: CompletionArgs, stdout: &SharedWriter) -> Result<(), CliError> {
-    let mut command = crate::app::cli_command();
-    let mut output = Vec::new();
-    clap_complete::generate(args.shell, &mut command, "merman-cli", &mut output);
+    let output = crate::app::completion_script(args.shell);
     write_stdout(&output, stdout)
 }
 

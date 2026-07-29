@@ -36,6 +36,7 @@ EXPECTED_SELECTIONS = (
     ("elk-layout", ("layout-elk",), "exact"),
     ("math", ("math",), "exact"),
     ("completions", ("shell-completions",), "exact"),
+    ("svg-completions", ("shell-completions", "svg"), "exact"),
     ("system-clock", ("system-clock",), "exact"),
     ("system-timezone", ("system-timezone",), "exact"),
     ("system-random", ("system-random",), "exact"),

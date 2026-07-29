@@ -56,7 +56,7 @@ _merman-cli() {
 
     case "${cmd}" in
         merman__cli)
-            opts="-h -V --help --version render batch lint fix lint-rules mmdc detect parse layout capabilities completion"
+            opts="-h -V --help --version lint-rules capabilities detect parse render batch lint fix completion layout mmdc"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -69,8 +69,8 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__batch)
-            opts="-o -j -e -b -C -q -s -c -t -w -H -I -h -V --stdin-file-name --output-dir --jobs --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --text-measurer --math-renderer --width --height --svg-id --hand-drawn-seed --resource-profile --resource-limit --help --version"
+        merman__cli__subcmd__batch)
+            opts="-o -j -f -b -C -q -s -c -t -w -H -I -h -V --stdin-file-name --output-dir --jobs --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --text-measurer --math-renderer --width --height --svg-id --hand-drawn-seed --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -117,7 +117,7 @@ _merman-cli() {
                     COMPREPLY=($(compgen -W "svg png jpg pdf" -- "${cur}"))
                     return 0
                     ;;
-                -e)
+                -f)
                     COMPREPLY=($(compgen -W "svg png jpg pdf" -- "${cur}"))
                     return 0
                     ;;
@@ -258,11 +258,11 @@ _merman-cli() {
                     return 0
                     ;;
                 --theme)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 -t)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 --runtime)
@@ -328,7 +328,7 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__capabilities)
+        merman__cli__subcmd__capabilities)
             opts="-h -V --json --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -342,7 +342,7 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__completion)
+        merman__cli__subcmd__completion)
             opts="-h -V --help --version bash elvish fish powershell zsh"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -356,63 +356,13 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__detect)
-            opts="-c -t -h -V --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --resource-profile --resource-limit --help --version"
+        merman__cli__subcmd__detect)
+            opts="-h -V --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
-                --config-file)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
-                    fi
-                    return 0
-                    ;;
-                -c)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
-                    fi
-                    return 0
-                    ;;
-                --theme)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -t)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --runtime)
-                    COMPREPLY=($(compgen -W "deterministic native" -- "${cur}"))
-                    return 0
-                    ;;
-                --fixed-today)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --fixed-local-offset-minutes)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
                 --resource-profile)
                     COMPREPLY=($(compgen -W "interactive constrained trusted-native unbounded-for-trusted-input" -- "${cur}"))
                     return 0
@@ -428,7 +378,7 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__fix)
+        merman__cli__subcmd__fix)
             opts="-o -q -c -h -V --stdin-file-name --check --diff --write --output --rule --fix --quiet --markdown --config-file --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --lint-profile --enable-rule --disable-rule --rule-severity --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -561,7 +511,7 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__layout)
+        merman__cli__subcmd__layout)
             opts="-c -t -w -H -h -V --pretty --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --text-measurer --math-renderer --width --height --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -599,11 +549,11 @@ _merman-cli() {
                     return 0
                     ;;
                 --theme)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 -t)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 --runtime)
@@ -657,7 +607,7 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__lint)
+        merman__cli__subcmd__lint)
             opts="-c -h -V --stdin-file-name --format --pretty --markdown --config-file --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --lint-profile --enable-rule --disable-rule --rule-severity --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -756,7 +706,7 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__lint__subcmd__rules)
+        merman__cli__subcmd__lint__subcmd__rules)
             opts="-h -V --format --pretty --configurable --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -774,7 +724,7 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__mmdc)
+        merman__cli__subcmd__mmdc)
             opts="-i -o -a -j -e -b -C -f -q -p -s -c -t -w -H -I -h -V --input --output --artefacts --jobs --format --outputFormat --svg-pipeline --backgroundColor --cssFile --pdfFit --quiet --puppeteerConfigFile --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --iconPacks --iconPacksNamesAndUrls --configFile --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --text-measurer --math-renderer --width --height --svgId --hand-drawn-seed --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -1112,7 +1062,7 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__parse)
+        merman__cli__subcmd__parse)
             opts="-c -t -h -V --pretty --meta --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -1150,11 +1100,11 @@ _merman-cli() {
                     return 0
                     ;;
                 --theme)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 -t)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 --runtime)
@@ -1184,8 +1134,8 @@ _merman-cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__subcmd__cli__subcmd__render)
-            opts="-o -e -b -C -q -s -c -t -w -H -I -h -V --output --input-kind --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --text-measurer --math-renderer --width --height --svg-id --hand-drawn-seed --sequence-mirror-actors --ascii-charset --ascii-direction --ascii-color --xychart-vertical-plot-height --xychart-category-band-width --xychart-horizontal-plot-width --ascii-max-grid-cells --resource-profile --resource-limit --help --version"
+        merman__cli__subcmd__render)
+            opts="-o -f -b -C -q -s -c -t -w -H -I -h -V --output --input-kind --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-local-offset-minutes --text-measurer --math-renderer --width --height --svg-id --hand-drawn-seed --sequence-mirror-actors --ascii-charset --ascii-direction --ascii-color --xychart-vertical-plot-height --xychart-category-band-width --xychart-horizontal-plot-width --ascii-max-grid-cells --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1229,7 +1179,7 @@ _merman-cli() {
                     COMPREPLY=($(compgen -W "svg ascii unicode png jpg pdf" -- "${cur}"))
                     return 0
                     ;;
-                -e)
+                -f)
                     COMPREPLY=($(compgen -W "svg ascii unicode png jpg pdf" -- "${cur}"))
                     return 0
                     ;;
@@ -1370,11 +1320,11 @@ _merman-cli() {
                     return 0
                     ;;
                 --theme)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 -t)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 --runtime)

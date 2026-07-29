@@ -165,6 +165,29 @@ required-features = [
 ]
 
 [[test]]
+name = "distribution_assets"
+required-features = [
+    "analysis",
+    "svg",
+    "ascii",
+    "png",
+    "jpeg",
+    "pdf",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+    "shell-completions",
+    "system-clock",
+    "system-timezone",
+    "system-random",
+    "system-timing",
+]
+
+[[test]]
 name = "cli_analysis_contract"
 required-features = ["analysis", "svg"]
 

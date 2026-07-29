@@ -644,6 +644,15 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
             process_step["run"],
             "python3 scripts/verify_cli_process_matrix.py --locked",
         )
+        validation_step = workflow_step(
+            workflow_job(workflow, "cli-contracts"),
+            name="Validate CLI distribution assets",
+        )
+        self.assertEqual(
+            validation_step["run"],
+            "python3 scripts/verify_cli_assets.py "
+            "--require bash,zsh,fish,elvish,mandoc",
+        )
 
     def test_cli_artifact_profiles_build_on_every_descriptor_host(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
@@ -668,6 +677,12 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 "python3 scripts/artifact_profile_recipe.py "
                 "cli-release --build-host --locked",
             ],
+        )
+        powershell = workflow_step(job, name="Validate PowerShell completion")
+        self.assertEqual(powershell["if"], "runner.os == 'Windows'")
+        self.assertEqual(
+            powershell["run"],
+            "python3 scripts/verify_cli_assets.py --require powershell",
         )
 
     def test_homebrew_checks_the_complete_cli_contract_v2_surface(self) -> None:

@@ -4,14 +4,36 @@ use crate::error::CliError;
 use crate::invocation::ColorEnvironment;
 use crate::invocation::InvocationFacts;
 use crate::runtime::{ExecutionContext, SharedWriter};
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use clap::ValueEnum;
 use clap::error::ErrorKind;
-use clap::{CommandFactory, FromArgMatches, ValueEnum};
+use clap::{CommandFactory, FromArgMatches};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, IsTerminal};
 use std::process::ExitCode;
 
-#[cfg(all(test, feature = "shell-completions"))]
+#[cfg(all(
+    test,
+    feature = "analysis",
+    feature = "ascii",
+    feature = "icons",
+    feature = "jpeg",
+    feature = "layout-cytoscape",
+    feature = "layout-elk",
+    feature = "markdown",
+    feature = "math",
+    feature = "network-icons",
+    feature = "parallel-markdown",
+    feature = "pdf",
+    feature = "png",
+    feature = "shell-completions",
+    feature = "svg",
+    feature = "system-clock",
+    feature = "system-random",
+    feature = "system-timezone",
+    feature = "system-timing"
+))]
 mod distribution_assets;
 
 struct ProcessSnapshot {
@@ -221,11 +243,27 @@ pub(crate) fn cli_command() -> clap::Command {
     command.override_help(help)
 }
 
+#[cfg(feature = "shell-completions")]
+pub(crate) fn completion_script(shell: clap_complete::aot::Shell) -> Vec<u8> {
+    let mut command = cli_command();
+    if shell == clap_complete::aot::Shell::Bash {
+        // The Bash generator uses different separators for the binary name and
+        // command path. Give its internal root an already-normalized name so a
+        // hyphenated executable reaches the generated subcommand branches.
+        command = command.name("merman__cli");
+        command.build();
+    }
+    let mut output = Vec::new();
+    clap_complete::aot::generate(shell, &mut command, "merman-cli", &mut output);
+    output
+}
+
 const DEPRECATED_ROOT_MMDC_WARNING: &[u8] = b"warning: root-level mmdc-compatible options are deprecated and will be removed in v0.9.0\nhelp: use `merman-cli mmdc ...`; the explicit `mmdc` subcommand remains supported\n";
 
 struct ParsedCli {
     cli: Cli,
     deprecated_root_mmdc: bool,
+    deprecated_native_format: bool,
 }
 
 impl ParsedCli {
@@ -243,9 +281,12 @@ impl ParsedCli {
     }
 
     fn deprecated_native_format_warning(&self) -> Option<String> {
+        if !self.deprecated_native_format {
+            return None;
+        }
         match &self.cli.command {
             #[cfg(any(feature = "svg", feature = "ascii"))]
-            RawCommand::Render(args) => args.options.deprecated_format.and_then(|format| {
+            RawCommand::Render(args) => args.options.format.and_then(|format| {
                 format.to_possible_value().map(|value| {
                     format!(
                         "warning: native `render -e {}` is deprecated and will be removed in v0.9.0\nhelp: use `merman-cli render -f {}`\n",
@@ -255,7 +296,7 @@ impl ParsedCli {
                 })
             }),
             #[cfg(feature = "markdown")]
-            RawCommand::Batch(args) => args.options.deprecated_format.and_then(|format| {
+            RawCommand::Batch(args) => args.options.format.and_then(|format| {
                 format.to_possible_value().map(|value| {
                     format!(
                         "warning: native `batch -e {}` is deprecated and will be removed in v0.9.0\nhelp: use `merman-cli batch -f {}`\n",
@@ -271,6 +312,7 @@ impl ParsedCli {
 
 fn parse_cli(args: &[OsString]) -> Result<ParsedCli, clap::Error> {
     let mut command = cli_command();
+    let deprecated_native_format = uses_deprecated_native_format(args);
     let normalized_args = deprecated_root_mmdc_args(&command, args);
     let deprecated_root_mmdc = normalized_args.is_some();
     let parse_args = normalized_args.as_deref().unwrap_or(args);
@@ -278,6 +320,7 @@ fn parse_cli(args: &[OsString]) -> Result<ParsedCli, clap::Error> {
         Ok(mut matches) => Cli::from_arg_matches_mut(&mut matches).map(|cli| ParsedCli {
             cli,
             deprecated_root_mmdc,
+            deprecated_native_format,
         }),
         Err(error) => {
             if let Some(argument) = superseded_resource_flag(error.kind(), args) {
@@ -299,6 +342,25 @@ fn parse_cli(args: &[OsString]) -> Result<ParsedCli, clap::Error> {
             Err(error)
         }
     }
+}
+
+fn uses_deprecated_native_format(args: &[OsString]) -> bool {
+    if !matches!(
+        args.get(1).and_then(|argument| argument.to_str()),
+        Some("render" | "batch")
+    ) {
+        return false;
+    }
+    args.iter()
+        .skip(2)
+        .take_while(|argument| argument.as_os_str() != OsStr::new("--"))
+        .filter_map(|argument| argument.to_str())
+        .any(|argument| {
+            argument == "-e"
+                || argument
+                    .strip_prefix("-e")
+                    .is_some_and(|value| !value.is_empty())
+        })
 }
 
 fn deprecated_root_mmdc_args(command: &clap::Command, args: &[OsString]) -> Option<Vec<OsString>> {

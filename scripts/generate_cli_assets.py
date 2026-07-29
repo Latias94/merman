@@ -18,6 +18,10 @@ PROFILE = "cli-release"
 CHECK_TEST = "app::distribution_assets::tracked_distribution_assets_are_current"
 WRITE_TEST = "app::distribution_assets::write_distribution_assets"
 ASSET_ROOTS = ("assets/completions", "assets/man")
+TEMPORAL_CHECK_ENVIRONMENTS = (
+    {"TZ": "UTC", "SOURCE_DATE_EPOCH": "0"},
+    {"TZ": "Pacific/Kiritimati", "SOURCE_DATE_EPOCH": "4102444800"},
+)
 
 
 def cargo_feature_args() -> list[str]:
@@ -101,7 +105,9 @@ def main() -> int:
     if args.write:
         environment["MERMAN_UPDATE_CLI_ASSETS"] = "1"
         cargo_test(WRITE_TEST, ignored=True, environment=environment)
-    cargo_test(CHECK_TEST, ignored=False, environment=environment)
+    for temporal_environment in TEMPORAL_CHECK_ENVIRONMENTS:
+        check_environment = environment | temporal_environment
+        cargo_test(CHECK_TEST, ignored=False, environment=check_environment)
     verify_source_package()
     return 0
 

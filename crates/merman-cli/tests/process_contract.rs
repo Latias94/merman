@@ -265,6 +265,17 @@ fn native_render_uses_f_for_format_and_warns_for_the_temporary_e_spelling() {
         "the temporary spelling needs exact migration guidance:\n{stderr}"
     );
 
+    let attached_legacy = run_with_stdin(&["render", "-esvg"], source);
+    assert!(
+        attached_legacy.status.success(),
+        "stderr: {:?}",
+        attached_legacy.stderr
+    );
+    assert!(
+        String::from_utf8_lossy(&attached_legacy.stderr).contains("merman-cli render -f svg"),
+        "the attached legacy spelling must retain migration guidance"
+    );
+
     let compatible = run_with_stdin(&["mmdc", "-i", "-", "-o", "-", "-e", "svg"], source);
     assert!(
         compatible.status.success(),
@@ -304,7 +315,9 @@ fn native_format_spellings_conflict_before_input_acquisition() {
         assert!(output.stdout.is_empty());
         let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
         assert!(
-            stderr.contains("cannot be used with") && !stderr.contains("missing."),
+            (stderr.contains("cannot be used with")
+                || stderr.contains("cannot be used multiple times"))
+                && !stderr.contains("missing."),
             "format conflicts must fail before input acquisition: {args:?}\n{stderr}"
         );
     }

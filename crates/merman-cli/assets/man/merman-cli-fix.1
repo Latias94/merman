@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH merman-cli-fix 1  "fix 0.8.0-alpha.4"
+.TH MERMAN-CLI-FIX 1 2026-07-29 "Merman 0.8.0-alpha.4" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-fix \- Apply non\-conflicting diagnostics fixes to Mermaid or Markdown source
 .SH SYNOPSIS
@@ -56,9 +56,7 @@ JSON Mermaid configuration file
 .TP
 \fB\-\-runtime\fR \fI<POLICY>\fR [default: deterministic]
 Runtime source for clock, local timezone, and operation randomness
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -103,9 +101,7 @@ Override a configurable lint rule severity as RULE_ID=error|warning|info|hint. C
 Resource policy for input, semantic models, output, and CLI acquisition.
 
 Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. The unbounded profile retains hard implementation and protocol guards.
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -120,5 +116,11 @@ unbounded\-for\-trusted\-input: Explicitly disable policy budgets while retainin
 .TP
 \fB\-\-resource\-limit\fR \fI<STABLE_ID=POSITIVE_U64>\fR
 Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
+.SH EXTRA
+Examples:
+  merman\-cli fix \-\-check diagram.mmd
+  merman\-cli fix \-\-diff diagram.mmd
+
+More options: `merman\-cli fix \-\-help` shows advanced rule, runtime, and resource controls.
 .SH VERSION
 v0.8.0\-alpha.4

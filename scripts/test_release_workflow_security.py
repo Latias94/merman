@@ -1006,6 +1006,19 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             "python3 scripts/generate-rust-license-report.py --check",
         )
 
+    def test_release_preflight_validates_generated_cli_assets_natively(self) -> None:
+        workflow = parse_workflow_structure(WORKFLOW_ROOT / "release-preflight.yml")
+        preflight = workflow_job(workflow, "versions-and-packages")
+        validation = workflow_step(
+            preflight,
+            name="Validate CLI distribution assets",
+        )
+        self.assertEqual(
+            validation["run"],
+            "python3 scripts/verify_cli_assets.py "
+            "--require bash,zsh,fish,elvish,mandoc",
+        )
+
     def test_trusted_npm_publish_job_does_not_disable_provenance(self) -> None:
         publish_job = job_contract_text(
             WORKFLOW_ROOT / "release-web.yml",

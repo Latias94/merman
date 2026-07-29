@@ -255,6 +255,10 @@ merman-cli completion powershell > merman-cli.ps1
 
 Release archives also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository; Scoop and WinGet manifests are not currently published.
 
+The checked-in completion and manual assets represent the canonical `cli-release` complete profile.
+For a custom slim build, generate completion from that binary at runtime so omitted commands,
+options, and values stay omitted.
+
 ## License
 
 Licensed under either Apache-2.0 or MIT at your option.

@@ -1,10 +1,13 @@
-use super::cli_command;
-use clap_complete::Shell;
+use super::{cli_command, completion_script};
+use clap_complete::aot::Shell;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const UPDATE_ENV: &str = "MERMAN_UPDATE_CLI_ASSETS";
 const ASSET_ROOTS: &[&str] = &["assets/completions", "assets/man"];
+const CLI_MANPAGE_DATE: &str = "2026-07-29";
+const CLI_MANPAGE_MANUAL: &str = "Merman CLI Manual";
+const CLI_MANPAGE_SOURCE: &str = concat!("Merman ", env!("CARGO_PKG_VERSION"));
 
 struct GeneratedAsset {
     relative_path: String,
@@ -33,21 +36,24 @@ fn generated_assets() -> Vec<GeneratedAsset> {
 }
 
 fn completion_asset(shell: Shell, relative_path: &'static str) -> GeneratedAsset {
-    let mut command = cli_command();
-    let mut bytes = Vec::new();
-    clap_complete::generate(shell, &mut command, "merman-cli", &mut bytes);
     GeneratedAsset {
         relative_path: relative_path.to_owned(),
-        bytes: normalized_generated_text(bytes),
+        bytes: normalized_generated_text(completion_script(shell)),
     }
 }
 
 fn manpage_assets() -> Vec<GeneratedAsset> {
-    let mut command = cli_command();
+    let mut command = normalize_manpage_command(cli_command());
     command.build();
     let mut assets = Vec::new();
     collect_manpages(command, &mut assets);
     assets
+}
+
+fn normalize_manpage_command(command: clap::Command) -> clap::Command {
+    command
+        .mut_args(|argument| argument.hide_short_help(false))
+        .mut_subcommands(normalize_manpage_command)
 }
 
 fn collect_manpages(command: clap::Command, assets: &mut Vec<GeneratedAsset>) {
@@ -62,14 +68,30 @@ fn collect_manpages(command: clap::Command, assets: &mut Vec<GeneratedAsset>) {
 
     let manpage = clap_mangen::Man::new(command);
     let filename = manpage.get_filename();
+    let title = filename
+        .strip_suffix(".1")
+        .expect("section-one manpage filename")
+        .to_ascii_uppercase();
+    let manpage = manpage
+        .title(title)
+        .section("1")
+        .date(CLI_MANPAGE_DATE)
+        .source(CLI_MANPAGE_SOURCE)
+        .manual(CLI_MANPAGE_MANUAL);
     let mut bytes = Vec::new();
     manpage
         .render(&mut bytes)
         .expect("render the merman-cli manpage");
     assets.push(GeneratedAsset {
         relative_path: format!("assets/man/{filename}"),
-        bytes: normalized_generated_text(bytes),
+        bytes: normalized_manpage_text(bytes),
     });
+}
+
+fn normalized_manpage_text(bytes: Vec<u8>) -> Vec<u8> {
+    let text =
+        String::from_utf8(normalized_generated_text(bytes)).expect("clap_mangen emits UTF-8");
+    text.replace(".br\n\n.br\n", ".sp\n").into_bytes()
 }
 
 fn normalized_generated_text(bytes: Vec<u8>) -> Vec<u8> {
@@ -108,6 +130,21 @@ fn generated_text_uses_lf_without_trailing_horizontal_whitespace() {
         normalized_generated_text(b"alpha \r\nbeta\t\ngamma ".to_vec()),
         b"alpha\nbeta\ngamma"
     );
+}
+
+#[test]
+fn manpage_normalization_removes_only_the_mangen_empty_break_pair() {
+    assert_eq!(
+        normalized_manpage_text(b"description\r\n.br\r\n\r\n.br\r\nvalues\r\n".to_vec()),
+        b"description\n.sp\nvalues\n"
+    );
+}
+
+#[test]
+fn manpage_date_is_a_real_iso_calendar_date() {
+    let parsed = chrono::NaiveDate::parse_from_str(CLI_MANPAGE_DATE, "%Y-%m-%d")
+        .expect("CLI_MANPAGE_DATE must be a valid YYYY-MM-DD date");
+    assert_eq!(parsed.format("%Y-%m-%d").to_string(), CLI_MANPAGE_DATE);
 }
 
 fn manifest_dir() -> PathBuf {
@@ -166,11 +203,11 @@ fn write_distribution_assets() {
             .unwrap_or_else(|error| panic!("create generated asset root {root}: {error}"));
     }
     let actual = tracked_asset_paths().unwrap_or_else(|error| panic!("{error}"));
-    for stale in actual.difference(&expected) {
-        let path = asset_path(stale);
-        std::fs::remove_file(&path)
-            .unwrap_or_else(|error| panic!("remove stale CLI asset {}: {error}", path.display()));
-    }
+    let stale = actual.difference(&expected).cloned().collect::<Vec<_>>();
+    assert!(
+        stale.is_empty(),
+        "unexpected files exist under generated CLI asset roots: {stale:?}; review and remove obsolete generated assets explicitly"
+    );
 
     for asset in assets {
         let path = asset_path(&asset.relative_path);

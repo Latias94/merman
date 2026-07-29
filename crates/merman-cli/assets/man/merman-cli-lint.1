@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH merman-cli-lint 1  "lint 0.8.0-alpha.4"
+.TH MERMAN-CLI-LINT 1 2026-07-29 "Merman 0.8.0-alpha.4" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-lint \- Analyze Mermaid source and print diagnostics JSON or text
 .SH SYNOPSIS
@@ -26,11 +26,9 @@ Input Mermaid or Markdown file. Use `\-` for stdin
 Optional file name to use when linting stdin
 .SH OUTPUT
 .TP
-\fB\-\-format\fR \fI<FORMAT>\fR [default: json]
+\fB\-\-format\fR \fI<FORMAT>\fR [default: text]
 Output format for diagnostics
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -50,9 +48,7 @@ JSON Mermaid configuration file
 .TP
 \fB\-\-runtime\fR \fI<POLICY>\fR [default: deterministic]
 Runtime source for clock, local timezone, and operation randomness
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -97,9 +93,7 @@ Override a configurable lint rule severity as RULE_ID=error|warning|info|hint. C
 Resource policy for input, semantic models, output, and CLI acquisition.
 
 Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. The unbounded profile retains hard implementation and protocol guards.
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -114,5 +108,11 @@ unbounded\-for\-trusted\-input: Explicitly disable policy budgets while retainin
 .TP
 \fB\-\-resource\-limit\fR \fI<STABLE_ID=POSITIVE_U64>\fR
 Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
+.SH EXTRA
+Examples:
+  merman\-cli lint diagram.mmd
+  merman\-cli lint \-\-format json diagram.mmd
+
+More options: `merman\-cli lint \-\-help` shows advanced rule, runtime, and resource controls.
 .SH VERSION
 v0.8.0\-alpha.4

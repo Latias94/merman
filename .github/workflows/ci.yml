@@ -93,8 +93,16 @@ jobs:
         with:
           cache-targets: false
 
+      - name: Install CLI asset validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes elvish fish mandoc zsh
+
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
+
+      - name: Validate CLI distribution assets
+        run: python3 scripts/verify_cli_assets.py --require bash,zsh,fish,elvish,mandoc
 
       - name: Test exact CLI feature process matrix
         run: python3 scripts/verify_cli_process_matrix.py --locked
@@ -125,6 +133,10 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Validate PowerShell completion
+        if: runner.os == 'Windows'
+        run: python3 scripts/verify_cli_assets.py --require powershell
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0

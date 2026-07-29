@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH merman-cli-parse 1  "parse 0.8.0-alpha.4"
+.TH MERMAN-CLI-PARSE 1 2026-07-29 "Merman 0.8.0-alpha.4" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-parse \- Parse Mermaid source and print the semantic JSON model
 .SH SYNOPSIS
@@ -33,13 +33,37 @@ JSON Mermaid configuration file
 .TP
 \fB\-t\fR, \fB\-\-theme\fR \fI<THEME>\fR
 Mermaid theme override
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+default
+.IP \(bu 2
+base
+.IP \(bu 2
+dark
+.IP \(bu 2
+forest
+.IP \(bu 2
+neutral
+.IP \(bu 2
+neo
+.IP \(bu 2
+neo\-dark
+.IP \(bu 2
+redux
+.IP \(bu 2
+redux\-dark
+.IP \(bu 2
+redux\-color
+.IP \(bu 2
+redux\-dark\-color
+.RE
 .SH "RUNTIME POLICY"
 .TP
 \fB\-\-runtime\fR \fI<POLICY>\fR [default: deterministic]
 Runtime source for clock, local timezone, and operation randomness
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -71,9 +95,7 @@ Override the local timezone offset in minutes for time\-dependent diagrams
 Resource policy for input, semantic models, output, and CLI acquisition.
 
 Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. The unbounded profile retains hard implementation and protocol guards.
-.br
-
-.br
+.sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
@@ -88,5 +110,7 @@ unbounded\-for\-trusted\-input: Explicitly disable policy budgets while retainin
 .TP
 \fB\-\-resource\-limit\fR \fI<STABLE_ID=POSITIVE_U64>\fR
 Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
+.SH EXTRA
+More options: `merman\-cli parse \-\-help` shows configuration, runtime, and resource controls.
 .SH VERSION
 v0.8.0\-alpha.4

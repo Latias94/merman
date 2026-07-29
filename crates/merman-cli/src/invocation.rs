@@ -675,10 +675,7 @@ fn normalize_render(
             "render accepts one Mermaid diagram, not Markdown; use `merman-cli batch`".to_string(),
         ));
     }
-    let format = infer_native_format(
-        args.output.as_deref(),
-        args.options.format.or(args.options.deprecated_format),
-    )?;
+    let format = infer_native_format(args.output.as_deref(), args.options.format)?;
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     let input_kind = resolve_input_kind(args.input_kind, &input);
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -771,11 +768,7 @@ fn normalize_batch(
         }
     };
 
-    let format = args
-        .options
-        .format
-        .or(args.options.deprecated_format)
-        .unwrap_or_default();
+    let format = args.options.format.unwrap_or_default();
     let render_format = RenderFormat::from(format);
     validate_graphical_output_options(render_format, &args.options.graphical)?;
     let output_path = output_dir.join(&source_file_name);

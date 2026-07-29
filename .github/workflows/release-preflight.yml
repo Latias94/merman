@@ -110,6 +110,11 @@ jobs:
         with:
           tool: cargo-about@0.9.1
 
+      - name: Install CLI asset validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes elvish fish mandoc zsh
+
       - name: Verify release versions
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -123,6 +128,9 @@ jobs:
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
+
+      - name: Validate CLI distribution assets
+        run: python3 scripts/verify_cli_assets.py --require bash,zsh,fish,elvish,mandoc
 
       - name: Verify exact Rust dependency license reports
         run: python3 scripts/generate-rust-license-report.py --check

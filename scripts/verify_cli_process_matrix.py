@@ -142,6 +142,12 @@ PROFILE_CASES = (
         "Generate one completion script with only compiled commands.",
     ),
     ProfileCase(
+        "svg-completions",
+        "SVG completions",
+        ("shell-completions", "svg"),
+        "Generate completion values for a representative slim render surface.",
+    ),
+    ProfileCase(
         "system-clock",
         "System clock",
         ("system-clock",),
