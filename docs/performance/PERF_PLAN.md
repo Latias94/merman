@@ -239,6 +239,18 @@ latency comparison before retaining production code.
 Exit: the curve identifies the first superlinear or allocation-heavy stage and a representative
 large preview fits the agreed interactive budget.
 
+### P1.7: Bound Resvg finalization and export work
+
+Remove input-amplifiable work from terminal reference and attribute validation independently of
+ordinary-fixture latency. Measure one-shot raster export and ResvgSafe finalization on complete
+public operations before changing ownership or error-order contracts.
+
+Completed on 2026-07-29. Duplicate parsed-ID reference edges changed from `O(D * R)` to
+`O(D + R)`, and duplicate expanded-attribute membership changed from `O(A^2)` to expected `O(A)`.
+The one-worker PNG candidate saved only 0.78%; the single-reader XML candidate regressed by 0.57%.
+Both latency candidates were removed, while one PNG and one ResvgSafe public lane remain. See
+[the U8 receipt](resvg_pipeline_candidates_2026-07-29.md).
+
 ## Guardrails
 
 - Correctness and Mermaid parity take precedence over a timing ratio.
