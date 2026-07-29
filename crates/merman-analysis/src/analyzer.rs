@@ -20,40 +20,64 @@ use std::sync::Arc;
 
 use crate::result::DiagramAnalysisEvidence;
 
+/// Complete analysis configuration, split by generation and diagnostic invalidation scope.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AnalysisOptions {
+    /// Inputs that require a new canonical parse generation when changed.
+    pub snapshot: AnalysisSnapshotPolicy,
+    /// Inputs that can reproject diagnostics from an existing canonical generation.
+    pub diagnostics: AnalysisDiagnosticPolicy,
+}
+
+/// Inputs frozen into one canonical analysis generation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalysisSnapshotPolicy {
+    /// Host document identity and source kind.
     pub source: SourceDescriptor,
+    /// Mermaid site configuration applied from pinned defaults.
     pub site_config: Option<MermaidConfig>,
+    /// Deterministic or host-backed runtime values used during parsing.
     pub runtime_policy: merman_core::runtime::RuntimePolicy,
+    /// Optional source-size ceiling enforced before parsing.
     pub max_source_bytes: Option<usize>,
+}
+
+/// Inputs that reproject diagnostics without rebuilding parser-owned facts.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnalysisDiagnosticPolicy {
+    /// Enabled rules, profiles, and severity overrides.
     pub rule_config: AnalysisRuleConfig,
 }
 
 impl Default for AnalysisOptions {
     fn default() -> Self {
         Self {
-            source: SourceDescriptor::diagram(),
-            site_config: None,
-            runtime_policy: merman_core::runtime::RuntimePolicy::deterministic(),
-            max_source_bytes: None,
-            rule_config: AnalysisRuleConfig::default(),
+            snapshot: AnalysisSnapshotPolicy {
+                source: SourceDescriptor::diagram(),
+                site_config: None,
+                runtime_policy: merman_core::runtime::RuntimePolicy::deterministic(),
+                max_source_bytes: None,
+            },
+            diagnostics: AnalysisDiagnosticPolicy {
+                rule_config: AnalysisRuleConfig::default(),
+            },
         }
     }
 }
 
 impl AnalysisOptions {
     pub fn with_source(mut self, source: SourceDescriptor) -> Self {
-        self.source = source;
+        self.snapshot.source = source;
         self
     }
 
     pub fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
-        self.site_config = Some(site_config);
+        self.snapshot.site_config = Some(site_config);
         self
     }
 
     pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
-        self.runtime_policy = self.runtime_policy.with_fixed_today(today);
+        self.snapshot.runtime_policy = self.snapshot.runtime_policy.with_fixed_today(today);
         self
     }
 
@@ -61,7 +85,8 @@ impl AnalysisOptions {
         mut self,
         today: chrono::NaiveDate,
     ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
-        self.runtime_policy = self
+        self.snapshot.runtime_policy = self
+            .snapshot
             .runtime_policy
             .try_with_fixed_today_at_local_midnight(today)?;
         Ok(self)
@@ -71,7 +96,8 @@ impl AnalysisOptions {
         mut self,
         offset_minutes: i32,
     ) -> Result<Self, merman_core::runtime::RuntimePolicyError> {
-        self.runtime_policy = self
+        self.snapshot.runtime_policy = self
+            .snapshot
             .runtime_policy
             .try_with_fixed_local_offset_minutes(offset_minutes)?;
         Ok(self)
@@ -81,7 +107,7 @@ impl AnalysisOptions {
         mut self,
         runtime_policy: merman_core::runtime::RuntimePolicy,
     ) -> Self {
-        self.runtime_policy = runtime_policy;
+        self.snapshot.runtime_policy = runtime_policy;
         self
     }
 
@@ -96,20 +122,41 @@ impl AnalysisOptions {
     }
 
     pub fn with_max_source_bytes(mut self, max_source_bytes: Option<usize>) -> Self {
-        self.max_source_bytes = max_source_bytes;
+        self.snapshot.max_source_bytes = max_source_bytes;
         self
     }
 
     pub fn with_rule_config(mut self, rule_config: AnalysisRuleConfig) -> Self {
-        self.rule_config = rule_config;
+        self.diagnostics.rule_config = rule_config;
         self
     }
 
-    pub fn snapshot_affecting_eq(&self, other: &Self) -> bool {
-        self.site_config == other.site_config
-            && self.runtime_policy == other.runtime_policy
-            && self.max_source_bytes == other.max_source_bytes
-            && self.source == other.source
+    pub fn snapshot_policy(&self) -> &AnalysisSnapshotPolicy {
+        &self.snapshot
+    }
+
+    pub fn diagnostic_policy(&self) -> &AnalysisDiagnosticPolicy {
+        &self.diagnostics
+    }
+
+    pub fn source(&self) -> &SourceDescriptor {
+        &self.snapshot.source
+    }
+
+    pub fn site_config(&self) -> Option<&MermaidConfig> {
+        self.snapshot.site_config.as_ref()
+    }
+
+    pub fn runtime_policy(&self) -> &merman_core::runtime::RuntimePolicy {
+        &self.snapshot.runtime_policy
+    }
+
+    pub fn max_source_bytes(&self) -> Option<usize> {
+        self.snapshot.max_source_bytes
+    }
+
+    pub fn rule_config(&self) -> &AnalysisRuleConfig {
+        &self.diagnostics.rule_config
     }
 }
 
@@ -167,7 +214,7 @@ impl Analyzer {
         core_error_diagnostic(
             &CoreError::from(error),
             source_map,
-            &self.options.rule_config,
+            self.options.rule_config(),
         )
         .diagnostic
         .into_iter()
@@ -175,16 +222,17 @@ impl Analyzer {
     }
 
     pub fn analyze_result(&self, source: &str) -> AnalysisOutcome {
-        if let Some(rejection) = self.source_limit_rejection(source, self.options.source.clone()) {
+        if let Some(rejection) = self.source_limit_rejection(source, self.options.source().clone())
+        {
             return AnalysisOutcome::Rejected(rejection);
         }
 
         let source_text = Arc::<str>::from(source);
         let source_map = SourceMap::new(Arc::clone(&source_text));
-        let diagram = crate::document::whole_document_diagram(source_text, &self.options.source);
+        let diagram = crate::document::whole_document_diagram(source_text, self.options.source());
         let analyzed = self.analyze_diagram(&diagram, &source_map);
         AnalysisOutcome::Ready(AnalysisResult::new(
-            self.options.source.clone(),
+            self.options.source().clone(),
             source_map,
             analyzed.diagnostics.clone(),
             vec![analyzed],
@@ -192,12 +240,13 @@ impl Analyzer {
     }
 
     pub fn analyze(&self, source: &str) -> AnalysisPayload {
-        if let Some(rejection) = self.source_limit_rejection(source, self.options.source.clone()) {
+        if let Some(rejection) = self.source_limit_rejection(source, self.options.source().clone())
+        {
             return rejection.into_payload();
         }
 
         AnalysisPayload::new(
-            self.options.source.clone(),
+            self.options.source().clone(),
             self.analyze_source_diagnostics(source),
         )
     }
@@ -282,9 +331,24 @@ impl Analyzer {
         diagram: &DocumentDiagram,
         document_source_map: &SourceMap,
     ) -> AnalyzedDiagram {
-        let cancellation = AnalysisCancellationToken::new();
-        self.analyze_diagram_cancellable(diagram, document_source_map, &cancellation)
-            .expect("a private analysis cancellation token cannot be cancelled")
+        let source_map = if diagram.is_fence() {
+            SourceMap::new(diagram.text.as_str())
+        } else {
+            document_source_map.clone()
+        };
+        let evidence = Arc::new(self.capture_evidence(diagram.text.as_str()));
+        let local = self.project_evidence(
+            diagram.text.as_str(),
+            &source_map,
+            evidence.as_ref(),
+            AnalysisMode::RichFacts,
+        );
+        AnalyzedDiagram::from_document_diagram_with_evidence(
+            diagram,
+            local.diagnostics,
+            local.syntax,
+            evidence,
+        )
     }
 
     pub(crate) fn analyze_diagram_cancellable(
@@ -365,7 +429,9 @@ impl Analyzer {
     fn capture_evidence(&self, source: &str) -> DiagramAnalysisEvidence {
         let cancellation = AnalysisCancellationToken::new();
         self.capture_evidence_cancellable(source, &cancellation)
-            .expect("a private analysis cancellation token cannot be cancelled")
+            .unwrap_or_else(|_| DiagramAnalysisEvidence::OperationError {
+                error: Arc::new(CoreError::from(merman_core::ParseCancelled)),
+            })
     }
 
     fn capture_evidence_cancellable(
@@ -451,14 +517,14 @@ impl Analyzer {
         let source_lints = crate::rules::source_lint_diagnostics_cancellable(
             source,
             source_map,
-            &self.options.rule_config,
+            self.options.rule_config(),
             cancellation,
         )?;
         cancellation.checkpoint()?;
         match evidence {
             DiagramAnalysisEvidence::SourceLimit => unreachable!("handled above"),
             DiagramAnalysisEvidence::EmptySource => {
-                let diagnostics = no_diagram_diagnostic(source_map, &self.options.rule_config)
+                let diagnostics = no_diagram_diagnostic(source_map, self.options.rule_config())
                     .into_iter()
                     .collect();
                 Ok(mode.unavailable_syntax(None, diagnostics))
@@ -466,7 +532,7 @@ impl Analyzer {
             DiagramAnalysisEvidence::Panic { message } => {
                 let mut diagnostics = source_lints;
                 if let Some(diagnostic) =
-                    panic_diagnostic(message, source_map, &self.options.rule_config)
+                    panic_diagnostic(message, source_map, self.options.rule_config())
                 {
                     diagnostics.push(diagnostic);
                 }
@@ -543,7 +609,7 @@ impl Analyzer {
         diagnostics.extend(crate::rules::parsed_source_lint_diagnostics_cancellable(
             source,
             source_map,
-            &self.options.rule_config,
+            self.options.rule_config(),
             diagram_type,
             cancellation,
         )?);
@@ -551,7 +617,7 @@ impl Analyzer {
             diagram_type,
             model,
             source_map,
-            &self.options.rule_config,
+            self.options.rule_config(),
             cancellation,
         )?);
         let editor_diagnostics = self.editor_recovery_diagnostics_from_facts_cancellable(
@@ -626,7 +692,7 @@ impl Analyzer {
             editor_facts,
         } = input;
         cancellation.checkpoint()?;
-        let core_diagnostic = core_error_diagnostic(error, source_map, &self.options.rule_config);
+        let core_diagnostic = core_error_diagnostic(error, source_map, self.options.rule_config());
         if let Some(diagnostic) = core_diagnostic.diagnostic {
             diagnostics.push(diagnostic);
         }
@@ -670,7 +736,7 @@ impl Analyzer {
         error: &CoreError,
         mode: AnalysisMode,
     ) -> LocalAnalysis {
-        let core_diagnostic = core_error_diagnostic(error, source_map, &self.options.rule_config);
+        let core_diagnostic = core_error_diagnostic(error, source_map, self.options.rule_config());
         if let Some(diagnostic) = core_diagnostic.diagnostic {
             diagnostics.push(diagnostic);
         }
@@ -695,7 +761,7 @@ impl Analyzer {
                 batch.iter().cloned(),
                 diagram_type,
                 source_map,
-                &self.options.rule_config,
+                self.options.rule_config(),
             ));
         }
         cancellation.checkpoint()?;
@@ -733,7 +799,7 @@ impl Analyzer {
                             error,
                             diagram_type,
                             source_map,
-                            &self.options.rule_config,
+                            self.options.rule_config(),
                         )
                         .into_iter()
                         .collect(),
@@ -752,12 +818,12 @@ impl Analyzer {
         crate::source_limits::source_limit_rejection(
             source,
             descriptor,
-            self.options.max_source_bytes,
+            self.options.max_source_bytes(),
         )
     }
 
     fn source_limit_diagnostics(&self, source: &str) -> Option<Vec<AnalysisDiagnostic>> {
-        crate::source_limits::source_limit_diagnostics(source, self.options.max_source_bytes)
+        crate::source_limits::source_limit_diagnostics(source, self.options.max_source_bytes())
     }
 
     fn runtime_error_diagnostics(
@@ -765,7 +831,7 @@ impl Analyzer {
         error: &CoreError,
         source_map: &SourceMap,
     ) -> Vec<AnalysisDiagnostic> {
-        core_error_diagnostic(error, source_map, &self.options.rule_config)
+        core_error_diagnostic(error, source_map, self.options.rule_config())
             .diagnostic
             .into_iter()
             .collect()
@@ -852,14 +918,10 @@ pub fn engine_from_options(options: &AnalysisOptions) -> Engine {
     apply_options_to_engine(Engine::new(), options)
 }
 
-fn apply_options_to_engine(mut engine: Engine, options: &AnalysisOptions) -> Engine {
-    engine = engine.with_runtime_policy(options.runtime_policy.clone());
-
-    if let Some(site_config) = options.site_config.clone() {
-        engine = engine.with_site_config(site_config);
-    }
-
+fn apply_options_to_engine(engine: Engine, options: &AnalysisOptions) -> Engine {
     engine
+        .with_exact_site_config(options.site_config().cloned())
+        .with_runtime_policy(options.runtime_policy().clone())
 }
 
 #[cfg(test)]

@@ -57,10 +57,28 @@ fn service_can_be_constructed_without_a_tokio_runtime() {
 
 #[test]
 fn published_server_constructor_signatures_use_tower_lsp_server_types() {
-    let _: fn() -> (
-        tower_lsp_server::LspService<MermanLanguageServer>,
-        crate::MermanClientSocket,
-    ) = MermanLanguageServer::service;
+    let _: fn() -> (crate::MermanLspService, crate::MermanClientSocket) =
+        MermanLanguageServer::service;
+}
+
+async fn initialize_test_service(service: &mut crate::MermanLspService) {
+    let request = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": { "diagnostic": {} }
+            }
+        }))
+        .id(1)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("initialize response");
+    assert!(response.is_ok());
 }
 
 #[test]
@@ -542,6 +560,7 @@ async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
             },
         })
         .await;
+    server.client_effects.wait_idle().await;
 
     let diagnostic_snapshot = {
         let mut store = server.store.lock().await;
@@ -1008,106 +1027,135 @@ async fn did_change_applies_incremental_changes_in_order() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn document_sync_notifications_preserve_open_change_and_close_order() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+async fn session_admission_preserves_open_change_and_close_order() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
     let uri = Uri::from_str("file:///tmp/ordered-sync.mmd").unwrap();
 
-    let lane = server.document_sync_lane.lock().await;
-    let open = server.did_open(DidOpenTextDocumentParams {
-        text_document: TextDocumentItem {
-            uri: uri.clone(),
-            language_id: "mermaid".to_string(),
-            version: 1,
-            text: "flowchart TD\nA-->B\n".to_string(),
-        },
-    });
-    tokio::pin!(open);
-    assert!(futures::poll!(&mut open).is_pending());
-
-    let change = server.did_change(DidChangeTextDocumentParams {
-        text_document: VersionedTextDocumentIdentifier {
-            uri: uri.clone(),
-            version: 2,
-        },
-        content_changes: vec![TextDocumentContentChangeEvent {
-            range: None,
-            range_length: None,
-            text: "flowchart TD\nA-->C\n".to_string(),
-        }],
-    });
-    tokio::pin!(change);
-    assert!(futures::poll!(&mut change).is_pending());
-    drop(lane);
-    tokio::join!(open, change);
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let change = service.call(
+        Request::build("textDocument/didChange")
+            .params(
+                serde_json::to_value(DidChangeTextDocumentParams {
+                    text_document: VersionedTextDocumentIdentifier {
+                        uri: uri.clone(),
+                        version: 2,
+                    },
+                    content_changes: vec![TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text: "flowchart TD\nA-->C\n".to_string(),
+                    }],
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let (open, change) = tokio::join!(open, change);
+    assert!(open.unwrap().is_none());
+    assert!(change.unwrap().is_none());
 
     {
+        let server = service.inner();
         let store = server.store.lock().await;
         let document = store.get(&uri).expect("change must follow open");
         assert_eq!(document.version, 2);
         assert_eq!(document.text.as_ref(), "flowchart TD\nA-->C\n");
     }
 
-    let lane = server.document_sync_lane.lock().await;
-    let reopen = server.did_open(DidOpenTextDocumentParams {
-        text_document: TextDocumentItem {
-            uri: uri.clone(),
-            language_id: "mermaid".to_string(),
-            version: 3,
-            text: "flowchart TD\nA-->D\n".to_string(),
-        },
-    });
-    tokio::pin!(reopen);
-    assert!(futures::poll!(&mut reopen).is_pending());
-
-    let close = server.did_close(DidCloseTextDocumentParams {
-        text_document: TextDocumentIdentifier { uri: uri.clone() },
-    });
-    tokio::pin!(close);
-    assert!(futures::poll!(&mut close).is_pending());
-    drop(lane);
-    tokio::join!(reopen, close);
+    let reopen = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 3,
+                        text: "flowchart TD\nA-->D\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let close = service.call(
+        Request::build("textDocument/didClose")
+            .params(
+                serde_json::to_value(DidCloseTextDocumentParams {
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let (reopen, close) = tokio::join!(reopen, close);
+    assert!(reopen.unwrap().is_none());
+    assert!(close.unwrap().is_none());
 
     assert!(
-        server.store.lock().await.get(&uri).is_none(),
+        service.inner().store.lock().await.get(&uri).is_none(),
         "close must follow the queued reopen"
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn configuration_notifications_share_the_document_sync_lane() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
+async fn session_admission_orders_configuration_before_document_open() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
     let uri = Uri::from_str("file:///tmp/configuration-before-open.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n";
 
-    server
+    service
+        .inner()
         .replace_analyzer(
             default_lsp_analysis_options().with_max_source_bytes(Some(source.len() - 1)),
         )
         .await;
 
-    let lane = server.document_sync_lane.lock().await;
-    let configuration = server.did_change_configuration(DidChangeConfigurationParams {
-        settings: serde_json::Value::Null,
-    });
-    tokio::pin!(configuration);
-    assert!(futures::poll!(&mut configuration).is_pending());
+    let configuration = service.call(
+        Request::build("workspace/didChangeConfiguration")
+            .params(
+                serde_json::to_value(DidChangeConfigurationParams {
+                    settings: serde_json::Value::Null,
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: source.to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let (configuration, open) = tokio::join!(configuration, open);
+    assert!(configuration.unwrap().is_none());
+    assert!(open.unwrap().is_none());
 
-    let open = server.did_open(DidOpenTextDocumentParams {
-        text_document: TextDocumentItem {
-            uri: uri.clone(),
-            language_id: "mermaid".to_string(),
-            version: 1,
-            text: source.to_string(),
-        },
-    });
-    tokio::pin!(open);
-    assert!(futures::poll!(&mut open).is_pending());
-    drop(lane);
-    tokio::join!(configuration, open);
-
-    let store = server.store.lock().await;
+    let store = service.inner().store.lock().await;
     let document = store
         .get(&uri)
         .expect("open must run after the queued configuration");
@@ -1115,6 +1163,54 @@ async fn configuration_notifications_share_the_document_sync_lane() {
     assert_eq!(document.text.as_ref(), source);
     assert_eq!(document.resource_limit, None);
     assert_eq!(document.sync_error, None);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn read_requests_wait_for_earlier_unpolled_mutations() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/read-after-open.mmd").unwrap();
+
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA[opened]-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let hover = service.call(
+        Request::build("textDocument/hover")
+            .params(
+                serde_json::to_value(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier { uri },
+                        Position::new(1, 2),
+                    ),
+                    work_done_progress_params: Default::default(),
+                })
+                .unwrap(),
+            )
+            .id(2)
+            .finish(),
+    );
+    tokio::pin!(hover);
+    assert!(futures::poll!(&mut hover).is_pending());
+
+    assert!(open.await.unwrap().is_none());
+    let response = hover
+        .await
+        .unwrap()
+        .expect("hover response after admitted open");
+    assert!(response.is_ok());
+    assert_ne!(response.result(), Some(&serde_json::Value::Null));
 }
 
 #[tokio::test(flavor = "current_thread")]

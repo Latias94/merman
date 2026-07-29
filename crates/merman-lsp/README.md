@@ -56,7 +56,9 @@ See the [capability matrix](https://github.com/Latias94/merman/blob/main/docs/ls
 
 ## Embed The Protocol Library
 
-Applications that already own a transport can depend on `merman-lsp` with default features disabled and construct `MermanLanguageServer` directly. The `stdio` feature adds only the bundled Tokio stdio transport and executable.
+Applications that already own a transport can depend on `merman-lsp` with default features disabled and call `MermanLanguageServer::service()` directly. The `stdio` feature adds only the bundled Tokio stdio transport and executable.
+
+`MermanLanguageServer::service()` returns an ordered `MermanLspService` plus its client socket. Embedded transports must drive `MermanLspService` through `tower::Service<Request>` so each message is admitted in input order. The underlying `LanguageServer` is intentionally not exposed: calling it directly would bypass document and configuration ordering.
 
 <!-- BEGIN GENERATED RELEASE README LSP_LIBRARY_DEPENDENCY -->
 

@@ -6,18 +6,36 @@ use merman_editor_core::semantic_token_descriptor;
 
 #[test]
 fn published_server_constructors_use_tower_lsp_server_types() {
-    let _: fn() -> (
-        tower_lsp_server::LspService<MermanLanguageServer>,
-        merman_lsp::MermanClientSocket,
-    ) = MermanLanguageServer::service;
+    let _: fn() -> (merman_lsp::MermanLspService, merman_lsp::MermanClientSocket) =
+        MermanLanguageServer::service;
+}
+
+async fn initialize_service(
+    service: &mut merman_lsp::MermanLspService,
+    params: InitializeParams,
+) -> tower_lsp_server::ls_types::InitializeResult {
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(
+            Request::build("initialize")
+                .params(serde_json::to_value(params).unwrap())
+                .id(1)
+                .finish(),
+        )
+        .await
+        .unwrap()
+        .expect("initialize response");
+    serde_json::from_value(response.result().expect("initialize result").clone()).unwrap()
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_initialize() {
-    let (service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket) = MermanLanguageServer::service();
 
-    let response = tower_lsp_server::LanguageServer::initialize(
-        service.inner(),
+    let response = initialize_service(
+        &mut service,
         InitializeParams {
             initialization_options: Some(serde_json::json!({
                 "lint": {
@@ -27,8 +45,7 @@ async fn lsp_service_smoke_handles_initialize() {
             ..InitializeParams::default()
         },
     )
-    .await
-    .unwrap();
+    .await;
 
     assert_eq!(
         response
@@ -94,10 +111,10 @@ async fn lsp_service_smoke_handles_initialize() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
-    let (service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket) = MermanLanguageServer::service();
 
-    let response = tower_lsp_server::LanguageServer::initialize(
-        service.inner(),
+    let response = initialize_service(
+        &mut service,
         serde_json::from_value(serde_json::json!({
             "capabilities": {
                 "textDocument": {
@@ -118,8 +135,7 @@ async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
         }))
         .unwrap(),
     )
-    .await
-    .unwrap();
+    .await;
 
     assert!(response.capabilities.code_action_provider.is_some());
     let semantic_tokens = response
@@ -148,10 +164,10 @@ async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_does_not_advertise_semantic_tokens_without_relative_format() {
-    let (service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket) = MermanLanguageServer::service();
 
-    let response = tower_lsp_server::LanguageServer::initialize(
-        service.inner(),
+    let response = initialize_service(
+        &mut service,
         serde_json::from_value(serde_json::json!({
             "capabilities": {
                 "textDocument": {
@@ -166,20 +182,15 @@ async fn lsp_service_does_not_advertise_semantic_tokens_without_relative_format(
         }))
         .unwrap(),
     )
-    .await
-    .unwrap();
+    .await;
 
     assert!(response.capabilities.semantic_tokens_provider.is_none());
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_does_not_advertise_workspace_diagnostics_without_workspace_scan() {
-    let (service, _socket) = MermanLanguageServer::service();
-
-    let response =
-        tower_lsp_server::LanguageServer::initialize(service.inner(), InitializeParams::default())
-            .await
-            .unwrap();
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let response = initialize_service(&mut service, InitializeParams::default()).await;
 
     let provider = response
         .capabilities

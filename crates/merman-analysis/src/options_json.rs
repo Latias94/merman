@@ -326,7 +326,7 @@ mod tests {
         };
 
         let analysis = options.to_analysis_options().unwrap();
-        let context = analysis.runtime_policy.begin_operation().unwrap();
+        let context = analysis.runtime_policy().begin_operation().unwrap();
 
         assert_eq!(
             context.today_local(),
@@ -381,12 +381,12 @@ mod tests {
             .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_frontmatter_config")
             .unwrap();
 
-        assert_eq!(analysis.rule_config.profile(), AnalysisRuleProfile::Core);
-        assert!(!analysis.rule_config.is_rule_enabled(*duplicate_commit));
-        assert!(!analysis.rule_config.is_rule_enabled(*prefer_init));
-        assert!(!analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+        assert_eq!(analysis.rule_config().profile(), AnalysisRuleProfile::Core);
+        assert!(!analysis.rule_config().is_rule_enabled(*duplicate_commit));
+        assert!(!analysis.rule_config().is_rule_enabled(*prefer_init));
+        assert!(!analysis.rule_config().is_rule_enabled(*prefer_frontmatter));
         assert_eq!(
-            analysis.rule_config.severity_for(*prefer_init),
+            analysis.rule_config().severity_for(*prefer_init),
             DiagnosticSeverity::Hint
         );
     }
@@ -409,11 +409,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            analysis.rule_config.profile(),
+            analysis.rule_config().profile(),
             AnalysisRuleProfile::Recommended
         );
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_init));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_frontmatter));
 
         let wrapped = serde_json::json!({
             "lint": {
@@ -425,9 +425,9 @@ mod tests {
         });
         let analysis = analysis_options_from_json_value(&wrapped).unwrap();
 
-        assert_eq!(analysis.rule_config.profile(), AnalysisRuleProfile::Core);
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+        assert_eq!(analysis.rule_config().profile(), AnalysisRuleProfile::Core);
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_init));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_frontmatter));
     }
 
     #[test]
@@ -550,7 +550,7 @@ mod tests {
             .find(|descriptor| descriptor.id == "merman.git_graph.duplicate_commit_id")
             .unwrap();
 
-        assert!(!analysis.rule_config.is_rule_enabled(*duplicate_commit));
+        assert!(!analysis.rule_config().is_rule_enabled(*duplicate_commit));
 
         let wrapped = serde_json::json!({
             "analysis": {
@@ -576,15 +576,15 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            analysis.rule_config.profile(),
+            analysis.rule_config().profile(),
             AnalysisRuleProfile::Recommended
         );
         assert_eq!(
-            analysis.rule_config.severity_for(*prefer_init),
+            analysis.rule_config().severity_for(*prefer_init),
             DiagnosticSeverity::Warning
         );
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_init));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_frontmatter));
     }
 
     #[test]
@@ -634,7 +634,7 @@ mod tests {
         assert_eq!(
             analysis_options_from_json_value(&positive)
                 .unwrap()
-                .max_source_bytes,
+                .max_source_bytes(),
             Some(1024)
         );
     }

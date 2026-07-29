@@ -5,7 +5,7 @@ use std::{
     pin::Pin,
     process::{Child, Command, Output, Stdio},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     task::{Context, Poll},
@@ -16,7 +16,7 @@ use std::{
 use futures::{StreamExt, channel::mpsc, sink, stream};
 use merman_lsp::{LSP_HANDLER_CONCURRENCY, StdioTermination, serve_stdio, stdio_server};
 use serde_json::json;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::sync::oneshot;
 use tokio::time::{Duration, timeout};
 use tower::Service;
@@ -281,6 +281,86 @@ impl Service<Request> for LoopbackOnlyService {
 
 struct WriteFailureWithPendingShutdown {
     shutdown_polled: Arc<AtomicBool>,
+}
+
+struct PendingWrite;
+
+struct EofNotifyingRead<R> {
+    inner: R,
+    eof_observed: Option<oneshot::Sender<()>>,
+}
+
+impl<R: AsyncRead + Unpin> AsyncRead for EofNotifyingRead<R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let filled_before = buffer.filled().len();
+        let result = Pin::new(&mut self.inner).poll_read(cx, buffer);
+        if matches!(result, Poll::Ready(Ok(())))
+            && buffer.filled().len() == filled_before
+            && let Some(eof_observed) = self.eof_observed.take()
+        {
+            let _ = eof_observed.send(());
+        }
+        result
+    }
+}
+
+struct SplitFrameWrite {
+    bytes: Arc<Mutex<Vec<u8>>>,
+    header_written: Option<oneshot::Sender<()>>,
+    body_release: oneshot::Receiver<()>,
+    body_released: bool,
+    writes: usize,
+}
+
+impl AsyncWrite for SplitFrameWrite {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        if self.writes > 0 && !self.body_released {
+            match Pin::new(&mut self.body_release).poll(cx) {
+                Poll::Ready(_) => self.body_released = true,
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+        self.bytes.lock().unwrap().extend_from_slice(buffer);
+        self.writes += 1;
+        if let Some(header_written) = self.header_written.take() {
+            let _ = header_written.send(());
+        }
+        Poll::Ready(Ok(buffer.len()))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl AsyncWrite for PendingWrite {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        _buffer: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Poll::Pending
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Pending
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Pending
+    }
 }
 
 impl AsyncWrite for WriteFailureWithPendingShutdown {
@@ -601,6 +681,181 @@ async fn stdio_write_failure_cancels_input_without_waiting_for_shutdown() {
         "a failed writer must not block session cancellation in shutdown"
     );
     drop(client_stdin);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn stdio_pending_write_times_out_and_cancels_input() {
+    let (_client_stdin, server_stdin) = tokio::io::duplex(4096);
+    let (responses_tx, _responses_rx) = mpsc::unbounded();
+    let client_request = Request::build("client/test").id(42).finish();
+
+    let termination = timeout(
+        Duration::from_secs(31),
+        serve_stdio(
+            server_stdin,
+            PendingWrite,
+            TestLoopback {
+                requests: vec![client_request],
+                responses: responses_tx,
+            },
+            LoopbackOnlyService,
+        ),
+    )
+    .await
+    .expect("pending output write should be bounded");
+
+    assert_eq!(termination, StdioTermination::OutputClosed);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stdio_eof_finishes_an_output_frame_after_its_header_is_written() {
+    let (mut client_stdin, server_stdin) = tokio::io::duplex(4096);
+    let (eof_observed_tx, eof_observed_rx) = oneshot::channel();
+    let (header_written_tx, header_written_rx) = oneshot::channel();
+    let (body_release_tx, body_release_rx) = oneshot::channel();
+    let output = Arc::new(Mutex::new(Vec::new()));
+    let writer = SplitFrameWrite {
+        bytes: Arc::clone(&output),
+        header_written: Some(header_written_tx),
+        body_release: body_release_rx,
+        body_released: false,
+        writes: 0,
+    };
+    let (unblock_tx, unblock_rx) = oneshot::channel();
+    drop(unblock_tx);
+
+    let server_task = tokio::spawn(async move {
+        serve_stdio(
+            EofNotifyingRead {
+                inner: server_stdin,
+                eof_observed: Some(eof_observed_tx),
+            },
+            writer,
+            EmptyLoopback,
+            OverlapService {
+                unblock: Some(unblock_rx),
+            },
+        )
+        .await
+    });
+
+    client_stdin
+        .write_all(&frame(
+            r#"{"jsonrpc":"2.0","id":1,"method":"test/ping","params":null}"#,
+        ))
+        .await
+        .expect("write ping request");
+    timeout(Duration::from_secs(2), header_written_rx)
+        .await
+        .expect("response header should be written")
+        .expect("writer should signal the response header");
+    drop(client_stdin);
+    timeout(Duration::from_secs(2), eof_observed_rx)
+        .await
+        .expect("transport should observe EOF")
+        .expect("EOF observer should remain alive");
+    body_release_tx
+        .send(())
+        .expect("output must remain alive until the frame body is written");
+
+    let termination = timeout(Duration::from_secs(2), server_task)
+        .await
+        .expect("stdio server should finish after draining the active frame")
+        .expect("stdio server task should not panic");
+    assert_eq!(termination, StdioTermination::InputClosed);
+    let frames = decode_lsp_frames(&output.lock().unwrap());
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0]["id"], json!(1));
+    assert_eq!(frames[0]["result"], json!("pong"));
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn stdio_eof_does_not_hide_a_later_output_frame_timeout() {
+    let (mut client_stdin, server_stdin) = tokio::io::duplex(4096);
+    let (eof_observed_tx, eof_observed_rx) = oneshot::channel();
+    let (header_written_tx, header_written_rx) = oneshot::channel();
+    let (_body_release_tx, body_release_rx) = oneshot::channel::<()>();
+    let writer = SplitFrameWrite {
+        bytes: Arc::new(Mutex::new(Vec::new())),
+        header_written: Some(header_written_tx),
+        body_release: body_release_rx,
+        body_released: false,
+        writes: 0,
+    };
+    let (unblock_tx, unblock_rx) = oneshot::channel();
+    drop(unblock_tx);
+
+    let server_task = tokio::spawn(async move {
+        serve_stdio(
+            EofNotifyingRead {
+                inner: server_stdin,
+                eof_observed: Some(eof_observed_tx),
+            },
+            writer,
+            EmptyLoopback,
+            OverlapService {
+                unblock: Some(unblock_rx),
+            },
+        )
+        .await
+    });
+
+    client_stdin
+        .write_all(&frame(
+            r#"{"jsonrpc":"2.0","id":1,"method":"test/ping","params":null}"#,
+        ))
+        .await
+        .expect("write ping request");
+    header_written_rx
+        .await
+        .expect("response header should be written");
+    drop(client_stdin);
+    eof_observed_rx.await.expect("transport should observe EOF");
+
+    let termination = timeout(Duration::from_secs(31), server_task)
+        .await
+        .expect("pending response body should hit the output timeout")
+        .expect("stdio server task should not panic");
+    assert_eq!(termination, StdioTermination::OutputClosed);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stdio_eof_cancels_an_in_flight_notification() {
+    let (mut client_stdin, server_stdin) = tokio::io::duplex(4096);
+    let (server_stdout, _client_stdout) = tokio::io::duplex(4096);
+    let (notification_started_tx, notification_started_rx) = oneshot::channel();
+    let (exit_seen_tx, _exit_seen_rx) = oneshot::channel();
+
+    let server_task = tokio::spawn(async move {
+        serve_stdio(
+            server_stdin,
+            server_stdout,
+            EmptyLoopback,
+            PendingNotificationService {
+                notification_started: Some(notification_started_tx),
+                exit_seen: Some(exit_seen_tx),
+            },
+        )
+        .await
+    });
+
+    client_stdin
+        .write_all(&frame(
+            r#"{"jsonrpc":"2.0","method":"test/block-notification","params":null}"#,
+        ))
+        .await
+        .expect("write blocking notification");
+    timeout(Duration::from_secs(2), notification_started_rx)
+        .await
+        .expect("blocking notification should start")
+        .expect("notification service should signal start");
+    drop(client_stdin);
+
+    let termination = timeout(Duration::from_secs(2), server_task)
+        .await
+        .expect("EOF should cancel the blocked notification")
+        .expect("stdio server task should not panic");
+    assert_eq!(termination, StdioTermination::InputClosed);
 }
 
 #[tokio::test(flavor = "current_thread")]

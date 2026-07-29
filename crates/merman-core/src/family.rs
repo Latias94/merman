@@ -4,7 +4,9 @@
 //! parser, render-model, and metadata surfaces.
 
 use crate::detect::DetectorFn;
-use crate::diagram::{BuiltInRenderSemanticParser, DiagramSemanticParser, RenderSemanticModel};
+use crate::diagram::{
+    BuiltInDiagramSemanticParser, BuiltInRenderSemanticParser, RenderSemanticModel,
+};
 use crate::{
     EditorSemanticFacts, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
     Result,
@@ -185,7 +187,7 @@ pub(crate) struct DetectorFact {
 #[derive(Clone, Copy)]
 pub(crate) struct SemanticParserFact {
     pub(crate) id: &'static str,
-    pub(crate) parser: DiagramSemanticParser,
+    pub(crate) parser: BuiltInDiagramSemanticParser,
 }
 
 #[derive(Clone, Copy)]
@@ -719,7 +721,7 @@ struct FamilyVariantDefinition {
     id: &'static str,
     catalog_order: u16,
     detector: Option<Ordered<DetectorFn>>,
-    semantic: Option<Ordered<DiagramSemanticParser>>,
+    semantic: Option<Ordered<BuiltInDiagramSemanticParser>>,
     combined: Option<Ordered<CombinedSemanticParser>>,
     typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
     render_model_kind: Option<&'static str>,

@@ -149,13 +149,7 @@ impl SourceMap {
 
     pub fn byte_offset_for_utf16_position(&self, position: Utf16Position) -> Option<usize> {
         let line = self.line_metric(position.line)?;
-        match line.utf16_columns.binary_search(&position.character) {
-            Ok(boundary_index) => Some(line.start + line.byte_boundaries[boundary_index]),
-            Err(boundary_index) if boundary_index >= line.utf16_columns.len() => {
-                Some(line.content_end)
-            }
-            Err(_) => None,
-        }
+        line.byte_offset_for_utf16_column(position.character)
     }
 
     fn validate_offset(&self, offset: usize) -> Result<(), SourceMapError> {
@@ -187,15 +181,14 @@ impl SourceMap {
             .expect("validated source offset should map to a cached line");
         let clamped = offset.clamp(line.start, line.content_end);
         let relative = clamped - line.start;
-        let boundary_index = line
-            .byte_boundaries
-            .binary_search(&relative)
+        let (char_column, utf16_column) = line
+            .columns_for_relative_offset(relative)
             .expect("validated source offset should map to a cached line boundary");
 
         Ok(OffsetMetrics {
             line_index,
-            char_column: boundary_index,
-            utf16_column: line.utf16_columns[boundary_index],
+            char_column,
+            utf16_column,
         })
     }
 
@@ -236,15 +229,14 @@ impl SourceMap {
             .expect("validated source offset should map to a cached line");
         let clamped = offset.clamp(line.start, line.content_end);
         let relative = clamped - line.start;
-        let boundary_index = line
-            .byte_boundaries
-            .binary_search(&relative)
+        let (char_column, utf16_column) = line
+            .columns_for_relative_offset(relative)
             .expect("validated source offset should map to a cached line boundary");
 
         Ok(Ok(OffsetMetrics {
             line_index,
-            char_column: boundary_index,
-            utf16_column: line.utf16_columns[boundary_index],
+            char_column,
+            utf16_column,
         }))
     }
 
@@ -312,7 +304,7 @@ impl SourceMap {
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get(&line_index)
-            .map(|line| line.byte_boundaries.len())
+            .map(|line| line.stored_boundary_count())
     }
 }
 
@@ -320,8 +312,57 @@ impl SourceMap {
 struct LineMetric {
     start: usize,
     content_end: usize,
-    byte_boundaries: Vec<usize>,
-    utf16_columns: Vec<usize>,
+    columns: LineColumns,
+}
+
+#[derive(Debug, Clone)]
+enum LineColumns {
+    Ascii,
+    Unicode {
+        byte_boundaries: Vec<usize>,
+        utf16_columns: Vec<usize>,
+    },
+}
+
+impl LineMetric {
+    fn byte_offset_for_utf16_column(&self, column: usize) -> Option<usize> {
+        match &self.columns {
+            LineColumns::Ascii => Some(self.start.saturating_add(column).min(self.content_end)),
+            LineColumns::Unicode {
+                byte_boundaries,
+                utf16_columns,
+            } => match utf16_columns.binary_search(&column) {
+                Ok(boundary_index) => Some(self.start + byte_boundaries[boundary_index]),
+                Err(boundary_index) if boundary_index >= utf16_columns.len() => {
+                    Some(self.content_end)
+                }
+                Err(_) => None,
+            },
+        }
+    }
+
+    fn columns_for_relative_offset(&self, relative: usize) -> Option<(usize, usize)> {
+        match &self.columns {
+            LineColumns::Ascii => Some((relative, relative)),
+            LineColumns::Unicode {
+                byte_boundaries,
+                utf16_columns,
+            } => {
+                let boundary_index = byte_boundaries.binary_search(&relative).ok()?;
+                Some((boundary_index, utf16_columns[boundary_index]))
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn stored_boundary_count(&self) -> usize {
+        match &self.columns {
+            LineColumns::Ascii => 0,
+            LineColumns::Unicode {
+                byte_boundaries, ..
+            } => byte_boundaries.len(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -332,17 +373,38 @@ struct OffsetMetrics {
 }
 
 pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
+    whole_text_span_without_source_copy_with_checkpoint(text, || {
+        Ok::<_, std::convert::Infallible>(())
+    })
+    .expect("infallible whole-source span scan")
+}
+
+pub(crate) fn whole_text_span_without_source_copy_cancellable(
+    text: &str,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<DiagnosticSpan, crate::AnalysisCancelled> {
+    whole_text_span_without_source_copy_with_checkpoint(text, || cancellation.checkpoint())
+}
+
+fn whole_text_span_without_source_copy_with_checkpoint<E>(
+    text: &str,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
+) -> Result<DiagnosticSpan, E> {
     let mut end_line = 1usize;
     let mut end_column = 1usize;
     let mut end_lsp_line = 0usize;
     let mut end_lsp_character = 0usize;
+    let mut bytes_since_checkpoint = 0usize;
     let mut chars = text.chars().peekable();
 
+    checkpoint()?;
     while let Some(ch) = chars.next() {
+        bytes_since_checkpoint += ch.len_utf8();
         match ch {
             '\r' => {
                 if chars.peek() == Some(&'\n') {
                     chars.next();
+                    bytes_since_checkpoint += 1;
                 }
                 end_line += 1;
                 end_column = 1;
@@ -360,9 +422,14 @@ pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan 
                 end_lsp_character += ch.len_utf16();
             }
         }
+        if bytes_since_checkpoint >= 4096 {
+            checkpoint()?;
+            bytes_since_checkpoint = 0;
+        }
     }
+    checkpoint()?;
 
-    DiagnosticSpan::new(
+    Ok(DiagnosticSpan::new(
         0..text.len(),
         SourcePosition::new(1, 1),
         SourcePosition::new(end_line, end_column),
@@ -376,7 +443,7 @@ pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan 
                 character: end_lsp_character,
             },
         ),
-    )
+    ))
 }
 
 fn line_starts(source: &str) -> Vec<usize> {
@@ -436,6 +503,23 @@ fn line_metric_with_checkpoint<E>(
 ) -> Result<LineMetric, E> {
     let content_end = line_content_end(source.as_bytes(), start, next_start);
     let line = &source[start..content_end];
+    let mut ascii = true;
+    for chunk in line.as_bytes().chunks(4096) {
+        checkpoint()?;
+        if !chunk.is_ascii() {
+            ascii = false;
+            break;
+        }
+    }
+    checkpoint()?;
+    if ascii {
+        return Ok(LineMetric {
+            start,
+            content_end,
+            columns: LineColumns::Ascii,
+        });
+    }
+
     let mut byte_boundaries = Vec::new();
     let mut utf16_columns = Vec::new();
     let mut utf16 = 0usize;
@@ -458,8 +542,10 @@ fn line_metric_with_checkpoint<E>(
     Ok(LineMetric {
         start,
         content_end,
-        byte_boundaries,
-        utf16_columns,
+        columns: LineColumns::Unicode {
+            byte_boundaries,
+            utf16_columns,
+        },
     })
 }
 
@@ -620,6 +706,37 @@ mod tests {
     }
 
     #[test]
+    fn long_ascii_lines_use_constant_size_column_metrics() {
+        let source = "a".repeat(64 * 1024);
+        let map = SourceMap::new(source.clone());
+
+        assert_eq!(
+            map.utf16_position(source.len()).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: source.len(),
+            }
+        );
+        assert_eq!(map.cached_line_boundary_count(0), Some(0));
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 0,
+                character: source.len() + 1,
+            }),
+            Some(source.len())
+        );
+
+        let non_initial_line = SourceMap::new("x\nabc");
+        assert_eq!(
+            non_initial_line.byte_offset_for_utf16_position(Utf16Position {
+                line: 1,
+                character: usize::MAX,
+            }),
+            Some(5)
+        );
+    }
+
+    #[test]
     fn dense_line_scan_observes_scheduled_cancellation() {
         let source = "\n".repeat(32 * 1024);
         let cancellation = crate::AnalysisCancellationToken::new();
@@ -691,5 +808,18 @@ mod tests {
                 SourceMap::new(source).whole_source_span().unwrap()
             );
         }
+    }
+
+    #[test]
+    fn whole_text_span_without_source_copy_observes_scheduled_cancellation() {
+        let source = "a".repeat(32 * 1024);
+        let cancellation = crate::AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            whole_text_span_without_source_copy_cancellable(&source, &cancellation),
+            Err(crate::AnalysisCancelled)
+        ));
+        assert!(cancellation.is_cancelled());
     }
 }

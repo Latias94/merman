@@ -33,6 +33,17 @@ pub(crate) fn core_error_diagnostic(
     rule_config: &crate::rules::AnalysisRuleConfig,
 ) -> CoreErrorDiagnostic {
     match error {
+        CoreError::ParseCancelled(error) => CoreErrorDiagnostic {
+            diagnostic: rule_diagnostic(
+                DIAGRAM_PARSE_RULE_ID,
+                AnalysisStatus::ParseError,
+                error.to_string(),
+                source_map,
+                rule_config,
+            ),
+            diagram_type: None,
+            parse_location: None,
+        },
         CoreError::ThemeColor(error) => CoreErrorDiagnostic {
             diagnostic: rule_diagnostic_without_default_span(
                 INVALID_THEME_COLOR_RULE_ID,

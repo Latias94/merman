@@ -31,6 +31,17 @@ impl AnalysisCancellationToken {
         Self::default()
     }
 
+    /// Creates an independently cancellable child that also observes this token.
+    pub fn child(&self) -> Self {
+        Self {
+            parse_control: self.parse_control.child(),
+            #[cfg(test)]
+            successful_checkpoints_before_cancellation: Arc::new(AtomicUsize::new(
+                NO_SCHEDULED_CANCELLATION,
+            )),
+        }
+    }
+
     pub fn cancel(&self) {
         self.parse_control.cancel();
     }
@@ -88,5 +99,20 @@ mod tests {
 
         assert!(clone.is_cancelled());
         assert_eq!(clone.checkpoint(), Err(AnalysisCancelled));
+    }
+
+    #[test]
+    fn child_cancellation_is_local_but_parent_cancellation_propagates() {
+        let parent = AnalysisCancellationToken::new();
+        let child = parent.child();
+
+        child.cancel();
+        assert!(child.is_cancelled());
+        assert!(!parent.is_cancelled());
+
+        let sibling = parent.child();
+        parent.cancel();
+        assert!(sibling.is_cancelled());
+        assert_eq!(sibling.checkpoint(), Err(AnalysisCancelled));
     }
 }

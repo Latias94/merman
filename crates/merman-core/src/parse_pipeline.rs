@@ -11,7 +11,7 @@ use crate::{
 use diagram::{
     CustomJsonRenderModel, DiagramParseOutcome, DiagramParseSnapshot, DiagramWarningFact,
     ParsedDiagram, ParsedDiagramRender, ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
-    ResolvedRenderParser,
+    ResolvedRenderParser, ResolvedSemanticParser,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -210,7 +210,7 @@ impl<'a> ParsePipeline<'a> {
     ) -> Result<Option<DiagramParseSnapshot>> {
         let control = ParseControl::new();
         self.parse_editor_snapshot_controlled(timing, &control)
-            .expect("a private parse control cannot be cancelled")
+            .map_err(Error::from)?
     }
 
     pub(crate) fn parse_editor_snapshot_controlled(
@@ -255,13 +255,13 @@ impl<'a> ParsePipeline<'a> {
         let preprocess = preprocess_start.map(runtime::OperationTimer::elapsed);
 
         let resolved = self.engine.diagram_registry.resolve(&meta.diagram_type);
-        let combined = resolved
-            .filter(|resolved| resolved.owner == RegistryOwner::BuiltIn)
-            .and_then(|_| family::combined_parser(&meta.diagram_type));
+        let combined = matches!(resolved, Some(ResolvedSemanticParser::BuiltIn(_)))
+            .then(|| family::combined_parser(&meta.diagram_type))
+            .flatten();
 
         let parse_start = operation_timing.map(runtime::OperationTiming::start);
         let (model_result, combined_facts) = match resolved {
-            Some(resolved) => {
+            Some(ResolvedSemanticParser::BuiltIn(parser)) => {
                 if let Some(parser) = combined {
                     control.checkpoint()?;
                     let parsed = parser(editor_input, &meta, control)?;
@@ -270,10 +270,16 @@ impl<'a> ParsePipeline<'a> {
                     (model, Some(editor_facts))
                 } else {
                     control.checkpoint()?;
-                    let model = (resolved.parser)(editor_input, &meta);
+                    let model = parser(editor_input, &meta);
                     control.checkpoint()?;
                     (model, None)
                 }
+            }
+            Some(ResolvedSemanticParser::Custom(parser)) => {
+                control.checkpoint()?;
+                let model = parser(editor_input, &meta, control)?;
+                control.checkpoint()?;
+                (model, None)
             }
             None => (
                 Err(Error::UnsupportedDiagram {
@@ -283,7 +289,7 @@ impl<'a> ParsePipeline<'a> {
             ),
         };
         let parse = parse_start.map(runtime::OperationTimer::elapsed);
-        let owner = resolved.map(|resolved| resolved.owner);
+        let owner = resolved.map(ResolvedSemanticParser::owner);
         let mut model = match model_result {
             Ok(model) => model,
             Err(err) => {
@@ -546,10 +552,14 @@ impl<'a> ParsePipeline<'a> {
             return parser(code, meta).map(RenderSemanticModel::CustomJson);
         }
 
-        if let Some(semantic) = semantic
-            && semantic.owner == RegistryOwner::Custom
-        {
-            return (semantic.parser)(code, meta).map(|value| {
+        if let Some(ResolvedSemanticParser::Custom(_)) = semantic {
+            return diagram::parse_or_unsupported(
+                &self.engine.diagram_registry,
+                &meta.diagram_type,
+                code,
+                meta,
+            )
+            .map(|value| {
                 RenderSemanticModel::CustomJson(CustomJsonRenderModel::from_semantic_registry(
                     meta.diagram_type.clone(),
                     value,
@@ -561,8 +571,7 @@ impl<'a> ParsePipeline<'a> {
             return parser(code, meta);
         }
 
-        if let Some(semantic) = semantic {
-            debug_assert_eq!(semantic.owner, RegistryOwner::BuiltIn);
+        if let Some(ResolvedSemanticParser::BuiltIn(_)) = semantic {
             return Err(Error::diagram_parse_fallback(
                 meta.diagram_type.clone(),
                 format!(

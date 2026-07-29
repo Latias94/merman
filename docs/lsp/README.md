@@ -42,7 +42,7 @@ The server advertises editor-agnostic Merman requests under `ServerCapabilities.
 
 Plain Mermaid files and Mermaid fences in Markdown and MDX use the same typed `DocumentSnapshot`/`FenceTextIndex` model. Host-document positions remain UTF-16 correct, including diagnostics, fixes, completion edits, navigation, rename, and semantic tokens.
 
-The document store versions source and analyzer configuration independently. Request handlers capture the relevant generations before doing projection work outside the store lock, then reject or suppress results whose snapshot is no longer current.
+`MermanLspService` synchronously admits each JSON-RPC message before transport futures can run concurrently. State mutations are ordered by arrival, while reads wait for every earlier mutation to commit or abort. The document store versions source and analyzer configuration independently. Request handlers capture the relevant generations before doing projection work outside the store lock, then reject or suppress results whose snapshot is no longer current.
 
 - Push diagnostics re-check currentness immediately before publication.
 - Pull diagnostics retry bounded stale computations against the latest context.

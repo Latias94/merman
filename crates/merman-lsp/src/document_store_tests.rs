@@ -4,11 +4,11 @@ use std::sync::Arc;
 use crate::document_store::{
     AnalyzerOptionsPreparation, DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiscardedSource,
     DocumentResourceLimit, DocumentStore, DocumentSyncError, PreparedDocumentText,
-    SemanticTokensState, TextDocumentUpdate, default_lsp_analysis_options,
+    SemanticTokensState, TextChangePreparation, TextDocumentUpdate, default_lsp_analysis_options,
 };
 use merman_analysis::{
-    AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
-    FenceTextIndexSource, source_limit_diagnostic_span,
+    AnalysisCancellationToken, AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity,
+    FenceSemanticRole, FenceTextIndexSource, source_limit_diagnostic_span,
 };
 use merman_editor_core::DocumentKind;
 use tower_lsp_server::ls_types::{
@@ -44,7 +44,7 @@ fn new_store_uses_lsp_default_source_limit() {
     let store = DocumentStore::new();
 
     assert_eq!(
-        store.analyzer_options().max_source_bytes,
+        store.analyzer_options().max_source_bytes(),
         Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
     );
 }
@@ -241,7 +241,8 @@ fn source_limit_reclassification_rejects_a_stale_document_epoch() {
         .prepare_source_limit_reclassification(
             default_lsp_analysis_options().with_max_source_bytes(Some(8)),
         )
-        .project();
+        .project()
+        .expect("test projection should not be cancelled");
     store.open_text(
         uri.clone(),
         2,
@@ -254,9 +255,32 @@ fn source_limit_reclassification_rejects_a_stale_document_epoch() {
     assert_eq!(document.version, 2);
     assert_eq!(document.resource_limit, None);
     assert_eq!(
-        store.analyzer_options().max_source_bytes,
+        store.analyzer_options().max_source_bytes(),
         Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
     );
+}
+
+#[test]
+fn session_cancellation_aborts_pending_source_limit_projection() {
+    let cancellation = AnalysisCancellationToken::new();
+    let mut store = DocumentStore::with_session_cancellation(cancellation.clone());
+    let uri = Uri::from_str("file:///tmp/cancelled-reclassification.mmd").unwrap();
+    store.open_text(
+        uri,
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let plan = store.prepare_source_limit_reclassification(
+        default_lsp_analysis_options().with_max_source_bytes(Some(8)),
+    );
+
+    cancellation.cancel();
+
+    assert!(matches!(
+        plan.project(),
+        Err(merman_analysis::AnalysisCancelled)
+    ));
 }
 
 #[test]
@@ -279,7 +303,9 @@ fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
             panic!("the lower source limit must require source projection")
         }
     };
-    let older_batch = older_plan.project();
+    let older_batch = older_plan
+        .project()
+        .expect("test projection should not be cancelled");
 
     let latest_request = store.begin_analyzer_configuration_request();
     let latest = store
@@ -300,7 +326,7 @@ fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
             .is_none()
     );
     assert_eq!(
-        store.analyzer_options().max_source_bytes,
+        store.analyzer_options().max_source_bytes(),
         Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
     );
     let document = store.get(&uri).expect("latest configuration keeps source");
@@ -561,6 +587,78 @@ fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 2);
     assert_eq!(stored.text.as_ref(), "flowchart TD\nA[C]-->B\nC-->D\n");
+}
+
+#[test]
+fn prepared_text_changes_cannot_overwrite_a_newer_document_epoch() {
+    let mut store = DocumentStore::new();
+    let uri = Uri::from_str("file:///tmp/prepared-change-cas.mmd").unwrap();
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let TextChangePreparation::Prepare(plan) = store.capture_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "flowchart TD\nA-->C\n".to_string(),
+        }],
+    ) else {
+        panic!("valid change should require lock-free preparation");
+    };
+
+    store.open_text(
+        uri.clone(),
+        3,
+        "sequenceDiagram\nAlice->>Bob: newer\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let update = store.commit_prepared_text_changes(
+        plan.prepare()
+            .expect("test text preparation should not be cancelled"),
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Superseded);
+    let stored = store
+        .get(&uri)
+        .expect("newer document should remain stored");
+    assert_eq!(stored.version, 3);
+    assert!(stored.text.starts_with("sequenceDiagram"));
+}
+
+#[test]
+fn session_cancellation_aborts_pending_text_change_preparation() {
+    let cancellation = AnalysisCancellationToken::new();
+    let mut store = DocumentStore::with_session_cancellation(cancellation.clone());
+    let uri = Uri::from_str("file:///tmp/cancelled-change.mmd").unwrap();
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let TextChangePreparation::Prepare(plan) = store.capture_text_changes(
+        uri,
+        2,
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "flowchart TD\nA-->C\n".to_string(),
+        }],
+    ) else {
+        panic!("valid change should require lock-free preparation");
+    };
+
+    cancellation.cancel();
+
+    assert!(matches!(
+        plan.prepare(),
+        Err(merman_analysis::AnalysisCancelled)
+    ));
 }
 
 #[test]
@@ -1032,6 +1130,26 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
     assert_eq!(committed.contexts.len(), 1);
     assert_eq!(committed.contexts[0].snapshot.uri(), &missing_uri);
     assert!(!committed.stale_open_documents);
+}
+
+#[test]
+fn initial_lsp_payload_shares_the_canonical_generation_allocation() {
+    let mut store = DocumentStore::new();
+    let uri = Uri::from_str("file:///tmp/shared-payload.mmd").unwrap();
+
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    store.snapshot(&uri).expect("expected cached snapshot");
+    let context = store
+        .cached_analysis_generation(&uri)
+        .expect("expected cached analysis generation");
+    let canonical_payload = context.canonical().shared_payload();
+
+    assert!(Arc::ptr_eq(&context.payload, &canonical_payload));
 }
 
 #[test]

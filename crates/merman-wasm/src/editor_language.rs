@@ -1104,7 +1104,7 @@ mod tests {
         assert_eq!(ceiling.max_source_bytes, 2 * 1024 * 1024);
 
         let options = parse_analysis_options(None).expect("default editor analysis options");
-        assert_eq!(options.max_source_bytes, Some(ceiling.max_source_bytes));
+        assert_eq!(options.max_source_bytes(), Some(ceiling.max_source_bytes));
 
         let source = "x".repeat(ceiling.max_source_bytes + 1);
         let error = build_editor_document_analysis(&source, "file:///tmp/oversized.mmd", 1, None)
@@ -1122,13 +1122,13 @@ mod tests {
         let constrained =
             parse_analysis_options(Some(r#"{"resources":{"profile":"constrained"}}"#))
                 .expect("constrained editor profile");
-        assert_eq!(constrained.max_source_bytes, Some(1024 * 1024));
+        assert_eq!(constrained.max_source_bytes(), Some(1024 * 1024));
 
         let wrapped = parse_analysis_options(Some(
             r#"{"analysis":{"resources":{"profile":"interactive"}}}"#,
         ))
         .expect("wrapped interactive editor profile");
-        assert_eq!(wrapped.max_source_bytes, Some(2 * 1024 * 1024));
+        assert_eq!(wrapped.max_source_bytes(), Some(2 * 1024 * 1024));
     }
 
     #[test]
@@ -1136,7 +1136,7 @@ mod tests {
         let options =
             parse_analysis_options(Some(r#"{"resources":{"limits":{"max_source_bytes":32}}}"#))
                 .expect("stricter editor source limit");
-        assert_eq!(options.max_source_bytes, Some(32));
+        assert_eq!(options.max_source_bytes(), Some(32));
 
         let error = build_editor_document_analysis(
             "flowchart TD\nA-->B\nA-->C\n",

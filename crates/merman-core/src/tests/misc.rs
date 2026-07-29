@@ -1506,9 +1506,14 @@ fn missing_builtin_typed_parser_does_not_fall_back_to_custom_json() {
     assert!(message.contains("custom JSON boundary is reserved"));
 }
 
-fn custom_json_parser(code: &str, _meta: &ParseMetadata) -> Result<serde_json::Value> {
+fn custom_json_parser(
+    code: &str,
+    _meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<serde_json::Value>> {
+    control.checkpoint()?;
     let payload_start = code.find("payload").unwrap();
-    Ok(json!({
+    Ok(Ok(json!({
         "type": "customDiagram",
         "title": "<script>discarded</script><b>custom</b>",
         "warningFacts": [{
@@ -1519,14 +1524,19 @@ fn custom_json_parser(code: &str, _meta: &ParseMetadata) -> Result<serde_json::V
                 "end": payload_start + "payload".len(),
             },
         }],
-    }))
+    })))
 }
 
-fn custom_overlay_json_parser(_code: &str, meta: &ParseMetadata) -> Result<serde_json::Value> {
-    Ok(json!({
+fn custom_overlay_json_parser(
+    _code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<serde_json::Value>> {
+    control.checkpoint()?;
+    Ok(Ok(json!({
         "owner": "custom-semantic",
         "diagramType": meta.diagram_type,
-    }))
+    })))
 }
 
 fn custom_overlay_render_parser(code: &str, meta: &ParseMetadata) -> Result<CustomJsonRenderModel> {

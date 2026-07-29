@@ -82,7 +82,7 @@ impl DocumentAnalysisContext {
         #[cfg(test)]
         let detection = context.detection().cloned();
         let (editor, canonical) = context.into_canonical_parts();
-        let payload = Arc::new(canonical.payload().clone());
+        let payload = canonical.shared_payload();
         Self {
             snapshot: Arc::new(DocumentSnapshot {
                 uri,

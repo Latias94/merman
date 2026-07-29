@@ -1,7 +1,7 @@
 use super::{
     ByteSpan, EditorSymbolKind, FenceExpectedSyntax, FenceExpectedSyntaxKind, FenceLexeme,
     FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier, FenceReferenceGroup,
-    FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+    FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexData, FenceTextIndexSource,
     is_class_definition_detail,
 };
 
@@ -21,10 +21,10 @@ pub(super) fn from_core_facts_cancellable(
         merman_core::EditorSemanticCompleteness::Complete => FenceTextIndexSource::ParserComplete,
         merman_core::EditorSemanticCompleteness::Recovered => FenceTextIndexSource::ParserRecovered,
     };
-    let mut index = FenceTextIndex {
+    let mut index = FenceTextIndexData {
         completion_vocabulary: facts.completion_vocabulary,
         source,
-        ..FenceTextIndex::default()
+        ..FenceTextIndexData::default()
     };
     index.lexeme_failure = facts.lexeme_failure().map(lexeme_failure_from_core);
     index.lexemes.reserve(facts.lexemes().len());
@@ -137,7 +137,7 @@ pub(super) fn from_core_facts_cancellable(
             ))
     });
     cancellation.checkpoint()?;
-    Ok(index)
+    Ok(FenceTextIndex::from_data(index))
 }
 
 fn lexeme_kind_from_core(kind: merman_core::EditorLexemeKind) -> FenceLexemeKind {

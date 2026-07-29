@@ -22,7 +22,7 @@ mod source_limits;
 mod source_map;
 mod status;
 
-pub use analyzer::{AnalysisOptions, Analyzer};
+pub use analyzer::{AnalysisDiagnosticPolicy, AnalysisOptions, AnalysisSnapshotPolicy, Analyzer};
 pub use cancellation::{AnalysisCancellationToken, AnalysisCancelled};
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceDelimiterSpans,
@@ -66,6 +66,7 @@ pub use source_limits::{
     source_discarded_after_limit_change_diagnostic,
     source_discarded_after_limit_change_diagnostic_with_span, source_limit_diagnostic_for_len,
     source_limit_diagnostic_for_len_and_span, source_limit_diagnostic_span,
+    source_limit_diagnostic_span_cancellable,
 };
 pub use source_map::{LineCol, SourceMap, SourceMapError};
 pub use status::AnalysisStatus;

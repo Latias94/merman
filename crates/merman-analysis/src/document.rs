@@ -409,7 +409,7 @@ fn analyze_document_result_shared_inner(
             let diagnostics = crate::diagnostic_projection::core_error_diagnostic(
                 error.as_ref(),
                 document.source_map(),
-                &analyzer.options().rule_config,
+                analyzer.options().rule_config(),
             )
             .diagnostic
             .into_iter()

@@ -27,6 +27,7 @@ const MAX_HEADER_BYTES: usize = 8 * 1024;
 const MAX_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
 // Bound queued and executing requests by encoded body size as well as queue cardinality.
 const SERVER_REQUEST_BYTE_BUDGET: usize = MAX_MESSAGE_BYTES * LSP_HANDLER_CONCURRENCY;
+const OUTPUT_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 const OUTPUT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 const RUNNING: u8 = 0;
@@ -741,6 +742,9 @@ where
                 server_tasks_tx.disconnect();
                 responses_tx.disconnect();
                 client_abort.abort();
+                if stop == TransportStop::InputClosed {
+                    input_server_tasks_abort.abort();
+                }
                 stop
             },
             input_registration,
@@ -752,31 +756,55 @@ where
                 stream::select(responses_rx, client_requests.map(OutgoingMessage::Request));
             let mut output_failed = false;
             while let Some(message) = messages.next().await {
-                if let Err(error) = write_message(&mut stdout, &message).await {
-                    tracing::error!(%error, "failed to write LSP message");
-                    output_failed = true;
-                    break;
+                match tokio::time::timeout(
+                    OUTPUT_WRITE_TIMEOUT,
+                    write_message(&mut stdout, &message),
+                )
+                .await
+                {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        tracing::error!(%error, "failed to write LSP message");
+                        output_failed = true;
+                        break;
+                    }
+                    Err(_) => {
+                        tracing::error!(
+                            timeout_seconds = OUTPUT_WRITE_TIMEOUT.as_secs(),
+                            "timed out while writing an LSP message"
+                        );
+                        output_failed = true;
+                        break;
+                    }
                 }
             }
-            input_abort.abort();
-            server_tasks_abort.abort();
-            output_client_abort.abort();
 
             if !output_failed {
                 match tokio::time::timeout(OUTPUT_SHUTDOWN_TIMEOUT, stdout.shutdown()).await {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
                         tracing::error!(%error, "failed to close stdio output");
+                        output_failed = true;
                     }
                     Err(_) => {
                         tracing::error!("timed out while closing stdio output");
+                        output_failed = true;
                     }
                 }
             }
+            input_abort.abort();
+            server_tasks_abort.abort();
+            output_client_abort.abort();
+            output_failed
         };
 
-        let (_, _, stop) = future::join3(process_server_tasks, print_output, read_input).await;
-        stop.unwrap_or(TransportStop::OutputClosed)
+        let (_, output_failed, stop) =
+            future::join3(process_server_tasks, print_output, read_input).await;
+        if output_failed {
+            TransportStop::OutputClosed
+        } else {
+            stop.unwrap_or(TransportStop::OutputClosed)
+        }
     }
 }
 

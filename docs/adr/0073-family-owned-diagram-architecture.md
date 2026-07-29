@@ -81,6 +81,12 @@ the helper that executes a resolved parser from caller-supplied `ParseMetadata` 
 capability discovery uses `supported_diagrams()` and `diagram_family_capabilities()` instead of
 parser lookup.
 
+Custom semantic overlays receive the operation's `ParseControl`. Their function signature returns
+`ParseControlResult<Result<Value>>`: the outer result is cooperative cancellation and the inner
+result is Mermaid parse success or failure. Implementations must checkpoint long-running loops.
+The non-cancellable `Engine` facades convert an unexpected outer cancellation into
+`Error::ParseCancelled`; controlled snapshot facades preserve it in the outer result.
+
 This is an intentional API break. The former per-family `parse_*`, typed parser,
 `*_model_for_render`, and `*_editor_facts` entrypoints have no deprecated aliases. Tests that need
 family-local evidence consume the combined construction; public integration tests consume the

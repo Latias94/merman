@@ -1,4 +1,7 @@
-use crate::{EditorSemanticFacts, Error, MermaidConfig, ParseMetadata, Result, editor::SourceSpan};
+use crate::{
+    EditorSemanticFacts, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
+    Result, editor::SourceSpan,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -48,8 +51,21 @@ pub(crate) fn legacy_warning_messages(facts: &[DiagramWarningFact]) -> Vec<Strin
     facts.iter().map(|fact| fact.message.clone()).collect()
 }
 
-/// Parser used by the semantic JSON path for one Mermaid diagram family.
-pub type DiagramSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<Value>;
+/// Parser used by a custom semantic JSON registry overlay.
+///
+/// Implementations must call [`ParseControl::checkpoint`] inside potentially long-running loops.
+/// The outer [`ParseControlResult`] reports cooperative cancellation; the inner [`Result`]
+/// reports Mermaid detection or parse failures. Non-cancellable `Engine` snapshot and model APIs
+/// surface an unexpected outer cancellation as [`crate::Error::ParseCancelled`].
+pub type DiagramSemanticParser = fn(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<Result<Value>>;
+
+/// Parser used by the pinned built-in semantic JSON path.
+pub(crate) type BuiltInDiagramSemanticParser =
+    fn(code: &str, meta: &ParseMetadata) -> Result<Value>;
 
 /// Parser used by the built-in typed render-model path for one Mermaid diagram family.
 pub(crate) type BuiltInRenderSemanticParser =
@@ -70,15 +86,24 @@ pub(crate) enum RegistryOwner {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct ResolvedParser<T> {
-    pub(crate) parser: T,
-    pub(crate) owner: RegistryOwner,
+pub(crate) enum ResolvedSemanticParser {
+    BuiltIn(BuiltInDiagramSemanticParser),
+    Custom(DiagramSemanticParser),
+}
+
+impl ResolvedSemanticParser {
+    pub(crate) const fn owner(self) -> RegistryOwner {
+        match self {
+            Self::BuiltIn(_) => RegistryOwner::BuiltIn,
+            Self::Custom(_) => RegistryOwner::Custom,
+        }
+    }
 }
 
 /// Registry for semantic JSON parsers keyed by Mermaid diagram type id.
 #[derive(Debug, Clone)]
 pub struct DiagramRegistry {
-    builtins: Arc<HashMap<&'static str, DiagramSemanticParser>>,
+    builtins: Arc<HashMap<&'static str, BuiltInDiagramSemanticParser>>,
     overlays: Arc<HashMap<&'static str, DiagramSemanticParser>>,
 }
 
@@ -98,32 +123,22 @@ impl DiagramRegistry {
     }
 
     /// Registers or replaces the parser for a Mermaid diagram type id.
+    ///
+    /// The parser participates in the owning operation's cancellation lifecycle. It must preserve
+    /// the outer-cancellation/inner-parse-error distinction documented by
+    /// [`DiagramSemanticParser`].
     pub fn insert(&mut self, diagram_type: &'static str, parser: DiagramSemanticParser) {
         Arc::make_mut(&mut self.overlays).insert(diagram_type, parser);
     }
 
-    /// Looks up a parser by Mermaid diagram type id inside the canonical parse pipeline.
-    pub(crate) fn get(&self, diagram_type: &str) -> Option<DiagramSemanticParser> {
-        self.resolve(diagram_type).map(|resolved| resolved.parser)
-    }
-
-    pub(crate) fn resolve(
-        &self,
-        diagram_type: &str,
-    ) -> Option<ResolvedParser<DiagramSemanticParser>> {
+    pub(crate) fn resolve(&self, diagram_type: &str) -> Option<ResolvedSemanticParser> {
         if let Some(parser) = self.overlays.get(diagram_type).copied() {
-            return Some(ResolvedParser {
-                parser,
-                owner: RegistryOwner::Custom,
-            });
+            return Some(ResolvedSemanticParser::Custom(parser));
         }
         self.builtins
             .get(diagram_type)
             .copied()
-            .map(|parser| ResolvedParser {
-                parser,
-                owner: RegistryOwner::BuiltIn,
-            })
+            .map(ResolvedSemanticParser::BuiltIn)
     }
 
     /// Builds the semantic parser registry for the repository's pinned Mermaid baseline.
@@ -789,12 +804,18 @@ pub(crate) fn parse_or_unsupported(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let Some(parser) = registry.get(diagram_type) else {
+    let Some(parser) = registry.resolve(diagram_type) else {
         return Err(Error::UnsupportedDiagram {
             diagram_type: diagram_type.to_string(),
         });
     };
-    parser(code, meta)
+    match parser {
+        ResolvedSemanticParser::BuiltIn(parser) => parser(code, meta),
+        ResolvedSemanticParser::Custom(parser) => {
+            let control = ParseControl::new();
+            parser(code, meta, &control).map_err(Error::from)?
+        }
+    }
 }
 
 #[cfg(test)]
@@ -802,8 +823,13 @@ mod registry_clone_tests {
     use super::*;
     use std::sync::Arc;
 
-    fn custom_semantic_parser(_code: &str, _meta: &ParseMetadata) -> Result<Value> {
-        Ok(Value::Null)
+    fn custom_semantic_parser(
+        _code: &str,
+        _meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<Value>> {
+        control.checkpoint()?;
+        Ok(Ok(Value::Null))
     }
 
     fn custom_render_parser(_code: &str, _meta: &ParseMetadata) -> Result<CustomJsonRenderModel> {
@@ -811,6 +837,16 @@ mod registry_clone_tests {
             "copy-on-write-render-test",
             Value::Null,
         ))
+    }
+
+    fn cancelling_semantic_parser(
+        _code: &str,
+        _meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<Value>> {
+        control.cancel();
+        control.checkpoint()?;
+        unreachable!("cancelled parser must stop at its checkpoint")
     }
 
     #[test]
@@ -825,8 +861,44 @@ mod registry_clone_tests {
 
         assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
         assert!(!Arc::ptr_eq(&original.overlays, &cloned.overlays));
-        assert!(original.get("copy-on-write-semantic-test").is_none());
-        assert!(cloned.get("copy-on-write-semantic-test").is_some());
+        assert!(original.resolve("copy-on-write-semantic-test").is_none());
+        assert!(matches!(
+            cloned.resolve("copy-on-write-semantic-test"),
+            Some(ResolvedSemanticParser::Custom(_))
+        ));
+    }
+
+    #[test]
+    fn custom_semantic_parsers_share_the_operation_parse_control() {
+        let mut engine = crate::Engine::new();
+        engine
+            .diagram_registry_mut()
+            .insert("flowchart-v2", cancelling_semantic_parser);
+        let control = ParseControl::new();
+
+        assert!(matches!(
+            engine.parse_diagram_snapshot_controlled_sync("flowchart TD\nA-->B\n", &control),
+            Err(crate::ParseCancelled)
+        ));
+        assert!(control.is_cancelled());
+    }
+
+    #[test]
+    fn custom_parser_cancellation_is_typed_for_non_cancellable_snapshot_apis() {
+        let mut engine = crate::Engine::new();
+        engine
+            .diagram_registry_mut()
+            .insert("flowchart-v2", cancelling_semantic_parser);
+        let source = "flowchart TD\nA-->B\n";
+
+        assert!(matches!(
+            engine.parse_diagram_snapshot_sync(source),
+            Err(Error::ParseCancelled(_))
+        ));
+        assert!(matches!(
+            engine.parse_diagram_snapshot_with_type_sync("flowchart-v2", source),
+            Err(Error::ParseCancelled(_))
+        ));
     }
 
     #[test]

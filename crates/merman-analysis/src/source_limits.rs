@@ -41,6 +41,14 @@ pub fn source_limit_diagnostic_span(source: &str) -> crate::DiagnosticSpan {
     crate::source_map::whole_text_span_without_source_copy(source)
 }
 
+/// Captures whole-source rejection coordinates with cooperative cancellation.
+pub fn source_limit_diagnostic_span_cancellable(
+    source: &str,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<crate::DiagnosticSpan, crate::AnalysisCancelled> {
+    crate::source_map::whole_text_span_without_source_copy_cancellable(source, cancellation)
+}
+
 pub fn source_limit_diagnostic_for_len(source_len: usize, limit: usize) -> AnalysisDiagnostic {
     source_limit_diagnostic_for_len_and_span(source_len, limit, zero_length_diagnostic_span())
 }

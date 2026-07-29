@@ -310,8 +310,10 @@ fn text_index_projects_core_editor_facts() {
     ));
 
     let index = FenceTextIndex::from_core_facts(facts);
+    let cloned = index.clone();
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(index.shares_storage_with(&cloned));
     assert!(index.node_ids().any(|id| id == "A"));
     assert_eq!(index.first_reference_span("A").unwrap().start, 13);
     assert_eq!(

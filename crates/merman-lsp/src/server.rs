@@ -6,9 +6,9 @@ use crate::completion::{
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics_with_profile;
 use crate::document_store::{
     AnalyzerConfigurationChange, AnalyzerOptionsPreparation, DiagnosticContext,
-    DocumentDiagnosticState, DocumentStore, DocumentSyncError, PreparedDocumentText,
-    SemanticTokensState, StoredDocument, analysis_options_with_lsp_resource_defaults,
-    default_lsp_analysis_options,
+    DiagnosticReprojectionPlan, DocumentDiagnosticState, DocumentStore, DocumentSyncError,
+    PreparedDocumentText, SemanticTokensState, StoredDocument, TextChangePreparation,
+    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, DiagnosticVersionData, RULE_CATALOG_METHOD,
@@ -21,6 +21,9 @@ use crate::semantic_tokens::{
     semantic_tokens_for_snapshot_with_profile, semantic_tokens_options_with_profile,
     semantic_tokens_result_id,
 };
+use crate::session::{
+    ClientEffectDispatcher, ClientEffectKey, MermanLspService, commit_active_mutation,
+};
 use crate::snapshot::{DocumentSnapshot, SnapshotContext};
 use crate::snapshot_context::{self, SnapshotContextKind};
 use crate::structure::{
@@ -32,8 +35,9 @@ use crate::structure::{
     selection_ranges as structure_selection_ranges,
 };
 use merman_analysis::{
-    AnalysisOptions, AnalysisPayload, SourceKind, options_json::analysis_options_from_json_value,
-    source_descriptor_for_kind, source_discarded_after_limit_change_diagnostic_with_span,
+    AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, SourceKind,
+    options_json::analysis_options_from_json_value, source_descriptor_for_kind,
+    source_discarded_after_limit_change_diagnostic_with_span,
     source_limit_diagnostic_for_len_and_span,
 };
 #[cfg(test)]
@@ -66,34 +70,52 @@ use tower_lsp_server::{Client, LanguageServer, LspService};
 
 const MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS: usize = 3;
 
+struct AnalyzerReplacement {
+    change: AnalyzerConfigurationChange,
+    reprojection: Option<DiagnosticReprojectionPlan>,
+}
+
+#[derive(Clone)]
+struct DiagnosticPublisher {
+    client: Client,
+    store: Arc<Mutex<DocumentStore>>,
+    profile: ClientProtocolProfile,
+}
+
 #[derive(Debug)]
 pub struct MermanLanguageServer {
     client: Client,
     store: Arc<Mutex<DocumentStore>>,
-    /// Preserves notification order across async text and analyzer-state preparation.
-    document_sync_lane: Mutex<()>,
     client_profile: OnceLock<ClientProtocolProfile>,
     refresh_coordinator: RefreshCoordinator,
+    session_cancellation: AnalysisCancellationToken,
+    analysis_executor: crate::analysis_executor::AnalysisExecutor,
+    client_effects: ClientEffectDispatcher,
 }
 
 impl MermanLanguageServer {
     fn new(client: Client, refresh_client: RefreshClient) -> Self {
+        let session_cancellation = AnalysisCancellationToken::new();
+        let store = DocumentStore::with_session_cancellation(session_cancellation.clone());
+        let analysis_executor = store.analysis_executor();
         Self {
             client,
-            store: Arc::new(Mutex::new(DocumentStore::new())),
-            document_sync_lane: Mutex::new(()),
+            store: Arc::new(Mutex::new(store)),
             client_profile: OnceLock::new(),
             refresh_coordinator: RefreshCoordinator::new(refresh_client),
+            session_cancellation,
+            analysis_executor,
+            client_effects: ClientEffectDispatcher::new(),
         }
     }
 
     /// Builds the service with a cancellation-safe, supervised client socket.
-    pub fn service() -> (LspService<Self>, MermanClientSocket) {
+    pub fn service() -> (MermanLspService, MermanClientSocket) {
         let (service, socket, _) = Self::service_components();
         (service, socket)
     }
 
-    fn service_components() -> (LspService<Self>, MermanClientSocket, RefreshClient) {
+    fn service_components() -> (MermanLspService, MermanClientSocket, RefreshClient) {
         let (refresh_client, refresh_requests, refresh_responses) = RefreshClient::channel();
         let refresh_handle = refresh_client.clone();
         let (service, socket) = LspService::build(move |client| Self::new(client, refresh_client))
@@ -101,7 +123,7 @@ impl MermanLanguageServer {
             .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
             .finish();
         (
-            service,
+            MermanLspService::new(service),
             MermanClientSocket::new(socket, refresh_requests, refresh_responses),
             refresh_handle,
         )
@@ -109,7 +131,7 @@ impl MermanLanguageServer {
 
     #[cfg(test)]
     pub(crate) fn service_with_refresh_client()
-    -> (LspService<Self>, MermanClientSocket, RefreshClient) {
+    -> (MermanLspService, MermanClientSocket, RefreshClient) {
         Self::service_components()
     }
 
@@ -341,34 +363,9 @@ impl MermanLanguageServer {
         &self,
         context: &DiagnosticContext,
     ) -> Result<Option<Vec<tower_lsp_server::ls_types::Diagnostic>>> {
-        let profile = self.client_profile();
-        let (diagnostics, analysis_context) =
-            match Self::unavailable_document_diagnostics_with_profile(&context.document, profile) {
-                Some(diagnostics) => (diagnostics, None),
-                None => {
-                    let analysis_context = snapshot_context::snapshot_context_for_uri(
-                        &self.store,
-                        &context.document.uri,
-                        SnapshotContextKind::Diagnostics,
-                    )
-                    .await?;
-                    let Some(analysis_context) = analysis_context else {
-                        return Ok(None);
-                    };
-                    let diagnostics = Self::analysis_payload_diagnostics_with_profile(
-                        &context.document,
-                        analysis_context.analysis_payload(),
-                        profile,
-                    );
-                    (diagnostics, Some(analysis_context))
-                }
-            };
-        let store = self.store.lock().await;
-        Ok((store.is_diagnostic_context_current(context)
-            && analysis_context
-                .as_ref()
-                .is_none_or(|context| store.is_analysis_context_current(context)))
-        .then_some(diagnostics))
+        self.diagnostic_publisher()
+            .diagnostics_for_current_context(context)
+            .await
     }
 
     async fn diagnostics_or_recompute_latest(
@@ -408,48 +405,41 @@ impl MermanLanguageServer {
         }
     }
 
-    async fn publish_for_uri(&self, uri: &tower_lsp_server::ls_types::Uri) {
-        if self.client_profile().diagnostic_pull {
-            return;
+    fn diagnostic_publisher(&self) -> DiagnosticPublisher {
+        DiagnosticPublisher {
+            client: self.client.clone(),
+            store: Arc::clone(&self.store),
+            profile: self.client_profile().clone(),
         }
-
-        let context = {
-            let store = self.store.lock().await;
-            store.diagnostic_context(uri)
-        };
-
-        let Some(context) = context else {
-            return;
-        };
-
-        self.publish_current_diagnostics(&context).await;
     }
 
-    async fn publish_current_diagnostics(&self, context: &DiagnosticContext) {
-        match self.diagnostics_for_current_context(context).await {
-            Ok(Some(diagnostics)) => {
-                let profile = self.client_profile();
-                self.client
-                    .publish_diagnostics(
-                        context.document.uri.clone(),
-                        diagnostics,
-                        profile
-                            .diagnostics
-                            .version
-                            .then_some(context.document.version),
-                    )
-                    .await;
-            }
-            Ok(None) => {}
-            Err(error) => {
-                tracing::error!(
-                    uri = %context.document.uri.as_str(),
-                    code = ?error.code,
-                    message = %error.message,
-                    "failed to compute push diagnostics"
-                );
-            }
-        }
+    async fn enqueue_publish_for_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
+        let publisher = self.diagnostic_publisher();
+        let key = ClientEffectKey::Document(uri.as_str().to_owned());
+        self.client_effects
+            .enqueue_latest(key, async move {
+                publisher.publish_for_uri(uri).await;
+            })
+            .await;
+    }
+
+    async fn enqueue_clear_diagnostics(&self, uri: tower_lsp_server::ls_types::Uri) {
+        let publisher = self.diagnostic_publisher();
+        let key = ClientEffectKey::Document(uri.as_str().to_owned());
+        self.client_effects
+            .enqueue_latest(key, async move {
+                publisher.clear(uri).await;
+            })
+            .await;
+    }
+
+    async fn enqueue_republish_all(&self) {
+        let publisher = self.diagnostic_publisher();
+        self.client_effects
+            .enqueue_latest(ClientEffectKey::AllDiagnostics, async move {
+                publisher.publish_all().await;
+            })
+            .await;
     }
 
     async fn record_semantic_tokens_state(
@@ -470,6 +460,11 @@ impl MermanLanguageServer {
     }
 
     async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
+        let replacement = self.prepare_analyzer_replacement(options).await;
+        self.finish_analyzer_replacement(replacement).await
+    }
+
+    async fn prepare_analyzer_replacement(&self, options: AnalysisOptions) -> AnalyzerReplacement {
         let request = self
             .store
             .lock()
@@ -482,26 +477,59 @@ impl MermanLanguageServer {
                 .await
                 .prepare_analyzer_options(request, options.clone());
             let Some(preparation) = preparation else {
-                return AnalyzerConfigurationChange::Unchanged;
+                return AnalyzerReplacement {
+                    change: AnalyzerConfigurationChange::Unchanged,
+                    reprojection: None,
+                };
             };
             match preparation {
                 AnalyzerOptionsPreparation::Applied(change, reprojection) => {
                     break (change, reprojection);
                 }
                 AnalyzerOptionsPreparation::RequiresSourceLimitProjection(plan) => {
-                    let batch = tokio::task::spawn_blocking(move || plan.project())
-                        .await
-                        .expect("source-limit projection worker must not panic");
+                    let batch = match tokio::task::spawn_blocking(move || plan.project()).await {
+                        Ok(Ok(batch)) => batch,
+                        Ok(Err(_cancelled)) => {
+                            return AnalyzerReplacement {
+                                change: AnalyzerConfigurationChange::Unchanged,
+                                reprojection: None,
+                            };
+                        }
+                        Err(error) => {
+                            tracing::error!(%error, "source-limit projection worker failed");
+                            return AnalyzerReplacement {
+                                change: AnalyzerConfigurationChange::Unchanged,
+                                reprojection: None,
+                            };
+                        }
+                    };
                     let mut store = self.store.lock().await;
                     if let Some(applied) = store.commit_source_limit_reclassification(batch) {
                         break applied;
                     }
                     if !store.is_analyzer_configuration_request_current(request) {
-                        return AnalyzerConfigurationChange::Unchanged;
+                        return AnalyzerReplacement {
+                            change: AnalyzerConfigurationChange::Unchanged,
+                            reprojection: None,
+                        };
                     }
                 }
             }
         };
+        AnalyzerReplacement {
+            change,
+            reprojection,
+        }
+    }
+
+    async fn finish_analyzer_replacement(
+        &self,
+        replacement: AnalyzerReplacement,
+    ) -> AnalyzerConfigurationChange {
+        let AnalyzerReplacement {
+            change,
+            reprojection,
+        } = replacement;
         let Some(reprojection) = reprojection else {
             return change;
         };
@@ -542,20 +570,104 @@ impl MermanLanguageServer {
             }
         }
     }
+}
 
-    async fn republish_all(&self) {
-        if self.client_profile().diagnostic_pull {
+impl DiagnosticPublisher {
+    async fn diagnostics_for_current_context(
+        &self,
+        context: &DiagnosticContext,
+    ) -> Result<Option<Vec<tower_lsp_server::ls_types::Diagnostic>>> {
+        let (diagnostics, analysis_context) =
+            match MermanLanguageServer::unavailable_document_diagnostics_with_profile(
+                &context.document,
+                &self.profile,
+            ) {
+                Some(diagnostics) => (diagnostics, None),
+                None => {
+                    let analysis_context = snapshot_context::snapshot_context_for_uri(
+                        &self.store,
+                        &context.document.uri,
+                        SnapshotContextKind::Diagnostics,
+                    )
+                    .await?;
+                    let Some(analysis_context) = analysis_context else {
+                        return Ok(None);
+                    };
+                    let diagnostics =
+                        MermanLanguageServer::analysis_payload_diagnostics_with_profile(
+                            &context.document,
+                            analysis_context.analysis_payload(),
+                            &self.profile,
+                        );
+                    (diagnostics, Some(analysis_context))
+                }
+            };
+        let store = self.store.lock().await;
+        Ok((store.is_diagnostic_context_current(context)
+            && analysis_context
+                .as_ref()
+                .is_none_or(|context| store.is_analysis_context_current(context)))
+        .then_some(diagnostics))
+    }
+
+    async fn publish_for_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
+        if self.profile.diagnostic_pull {
             return;
         }
-
-        let contexts = {
-            let store = self.store.lock().await;
-            store.diagnostic_contexts()
-        };
-
-        for context in contexts {
-            self.publish_current_diagnostics(&context).await;
+        let context = self.store.lock().await.diagnostic_context(&uri);
+        if let Some(context) = context {
+            self.publish_current(&context).await;
         }
+    }
+
+    async fn publish_all(&self) {
+        if self.profile.diagnostic_pull {
+            return;
+        }
+        let contexts = self.store.lock().await.diagnostic_contexts();
+        for context in contexts {
+            self.publish_current(&context).await;
+        }
+    }
+
+    async fn publish_current(&self, context: &DiagnosticContext) {
+        match self.diagnostics_for_current_context(context).await {
+            Ok(Some(diagnostics)) => {
+                self.client
+                    .publish_diagnostics(
+                        context.document.uri.clone(),
+                        diagnostics,
+                        self.profile
+                            .diagnostics
+                            .version
+                            .then_some(context.document.version),
+                    )
+                    .await;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::error!(
+                    uri = %context.document.uri.as_str(),
+                    code = ?error.code,
+                    message = %error.message,
+                    "failed to compute push diagnostics"
+                );
+            }
+        }
+    }
+
+    async fn clear(&self, uri: tower_lsp_server::ls_types::Uri) {
+        if !self.profile.diagnostic_pull {
+            self.client.publish_diagnostics(uri, Vec::new(), None).await;
+        }
+    }
+}
+
+impl Drop for MermanLanguageServer {
+    fn drop(&mut self) {
+        self.session_cancellation.cancel();
+        self.analysis_executor.invalidate_all();
+        self.client_effects.cancel();
     }
 }
 
@@ -585,17 +697,18 @@ impl LanguageServer for MermanLanguageServer {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let sync_guard = self.document_sync_lane.lock().await;
         let doc = params.text_document;
         let kind = document_kind_for_language_id(&doc.language_id, &doc.uri);
         let uri = doc.uri;
         let version = doc.version;
+        let cancellation = self.session_cancellation.child();
         let prepared = match tokio::task::spawn_blocking(move || {
-            PreparedDocumentText::new(doc.text)
+            PreparedDocumentText::new_cancellable(doc.text, &cancellation)
         })
         .await
         {
-            Ok(prepared) => prepared,
+            Ok(Ok(prepared)) => prepared,
+            Ok(Err(_cancelled)) => return,
             Err(error) => {
                 tracing::error!(%error, uri = %uri.as_str(), "source-limit projection worker failed");
                 return;
@@ -605,39 +718,56 @@ impl LanguageServer for MermanLanguageServer {
             .lock()
             .await
             .open_prepared_text(uri.clone(), version, prepared, kind);
-        drop(sync_guard);
-        self.publish_for_uri(&uri).await;
+        self.enqueue_publish_for_uri(uri).await;
+        commit_active_mutation();
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let doc = params.text_document;
-        let update = {
-            let _sync_guard = self.document_sync_lane.lock().await;
-            self.store.lock().await.apply_text_changes(
-                doc.uri.clone(),
-                doc.version,
-                params.content_changes,
-            )
+        let preparation = self.store.lock().await.capture_text_changes(
+            doc.uri.clone(),
+            doc.version,
+            params.content_changes,
+        );
+        let update = match preparation {
+            TextChangePreparation::Immediate(update) => update,
+            TextChangePreparation::Prepare(plan) => {
+                let prepared = match tokio::task::spawn_blocking(move || plan.prepare()).await {
+                    Ok(Ok(prepared)) => prepared,
+                    Ok(Err(_cancelled)) => return,
+                    Err(error) => {
+                        tracing::error!(
+                            %error,
+                            uri = %doc.uri.as_str(),
+                            "document change projection worker failed"
+                        );
+                        commit_active_mutation();
+                        return;
+                    }
+                };
+                self.store
+                    .lock()
+                    .await
+                    .commit_prepared_text_changes(prepared)
+            }
         };
         if update.affects_document_state() {
-            self.publish_for_uri(&doc.uri).await;
+            self.enqueue_publish_for_uri(doc.uri).await;
         }
+        commit_active_mutation();
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
-        self.publish_for_uri(&uri).await;
+        self.enqueue_publish_for_uri(uri).await;
+        commit_active_mutation();
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
-        {
-            let _sync_guard = self.document_sync_lane.lock().await;
-            self.store.lock().await.remove(&uri);
-        }
-        if !self.client_profile().diagnostic_pull {
-            self.client.publish_diagnostics(uri, Vec::new(), None).await;
-        }
+        self.store.lock().await.remove(&uri);
+        self.enqueue_clear_diagnostics(uri).await;
+        commit_active_mutation();
     }
 
     async fn did_change_configuration(
@@ -661,12 +791,11 @@ impl LanguageServer for MermanLanguageServer {
             }
         };
 
-        let change = {
-            let _sync_guard = self.document_sync_lane.lock().await;
-            self.replace_analyzer(options).await
-        };
+        let replacement = self.prepare_analyzer_replacement(options).await;
+        commit_active_mutation();
+        let change = self.finish_analyzer_replacement(replacement).await;
         if change.affects_diagnostics() {
-            self.republish_all().await;
+            self.enqueue_republish_all().await;
         }
         let profile = self.client_profile();
         self.refresh_coordinator.request(

@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct AnalysisResult {
-    payload: AnalysisPayload,
+    payload: Arc<AnalysisPayload>,
     source_map: SourceMap,
     diagrams: Vec<AnalyzedDiagram>,
     document_error: Option<Arc<merman_core::Error>>,
@@ -120,7 +120,7 @@ impl AnalysisResult {
         diagrams: Vec<AnalyzedDiagram>,
     ) -> Self {
         Self {
-            payload: AnalysisPayload::new(source, diagnostics),
+            payload: Arc::new(AnalysisPayload::new(source, diagnostics)),
             source_map,
             diagrams,
             document_error: None,
@@ -137,11 +137,20 @@ impl AnalysisResult {
     }
 
     pub fn payload(&self) -> &AnalysisPayload {
-        &self.payload
+        self.payload.as_ref()
     }
 
     pub fn into_payload(self) -> AnalysisPayload {
-        self.payload
+        Arc::unwrap_or_clone(self.payload)
+    }
+
+    /// Returns shared ownership of this generation's immutable diagnostics payload.
+    ///
+    /// The returned [`Arc`] points to the same allocation exposed by [`Self::payload`].
+    /// [`Self::into_payload`] unwraps that allocation when uniquely owned and clones only when
+    /// another owner remains.
+    pub fn shared_payload(&self) -> Arc<AnalysisPayload> {
+        Arc::clone(&self.payload)
     }
 
     pub fn source_map(&self) -> &SourceMap {

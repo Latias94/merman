@@ -16,23 +16,38 @@ static REPROJECTION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 fn counting_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-) -> merman_core::Result<serde_json::Value> {
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
     REPROJECTION_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
-    Ok(json!({ "warningFacts": [] }))
+    Ok(Ok(json!({ "warningFacts": [] })))
 }
 
 fn panicking_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-) -> merman_core::Result<serde_json::Value> {
+    _control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
     panic!("fixture parser panic")
 }
 
 fn malformed_flowchart_parser(
     _source: &str,
     _metadata: &ParseMetadata,
-) -> merman_core::Result<serde_json::Value> {
-    Ok(malformed_flowchart_parsed_diagram().model)
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    Ok(Ok(malformed_flowchart_parsed_diagram().model))
+}
+
+fn cancelling_flowchart_parser(
+    _source: &str,
+    _metadata: &ParseMetadata,
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.cancel();
+    control.checkpoint()?;
+    unreachable!("cancelled parser must stop at its checkpoint")
 }
 
 #[test]
@@ -46,7 +61,29 @@ fn custom_engine_uses_the_runtime_policy_owned_by_analysis_options() {
 
     let analyzer = Analyzer::with_engine(engine, options.clone());
 
-    assert_eq!(analyzer.engine.runtime_policy(), &options.runtime_policy);
+    assert_eq!(analyzer.engine.runtime_policy(), options.runtime_policy());
+}
+
+#[test]
+fn custom_engine_uses_the_exact_site_config_owned_by_analysis_options() {
+    let source = "erDiagram\nA ||--o{ B : owns\n";
+    let stale_engine = merman_core::Engine::new().with_site_config(MermaidConfig::from_value(
+        json!({ "layout": "elk", "theme": "dark" }),
+    ));
+
+    for options in [
+        AnalysisOptions::default(),
+        AnalysisOptions::default()
+            .with_site_config(MermaidConfig::from_value(json!({ "theme": "forest" }))),
+    ] {
+        let expected = Analyzer::with_options(options.clone()).analyze_facts(source);
+        let actual = Analyzer::with_engine(stale_engine.clone(), options).analyze_facts(source);
+        assert_eq!(actual, expected);
+        assert_eq!(
+            actual.diagrams[0].syntax.effective_layout.as_deref(),
+            Some("dagre")
+        );
+    }
 }
 
 #[test]
@@ -527,6 +564,32 @@ fn public_analysis_entries_share_flowchart_projection_diagnostics() {
 
     assert_eq!(diagnostics_only, rich.payload().clone());
     assert_eq!(analyzer.reproject_payload(&rich), diagnostics_only);
+}
+
+#[test]
+fn non_cancellable_analysis_reports_custom_parser_cancellation_without_panicking() {
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", cancelling_flowchart_parser);
+    let analyzer = Analyzer::with_engine(engine, AnalysisOptions::default());
+    let source = "flowchart TD\nA-->B\n";
+
+    let diagnostics = analyzer.analyze(source);
+    let result = analyzer
+        .analyze_result(source)
+        .into_ready()
+        .expect("parser cancellation is an analysis failure, not a source rejection");
+    let facts = analyzer.analyze_facts(source);
+
+    assert!(!diagnostics.valid);
+    assert_eq!(diagnostics.diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics.diagnostics[0].id,
+        crate::rules::DIAGRAM_PARSE_RULE_ID
+    );
+    assert_eq!(result.payload(), &diagnostics);
+    assert_eq!(facts.diagnostics, diagnostics.diagnostics);
 }
 
 #[test]

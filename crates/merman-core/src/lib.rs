@@ -253,6 +253,20 @@ impl Engine {
         self
     }
 
+    /// Replaces the complete site-config environment while preserving custom registries.
+    ///
+    /// `None` restores the pinned Mermaid defaults. An explicit config is merged onto those
+    /// defaults without inheriting values from the engine's previous site config.
+    pub fn with_exact_site_config(mut self, site_config: Option<MermaidConfig>) -> Self {
+        self.site_config = generated::default_site_config();
+        if let Some(mut site_config) = site_config {
+            config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
+            self.site_config.deep_merge(site_config.as_value());
+        }
+        self.default_effective_config = build_default_effective_config(&self.site_config);
+        self
+    }
+
     /// Returns the detector registry used for automatic diagram type detection.
     pub fn registry(&self) -> &DetectorRegistry {
         &self.registry
@@ -399,7 +413,7 @@ impl Engine {
     pub fn parse_diagram_snapshot_sync(&self, text: &str) -> Result<Option<DiagramParseSnapshot>> {
         let control = ParseControl::new();
         self.parse_diagram_snapshot_controlled_sync(text, &control)
-            .expect("a private parse control cannot be cancelled")
+            .map_err(Error::from)?
     }
 
     /// Captures an editor-facing parse operation with cooperative cancellation.

@@ -24,7 +24,6 @@ fixed-capabilities = ["analysis", "editor"]
 [features]
 default = []
 stdio = [
-    "dep:tower",
     "dep:tracing-subscriber",
     "tokio/io-std",
     "tokio/io-util",
@@ -52,7 +51,7 @@ merman-editor-core.workspace = true
 ropey.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tower = { version = "0.5.2", default-features = false, optional = true }
+tower = { version = "0.5.2", default-features = false }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, optional = true }
 

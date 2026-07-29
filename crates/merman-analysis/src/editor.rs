@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
@@ -306,20 +307,36 @@ impl FenceCursorContext {
 
 #[derive(Debug, Clone, Default)]
 pub struct FenceTextIndex {
-    node_ids: BTreeSet<String>,
-    class_names: BTreeSet<String>,
-    directive_prefixes: BTreeSet<String>,
-    references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
-    outline_items: Vec<FenceLineItem>,
-    semantic_items: Vec<FenceSemanticItem>,
-    lexemes: Vec<FenceLexeme>,
-    lexeme_failure: Option<FenceLexemeFailure>,
-    expected_syntax: Vec<FenceExpectedSyntax>,
-    completion_vocabulary: merman_core::EditorCompletionVocabulary,
-    source: FenceTextIndexSource,
+    data: Arc<FenceTextIndexData>,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct FenceTextIndexData {
+    pub(super) node_ids: BTreeSet<String>,
+    pub(super) class_names: BTreeSet<String>,
+    pub(super) directive_prefixes: BTreeSet<String>,
+    pub(super) references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
+    pub(super) outline_items: Vec<FenceLineItem>,
+    pub(super) semantic_items: Vec<FenceSemanticItem>,
+    pub(super) lexemes: Vec<FenceLexeme>,
+    pub(super) lexeme_failure: Option<FenceLexemeFailure>,
+    pub(super) expected_syntax: Vec<FenceExpectedSyntax>,
+    pub(super) completion_vocabulary: merman_core::EditorCompletionVocabulary,
+    pub(super) source: FenceTextIndexSource,
 }
 
 impl FenceTextIndex {
+    pub(super) fn from_data(data: FenceTextIndexData) -> Self {
+        Self {
+            data: Arc::new(data),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.data, &other.data)
+    }
+
     #[cfg(test)]
     pub(crate) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> Self {
         core_facts::from_core_facts(facts)
@@ -333,23 +350,24 @@ impl FenceTextIndex {
     }
 
     pub fn node_ids(&self) -> impl Iterator<Item = &String> {
-        self.node_ids.iter()
+        self.data.node_ids.iter()
     }
 
     pub fn class_names(&self) -> impl Iterator<Item = &String> {
-        self.class_names.iter()
+        self.data.class_names.iter()
     }
 
     pub fn directive_prefixes(&self) -> impl Iterator<Item = &String> {
-        self.directive_prefixes.iter()
+        self.data.directive_prefixes.iter()
     }
 
     pub fn has_directive_prefix(&self, prefix: &str) -> bool {
-        self.directive_prefixes.contains(prefix)
+        self.data.directive_prefixes.contains(prefix)
     }
 
     pub fn first_reference_span(&self, name: &str) -> Option<ByteSpan> {
-        self.references
+        self.data
+            .references
             .iter()
             .find(|(group, _)| group.name == name)
             .map(|(_, spans)| spans)
@@ -357,7 +375,8 @@ impl FenceTextIndex {
     }
 
     pub fn reference_spans(&self, name: &str) -> &[ByteSpan] {
-        self.references
+        self.data
+            .references
             .iter()
             .find(|(group, _)| group.name == name)
             .map(|(_, spans)| spans.as_slice())
@@ -373,23 +392,29 @@ impl FenceTextIndex {
     }
 
     pub fn first_reference_span_in_group(&self, group: &FenceReferenceGroup) -> Option<ByteSpan> {
-        self.references
+        self.data
+            .references
             .get(group)
             .and_then(|spans| spans.first().copied())
     }
 
     pub fn reference_spans_in_group(&self, group: &FenceReferenceGroup) -> &[ByteSpan] {
-        self.references.get(group).map(Vec::as_slice).unwrap_or(&[])
+        self.data
+            .references
+            .get(group)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     pub fn references(&self) -> impl Iterator<Item = (&FenceReferenceGroup, &[ByteSpan])> {
-        self.references
+        self.data
+            .references
             .iter()
             .map(|(group, spans)| (group, spans.as_slice()))
     }
 
     pub fn symbol_at_offset(&self, offset: usize) -> Option<(String, ByteSpan)> {
-        self.references.iter().find_map(|(group, spans)| {
+        self.data.references.iter().find_map(|(group, spans)| {
             spans
                 .iter()
                 .copied()
@@ -399,7 +424,8 @@ impl FenceTextIndex {
     }
 
     pub fn semantic_item_at_offset(&self, offset: usize) -> Option<&FenceSemanticItem> {
-        self.semantic_items
+        self.data
+            .semantic_items
             .iter()
             .filter(|item| item.span.contains(offset))
             .min_by(|left, right| {
@@ -426,31 +452,31 @@ impl FenceTextIndex {
     }
 
     pub fn outline_items(&self) -> &[FenceLineItem] {
-        &self.outline_items
+        &self.data.outline_items
     }
 
     pub fn semantic_items(&self) -> &[FenceSemanticItem] {
-        &self.semantic_items
+        &self.data.semantic_items
     }
 
     pub fn lexemes(&self) -> &[FenceLexeme] {
-        &self.lexemes
+        &self.data.lexemes
     }
 
     pub fn lexeme_failure(&self) -> Option<FenceLexemeFailure> {
-        self.lexeme_failure
+        self.data.lexeme_failure
     }
 
     pub fn expected_syntax(&self) -> &[FenceExpectedSyntax] {
-        &self.expected_syntax
+        &self.data.expected_syntax
     }
 
     pub fn completion_vocabulary(&self) -> merman_core::EditorCompletionVocabulary {
-        self.completion_vocabulary
+        self.data.completion_vocabulary
     }
 
     pub fn source(&self) -> FenceTextIndexSource {
-        self.source
+        self.data.source
     }
 
     pub fn cursor_context(&self, text: &str, cursor_offset: usize) -> FenceCursorContext {
@@ -472,7 +498,9 @@ impl FenceTextIndex {
                 completion_kinds.push(FenceCursorCompletionKind::DiagramHeader);
             }
 
-            if self.source.is_parser_backed() && offer_directive_items(&prefix, directive_prefix) {
+            if self.data.source.is_parser_backed()
+                && offer_directive_items(&prefix, directive_prefix)
+            {
                 completion_kinds.push(FenceCursorCompletionKind::Directive);
             }
         }
@@ -481,7 +509,7 @@ impl FenceTextIndex {
             prefix,
             prefix_start,
             cursor,
-            source: self.source,
+            source: self.data.source,
             source_start,
             directive_prefix,
             comment_or_directive_line,
@@ -492,7 +520,8 @@ impl FenceTextIndex {
     }
 
     fn expected_syntax_at_offset(&self, offset: usize) -> Option<&FenceExpectedSyntax> {
-        self.expected_syntax
+        self.data
+            .expected_syntax
             .iter()
             .filter(|expected| expected.span.contains_inclusive_end(offset))
             .min_by(|left, right| {

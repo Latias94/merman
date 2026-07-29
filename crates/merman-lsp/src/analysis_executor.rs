@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
-use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{Notify, Semaphore};
 use tower_lsp_server::ls_types::Uri;
 
 /// Maximum number of document analyses that may consume CPU concurrently.
@@ -33,7 +33,8 @@ impl fmt::Debug for AnalysisExecutor {
 
 struct AnalysisExecutorInner {
     cpu_permits: Arc<Semaphore>,
-    in_flight_permits: Arc<Semaphore>,
+    capacity_changed: Notify,
+    cancellation_parent: AnalysisCancellationToken,
     registry: Mutex<AnalysisRegistry>,
     #[cfg(test)]
     execution_count: AtomicUsize,
@@ -72,11 +73,11 @@ struct AnalysisJob {
 }
 
 impl AnalysisJob {
-    fn new() -> Self {
+    fn new(cancellation: AnalysisCancellationToken) -> Self {
         Self {
             result: Mutex::new(None),
             ready: Notify::new(),
-            cancellation: AnalysisCancellationToken::new(),
+            cancellation,
             cancellation_signal: Notify::new(),
             waiters: AtomicUsize::new(0),
         }
@@ -161,24 +162,29 @@ impl Drop for AnalysisWaiter {
             return;
         };
 
-        let should_cancel = {
+        let (should_cancel, released_capacity) = {
             let mut registry = lock_recovering_poison(&inner.registry);
             let previous = self.job.waiters.fetch_sub(1, Ordering::Relaxed);
             debug_assert!(previous > 0, "analysis waiter count underflow");
             if previous == 1 {
+                let mut removed = false;
                 if registry
                     .jobs
                     .get(&self.key)
                     .is_some_and(|registered| Arc::ptr_eq(registered, &self.job))
                 {
                     registry.jobs.remove(&self.key);
+                    removed = true;
                 }
-                !self.job.is_complete()
+                (!self.job.is_complete(), removed)
             } else {
-                false
+                (false, false)
             }
         };
 
+        if released_capacity {
+            inner.capacity_changed.notify_waiters();
+        }
         if should_cancel {
             self.job.cancel(AnalysisExecutionError::cancelled());
         }
@@ -250,11 +256,12 @@ impl fmt::Display for AnalysisExecutionError {
 impl std::error::Error for AnalysisExecutionError {}
 
 impl AnalysisExecutor {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(cancellation_parent: AnalysisCancellationToken) -> Self {
         Self {
             inner: Arc::new(AnalysisExecutorInner {
                 cpu_permits: Arc::new(Semaphore::new(LSP_ANALYSIS_CONCURRENCY)),
-                in_flight_permits: Arc::new(Semaphore::new(LSP_ANALYSIS_IN_FLIGHT_LIMIT)),
+                capacity_changed: Notify::new(),
+                cancellation_parent,
                 registry: Mutex::new(AnalysisRegistry::default()),
                 #[cfg(test)]
                 execution_count: AtomicUsize::new(0),
@@ -271,62 +278,42 @@ impl AnalysisExecutor {
         request: &AnalysisBuildRequest,
     ) -> Result<Arc<DocumentAnalysisContext>, AnalysisExecutionError> {
         let key = request.key();
-        let existing_waiter = {
-            let registry = lock_recovering_poison(&self.inner.registry);
-            if Some(request.analysis_generation()) != registry.current_generation_for(request.uri())
-            {
-                return Err(AnalysisExecutionError::stale());
+        loop {
+            let capacity_changed = self.inner.capacity_changed.notified();
+            let admission = {
+                let mut registry = lock_recovering_poison(&self.inner.registry);
+                if Some(request.analysis_generation())
+                    != registry.current_generation_for(request.uri())
+                {
+                    return Err(AnalysisExecutionError::stale());
+                }
+                if let Some(job) = registry.jobs.get(&key) {
+                    Some((
+                        AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(job)),
+                        None,
+                    ))
+                } else if registry.jobs.len() < LSP_ANALYSIS_IN_FLIGHT_LIMIT {
+                    let job = Arc::new(AnalysisJob::new(self.inner.cancellation_parent.child()));
+                    let waiter = AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(&job));
+                    registry.jobs.insert(key.clone(), Arc::clone(&job));
+                    Some((waiter, Some(job)))
+                } else {
+                    None
+                }
+            };
+
+            let Some((waiter, start)) = admission else {
+                capacity_changed.await;
+                continue;
+            };
+            if let Some(job) = start {
+                self.start(key.clone(), request.clone(), job);
             }
-            registry
-                .jobs
-                .get(&key)
-                .map(|job| AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(job)))
-        };
-        if let Some(waiter) = existing_waiter {
             return waiter.wait().await;
         }
-
-        let in_flight_permit = Arc::clone(&self.inner.in_flight_permits)
-            .acquire_owned()
-            .await
-            .map_err(|error| {
-                AnalysisExecutionError::new(format!(
-                    "document analysis in-flight budget closed: {error}"
-                ))
-            })?;
-
-        let (waiter, start) = {
-            let mut registry = lock_recovering_poison(&self.inner.registry);
-            if Some(request.analysis_generation()) != registry.current_generation_for(request.uri())
-            {
-                return Err(AnalysisExecutionError::stale());
-            }
-            if let Some(job) = registry.jobs.get(&key) {
-                (
-                    AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(job)),
-                    None,
-                )
-            } else {
-                let job = Arc::new(AnalysisJob::new());
-                let waiter = AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(&job));
-                registry.jobs.insert(key.clone(), Arc::clone(&job));
-                (waiter, Some((job, in_flight_permit)))
-            }
-        };
-
-        if let Some((job, in_flight_permit)) = start {
-            self.start(key, request.clone(), job, in_flight_permit);
-        }
-        waiter.wait().await
     }
 
-    fn start(
-        &self,
-        key: AnalysisBuildKey,
-        request: AnalysisBuildRequest,
-        job: Arc<AnalysisJob>,
-        in_flight_permit: OwnedSemaphorePermit,
-    ) {
+    fn start(&self, key: AnalysisBuildKey, request: AnalysisBuildRequest, job: Arc<AnalysisJob>) {
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {
             let result = tokio::select! {
@@ -369,7 +356,6 @@ impl AnalysisExecutor {
             if job.is_cancelled() || job.has_error() {
                 remove_job_if_registered(&inner, &key, &job);
             }
-            drop(in_flight_permit);
         });
     }
 
@@ -382,6 +368,8 @@ impl AnalysisExecutor {
         let mut registry = lock_recovering_poison(&self.inner.registry);
         if registry.jobs.get(&key).is_some_and(|job| job.is_complete()) {
             registry.jobs.remove(&key);
+            drop(registry);
+            self.inner.capacity_changed.notify_waiters();
         }
     }
 
@@ -407,6 +395,7 @@ impl AnalysisExecutor {
         for job in cancelled {
             job.cancel(AnalysisExecutionError::stale());
         }
+        self.inner.capacity_changed.notify_waiters();
     }
 
     pub(crate) fn invalidate_all(&self) {
@@ -422,6 +411,7 @@ impl AnalysisExecutor {
         for job in cancelled {
             job.cancel(AnalysisExecutionError::stale());
         }
+        self.inner.capacity_changed.notify_waiters();
     }
 
     #[cfg(test)]
@@ -442,6 +432,8 @@ fn remove_job_if_registered(
         .is_some_and(|registered| Arc::ptr_eq(registered, job))
     {
         registry.jobs.remove(key);
+        drop(registry);
+        inner.capacity_changed.notify_waiters();
     }
 }
 
@@ -467,19 +459,6 @@ mod tests {
         .expect("analysis job registry did not reach the expected size");
     }
 
-    async fn wait_for_available_in_flight_permits(executor: &AnalysisExecutor, expected: usize) {
-        tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                if executor.inner.in_flight_permits.available_permits() == expected {
-                    return;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("analysis in-flight permits were not restored");
-    }
-
     async fn wait_for_registered_job(executor: &AnalysisExecutor, key: &AnalysisBuildKey) {
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
@@ -494,6 +473,19 @@ mod tests {
         })
         .await
         .expect("analysis job was not registered");
+    }
+
+    async fn wait_for_available_cpu_permits(executor: &AnalysisExecutor, expected: usize) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if executor.inner.cpu_permits.available_permits() == expected {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("analysis CPU permits were not restored");
     }
 
     async fn wait_for_waiter_count(
@@ -604,6 +596,40 @@ mod tests {
         let analysis = second.await.unwrap().unwrap();
         assert_eq!(executor.execution_count(), 1);
         assert!(store.insert_built_analysis(&request, analysis).is_some());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn session_cancellation_stops_running_analysis() {
+        let cancellation = AnalysisCancellationToken::new();
+        let mut store = DocumentStore::with_session_cancellation(cancellation.clone());
+        let uri = Uri::from_str("file:///tmp/session-cancellation.mmd").unwrap();
+        store.upsert_text(
+            uri.clone(),
+            1,
+            "flowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        );
+        let gate = Arc::new(TestAnalysisGate::default());
+        let request = store
+            .snapshot_build_request(&uri)
+            .expect("expected analysis request")
+            .with_test_gate(Arc::clone(&gate));
+        let executor = store.analysis_executor();
+        let execution = tokio::spawn({
+            let executor = executor.clone();
+            async move { executor.execute(&request).await }
+        });
+        wait_for_gate_starts(&gate, 1).await;
+
+        cancellation.cancel();
+
+        let error = tokio::time::timeout(Duration::from_secs(1), execution)
+            .await
+            .expect("session cancellation did not stop running analysis")
+            .expect("analysis task should not panic")
+            .expect_err("session cancellation must reject analysis");
+        assert!(error.is_stale());
+        gate.release();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -782,7 +808,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn cancelled_queue_is_bounded_and_restores_all_in_flight_permits() {
+    async fn cancelled_queue_is_bounded_and_releases_capacity_for_the_next_job() {
         let mut store = DocumentStore::new();
         let executor = store.analysis_executor();
         let cpu_permits = executor
@@ -819,15 +845,24 @@ mod tests {
             })
             .collect::<Vec<_>>();
         wait_for_job_count(&executor, LSP_ANALYSIS_IN_FLIGHT_LIMIT).await;
-        assert_eq!(executor.inner.in_flight_permits.available_permits(), 0);
 
         let ninth_executor = executor.clone();
+        let duplicate_request = ninth_request.clone();
         let mut ninth = tokio::spawn(async move { ninth_executor.execute(&ninth_request).await });
+        let duplicate_executor = executor.clone();
+        let mut duplicate =
+            tokio::spawn(async move { duplicate_executor.execute(&duplicate_request).await });
         assert!(
             tokio::time::timeout(Duration::from_millis(25), &mut ninth)
                 .await
                 .is_err(),
             "the ninth request must wait instead of being rejected"
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(25), &mut duplicate)
+                .await
+                .is_err(),
+            "an identical ninth request must wait on the same bounded admission"
         );
         assert_eq!(
             lock_recovering_poison(&executor.inner.registry).jobs.len(),
@@ -839,6 +874,7 @@ mod tests {
         first.abort();
         let _ = first.await;
         wait_for_registered_job(&executor, &ninth_key).await;
+        wait_for_waiter_count(&executor, &ninth_key, 2).await;
         assert!(
             !ninth.is_finished(),
             "the ninth request should continue once queue capacity is released"
@@ -848,12 +884,13 @@ mod tests {
             execution.abort();
         }
         ninth.abort();
+        duplicate.abort();
         for execution in executions.drain(..) {
             let _ = execution.await;
         }
         let _ = ninth.await;
+        let _ = duplicate.await;
         wait_for_job_count(&executor, 0).await;
-        wait_for_available_in_flight_permits(&executor, LSP_ANALYSIS_IN_FLIGHT_LIMIT).await;
 
         assert_eq!(executor.execution_count(), 0);
         drop(cpu_permits);
@@ -922,7 +959,8 @@ mod tests {
             );
         }
         gate.release();
-        wait_for_available_in_flight_permits(&executor, LSP_ANALYSIS_IN_FLIGHT_LIMIT).await;
+        wait_for_job_count(&executor, 0).await;
+        wait_for_available_cpu_permits(&executor, LSP_ANALYSIS_CONCURRENCY).await;
         assert_eq!(
             executor.inner.cpu_permits.available_permits(),
             LSP_ANALYSIS_CONCURRENCY

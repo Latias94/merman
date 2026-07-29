@@ -12,6 +12,7 @@ mod refresh_coordinator;
 mod refresh_transport;
 mod semantic_tokens;
 mod server;
+mod session;
 mod snapshot;
 mod snapshot_context;
 mod structure;
@@ -26,6 +27,7 @@ pub use protocol::{
 };
 pub use refresh_transport::MermanClientSocket;
 pub use server::MermanLanguageServer;
+pub use session::MermanLspService;
 #[cfg(feature = "stdio")]
 pub use transport::{
     LSP_HANDLER_CONCURRENCY, StdioServer, StdioTermination, serve_stdio, stdio_server,

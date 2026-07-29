@@ -1839,8 +1839,13 @@ group child(cloud)[Child] in root\n";
             code.starts_with("architecture-beta")
         }
 
-        fn custom_architecture_parser(_code: &str, _meta: &ParseMetadata) -> Result<Value> {
-            Ok(json!({ "type": "custom-architecture" }))
+        fn custom_architecture_parser(
+            _code: &str,
+            _meta: &ParseMetadata,
+            control: &crate::ParseControl,
+        ) -> crate::ParseControlResult<Result<Value>> {
+            control.checkpoint()?;
+            Ok(Ok(json!({ "type": "custom-architecture" })))
         }
 
         let text = "architecture-beta\nservice api(server)[API]\n";

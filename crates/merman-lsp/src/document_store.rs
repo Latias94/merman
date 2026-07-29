@@ -8,9 +8,11 @@ use crate::snapshot::{
     DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotContext,
     SnapshotGeneration,
 };
+#[cfg(test)]
+use merman_analysis::source_limit_diagnostic_span;
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisOptions, Analyzer, DiagnosticSpan,
-    source_limit_diagnostic_span,
+    source_limit_diagnostic_span_cancellable,
 };
 use merman_editor_core::DocumentKind;
 use ropey::{Rope, RopeSlice};
@@ -27,18 +29,20 @@ pub(crate) fn default_lsp_analysis_options() -> AnalysisOptions {
 }
 
 pub(crate) fn analysis_options_with_lsp_resource_defaults(
-    mut options: AnalysisOptions,
+    options: AnalysisOptions,
 ) -> AnalysisOptions {
-    if options.max_source_bytes.is_none() {
-        options.max_source_bytes = Some(DEFAULT_LSP_MAX_SOURCE_BYTES);
+    if options.max_source_bytes().is_none() {
+        options.with_max_source_bytes(Some(DEFAULT_LSP_MAX_SOURCE_BYTES))
+    } else {
+        options
     }
-    options
 }
 
 #[derive(Debug)]
 pub struct DocumentStore {
     analyzer: Analyzer,
     analysis_executor: AnalysisExecutor,
+    session_cancellation: AnalysisCancellationToken,
     diagnostic_reprojection_cancellation: AnalysisCancellationToken,
     snapshot_generation: SnapshotGeneration,
     diagnostic_generation: DiagnosticGeneration,
@@ -87,6 +91,7 @@ pub(crate) struct DiagnosticReprojectionBatch {
 
 #[derive(Debug)]
 pub(crate) struct SourceLimitReclassificationPlan {
+    cancellation: AnalysisCancellationToken,
     request: AnalyzerConfigurationRequest,
     expected_options: AnalysisOptions,
     next_options: AnalysisOptions,
@@ -159,10 +164,178 @@ pub(crate) struct PreparedDocumentText {
 }
 
 impl PreparedDocumentText {
+    #[cfg(test)]
     pub(crate) fn new(text: String) -> Self {
         let span = source_limit_diagnostic_span(&text);
         Self { text, span }
     }
+
+    pub(crate) fn new_cancellable(
+        text: String,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<Self, AnalysisCancelled> {
+        let span = source_limit_diagnostic_span_cancellable(&text, cancellation)?;
+        Ok(Self { text, span })
+    }
+}
+
+impl TextChangePlan {
+    pub(crate) fn prepare(self) -> Result<PreparedTextChanges, AnalysisCancelled> {
+        let Self {
+            uri,
+            version,
+            kind,
+            expected_epoch,
+            expected_configuration,
+            current_text,
+            unavailable_source,
+            changes,
+            cancellation,
+        } = self;
+        cancellation.checkpoint()?;
+        let mutation = match (current_text.as_deref(), unavailable_source) {
+            (Some(current_text), None) => {
+                cancellation.checkpoint()?;
+                let mut text = Rope::from_str(current_text);
+                cancellation.checkpoint()?;
+                let changes = changes_from_last_full_replacement(changes);
+                match apply_text_content_changes(&mut text, changes, &cancellation)? {
+                    Ok(()) => {
+                        let text = text.to_string();
+                        PreparedTextMutation::Text(PreparedDocumentText::new_cancellable(
+                            text,
+                            &cancellation,
+                        )?)
+                    }
+                    Err(()) => invalid_range_mutation(),
+                }
+            }
+            (None, Some(unavailable_source)) => {
+                let Some(recovery_start) =
+                    changes.iter().rposition(|change| change.range.is_none())
+                else {
+                    return Ok(PreparedTextChanges {
+                        uri,
+                        version,
+                        kind,
+                        expected_epoch,
+                        expected_configuration,
+                        mutation: full_sync_mutation(unavailable_source),
+                    });
+                };
+                let mut changes = changes.into_iter().skip(recovery_start);
+                let replacement = changes
+                    .next()
+                    .expect("full-replacement position must name an existing change");
+                debug_assert!(replacement.range.is_none());
+                cancellation.checkpoint()?;
+                let mut text = Rope::from_str(&replacement.text);
+                cancellation.checkpoint()?;
+                match apply_text_content_changes(&mut text, changes, &cancellation)? {
+                    Ok(()) => {
+                        let text = text.to_string();
+                        PreparedTextMutation::Text(PreparedDocumentText::new_cancellable(
+                            text,
+                            &cancellation,
+                        )?)
+                    }
+                    Err(()) => invalid_range_mutation(),
+                }
+            }
+            _ => unreachable!("captured text availability must match its resource state"),
+        };
+        cancellation.checkpoint()?;
+        Ok(PreparedTextChanges {
+            uri,
+            version,
+            kind,
+            expected_epoch,
+            expected_configuration,
+            mutation,
+        })
+    }
+}
+
+fn apply_text_content_changes(
+    text: &mut Rope,
+    changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<Result<(), ()>, AnalysisCancelled> {
+    for change in changes {
+        cancellation.checkpoint()?;
+        if !apply_text_content_change(text, change) {
+            return Ok(Err(()));
+        }
+    }
+    cancellation.checkpoint()?;
+    Ok(Ok(()))
+}
+
+fn invalid_range_mutation() -> PreparedTextMutation {
+    PreparedTextMutation::SyncError {
+        error: DocumentSyncError::InvalidIncrementalRange,
+        update: TextDocumentUpdate::InvalidRange,
+    }
+}
+
+fn full_sync_mutation(unavailable_source: UnavailableSourceState) -> PreparedTextMutation {
+    let error = match unavailable_source {
+        UnavailableSourceState::ResourceLimited(resource_limit) => {
+            DocumentSyncError::FullReplacementRequired {
+                source_len: resource_limit.source_len,
+                last_max_source_bytes: resource_limit.max_source_bytes,
+            }
+        }
+        UnavailableSourceState::Discarded(discarded_source) => {
+            DocumentSyncError::FullReplacementRequired {
+                source_len: discarded_source.source_len,
+                last_max_source_bytes: discarded_source.previous_max_source_bytes,
+            }
+        }
+        UnavailableSourceState::SyncError(sync_error) => sync_error,
+    };
+    PreparedTextMutation::SyncError {
+        error,
+        update: TextDocumentUpdate::NeedsFullSync,
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum TextChangePreparation {
+    Immediate(TextDocumentUpdate),
+    Prepare(Box<TextChangePlan>),
+}
+
+#[derive(Debug)]
+pub(crate) struct TextChangePlan {
+    uri: Uri,
+    version: i32,
+    kind: DocumentKind,
+    expected_epoch: DocumentEpoch,
+    expected_configuration: AnalyzerConfigurationRequest,
+    current_text: Option<Arc<str>>,
+    unavailable_source: Option<UnavailableSourceState>,
+    changes: Vec<TextDocumentContentChangeEvent>,
+    cancellation: AnalysisCancellationToken,
+}
+
+#[derive(Debug)]
+pub(crate) struct PreparedTextChanges {
+    uri: Uri,
+    version: i32,
+    kind: DocumentKind,
+    expected_epoch: DocumentEpoch,
+    expected_configuration: AnalyzerConfigurationRequest,
+    mutation: PreparedTextMutation,
+}
+
+#[derive(Debug)]
+enum PreparedTextMutation {
+    Text(PreparedDocumentText),
+    SyncError {
+        error: DocumentSyncError,
+        update: TextDocumentUpdate,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -238,6 +411,7 @@ pub enum TextDocumentUpdate {
         current_version: i32,
         attempted_version: i32,
     },
+    Superseded,
 }
 
 impl TextDocumentUpdate {
@@ -311,35 +485,47 @@ fn project_diagnostics(
 }
 
 impl SourceLimitReclassificationPlan {
-    pub(crate) fn project(self) -> SourceLimitReclassificationBatch {
-        let documents = self
-            .documents
-            .into_iter()
-            .map(|document| SourceLimitDocumentProjection {
+    pub(crate) fn project(self) -> Result<SourceLimitReclassificationBatch, AnalysisCancelled> {
+        let mut documents = Vec::with_capacity(self.documents.len());
+        for document in self.documents {
+            self.cancellation.checkpoint()?;
+            let oversized_span = match document.oversized_source.as_deref() {
+                Some(source) => Some(source_limit_diagnostic_span_cancellable(
+                    source,
+                    &self.cancellation,
+                )?),
+                None => None,
+            };
+            documents.push(SourceLimitDocumentProjection {
                 uri: document.uri,
                 document_epoch: document.document_epoch,
-                oversized_span: document
-                    .oversized_source
-                    .as_deref()
-                    .map(source_limit_diagnostic_span),
-            })
-            .collect();
-        SourceLimitReclassificationBatch {
+                oversized_span,
+            });
+        }
+        self.cancellation.checkpoint()?;
+        Ok(SourceLimitReclassificationBatch {
             request: self.request,
             expected_options: self.expected_options,
             next_options: self.next_options,
             documents,
-        }
+        })
     }
 }
 
 impl DocumentStore {
     pub fn new() -> Self {
+        Self::with_session_cancellation(AnalysisCancellationToken::new())
+    }
+
+    pub(crate) fn with_session_cancellation(
+        session_cancellation: AnalysisCancellationToken,
+    ) -> Self {
         let analyzer = Analyzer::with_options(default_lsp_analysis_options());
         Self {
             analyzer,
-            analysis_executor: AnalysisExecutor::new(),
-            diagnostic_reprojection_cancellation: AnalysisCancellationToken::new(),
+            analysis_executor: AnalysisExecutor::new(session_cancellation.child()),
+            diagnostic_reprojection_cancellation: session_cancellation.child(),
+            session_cancellation,
             snapshot_generation: SnapshotGeneration::default(),
             diagnostic_generation: DiagnosticGeneration::default(),
             analyzer_configuration_request: AnalyzerConfigurationRequest::default(),
@@ -368,7 +554,8 @@ impl DocumentStore {
         if change.affects_snapshots() {
             let batch = self
                 .prepare_source_limit_reclassification_for(request, options)
-                .project();
+                .project()
+                .expect("a synchronous analyzer update cannot be cancelled");
             self.commit_source_limit_reclassification(batch)
                 .expect("a synchronous analyzer update cannot become stale")
         } else {
@@ -429,7 +616,7 @@ impl DocumentStore {
         request: AnalyzerConfigurationRequest,
         next_options: AnalysisOptions,
     ) -> SourceLimitReclassificationPlan {
-        let max_source_bytes = next_options.max_source_bytes;
+        let max_source_bytes = next_options.max_source_bytes();
         let documents = self
             .documents
             .iter()
@@ -449,6 +636,7 @@ impl DocumentStore {
             })
             .collect();
         SourceLimitReclassificationPlan {
+            cancellation: self.session_cancellation.child(),
             request,
             expected_options: self.analyzer.options().clone(),
             next_options,
@@ -507,7 +695,7 @@ impl DocumentStore {
         analyzer: Analyzer,
     ) -> Option<DiagnosticReprojectionPlan> {
         self.diagnostic_reprojection_cancellation.cancel();
-        self.diagnostic_reprojection_cancellation = AnalysisCancellationToken::new();
+        self.diagnostic_reprojection_cancellation = self.session_cancellation.child();
         self.analyzer = analyzer;
         self.advance_diagnostic_generation();
         self.analysis_executor.invalidate_all();
@@ -570,7 +758,7 @@ impl DocumentStore {
         oversized_spans: &HashMap<Uri, DiagnosticSpan>,
     ) {
         self.diagnostic_reprojection_cancellation.cancel();
-        self.diagnostic_reprojection_cancellation = AnalysisCancellationToken::new();
+        self.diagnostic_reprojection_cancellation = self.session_cancellation.child();
         self.analyzer = analyzer;
         self.reclassify_documents_for_current_limit(oversized_spans);
         self.advance_snapshot_generation();
@@ -610,6 +798,7 @@ impl DocumentStore {
             && self.is_document_epoch_current(&context.document.uri, context.document_epoch)
     }
 
+    #[cfg(test)]
     pub fn upsert_text(
         &mut self,
         uri: Uri,
@@ -640,7 +829,7 @@ impl DocumentStore {
         prepared: PreparedDocumentText,
         kind: DocumentKind,
     ) -> StoredDocument {
-        if let Some(max_source_bytes) = self.analyzer.options().max_source_bytes
+        if let Some(max_source_bytes) = self.analyzer.options().max_source_bytes()
             && prepared.text.len() > max_source_bytes
         {
             return self.upsert_resource_limited(
@@ -720,8 +909,9 @@ impl DocumentStore {
         document
     }
 
+    #[cfg(test)]
     fn resource_limit_for_source(&self, source: &str) -> Option<DocumentResourceLimit> {
-        let max_source_bytes = self.analyzer.options().max_source_bytes?;
+        let max_source_bytes = self.analyzer.options().max_source_bytes()?;
         (source.len() > max_source_bytes).then(|| DocumentResourceLimit {
             source_len: source.len(),
             max_source_bytes,
@@ -733,7 +923,7 @@ impl DocumentStore {
         &mut self,
         oversized_spans: &HashMap<Uri, DiagnosticSpan>,
     ) {
-        let current_limit = self.analyzer.options().max_source_bytes;
+        let current_limit = self.analyzer.options().max_source_bytes();
         for (uri, record) in &mut self.documents {
             if let Some((source_len, previous_max_source_bytes, span)) =
                 resource_state_source_len_and_previous_limit(&record.document)
@@ -788,122 +978,79 @@ impl DocumentStore {
         self.upsert_text(uri, version, text, kind)
     }
 
+    #[cfg(test)]
     pub fn apply_text_changes(
         &mut self,
         uri: Uri,
         version: i32,
         changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
     ) -> TextDocumentUpdate {
-        let Some(current) = self.get(&uri) else {
-            return TextDocumentUpdate::MissingDocument;
-        };
-        let current_version = current.version;
-        let kind = current.kind;
-        let unavailable_source = current.unavailable_source_state();
-        let current_text = current.text.clone();
-        let changes = changes.into_iter().collect::<Vec<_>>();
-
-        if version <= current_version {
-            return TextDocumentUpdate::StaleVersion {
-                current_version,
-                attempted_version: version,
-            };
+        match self.capture_text_changes(uri, version, changes) {
+            TextChangePreparation::Immediate(update) => update,
+            TextChangePreparation::Prepare(plan) => self.commit_prepared_text_changes(
+                plan.prepare()
+                    .expect("a private text-change token cannot be cancelled"),
+            ),
         }
-
-        if changes.is_empty() {
-            return TextDocumentUpdate::EmptyChangeSet;
-        }
-
-        if let Some(unavailable_source) = unavailable_source {
-            return self.apply_unavailable_source_text_changes(
-                uri,
-                version,
-                kind,
-                unavailable_source,
-                changes,
-            );
-        }
-
-        let changes = changes_from_last_full_replacement(changes);
-        let mut text = Rope::from_str(&current_text);
-        for change in changes {
-            if !apply_text_content_change(&mut text, change) {
-                self.upsert_sync_error(
-                    uri,
-                    version,
-                    kind,
-                    DocumentSyncError::InvalidIncrementalRange,
-                );
-                return TextDocumentUpdate::InvalidRange;
-            }
-        }
-
-        self.upsert_text(uri, version, text.to_string(), kind);
-        TextDocumentUpdate::Applied
     }
 
-    fn apply_unavailable_source_text_changes(
-        &mut self,
+    pub(crate) fn capture_text_changes(
+        &self,
         uri: Uri,
         version: i32,
-        kind: DocumentKind,
-        unavailable_source: UnavailableSourceState,
-        changes: Vec<TextDocumentContentChangeEvent>,
-    ) -> TextDocumentUpdate {
-        let Some(recovery_start) = changes.iter().rposition(|change| change.range.is_none()) else {
-            match unavailable_source {
-                UnavailableSourceState::ResourceLimited(resource_limit) => {
-                    self.upsert_sync_error(
-                        uri,
-                        version,
-                        kind,
-                        DocumentSyncError::FullReplacementRequired {
-                            source_len: resource_limit.source_len,
-                            last_max_source_bytes: resource_limit.max_source_bytes,
-                        },
-                    );
-                }
-                UnavailableSourceState::Discarded(discarded_source) => {
-                    self.upsert_sync_error(
-                        uri,
-                        version,
-                        kind,
-                        DocumentSyncError::FullReplacementRequired {
-                            source_len: discarded_source.source_len,
-                            last_max_source_bytes: discarded_source.previous_max_source_bytes,
-                        },
-                    );
-                }
-                UnavailableSourceState::SyncError(sync_error) => {
-                    self.upsert_sync_error(uri, version, kind, sync_error);
-                }
-            }
-            return TextDocumentUpdate::NeedsFullSync;
+        changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
+    ) -> TextChangePreparation {
+        let Some(record) = self.documents.get(&uri) else {
+            return TextChangePreparation::Immediate(TextDocumentUpdate::MissingDocument);
         };
-        let mut known_text = None::<Rope>;
-
-        for change in changes.into_iter().skip(recovery_start) {
-            match known_text.as_mut() {
-                Some(text) => {
-                    if !apply_text_content_change(text, change) {
-                        self.upsert_sync_error(
-                            uri,
-                            version,
-                            kind,
-                            DocumentSyncError::InvalidIncrementalRange,
-                        );
-                        return TextDocumentUpdate::InvalidRange;
-                    }
-                }
-                None => known_text = Some(Rope::from_str(&change.text)),
-            }
+        let current = &record.document;
+        if version <= current.version {
+            return TextChangePreparation::Immediate(TextDocumentUpdate::StaleVersion {
+                current_version: current.version,
+                attempted_version: version,
+            });
+        }
+        let changes = changes.into_iter().collect::<Vec<_>>();
+        if changes.is_empty() {
+            return TextChangePreparation::Immediate(TextDocumentUpdate::EmptyChangeSet);
         }
 
-        let Some(text) = known_text else {
-            return TextDocumentUpdate::EmptyChangeSet;
+        TextChangePreparation::Prepare(Box::new(TextChangePlan {
+            uri,
+            version,
+            kind: current.kind,
+            expected_epoch: record.epoch,
+            expected_configuration: self.analyzer_configuration_request,
+            current_text: (!current.has_unavailable_source()).then(|| Arc::clone(&current.text)),
+            unavailable_source: current.unavailable_source_state(),
+            changes,
+            cancellation: self.session_cancellation.child(),
+        }))
+    }
+
+    pub(crate) fn commit_prepared_text_changes(
+        &mut self,
+        prepared: PreparedTextChanges,
+    ) -> TextDocumentUpdate {
+        let Some(record) = self.documents.get(&prepared.uri) else {
+            return TextDocumentUpdate::MissingDocument;
         };
-        self.upsert_text(uri, version, text.to_string(), kind);
-        TextDocumentUpdate::Applied
+        if record.epoch != prepared.expected_epoch
+            || self.analyzer_configuration_request != prepared.expected_configuration
+        {
+            return TextDocumentUpdate::Superseded;
+        }
+
+        match prepared.mutation {
+            PreparedTextMutation::Text(text) => {
+                self.open_prepared_text(prepared.uri, prepared.version, text, prepared.kind);
+                TextDocumentUpdate::Applied
+            }
+            PreparedTextMutation::SyncError { error, update } => {
+                self.upsert_sync_error(prepared.uri, prepared.version, prepared.kind, error);
+                update
+            }
+        }
     }
 
     #[cfg(test)]
@@ -1288,7 +1435,7 @@ pub(crate) fn analyzer_configuration_change(
 ) -> AnalyzerConfigurationChange {
     if current == next {
         AnalyzerConfigurationChange::Unchanged
-    } else if current.snapshot_affecting_eq(next) {
+    } else if current.snapshot_policy() == next.snapshot_policy() {
         AnalyzerConfigurationChange::DiagnosticsOnly
     } else {
         AnalyzerConfigurationChange::SnapshotAffecting
