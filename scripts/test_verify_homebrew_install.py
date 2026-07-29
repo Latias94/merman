@@ -18,6 +18,7 @@ from github_workflow_contract import (
     workflow_step,
 )
 import verify_homebrew_install as verifier
+import verify_cli_installation as installation_verifier
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -107,6 +108,54 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     binary=fixture.binary,
                     runner=fixture.run,
                 )
+            )
+
+    def test_generic_installation_contract_checks_all_nix_completion_paths(self) -> None:
+        with self.installation_fixture() as fixture:
+            for shell, relative in installation_verifier.NIX_COMPLETION_PATHS.items():
+                path = fixture.prefix / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(fixture.completion(shell))
+
+            installation_verifier.verify_cli_installation(
+                package_version="0.8.0",
+                prefix=fixture.prefix,
+                binary=fixture.binary,
+                completion_layout="nix",
+                runner=fixture.run,
+            )
+
+    def test_generic_installation_contract_requires_nix_elvish_completion(self) -> None:
+        with self.installation_fixture() as fixture:
+            for shell, relative in installation_verifier.NIX_COMPLETION_PATHS.items():
+                if shell != "elvish":
+                    path = fixture.prefix / relative
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(fixture.completion(shell))
+
+            with self.assertRaisesRegex(
+                installation_verifier.CliInstallationError,
+                "missing installed elvish completion",
+            ):
+                installation_verifier.verify_cli_installation(
+                    package_version="0.8.0",
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    completion_layout="nix",
+                    runner=fixture.run,
+                )
+
+    def test_generic_installation_contract_rejects_unknown_layouts(self) -> None:
+        with self.installation_fixture() as fixture, self.assertRaisesRegex(
+            installation_verifier.CliInstallationError,
+            "unsupported completion layout",
+        ):
+            installation_verifier.verify_cli_installation(
+                package_version="0.8.0",
+                prefix=fixture.prefix,
+                binary=fixture.binary,
+                completion_layout="custom",  # type: ignore[arg-type]
+                runner=fixture.run,
             )
 
     def test_homebrew_opt_prefix_symlink_is_supported(self) -> None:

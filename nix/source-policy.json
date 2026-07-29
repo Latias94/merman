@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "root_files": [
+    "Cargo.lock",
+    "Cargo.toml",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "root_directories": [
+    "THIRD_PARTY_LICENSES",
+    "capabilities"
+  ],
+  "script_files": [
+    "scripts/verify_cli_installation.py"
+  ],
+  "excluded_directory_names": [
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "coverage",
+    "dist",
+    "node_modules",
+    "pkg",
+    "target"
+  ],
+  "excluded_file_names": [
+    ".DS_Store"
+  ]
+}

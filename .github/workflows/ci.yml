@@ -113,6 +113,34 @@ jobs:
       - name: Lint all CLI feature branches
         run: cargo clippy --locked -p merman-cli --all-targets --all-features -- -D warnings
 
+  nix-cli-package:
+    name: nix-cli-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3.21.8
+
+      - name: Build reusable Nix derivation
+        run: |
+          nix-build --no-out-link default.nix \
+            --arg pkgs 'import (builtins.getFlake (toString ./.)).inputs.nixpkgs { }'
+
+      - name: Check Nix flake
+        run: |
+          nix flake check --all-systems --no-build --no-write-lock-file
+          nix flake check --print-build-logs --no-write-lock-file
+
+      - name: Run Nix flake app
+        run: nix run --no-write-lock-file . -- --version
+
+      - name: Check immutable Nix lock
+        run: git diff --exit-code -- flake.lock
+
   cli-artifact-profiles:
     name: cli-artifact-profiles (${{ matrix.target }})
     runs-on: ${{ matrix.os }}

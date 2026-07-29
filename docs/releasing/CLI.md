@@ -32,6 +32,7 @@ layout accepted by `scripts/verify_cli_release_archive.py`.
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
 | `cargo binstall merman-cli` | Official release archive, then source fallback | No | Explicit manifest metadata |
 | `cargo install merman-cli` | crates.io source | No | Complete defaults; custom features supported |
+| Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
 | Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
 | Scoop candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
 | WinGet candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
@@ -78,6 +79,55 @@ uncontrolled binary. Do not disable the `compile` strategy.
 
 The metadata does not claim Linux ARM64 until that target passes the repository's full admission
 gate. A Homebrew ARM64 Linux bottle belongs to a different build and verification channel.
+
+## Nix source package
+
+The repository provides a reusable `nix/package.nix` derivation, a `default.nix` adapter, and a
+thin locked Flake. All three build from source. They do not claim that the precompiled
+`x86_64-unknown-linux-gnu` archive is compatible with NixOS.
+
+The Flake is the reproducible user entry point:
+
+```bash
+nix build .
+nix run . -- --version
+nix profile install .
+```
+
+Consumers that own their Nixpkgs revision can call the derivation without Flakes:
+
+```bash
+nix-build --no-out-link default.nix
+```
+
+The derivation reads the `cli-release` Cargo profile directly from
+`capabilities/artifact-profiles-v1.json`; it does not copy the feature list into Nix. Its install
+check executes the built binary and verifies the exact command, capability, output, completion,
+and man-page contracts. Bash, Zsh, and Fish completions use their conventional discovery paths.
+PowerShell and Elvish snapshots are installed under `share/pwsh` and `share/elvish`; users may need
+to load them explicitly depending on their shell configuration. Licenses and third-party notices
+are installed under `share/doc/merman-cli`.
+
+The source filter is intentionally independent of Git state so `default.nix` remains reusable. It
+admits the workspace members declared by `Cargo.toml`, generated capability authority, legal
+materials, and the single installed-surface verifier. It rejects nested build output, package
+output, dependency directories, repository references, and unrelated project trees. The Python
+contract test keeps that filtered source below its explicit size budget. Nixpkgs still vendors the
+repository's complete workspace `Cargo.lock`; the exact `cli-release` feature selection controls
+what is compiled, but this channel does not claim a minimal crate-download set.
+
+Run the local static checks with:
+
+```bash
+nixfmt --check flake.nix default.nix nix/package.nix
+python3 scripts/test_nix_package.py
+```
+
+CI injects the Flake's locked Nixpkgs into `default.nix`, evaluates all four declared systems, and
+native-builds and runs the package on x86_64 Linux. The other system outputs remain source package
+interfaces until they gain native Nix build jobs. A Nix source interface for Linux ARM64 is separate
+from admitting a precompiled Linux ARM64 release target; the latter still requires U8's native
+archive and glibc evidence.
 
 ## Scoop and WinGet draft candidate contract
 
@@ -199,3 +249,5 @@ explicit Homebrew Formula change.
 - [Scoop app manifests](https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests)
 - [WinGet multi-file manifests](https://learn.microsoft.com/en-us/windows/package-manager/package/manifest)
 - [Submitting a package to WinGet](https://learn.microsoft.com/en-us/windows/package-manager/package/repository)
+- [Nix source filtering](https://nixos.org/manual/nixpkgs/stable/#sec-pkgs-lib-sources)
+- [Nix Flakes](https://nix.dev/concepts/flakes.html)
