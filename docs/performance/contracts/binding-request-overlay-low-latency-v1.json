@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "contract_id": "binding-request-overlay-low-latency-v1",
+  "status": "prospective-confirmation",
+  "discovery_evidence_already_observed": true,
+  "discovery_evidence_is_admission_input": false,
+  "revisions": {
+    "base": "35133aa2dbc92944d6b664b229f017369ece3875",
+    "head": "0be1a409286f044f40954aec686bd316ff78cb16",
+    "adjacent": true
+  },
+  "public_operation": {
+    "surface": "installed revision-owned createNodeEngine().executeOperation()",
+    "operation_id": "semantic-json",
+    "source": "info\nshowInfo\n",
+    "options_json": "{\"version\":1}",
+    "uri": null,
+    "logical_operations_per_call": 1,
+    "engine_lifecycle": "warmed reusable engine",
+    "timed_scope": "request validation and encoding through Promise settlement and wire-result decoding"
+  },
+  "required_rows": [
+    "napi-warm-version-only-semantic",
+    "node-wasm-warm-version-only-semantic"
+  ],
+  "sampling": {
+    "base_aa_pairs": 8,
+    "head_aa_pairs": 8,
+    "minimum_confirmation_pairs": 8,
+    "maximum_confirmation_pairs": 64,
+    "balanced_order": true,
+    "confidence_level": 0.95,
+    "bootstrap_seed": 20260729,
+    "bootstrap_resamples": 50000,
+    "confirmation_reuses_discovery_or_aa": false
+  },
+  "low_latency_gate": {
+    "eligible_baseline_upper_ns": 500000,
+    "aa_relative_noise_upper": "-ln(0.95)",
+    "aa_absolute_noise_upper": "min(1000ns, 0.05 * baseline_ns)",
+    "relative_threshold": "max(-ln(0.90), 3 * aa_relative_noise)",
+    "absolute_threshold_ns": "max(1000, min(50000, baseline_ns * (1 - exp(-relative_threshold))), 3 * aa_absolute_noise)",
+    "decision": "both fresh simultaneous one-sided 95% improvement bounds must clear their thresholds"
+  },
+  "required_controls": [
+    "empty request options",
+    "real resource-tightening overlay",
+    "first request on a reused engine",
+    "cold engine",
+    "SVG operation",
+    "representative options and capability errors"
+  ],
+  "complexity_gate": {
+    "forbidden": [
+      "new public API",
+      "new runtime dependency",
+      "unsafe code",
+      "global or unbounded cache",
+      "background task",
+      "second public executor"
+    ],
+    "accepted_cleanup": [
+      "remove production byte merge and whole-engine request reconstruction",
+      "remove temporary differential oracle after semantic confirmation",
+      "retain operation-local bounded state only"
+    ]
+  },
+  "memory_gate": {
+    "evidence": "clean adjacent candidate-admission native allocation and Node RSS reports",
+    "scales": [1, 2, 4, 10, 32, 100],
+    "minimum_fresh_process_repeats": 5,
+    "allocation_count_head_base_upper": 1.05,
+    "allocated_bytes_head_base_upper": 1.05,
+    "peak_growth_regression_upper": "max(4096 bytes, 0.05 * baseline)",
+    "node_rss_regression_upper_bytes": 1048576
+  },
+  "decision_states": [
+    "accepted",
+    "rejected",
+    "inconclusive"
+  ]
+}

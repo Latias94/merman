@@ -44,9 +44,17 @@ An ordinary regression enters the active queue when both conditions hold:
 - the same-host A/B regression exceeds 10%; and
 - the absolute median increase exceeds 50 microseconds.
 
-A workload can bypass that threshold when it crosses an interactive frame budget, materially
-changes throughput or memory use, or affects a documented high-volume integration. A large ratio
-on a two-microsecond operation is evidence to retain, not automatically a priority.
+A fixed 50-microsecond threshold cannot classify a public operation whose complete baseline is
+itself below 50 microseconds. For a frozen baseline below 500 microseconds, a candidate may instead
+preregister the low-latency gate in [BENCHMARKING.md](BENCHMARKING.md). That gate derives both
+thresholds from the baseline and independent A/A noise, still requires fresh public-operation
+confirmation, and adds a memory, throughput, or documented high-volume objective when the
+implementation adds substantial machinery. It is not an automatic exception for a large ratio on
+a tiny private stage.
+
+A workload can also bypass the ordinary threshold when it crosses an interactive frame budget,
+materially changes throughput or memory use, or affects a documented high-volume integration. The
+exception and its evidence must be frozen before confirmation samples are collected.
 
 Before implementation:
 
