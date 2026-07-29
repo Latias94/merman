@@ -6,7 +6,7 @@ use quick_xml::XmlVersion;
 use quick_xml::events::{BytesDecl, BytesRef, BytesStart, Event};
 use quick_xml::name::{NamespaceResolver, ResolveResult};
 use quick_xml::reader::NsReader;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use svgtypes::{FuncIRI, IRI, Length};
 
 use super::SvgReferencePlan;
@@ -195,7 +195,7 @@ fn validate_well_formed_element(
         ));
     }
     let mut first_namespaced_attribute = None;
-    let mut additional_namespaced_attributes = Vec::new();
+    let mut additional_namespaced_attributes = HashSet::new();
     for attribute in element.attributes() {
         let attribute = attribute
             .map_err(|error| xml_validation_error(format!("invalid XML attribute: {error}")))?;
@@ -227,7 +227,8 @@ fn validate_well_formed_element(
         };
         let expanded_name = (namespace, local_name.into_inner());
         if first_namespaced_attribute == Some(expanded_name)
-            || additional_namespaced_attributes.contains(&expanded_name)
+            || (first_namespaced_attribute.is_some()
+                && !additional_namespaced_attributes.insert(expanded_name))
         {
             return Err(xml_validation_error(
                 "attributes must have unique expanded names",
@@ -235,8 +236,6 @@ fn validate_well_formed_element(
         }
         if first_namespaced_attribute.is_none() {
             first_namespaced_attribute = Some(expanded_name);
-        } else {
-            additional_namespaced_attributes.push(expanded_name);
         }
     }
     Ok(())
