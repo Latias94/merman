@@ -1149,10 +1149,7 @@ fn initial_lsp_payload_matches_the_sealed_generation_source() {
     let context = store
         .cached_analysis_generation(&uri)
         .expect("expected cached analysis generation");
-    assert_eq!(
-        context.payload.source,
-        context.generation().snapshot_policy().source
-    );
+    assert_eq!(context.payload.source, *context.generation().source());
 }
 
 #[test]
@@ -1246,6 +1243,7 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
             .expect("expected cached analysis generation")
             .generation(),
     );
+    let analyzer_environment_identity = store.analyzer_environment_identity().clone();
     let diagnostic_context = store
         .diagnostic_context(&uri)
         .expect("expected initial diagnostic context");
@@ -1265,6 +1263,10 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
     assert_eq!(
         change,
         crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
+    );
+    assert_eq!(
+        store.analyzer_environment_identity(),
+        &analyzer_environment_identity
     );
     assert!(store.is_snapshot_context_current(&snapshot_context));
     assert!(!store.is_analysis_context_current(&snapshot_context));

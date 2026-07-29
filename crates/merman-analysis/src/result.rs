@@ -1,6 +1,4 @@
-use crate::analyzer::{
-    AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, AnalysisSnapshotPolicy, Analyzer,
-};
+use crate::analyzer::{AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, Analyzer};
 use crate::diagnostic_projection::{DiagnosticCandidate, project_diagnostic_candidates};
 use crate::editor::FenceExpectedSyntax;
 use crate::{
@@ -16,7 +14,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::mem::size_of;
 
-use crate::retained_weight::{RetainedWeight, conservative_btree_entry_bytes};
+use crate::retained_weight::{
+    ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
+};
 
 /// One sealed rich capture bound to an exact parser environment and snapshot policy.
 #[derive(Debug)]
@@ -30,7 +30,7 @@ struct AnalysisGenerationStorage {
     diagrams: Vec<AnalyzedDiagram>,
     document_candidates: Vec<DiagnosticCandidate>,
     environment_identity: AnalysisEnvironmentIdentity,
-    snapshot_policy: AnalysisSnapshotPolicy,
+    source: SourceDescriptor,
 }
 
 #[derive(Debug)]
@@ -107,14 +107,14 @@ impl AnalysisGeneration {
         analyzer: &Analyzer,
     ) -> Self {
         let environment_identity = analyzer.environment_identity().clone();
-        let snapshot_policy = analyzer.options().snapshot_policy().clone();
+        let source = analyzer.options().source().clone();
         Self {
             storage: Box::new(AnalysisGenerationStorage {
                 source_map,
                 diagrams,
                 document_candidates: Vec::new(),
                 environment_identity,
-                snapshot_policy,
+                source,
             }),
         }
     }
@@ -149,14 +149,14 @@ impl AnalysisGeneration {
             )?;
             diagnostics.extend(crate::document::decorate_analyzed_diagnostics(
                 &self.storage.source_map,
-                self.storage.snapshot_policy.source.kind,
+                self.storage.source.kind,
                 diagram,
                 projected,
             ));
         }
         cancellation.checkpoint()?;
         Ok(AnalysisPayload::new(
-            self.storage.snapshot_policy.source.clone(),
+            self.storage.source.clone(),
             diagnostics,
         ))
     }
@@ -165,8 +165,8 @@ impl AnalysisGeneration {
         &self.storage.environment_identity
     }
 
-    pub fn snapshot_policy(&self) -> &AnalysisSnapshotPolicy {
-        &self.storage.snapshot_policy
+    pub fn source(&self) -> &SourceDescriptor {
+        &self.storage.source
     }
 
     pub fn source_map(&self) -> &SourceMap {
@@ -175,8 +175,9 @@ impl AnalysisGeneration {
 
     /// Estimates heap owned by this generation while excluding the shared source buffer.
     ///
-    /// Analyzer-owned environment, site-config, and runtime-policy Arc targets are excluded. The
-    /// estimate includes the full lazy `SourceMap` metric allowance and saturates on overflow.
+    /// The generation retains only its opaque environment identity and source metadata from the
+    /// capture policy. The estimate includes those allocations, the full lazy `SourceMap` metric
+    /// allowance, and saturates on overflow.
     pub fn estimated_owned_heap_bytes_excluding_source(&self) -> usize {
         let mut weight = RetainedWeight::new(size_of::<AnalysisGenerationStorage>());
         weight.add(
@@ -192,12 +193,8 @@ impl AnalysisGeneration {
         for candidate in &self.storage.document_candidates {
             weight.add(candidate.estimated_owned_heap_bytes());
         }
-        weight.add(
-            self.storage
-                .snapshot_policy
-                .source
-                .estimated_owned_heap_bytes(),
-        );
+        weight.add(ARC_ALLOCATION_OVERHEAD);
+        weight.add(self.storage.source.estimated_owned_heap_bytes());
         weight.finish()
     }
 

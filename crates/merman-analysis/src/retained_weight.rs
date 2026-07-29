@@ -2,6 +2,12 @@ use std::mem::size_of;
 
 pub(crate) const ARC_ALLOCATION_OVERHEAD: usize = 2 * size_of::<usize>();
 
+// Charge every BTree entry as though it owned a sparsely populated node. This deliberately
+// overestimates dense trees while remaining independent from the standard library's private node
+// layout and allocator bookkeeping.
+const CONSERVATIVE_BTREE_ENTRY_SLOTS: usize = 16;
+const CONSERVATIVE_BTREE_NODE_METADATA_BYTES: usize = 256;
+
 #[derive(Debug, Default)]
 pub(crate) struct RetainedWeight {
     bytes: usize,
@@ -36,7 +42,9 @@ impl RetainedWeight {
 }
 
 pub(crate) const fn conservative_btree_entry_bytes<K, V>() -> usize {
-    2usize.saturating_mul(size_of::<(K, V)>())
+    CONSERVATIVE_BTREE_ENTRY_SLOTS
+        .saturating_mul(size_of::<(K, V)>())
+        .saturating_add(CONSERVATIVE_BTREE_NODE_METADATA_BYTES)
 }
 
 #[cfg(test)]
@@ -58,5 +66,19 @@ mod tests {
         let mut weight = RetainedWeight::default();
         weight.add_string(&value);
         assert_eq!(weight.finish(), 128);
+    }
+
+    #[test]
+    fn btree_entries_are_charged_as_independent_sparse_nodes() {
+        let pair_bytes = size_of::<(String, Vec<String>)>();
+        assert_eq!(
+            conservative_btree_entry_bytes::<String, Vec<String>>(),
+            pair_bytes
+                .saturating_mul(CONSERVATIVE_BTREE_ENTRY_SLOTS)
+                .saturating_add(CONSERVATIVE_BTREE_NODE_METADATA_BYTES)
+        );
+        assert!(
+            conservative_btree_entry_bytes::<String, Vec<String>>() > pair_bytes.saturating_mul(2)
+        );
     }
 }

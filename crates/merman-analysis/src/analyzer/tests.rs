@@ -172,13 +172,14 @@ fn analyzer_derivations_preserve_custom_registries_and_exact_identity_scope() {
         generation.environment_identity(),
         snapshot.environment_identity()
     );
-    assert_eq!(generation.snapshot_policy().source, snapshot_policy.source);
+    assert_eq!(generation.source(), &snapshot_policy.source);
     assert_eq!(
-        generation.snapshot_policy().max_source_bytes,
+        snapshot.options().snapshot_policy().max_source_bytes,
         snapshot_policy.max_source_bytes
     );
     assert_eq!(
-        generation
+        snapshot
+            .options()
             .snapshot_policy()
             .runtime_policy
             .begin_operation()
@@ -192,6 +193,29 @@ fn analyzer_derivations_preserve_custom_registries_and_exact_identity_scope() {
         snapshot.environment_identity(),
         other.environment_identity()
     );
+}
+
+#[test]
+fn analysis_generation_releases_parse_only_site_config_storage() {
+    let mut site_config = MermaidConfig::from_value(json!({
+        "unobservedGenerationProbe": "x".repeat(1024 * 1024),
+    }));
+    let original_allocation = site_config.as_value() as *const serde_json::Value;
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default()
+            .with_site_config(site_config.clone())
+            .with_fixed_today(chrono::NaiveDate::from_ymd_opt(2026, 7, 30)),
+    );
+    let generation = analyzer
+        .analyze_generation("flowchart TD\nA-->B\n")
+        .into_ready()
+        .expect("probe source should produce a generation");
+
+    drop(analyzer);
+    let mutable_allocation = site_config.as_value_mut() as *mut serde_json::Value;
+
+    assert_eq!(mutable_allocation.cast_const(), original_allocation);
+    assert_eq!(generation.source(), &SourceDescriptor::diagram());
 }
 
 #[test]

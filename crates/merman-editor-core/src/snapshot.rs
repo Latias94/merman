@@ -65,7 +65,7 @@ impl DocumentSnapshot {
     }
 
     pub fn source(&self) -> &SourceDescriptor {
-        &self.inner.generation.snapshot_policy().source
+        self.inner.generation.source()
     }
 
     pub fn text(&self) -> &str {

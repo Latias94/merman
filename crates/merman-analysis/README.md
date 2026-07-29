@@ -40,7 +40,7 @@ fn main() {
 }
 ```
 
-`Analyzer::analyze_generation` returns `AnalysisCaptureOutcome` so callers can distinguish a completed `AnalysisGeneration` from an `AnalysisRejection`. A generation freezes the parser environment and snapshot policy but does not retain an initial diagnostics payload. Call `AnalysisGeneration::project` with a diagnostic policy, use `Analyzer::analyze` for the smaller diagnostics-only path, or use `Analyzer::analyze_facts` when a binding needs the serializable facts contract.
+`Analyzer::analyze_generation` returns `AnalysisCaptureOutcome` so callers can distinguish a completed `AnalysisGeneration` from an `AnalysisRejection`. A generation is bound to the parser environment and snapshot policy used for capture, but retains only the opaque environment identity and source metadata needed after parsing. It does not retain the site/runtime policy or an initial diagnostics payload. Call `AnalysisGeneration::project` with a diagnostic policy, use `Analyzer::analyze` for the smaller diagnostics-only path, or use `Analyzer::analyze_facts` when a binding needs the serializable facts contract.
 
 ## Analyze Markdown And MDX
 

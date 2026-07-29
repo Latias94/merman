@@ -628,7 +628,8 @@ impl DocumentStore {
             self.commit_source_limit_reclassification(batch)
                 .expect("a synchronous analyzer update cannot become stale")
         } else {
-            let plan = self.set_diagnostic_analyzer(Analyzer::with_options(options));
+            let plan = self
+                .set_diagnostic_analyzer(self.analyzer.with_diagnostic_policy(options.diagnostics));
             (change, plan)
         }
     }
@@ -663,7 +664,9 @@ impl DocumentStore {
             let reprojection = if matches!(change, AnalyzerConfigurationChange::Unchanged) {
                 None
             } else {
-                self.set_diagnostic_analyzer(Analyzer::with_options(options))
+                self.set_diagnostic_analyzer(
+                    self.analyzer.with_diagnostic_policy(options.diagnostics),
+                )
             };
             Some(AnalyzerOptionsPreparation::Applied(change, reprojection))
         }
@@ -1195,6 +1198,11 @@ impl DocumentStore {
     #[cfg(test)]
     pub fn analyzer_options(&self) -> &AnalysisOptions {
         self.analyzer.options()
+    }
+
+    #[cfg(test)]
+    pub fn analyzer_environment_identity(&self) -> &merman_analysis::AnalysisEnvironmentIdentity {
+        self.analyzer.environment_identity()
     }
 
     #[cfg(test)]

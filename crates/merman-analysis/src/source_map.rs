@@ -1,6 +1,8 @@
 use crate::payload::{DiagnosticSpan, LspRange, SourcePosition, Utf16Position};
-use crate::retained_weight::{ARC_ALLOCATION_OVERHEAD, RetainedWeight};
-use std::collections::HashMap;
+use crate::retained_weight::{
+    ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
+};
+use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::sync::{Arc, Mutex};
 
@@ -331,23 +333,7 @@ impl SourceMap {
 
     #[cfg(test)]
     fn estimated_line_metric_cache_allocation_bytes(&self) -> usize {
-        let cache = self.line_metric_cache();
-        cache
-            .entries
-            .capacity()
-            .saturating_mul(size_of::<(usize, LineMetricCacheEntry)>().saturating_add(1))
-            .saturating_add(cache.entries.values().fold(0usize, |bytes, entry| {
-                let checkpoints = match &entry.metric.columns {
-                    LineColumns::Ascii => 0,
-                    LineColumns::Unicode { checkpoints } => checkpoints
-                        .len()
-                        .saturating_mul(size_of::<ColumnCheckpoint>()),
-                };
-                bytes
-                    .saturating_add(size_of::<LineMetric>())
-                    .saturating_add(2usize.saturating_mul(size_of::<usize>()))
-                    .saturating_add(checkpoints)
-            }))
+        self.line_metric_cache().estimated_allocation_bytes()
     }
 }
 
@@ -357,7 +343,7 @@ struct LineMetricCache {
     retained_bytes: usize,
     oldest: Option<usize>,
     newest: Option<usize>,
-    entries: HashMap<usize, LineMetricCacheEntry>,
+    entries: BTreeMap<usize, LineMetricCacheEntry>,
     #[cfg(test)]
     statistics: LineMetricCacheStatistics,
 }
@@ -388,7 +374,7 @@ impl LineMetricCache {
             retained_bytes: 0,
             oldest: None,
             newest: None,
-            entries: HashMap::new(),
+            entries: BTreeMap::new(),
             #[cfg(test)]
             statistics: LineMetricCacheStatistics::default(),
         }
@@ -527,6 +513,23 @@ impl LineMetricCache {
     }
 
     #[cfg(test)]
+    fn estimated_allocation_bytes(&self) -> usize {
+        self.entries.values().fold(0usize, |bytes, entry| {
+            let checkpoints = match &entry.metric.columns {
+                LineColumns::Ascii => 0,
+                LineColumns::Unicode { checkpoints } => checkpoints
+                    .len()
+                    .saturating_mul(size_of::<ColumnCheckpoint>()),
+            };
+            bytes
+                .saturating_add(conservative_btree_entry_bytes::<usize, LineMetricCacheEntry>())
+                .saturating_add(size_of::<LineMetric>())
+                .saturating_add(ARC_ALLOCATION_OVERHEAD)
+                .saturating_add(checkpoints)
+        })
+    }
+
+    #[cfg(test)]
     fn record_hit(&mut self) {
         self.statistics.hits = self.statistics.hits.saturating_add(1);
     }
@@ -576,12 +579,9 @@ fn line_metric_cache_entry_weight(metric: &LineMetric) -> usize {
             .len()
             .saturating_mul(size_of::<ColumnCheckpoint>()),
     };
-    // The doubled inline entry charge conservatively covers hash-table load factor, control
-    // bytes, and allocator alignment without exposing allocator-specific accounting.
-    2usize
-        .saturating_mul(size_of::<(usize, LineMetricCacheEntry)>())
+    conservative_btree_entry_bytes::<usize, LineMetricCacheEntry>()
         .saturating_add(size_of::<LineMetric>())
-        .saturating_add(2usize.saturating_mul(size_of::<usize>()))
+        .saturating_add(ARC_ALLOCATION_OVERHEAD)
         .saturating_add(checkpoints)
 }
 
@@ -1270,6 +1270,43 @@ mod tests {
                 high_water_weight: entry_weight * 2,
             }
         );
+    }
+
+    #[test]
+    fn mixed_metric_sizes_cannot_retain_historical_container_capacity_past_the_budget() {
+        let ascii_metric = |start| {
+            Arc::new(LineMetric {
+                start,
+                content_end: start,
+                columns: LineColumns::Ascii,
+            })
+        };
+        let mut cache = LineMetricCache::new(SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES);
+        for line_index in 0..4096 {
+            cache.insert(line_index, ascii_metric(line_index));
+        }
+
+        let checkpoint_count =
+            SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES / 2 / size_of::<ColumnCheckpoint>();
+        let large = Arc::new(LineMetric {
+            start: 4096,
+            content_end: 4096,
+            columns: LineColumns::Unicode {
+                checkpoints: vec![
+                    ColumnCheckpoint {
+                        byte_offset: 0,
+                        char_column: 0,
+                        utf16_column: 0,
+                    };
+                    checkpoint_count
+                ]
+                .into_boxed_slice(),
+            },
+        });
+        cache.insert(4096, large);
+
+        assert!(cache.retained_bytes <= cache.budget_bytes);
+        assert!(cache.estimated_allocation_bytes() <= cache.budget_bytes);
     }
 
     #[test]
