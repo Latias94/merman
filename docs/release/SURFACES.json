@@ -271,9 +271,29 @@
           "workflow_job": "publish",
           "environment": "crates.io",
           "credential": "CARGO_REGISTRY_TOKEN"
+        },
+        {
+          "id": "scoop-main",
+          "kind": "scoop",
+          "declared_state": "manual-registry",
+          "release_kinds": ["stable"],
+          "workflow": ".github/workflows/ci.yml",
+          "credential": null,
+          "blocker": "The generated stable candidate must be submitted to and accepted by the external Scoop Main bucket.",
+          "not_applicable_reason": "Scoop Main candidates are generated only for stable releases."
+        },
+        {
+          "id": "winget-pkgs",
+          "kind": "winget",
+          "declared_state": "manual-registry",
+          "release_kinds": ["stable"],
+          "workflow": ".github/workflows/ci.yml",
+          "credential": null,
+          "blocker": "The generated stable candidate must be submitted to and accepted by the external winget-pkgs repository.",
+          "not_applicable_reason": "WinGet candidates are generated only for stable releases."
         }
       ],
-      "gates": ["python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked"]
+      "gates": ["python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked", "python3 -m unittest scripts.test_generate_cli_registry_candidates"]
     },
     {
       "id": "homebrew",

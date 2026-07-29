@@ -53,9 +53,11 @@ CHANNEL_KINDS = {
     "npm",
     "pub.dev",
     "pypi",
+    "scoop",
     "swiftpm",
     "typst-registry",
     "vs-marketplace",
+    "winget",
 }
 PROTECTED_PUBLICATION_KINDS = {
     "crates.io",

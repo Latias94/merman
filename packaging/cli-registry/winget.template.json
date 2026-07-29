@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "manifest_version": "1.12.0",
+  "documents": [
+    {
+      "kind": "version",
+      "suffix": "",
+      "manifest": {
+        "PackageIdentifier": "Latias94.MermanCLI",
+        "PackageVersion": "${VERSION}",
+        "DefaultLocale": "en-US",
+        "ManifestType": "version",
+        "ManifestVersion": "1.12.0"
+      }
+    },
+    {
+      "kind": "installer",
+      "suffix": ".installer",
+      "manifest": {
+        "PackageIdentifier": "Latias94.MermanCLI",
+        "PackageVersion": "${VERSION}",
+        "InstallerType": "zip",
+        "NestedInstallerType": "portable",
+        "Commands": [
+          "merman-cli"
+        ],
+        "Installers": [
+          {
+            "Architecture": "x64",
+            "InstallerUrl": "${ARCHIVE_URL}",
+            "InstallerSha256": "${SHA256_UPPER}",
+            "Dependencies": {
+              "PackageDependencies": [
+                {
+                  "PackageIdentifier": "Microsoft.VCRedist.2015+.x64"
+                }
+              ]
+            },
+            "NestedInstallerFiles": [
+              {
+                "RelativeFilePath": "merman-cli.exe",
+                "PortableCommandAlias": "merman-cli"
+              }
+            ]
+          }
+        ],
+        "ManifestType": "installer",
+        "ManifestVersion": "1.12.0"
+      }
+    },
+    {
+      "kind": "defaultLocale",
+      "suffix": ".locale.en-US",
+      "manifest": {
+        "PackageIdentifier": "Latias94.MermanCLI",
+        "PackageVersion": "${VERSION}",
+        "PackageLocale": "en-US",
+        "Publisher": "Latias94",
+        "PublisherUrl": "${REPOSITORY_URL}",
+        "PublisherSupportUrl": "${ISSUES_URL}",
+        "PackageName": "Merman CLI",
+        "PackageUrl": "${REPOSITORY_URL}",
+        "License": "MIT OR Apache-2.0",
+        "ShortDescription": "Render Mermaid diagrams without a browser or Node.js runtime",
+        "Description": "Merman CLI parses, lays out, analyzes, and renders Mermaid diagrams in a headless native process.",
+        "Moniker": "merman-cli",
+        "Tags": [
+          "cli",
+          "diagram",
+          "headless",
+          "mermaid",
+          "renderer"
+        ],
+        "ReleaseNotesUrl": "${RELEASE_URL}",
+        "ManifestType": "defaultLocale",
+        "ManifestVersion": "1.12.0"
+      }
+    }
+  ]
+}

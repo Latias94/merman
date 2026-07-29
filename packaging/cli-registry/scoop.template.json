@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "manifest": {
+    "version": "${VERSION}",
+    "description": "Headless Mermaid-compatible diagram renderer for SVG, PNG, JPEG, PDF, ASCII, and Unicode output",
+    "homepage": "${REPOSITORY_URL}",
+    "license": "MIT|Apache-2.0",
+    "architecture": {
+      "64bit": {
+        "url": "${ARCHIVE_URL}",
+        "hash": "${SHA256}"
+      }
+    },
+    "bin": "merman-cli.exe",
+    "checkver": {
+      "github": "${REPOSITORY_URL}"
+    },
+    "autoupdate": {
+      "architecture": {
+        "64bit": {
+          "url": "${AUTOUPDATE_URL}"
+        }
+      }
+    }
+  }
+}

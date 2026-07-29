@@ -33,6 +33,8 @@ layout accepted by `scripts/verify_cli_release_archive.py`.
 | `cargo binstall merman-cli` | Official release archive, then source fallback | No | Explicit manifest metadata |
 | `cargo install merman-cli` | crates.io source | No | Complete defaults; custom features supported |
 | Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
+| Scoop candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
+| WinGet candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
 
 The shell and PowerShell installers, as well as cargo-binstall, keep only the executable as their
 installed payload. They do not copy completion or man files. Cargo-dist installers may create an
@@ -76,6 +78,52 @@ uncontrolled binary. Do not disable the `compile` strategy.
 
 The metadata does not claim Linux ARM64 until that target passes the repository's full admission
 gate. A Homebrew ARM64 Linux bottle belongs to a different build and verification channel.
+
+## Scoop and WinGet candidate contract
+
+The repository can generate registry-ready candidate files for a stable release, but it does not
+claim that either central registry already provides Merman. Do not add `scoop install` or
+`winget install` instructions to user documentation until the corresponding external submission
+is accepted and `docs/release/SURFACES.json` is updated from `manual-registry`.
+
+The generator consumes the exact Windows x86_64 archive and adjacent checksum from the verified
+release bundle. It runs the release-archive verifier again, requires the requested version to
+match the tagged workspace manifest, rejects prereleases and build metadata, and derives only an
+immutable `releases/download/v<VERSION>/...` installer URL. Run it independently with:
+
+```bash
+python3 scripts/generate_cli_registry_candidates.py \
+  <VERIFIED_RELEASE_BUNDLE> \
+  --version <STABLE_VERSION> \
+  --output-dir <NEW_OUTPUT_DIRECTORY>
+```
+
+The output contains:
+
+- `scoop/merman-cli.json`, limited to the published Windows x86_64 archive;
+- a registry-shaped, three-file WinGet manifest under
+  `winget/manifests/l/Latias94/MermanCLI/<VERSION>/`;
+- `candidate-receipt.json`, which binds every candidate file to its SHA-256 and records the exact
+  verified source archive, download URL, target, executable path, and digest.
+
+The WinGet candidate models the cargo-dist ZIP as a nested portable installer and currently
+declares the x64 Microsoft Visual C++ runtime package dependency used by the MSVC target. Its
+installer hash is uppercase as expected by WinGet; the Scoop hash and receipt use lowercase. The
+templates under `packaging/cli-registry/` are structured JSON contracts, not publishable files.
+The generator accepts only whole-value placeholders and validates the final registry structure
+before writing anything.
+
+Run the repository checks with:
+
+```bash
+python3 -m unittest scripts.test_generate_cli_registry_candidates
+python3 scripts/verify-release-surfaces.py
+```
+
+When U7 wires candidates into publication, the Windows release gate will additionally run
+`winget validate` against the generated three-file directory. Stable releases will require that
+gate; prereleases will take an explicit no-candidate branch. Until then, candidate generation is
+an independently runnable maintainer check and is not a release-workflow claim.
 
 ## Homebrew formula contract
 
@@ -150,3 +198,6 @@ explicit Homebrew Formula change.
 - [cargo-dist shell installer behavior](https://axodotdev.github.io/cargo-dist/book/installers/shell.html)
 - [Homebrew Formula API](https://docs.brew.sh/rubydoc/Formula.html)
 - [Opening a Homebrew pull request](https://docs.brew.sh/How-To-Open-a-Homebrew-Pull-Request)
+- [Scoop app manifests](https://github.com/ScoopInstaller/Scoop/wiki/App-Manifests)
+- [WinGet multi-file manifests](https://learn.microsoft.com/en-us/windows/package-manager/package/manifest)
+- [Submitting a package to WinGet](https://learn.microsoft.com/en-us/windows/package-manager/package/repository)

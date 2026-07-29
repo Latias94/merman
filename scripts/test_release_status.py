@@ -1463,6 +1463,29 @@ class ReleaseStatusProbeTests(unittest.TestCase):
 
 
 class ReleaseStatusContractTests(unittest.TestCase):
+    def test_contract_accepts_stable_manual_windows_registry_candidates(self) -> None:
+        channels = []
+        for kind in ["scoop", "winget"]:
+            item = channel(
+                channel_id=kind,
+                kind=kind,
+                declared_state="manual-registry",
+                release_kinds=["stable"],
+            )
+            item.pop("workflow_job")
+            item["blocker"] = "External registry submission has not been accepted."
+            item["not_applicable_reason"] = "The registry does not receive prereleases."
+            channels.append(item)
+
+        data = contract(surfaces=[surface(channels=channels, public_channel="scoop")])
+        release_status.validate_contract(data)
+
+        rows = release_status.build_rows(data, version="0.8.0-alpha.1", probe=False)
+        self.assertEqual(
+            [item["declared_state"] for item in rows[0]["channels"]],
+            ["not-applicable", "not-applicable"],
+        )
+
     def test_contract_loader_rejects_duplicate_json_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "SURFACES.json"
