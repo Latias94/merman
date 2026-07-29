@@ -1,13 +1,16 @@
 use crate::{BindingError, BindingRuntimePolicy, common};
 #[cfg(feature = "analysis")]
 use merman_analysis::Analyzer;
+#[cfg(feature = "svg")]
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 #[derive(Clone)]
 pub struct BindingEngine {
     runtime_policy_id: &'static str,
     runtime_policy: merman::runtime::RuntimePolicy,
-    base_options_json: Arc<[u8]>,
+    base_options: common::BaseBindingOptions,
+    unchanged_request_validation: OnceLock<Result<(), BindingError>>,
     #[cfg(feature = "svg")]
     host_text_measurer: Option<Arc<dyn crate::HostTextMeasurer>>,
     semantic: SemanticOperationEngine,
@@ -22,13 +25,13 @@ pub struct BindingEngine {
 impl BindingEngine {
     /// Creates a deterministic engine that never consults ambient host state.
     pub fn new(options_json: &[u8]) -> Result<Self, BindingError> {
-        let options = common::parse_options(options_json)?;
+        let (options, base_options) = common::parse_base_options(options_json)?;
         ensure_selected_runtime_policy(&options, BindingRuntimePolicy::Deterministic)?;
         Self::with_parsed_options(
             &options,
             merman::runtime::RuntimePolicy::deterministic(),
             BindingRuntimePolicy::Deterministic.id(),
-            Arc::from(options_json),
+            base_options,
         )
     }
 
@@ -36,19 +39,14 @@ impl BindingEngine {
     ///
     /// An omitted policy selects deterministic behavior even when system adapters are compiled.
     pub fn from_options(options_json: &[u8]) -> Result<Self, BindingError> {
-        let options = common::parse_options(options_json)?;
+        let (options, base_options) = common::parse_base_options(options_json)?;
         let (selection, runtime_policy) = common::selected_runtime_policy(&options)?;
-        Self::with_parsed_options(
-            &options,
-            runtime_policy,
-            selection.id(),
-            Arc::from(options_json),
-        )
+        Self::with_parsed_options(&options, runtime_policy, selection.id(), base_options)
     }
 
     /// Creates an engine that explicitly selects the compiled native runtime adapters.
     pub fn try_native(options_json: &[u8]) -> Result<Self, BindingError> {
-        let options = common::parse_options(options_json)?;
+        let (options, base_options) = common::parse_base_options(options_json)?;
         ensure_selected_runtime_policy(&options, BindingRuntimePolicy::Native)?;
         let runtime_policy =
             merman::runtime::RuntimePolicy::try_native().map_err(common::runtime_policy_error)?;
@@ -56,7 +54,7 @@ impl BindingEngine {
             &options,
             runtime_policy,
             BindingRuntimePolicy::Native.id(),
-            Arc::from(options_json),
+            base_options,
         )
     }
 
@@ -64,13 +62,13 @@ impl BindingEngine {
         options_json: &[u8],
         context: merman::runtime::OperationContext,
     ) -> Result<Self, BindingError> {
-        let options = common::parse_options(options_json)?;
+        let (options, base_options) = common::parse_base_options(options_json)?;
         common::reject_selected_runtime_policy(&options, "operation-context")?;
         Self::with_parsed_options(
             &options,
             merman::runtime::RuntimePolicy::from_operation_context(context),
             "operation-context",
-            Arc::from(options_json),
+            base_options,
         )
     }
 
@@ -78,70 +76,215 @@ impl BindingEngine {
         options_json: &[u8],
         runtime_policy: merman::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
-        let options = common::parse_options(options_json)?;
+        let (options, base_options) = common::parse_base_options(options_json)?;
         common::reject_selected_runtime_policy(&options, "custom")?;
-        Self::with_parsed_options(&options, runtime_policy, "custom", Arc::from(options_json))
+        Self::with_parsed_options(&options, runtime_policy, "custom", base_options)
     }
 
     fn with_parsed_options(
         options: &common::BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
         runtime_policy_id: &'static str,
-        base_options_json: Arc<[u8]>,
+        base_options: common::BaseBindingOptions,
     ) -> Result<Self, BindingError> {
+        let configs = BindingOperationConfigs::compile(options, runtime_policy.clone())?;
         Ok(Self {
             runtime_policy_id,
-            runtime_policy: runtime_policy.clone(),
-            base_options_json,
+            runtime_policy,
+            base_options,
+            unchanged_request_validation: OnceLock::new(),
             #[cfg(feature = "svg")]
             host_text_measurer: None,
-            semantic: SemanticOperationEngine::with_runtime_policy(
-                options,
-                runtime_policy.clone(),
-            )?,
+            semantic: configs.semantic.materialize(),
             #[cfg(feature = "analysis")]
-            analyzer: Analyzer::with_options(
-                common::artifact_analysis_options(options)?.with_runtime_policy(
-                    common::binding_runtime_policy_from(options, runtime_policy.clone())?,
-                ),
-            ),
+            analyzer: configs.analysis.materialize(),
             #[cfg(feature = "svg")]
-            render: crate::render::CachedRenderEngine::with_runtime_policy(
-                options,
-                runtime_policy.clone(),
-            )?,
+            render: configs.render.materialize(),
             #[cfg(feature = "ascii")]
-            ascii: crate::ascii::CachedAsciiEngine::with_runtime_policy(options, runtime_policy)?,
+            ascii: configs.ascii.materialize(),
         })
     }
 
-    pub(crate) fn for_request_options(
+    pub(crate) fn execute_request_overlay(
         &self,
         operation: crate::BindingOperationKind,
+        source: &[u8],
+        uri: Option<&[u8]>,
         options_json: &[u8],
-    ) -> Result<Option<Self>, BindingError> {
-        if options_json.is_empty() {
-            return Ok(None);
+    ) -> Result<Option<Vec<u8>>, BindingError> {
+        let overlay = common::parse_request_overlay(options_json, operation.resource_scope())?;
+        match overlay {
+            common::BindingRequestOverlay::Unchanged => {
+                self.unchanged_request_validation
+                    .get_or_init(|| self.base_options.validate_unchanged_request())
+                    .clone()?;
+                Ok(None)
+            }
+            overlay @ common::BindingRequestOverlay::Override { .. } => {
+                let options = self.base_options.apply_overlay(overlay)?;
+                let configs =
+                    BindingOperationConfigs::compile(&options, self.runtime_policy.clone())?;
+                self.execute_request_projection(operation, configs, source, uri)
+                    .map(Some)
+            }
         }
+    }
 
-        let merged_json = common::merge_request_options(
-            &self.base_options_json,
-            options_json,
-            operation.resource_scope(),
-        )?;
-        let options = common::parse_options(&merged_json)?;
-        let engine = Self::with_parsed_options(
-            &options,
-            self.runtime_policy.clone(),
-            self.runtime_policy_id,
-            Arc::from(merged_json),
-        )?;
-        #[cfg(feature = "svg")]
-        let engine = match &self.host_text_measurer {
-            Some(measurer) => engine.with_host_text_measurer(Arc::clone(measurer)),
-            None => engine,
-        };
-        Ok(Some(engine))
+    fn execute_request_projection(
+        &self,
+        operation: crate::BindingOperationKind,
+        configs: BindingOperationConfigs,
+        source: &[u8],
+        _uri: Option<&[u8]>,
+    ) -> Result<Vec<u8>, BindingError> {
+        match operation.key() {
+            crate::OperationKey::SemanticJson => configs.semantic.materialize().parse_json(source),
+            crate::OperationKey::AnalysisJson
+            | crate::OperationKey::AnalysisFactsJson
+            | crate::OperationKey::ValidationJson
+            | crate::OperationKey::DocumentAnalysisJson
+            | crate::OperationKey::DocumentAnalysisFactsJson => {
+                #[cfg(feature = "analysis")]
+                {
+                    let analyzer = configs.analysis.materialize();
+                    match operation.key() {
+                        crate::OperationKey::AnalysisJson => analyze_json_with(&analyzer, source),
+                        crate::OperationKey::AnalysisFactsJson => {
+                            analyze_facts_json_with(&analyzer, source)
+                        }
+                        crate::OperationKey::ValidationJson => {
+                            validate_json_with(&analyzer, source)
+                        }
+                        crate::OperationKey::DocumentAnalysisJson => analyze_document_json_with(
+                            &analyzer,
+                            source,
+                            _uri.expect("validated document URI presence"),
+                        ),
+                        crate::OperationKey::DocumentAnalysisFactsJson => {
+                            analyze_document_facts_json_with(
+                                &analyzer,
+                                source,
+                                _uri.expect("validated document URI presence"),
+                            )
+                        }
+                        _ => unreachable!("analysis projection requires an analysis operation"),
+                    }
+                }
+                #[cfg(not(feature = "analysis"))]
+                {
+                    let _ = configs;
+                    match operation.key() {
+                        crate::OperationKey::AnalysisJson => {
+                            Err(common::feature_required_error("analysis", "analysis"))
+                        }
+                        crate::OperationKey::AnalysisFactsJson => {
+                            Err(common::feature_required_error("analysis facts", "analysis"))
+                        }
+                        crate::OperationKey::ValidationJson => {
+                            Err(common::feature_required_error("validation", "analysis"))
+                        }
+                        crate::OperationKey::DocumentAnalysisJson => Err(
+                            common::feature_required_error("document analysis", "analysis"),
+                        ),
+                        crate::OperationKey::DocumentAnalysisFactsJson => Err(
+                            common::feature_required_error("document analysis facts", "analysis"),
+                        ),
+                        _ => unreachable!("analysis projection requires an analysis operation"),
+                    }
+                }
+            }
+            crate::OperationKey::Ascii => {
+                #[cfg(feature = "ascii")]
+                {
+                    configs.ascii.materialize().render_ascii(source)
+                }
+                #[cfg(not(feature = "ascii"))]
+                {
+                    let _ = configs;
+                    Err(common::feature_required_error("ASCII rendering", "ascii"))
+                }
+            }
+            crate::OperationKey::Svg
+            | crate::OperationKey::SvgPlanJson
+            | crate::OperationKey::Png
+            | crate::OperationKey::Jpeg
+            | crate::OperationKey::Pdf
+            | crate::OperationKey::LayoutJson => {
+                #[cfg(feature = "svg")]
+                {
+                    let render = configs.render.materialize();
+                    let render = match &self.host_text_measurer {
+                        Some(measurer) => render.with_host_text_measurer(Arc::clone(measurer)),
+                        None => render,
+                    };
+                    match operation.key() {
+                        crate::OperationKey::Svg => render.render_svg(source),
+                        crate::OperationKey::SvgPlanJson => render.svg_plan_json(source),
+                        crate::OperationKey::LayoutJson => render.layout_json(source),
+                        crate::OperationKey::Png => {
+                            #[cfg(feature = "png")]
+                            {
+                                render.render_png(source)
+                            }
+                            #[cfg(not(feature = "png"))]
+                            {
+                                let _ = render;
+                                Err(common::feature_required_error("PNG rendering", "png"))
+                            }
+                        }
+                        crate::OperationKey::Jpeg => {
+                            #[cfg(feature = "jpeg")]
+                            {
+                                render.render_jpeg(source)
+                            }
+                            #[cfg(not(feature = "jpeg"))]
+                            {
+                                let _ = render;
+                                Err(common::feature_required_error("JPEG rendering", "jpeg"))
+                            }
+                        }
+                        crate::OperationKey::Pdf => {
+                            #[cfg(feature = "pdf")]
+                            {
+                                render.render_pdf(source)
+                            }
+                            #[cfg(not(feature = "pdf"))]
+                            {
+                                let _ = render;
+                                Err(common::feature_required_error("PDF rendering", "pdf"))
+                            }
+                        }
+                        _ => unreachable!("render projection requires a render operation"),
+                    }
+                }
+                #[cfg(not(feature = "svg"))]
+                {
+                    let _ = configs;
+                    match operation.key() {
+                        crate::OperationKey::Svg => {
+                            Err(common::feature_required_error("SVG rendering", "svg"))
+                        }
+                        crate::OperationKey::SvgPlanJson => Err(common::feature_required_error(
+                            "SVG capability planning",
+                            "svg",
+                        )),
+                        crate::OperationKey::LayoutJson => {
+                            Err(common::feature_required_error("layout_json", "svg"))
+                        }
+                        crate::OperationKey::Png => {
+                            Err(common::feature_required_error("PNG rendering", "png"))
+                        }
+                        crate::OperationKey::Jpeg => {
+                            Err(common::feature_required_error("JPEG rendering", "jpeg"))
+                        }
+                        crate::OperationKey::Pdf => {
+                            Err(common::feature_required_error("PDF rendering", "pdf"))
+                        }
+                        _ => unreachable!("render projection requires a render operation"),
+                    }
+                }
+            }
+        }
     }
 
     #[must_use]
@@ -206,7 +349,8 @@ impl BindingEngine {
         Self {
             runtime_policy_id: self.runtime_policy_id,
             runtime_policy: self.runtime_policy.clone(),
-            base_options_json: Arc::clone(&self.base_options_json),
+            base_options: self.base_options.clone(),
+            unchanged_request_validation: self.unchanged_request_validation.clone(),
             host_text_measurer: Some(Arc::clone(&measurer)),
             semantic: self.semantic.clone(),
             #[cfg(feature = "analysis")]
@@ -266,10 +410,7 @@ impl BindingEngine {
     pub fn analyze_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            let source = common::source_text_utf8(source)?;
-            self.analyzer
-                .analyze_json(source)
-                .map_err(common::internal_json_error)
+            analyze_json_with(&self.analyzer, source)
         }
         #[cfg(not(feature = "analysis"))]
         {
@@ -281,10 +422,7 @@ impl BindingEngine {
     pub fn analysis_facts_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            let source = common::source_text_utf8(source)?;
-            self.analyzer
-                .analyze_facts_json(source)
-                .map_err(common::internal_json_error)
+            analyze_facts_json_with(&self.analyzer, source)
         }
         #[cfg(not(feature = "analysis"))]
         {
@@ -300,12 +438,7 @@ impl BindingEngine {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            let source = common::source_text_utf8(source)?;
-            let uri = common::source_text_utf8(uri)?;
-            let descriptor = common::source_descriptor_for_uri(uri);
-            merman_analysis::analyze_document(source, &self.analyzer, descriptor)
-                .to_json_bytes()
-                .map_err(common::internal_json_error)
+            analyze_document_json_with(&self.analyzer, source, uri)
         }
         #[cfg(not(feature = "analysis"))]
         {
@@ -324,12 +457,7 @@ impl BindingEngine {
     ) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            let source = common::source_text_utf8(source)?;
-            let uri = common::source_text_utf8(uri)?;
-            let descriptor = common::source_descriptor_for_uri(uri);
-            merman_analysis::analyze_document_facts(source, &self.analyzer, descriptor)
-                .to_json_bytes()
-                .map_err(common::internal_json_error)
+            analyze_document_facts_json_with(&self.analyzer, source, uri)
         }
         #[cfg(not(feature = "analysis"))]
         {
@@ -344,7 +472,7 @@ impl BindingEngine {
     pub fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         #[cfg(feature = "analysis")]
         {
-            common::validation_payload_json_from_analysis(&self.analyze_payload(source)?)
+            validate_json_with(&self.analyzer, source)
         }
         #[cfg(not(feature = "analysis"))]
         {
@@ -352,15 +480,56 @@ impl BindingEngine {
             Err(common::feature_required_error("validation", "analysis"))
         }
     }
+}
 
-    #[cfg(feature = "analysis")]
-    fn analyze_payload(
-        &self,
-        source: &[u8],
-    ) -> Result<merman_analysis::AnalysisPayload, BindingError> {
-        let source = common::source_text_utf8(source)?;
-        Ok(self.analyzer.analyze(source))
-    }
+#[cfg(feature = "analysis")]
+fn analyze_json_with(analyzer: &Analyzer, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let source = common::source_text_utf8(source)?;
+    analyzer
+        .analyze_json(source)
+        .map_err(common::internal_json_error)
+}
+
+#[cfg(feature = "analysis")]
+fn analyze_facts_json_with(analyzer: &Analyzer, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let source = common::source_text_utf8(source)?;
+    analyzer
+        .analyze_facts_json(source)
+        .map_err(common::internal_json_error)
+}
+
+#[cfg(feature = "analysis")]
+fn analyze_document_json_with(
+    analyzer: &Analyzer,
+    source: &[u8],
+    uri: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    let source = common::source_text_utf8(source)?;
+    let uri = common::source_text_utf8(uri)?;
+    let descriptor = common::source_descriptor_for_uri(uri);
+    merman_analysis::analyze_document(source, analyzer, descriptor)
+        .to_json_bytes()
+        .map_err(common::internal_json_error)
+}
+
+#[cfg(feature = "analysis")]
+fn analyze_document_facts_json_with(
+    analyzer: &Analyzer,
+    source: &[u8],
+    uri: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    let source = common::source_text_utf8(source)?;
+    let uri = common::source_text_utf8(uri)?;
+    let descriptor = common::source_descriptor_for_uri(uri);
+    merman_analysis::analyze_document_facts(source, analyzer, descriptor)
+        .to_json_bytes()
+        .map_err(common::internal_json_error)
+}
+
+#[cfg(feature = "analysis")]
+fn validate_json_with(analyzer: &Analyzer, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let source = common::source_text_utf8(source)?;
+    common::validation_payload_json_from_analysis(&analyzer.analyze(source))
 }
 
 fn ensure_selected_runtime_policy(
@@ -382,24 +551,79 @@ fn ensure_selected_runtime_policy(
     Ok(())
 }
 
-#[derive(Clone)]
-struct SemanticOperationEngine {
-    engine: merman::Engine,
+struct BindingOperationConfigs {
+    semantic: SemanticOperationConfig,
+    #[cfg(feature = "analysis")]
+    analysis: AnalysisOperationConfig,
+    #[cfg(feature = "svg")]
+    render: crate::render::RenderOperationConfig,
+    #[cfg(feature = "ascii")]
+    ascii: crate::ascii::AsciiOperationConfig,
+}
+
+impl BindingOperationConfigs {
+    fn compile(
+        options: &common::BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
+        let semantic = SemanticOperationConfig::compile(options, runtime_policy.clone())?;
+        #[cfg(feature = "analysis")]
+        let analysis = AnalysisOperationConfig::compile(options, runtime_policy.clone())?;
+        #[cfg(feature = "svg")]
+        let render =
+            crate::render::RenderOperationConfig::compile(options, runtime_policy.clone())?;
+        #[cfg(feature = "ascii")]
+        let ascii = crate::ascii::AsciiOperationConfig::compile(options, runtime_policy)?;
+
+        Ok(Self {
+            semantic,
+            #[cfg(feature = "analysis")]
+            analysis,
+            #[cfg(feature = "svg")]
+            render,
+            #[cfg(feature = "ascii")]
+            ascii,
+        })
+    }
+}
+
+#[cfg(feature = "analysis")]
+struct AnalysisOperationConfig {
+    options: merman_analysis::AnalysisOptions,
+}
+
+#[cfg(feature = "analysis")]
+impl AnalysisOperationConfig {
+    fn compile(
+        options: &common::BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
+        let analysis = common::artifact_analysis_options(options)?;
+        let runtime_policy = common::binding_runtime_policy_from(options, runtime_policy)?;
+        Ok(Self {
+            options: analysis.with_runtime_policy(runtime_policy),
+        })
+    }
+
+    fn materialize(self) -> Analyzer {
+        Analyzer::with_options(self.options)
+    }
+}
+
+struct SemanticOperationConfig {
+    runtime_policy: merman::runtime::RuntimePolicy,
+    site_config: Option<merman::MermaidConfig>,
     parse_options: merman::ParseOptions,
     resources: merman::resources::InputResourcePolicy,
 }
 
-impl SemanticOperationEngine {
-    fn with_runtime_policy(
+impl SemanticOperationConfig {
+    fn compile(
         options: &common::BindingOptions,
         runtime_policy: merman::runtime::RuntimePolicy,
     ) -> Result<Self, BindingError> {
         let runtime_policy = common::binding_runtime_policy_from(options, runtime_policy)?;
-        let mut engine = merman::Engine::new().with_runtime_policy(runtime_policy);
-        if let Some(site_config) = common::binding_site_config(options)? {
-            engine = engine.with_site_config(site_config);
-        }
-
+        let site_config = common::binding_site_config(options)?;
         let parse_options = if options
             .parse
             .as_ref()
@@ -411,14 +635,35 @@ impl SemanticOperationEngine {
             merman::ParseOptions::strict()
         };
         let resources = common::binding_input_resource_policy(options.analysis.resources.as_ref())?;
-
         Ok(Self {
-            engine,
+            runtime_policy,
+            site_config,
             parse_options,
             resources,
         })
     }
 
+    fn materialize(self) -> SemanticOperationEngine {
+        let mut engine = merman::Engine::new().with_runtime_policy(self.runtime_policy);
+        if let Some(site_config) = self.site_config {
+            engine = engine.with_site_config(site_config);
+        }
+        SemanticOperationEngine {
+            engine,
+            parse_options: self.parse_options,
+            resources: self.resources,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct SemanticOperationEngine {
+    engine: merman::Engine,
+    parse_options: merman::ParseOptions,
+    resources: merman::resources::InputResourcePolicy,
+}
+
+impl SemanticOperationEngine {
     fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = common::source_text(source)?;
         self.resources.check_source_bytes(source).map_err(|error| {

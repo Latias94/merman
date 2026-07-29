@@ -16,18 +16,17 @@ pub(super) struct RenderRequestPlan {
     pipeline: merman::svg::SvgPipeline,
 }
 
-impl RenderRequestPlan {
-    pub(super) fn from_options_with_runtime_policy(
-        options: &BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
-    ) -> Result<Self, BindingError> {
-        let (renderer, pipeline) = build_renderer(options, runtime_policy)?;
-        Ok(Self {
-            renderer,
-            pipeline: pipeline.pipeline(),
-        })
-    }
+pub(super) struct RenderOperationConfig {
+    environment: RenderEnvironment,
+    lenient_parsing: bool,
+    host_theme_site_config: Option<merman::MermaidConfig>,
+    site_config: Option<merman::MermaidConfig>,
+    layout: LayoutOptions,
+    diagram_id: Option<String>,
+    output: merman::svg::SvgOutputPolicy,
+}
 
+impl RenderRequestPlan {
     pub(super) fn render_svg(&self, source: &str) -> Result<Vec<u8>, BindingError> {
         let svg = self
             .renderer
@@ -107,139 +106,163 @@ pub(super) fn pipeline_for_options(
     options: &BindingOptions,
 ) -> Result<merman::svg::SvgPipeline, BindingError> {
     Ok(
-        build_renderer(options, merman::runtime::RuntimePolicy::deterministic())?
-            .1
+        RenderOperationConfig::compile(options, merman::runtime::RuntimePolicy::deterministic())?
+            .output
             .pipeline(),
     )
 }
 
-fn build_renderer(
-    options: &BindingOptions,
-    runtime_policy: merman::runtime::RuntimePolicy,
-) -> Result<(HeadlessRenderer, merman::svg::SvgOutputPolicy), BindingError> {
-    let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
-    let mut environment = RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
-    environment = environment.with_resource_policy(binding_resource_policy(
-        options.analysis.resources.as_ref(),
-    )?);
-    if let Some(environment_json) = options.environment.as_ref() {
-        if let Some(kind) = environment_json.text_measurement.as_deref() {
-            environment =
-                environment.with_text_measurement_policy(match normalize_option(kind).as_str() {
-                    "vendored" | "parity" => TextMeasurementPolicy::parity(),
-                    "deterministic" => TextMeasurementPolicy::deterministic(),
+impl RenderOperationConfig {
+    pub(super) fn compile(
+        options: &BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
+        let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
+        let mut environment =
+            RenderEnvironment::deterministic().with_runtime_policy(runtime_policy);
+        environment = environment.with_resource_policy(binding_resource_policy(
+            options.analysis.resources.as_ref(),
+        )?);
+        if let Some(environment_json) = options.environment.as_ref() {
+            if let Some(kind) = environment_json.text_measurement.as_deref() {
+                environment = environment.with_text_measurement_policy(
+                    match normalize_option(kind).as_str() {
+                        "vendored" | "parity" => TextMeasurementPolicy::parity(),
+                        "deterministic" => TextMeasurementPolicy::deterministic(),
+                        other => {
+                            return Err(BindingError::new(
+                                BindingStatus::InvalidArgument,
+                                format!("unsupported environment.text_measurement: {other}"),
+                            ));
+                        }
+                    },
+                );
+            }
+            if let Some(math_renderer) = environment_json.math_renderer.as_deref() {
+                match normalize_option(math_renderer).as_str() {
+                    "none" => {
+                        environment = environment.without_math_renderer();
+                    }
+                    "ratex" => {
+                        if !merman::svg::math_available() {
+                            return Err(BindingError::missing_capability(
+                                "math",
+                                "environment.math_renderer=ratex requires the compiled math capability",
+                            ));
+                        }
+                        environment = environment.with_compiled_math_renderer();
+                    }
                     other => {
                         return Err(BindingError::new(
                             BindingStatus::InvalidArgument,
-                            format!("unsupported environment.text_measurement: {other}"),
+                            format!("unsupported environment.math_renderer: {other}"),
                         ));
                     }
-                });
-        }
-        if let Some(math_renderer) = environment_json.math_renderer.as_deref() {
-            match normalize_option(math_renderer).as_str() {
-                "none" => {
-                    environment = environment.without_math_renderer();
-                }
-                "ratex" => {
-                    if !merman::svg::math_available() {
-                        return Err(BindingError::missing_capability(
-                            "math",
-                            "environment.math_renderer=ratex requires the compiled math capability",
-                        ));
-                    }
-                    environment = environment.with_compiled_math_renderer();
-                }
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported environment.math_renderer: {other}"),
-                    ));
                 }
             }
         }
-    }
-    let mut renderer = HeadlessRenderer::new().with_environment(environment);
 
-    if options
-        .parse
-        .as_ref()
-        .and_then(|parse| parse.suppress_errors)
-        .unwrap_or(false)
-    {
-        renderer = renderer.with_lenient_parsing();
-    } else {
-        renderer = renderer.with_strict_parsing();
+        let lenient_parsing = options
+            .parse
+            .as_ref()
+            .and_then(|parse| parse.suppress_errors)
+            .unwrap_or(false);
+        let mut output = merman::svg::SvgOutputPolicy::default();
+        let mut host_theme_site_config = None;
+        if let Some(host_theme) = options.host_theme.as_ref() {
+            let compiled = binding_host_theme(host_theme)?;
+            output = compiled.output;
+            host_theme_site_config = Some(compiled.site_config);
+        }
+        let site_config = binding_site_config(options)?;
+
+        let mut layout = LayoutOptions::headless_svg_defaults();
+        if let Some(layout_json) = options.layout.as_ref() {
+            if let Some(width) = layout_json.container_width {
+                layout.container_width = finite_positive(width, "layout.container_width")?;
+            }
+            if let Some(height) = layout_json.container_height {
+                layout.container_height = finite_positive(height, "layout.container_height")?;
+            }
+        }
+
+        let mut diagram_id = None;
+        if let Some(svg) = options.svg.as_ref() {
+            diagram_id.clone_from(&svg.diagram_id);
+            if let Some(raw_pipeline) = svg.pipeline.as_deref() {
+                output.preset = match normalize_option(raw_pipeline).as_str() {
+                    "parity" => merman::svg::SvgPipelinePreset::Parity,
+                    "readable" => merman::svg::SvgPipelinePreset::Readable,
+                    "resvg-safe" => merman::svg::SvgPipelinePreset::ResvgSafe,
+                    other => {
+                        return Err(BindingError::new(
+                            BindingStatus::InvalidArgument,
+                            format!("unsupported svg.pipeline: {other}"),
+                        ));
+                    }
+                };
+            }
+            if let Some(raw_policy) = svg.css_override_policy.as_deref() {
+                output.css_override_policy = match normalize_option(raw_policy).as_str() {
+                    "preserve" => merman::svg::CssOverridePolicy::Preserve,
+                    "strip-existing-important" => {
+                        merman::svg::CssOverridePolicy::StripExistingImportant
+                    }
+                    other => {
+                        return Err(BindingError::new(
+                            BindingStatus::InvalidArgument,
+                            format!("unsupported svg.css_override_policy: {other}"),
+                        ));
+                    }
+                };
+            }
+            if let Some(scoped_css) = svg.scoped_css.as_deref() {
+                output.scoped_css = Some(scoped_css.to_string());
+            }
+            if let Some(root_background_color) = svg.root_background_color.as_deref() {
+                output.root_background_color = Some(css_declaration_value(
+                    root_background_color,
+                    "svg.root_background_color",
+                )?);
+            }
+            if let Some(drop_native_duplicate_fallbacks) = svg.drop_native_duplicate_fallbacks {
+                output.drop_native_duplicate_fallbacks = drop_native_duplicate_fallbacks;
+            }
+        }
+
+        Ok(Self {
+            environment,
+            lenient_parsing,
+            host_theme_site_config,
+            site_config,
+            layout,
+            diagram_id,
+            output,
+        })
     }
 
-    let mut output = merman::svg::SvgOutputPolicy::default();
-    if let Some(host_theme) = options.host_theme.as_ref() {
-        let compiled = binding_host_theme(host_theme)?;
-        output = compiled.output;
-        renderer = renderer.with_site_config(compiled.site_config);
-    }
-
-    if let Some(site_config) = binding_site_config(options)? {
-        renderer = renderer.with_site_config(site_config);
-    }
-
-    let mut layout = LayoutOptions::headless_svg_defaults();
-    if let Some(layout_json) = options.layout.as_ref() {
-        if let Some(width) = layout_json.container_width {
-            layout.container_width = finite_positive(width, "layout.container_width")?;
+    pub(super) fn materialize(self) -> RenderRequestPlan {
+        let mut renderer = HeadlessRenderer::new().with_environment(self.environment);
+        renderer = if self.lenient_parsing {
+            renderer.with_lenient_parsing()
+        } else {
+            renderer.with_strict_parsing()
+        };
+        if let Some(site_config) = self.host_theme_site_config {
+            renderer = renderer.with_site_config(site_config);
         }
-        if let Some(height) = layout_json.container_height {
-            layout.container_height = finite_positive(height, "layout.container_height")?;
+        if let Some(site_config) = self.site_config {
+            renderer = renderer.with_site_config(site_config);
         }
-    }
-    renderer = renderer.with_layout_options(layout);
-
-    if let Some(svg) = options.svg.as_ref() {
-        if let Some(diagram_id) = svg.diagram_id.as_deref() {
-            renderer = renderer.with_diagram_id(diagram_id);
+        renderer = renderer.with_layout_options(self.layout);
+        if let Some(diagram_id) = self.diagram_id {
+            renderer = renderer.with_diagram_id(&diagram_id);
         }
-        if let Some(raw_pipeline) = svg.pipeline.as_deref() {
-            output.preset = match normalize_option(raw_pipeline).as_str() {
-                "parity" => merman::svg::SvgPipelinePreset::Parity,
-                "readable" => merman::svg::SvgPipelinePreset::Readable,
-                "resvg-safe" => merman::svg::SvgPipelinePreset::ResvgSafe,
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported svg.pipeline: {other}"),
-                    ));
-                }
-            };
-        }
-        if let Some(raw_policy) = svg.css_override_policy.as_deref() {
-            output.css_override_policy = match normalize_option(raw_policy).as_str() {
-                "preserve" => merman::svg::CssOverridePolicy::Preserve,
-                "strip-existing-important" => {
-                    merman::svg::CssOverridePolicy::StripExistingImportant
-                }
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported svg.css_override_policy: {other}"),
-                    ));
-                }
-            };
-        }
-        if let Some(scoped_css) = svg.scoped_css.as_deref() {
-            output.scoped_css = Some(scoped_css.to_string());
-        }
-        if let Some(root_background_color) = svg.root_background_color.as_deref() {
-            output.root_background_color = Some(css_declaration_value(
-                root_background_color,
-                "svg.root_background_color",
-            )?);
-        }
-        if let Some(drop_native_duplicate_fallbacks) = svg.drop_native_duplicate_fallbacks {
-            output.drop_native_duplicate_fallbacks = drop_native_duplicate_fallbacks;
+        RenderRequestPlan {
+            renderer,
+            pipeline: self.output.pipeline(),
         }
     }
-
-    Ok((renderer, output))
 }
 
 fn binding_host_theme(

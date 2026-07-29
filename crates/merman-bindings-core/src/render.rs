@@ -19,16 +19,11 @@ pub(crate) struct CachedRenderEngine {
     plan: RenderRequestPlan,
 }
 
-impl CachedRenderEngine {
-    pub(crate) fn with_runtime_policy(
-        options: &BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
-    ) -> Result<Self, BindingError> {
-        Ok(Self {
-            plan: RenderRequestPlan::from_options_with_runtime_policy(options, runtime_policy)?,
-        })
-    }
+pub(crate) struct RenderOperationConfig {
+    plan: request::RenderOperationConfig,
+}
 
+impl CachedRenderEngine {
     pub(crate) fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.render_svg(source)
@@ -69,6 +64,23 @@ impl CachedRenderEngine {
     pub(crate) fn render_pdf(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.render_pdf(source)
+    }
+}
+
+impl RenderOperationConfig {
+    pub(crate) fn compile(
+        options: &BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
+        Ok(Self {
+            plan: request::RenderOperationConfig::compile(options, runtime_policy)?,
+        })
+    }
+
+    pub(crate) fn materialize(self) -> CachedRenderEngine {
+        CachedRenderEngine {
+            plan: self.plan.materialize(),
+        }
     }
 }
 

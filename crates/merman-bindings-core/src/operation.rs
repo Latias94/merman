@@ -131,9 +131,16 @@ impl BindingEngine {
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationResult, BindingError> {
         let operation = resolve_operation_request(&request)?;
-        let request_engine = self.for_request_options(operation, request.options_json)?;
-        let engine = request_engine.as_ref().unwrap_or(self);
-        engine.execute_resolved(operation, request.source, request.uri)
+        if request.options_json.is_empty() {
+            return self.execute_resolved(operation, request.source, request.uri);
+        }
+        let data = self
+            .execute_request_overlay(operation, request.source, request.uri, request.options_json)?
+            .map_or_else(
+                || self.execute_resolved_data(operation, request.source, request.uri),
+                Ok,
+            )?;
+        operation_result(operation, self.runtime_policy_id(), data)
     }
 
     fn execute_resolved(
@@ -142,6 +149,16 @@ impl BindingEngine {
         source: &[u8],
         uri: Option<&[u8]>,
     ) -> Result<BindingOperationResult, BindingError> {
+        let data = self.execute_resolved_data(operation, source, uri)?;
+        operation_result(operation, self.runtime_policy_id(), data)
+    }
+
+    fn execute_resolved_data(
+        &self,
+        operation: BindingOperationKind,
+        source: &[u8],
+        uri: Option<&[u8]>,
+    ) -> Result<Vec<u8>, BindingError> {
         let data = match operation.key() {
             OperationKey::Svg => self.render_svg(source),
             OperationKey::SvgPlanJson => self.svg_plan_json(source),
@@ -161,27 +178,35 @@ impl BindingEngine {
                 .analyze_document_facts_json(source, uri.expect("validated document URI presence")),
         }?;
 
-        let metadata_json = serde_json::to_vec(&BindingOperationMetadata {
-            version: BINDING_OPERATION_SCHEMA_VERSION,
-            operation_id: operation.operation_id(),
-            media_type: operation.media_type(),
-            runtime_policy: self.runtime_policy_id(),
-            byte_length: data.len(),
-        })
-        .map_err(|error| {
-            BindingError::new(
-                BindingStatus::InternalError,
-                format!("failed to serialize operation metadata: {error}"),
-            )
-        })?;
-
-        Ok(BindingOperationResult {
-            operation,
-            media_type: operation.media_type(),
-            data,
-            metadata_json,
-        })
+        Ok(data)
     }
+}
+
+fn operation_result(
+    operation: BindingOperationKind,
+    runtime_policy_id: &'static str,
+    data: Vec<u8>,
+) -> Result<BindingOperationResult, BindingError> {
+    let metadata_json = serde_json::to_vec(&BindingOperationMetadata {
+        version: BINDING_OPERATION_SCHEMA_VERSION,
+        operation_id: operation.operation_id(),
+        media_type: operation.media_type(),
+        runtime_policy: runtime_policy_id,
+        byte_length: data.len(),
+    })
+    .map_err(|error| {
+        BindingError::new(
+            BindingStatus::InternalError,
+            format!("failed to serialize operation metadata: {error}"),
+        )
+    })?;
+
+    Ok(BindingOperationResult {
+        operation,
+        media_type: operation.media_type(),
+        data,
+        metadata_json,
+    })
 }
 
 fn resolve_operation_request(
@@ -346,17 +371,23 @@ mod tests {
         };
 
         let empty = execute(b"");
-        let version_only = execute(br#"{"version":1}"#);
+        for unchanged in [
+            br#"{}"#.as_slice(),
+            br#"{"version":1}"#.as_slice(),
+            b"{\n  \"version\": 1\n}".as_slice(),
+        ] {
+            let result = execute(unchanged);
+            assert_eq!(result.data, empty.data);
+            assert_eq!(result.metadata_json, empty.metadata_json);
+        }
         let real = execute(br#"{"parse":{"suppress_errors":true}}"#);
 
-        assert_eq!(version_only.data, empty.data);
-        assert_eq!(version_only.metadata_json, empty.metadata_json);
         assert_eq!(real.data, empty.data);
         assert_eq!(real.metadata_json, empty.metadata_json);
     }
 
     #[test]
-    fn version_only_request_preserves_latent_wrapper_conflict() {
+    fn empty_request_borrows_base_before_unchanged_json_validates_wrapper_conflicts() {
         let engine = BindingEngine::from_options(
             br#"{
                 "merman": { "fixed_today": "2025-01-01" },
@@ -364,22 +395,37 @@ mod tests {
             }"#,
         )
         .expect("the constructor accepts exactly one analysis wrapper");
-        let error = engine
+        engine
             .execute(BindingOperationRequest {
                 operation_id: "semantic-json",
                 source: b"flowchart TD\nA --> B",
                 uri: None,
-                options_json: br#"{"version":1}"#,
+                options_json: b"",
             })
-            .expect_err("request-time wrapper normalization exposes the conflict");
+            .expect("empty request options borrow the already validated base engine");
 
-        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
-        assert!(
-            error
-                .message()
-                .contains("must not mix top-level analysis options"),
-            "unexpected error: {error:?}"
-        );
+        for options_json in [
+            br#"{}"#.as_slice(),
+            br#"{"version":1}"#.as_slice(),
+            b"{\n  \"version\": 1\n}".as_slice(),
+        ] {
+            let error = engine
+                .execute(BindingOperationRequest {
+                    operation_id: "semantic-json",
+                    source: b"flowchart TD\nA --> B",
+                    uri: None,
+                    options_json,
+                })
+                .expect_err("non-empty request normalization exposes the wrapper conflict");
+
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+            assert!(
+                error
+                    .message()
+                    .contains("must not mix top-level analysis options"),
+                "unexpected error: {error:?}"
+            );
+        }
     }
 
     #[test]
@@ -469,7 +515,7 @@ mod tests {
                 uri: None,
                 options_json: br#"{"svg":{"pipeline":"invalid-pipeline"}}"#,
             })
-            .expect_err("full request-engine construction validates the render domain first");
+            .expect_err("artifact-wide request validation checks the render domain first");
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(
@@ -494,7 +540,7 @@ mod tests {
                     "svg": { "pipeline": "invalid-pipeline" }
                 }"#,
             })
-            .expect_err("analysis is constructed before the render engine");
+            .expect_err("artifact-wide request validation checks analysis before rendering");
 
         assert_eq!(error.status(), BindingStatus::InvalidArgument);
         assert!(
@@ -544,52 +590,63 @@ mod tests {
         let engine = BindingEngine::from_options(b"").unwrap();
 
         for operation in BindingOperationKind::all().filter(|operation| operation.is_compiled()) {
-            let request = BindingOperationRequest {
-                operation_id: operation.operation_id(),
-                source: b"flowchart TD\nA --> B",
-                uri: operation
-                    .requires_uri()
-                    .then_some(b"file:///diagram.mmd".as_slice()),
-                options_json: b"",
-            };
-            let one_shot = execute_once(request).unwrap_or_else(|error| {
-                panic!(
-                    "one-shot operation `{}` failed: {}",
-                    operation.operation_id(),
-                    error.message()
-                )
-            });
-            let reusable = engine.execute(request).unwrap_or_else(|error| {
-                panic!(
-                    "reusable operation `{}` failed: {}",
-                    operation.operation_id(),
-                    error.message()
-                )
-            });
+            for options_json in [
+                b"".as_slice(),
+                br#"{"parse":{"suppress_errors":false}}"#.as_slice(),
+            ] {
+                let request = BindingOperationRequest {
+                    operation_id: operation.operation_id(),
+                    source: b"flowchart TD\nA --> B",
+                    uri: operation
+                        .requires_uri()
+                        .then_some(b"file:///diagram.mmd".as_slice()),
+                    options_json,
+                };
+                let one_shot = execute_once(request).unwrap_or_else(|error| {
+                    panic!(
+                        "one-shot operation `{}` failed: {}",
+                        operation.operation_id(),
+                        error.message()
+                    )
+                });
+                let reusable = engine.execute(request).unwrap_or_else(|error| {
+                    panic!(
+                        "reusable operation `{}` failed: {}",
+                        operation.operation_id(),
+                        error.message()
+                    )
+                });
 
-            assert_eq!(one_shot, reusable, "operation={}", operation.operation_id());
-            assert_eq!(one_shot.operation, operation);
-            assert_eq!(one_shot.media_type, operation.media_type());
-            let metadata: serde_json::Value =
-                serde_json::from_slice(&one_shot.metadata_json).unwrap();
-            assert_eq!(
-                metadata["operation_id"],
-                operation.operation_id(),
-                "operation={}",
-                operation.operation_id()
-            );
-            assert_eq!(
-                metadata["media_type"],
-                operation.media_type(),
-                "operation={}",
-                operation.operation_id()
-            );
-            assert_eq!(
-                metadata["byte_length"],
-                one_shot.data.len(),
-                "operation={}",
-                operation.operation_id()
-            );
+                assert_eq!(
+                    one_shot,
+                    reusable,
+                    "operation={}, options={}",
+                    operation.operation_id(),
+                    String::from_utf8_lossy(options_json)
+                );
+                assert_eq!(one_shot.operation, operation);
+                assert_eq!(one_shot.media_type, operation.media_type());
+                let metadata: serde_json::Value =
+                    serde_json::from_slice(&one_shot.metadata_json).unwrap();
+                assert_eq!(
+                    metadata["operation_id"],
+                    operation.operation_id(),
+                    "operation={}",
+                    operation.operation_id()
+                );
+                assert_eq!(
+                    metadata["media_type"],
+                    operation.media_type(),
+                    "operation={}",
+                    operation.operation_id()
+                );
+                assert_eq!(
+                    metadata["byte_length"],
+                    one_shot.data.len(),
+                    "operation={}",
+                    operation.operation_id()
+                );
+            }
         }
     }
 

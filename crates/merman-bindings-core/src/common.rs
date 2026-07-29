@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 pub const BINDING_OPTIONS_SCHEMA_VERSION: u32 = 1;
 pub const BINDING_RESULT_PAYLOAD_VERSION: u32 = 1;
@@ -235,6 +236,21 @@ pub(crate) struct ResourceOptionsJson {
     pub(crate) limits: BTreeMap<String, usize>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct BaseBindingOptions {
+    normalized_wire: Arc<Value>,
+    resource_ceiling: ResourceOptionsJson,
+}
+
+#[derive(Debug)]
+pub(crate) enum BindingRequestOverlay {
+    Unchanged,
+    Override {
+        normalized_wire: Value,
+        requested_resources: Option<ResourceOptionsJson>,
+    },
+}
+
 #[cfg(feature = "ascii")]
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct AsciiOptionsJson {
@@ -466,23 +482,27 @@ fn legacy_validation_fallback_status(
 }
 
 pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError> {
-    if bytes.is_empty() {
-        return Ok(BindingOptions::default());
-    }
-    let text = std::str::from_utf8(bytes).map_err(|err| {
-        BindingError::new(
-            BindingStatus::Utf8Error,
-            format!("invalid options_json UTF-8: {err}"),
-        )
-    })?;
-    let value: serde_json::Value = serde_json::from_str(text).map_err(|err| {
-        BindingError::new(
-            BindingStatus::OptionsJsonError,
-            format!("invalid options_json: {err}"),
-        )
-    })?;
+    parse_options_value(&options_json_value(bytes)?)
+}
+
+pub(crate) fn parse_base_options(
+    bytes: &[u8],
+) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
+    let wire = options_json_value(bytes)?;
+    let typed = parse_options_value(&wire)?;
+    let resource_ceiling = typed.analysis.resources.clone().unwrap_or_default();
+    Ok((
+        typed,
+        BaseBindingOptions {
+            normalized_wire: Arc::new(normalize_analysis_wrapper(wire)),
+            resource_ceiling,
+        },
+    ))
+}
+
+fn parse_options_value(value: &Value) -> Result<BindingOptions, BindingError> {
     #[cfg(feature = "svg")]
-    reject_removed_layout_fields(&value)?;
+    reject_removed_layout_fields(value)?;
     let mut options: BindingOptions = serde_json::from_value(value.clone()).map_err(|err| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
@@ -499,9 +519,79 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
             ),
         ));
     }
-    options.analysis = binding_analysis_options_json_from_json_value(&value)?;
+    options.analysis = binding_analysis_options_json_from_json_value(value)?;
     validate_resource_contract_ids(options.analysis.resources.as_ref())?;
     Ok(options)
+}
+
+pub(crate) fn parse_request_overlay(
+    request_options_json: &[u8],
+    resource_scope: BindingResourceScope,
+) -> Result<BindingRequestOverlay, BindingError> {
+    let request_value = options_json_value(request_options_json)?;
+    if is_unchanged_request(&request_value) {
+        return Ok(BindingRequestOverlay::Unchanged);
+    }
+
+    parse_options_value(&request_value)?;
+    if request_selects_runtime_policy(&request_value) {
+        return Err(BindingError::new(
+            BindingStatus::OptionsJsonError,
+            "request options_json cannot set runtime_policy; configure it when creating the engine",
+        ));
+    }
+
+    let mut normalized_wire = normalize_analysis_wrapper(request_value);
+    let requested_resources = take_request_resource_options(&mut normalized_wire, resource_scope)?;
+    Ok(BindingRequestOverlay::Override {
+        normalized_wire,
+        requested_resources,
+    })
+}
+
+impl BaseBindingOptions {
+    pub(crate) fn validate_unchanged_request(&self) -> Result<(), BindingError> {
+        parse_options_value(&self.normalized_wire).map(drop)
+    }
+
+    pub(crate) fn apply_overlay(
+        &self,
+        overlay: BindingRequestOverlay,
+    ) -> Result<BindingOptions, BindingError> {
+        let BindingRequestOverlay::Override {
+            normalized_wire,
+            requested_resources,
+        } = overlay
+        else {
+            unreachable!("unchanged request overlays borrow the base engine");
+        };
+
+        let mut merged = self.normalized_wire.as_ref().clone();
+        merge_json_value(&mut merged, normalized_wire);
+        if let Some(requested_resources) = requested_resources {
+            let resources = tighten_resource_options(&self.resource_ceiling, &requested_resources)?;
+            merged
+                .as_object_mut()
+                .expect("validated binding options always normalize to an object")
+                .insert(
+                    "resources".to_string(),
+                    serde_json::to_value(resources).map_err(internal_json_error)?,
+                );
+        }
+        parse_options_value(&merged)
+    }
+}
+
+fn is_unchanged_request(value: &Value) -> bool {
+    let Some(options) = value.as_object() else {
+        return false;
+    };
+    options.is_empty()
+        || (options.len() == 1
+            && options
+                .get("version")
+                .and_then(Value::as_u64)
+                .is_some_and(|version| version == u64::from(BINDING_OPTIONS_SCHEMA_VERSION)))
 }
 
 fn validate_resource_contract_ids(
@@ -523,6 +613,7 @@ fn validate_resource_contract_ids(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) fn merge_request_options(
     base_options_json: &[u8],
     request_options_json: &[u8],
@@ -1373,6 +1464,141 @@ pub(crate) fn feature_required_error(operation: &str, feature: &'static str) -> 
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    fn typed_overlay_signature(
+        base: &[u8],
+        request: &[u8],
+        scope: BindingResourceScope,
+    ) -> Result<String, BindingError> {
+        let (_, base) = parse_base_options(base)?;
+        let options = match parse_request_overlay(request, scope)? {
+            BindingRequestOverlay::Unchanged => {
+                base.validate_unchanged_request()?;
+                parse_options_value(&base.normalized_wire)?
+            }
+            overlay => base.apply_overlay(overlay)?,
+        };
+        Ok(format!("{options:#?}"))
+    }
+
+    fn merge_oracle_signature(
+        base: &[u8],
+        request: &[u8],
+        scope: BindingResourceScope,
+    ) -> Result<String, BindingError> {
+        parse_options(base)?;
+        let merged = merge_request_options(base, request, scope)?;
+        let options = parse_options(&merged)?;
+        Ok(format!("{options:#?}"))
+    }
+
+    #[test]
+    fn typed_request_overlays_match_the_recursive_merge_oracle() {
+        let cases = vec![
+            (
+                "nested override",
+                br#"{
+                    "version": 1,
+                    "parse": { "suppress_errors": false },
+                    "resources": {
+                        "profile": "interactive",
+                        "limits": {
+                            "max_source_bytes": 4096,
+                            "max_model_items": 128
+                        }
+                    }
+                }"#
+                .as_slice(),
+                br#"{
+                    "parse": { "suppress_errors": true },
+                    "resources": {
+                        "limits": { "max_source_bytes": 2048 }
+                    }
+                }"#
+                .as_slice(),
+                BindingResourceScope::Model,
+            ),
+            (
+                "version-only latent wrapper conflict",
+                br#"{
+                    "merman": { "fixed_today": "2025-01-01" },
+                    "analysis": { "future_option": true }
+                }"#
+                .as_slice(),
+                br#"{"version":1}"#.as_slice(),
+                BindingResourceScope::Model,
+            ),
+            (
+                "runtime policy",
+                b"".as_slice(),
+                br#"{"runtime_policy":"native"}"#.as_slice(),
+                BindingResourceScope::Model,
+            ),
+            (
+                "wrapped runtime policy",
+                b"".as_slice(),
+                br#"{"analysis":{"runtime_policy":"native"}}"#.as_slice(),
+                BindingResourceScope::Analysis,
+            ),
+            (
+                "malformed request JSON",
+                b"".as_slice(),
+                b"{".as_slice(),
+                BindingResourceScope::Model,
+            ),
+            (
+                "cleared resource ceiling",
+                b"".as_slice(),
+                br#"{"resources":null}"#.as_slice(),
+                BindingResourceScope::Model,
+            ),
+            (
+                "out-of-scope resource limit",
+                b"".as_slice(),
+                br#"{"resources":{"limits":{"max_svg_bytes":1024}}}"#.as_slice(),
+                BindingResourceScope::Model,
+            ),
+        ];
+
+        #[cfg(feature = "ascii")]
+        let cases = {
+            let mut cases = cases;
+            cases.extend([
+                (
+                    "ASCII alias collision",
+                    br#"{"ascii":{"color_mode":"none"}}"#.as_slice(),
+                    br#"{"ascii":{"colorMode":"ansi"}}"#.as_slice(),
+                    BindingResourceScope::Model,
+                ),
+                (
+                    "resource ceiling precedes alias collision",
+                    br#"{
+                        "resources": {
+                            "profile": "constrained",
+                            "limits": { "max_source_bytes": 64 }
+                        },
+                        "ascii": { "color_mode": "none" }
+                    }"#
+                    .as_slice(),
+                    br#"{
+                        "resources": { "limits": { "max_source_bytes": 65 } },
+                        "ascii": { "colorMode": "ansi" }
+                    }"#
+                    .as_slice(),
+                    BindingResourceScope::Model,
+                ),
+            ]);
+            cases
+        };
+
+        for (case, base, request, scope) in cases {
+            assert_eq!(
+                typed_overlay_signature(base, request, scope),
+                merge_oracle_signature(base, request, scope),
+                "case={case}"
+            );
+        }
+    }
 
     #[test]
     fn error_payload_json_uses_public_code_names() {

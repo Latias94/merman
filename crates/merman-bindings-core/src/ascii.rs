@@ -18,49 +18,60 @@ pub(crate) struct CachedAsciiEngine {
     renderer: merman::ascii::HeadlessAsciiRenderer,
 }
 
-impl CachedAsciiEngine {
-    pub(crate) fn with_runtime_policy(
-        options: &crate::common::BindingOptions,
-        runtime_policy: merman::runtime::RuntimePolicy,
-    ) -> Result<Self, BindingError> {
-        Ok(Self {
-            renderer: build_ascii_renderer_with_runtime_policy(options, runtime_policy)?,
-        })
-    }
+pub(crate) struct AsciiOperationConfig {
+    runtime_policy: merman::runtime::RuntimePolicy,
+    parse_options: merman::ParseOptions,
+    render_options: merman::ascii::AsciiRenderOptions,
+    resources: merman::resources::InputResourcePolicy,
+    site_config: Option<merman::MermaidConfig>,
+}
 
+impl CachedAsciiEngine {
     pub(crate) fn render_ascii(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         render_ascii_with_renderer(&self.renderer, source)
     }
 }
 
-fn build_ascii_renderer_with_runtime_policy(
-    options: &crate::common::BindingOptions,
-    runtime_policy: merman::runtime::RuntimePolicy,
-) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
-    let parse = if options
-        .parse
-        .as_ref()
-        .and_then(|parse| parse.suppress_errors)
-        .unwrap_or(false)
-    {
-        merman::ParseOptions::lenient()
-    } else {
-        merman::ParseOptions::strict()
-    };
-    let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
-    let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
-        .with_runtime_policy(runtime_policy)
-        .with_parse_options(parse)
-        .with_ascii_options(ascii_options_from_json(options)?)
-        .with_resource_policy(binding_input_resource_policy(
-            options.analysis.resources.as_ref(),
-        )?);
-    if let Some(site_config) = binding_site_config(options)? {
-        renderer = renderer.with_site_config(site_config);
+impl AsciiOperationConfig {
+    pub(crate) fn compile(
+        options: &crate::common::BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
+        let parse_options = if options
+            .parse
+            .as_ref()
+            .and_then(|parse| parse.suppress_errors)
+            .unwrap_or(false)
+        {
+            merman::ParseOptions::lenient()
+        } else {
+            merman::ParseOptions::strict()
+        };
+        let runtime_policy = binding_runtime_policy_from(options, runtime_policy)?;
+        let render_options = ascii_options_from_json(options)?;
+        let resources = binding_input_resource_policy(options.analysis.resources.as_ref())?;
+        let site_config = binding_site_config(options)?;
+        Ok(Self {
+            runtime_policy,
+            parse_options,
+            render_options,
+            resources,
+            site_config,
+        })
     }
 
-    Ok(renderer)
+    pub(crate) fn materialize(self) -> CachedAsciiEngine {
+        let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
+            .with_runtime_policy(self.runtime_policy)
+            .with_parse_options(self.parse_options)
+            .with_ascii_options(self.render_options)
+            .with_resource_policy(self.resources);
+        if let Some(site_config) = self.site_config {
+            renderer = renderer.with_site_config(site_config);
+        }
+        CachedAsciiEngine { renderer }
+    }
 }
 
 fn ascii_options_from_json(
