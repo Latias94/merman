@@ -257,6 +257,37 @@ The precedence is `2 > 1 > 3 > 0`. Candidate accepted/rejected/inconclusive stat
 the mirrored per-row fields and mandatory non-performance gates, never inferred from this process
 code alone.
 
+### Structural complexity and resource amplification
+
+The latency gates above are not universal admission criteria. A separately preregistered
+structural lane may accept a repair without a measurable ordinary-fixture speedup when an
+externally reachable input controls repeated work, the old implementation contains a higher-order
+or unbounded term, and the candidate removes or caps that term.
+
+Freeze the evidence model before implementation:
+
+- name the independent input variables and the resource limit that bounds each one;
+- state the reachable pre-change and post-change time and added-space bounds, distinguishing
+  worst-case bounds from expected hash-table behavior;
+- identify the exact loop, lookup, rebuild, or expansion that realizes the old term;
+- choose code-path proof plus an exact test-only work counter, or a preregistered multi-scale curve
+  when the bound cannot be established directly;
+- preserve semantic output, structured errors and precedence, security policy, resource charges,
+  cancellation, and deterministic ordering;
+- run the existing representative public lane as a non-regression control when practical, and add
+  a memory bound when the data-structure change adds scale-sensitive state.
+
+Acceptance requires a reviewed causal derivation and passing correctness/resource gates. A noisy
+or sub-threshold clock result does not invalidate a proven removal of attacker-controlled
+quadratic work, but a confirmed material public-workload regression still requires rejection or an
+explicitly approved tradeoff. Describe the result as, for example, `O(A^2)` to expected `O(A)` or
+`O(T * (V + E))` to `O(T + V + E)` with its added-space bound. Do not call it a latency speedup
+unless a separate public-operation timing confirmation passes.
+
+Prefer existing correctness suites plus one combined adversarial scale test over a permanent
+fixture-specific benchmark. Delete candidate-only counters, lanes, contracts, and generators after
+rejection; retain infrastructure only when it serves a stable recurring contract.
+
 ### Report schema
 
 Self-comparison reports use schema version `2`. The JSON is the audit artifact; Markdown and PR

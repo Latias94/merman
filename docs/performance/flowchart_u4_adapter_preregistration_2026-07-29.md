@@ -4,7 +4,8 @@ Date: 2026-07-29
 
 This receipt freezes the latency, work-curve, semantic, and native-memory admission criteria for
 the Flowchart adapter candidate before production adapter code is changed or candidate evidence is
-collected. It is intentionally separate from the admitted Dugong batch-retirement subcandidate.
+collected. It is intentionally separate from the Dugong batch-retirement complexity repair, whose
+latency and native-memory admission was not completed.
 
 Retirement note: the candidate was rejected before native-memory confirmation. Its two
 candidate-bound memory lanes, contracts, and generators were subsequently removed from the active

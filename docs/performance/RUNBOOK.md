@@ -188,6 +188,12 @@ CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph --profile bench \
 
 ## 5. Run confirmation without adaptive sampling
 
+This section admits latency and throughput claims. For a structural complexity or
+input-amplification repair, use the evidence model in `BENCHMARKING.md`: preregister named input
+variables, reachable old/new time and space bounds, and an exact work counter or scale curve. Keep
+public timing as a non-regression control and do not manufacture a speedup claim from an
+asymptotic proof.
+
 Freeze the confidence level, bootstrap seed/resample count, minimum detectable effects, calibration
 count, and maximum pair budget before looking at the result. The default contract is:
 

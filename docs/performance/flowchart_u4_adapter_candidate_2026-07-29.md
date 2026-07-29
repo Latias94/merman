@@ -54,8 +54,8 @@ candidate.
 
 The indexed hierarchy, boundary, incident-edge, and extraction implementations and their private
 work probes were removed. `crates/merman-render/src/flowchart/layout.rs` is byte-identical to the
-adjacent base for this candidate. The separately admitted Dugong batch-retirement optimization from
-`c3130d4dc` remains in place.
+adjacent base for this candidate. The Dugong batch-retirement change from `c3130d4dc` remains only
+as a documented asymptotic complexity repair; it carries no ordinary-latency or memory claim.
 
 Verification after removal:
 

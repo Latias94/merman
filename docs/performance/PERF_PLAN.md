@@ -56,15 +56,24 @@ A workload can also bypass the ordinary threshold when it crosses an interactive
 materially changes throughput or memory use, or affects a documented high-volume integration. The
 exception and its evidence must be frozen before confirmation samples are collected.
 
+An externally reachable complexity or resource-amplification repair uses a different evidence
+class. It must name the user-controlled variables, prove the reachable old/new time and added-space
+bounds, preserve semantic and resource-accounting behavior, and keep representative public work
+within its non-regression budget. Such a result may be accepted as a structural repair without
+clearing a latency threshold, but it is not a measured speedup unless a separate end-to-end timing
+gate passes.
+
 Before implementation:
 
-1. Match capabilities between base and target revisions.
-2. Attribute parse, layout, render, and end-to-end stages.
-3. Run at least eight balanced base and head A/A calibration pairs, derive the fixed even AB/BA
-   confirmation count from the preregistered MDE, and collect fresh order-balanced pairs within the
-   fixed maximum budget.
-4. Record model size, SVG bytes/elements, and the relevant semantic, DOM, or raster parity result.
-5. Profile only after the slow stage is known.
+1. Select and preregister the admission class.
+2. Match capabilities between base and target revisions.
+3. Attribute parse, layout, render, and end-to-end stages.
+4. For timing or throughput, run at least eight balanced base and head A/A calibration pairs,
+   derive the fixed even AB/BA confirmation count from the preregistered MDE, and collect fresh
+   order-balanced pairs within the fixed maximum budget. For structural work, freeze the input
+   variables, old/new time and space bounds, and exact counter or scale-curve method instead.
+5. Record model size, SVG bytes/elements, and the relevant semantic, DOM, or raster parity result.
+6. Profile only after the slow stage is known.
 
 ## Priorities
 
@@ -238,6 +247,15 @@ latency comparison before retaining production code.
 
 Exit: the curve identifies the first superlinear or allocation-heavy stage and a representative
 large preview fits the agreed interactive budget.
+
+Completed on 2026-07-29 with a split decision. The indexed Flowchart adapter candidate was rejected
+and removed after it failed to produce an admissible public-operation result. The separate Dugong
+batch-retirement mechanism remains because it bounds repeated adjacency reconstruction from
+worst-case `O(T * (V + E))` to `O(T + V + E)`; its preregistered latency and memory admission was
+not completed, so no measured speedup is claimed. Candidate-only memory lanes, contracts,
+generators, and tests were deleted. See
+[the adapter decision](flowchart_u4_adapter_candidate_2026-07-29.md) and
+[the batch preregistration outcome](flowchart_u4_dugong_batch_preregistration_2026-07-28.md).
 
 ### P1.7: Bound Resvg finalization and export work
 
