@@ -284,7 +284,7 @@ jobs:
                 --verified-output "$VERIFIED_ARCHIVE_DIR/$archive_name"
             done
           done
-      - name: Prepare trusted global-generation inputs
+      - name: Prepare verified global-generation snapshots
         shell: bash
         run: |
           set -euo pipefail
@@ -317,6 +317,10 @@ jobs:
             --artifacts=global \
             --output-format=json > generated-global-dist-manifest.json
           mv generated-global-dist-manifest.json "$GENERATED_ASSET_DIR/dist-manifest.json"
+          python3 scripts/release_artifact_bundle.py harden-installers \
+            "$GENERATED_ASSET_DIR" \
+            docs/release/SURFACES.json \
+            --version "$RELEASE_VERSION"
           sh -n "$GENERATED_ASSET_DIR/merman-cli-installer.sh"
           sh -n "$GENERATED_ASSET_DIR/merman-lsp-installer.sh"
       - name: Assemble the verified bundle
@@ -346,25 +350,51 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: aarch64-apple-darwin
+          - package: merman-cli
+            verifier: scripts/verify_cli_release_archive.py
+            target: aarch64-apple-darwin
             runner: macos-15
-          - target: x86_64-apple-darwin
+          - package: merman-lsp
+            verifier: scripts/verify_lsp_release_archive.py
+            target: aarch64-apple-darwin
+            runner: macos-15
+          - package: merman-cli
+            verifier: scripts/verify_cli_release_archive.py
+            target: x86_64-apple-darwin
             runner: macos-15-intel
-          - target: x86_64-unknown-linux-gnu
+          - package: merman-lsp
+            verifier: scripts/verify_lsp_release_archive.py
+            target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - package: merman-cli
+            verifier: scripts/verify_cli_release_archive.py
+            target: x86_64-unknown-linux-gnu
             runner: ubuntu-24.04
-          - target: x86_64-pc-windows-msvc
+          - package: merman-lsp
+            verifier: scripts/verify_lsp_release_archive.py
+            target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - package: merman-cli
+            verifier: scripts/verify_cli_release_archive.py
+            target: x86_64-pc-windows-msvc
+            runner: windows-2025
+          - package: merman-lsp
+            verifier: scripts/verify_lsp_release_archive.py
+            target: x86_64-pc-windows-msvc
             runner: windows-2025
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     env:
+      PACKAGE: ${{ matrix.package }}
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
-      SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
       TARGET: ${{ matrix.target }}
+      VERIFIER: ${{ matrix.verifier }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
+          ref: ${{ needs.plan.outputs.source_sha }}
           submodules: recursive
       - name: Download verified release bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -376,11 +406,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($name in @('merman-cli-installer.ps1', 'merman-lsp-installer.ps1')) {
-            $path = Join-Path 'verified-release-assets' $name
-            [scriptblock]::Create([IO.File]::ReadAllText($path)) | Out-Null
-          }
-      - name: Execute final CLI and LSP archives
+          $path = Join-Path 'verified-release-assets' "$env:PACKAGE-installer.ps1"
+          [scriptblock]::Create([IO.File]::ReadAllText($path)) | Out-Null
+      - name: Execute final product archive
         shell: bash
         run: |
           set -euo pipefail
@@ -388,34 +416,14 @@ jobs:
           if [[ "$TARGET" == *-windows-* ]]; then
             extension=zip
           fi
-          for specification in \
-            'merman-cli:scripts/verify_cli_release_archive.py' \
-            'merman-lsp:scripts/verify_lsp_release_archive.py'; do
-            IFS=: read -r package verifier <<<"$specification"
-            archive="$package-$TARGET.$extension"
-            python3 "$verifier" \
-              "verified-release-assets/$archive" \
-              --checksum "verified-release-assets/$archive.sha256" \
-              --target "$TARGET" \
-              --version "$RELEASE_VERSION" \
-              --repo-root "$GITHUB_WORKSPACE" \
-              --execute
-          done
-      - name: Record native verification receipt
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 "$GITHUB_WORKSPACE/scripts/release_artifact_bundle.py" write-receipt \
-            verified-release-assets \
+          archive="$PACKAGE-$TARGET.$extension"
+          python3 "$VERIFIER" \
+            "verified-release-assets/$archive" \
+            --checksum "verified-release-assets/$archive.sha256" \
             --target "$TARGET" \
-            --source-sha "$SOURCE_SHA" \
-            --output "native-release-verification-$TARGET.json"
-      - name: Upload native verification receipt
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: native-release-verification-${{ matrix.target }}
-          path: native-release-verification-${{ matrix.target }}.json
-          if-no-files-found: error
+            --version "$RELEASE_VERSION" \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --execute
 
   release-verification-gate:
     needs:
@@ -448,21 +456,16 @@ jobs:
         with:
           name: verified-release-assets
           path: verified-release-assets
-      - name: Download native verification receipts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          pattern: native-release-verification-*
-          path: native-receipts
-          merge-multiple: true
-      - name: Verify native receipt closure
+      - name: Reverify the immutable release bundle
         env:
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
           SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 "$GITHUB_WORKSPACE/scripts/release_artifact_bundle.py" verify-receipts \
+          python3 "$GITHUB_WORKSPACE/scripts/release_artifact_bundle.py" verify-bundle \
             verified-release-assets \
-            native-receipts \
+            --version "$RELEASE_VERSION" \
             --source-sha "$SOURCE_SHA"
 
   generate-cli-registry-candidates:

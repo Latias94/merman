@@ -31,9 +31,15 @@ install-path = "CARGO_HOME"
 install-updater = false
 # Where to host releases
 hosting = "github"
-# Legal material is part of every executable archive and installer, not a
-# repository-only side document.
-include = ["THIRD_PARTY_NOTICES.md", "THIRD_PARTY_LICENSES/"]
+# Keep archive contents explicit so product verifiers can reject every undeclared file.
+auto-includes = false
+include = [
+    "CHANGELOG.md",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "THIRD_PARTY_NOTICES.md",
+    "THIRD_PARTY_LICENSES/",
+]
 
 # Keep release jobs on current GitHub-hosted runner images.
 [dist.github-custom-runners]

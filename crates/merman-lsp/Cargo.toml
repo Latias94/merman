@@ -14,7 +14,9 @@ keywords = ["mermaid", "lsp", "language-server", "completion", "diagnostics"]
 categories = ["development-tools", "text-editors"]
 
 [package.metadata.dist]
+auto-includes = false
 default-features = false
+include = ["README.md"]
 features = ["stdio"]
 
 [package.metadata.merman]

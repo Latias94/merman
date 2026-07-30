@@ -7,6 +7,7 @@ import hashlib
 from io import BytesIO
 import json
 import lzma
+import os
 from pathlib import Path
 import stat
 import subprocess
@@ -14,6 +15,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 
@@ -31,9 +33,20 @@ LEGAL_FILES = {
     verifier.NOTICE_PATH: b"Third-party notices\n",
     f"{verifier.LICENSE_ROOT}/example/LICENSE": b"Example license\n",
 }
+ROOT_RELEASE_FILES = {
+    "CHANGELOG.md": b"Release changes\n",
+    "LICENSE-APACHE": b"Apache license\n",
+    "LICENSE-MIT": b"MIT license\n",
+}
+PACKAGE_README = b"Merman LSP package readme\n"
 
 
 def write_repository(root: Path) -> None:
+    package_readme = root / "crates/merman-lsp/README.md"
+    package_readme.parent.mkdir(parents=True, exist_ok=True)
+    package_readme.write_bytes(PACKAGE_README)
+    for relative, content in ROOT_RELEASE_FILES.items():
+        (root / relative).write_bytes(content)
     for relative, content in LEGAL_FILES.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -47,7 +60,12 @@ def write_repository(root: Path) -> None:
 
 def archive_files(target: str) -> dict[str, bytes]:
     binary = verifier.binary_name_for(verifier.PACKAGE_NAME, target)
-    return {binary: b"standalone-lsp-binary\n", **LEGAL_FILES}
+    return {
+        binary: b"standalone-lsp-binary\n",
+        verifier.PACKAGE_README_PATH: PACKAGE_README,
+        **ROOT_RELEASE_FILES,
+        **LEGAL_FILES,
+    }
 
 
 def write_checksum(archive: Path) -> Path:
@@ -96,6 +114,62 @@ def response_frame(request_id: int, result: object) -> bytes:
 
 def valid_session_output() -> bytes:
     return response_frame(1, {"capabilities": {}}) + response_frame(2, None)
+
+
+def write_test_server(root: Path, behavior: str) -> Path:
+    script = root / f"lsp-{behavior}.py"
+    source = r'''#!/usr/bin/env python3
+import json
+import sys
+import time
+
+BEHAVIOR = __BEHAVIOR__
+
+def read_message():
+    header = sys.stdin.buffer.readline()
+    if not header.startswith(b"Content-Length: "):
+        raise SystemExit(91)
+    length = int(header.removeprefix(b"Content-Length: ").strip())
+    if sys.stdin.buffer.readline() != b"\r\n":
+        raise SystemExit(92)
+    return json.loads(sys.stdin.buffer.read(length))
+
+def respond(request_id, result):
+    body = json.dumps(
+        {"jsonrpc": "2.0", "id": request_id, "result": result},
+        separators=(",", ":"),
+    ).encode()
+    sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
+    sys.stdout.buffer.flush()
+
+initialize = read_message()
+if initialize.get("method") != "initialize":
+    raise SystemExit(93)
+if BEHAVIOR == "timeout":
+    time.sleep(60)
+respond(1, {"capabilities": {}})
+if read_message().get("method") != "initialized":
+    raise SystemExit(94)
+shutdown = read_message()
+if shutdown.get("method") != "shutdown":
+    raise SystemExit(95)
+respond(2, None)
+if read_message().get("method") != "exit":
+    raise SystemExit(96)
+if BEHAVIOR == "stderr":
+    sys.stderr.buffer.write(b"x" * (__STDERR_LIMIT__ + 1))
+    sys.stderr.buffer.flush()
+if BEHAVIOR == "nonzero":
+    raise SystemExit(7)
+'''
+    script.write_text(
+        source.replace("__BEHAVIOR__", repr(behavior)).replace(
+            "__STDERR_LIMIT__", str(verifier.LSP_STDERR_MAX_BYTES)
+        ),
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    return script
 
 
 class LspArchiveTests(unittest.TestCase):
@@ -170,6 +244,29 @@ class LspArchiveTests(unittest.TestCase):
                     verified_output=output_dir / archive.name,
                 )
 
+    def test_archive_rejects_dll_and_hidden_payloads(self) -> None:
+        for relative in ("helper.dll", ".hidden"):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp_dir:
+                temp = Path(temp_dir)
+                repo = temp / "repo"
+                repo.mkdir()
+                write_repository(repo)
+                files = archive_files(WINDOWS_TARGET)
+                files[relative] = b"unexpected\n"
+                archive, checksum = write_zip(temp, files)
+
+                with self.assertRaisesRegex(
+                    verifier.ArchiveVerificationError,
+                    "unexpected",
+                ):
+                    verifier.verify_release_archive(
+                        archive,
+                        checksum,
+                        target=WINDOWS_TARGET,
+                        version=VERSION,
+                        repo_root=repo,
+                    )
+
     def test_archive_rejects_modified_legal_material(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -194,6 +291,32 @@ class LspArchiveTests(unittest.TestCase):
                     repo_root=repo,
                     verified_output=output_dir / archive.name,
                 )
+
+    def test_archive_rejects_modified_readme_and_root_release_files(self) -> None:
+        for relative in (
+            verifier.PACKAGE_README_PATH,
+            *verifier.ROOT_RELEASE_PATHS,
+        ):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp_dir:
+                temp = Path(temp_dir)
+                repo = temp / "repo"
+                repo.mkdir()
+                write_repository(repo)
+                files = archive_files(LINUX_TARGET)
+                files[relative] = b"different\n"
+                archive, checksum = write_tar(temp, files)
+
+                with self.assertRaisesRegex(
+                    verifier.ArchiveVerificationError,
+                    "content differs",
+                ):
+                    verifier.verify_release_archive(
+                        archive,
+                        checksum,
+                        target=LINUX_TARGET,
+                        version=VERSION,
+                        repo_root=repo,
+                    )
 
     def test_shared_archive_core_rejects_trailing_xz_stream_data(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -255,6 +378,35 @@ class LspRuntimeTests(unittest.TestCase):
 
         self.assertEqual(len(observed), 1)
         self.assertEqual(observed[0], verifier.lifecycle_frames())
+
+    @unittest.skipUnless(os.name == "posix", "native process fixture requires POSIX shebangs")
+    def test_native_process_driver_completes_the_stdio_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            server = write_test_server(Path(temp_dir), "success")
+            verifier.verify_runtime_contract(
+                server,
+                target=LINUX_TARGET,
+                host_target_checker=lambda _target: True,
+            )
+
+    @unittest.skipUnless(os.name == "posix", "native process fixture requires POSIX shebangs")
+    def test_native_process_driver_fails_closed(self) -> None:
+        for behavior, error, timeout in (
+            ("timeout", subprocess.TimeoutExpired, 0.2),
+            ("stderr", verifier.ArchiveVerificationError, 2.0),
+            ("nonzero", verifier.ArchiveVerificationError, 2.0),
+        ):
+            with self.subTest(behavior=behavior), tempfile.TemporaryDirectory() as temp_dir:
+                server = write_test_server(Path(temp_dir), behavior)
+                with (
+                    mock.patch.object(verifier, "LSP_TIMEOUT_SECONDS", timeout),
+                    self.assertRaises(error),
+                ):
+                    verifier.verify_runtime_contract(
+                        server,
+                        target=LINUX_TARGET,
+                        host_target_checker=lambda _target: True,
+                    )
 
     def test_runtime_contract_refuses_cross_target_execution_before_spawn(self) -> None:
         spawned = False

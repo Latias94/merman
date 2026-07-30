@@ -422,7 +422,9 @@ The remaining user-facing and distribution gaps are different:
 6. **Keep GitHub installers binary-only.**
    cargo-dist and cargo-binstall intentionally install only the executable. The project documents
    runtime completion generation; package managers that own integration directories install
-   checked assets. Merman does not mutate shell profiles.
+   checked assets. Merman does not mutate shell profiles. The pinned cargo-dist script output is
+   deterministically hardened so every archive download verifies SHA-256 and fails closed; Merman
+   does not replace cargo-dist's platform, proxy, install-path, or PATH behavior.
 
 7. **Publish only target support that can execute.**
    A successful cross-build is insufficient. A target enters public descriptors only with final
@@ -807,11 +809,15 @@ claims.
 - Keep one central job responsible for structure, checksums, capability closure, and archive
   identity.
 - Upload one immutable verified bundle.
-- Add target-native matrix jobs that download only that bundle and recheck checksums. CLI
+- Add one target-native matrix job per product and target. Each job downloads only the immutable
+  bundle, executes only its own artifact, and reports only that product. No product's verification
+  result is produced after another product's untrusted binary runs in the same writable job. CLI
   archives execute version, capabilities, completion, SVG, and viable raster/PDF smokes. LSP
-  archives undergo safe extraction, legal-file/binary identity checks, and a complete stdio
-  JSON-RPC initialize/shutdown/exit lifecycle.
-- Add an aggregate gate required by stable candidates, attestation, and `host`.
+  archives undergo safe extraction, legal-file/binary identity checks, and a complete stdio JSON-RPC
+  initialize/shutdown/exit lifecycle.
+- Add a clean aggregate gate that depends on the complete matrix, reverifies the immutable bundle,
+  and is required by stable candidates, attestation, and `host`. Do not create same-job receipts
+  that claim independent evidence after an unsandboxed tested binary has executed.
 - Add a dedicated least-privilege post-verification `actions/attest@v4` job for final archives,
   checksums, and installers.
 - Ensure `host` uploads the identical files without repacking.

@@ -69,6 +69,12 @@ VALID_PNG = (
 )
 VALID_JPEG = verifier.JPEG_START + verifier.JPEG_END
 VALID_PDF = b"%PDF-1.7\n1 0 obj <</Type /Page>> endobj\n%%EOF\n"
+ROOT_RELEASE_FILES = {
+    "CHANGELOG.md": b"Release changes\n",
+    "LICENSE-APACHE": b"Apache license\n",
+    "LICENSE-MIT": b"MIT license\n",
+}
+PACKAGE_README = b"Merman CLI package readme\n"
 
 
 def read_json(root: Path, relative: str) -> dict[str, object]:
@@ -206,6 +212,8 @@ def required_files(target: str) -> dict[str, bytes]:
     binary = verifier._binary_name(target)
     files = {
         binary: b"synthetic executable\n",
+        verifier.PACKAGE_README_PATH: PACKAGE_README,
+        **ROOT_RELEASE_FILES,
         verifier.NOTICE_PATH: b"Third-party notices\n",
         f"{verifier.LICENSE_ROOT}/example/LICENSE": b"Example license\n",
     }
@@ -304,6 +312,11 @@ def write_repo_assets(
         path = root / "crates/merman-cli" / source_relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(files[archive_relative])
+    package_readme = root / "crates/merman-cli/README.md"
+    package_readme.parent.mkdir(parents=True, exist_ok=True)
+    package_readme.write_bytes(files[verifier.PACKAGE_README_PATH])
+    for relative in verifier.ROOT_RELEASE_PATHS:
+        (root / relative).write_bytes(files[relative])
     notice = root / verifier.NOTICE_PATH
     notice.write_bytes(files[verifier.NOTICE_PATH])
     for relative, data in files.items():
@@ -708,7 +721,7 @@ class RequiredContentsTests(unittest.TestCase):
             archive, checksum = write_zip(root, files=files)
             with self.assertRaisesRegex(
                 verifier.ArchiveVerificationError,
-                "CLI asset set",
+                "CLI payload set",
             ):
                 verify_archive(
                     archive,
@@ -774,6 +787,25 @@ class RequiredContentsTests(unittest.TestCase):
                     version=VERSION,
                 )
 
+    def test_payload_whitelist_rejects_regular_dll_and_hidden_files(self) -> None:
+        for relative in ("unexpected.txt", "helper.dll", ".hidden"):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                files = required_files(WINDOWS_TARGET)
+                files[relative] = b"unexpected payload\n"
+                archive, checksum = write_zip(root, files=files)
+
+                with self.assertRaisesRegex(
+                    verifier.ArchiveVerificationError,
+                    "unexpected",
+                ):
+                    verify_archive(
+                        archive,
+                        checksum,
+                        target=WINDOWS_TARGET,
+                        version=VERSION,
+                    )
+
     def test_nested_second_binary_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -795,7 +827,7 @@ class RequiredContentsTests(unittest.TestCase):
             no_licenses = required_files(WINDOWS_TARGET)
             del no_licenses[f"{verifier.LICENSE_ROOT}/example/LICENSE"]
             archive, checksum = write_zip(root, files=no_licenses)
-            with self.assertRaisesRegex(verifier.ArchiveVerificationError, "legal file set"):
+            with self.assertRaisesRegex(verifier.ArchiveVerificationError, "CLI payload set"):
                 verify_archive(
                     archive,
                     checksum,
@@ -835,6 +867,36 @@ class RequiredContentsTests(unittest.TestCase):
                     version=VERSION,
                     repo_root=repo,
                 )
+
+    def test_repository_readme_and_root_release_mismatch_is_rejected(self) -> None:
+        for relative in (
+            verifier.PACKAGE_README_PATH,
+            *verifier.ROOT_RELEASE_PATHS,
+        ):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                files = required_files(LINUX_TARGET)
+                archive, checksum = write_tar(root, files=files)
+                repo = root / "repo"
+                write_repo_assets(repo, files)
+                source = (
+                    repo / "crates/merman-cli/README.md"
+                    if relative == verifier.PACKAGE_README_PATH
+                    else repo / relative
+                )
+                source.write_bytes(b"changed\n")
+
+                with self.assertRaisesRegex(
+                    verifier.ArchiveVerificationError,
+                    "content differs",
+                ):
+                    verify_archive(
+                        archive,
+                        checksum,
+                        target=LINUX_TARGET,
+                        version=VERSION,
+                        repo_root=repo,
+                    )
 
     def test_untracked_legal_files_are_ignored_but_not_accepted_in_archive(
         self,
@@ -1029,7 +1091,7 @@ class AdversarialRegressionTests(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 verifier.ArchiveVerificationError,
-                "asset set",
+                "CLI payload set",
             ):
                 verify_archive(
                     archive,
@@ -1179,37 +1241,57 @@ class RuntimeContractTests(unittest.TestCase):
             )
 
         self.assertEqual(len(calls), 7)
+        self.assertEqual(
+            [command[1:] for command, _stdin in calls],
+            [
+                ["--version"],
+                ["capabilities", "--json"],
+                ["completion", "bash"],
+                ["render", "--format", "svg", "-"],
+                ["render", "--format", "png", "-"],
+                ["render", "--format", "jpg", "-"],
+                ["render", "--format", "pdf", "-"],
+            ],
+        )
         self.assertEqual(calls[3][1], verifier.SVG_SMOKE_SOURCE)
         self.assertTrue(all(stdin == verifier.SVG_SMOKE_SOURCE for _, stdin in calls[3:]))
 
-    def test_runtime_rejects_version_schema_and_invalid_svg(self) -> None:
+    def test_runtime_rejects_version_schema_and_invalid_outputs(self) -> None:
         binary = Path("/synthetic/merman-cli")
         completion = required_files(LINUX_TARGET)["completions/merman-cli.bash"]
+
+        def completed(stdout: bytes) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.CompletedProcess([], 0, stdout=stdout, stderr=b"")
+
+        valid_version = completed(f"merman-cli {VERSION}\n".encode())
+        valid_capabilities = completed(
+            json.dumps(valid_capabilities_payload()).encode()
+        )
+        valid_completion = completed(completion)
+        valid_svg = completed(
+            b'<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'
+        )
+        render_prefix = [
+            valid_version,
+            valid_capabilities,
+            valid_completion,
+            valid_svg,
+        ]
         outputs = (
             (
                 "version",
                 "--version must emit exactly one stable line",
-                [
-                subprocess.CompletedProcess([], 0, stdout=b"wrong\n", stderr=b""),
-                ],
+                [completed(b"wrong\n")],
             ),
             (
                 "capabilities schema",
                 "capabilities document",
                 [
-                    subprocess.CompletedProcess(
-                        [],
-                        0,
-                        stdout=f"merman-cli {VERSION}\n".encode(),
-                        stderr=b"",
-                    ),
-                    subprocess.CompletedProcess(
-                        [],
-                        0,
-                        stdout=b'{"schema_version":999,"package":{"name":"merman-cli","version":"'
+                    valid_version,
+                    completed(
+                        b'{"schema_version":999,"package":{"name":"merman-cli","version":"'
                         + VERSION.encode()
-                        + b'"}}',
-                        stderr=b"",
+                        + b'"}}'
                     ),
                 ],
             ),
@@ -1217,20 +1299,30 @@ class RuntimeContractTests(unittest.TestCase):
                 "invalid SVG",
                 "minimal render is not valid XML",
                 [
-                    subprocess.CompletedProcess(
-                        [],
-                        0,
-                        stdout=f"merman-cli {VERSION}\n".encode(),
-                        stderr=b"",
-                    ),
-                    subprocess.CompletedProcess(
-                        [],
-                        0,
-                        stdout=json.dumps(valid_capabilities_payload()).encode(),
-                        stderr=b"",
-                    ),
-                    subprocess.CompletedProcess([], 0, stdout=completion, stderr=b""),
-                    subprocess.CompletedProcess([], 0, stdout=b"not svg", stderr=b""),
+                    valid_version,
+                    valid_capabilities,
+                    valid_completion,
+                    completed(b"not svg"),
+                ],
+            ),
+            (
+                "invalid PNG",
+                "minimal PNG render has an invalid container signature",
+                [*render_prefix, completed(b"not png")],
+            ),
+            (
+                "invalid JPEG",
+                "minimal JPEG render has an invalid container signature",
+                [*render_prefix, completed(VALID_PNG), completed(b"not jpeg")],
+            ),
+            (
+                "invalid PDF",
+                "minimal PDF render has an invalid container signature",
+                [
+                    *render_prefix,
+                    completed(VALID_PNG),
+                    completed(VALID_JPEG),
+                    completed(b"not pdf"),
                 ],
             ),
         )

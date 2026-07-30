@@ -89,6 +89,8 @@ CAPABILITY_SURFACE_PATH = "capabilities/feature-surface-v1.json"
 UPSTREAM_REPOS_PATH = "tools/upstreams/REPOS.lock.json"
 MERMAID_REFERENCE_BUNDLE_PATH = "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json"
 ASSET_ROOTS = ("completions", "man")
+PACKAGE_README_PATH = "README.md"
+ROOT_RELEASE_PATHS = ("CHANGELOG.md", "LICENSE-APACHE", "LICENSE-MIT")
 NOTICE_PATH = "THIRD_PARTY_NOTICES.md"
 LICENSE_ROOT = "THIRD_PARTY_LICENSES"
 
@@ -130,10 +132,6 @@ def _repository_asset_files(repo_root: Path) -> dict[str, Path]:
     return result
 
 
-def _is_archive_asset_path(path: str) -> bool:
-    return path.startswith(tuple(f"{root}/" for root in ASSET_ROOTS))
-
-
 def _uses_assets_prefixed_layout(path: str) -> bool:
     return path == "assets" or any(
         path == f"assets/{root}" or path.startswith(f"assets/{root}/")
@@ -146,8 +144,7 @@ def _require_distribution_contents(
     members: Iterable[ArchiveMember],
     *,
     target: str,
-    asset_files: dict[str, Path],
-    legal_files: dict[str, Path],
+    source_files: dict[str, Path],
 ) -> None:
     old_layout = sorted(
         member.logical_path
@@ -175,38 +172,32 @@ def _require_distribution_contents(
             f"found {sorted(binary_candidates)!r}"
         )
 
-    archived_assets = {path for path in regular if _is_archive_asset_path(path)}
-    expected_assets = set(asset_files)
-    if archived_assets != expected_assets:
+    expected = {binary_name, *source_files}
+    if set(regular) != expected:
         raise ArchiveVerificationError(
-            format_set_mismatch("CLI asset", expected_assets, archived_assets)
+            format_set_mismatch("CLI payload", expected, set(regular))
         )
 
-    archived_legal = {
-        path
-        for path in regular
-        if path == NOTICE_PATH or path.startswith(f"{LICENSE_ROOT}/")
-    }
-    expected_legal = set(legal_files)
-    if archived_legal != expected_legal:
-        raise ArchiveVerificationError(
-            format_set_mismatch("tracked legal file", expected_legal, archived_legal)
-        )
-
-    required_nonempty = (*sorted(expected_assets), *sorted(expected_legal), binary_name)
-    for path in required_nonempty:
-        member = regular.get(path)
-        if member is None:
-            raise ArchiveVerificationError(f"archive is missing required file {path!r}")
+    for path in sorted(expected):
+        member = regular[path]
         if member.size == 0 or archive_member_path(root, path).stat().st_size == 0:
             raise ArchiveVerificationError(f"required archive file is empty: {path!r}")
 
-    for archive_relative, source in {**asset_files, **legal_files}.items():
+    for archive_relative, source in source_files.items():
         archived = archive_member_path(root, archive_relative)
         if not regular_files_equal(archived, source):
             raise ArchiveVerificationError(
                 f"archive content differs from repository file {archive_relative!r}"
             )
+
+
+def _repository_distribution_files(repo_root: Path) -> dict[str, Path]:
+    return {
+        PACKAGE_README_PATH: repo_root / "crates/merman-cli/README.md",
+        **{relative: repo_root / relative for relative in ROOT_RELEASE_PATHS},
+        **git_tracked_legal_files(repo_root),
+        **_repository_asset_files(repo_root),
+    }
 
 
 def _strict_json_object(
@@ -1052,8 +1043,7 @@ def verify_release_archive(
     archive = Path(archive)
     checksum = Path(checksum)
     repo_root = require_repository_root(Path(repo_root))
-    asset_files = _repository_asset_files(repo_root)
-    legal_files = git_tracked_legal_files(repo_root)
+    source_files = _repository_distribution_files(repo_root)
     with verified_archive_contents(
         archive,
         checksum,
@@ -1066,8 +1056,7 @@ def verify_release_archive(
             extracted.root,
             extracted.members,
             target=target,
-            asset_files=asset_files,
-            legal_files=legal_files,
+            source_files=source_files,
         )
         if execute:
             verify_runtime_contract(

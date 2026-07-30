@@ -55,8 +55,8 @@ one source commit:
 3. The complete CLI runtime contract, including deterministic HTTPS/system-certificate and
    system-font resource smokes.
 4. The complete LSP stdio lifecycle and clean termination check.
-5. Exact cargo-dist plan, archive, checksum, installer, immutable-bundle, receipt, and attestation
-   closure for the candidate.
+5. Exact cargo-dist plan, archive, checksum, hardened installer, immutable-bundle, isolated native
+   matrix, aggregate, and attestation closure for the candidate.
 
 Only after that evidence is green should one change add the target atomically to
 `dist-workspace.toml`, both artifact profiles, release surfaces, cargo-binstall metadata, the

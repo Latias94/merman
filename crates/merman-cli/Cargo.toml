@@ -15,10 +15,10 @@ categories = ["command-line-utilities", "visualization"]
 exclude = ["tests/**"]
 
 [package.metadata.dist]
+auto-includes = false
 default-features = false
 include = [
-    "../../THIRD_PARTY_NOTICES.md",
-    "../../THIRD_PARTY_LICENSES/",
+    "README.md",
     "assets/completions/",
     "assets/man/",
 ]

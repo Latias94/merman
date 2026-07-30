@@ -53,8 +53,15 @@ merman-cli completion elvish
 
 Users extracting an archive directly should verify its adjacent `.sha256` file first. Unix
 archives use a `merman-cli-<target>/` wrapper; the Windows ZIP is flat. In both cases, the logical
-payload contains the executable, `completions/`, `man/`, `THIRD_PARTY_NOTICES.md`, and
-`THIRD_PARTY_LICENSES/`.
+payload contains the executable, package README, repository changelog and licenses,
+`THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/`. CLI archives additionally contain
+`completions/` and `man/`.
+
+The script installers start from the pinned cargo-dist `0.32.0` output, then pass through one
+repository-owned deterministic hardening step. PowerShell binds the downloaded Windows ZIP with
+`Get-FileHash`; the shell installer tries `sha256sum`, `shasum`, then OpenSSL. A checksum mismatch
+or the absence of every supported SHA-256 tool stops installation. Template drift stops the release
+instead of falling back to an unmodified installer.
 
 Every GitHub Release also includes `release-verification.json`. It binds each uploaded asset to its
 SHA-256 digest and size, records the source commit and release version, and maps each CLI and LSP
@@ -88,12 +95,12 @@ generation receives only those snapshot archives. The final bundle is checked ag
 asset inventory declared by `docs/release/SURFACES.json` and uploaded as one read-only
 `verified-release-assets` workflow artifact. This central phase never executes target binaries.
 
-Four target-native jobs consume only that bundle. Each job executes the matching CLI archive
-through version, capability, completion, SVG, PNG, JPEG, and PDF smokes, and executes the matching
-LSP archive through initialize, initialized, shutdown, and exit. Receipt generation then rechecks
-the complete bundle and emits a target result bound to the verification manifest. An aggregate job
-requires the complete target set before any registry candidate, attestation, or GitHub Release job
-can run.
+Eight target-native jobs consume only that bundle: one isolated job for each product and target.
+CLI jobs execute version, capability, completion, SVG, PNG, JPEG, and PDF smokes. LSP jobs execute
+initialize, initialized, shutdown, and exit. Each job reports only one product, so no product's
+verification result is produced after another product's binary runs in the same writable job. A
+clean aggregate job requires the complete matrix to succeed and reverifies the immutable bundle
+before any registry candidate, attestation, or GitHub Release job can run.
 
 Stable releases additionally generate Scoop and WinGet candidates from the verified Windows
 archive. The Windows job parses the Scoop JSON and requires `winget validate` to pass without

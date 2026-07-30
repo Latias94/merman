@@ -31,9 +31,10 @@ LICENSE-*      text eol=lf
 *.lock    text eol=lf
 
 # Legal mirrors preserve upstream license bytes; do not flag their verbatim whitespace.
-THIRD_PARTY_LICENSES/** -whitespace
-**/THIRD_PARTY_LICENSES/** -whitespace
+THIRD_PARTY_LICENSES/** text eol=lf -whitespace
+**/THIRD_PARTY_LICENSES/** text eol=lf -whitespace
 **/THIRD_PARTY_NOTICES.md -whitespace
+**/THIRD_PARTY_LICENSES/npm-production-dependencies.txt text eol=lf
 
 # ASCII/Unicode golden fixtures intentionally preserve trailing character cells.
 crates/merman-ascii/tests/testdata/mermaid-ascii/**/*.txt text eol=lf whitespace=-blank-at-eol

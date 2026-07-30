@@ -61,6 +61,8 @@ else:
 
 
 PACKAGE_NAME = "merman-lsp"
+PACKAGE_README_PATH = "README.md"
+ROOT_RELEASE_PATHS = ("CHANGELOG.md", "LICENSE-APACHE", "LICENSE-MIT")
 NOTICE_PATH = "THIRD_PARTY_NOTICES.md"
 LICENSE_ROOT = "THIRD_PARTY_LICENSES"
 LSP_HEADER_MAX_BYTES = 8 * 1024
@@ -288,7 +290,12 @@ def run_lsp_session(
         env=environment,
         start_new_session=os.name == "posix",
     )
-    stdout, stderr = _interactive_session(process, frames)
+    try:
+        stdout, stderr = _interactive_session(process, frames)
+    finally:
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
     return subprocess.CompletedProcess([str(binary)], 0, stdout=stdout, stderr=stderr)
 
 
@@ -411,7 +418,7 @@ def _require_distribution_contents(
     members: Iterable[ArchiveMember],
     *,
     target: str,
-    legal_files: dict[str, Path],
+    source_files: dict[str, Path],
 ) -> None:
     regular = {
         member.logical_path: member
@@ -419,7 +426,7 @@ def _require_distribution_contents(
         if not member.is_directory
     }
     binary_name = binary_name_for(PACKAGE_NAME, target)
-    expected = {binary_name, *legal_files}
+    expected = {binary_name, *source_files}
     if set(regular) != expected:
         raise ArchiveVerificationError(
             format_set_mismatch("LSP payload", expected, set(regular))
@@ -436,11 +443,19 @@ def _require_distribution_contents(
         archived = archive_member_path(root, relative)
         if member.size == 0 or archived.stat().st_size == 0:
             raise ArchiveVerificationError(f"required archive file is empty: {relative!r}")
-        source = legal_files.get(relative)
+        source = source_files.get(relative)
         if source is not None and not regular_files_equal(archived, source):
             raise ArchiveVerificationError(
                 f"archive content differs from repository file {relative!r}"
             )
+
+
+def _repository_distribution_files(repo_root: Path) -> dict[str, Path]:
+    return {
+        PACKAGE_README_PATH: repo_root / "crates/merman-lsp/README.md",
+        **{relative: repo_root / relative for relative in ROOT_RELEASE_PATHS},
+        **git_tracked_legal_files(repo_root),
+    }
 
 
 def verify_release_archive(
@@ -458,7 +473,7 @@ def verify_release_archive(
 ) -> VerificationReport:
     """Verify one LSP archive and optionally persist its checksum-bound bytes."""
     repo_root = require_repository_root(Path(repo_root))
-    legal_files = git_tracked_legal_files(repo_root)
+    source_files = _repository_distribution_files(repo_root)
     with verified_archive_contents(
         Path(archive),
         Path(checksum),
@@ -471,7 +486,7 @@ def verify_release_archive(
             extracted.root,
             extracted.members,
             target=target,
-            legal_files=legal_files,
+            source_files=source_files,
         )
         if execute:
             verify_runtime_contract(

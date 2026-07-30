@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tomllib
 import unittest
 
 try:
@@ -83,10 +84,14 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
     def test_central_job_verifies_archives_before_generating_global_assets(self) -> None:
         self.assertNotIn("build-global-artifacts", self.workflow["jobs"])
         job = self.job("verify-release-archives")
-        verify = workflow_step(job, name="Verify CLI and LSP archive structure")["run"]
-        prepare = workflow_step(job, name="Prepare trusted global-generation inputs")["run"]
-        generate = workflow_step(job, name="Generate final installers and checksum index")["run"]
-        assemble = workflow_step(job, name="Assemble the verified bundle")["run"]
+        verify_step = workflow_step(job, name="Verify CLI and LSP archive structure")
+        prepare_step = workflow_step(job, name="Prepare verified global-generation snapshots")
+        generate_step = workflow_step(job, name="Generate final installers and checksum index")
+        assemble_step = workflow_step(job, name="Assemble the verified bundle")
+        verify = verify_step["run"]
+        prepare = prepare_step["run"]
+        generate = generate_step["run"]
+        assemble = assemble_step["run"]
         local_download = workflow_step(job, name="Download isolated local cargo-dist artifacts")
         plan_download = workflow_step(job, name="Download the trusted cargo-dist plan")
 
@@ -101,6 +106,7 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
             with self.subTest(package=package):
                 self.assertIn(f"{package}:{profile}:{verifier}", verify)
         self.assertNotIn("--execute", verify)
+        self.assertIn('--verified-output "$VERIFIED_ARCHIVE_DIR/$archive_name"', verify)
         self.assertIn("prepare-global", prepare)
         self.assertIn('"$LOCAL_ARTIFACT_DIR"', prepare)
         self.assertLess(
@@ -114,9 +120,13 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
             'mv generated-global-dist-manifest.json "$GENERATED_ASSET_DIR/dist-manifest.json"',
             generate,
         )
+        self.assertIn("release_artifact_bundle.py harden-installers", generate)
         self.assertIn("sh -n", generate)
         self.assertIn("release_artifact_bundle.py assemble", assemble)
         self.assertNotIn("/.release-verification", job["env"]["RELEASE_ASSET_DIR"])
+        self.assertLess(job["steps"].index(verify_step), job["steps"].index(prepare_step))
+        self.assertLess(job["steps"].index(prepare_step), job["steps"].index(generate_step))
+        self.assertLess(job["steps"].index(generate_step), job["steps"].index(assemble_step))
 
     def test_central_assembly_has_no_raw_archive_fallback(self) -> None:
         job = self.job("verify-release-archives")
@@ -127,7 +137,10 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
 
     def test_native_matrix_matches_both_release_profiles_and_dist_runners(self) -> None:
         job = self.job("verify-release-archives-native")
-        observed = {row["target"]: row["runner"] for row in job["matrix_include"]}
+        observed = {
+            (row["package"], row["target"]): (row["verifier"], row["runner"])
+            for row in job["matrix_include"]
+        }
         cli_targets = set(load_artifact_profile("cli-release").build_targets)
         lsp_targets = set(load_artifact_profile("lsp-stdio-release").build_targets)
         expected_runners = {
@@ -137,38 +150,54 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
             "x86_64-pc-windows-msvc": "windows-2025",
         }
         self.assertEqual(cli_targets, lsp_targets)
-        self.assertEqual(observed, expected_runners)
-        self.assertEqual(set(observed), cli_targets)
+        expected = {
+            (package, target): (verifier, expected_runners[target])
+            for package, verifier in (
+                ("merman-cli", "scripts/verify_cli_release_archive.py"),
+                ("merman-lsp", "scripts/verify_lsp_release_archive.py"),
+            )
+            for target in cli_targets
+        }
+        self.assertEqual(observed, expected)
 
-    def test_each_native_target_downloads_only_the_bundle_and_executes_both(self) -> None:
+    def test_each_native_cell_executes_only_its_product_from_the_pinned_bundle(self) -> None:
         job = self.job("verify-release-archives-native")
+        checkout = job["steps"][0]
         download = workflow_step(job, name="Download verified release bundle")
         parse_installers = workflow_step(job, name="Parse generated PowerShell installers")
-        execute = workflow_step(job, name="Execute final CLI and LSP archives")["run"]
+        execute_step = workflow_step(job, name="Execute final product archive")
+        execute = execute_step["run"]
 
+        self.assertEqual(checkout["with"]["ref"], "${{ needs.plan.outputs.source_sha }}")
         self.assertEqual(download["with"]["name"], "verified-release-assets")
         self.assertNotIn("pattern", download["with"])
         self.assertEqual(parse_installers["if"], "runner.os == 'Windows'")
         self.assertEqual(parse_installers["shell"], "pwsh")
         self.assertIn("[scriptblock]::Create", parse_installers["run"])
-        self.assertIn("merman-cli-installer.ps1", parse_installers["run"])
-        self.assertIn("merman-lsp-installer.ps1", parse_installers["run"])
-        self.assertEqual(job["env"]["SOURCE_SHA"], "${{ needs.plan.outputs.source_sha }}")
-        self.assertIn("scripts/verify_cli_release_archive.py", execute)
-        self.assertIn("scripts/verify_lsp_release_archive.py", execute)
+        self.assertIn("$env:PACKAGE-installer.ps1", parse_installers["run"])
+        self.assertNotIn("SOURCE_SHA", job["env"])
+        self.assertEqual(job["env"]["PACKAGE"], "${{ matrix.package }}")
+        self.assertEqual(job["env"]["VERIFIER"], "${{ matrix.verifier }}")
+        self.assertNotIn("for specification", execute)
+        self.assertIn('archive="$PACKAGE-$TARGET.$extension"', execute)
+        self.assertIn('python3 "$VERIFIER"', execute)
         self.assertIn("--execute", execute)
+        self.assertNotIn("if", execute_step)
         self.assertNotIn("--verified-output", execute)
-        self.assertNotIn("native-verified", execute)
         self.assertIn('"verified-release-assets/$archive.sha256"', execute)
+        self.assertFalse(any("receipt" in step.get("name", "").lower() for step in job["steps"]))
 
     def test_aggregate_gate_fails_closed_for_every_upstream_failure(self) -> None:
         gate = self.job("release-verification-gate")
         checkout = workflow_step(gate, name="Checkout verified release source")
         step = workflow_step(gate, name="Require central and native verification success")
-        receipts = workflow_step(gate, name="Verify native receipt closure")
+        reverify = workflow_step(gate, name="Reverify the immutable release bundle")
         self.assertEqual(checkout["with"]["ref"], "${{ needs.plan.outputs.source_sha }}")
         self.assertLess(gate["steps"].index(step), gate["steps"].index(checkout))
-        self.assertLess(gate["steps"].index(checkout), gate["steps"].index(receipts))
+        self.assertLess(gate["steps"].index(checkout), gate["steps"].index(reverify))
+        self.assertIn("verify-bundle", reverify["run"])
+        self.assertIn('--version "$RELEASE_VERSION"', reverify["run"])
+        self.assertIn('--source-sha "$SOURCE_SHA"', reverify["run"])
         cases = {
             ("success", "success"): True,
             ("failure", "success"): False,
@@ -205,12 +234,22 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
 
     def test_stable_candidates_are_native_and_prereleases_skip_explicitly(self) -> None:
         job = self.job("generate-cli-registry-candidates")
+        checkout = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@"))
+        download = workflow_step(job, name="Download verified release bundle")
         generate = workflow_step(job, name="Generate and validate stable registry candidates")
         prerelease = workflow_step(job, name="Record prerelease candidate policy")
+        upload = workflow_step(job, name="Upload stable registry candidates")
 
         self.assertEqual(job["runs-on"], "windows-2025")
         self.assertIn("needs.plan.outputs.prerelease == 'true'", prerelease["if"])
-        self.assertIn("needs.plan.outputs.prerelease != 'true'", generate["if"])
+        stable_condition = "${{ needs.plan.outputs.prerelease != 'true' }}"
+        self.assertEqual(
+            {checkout["if"], download["if"], generate["if"], upload["if"]},
+            {stable_condition},
+        )
+        self.assertEqual(download["with"]["name"], "verified-release-assets")
+        self.assertNotIn("pattern", download["with"])
+        self.assertIn("verified-release-assets", generate["run"])
         self.assertIn("scripts/generate_cli_registry_candidates.py", generate["run"])
         self.assertIn("Add-AppxPackage", generate["run"])
         self.assertIn("Microsoft.DesktopAppInstaller_8wekyb3d8bbwe", generate["run"])
@@ -247,6 +286,21 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
 
         self.assertEqual(job["permissions"], {"contents": "write"})
         self.assertEqual(job["environment"], "github-release")
+        self.assertEqual(
+            job["needs"],
+            [
+                "plan",
+                "release-verification-gate",
+                "generate-cli-registry-candidates",
+                "attest-release-assets",
+            ],
+        )
+        for required in (
+            "needs.release-verification-gate.result == 'success'",
+            "needs.generate-cli-registry-candidates.result == 'success'",
+            "needs.attest-release-assets.result == 'success'",
+        ):
+            self.assertIn(required, job["if"])
         self.assertRegex(download["uses"], FULL_SHA_ACTION)
         self.assertEqual(download["with"]["name"], "verified-release-assets")
         self.assertNotIn("pattern", download["with"])
@@ -259,6 +313,50 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
         surfaces = (ROOT / "docs/release/SURFACES.json").read_text(encoding="utf-8")
         self.assertIn("source-tarball = false", config)
         self.assertNotIn('"glob": "source.tar.gz"', surfaces)
+
+    def test_archive_includes_are_explicit_for_both_products(self) -> None:
+        with (ROOT / "dist-workspace.toml").open("rb") as source:
+            workspace_dist = tomllib.load(source)["dist"]
+        self.assertFalse(workspace_dist["auto-includes"])
+        self.assertEqual(
+            workspace_dist["include"],
+            [
+                "CHANGELOG.md",
+                "LICENSE-APACHE",
+                "LICENSE-MIT",
+                "THIRD_PARTY_NOTICES.md",
+                "THIRD_PARTY_LICENSES/",
+            ],
+        )
+        expected = {
+            "merman-cli": ["README.md", "assets/completions/", "assets/man/"],
+            "merman-lsp": ["README.md"],
+        }
+        for package, include in expected.items():
+            with (ROOT / f"crates/{package}/Cargo.toml").open("rb") as source:
+                package_dist = tomllib.load(source)["package"]["metadata"]["dist"]
+            with self.subTest(package=package):
+                self.assertFalse(package_dist["auto-includes"])
+                self.assertEqual(package_dist["include"], include)
+
+    def test_legal_payloads_are_checkout_stable_on_windows(self) -> None:
+        paths = (
+            "THIRD_PARTY_LICENSES/katex-fonts/FONT_NOTICE.txt",
+            "THIRD_PARTY_LICENSES/katex-fonts/OFL.txt",
+            "THIRD_PARTY_LICENSES/ratex/THIRD_PARTY_NOTICES.txt",
+            "crates/merman-cli/THIRD_PARTY_LICENSES/future-license.txt",
+        )
+        result = subprocess.run(
+            ["git", "check-attr", "eol", "--", *paths],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=True,
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertIn(f"{path}: eol: lf", result.stdout)
 
 
 if __name__ == "__main__":

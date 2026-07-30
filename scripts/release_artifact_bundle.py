@@ -33,10 +33,9 @@ else:
 __all__ = (
     "ReleaseArtifactError",
     "assemble_bundle",
+    "harden_installers",
     "prepare_global_inputs",
     "verify_bundle",
-    "verify_native_receipts",
-    "write_native_receipt",
 )
 
 
@@ -60,6 +59,40 @@ _INSTALLER_RE = re.compile(r"(merman-cli|merman-lsp)-installer\.(sh|ps1)\Z")
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _SOURCE_SHA_RE = re.compile(r"[0-9a-fA-F]{40}\Z")
 _VERSION_RE = re.compile(r"[0-9A-Za-z][0-9A-Za-z.+-]{0,127}\Z")
+
+_SHELL_SHA256_FAIL_OPEN = """        sha256)
+            if ! check_cmd sha256sum; then
+                say "skipping sha256 checksum verification (it requires the 'sha256sum' command)"
+                return 0
+            fi
+            _calculated_checksum="$(sha256sum -b "$_file" | awk '{printf $1}')"
+            ;;
+"""
+_SHELL_SHA256_FAIL_CLOSED = """        sha256)
+            if check_cmd sha256sum; then
+                _calculated_checksum="$(sha256sum -b "$_file" | awk '{printf $1}')"
+            elif check_cmd shasum; then
+                _calculated_checksum="$(shasum -a 256 -b "$_file" | awk '{printf $1}')"
+            elif check_cmd openssl; then
+                _calculated_checksum="$(openssl dgst -sha256 "$_file" | awk '{printf $NF}')"
+            else
+                err "cannot verify sha256 checksum: install sha256sum, shasum, or openssl"
+            fi
+            ;;
+"""
+_POWERSHELL_DOWNLOAD_ANCHOR = """  Invoke-DownloadFile -client $wc -url $url -path $dir_path
+
+  Write-Verbose "Unpacking to $tmp"
+"""
+_POWERSHELL_VERIFY_TEMPLATE = """  Invoke-DownloadFile -client $wc -url $url -path $dir_path
+
+  $observed_sha256 = (Get-FileHash -LiteralPath $dir_path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+  if ($observed_sha256 -ne $archive_sha256) {
+    throw "SHA-256 mismatch for $artifact_name"
+  }
+
+  Write-Verbose "Unpacking to $tmp"
+"""
 
 
 class ReleaseArtifactError(RuntimeError):
@@ -367,6 +400,91 @@ def _validate_local_manifest(
             raise ReleaseArtifactError(f"local dist manifest archive mismatch: {name}")
 
 
+def _replace_exactly_once(text: str, old: str, new: str, *, label: str) -> str:
+    if text.count(old) != 1:
+        raise ReleaseArtifactError(f"cargo-dist installer template drifted at {label}")
+    return text.replace(old, new, 1)
+
+
+def _read_installer(path: Path) -> str:
+    require_regular_input(path, "generated installer")
+    if path.stat().st_size > INSTALLER_MAX_BYTES:
+        raise ReleaseArtifactError(f"installer exceeds verification budget: {path.name}")
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise ReleaseArtifactError(f"installer is not UTF-8: {path.name}") from error
+
+
+def _require_shell_archive_digest_pairs(
+    text: str,
+    archives: tuple[str, ...],
+    digests: dict[str, str],
+    *,
+    installer_name: str,
+) -> None:
+    for name in archives:
+        marker = f'        "{name}")\n'
+        if text.count(marker) != 1:
+            raise ReleaseArtifactError(
+                f"installer archive selection is ambiguous for {installer_name}: {name}"
+            )
+        start = text.index(marker)
+        end = text.find("\n            ;;", start)
+        if end < 0 or f'_checksum_value="{digests[name]}"' not in text[start:end]:
+            raise ReleaseArtifactError(
+                f"installer archive checksum mapping differs for {installer_name}: {name}"
+            )
+
+
+def harden_installers(root: Path, surfaces_path: Path, *, version: str) -> None:
+    """Make cargo-dist 0.32.0 script installers fail closed on SHA-256 verification."""
+    root = Path(root)
+    version = _require_version(version)
+    names = _expected_asset_names(surfaces_path)
+    archives = _archive_names(names)
+    digests = {
+        name: read_checksum(root / f"{name}.sha256", name) for name in archives
+    }
+    for package in PACKAGES:
+        package_archives = tuple(name for name in archives if name.startswith(f"{package}-"))
+        windows_archives = tuple(name for name in package_archives if name.endswith(".zip"))
+        if len(windows_archives) != 1:
+            raise ReleaseArtifactError(
+                f"PowerShell hardening requires one Windows archive for {package}"
+            )
+
+        shell_path = root / f"{package}-installer.sh"
+        shell = _read_installer(shell_path)
+        shell = _replace_exactly_once(
+            shell,
+            _SHELL_SHA256_FAIL_OPEN,
+            _SHELL_SHA256_FAIL_CLOSED,
+            label=f"{shell_path.name} SHA-256 verifier",
+        )
+        shell_path.write_text(shell, encoding="utf-8")
+
+        windows_archive = windows_archives[0]
+        powershell_path = root / f"{package}-installer.ps1"
+        powershell = _read_installer(powershell_path)
+        version_anchor = f"$app_version = '{version}'\n"
+        powershell = _replace_exactly_once(
+            powershell,
+            version_anchor,
+            version_anchor + f"$archive_sha256 = '{digests[windows_archive]}'\n",
+            label=f"{powershell_path.name} checksum declaration",
+        )
+        powershell = _replace_exactly_once(
+            powershell,
+            _POWERSHELL_DOWNLOAD_ANCHOR,
+            _POWERSHELL_VERIFY_TEMPLATE,
+            label=f"{powershell_path.name} download verifier",
+        )
+        powershell_path.write_text(powershell, encoding="utf-8")
+
+    _validate_installers(root, names, version=version)
+
+
 def prepare_global_inputs(
     local_producers: Path,
     verified_archives: Path,
@@ -377,7 +495,7 @@ def prepare_global_inputs(
     tag: str,
     version: str,
 ) -> Path:
-    """Stage only verified local archives for trusted cargo-dist global generation."""
+    """Stage only central-verifier snapshots for cargo-dist global generation."""
     version = _require_version(version)
     if tag != f"v{version}":
         raise ReleaseArtifactError("release tag and version differ")
@@ -456,13 +574,7 @@ def _validate_installers(root: Path, names: tuple[str, ...], *, version: str) ->
         package_archives = tuple(name for name in archives if name.startswith(f"{package}-"))
         for extension in ("sh", "ps1"):
             path = root / f"{package}-installer.{extension}"
-            require_regular_input(path, "generated installer")
-            if path.stat().st_size > INSTALLER_MAX_BYTES:
-                raise ReleaseArtifactError(f"installer exceeds verification budget: {path.name}")
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeError) as error:
-                raise ReleaseArtifactError(f"installer is not UTF-8: {path.name}") from error
+            text = _read_installer(path)
             referenced_archives = (
                 package_archives
                 if extension == "sh"
@@ -473,13 +585,39 @@ def _validate_installers(root: Path, names: tuple[str, ...], *, version: str) ->
                 version,
                 f"https://github.com/Latias94/merman/releases/download/v{version}",
                 *referenced_archives,
+                *(digests[name] for name in referenced_archives),
             }
             if extension == "sh":
-                required.update(digests[name] for name in referenced_archives)
+                _require_shell_archive_digest_pairs(
+                    text,
+                    referenced_archives,
+                    digests,
+                    installer_name=path.name,
+                )
+                required.update(
+                    {
+                        _SHELL_SHA256_FAIL_CLOSED,
+                        "sha256sum -b",
+                        "shasum -a 256 -b",
+                        "openssl dgst -sha256",
+                    }
+                )
+            else:
+                required.update(
+                    {
+                        "$archive_sha256 =",
+                        "Get-FileHash -LiteralPath $dir_path -Algorithm SHA256 -ErrorAction Stop",
+                        "throw \"SHA-256 mismatch for $artifact_name\"",
+                    }
+                )
             missing = sorted(value for value in required if value not in text)
             if missing:
                 raise ReleaseArtifactError(
                     f"installer contract is incomplete for {path.name}: {missing!r}"
+                )
+            if extension == "sh" and _SHELL_SHA256_FAIL_OPEN in text:
+                raise ReleaseArtifactError(
+                    f"installer retains fail-open SHA-256 verification: {path.name}"
                 )
 
 
@@ -652,89 +790,6 @@ def verify_bundle(root: Path, *, version: str, source_sha: str) -> None:
     _verified_bundle(root, version=version, source_sha=source_sha)
 
 
-def write_native_receipt(
-    bundle: Path,
-    output: Path,
-    *,
-    target: str,
-    source_sha: str,
-) -> None:
-    bundle = Path(bundle)
-    source_sha = _require_source_sha(source_sha)
-    manifest = _verified_bundle(bundle, version=None, source_sha=source_sha)
-    assets = manifest["assets"]
-    assert isinstance(assets, list)
-    archives = {
-        entry["package"]: entry["sha256"]
-        for entry in assets
-        if entry["kind"] == "archive" and entry["target"] == target
-    }
-    if set(archives) != set(PACKAGES):
-        raise ReleaseArtifactError(f"release bundle has no complete archive set for {target}")
-    receipt = {
-        "schema_version": MANIFEST_SCHEMA_VERSION,
-        "source_sha": source_sha,
-        "target": target,
-        "manifest_sha256": sha256_file(bundle / MANIFEST_NAME),
-        "archives": archives,
-    }
-    Path(output).write_text(
-        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-
-def verify_native_receipts(bundle: Path, receipts_root: Path, *, source_sha: str) -> None:
-    bundle = Path(bundle)
-    receipts_root = Path(receipts_root)
-    expected_source_sha = _require_source_sha(source_sha)
-    manifest = _verified_bundle(
-        bundle,
-        version=None,
-        source_sha=expected_source_sha,
-    )
-    assets = manifest["assets"]
-    assert isinstance(assets, list)
-    archive_digests: dict[tuple[str, str], str] = {}
-    targets_by_package = {package: set() for package in PACKAGES}
-    for entry in assets:
-        if entry["kind"] != "archive":
-            continue
-        key = (entry["package"], entry["target"])
-        if key in archive_digests:
-            raise ReleaseArtifactError(f"duplicate archive identity in manifest: {key!r}")
-        archive_digests[key] = entry["sha256"]
-        targets_by_package[entry["package"]].add(entry["target"])
-    target_sets = tuple(targets_by_package.values())
-    if not target_sets[0] or any(targets != target_sets[0] for targets in target_sets[1:]):
-        raise ReleaseArtifactError("CLI and LSP release target sets differ")
-    targets = target_sets[0]
-    expected_files = {f"native-release-verification-{target}.json" for target in targets}
-    if _root_regular_files(receipts_root) != expected_files:
-        raise ReleaseArtifactError("native verification receipt set differs from release targets")
-
-    manifest_digest = sha256_file(bundle / MANIFEST_NAME)
-    for target in targets:
-        receipt = _read_json_object(
-            receipts_root / f"native-release-verification-{target}.json"
-        )
-        if (
-            set(receipt)
-            != {"schema_version", "source_sha", "target", "manifest_sha256", "archives"}
-            or receipt.get("schema_version") != MANIFEST_SCHEMA_VERSION
-            or receipt.get("source_sha") != expected_source_sha
-            or receipt.get("target") != target
-            or receipt.get("manifest_sha256") != manifest_digest
-        ):
-            raise ReleaseArtifactError(f"native receipt identity mismatch for {target}")
-        observed_archives = receipt.get("archives")
-        if not isinstance(observed_archives, dict) or set(observed_archives) != set(PACKAGES):
-            raise ReleaseArtifactError(f"native receipt archive set mismatch for {target}")
-        for package in PACKAGES:
-            if observed_archives.get(package) != archive_digests[(package, target)]:
-                raise ReleaseArtifactError(f"native archive digest mismatch for {package}/{target}")
-
-
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -756,21 +811,15 @@ def _build_parser() -> argparse.ArgumentParser:
     assemble.add_argument("--version", required=True)
     assemble.add_argument("--source-sha", required=True)
 
+    harden = commands.add_parser("harden-installers")
+    harden.add_argument("generated_root", type=Path)
+    harden.add_argument("surfaces", type=Path)
+    harden.add_argument("--version", required=True)
+
     verify = commands.add_parser("verify-bundle")
     verify.add_argument("root", type=Path)
     verify.add_argument("--version", required=True)
     verify.add_argument("--source-sha", required=True)
-
-    receipt = commands.add_parser("write-receipt")
-    receipt.add_argument("bundle", type=Path)
-    receipt.add_argument("--output", required=True, type=Path)
-    receipt.add_argument("--target", required=True)
-    receipt.add_argument("--source-sha", required=True)
-
-    receipts = commands.add_parser("verify-receipts")
-    receipts.add_argument("bundle", type=Path)
-    receipts.add_argument("receipts_root", type=Path)
-    receipts.add_argument("--source-sha", required=True)
     return parser
 
 
@@ -795,21 +844,16 @@ def main(argv: list[str] | None = None) -> int:
             version=args.version,
             source_sha=args.source_sha,
         )
+    elif args.command == "harden-installers":
+        harden_installers(
+            args.generated_root,
+            args.surfaces,
+            version=args.version,
+        )
     elif args.command == "verify-bundle":
         verify_bundle(args.root, version=args.version, source_sha=args.source_sha)
-    elif args.command == "write-receipt":
-        write_native_receipt(
-            args.bundle,
-            args.output,
-            target=args.target,
-            source_sha=args.source_sha,
-        )
     else:
-        verify_native_receipts(
-            args.bundle,
-            args.receipts_root,
-            source_sha=args.source_sha,
-        )
+        raise AssertionError(f"unhandled command: {args.command}")
     return 0
 
 
