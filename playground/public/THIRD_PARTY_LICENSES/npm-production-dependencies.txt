@@ -3195,7 +3195,6 @@ SOFTWARE.
 
 The following npm packages may be included in this product:
 
- - @napi-rs/canvas-darwin-arm64@0.1.100
  - @radix-ui/number@1.1.1
  - @radix-ui/react-compose-refs@1.1.2
  - @radix-ui/react-context@1.1.2

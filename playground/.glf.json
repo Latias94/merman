@@ -1,4 +1,5 @@
 {
+  "exclude": ["/^@napi-rs\\/canvas-/"],
   "replace": {
     "cytoscape@3.34.0": "./public/THIRD_PARTY_LICENSES/cytoscape/LICENSE"
   }
