@@ -1,5 +1,5 @@
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{fence, AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering, fence};
 
 pub(crate) struct CountingSystemAllocator {
     live_bytes: AtomicU64,
