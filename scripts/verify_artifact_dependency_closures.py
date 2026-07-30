@@ -94,6 +94,7 @@ class ClosureObservation:
     package_versions: frozenset[tuple[str, str]]
     observed_residual_packages: tuple[str, ...]
     fingerprint: str
+    fingerprint_enforced: bool
 
 
 class ClosureVerificationError(RuntimeError):
@@ -618,6 +619,7 @@ def check_case(
         ),
         observed_residual_packages=tuple(sorted(residual & closure.packages)),
         fingerprint=fingerprint,
+        fingerprint_enforced=enforce_fingerprint,
     )
     return failures, observation
 
@@ -632,11 +634,28 @@ def _default_runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def rustc_host_target() -> str:
+    """Return the host triple whose proc-macro dependencies Cargo resolves."""
+    completed = _default_runner(("rustc", "-vV"))
+    if completed.returncode != 0:
+        stderr = (completed.stderr or "").strip() or "<empty stderr>"
+        raise ClosureVerificationError(
+            f"rustc -vV exited with {completed.returncode}: {stderr}"
+        )
+    for line in completed.stdout.splitlines():
+        if line.startswith("host: "):
+            host = line.removeprefix("host: ").strip()
+            if host:
+                return host
+    raise ClosureVerificationError("rustc -vV did not report a host target")
+
+
 def verify_cases(
     cases: Iterable[VerificationCase],
     *,
     runner: CommandRunner = _default_runner,
     enforce_fingerprints: bool = True,
+    running_host_target: str = HOST_CLOSURE_REFERENCE_TARGET,
 ) -> tuple[ClosureObservation, ...]:
     """Run every selected profile-target case and aggregate all failures."""
     failures: list[str] = []
@@ -667,10 +686,14 @@ def verify_cases(
             if not isinstance(completed.stdout, str):
                 raise ClosureVerificationError("cargo tree stdout was not text")
             closure = parse_cargo_tree(completed.stdout)
+            enforce_case_fingerprint = enforce_fingerprints and (
+                case.recipe.build_target_kind != "host"
+                or running_host_target == case.target
+            )
             case_failures, observation = check_case(
                 case,
                 closure,
-                enforce_fingerprint=enforce_fingerprints,
+                enforce_fingerprint=enforce_case_fingerprint,
             )
             observations.append(observation)
             failures.extend(f"{context}: {failure}" for failure in case_failures)
@@ -733,6 +756,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         observations = verify_cases(
             cases,
             enforce_fingerprints=not args.print_fingerprints,
+            running_host_target=rustc_host_target(),
         )
         if not args.profile and args.descriptor.resolve() == DEFAULT_DESCRIPTOR.resolve():
             profile_packages: dict[str, frozenset[tuple[str, str]]] = {}
@@ -760,6 +784,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "closure=runtime "
             f"packages={observation.package_count} "
             f"fingerprint={observation.fingerprint} "
+            f"fingerprint-enforced={str(observation.fingerprint_enforced).lower()} "
             f"observed-residual={residual}"
         )
     return 0

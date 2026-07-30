@@ -590,6 +590,60 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(len(commands), 1)
         self.assertEqual(len(observations), 2)
 
+    def test_host_fingerprint_is_only_enforced_on_the_reference_host(self) -> None:
+        output = tree_line("fixture")
+
+        def runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=output,
+                stderr="",
+            )
+
+        with self.assertRaisesRegex(ClosureVerificationError, "fingerprint drift"):
+            verify_cases(
+                (case(fingerprint="sha256:" + "0" * 64),),
+                runner=runner,
+                running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
+            )
+
+        observations = verify_cases(
+            (case(fingerprint="sha256:" + "0" * 64),),
+            runner=runner,
+            running_host_target="aarch64-apple-darwin",
+        )
+
+        self.assertFalse(observations[0].fingerprint_enforced)
+        self.assertEqual(
+            observations[0].fingerprint,
+            closure_fingerprint(parse_cargo_tree(output)),
+        )
+
+    def test_target_set_fingerprint_remains_enforced_off_reference_host(self) -> None:
+        loaded = recipe(
+            "cross",
+            build_target_kind="target-set",
+            build_targets=("x86_64-unknown-linux-gnu",),
+        )
+        with self.assertRaisesRegex(ClosureVerificationError, "fingerprint drift"):
+            verify_cases(
+                (
+                    case(
+                        "cross",
+                        loaded_recipe=loaded,
+                        target="x86_64-unknown-linux-gnu",
+                    ),
+                ),
+                runner=lambda command: subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=tree_line("fixture"),
+                    stderr="",
+                ),
+                running_host_target="aarch64-apple-darwin",
+            )
+
     def test_failures_are_aggregated_across_profiles(self) -> None:
         cases = tuple(
             case(
