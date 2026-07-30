@@ -1961,14 +1961,35 @@ fn open_stable_lock_file(path: &Path) -> Result<(File, bool), TransactionError> 
             )?;
             Ok((file, true))
         }
-        Err(source) if source.kind() == std::io::ErrorKind::AlreadyExists => {
-            let metadata = std::fs::symlink_metadata(path).map_err(|source| {
-                TransactionError::operational("inspect transaction lock", path, source)
-            })?;
+        Err(create_error) => {
+            let metadata = match std::fs::symlink_metadata(path) {
+                Ok(metadata) => metadata,
+                Err(source) if create_error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    return Err(TransactionError::operational(
+                        "inspect transaction lock",
+                        path,
+                        source,
+                    ));
+                }
+                Err(_) => {
+                    return Err(TransactionError::operational(
+                        "create transaction lock",
+                        path,
+                        create_error,
+                    ));
+                }
+            };
             if !metadata.file_type().is_file() {
                 return Err(TransactionError::invalid_state(
                     path,
                     "transaction lock is a symlink or non-regular file",
+                ));
+            }
+            if create_error.kind() != std::io::ErrorKind::AlreadyExists {
+                return Err(TransactionError::operational(
+                    "create transaction lock",
+                    path,
+                    create_error,
                 ));
             }
             let file = OpenOptions::new()
@@ -1987,11 +2008,6 @@ fn open_stable_lock_file(path: &Path) -> Result<(File, bool), TransactionError> 
             )?;
             Ok((file, false))
         }
-        Err(source) => Err(TransactionError::operational(
-            "create transaction lock",
-            path,
-            source,
-        )),
     }
 }
 
