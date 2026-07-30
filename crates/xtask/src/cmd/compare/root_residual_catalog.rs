@@ -1262,6 +1262,13 @@ mod tests {
 
     #[test]
     fn catalog_validation_rejects_reference_and_fixture_path_escape() {
+        let workspace = fs::canonicalize(crate::cmd::workspace_root()).unwrap();
+        let outside_reference = tempfile::NamedTempFile::new_in(
+            workspace.parent().expect("workspace parent directory"),
+        )
+        .expect("temporary reference outside the workspace");
+        assert!(!outside_reference.path().starts_with(&workspace));
+
         let mut catalog = reviewed_catalog(
             catalog_entry(
                 "flowchart",
@@ -1275,7 +1282,7 @@ mod tests {
             .evidence
             .get_mut("browser-measurement")
             .unwrap()
-            .reference = "/etc/hosts".to_string();
+            .reference = outside_reference.path().to_string_lossy().into_owned();
         assert!(
             validate_catalog(&catalog, 3, true)
                 .unwrap_err()
