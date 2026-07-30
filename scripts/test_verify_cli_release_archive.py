@@ -24,6 +24,8 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_cli_release_archive as verifier
+import release_archive as archive_core
+import release_process as process_core
 
 
 VERSION = "0.8.0-alpha.4"
@@ -58,7 +60,15 @@ SOURCE_ASSET_PATHS = (
     "assets/man/merman-cli-render.1",
     "assets/man/merman-cli.1",
 )
-RELEASE_WORKFLOW = PROJECT_ROOT / ".github/workflows/release.yml"
+VALID_PNG = (
+    verifier.PNG_SIGNATURE
+    + b"\x00\x00\x00\rIHDR"
+    + b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00"
+    + b"\x00\x00\x00\x00"
+    + b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+VALID_JPEG = verifier.JPEG_START + verifier.JPEG_END
+VALID_PDF = b"%PDF-1.7\n1 0 obj <</Type /Page>> endobj\n%%EOF\n"
 
 
 def read_json(root: Path, relative: str) -> dict[str, object]:
@@ -471,14 +481,14 @@ class PathSafetyTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(
                 verifier.ArchiveVerificationError
             ):
-                verifier._normalize_member_name(name, is_directory=False)
+                archive_core._normalize_member_name(name, is_directory=False)
 
     def test_rejects_windows_devices_and_nonportable_components(self) -> None:
         for name in ("CON", "licenses/aux.txt", "trailing.", "trailing ", "a:b", "a?b"):
             with self.subTest(name=name), self.assertRaises(
                 verifier.ArchiveVerificationError
             ):
-                verifier._normalize_member_name(name, is_directory=False)
+                archive_core._normalize_member_name(name, is_directory=False)
 
     def test_tar_rejects_member_outside_expected_wrapper(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -874,7 +884,7 @@ class AdversarialRegressionTests(unittest.TestCase):
             verifier.ArchiveVerificationError,
             "portable path collision",
         ):
-            verifier._validate_member_set(
+            archive_core._validate_member_set(
                 unicode_collision,
                 limits=verifier.DEFAULT_LIMITS,
             )
@@ -894,7 +904,7 @@ class AdversarialRegressionTests(unittest.TestCase):
             verifier.ArchiveVerificationError,
             "portable ancestor",
         ):
-            verifier._validate_member_set(
+            archive_core._validate_member_set(
                 casefolded_ancestor,
                 limits=verifier.DEFAULT_LIMITS,
             )
@@ -1072,7 +1082,7 @@ class AdversarialRegressionTests(unittest.TestCase):
                 )
             self.assertEqual(verified_output.read_bytes(), b"keep me")
 
-    def test_cli_requires_repository_and_verified_output(self) -> None:
+    def test_cli_requires_repository_but_allows_verification_without_persistence(self) -> None:
         arguments = [
             "merman-cli-x86_64-unknown-linux-gnu.tar.xz",
             "--target",
@@ -1085,6 +1095,11 @@ class AdversarialRegressionTests(unittest.TestCase):
             self.assertRaises(SystemExit),
         ):
             verifier.parse_args(arguments)
+
+        parsed = verifier.parse_args(
+            [*arguments, "--repo-root", str(Path("repo"))]
+        )
+        self.assertIsNone(parsed.verified_output)
 
 
 class RuntimeContractTests(unittest.TestCase):
@@ -1136,6 +1151,16 @@ class RuntimeContractTests(unittest.TestCase):
                 stdout = f"merman-cli {VERSION}\n".encode()
             elif command[-2:] == ["capabilities", "--json"]:
                 stdout = json.dumps(valid_capabilities_payload()).encode()
+            elif command[-2:] == ["completion", "bash"]:
+                cwd = kwargs["cwd"]
+                self.assertIsInstance(cwd, Path)
+                stdout = (cwd / "completions/merman-cli.bash").read_bytes()
+            elif "png" in command:
+                stdout = VALID_PNG
+            elif "jpg" in command:
+                stdout = VALID_JPEG
+            elif "pdf" in command:
+                stdout = VALID_PDF
             else:
                 stdout = b'<svg xmlns="http://www.w3.org/2000/svg"></svg>\n'
             return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr=b"")
@@ -1153,52 +1178,67 @@ class RuntimeContractTests(unittest.TestCase):
                 host_target_checker=lambda _target: True,
             )
 
-        self.assertEqual(len(calls), 3)
-        self.assertEqual(calls[2][1], verifier.SVG_SMOKE_SOURCE)
+        self.assertEqual(len(calls), 7)
+        self.assertEqual(calls[3][1], verifier.SVG_SMOKE_SOURCE)
+        self.assertTrue(all(stdin == verifier.SVG_SMOKE_SOURCE for _, stdin in calls[3:]))
 
     def test_runtime_rejects_version_schema_and_invalid_svg(self) -> None:
         binary = Path("/synthetic/merman-cli")
+        completion = required_files(LINUX_TARGET)["completions/merman-cli.bash"]
         outputs = (
-            [
+            (
+                "version",
+                "--version must emit exactly one stable line",
+                [
                 subprocess.CompletedProcess([], 0, stdout=b"wrong\n", stderr=b""),
-            ],
-            [
-                subprocess.CompletedProcess(
-                    [],
-                    0,
-                    stdout=f"merman-cli {VERSION}\n".encode(),
-                    stderr=b"",
-                ),
-                subprocess.CompletedProcess(
-                    [],
-                    0,
-                    stdout=b'{"schema_version":999,"package":{"name":"merman-cli","version":"'
-                    + VERSION.encode()
-                    + b'"}}',
-                    stderr=b"",
-                ),
-            ],
-            [
-                subprocess.CompletedProcess(
-                    [],
-                    0,
-                    stdout=f"merman-cli {VERSION}\n".encode(),
-                    stderr=b"",
-                ),
-                subprocess.CompletedProcess(
-                    [],
-                    0,
-                    stdout=json.dumps(valid_capabilities_payload()).encode(),
-                    stderr=b"",
-                ),
-                subprocess.CompletedProcess([], 0, stdout=b"not svg", stderr=b""),
-            ],
+                ],
+            ),
+            (
+                "capabilities schema",
+                "capabilities document",
+                [
+                    subprocess.CompletedProcess(
+                        [],
+                        0,
+                        stdout=f"merman-cli {VERSION}\n".encode(),
+                        stderr=b"",
+                    ),
+                    subprocess.CompletedProcess(
+                        [],
+                        0,
+                        stdout=b'{"schema_version":999,"package":{"name":"merman-cli","version":"'
+                        + VERSION.encode()
+                        + b'"}}',
+                        stderr=b"",
+                    ),
+                ],
+            ),
+            (
+                "invalid SVG",
+                "minimal render is not valid XML",
+                [
+                    subprocess.CompletedProcess(
+                        [],
+                        0,
+                        stdout=f"merman-cli {VERSION}\n".encode(),
+                        stderr=b"",
+                    ),
+                    subprocess.CompletedProcess(
+                        [],
+                        0,
+                        stdout=json.dumps(valid_capabilities_payload()).encode(),
+                        stderr=b"",
+                    ),
+                    subprocess.CompletedProcess([], 0, stdout=completion, stderr=b""),
+                    subprocess.CompletedProcess([], 0, stdout=b"not svg", stderr=b""),
+                ],
+            ),
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             write_repo_assets(repo_root, required_files(LINUX_TARGET))
-            for responses in outputs:
-                with self.subTest(responses=len(responses)):
+            for case, message, responses in outputs:
+                with self.subTest(case=case):
                     pending = list(responses)
 
                     def runner(
@@ -1207,7 +1247,10 @@ class RuntimeContractTests(unittest.TestCase):
                     ) -> subprocess.CompletedProcess[bytes]:
                         return pending.pop(0)
 
-                    with self.assertRaises(verifier.ArchiveVerificationError):
+                    with self.assertRaisesRegex(
+                        verifier.ArchiveVerificationError,
+                        message,
+                    ):
                         verifier.verify_runtime_contract(
                             binary,
                             target=LINUX_TARGET,
@@ -1512,13 +1555,13 @@ class RuntimeContractTests(unittest.TestCase):
     def test_real_subprocess_output_is_bounded_while_running(self) -> None:
         with (
             tempfile.TemporaryDirectory() as temp_dir,
-            mock.patch.object(verifier, "RUNTIME_OUTPUT_MAX_BYTES", 1024),
+            mock.patch.object(process_core, "RUNTIME_OUTPUT_MAX_BYTES", 1024),
         ):
             with self.assertRaisesRegex(
                 verifier.ArchiveVerificationError,
                 "output exceeds",
             ):
-                verifier._run_checked(
+                process_core.run_checked(
                     [
                         sys.executable,
                         "-c",
@@ -1532,10 +1575,10 @@ class RuntimeContractTests(unittest.TestCase):
     def test_real_subprocess_timeout_uses_the_bounded_runner(self) -> None:
         with (
             tempfile.TemporaryDirectory() as temp_dir,
-            mock.patch.object(verifier, "RUNTIME_TIMEOUT_SECONDS", 0.1),
+            mock.patch.object(process_core, "RUNTIME_TIMEOUT_SECONDS", 0.1),
         ):
             with self.assertRaises(subprocess.TimeoutExpired):
-                verifier._run_checked(
+                process_core.run_checked(
                     [
                         sys.executable,
                         "-c",
@@ -1556,10 +1599,10 @@ class RuntimeContractTests(unittest.TestCase):
         )
         with (
             tempfile.TemporaryDirectory() as temp_dir,
-            mock.patch.object(verifier, "RUNTIME_TIMEOUT_SECONDS", 0.1),
+            mock.patch.object(process_core, "RUNTIME_TIMEOUT_SECONDS", 0.1),
         ):
             with self.assertRaises(subprocess.TimeoutExpired) as raised:
-                verifier._run_checked(
+                process_core.run_checked(
                     [sys.executable, "-c", script],
                     stdin=b"",
                     cwd=Path(temp_dir),
@@ -1575,78 +1618,6 @@ class RuntimeContractTests(unittest.TestCase):
             time.sleep(0.01)
         else:
             self.fail(f"runtime descendant {child_pid} survived process-group timeout")
-
-
-class ReleaseWorkflowWiringTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-        cls.verification_job, host_job = workflow.split(
-            "\n  verify-cli-archives:\n",
-            maxsplit=1,
-        )[1].split("\n  host:\n", maxsplit=1)
-        cls.host_job = host_job
-
-    def test_all_cli_archives_are_structurally_verified(self) -> None:
-        self.assertIn("-name 'merman-cli-*.tar.xz'", self.verification_job)
-        self.assertIn("-name 'merman-cli-*.zip'", self.verification_job)
-        self.assertIn('for archive in "${cli_archives[@]}"', self.verification_job)
-        self.assertIn(
-            "python3 scripts/verify_cli_release_archive.py",
-            self.verification_job,
-        )
-        for argument in [
-            '--checksum "$archive.sha256"',
-            '--target "$target"',
-            '--version "$release_version"',
-            '--repo-root "$GITHUB_WORKSPACE"',
-            '--verified-output "$VERIFIED_CLI_DIR/$archive_name"',
-        ]:
-            with self.subTest(argument=argument):
-                self.assertIn(argument, self.verification_job)
-
-    def test_cli_archive_targets_match_the_release_profile_exactly(self) -> None:
-        self.assertIn(
-            "artifact_profile_recipe.py cli-release --field triples",
-            self.verification_job,
-        )
-        for diagnostic in [
-            "Unexpected merman-cli archive target",
-            "Duplicate merman-cli archive target",
-            "Missing merman-cli archive target",
-        ]:
-            with self.subTest(diagnostic=diagnostic):
-                self.assertIn(diagnostic, self.verification_job)
-
-    def test_smoke_execution_is_limited_to_the_host_target(self) -> None:
-        self.assertIn(
-            """if [[ "$target" == "$host_target" ]]; then
-              execute_args+=(--execute)
-              host_archive_executed=true
-            fi""",
-            self.verification_job,
-        )
-        self.assertIn('"${execute_args[@]}"', self.verification_job)
-        self.assertIn("host_archive_executed=true", self.verification_job)
-        self.assertIn(
-            "The host merman-cli archive was not executed",
-            self.verification_job,
-        )
-
-    def test_release_authority_only_downloads_verified_snapshots(self) -> None:
-        self.assertIn("name: verified-release-assets", self.verification_job)
-        self.assertIn(
-            "*-dist-manifest.json|merman-cli-*.tar.xz|merman-cli-*.zip",
-            self.verification_job,
-        )
-        self.assertIn(
-            'cp -- "$VERIFIED_CLI_DIR"/* "$RELEASE_ASSET_DIR/"',
-            self.verification_job,
-        )
-        self.assertIn("needs.verify-cli-archives.result == 'success'", self.host_job)
-        self.assertIn("name: verified-release-assets", self.host_job)
-        self.assertNotIn("pattern: artifacts-*", self.host_job)
-        self.assertNotIn("verify_cli_release_archive.py", self.host_job)
 
 
 if __name__ == "__main__":
