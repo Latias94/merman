@@ -311,12 +311,6 @@ fn runtime_path_is_excluded(relative: &Path) -> bool {
 }
 
 fn portable_relative_path(path: &Path) -> Result<String, XtaskError> {
-    if path.to_string_lossy().contains('\\') {
-        return Err(package_transaction_error(format!(
-            "package path is not portable: {}",
-            path.display()
-        )));
-    }
     let mut parts = Vec::new();
     for component in path.components() {
         let Component::Normal(part) = component else {
@@ -325,12 +319,19 @@ fn portable_relative_path(path: &Path) -> Result<String, XtaskError> {
                 path.display()
             )));
         };
-        parts.push(part.to_str().ok_or_else(|| {
+        let part = part.to_str().ok_or_else(|| {
             package_transaction_error(format!(
                 "package path is not valid UTF-8: {}",
                 path.display()
             ))
-        })?);
+        })?;
+        if part.contains('/') || part.contains('\\') {
+            return Err(package_transaction_error(format!(
+                "package path is not portable: {}",
+                path.display()
+            )));
+        }
+        parts.push(part);
     }
     if parts.is_empty() {
         return Err(package_transaction_error("package path must name a file"));
@@ -1241,7 +1242,6 @@ where
         &package_manifest,
         &package_manifest_bytes,
     )?;
-    sync_package_tree(staged)?;
     before_source_revalidation();
     source.verify_live_identity()?;
     validate_staged_package(
@@ -1254,7 +1254,6 @@ where
 
     let package_dir = package_parent.join(package_version);
     install_staged_package(&package_dir, staging, |from, to| fs::rename(from, to))?;
-    sync_package_directory(&package_parent)?;
     Ok(package_dir)
 }
 
@@ -1418,52 +1417,6 @@ where
             source,
         )
     })?;
-    Ok(())
-}
-
-fn sync_package_tree(path: &Path) -> Result<(), XtaskError> {
-    let metadata = fs::symlink_metadata(path)
-        .map_err(|source| package_transaction_io("inspect staged package", path, source))?;
-    if metadata.file_type().is_symlink() {
-        return Err(package_transaction_error(format!(
-            "staged package must not contain symbolic links: {}",
-            path.display()
-        )));
-    }
-    if metadata.file_type().is_file() {
-        return File::open(path)
-            .and_then(|file| file.sync_all())
-            .map_err(|source| {
-                package_transaction_io("synchronize staged package file", path, source)
-            });
-    }
-    if !metadata.file_type().is_dir() {
-        return Err(package_transaction_error(format!(
-            "staged package contains a non-file entry: {}",
-            path.display()
-        )));
-    }
-
-    let mut entries = fs::read_dir(path)
-        .map_err(|source| package_transaction_io("read staged package directory", path, source))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|source| package_transaction_io("read staged package entry", path, source))?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        sync_package_tree(&entry.path())?;
-    }
-    sync_package_directory(path)
-}
-
-#[cfg(unix)]
-fn sync_package_directory(path: &Path) -> Result<(), XtaskError> {
-    File::open(path)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|source| package_transaction_io("synchronize package directory", path, source))
-}
-
-#[cfg(not(unix))]
-fn sync_package_directory(_path: &Path) -> Result<(), XtaskError> {
     Ok(())
 }
 
@@ -1857,6 +1810,13 @@ mod tests {
         assert_eq!(manifest.profile, "publish");
         assert_eq!(manifest.wrapper.path, "lib.typ");
         assert_eq!(manifest.plugin.wasm.sha256, sha256_hex(b"wasm"));
+        assert!(
+            manifest
+                .source
+                .files
+                .iter()
+                .any(|file| file.path == "THIRD_PARTY_LICENSES/dependency.txt")
+        );
         let bundle_entries = fs::read_dir(&package)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
