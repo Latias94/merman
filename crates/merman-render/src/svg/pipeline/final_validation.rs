@@ -910,9 +910,7 @@ fn resolve_reference_candidates(
     dependencies: &mut Vec<Vec<(usize, usize)>>,
     mut candidates: impl Iterator<Item = usize>,
 ) -> Option<usize> {
-    let Some(first) = candidates.next() else {
-        return None;
-    };
+    let first = candidates.next()?;
     let Some(second) = candidates.next() else {
         return Some(first);
     };
