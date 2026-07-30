@@ -4,17 +4,13 @@ Browser-only Merman package for parser-backed editor intelligence. Use it from a
 
 ## Install
 
-Use the generated command for the current repository release state:
-
-<!-- BEGIN GENERATED RELEASE README NPM_EDITOR_INSTALL -->
+Build the local package group and install this package:
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web
 npm run build --prefix /path/to/merman/platforms/web
 npm install /path/to/merman/platforms/web/packages/editor
 ```
-
-<!-- END GENERATED RELEASE README NPM_EDITOR_INSTALL -->
 
 ```ts
 import {

@@ -16,14 +16,10 @@ This model renderer does not own a runtime-policy constructor, so it does not fo
 
 Most applications should use the `merman` facade so parsing and text rendering stay in one operation:
 
-<!-- BEGIN GENERATED RELEASE README ASCII_DEPENDENCY -->
-
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["ascii"] }
+merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["ascii"] }
 ```
-
-<!-- END GENERATED RELEASE README ASCII_DEPENDENCY -->
 
 ```rust
 use merman::ascii::HeadlessAsciiRenderer;

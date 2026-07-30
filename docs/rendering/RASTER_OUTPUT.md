@@ -94,14 +94,10 @@ Enable only the binary outputs the application uses (`png`, `jpeg`, and/or `pdf`
 crate. PNG and JPEG share private bitmap preparation; PDF remains a separate vector export path.
 The following example uses both `png` and `pdf`:
 
-<!-- BEGIN GENERATED RELEASE README RASTER_FACADE_DEPENDENCY -->
-
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["png", "pdf"] }
+merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["png", "pdf"] }
 ```
-
-<!-- END GENERATED RELEASE README RASTER_FACADE_DEPENDENCY -->
 
 ```rust
 use merman::svg::{
@@ -139,14 +135,10 @@ cargo run -p merman --features png --example example_05_raster_output
 If an application already owns SVG text, finalize it before calling low-level encoders. Those
 encoders accept only the sealed `ResvgCompatibleSvg` artifact:
 
-<!-- BEGIN GENERATED RELEASE README RASTER_ENCODER_DEPENDENCY -->
-
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["png", "jpeg", "pdf"] }
+merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["png", "jpeg", "pdf"] }
 ```
-
-<!-- END GENERATED RELEASE README RASTER_ENCODER_DEPENDENCY -->
 
 ```rust
 use merman::svg::{

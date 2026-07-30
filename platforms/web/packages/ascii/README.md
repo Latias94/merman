@@ -4,17 +4,13 @@ Browser-only Merman SDK for supported ASCII diagram output.
 
 ## Install
 
-Use the generated command for the current repository release state:
-
-<!-- BEGIN GENERATED RELEASE README NPM_ASCII_INSTALL -->
+Build the local package group and install this package:
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web
 npm run build --prefix /path/to/merman/platforms/web
 npm install /path/to/merman/platforms/web/packages/ascii
 ```
-
-<!-- END GENERATED RELEASE README NPM_ASCII_INSTALL -->
 
 ```ts
 import { initMerman, renderAscii } from "@mermanjs/web-ascii";

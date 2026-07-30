@@ -8,15 +8,11 @@ Most applications that want rendered output should use the `merman` facade inste
 
 ## Quick Start
 
-Use the installation command projected for the current repository release state:
-
-<!-- BEGIN GENERATED RELEASE README CORE_INSTALL -->
+Install from the repository's default branch:
 
 ```sh
 cargo add merman-core --git https://github.com/Latias94/merman
 ```
-
-<!-- END GENERATED RELEASE README CORE_INSTALL -->
 
 Parse Mermaid into its compatibility semantic JSON projection:
 

@@ -4,17 +4,13 @@ Browser-only Merman semantic analysis, validation, and diagram detection without
 
 ## Install
 
-Use the generated command for the current repository release state:
-
-<!-- BEGIN GENERATED RELEASE README NPM_ANALYSIS_INSTALL -->
+Build the local package group and install this package:
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web
 npm run build --prefix /path/to/merman/platforms/web
 npm install /path/to/merman/platforms/web/packages/analysis
 ```
-
-<!-- END GENERATED RELEASE README NPM_ANALYSIS_INSTALL -->
 
 ```ts
 import { analyze, initMerman } from "@mermanjs/web-analysis";

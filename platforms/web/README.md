@@ -2,7 +2,7 @@
 
 This workspace builds the lockstep, browser-only Merman package group. Each admitted package contains one matching WASM artifact, its TypeScript wrapper, provenance, and legal material.
 
-> Installation commands follow the repository release state. Development versions build and install the local package group; release commits use an exact npm version. Registry form does not prove that publication has completed.
+> These commands build and install a source checkout. Published npm packages are versioned independently of this documentation.
 
 Do not use these packages for Node.js or SSR. They require a browser main-thread or Web Worker realm when loading the WASM module. A future Node transport, if admitted, will be a separate package rather than a browser-WASM fallback.
 
@@ -20,17 +20,13 @@ Public packages use one version and one release contract. Workflow-specific slim
 
 ## Browser Quick Start
 
-Install the complete browser package for the current repository release state:
-
-<!-- BEGIN GENERATED RELEASE README WEB_GUIDE_INSTALL -->
+Build the local package group and install the complete browser package:
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web
 npm run build --prefix /path/to/merman/platforms/web
 npm install /path/to/merman/platforms/web/packages/full
 ```
-
-<!-- END GENERATED RELEASE README WEB_GUIDE_INSTALL -->
 
 ```ts
 import { initMerman, renderSvg } from "@mermanjs/web";

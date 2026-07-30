@@ -34,13 +34,9 @@ Starting with `0.8.0-alpha.4`, version-specific [GitHub Releases](https://github
 
 Install the complete CLI from source:
 
-<!-- BEGIN GENERATED RELEASE README CLI_PACKAGE_INSTALL -->
-
 ```sh
 cargo install --git https://github.com/Latias94/merman --locked merman-cli
 ```
-
-<!-- END GENERATED RELEASE README CLI_PACKAGE_INSTALL -->
 
 The Git command follows the repository's default branch at install time. Add `--rev FULL_COMMIT_SHA` to pin a remote revision.
 
@@ -209,14 +205,10 @@ The default feature set is the complete local product. Cargo features are additi
 
 Install a lint-only binary:
 
-<!-- BEGIN GENERATED RELEASE README CLI_PACKAGE_LEAN_INSTALL -->
-
 ```sh
 cargo install --git https://github.com/Latias94/merman --locked merman-cli \
   --no-default-features --features analysis
 ```
-
-<!-- END GENERATED RELEASE README CLI_PACKAGE_LEAN_INSTALL -->
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 

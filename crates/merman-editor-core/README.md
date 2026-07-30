@@ -8,16 +8,12 @@ Use [`merman-lsp`](https://crates.io/crates/merman-lsp) when an editor can speak
 
 ## Quick Start
 
-Use the facade dependency projected for the current repository release state:
-
-<!-- BEGIN GENERATED RELEASE README EDITOR_CORE_DEPENDENCY -->
+Use the facade from the repository's default branch:
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["analysis", "editor"] }
+merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["analysis", "editor"] }
 ```
-
-<!-- END GENERATED RELEASE README EDITOR_CORE_DEPENDENCY -->
 
 ```rust
 use merman::editor::{

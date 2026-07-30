@@ -4,17 +4,13 @@ The complete browser-only Merman SDK. Its single WASM artifact includes SVG rend
 
 ## Install
 
-Use the generated command for the current repository release state:
-
-<!-- BEGIN GENERATED RELEASE README NPM_FULL_INSTALL -->
+Build the local package group and install this package:
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web
 npm run build --prefix /path/to/merman/platforms/web
 npm install /path/to/merman/platforms/web/packages/full
 ```
-
-<!-- END GENERATED RELEASE README NPM_FULL_INSTALL -->
 
 ```ts
 import { initMerman, renderSvg } from "@mermanjs/web";

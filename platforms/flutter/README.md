@@ -8,8 +8,6 @@ Render and analyze Mermaid diagrams in Flutter without a browser or JavaScript r
 
 ## Install
 
-<!-- BEGIN GENERATED RELEASE README FLUTTER_PACKAGE_INSTALL -->
-
 ```yaml
 dependencies:
   merman:
@@ -17,8 +15,6 @@ dependencies:
       url: https://github.com/Latias94/merman
       path: platforms/flutter
 ```
-
-<!-- END GENERATED RELEASE README FLUTTER_PACKAGE_INSTALL -->
 
 Run `flutter pub get` after adding the dependency.
 

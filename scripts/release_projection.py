@@ -24,18 +24,8 @@ try:
 except ModuleNotFoundError:
     import web_package_group
 
-try:
-    from scripts import release_readme
-except ModuleNotFoundError:
-    import release_readme
-
-
 ROOT_MANIFEST = Path("Cargo.toml")
 ROOT_LOCK = Path("Cargo.lock")
-README = Path("README.md")
-PROJECTED_READMES = tuple(
-    Path(path) for path in release_readme.projected_readme_paths()
-)
 FUZZ_MANIFEST = Path("fuzz/Cargo.toml")
 FUZZ_LOCK = Path("fuzz/Cargo.lock")
 WEB_WORKSPACE_PACKAGE = Path("platforms/web/package.json")
@@ -96,8 +86,6 @@ class VerificationResult:
 @dataclass(frozen=True)
 class WorkspaceCatalog:
     authority: ReleaseVersion
-    repository_url: str
-    readme_registry_version: str | None
     coupled_packages: Mapping[str, Path]
     member_manifests: tuple[Path, ...]
     root_data: Mapping[str, Any]
@@ -226,11 +214,6 @@ def load_workspace_catalog(view: RepositoryView) -> WorkspaceCatalog:
         _string(package.get("version"), "Cargo.toml workspace.package.version"),
         allow_v_prefix=False,
     )
-    repository_url = _string(
-        package.get("repository"),
-        "Cargo.toml workspace.package.repository",
-    )
-
     metadata = _mapping(
         workspace.get("metadata", {}), "Cargo.toml [workspace.metadata]"
     )
@@ -251,23 +234,6 @@ def load_workspace_catalog(view: RepositoryView) -> WorkspaceCatalog:
         raise ReleaseProjectionError(
             "Cargo.toml independent package declarations must be unique"
         )
-    readme_registry_raw = release_metadata.get("readme-registry-version")
-    readme_registry_version = None
-    if readme_registry_raw is not None:
-        readme_registry_version = parse_release_version(
-            _string(
-                readme_registry_raw,
-                "Cargo.toml workspace.metadata.merman-release.readme-registry-version",
-            ),
-            allow_v_prefix=False,
-        ).canonical
-        if readme_registry_version != authority.canonical:
-            raise ReleaseProjectionError(
-                "Cargo.toml workspace.metadata.merman-release.readme-registry-version "
-                f"must match workspace.package.version {authority.canonical}, "
-                f"found {readme_registry_version}"
-            )
-
     members = workspace.get("members")
     if not isinstance(members, list) or not members:
         raise ReleaseProjectionError("Cargo.toml workspace.members must be a non-empty array")
@@ -318,8 +284,6 @@ def load_workspace_catalog(view: RepositoryView) -> WorkspaceCatalog:
 
     return WorkspaceCatalog(
         authority=authority,
-        repository_url=repository_url,
-        readme_registry_version=readme_registry_version,
         coupled_packages=coupled,
         member_manifests=tuple(member_manifests),
         root_data=root_data,
@@ -330,7 +294,6 @@ def verify_repository(
     root: Path,
     *,
     expected_version: str | None = None,
-    required_readme_mode: str | None = None,
     overrides: Mapping[Path | str, str] | None = None,
 ) -> VerificationResult:
     view = RepositoryView(root, overrides)
@@ -363,12 +326,6 @@ def verify_repository(
     _collect_fuzz_lock_versions(view, catalog, observations, errors)
     _collect_node_candidate_projection(view, catalog, observations, errors)
     _collect_platform_versions(view, catalog.authority, observations)
-    _collect_readme_projection(
-        view,
-        catalog,
-        errors,
-        required_mode=required_readme_mode,
-    )
 
     return VerificationResult(
         authority=catalog.authority,
@@ -1064,55 +1021,6 @@ def _collect_platform_versions(
     )
 
 
-def _collect_readme_projection(
-    view: RepositoryView,
-    catalog: WorkspaceCatalog,
-    errors: list[str],
-    *,
-    required_mode: str | None = None,
-) -> None:
-    mode = (
-        release_readme.REGISTRY_MODE
-        if catalog.readme_registry_version is not None
-        else release_readme.SOURCE_MODE
-    )
-    if required_mode is not None:
-        if required_mode not in release_readme.MODES:
-            raise ReleaseProjectionError(
-                f"unsupported README installation mode {required_mode!r}; "
-                f"expected one of {sorted(release_readme.MODES)}"
-            )
-        if mode != required_mode:
-            errors.append(
-                f"README installation mode is {mode!r}, expected "
-                f"{required_mode!r}; run `python3 scripts/release-version.py "
-                f"set-readme-mode --mode {required_mode} --version "
-                f"{catalog.authority.canonical}`"
-            )
-    try:
-        release_readme.verify_readme(
-            view.text(README),
-            catalog.authority,
-            mode=mode,
-            repository_url=catalog.repository_url,
-        )
-    except release_readme.ReleaseReadmeError as exc:
-        errors.append(f"{README}: {exc}")
-        return
-    for path in PROJECTED_READMES:
-        try:
-            release_readme.verify_projected_readme(
-                path.as_posix(),
-                view.text(path),
-                catalog.authority,
-                mode=mode,
-                repository_url=catalog.repository_url,
-            )
-        except release_readme.ReleaseReadmeError as exc:
-            errors.append(f"{path}: {exc}")
-            continue
-
-
 def _observe(
     observations: list[VersionObservation],
     label: str,
@@ -1172,31 +1080,6 @@ def _plist_value(text: str, key: str) -> str:
     return matches[0]
 
 
-def _render_readme_projections(
-    view: RepositoryView,
-    release: ReleaseVersion,
-    mode: str,
-    repository_url: str,
-) -> dict[Path, str]:
-    rendered = {
-        README: release_readme.render_readme(
-            view.text(README),
-            release,
-            mode,
-            repository_url,
-        )
-    }
-    for path in PROJECTED_READMES:
-        rendered[path] = release_readme.render_projected_readme(
-            path.as_posix(),
-            view.text(path),
-            release,
-            mode,
-            repository_url,
-        )
-    return rendered
-
-
 def plan_version_update(
     root: Path,
     version: str,
@@ -1221,24 +1104,11 @@ def _plan_version_update(
     view = RepositoryView(root, overrides)
     catalog = load_workspace_catalog(view)
     updates: dict[Path, str] = {}
-    version_changed = catalog.authority.canonical != release.canonical
-    readme_mode = (
-        release_readme.REGISTRY_MODE
-        if not version_changed and catalog.readme_registry_version is not None
-        else release_readme.SOURCE_MODE
-    )
 
     root_text = view.text(ROOT_MANIFEST)
     root_text = _replace_toml_section_string(
         root_text, "workspace.package", "version", release.canonical
     )
-    if version_changed:
-        root_text = _set_optional_toml_section_string(
-            root_text,
-            "workspace.metadata.merman-release",
-            "readme-registry-version",
-            None,
-        )
     workspace_dependencies = _mapping(
         _mapping(catalog.root_data["workspace"], "Cargo.toml [workspace]").get(
             "dependencies"
@@ -1376,15 +1246,6 @@ def _plan_version_update(
             flags=0,
         )
     updates[FLUTTER_IOS_BUILD] = build_text
-    updates.update(
-        _render_readme_projections(
-            view,
-            release,
-            readme_mode,
-            catalog.repository_url,
-        )
-    )
-
     result = verify_repository(
         root,
         expected_version=release.canonical,
@@ -1411,109 +1272,6 @@ def apply_version_update(root: Path, version: str) -> tuple[Path, ...]:
     if not result.ok:
         raise ReleaseProjectionError(
             "release version projection changed on disk but did not verify; "
-            "keep the worktree, resolve any concurrent edit, and rerun the same "
-            "command: "
-            + "; ".join(format_verification_failures(result))
-        )
-    return tuple(sorted(updates))
-
-
-def plan_readme_install_mode(
-    root: Path,
-    version: str,
-    mode: str,
-    *,
-    overrides: Mapping[Path | str, str] | None = None,
-) -> dict[Path, str]:
-    updates, _originals = _plan_readme_install_mode(
-        root,
-        version,
-        mode,
-        overrides=overrides,
-    )
-    return updates
-
-
-def _plan_readme_install_mode(
-    root: Path,
-    version: str,
-    mode: str,
-    *,
-    overrides: Mapping[Path | str, str] | None = None,
-) -> tuple[dict[Path, str], dict[Path, str]]:
-    release = parse_release_version(version, allow_v_prefix=False)
-    view = RepositoryView(root, overrides)
-    catalog = load_workspace_catalog(view)
-    if catalog.authority.canonical != release.canonical:
-        raise ReleaseProjectionError(
-            "README installation version must match Cargo workspace authority: "
-            f"expected {catalog.authority.canonical}, found {release.canonical}"
-        )
-    if mode not in release_readme.MODES:
-        raise ReleaseProjectionError(
-            f"unsupported README installation mode {mode!r}; "
-            f"expected one of {sorted(release_readme.MODES)}"
-        )
-
-    root_text = _set_optional_toml_section_string(
-        view.text(ROOT_MANIFEST),
-        "workspace.metadata.merman-release",
-        "readme-registry-version",
-        release.canonical if mode == release_readme.REGISTRY_MODE else None,
-    )
-    try:
-        projected_readmes = _render_readme_projections(
-            view,
-            release,
-            mode,
-            catalog.repository_url,
-        )
-    except release_readme.ReleaseReadmeError as exc:
-        raise ReleaseProjectionError(str(exc)) from exc
-
-    result = verify_repository(
-        root,
-        expected_version=release.canonical,
-        overrides={
-            **view.overrides,
-            ROOT_MANIFEST: root_text,
-            **projected_readmes,
-        },
-    )
-    if not result.ok:
-        raise ReleaseProjectionError(
-            "planned README installation projection did not verify: "
-            + "; ".join(format_verification_failures(result))
-        )
-    updates = {
-        path: content
-        for path, content in {
-            ROOT_MANIFEST: root_text,
-            **projected_readmes,
-        }.items()
-        if content != view.text(path)
-    }
-    originals = {path: view.text(path) for path in updates}
-    return updates, originals
-
-
-def apply_readme_install_mode(
-    root: Path,
-    version: str,
-    mode: str,
-) -> tuple[Path, ...]:
-    updates, originals = _plan_readme_install_mode(root, version, mode)
-    if not updates:
-        return ()
-    _replace_projection_files(root.resolve(), updates, expected=originals)
-    result = verify_repository(
-        root,
-        expected_version=version,
-        required_readme_mode=mode,
-    )
-    if not result.ok:
-        raise ReleaseProjectionError(
-            "README installation projection changed on disk but did not verify; "
             "keep the worktree, resolve any concurrent edit, and rerun the same "
             "command: "
             + "; ".join(format_verification_failures(result))
@@ -1551,73 +1309,6 @@ def _replace_toml_section_string(
         actual: Any = parsed
         for component in (*section.split("."), key):
             actual = actual[component]
-    except (KeyError, TypeError, tomllib.TOMLDecodeError) as exc:
-        raise ReleaseProjectionError(
-            f"failed to structurally update {section}.{key}: {exc}"
-        ) from exc
-    if actual != value:
-        raise ReleaseProjectionError(f"failed to update {section}.{key}")
-    return candidate
-
-
-def _set_optional_toml_section_string(
-    text: str,
-    section: str,
-    key: str,
-    value: str | None,
-) -> str:
-    lines = text.splitlines(keepends=True)
-    section_header = f"[{section}]"
-    section_indexes = [
-        index for index, line in enumerate(lines) if line.strip() == section_header
-    ]
-    if len(section_indexes) != 1:
-        raise ReleaseProjectionError(
-            f"expected one {section_header} section; found {len(section_indexes)}"
-        )
-    section_start = section_indexes[0]
-    section_end = next(
-        (
-            index
-            for index in range(section_start + 1, len(lines))
-            if lines[index].strip().startswith("[")
-            and lines[index].strip().endswith("]")
-        ),
-        len(lines),
-    )
-    assignment = re.compile(
-        rf'^(\s*{re.escape(key)}\s*=\s*)"[^"]*"(\s*(?:#.*)?(?:\r?\n)?)$'
-    )
-    matches = [
-        index
-        for index in range(section_start + 1, section_end)
-        if assignment.match(lines[index])
-    ]
-    if len(matches) > 1:
-        raise ReleaseProjectionError(
-            f"expected at most one {section}.{key} assignment; found {len(matches)}"
-        )
-
-    if value is None:
-        if matches:
-            del lines[matches[0]]
-    elif matches:
-        index = matches[0]
-        lines[index] = assignment.sub(rf'\g<1>"{value}"\g<2>', lines[index])
-    else:
-        insert_at = section_end
-        while insert_at > section_start + 1 and not lines[insert_at - 1].strip():
-            insert_at -= 1
-        newline = "\r\n" if "\r\n" in text else "\n"
-        lines.insert(insert_at, f'{key} = "{value}"{newline}')
-
-    candidate = "".join(lines)
-    try:
-        parsed = tomllib.loads(candidate)
-        table: Any = parsed
-        for component in section.split("."):
-            table = table[component]
-        actual = table.get(key)
     except (KeyError, TypeError, tomllib.TOMLDecodeError) as exc:
         raise ReleaseProjectionError(
             f"failed to structurally update {section}.{key}: {exc}"

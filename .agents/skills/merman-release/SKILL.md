@@ -5,7 +5,7 @@ description: Merman release operator workflow. Use when preparing a new Merman v
 
 # Merman Release
 
-Coordinate releases without duplicating the public operator guide. `docs/release/RELEASING.md` owns the operator sequence and cross-surface commands. `docs/release/SURFACES.json` owns declared surface state and machine-readable per-surface gates, and `scripts/release-status.py` reports observed release state.
+Use this skill as the release-operator checklist. `docs/release/RELEASING.md` explains the public workflow, but package manifests, artifact profiles, platform descriptors, owner workflows, and actual registry or GitHub evidence remain the authority for a release decision. README text and a central release-status file are never machine release authority.
 
 ## Read First
 
@@ -43,23 +43,19 @@ Write the changelog for users:
 - Keep each Markdown paragraph or bullet on one physical line.
 - Use the repository's release-note voice; use `$writing-great-skills` for an evidence-backed range report and `$humanizer` when prose needs a final polish.
 
-### Version And Installation Projection
+### Version Projection And Documentation Review
 
 Treat `Cargo.toml` `[workspace.package].version` as the workspace release authority. Use the exact projection and validation commands in the `Version Checklist` of `docs/release/RELEASING.md`.
 
 Do not hand-edit generated version projections. If the command is interrupted, preserve the partial diff and rerun the same command; the workspace authority is written last.
 
-A version bump places generated installation projections in `source` mode. Immediately before preflight, use the guide's exact commands to switch the target version to `registry` mode and run the release-ready check.
-
-Registry mode prepares truthful commands for the release artifact without claiming every registry is already live. Commit every projected file before tagging. If preparation is cancelled, switch back to `source`.
-
-After publication, keep the released version in `registry` mode. The next version bump returns generated blocks to `source` automatically. Switching a published version back to `source` would make its README inaccurate.
+README files are ordinary documentation. Review their install examples, package names, feature names, and supported-platform statements before preflight, but do not switch them between source and registry modes or make them part of a version projection. A cancelled or completed release therefore has no README state to restore.
 
 VS Code, Typst, and `roughr-merman` have independent version axes. Update them only when that surface is being released, and preserve their bundled Merman provenance.
 
 ### Local Contract And Preflight
 
-Run the repository-owned contract and status checks listed in `docs/release/RELEASING.md`.
+Run the owner-owned contract checks listed in `docs/release/RELEASING.md`, including exact artifact recipes, package build/load smoke tests, ABI checks, release legal material, and the requested preflight workflows.
 
 Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 
@@ -79,7 +75,7 @@ Skipped jobs must be explained by channel rules. A manual surface is not authori
 
 ## Verify
 
-Use the maintainer and public views of `scripts/release-status.py` documented in `docs/release/RELEASING.md`. Confirm that:
+Use direct GitHub, registry, and artifact evidence documented in `docs/release/RELEASING.md`. Confirm that:
 
 - the GitHub Release state and assets match the channel and configured target matrix;
 - crates.io, npm, PyPI, and pub.dev show only the surfaces that were actually published;

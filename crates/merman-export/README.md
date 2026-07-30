@@ -20,14 +20,10 @@ The crate has no default features. Enable only the formats the application emits
 
 The `merman` facade owns the shortest source-to-output path. This dependency enables PNG and its required basic SVG path without the default `complete-svg` layout and math engines:
 
-<!-- BEGIN GENERATED RELEASE README EXPORT_FACADE_DEPENDENCY -->
-
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["png"] }
+merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["png"] }
 ```
-
-<!-- END GENERATED RELEASE README EXPORT_FACADE_DEPENDENCY -->
 
 ```rust
 use merman::svg::{
@@ -56,15 +52,11 @@ Replace `png` with `jpeg` or `pdf` when only that format is required. JPEG uses 
 
 A host that separates rendering from encoding can retain the terminally validated SVG and pass it to `merman-export` later:
 
-<!-- BEGIN GENERATED RELEASE README EXPORT_DIRECT_DEPENDENCIES -->
-
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"] }
-merman-export = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["png"] }
+merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"] }
+merman-export = { git = "https://github.com/Latias94/merman", default-features = false, features = ["png"] }
 ```
-
-<!-- END GENERATED RELEASE README EXPORT_DIRECT_DEPENDENCIES -->
 
 ```rust
 use merman::svg::{HeadlessRenderer, SvgPipeline};

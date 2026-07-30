@@ -4,17 +4,13 @@ This is the browser-only complete SVG rendering package. Its artifact contains `
 
 ## Install
 
-Use the generated command for the current repository release state:
-
-<!-- BEGIN GENERATED RELEASE README NPM_RENDER_INSTALL -->
+Build the local package group and install this package:
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web
 npm run build --prefix /path/to/merman/platforms/web
 npm install /path/to/merman/platforms/web/packages/render
 ```
-
-<!-- END GENERATED RELEASE README NPM_RENDER_INSTALL -->
 
 Install it when an application needs complete Mermaid SVG rendering without the analysis, editor, or ASCII workflows from `@mermanjs/web`:
 

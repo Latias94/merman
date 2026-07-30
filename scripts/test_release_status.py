@@ -16,7 +16,7 @@ import urllib.error
 from pathlib import Path
 from unittest import mock
 
-from scripts import release_projection, release_readme
+from scripts import release_projection
 
 
 MODULE_PATH = Path(__file__).with_name("release-status.py")
@@ -121,47 +121,6 @@ class ReleaseStatusVersionTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertNotIn("VS Code extension", stdout.getvalue())
 
-    def test_release_check_reports_registry_projection_failure(self) -> None:
-        version = release_version_script.cargo_workspace_version()
-        stderr = io.StringIO()
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
-            stderr
-        ):
-            exit_code = release_version_script.check_versions(
-                version,
-                required_readme_mode=release_readme.REGISTRY_MODE,
-            )
-
-        self.assertEqual(exit_code, 1)
-        self.assertIn(
-            "set-readme-mode --mode registry",
-            stderr.getvalue(),
-        )
-
-    def test_release_check_accepts_a_verified_registry_projection(self) -> None:
-        version = release_version_script.cargo_workspace_version()
-        registry = release_projection.plan_readme_install_mode(
-            REPOSITORY_ROOT,
-            version,
-            release_readme.REGISTRY_MODE,
-        )
-        with mock.patch.object(
-            release_version_script,
-            "verify_repository",
-            side_effect=lambda root, **kwargs: release_projection.verify_repository(
-                root,
-                overrides=registry,
-                **kwargs,
-            ),
-        ), contextlib.redirect_stdout(io.StringIO()):
-            exit_code = release_version_script.check_versions(
-                version,
-                required_readme_mode=release_readme.REGISTRY_MODE,
-            )
-
-        self.assertEqual(exit_code, 0)
-
-
 class RepositoryViewTests(unittest.TestCase):
     def test_parsed_documents_are_cached_without_exposing_cached_state(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -252,19 +211,6 @@ class ReleaseProjectionTests(unittest.TestCase):
     def test_every_release_projection_category_fails_closed_on_drift(self) -> None:
         version = release_projection.verify_repository(self.ROOT).authority
         canonical = version.canonical
-        catalog = release_projection.load_workspace_catalog(
-            release_projection.RepositoryView(self.ROOT)
-        )
-        current_readme_mode = (
-            release_readme.REGISTRY_MODE
-            if catalog.readme_registry_version is not None
-            else release_readme.SOURCE_MODE
-        )
-        other_readme_mode = (
-            release_readme.SOURCE_MODE
-            if current_readme_mode == release_readme.REGISTRY_MODE
-            else release_readme.REGISTRY_MODE
-        )
         entries = web_package_entries()
         default_entry = next(entry for entry in entries if entry["id"] == "full")
         playground_lock_digest = hashlib.sha256(
@@ -277,14 +223,6 @@ class ReleaseProjectionTests(unittest.TestCase):
                     text,
                     f'version = "{canonical}"',
                     'version = "9.9.9"',
-                ),
-            ),
-            (
-                release_projection.README,
-                lambda text: replace_once(
-                    text,
-                    f"<!-- merman-release-install-mode: {current_readme_mode} -->",
-                    f"<!-- merman-release-install-mode: {other_readme_mode} -->",
                 ),
             ),
             (
@@ -548,23 +486,11 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn(release_projection.PLAYGROUND_LICENSE_REPORT, updates)
         self.assertIn(release_projection.FLUTTER_PACKAGE_VERSION, updates)
         self.assertIn(release_projection.FLUTTER_IOS_BUILD, updates)
-        self.assertIn(release_projection.README, updates)
-        self.assertIn(Path("docs/rendering/RASTER_OUTPUT.md"), updates)
+        self.assertNotIn(Path("README.md"), updates)
+        self.assertNotIn(Path("docs/rendering/RASTER_OUTPUT.md"), updates)
+        self.assertFalse(any(path.suffix == ".md" for path in updates))
         self.assertNotIn(Path("tools/vscode-extension/package.json"), updates)
         self.assertNotIn(Path("packages/typst/merman/typst.toml"), updates)
-
-        registry = release_projection.plan_readme_install_mode(
-            self.ROOT,
-            next_version,
-            release_readme.REGISTRY_MODE,
-            overrides=updates,
-        )
-        flutter_readme = Path("platforms/flutter/README.md")
-        self.assertIn(flutter_readme, registry)
-        self.assertIn(
-            f"dependencies:\n  merman: {next_version}",
-            registry[flutter_readme],
-        )
 
     def test_node_candidate_verification_fails_closed_on_each_version_projection(
         self,
@@ -707,117 +633,6 @@ class ReleaseProjectionTests(unittest.TestCase):
                     )
                 },
             )
-
-    def test_readme_registry_state_is_exact_and_version_bumps_return_to_source(
-        self,
-    ) -> None:
-        current = release_projection.verify_repository(self.ROOT).authority
-        source = release_projection.plan_readme_install_mode(
-            self.ROOT,
-            current.canonical,
-            release_readme.SOURCE_MODE,
-        )
-        registry_delta = release_projection.plan_readme_install_mode(
-            self.ROOT,
-            current.canonical,
-            release_readme.REGISTRY_MODE,
-            overrides=source,
-        )
-        registry = {**source, **registry_delta}
-
-        self.assertEqual(
-            set(registry_delta),
-            {
-                release_projection.ROOT_MANIFEST,
-                release_projection.README,
-                *release_projection.PROJECTED_READMES,
-            },
-        )
-        registry_result = release_projection.verify_repository(
-            self.ROOT,
-            expected_version=current.canonical,
-            overrides=registry,
-        )
-        self.assertTrue(registry_result.ok)
-        registry_catalog = release_projection.load_workspace_catalog(
-            release_projection.RepositoryView(self.ROOT, registry)
-        )
-        self.assertEqual(
-            registry_catalog.readme_registry_version,
-            current.canonical,
-        )
-
-        same_version = release_projection.plan_version_update(
-            self.ROOT,
-            current.canonical,
-            overrides=registry,
-        )
-        self.assertEqual(same_version, {})
-
-        next_version = f"{current.major}.{current.minor + 1}.0-alpha.1"
-        bumped = release_projection.plan_version_update(
-            self.ROOT,
-            next_version,
-            overrides=registry,
-        )
-        bumped_view = {**registry, **bumped}
-        bumped_result = release_projection.verify_repository(
-            self.ROOT,
-            expected_version=next_version,
-            overrides=bumped_view,
-        )
-        self.assertTrue(bumped_result.ok)
-        bumped_catalog = release_projection.load_workspace_catalog(
-            release_projection.RepositoryView(self.ROOT, bumped_view)
-        )
-        self.assertIsNone(bumped_catalog.readme_registry_version)
-        projection = release_readme.verify_readme(
-            bumped_view[release_projection.README],
-            bumped_catalog.authority,
-            mode=release_readme.SOURCE_MODE,
-            repository_url=bumped_catalog.repository_url,
-        )
-        self.assertEqual(projection, release_readme.SOURCE_MODE)
-
-    def test_readme_mode_plan_rejects_wrong_or_mismatched_versions(self) -> None:
-        current = release_projection.verify_repository(self.ROOT).authority
-        wrong = f"{current.major}.{current.minor + 1}.0"
-        with self.assertRaisesRegex(
-            release_projection.ReleaseProjectionError,
-            "must match Cargo workspace authority",
-        ):
-            release_projection.plan_readme_install_mode(
-                self.ROOT,
-                wrong,
-                release_readme.REGISTRY_MODE,
-            )
-
-        registry = release_projection.plan_readme_install_mode(
-            self.ROOT,
-            current.canonical,
-            release_readme.REGISTRY_MODE,
-        )
-        registry_manifest = registry.get(
-            release_projection.ROOT_MANIFEST,
-            (self.ROOT / release_projection.ROOT_MANIFEST).read_text(encoding="utf-8"),
-        )
-        mismatched_manifest = registry_manifest.replace(
-            f'readme-registry-version = "{current.canonical}"',
-            'readme-registry-version = "9.9.9"',
-            1,
-        )
-        with self.assertRaisesRegex(
-            release_projection.ReleaseProjectionError,
-            "must match workspace.package.version",
-        ):
-            release_projection.verify_repository(
-                self.ROOT,
-                overrides={
-                    **registry,
-                    release_projection.ROOT_MANIFEST: mismatched_manifest,
-                },
-            )
-
 
 class ReleaseProjectionWriteTests(unittest.TestCase):
     def test_installs_workspace_authority_last_and_preserves_modes(self) -> None:

@@ -47,23 +47,17 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 
 ## Quick Start
 
-<!-- merman-release-install-mode: source -->
-
-The generated installation commands below follow the repository release state. Development versions use the repository's Git default branch; release commits use exact registry versions. Registry-form commands prepare release artifacts but do not prove that every independent package channel is already live.
+These examples use the repository's default branch. For a published package, use the registry link in the surface table and choose a version appropriate for your project.
 
 ### Command Line
 
 Install the complete CLI and render a diagram:
-
-<!-- BEGIN GENERATED RELEASE README CLI -->
 
 ```sh
 cargo install --git https://github.com/Latias94/merman --locked merman-cli
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | \
   merman-cli render - --output diagram.svg
 ```
-
-<!-- END GENERATED RELEASE README CLI -->
 
 Native commands use explicit single-diagram and Markdown workflows:
 
@@ -85,13 +79,9 @@ Native `render` and `batch` use `-f/--format`; their hidden `-e` aliases share t
 
 ### Rust
 
-<!-- BEGIN GENERATED RELEASE README RUST -->
-
 ```sh
 cargo add merman --git https://github.com/Latias94/merman
 ```
-
-<!-- END GENERATED RELEASE README RUST -->
 
 ```rust
 use merman::svg::HeadlessRenderer;
@@ -124,7 +114,7 @@ The default dependency enables complete deterministic SVG rendering, including b
 
 For a shell, `cargo binstall merman-cli` installs the registry-selected release, while `brew install merman-cli` follows the stable Homebrew formula. Those external channels can trail the current source documentation, so check `merman-cli --version` before depending on a new contract.
 
-The generated Git installation above follows the remote default branch at install time; add `--rev FULL_COMMIT_SHA` or install from a local checkout to pin an exact source revision. Starting with `0.8.0-alpha.4`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
+The Git installation above follows the remote default branch at install time; add `--rev FULL_COMMIT_SHA` or install from a local checkout to pin an exact source revision. Starting with `0.8.0-alpha.4`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
 
 Publication status differs by platform. The [release surface contract](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md) distinguishes registry packages from repository or CI artifacts.
 
@@ -142,25 +132,17 @@ Cargo features select observable capabilities and output backends, not diagram f
 
 For example, a basic SVG dependency is:
 
-<!-- BEGIN GENERATED RELEASE README BASIC_SVG -->
-
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.4", git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"] }
+merman = { git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"] }
 ```
 
-<!-- END GENERATED RELEASE README BASIC_SVG -->
-
 A lint-only CLI can omit rendering and export dependencies:
-
-<!-- BEGIN GENERATED RELEASE README LEAN_CLI -->
 
 ```sh
 cargo install --git https://github.com/Latias94/merman --locked merman-cli \
   --no-default-features --features analysis
 ```
-
-<!-- END GENERATED RELEASE README LEAN_CLI -->
 
 If an input needs a layout engine or math renderer that was not compiled, Merman returns a typed `missing-capability` error instead of silently changing the diagram. The [capability guide](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md) documents exact feature forwarding, browser packages, artifact profiles, and runtime/resource policy.
 

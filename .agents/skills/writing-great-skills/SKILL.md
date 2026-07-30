@@ -49,16 +49,12 @@ Compare these authorities instead of inferring behavior from names:
 
 - Language and family support: `crates/merman-core/src/family.rs`, `docs/alignment/STATUS.md`, and `docs/alignment/ADMISSION_INVENTORY.md`.
 - Public Cargo vocabulary: `capabilities/feature-surface-v1.json`, generated capability projections, and each package `Cargo.toml`.
-- Exact release closure: `capabilities/artifact-profiles-v1.json`, `docs/release/PACKAGE_SURFACES.md`, and `docs/release/WASM_SIZE_BUDGETS.json`.
+- Exact release closure: `capabilities/artifact-profiles-v1.json`, package manifests and platform descriptors, owner package-contract tests, and `docs/release/WASM_SIZE_BUDGETS.json`.
 - Browser package behavior: `platforms/web/web-surface-descriptor.json`, package manifests, and package contract tests.
 - Node status: `platforms/node/candidate-builds.json`, `platforms/node/README.md`, and `docs/performance/NODE_TRANSPORT_ADMISSION.md`. Do not call a private candidate a shipped product.
 - ASCII support: `docs/rendering/ASCII_SUPPORT_MATRIX.md` and runtime
   `ascii_capabilities`; never infer ASCII support from SVG admission.
-- Distribution channels: `docs/release/SURFACES.json` and
-  `docs/release/PACKAGE_SURFACES.md`. Also record the generated README installation mode reported
-  by `python3 scripts/release-version.py`. An artifact profile or README registry projection is a
-  build/release contract, not proof that a registry channel is live. Use the release-status probe
-  or registry evidence before describing an untagged candidate version as published.
+- Distribution channels: package manifests, platform-owned descriptors, owning publish workflows, and direct GitHub or registry evidence. `docs/release/PACKAGE_SURFACES.md` is a guide, not a release-state database. An artifact profile proves a build closure, not that a registry channel is live; use direct registry or GitHub evidence before describing an untagged candidate version as published.
 - Typst: `packages/typst/merman/README.md`, `typst.toml`, and the `typst-wasm` artifact profile.
   Record the independent package-to-Merman version mapping and do not infer browser or math
   capabilities.

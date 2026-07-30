@@ -8,13 +8,9 @@ Use `merman-analysis` directly when a Rust application needs to validate Mermaid
 
 ## Quick Start
 
-<!-- BEGIN GENERATED RELEASE README ANALYSIS_INSTALL -->
-
 ```sh
 cargo add merman-analysis --git https://github.com/Latias94/merman
 ```
-
-<!-- END GENERATED RELEASE README ANALYSIS_INSTALL -->
 
 Analyze one Mermaid diagram:
 
