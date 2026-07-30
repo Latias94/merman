@@ -764,6 +764,7 @@ name = "manatee"
 version = "0.8.0-alpha.4"
 dependencies = [
  "indexmap",
+ "libm",
  "rustc-hash",
  "thiserror 2.0.19",
 ]
@@ -867,6 +868,7 @@ dependencies = [
  "icu_locale_core",
  "indexmap",
  "kurbo",
+ "libm",
  "manatee",
  "merman-core",
  "merman-layout-elk",
