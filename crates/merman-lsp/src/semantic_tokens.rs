@@ -257,7 +257,7 @@ fn semantic_tokens_delta_edit(
 mod tests {
     use super::*;
     use crate::client_profile::ClientProtocolProfile;
-    use crate::document_store::DocumentStore;
+    use crate::session::documents::DocumentStore;
     use merman_editor_core::{PlannedTokenKind, PlannedTokenModifier};
     use serde::Deserialize;
     use std::fs;

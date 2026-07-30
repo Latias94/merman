@@ -1,12 +1,15 @@
-use crate::analysis_request::{
+use crate::session::analysis::request::{
     AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, AnalysisJobGeneration,
+};
+use crate::session::documents::{
+    DiagnosticReprojectionBatch, DiagnosticReprojectionKey, DiagnosticReprojectionRequest,
 };
 use crate::snapshot::DocumentAnalysisContext;
 use crate::sync::lock_recovering_poison;
 use merman_analysis::AnalysisCancellationToken;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use tokio::sync::{Notify, Semaphore};
 use tower_lsp_server::ls_types::Uri;
@@ -38,13 +41,49 @@ struct AnalysisExecutorInner {
     registry: Mutex<AnalysisRegistry>,
     #[cfg(test)]
     execution_count: AtomicUsize,
+    #[cfg(test)]
+    reprojection_count: AtomicUsize,
 }
 
 #[derive(Default)]
 struct AnalysisRegistry {
-    jobs: HashMap<AnalysisBuildKey, Arc<AnalysisJob>>,
+    jobs: HashMap<AnalysisWorkKey, Arc<AnalysisJob>>,
+    active_distinct: usize,
     next_generation: u64,
     document_generations: HashMap<Uri, AnalysisJobGeneration>,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+enum AnalysisWorkKey {
+    Build(AnalysisBuildKey),
+    Reproject(DiagnosticReprojectionKey),
+}
+
+impl AnalysisWorkKey {
+    fn uri(&self) -> &Uri {
+        match self {
+            Self::Build(key) => key.uri(),
+            Self::Reproject(key) => key.uri(),
+        }
+    }
+
+    fn analysis_job_generation(&self) -> AnalysisJobGeneration {
+        match self {
+            Self::Build(key) => key.analysis_job_generation(),
+            Self::Reproject(key) => key.analysis_job_generation(),
+        }
+    }
+}
+
+enum AnalysisWork {
+    Build(AnalysisBuildRequest),
+    Reproject(DiagnosticReprojectionRequest),
+}
+
+#[derive(Clone)]
+enum AnalysisWorkOutput {
+    Build(Arc<DocumentAnalysisContext>),
+    Reproject(Arc<DiagnosticReprojectionBatch>),
 }
 
 impl AnalysisRegistry {
@@ -65,11 +104,12 @@ impl AnalysisRegistry {
 }
 
 struct AnalysisJob {
-    result: Mutex<Option<Result<Arc<DocumentAnalysisContext>, AnalysisExecutionError>>>,
+    result: Mutex<Option<Result<AnalysisWorkOutput, AnalysisExecutionError>>>,
     ready: Notify,
     cancellation: AnalysisCancellationToken,
     cancellation_signal: Notify,
     waiters: AtomicUsize,
+    active: AtomicBool,
 }
 
 impl AnalysisJob {
@@ -80,10 +120,11 @@ impl AnalysisJob {
             cancellation,
             cancellation_signal: Notify::new(),
             waiters: AtomicUsize::new(0),
+            active: AtomicBool::new(true),
         }
     }
 
-    async fn wait(&self) -> Result<Arc<DocumentAnalysisContext>, AnalysisExecutionError> {
+    async fn wait(&self) -> Result<AnalysisWorkOutput, AnalysisExecutionError> {
         loop {
             let notified = self.ready.notified();
             if let Some(result) = lock_recovering_poison(&self.result).clone() {
@@ -101,7 +142,7 @@ impl AnalysisJob {
         matches!(&*lock_recovering_poison(&self.result), Some(Err(_)))
     }
 
-    fn complete(&self, result: Result<Arc<DocumentAnalysisContext>, AnalysisExecutionError>) {
+    fn complete(&self, result: Result<AnalysisWorkOutput, AnalysisExecutionError>) {
         let mut stored = lock_recovering_poison(&self.result);
         if stored.is_none() {
             *stored = Some(result);
@@ -133,14 +174,14 @@ impl AnalysisJob {
 
 struct AnalysisWaiter {
     inner: Weak<AnalysisExecutorInner>,
-    key: AnalysisBuildKey,
+    key: AnalysisWorkKey,
     job: Arc<AnalysisJob>,
 }
 
 impl AnalysisWaiter {
     fn new(
         inner: &Arc<AnalysisExecutorInner>,
-        key: AnalysisBuildKey,
+        key: AnalysisWorkKey,
         job: Arc<AnalysisJob>,
     ) -> Self {
         job.waiters.fetch_add(1, Ordering::Relaxed);
@@ -151,8 +192,48 @@ impl AnalysisWaiter {
         }
     }
 
-    async fn wait(self) -> Result<Arc<DocumentAnalysisContext>, AnalysisExecutionError> {
+    async fn wait(&self) -> Result<AnalysisWorkOutput, AnalysisExecutionError> {
         self.job.wait().await
+    }
+}
+
+pub(crate) struct AnalysisExecutionLease {
+    context: Arc<DocumentAnalysisContext>,
+    _waiter: AnalysisWaiter,
+}
+
+impl fmt::Debug for AnalysisExecutionLease {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AnalysisExecutionLease")
+            .field("context", &self.context)
+            .finish_non_exhaustive()
+    }
+}
+
+impl AnalysisExecutionLease {
+    pub(crate) fn context(&self) -> &Arc<DocumentAnalysisContext> {
+        &self.context
+    }
+}
+
+pub(crate) struct DiagnosticReprojectionLease {
+    batch: Arc<DiagnosticReprojectionBatch>,
+    _waiter: AnalysisWaiter,
+}
+
+impl fmt::Debug for DiagnosticReprojectionLease {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DiagnosticReprojectionLease")
+            .field("batch", &self.batch)
+            .finish_non_exhaustive()
+    }
+}
+
+impl DiagnosticReprojectionLease {
+    pub(crate) fn batch(&self) -> &Arc<DiagnosticReprojectionBatch> {
+        &self.batch
     }
 }
 
@@ -176,7 +257,13 @@ impl Drop for AnalysisWaiter {
                     registry.jobs.remove(&self.key);
                     removed = true;
                 }
-                (!self.job.is_complete(), removed)
+                let should_cancel = !self.job.is_complete();
+                let released_active =
+                    should_cancel && self.job.active.swap(false, Ordering::AcqRel);
+                if released_active {
+                    registry.active_distinct = registry.active_distinct.saturating_sub(1);
+                }
+                (should_cancel, removed || released_active)
             } else {
                 (false, false)
             }
@@ -265,6 +352,8 @@ impl AnalysisExecutor {
                 registry: Mutex::new(AnalysisRegistry::default()),
                 #[cfg(test)]
                 execution_count: AtomicUsize::new(0),
+                #[cfg(test)]
+                reprojection_count: AtomicUsize::new(0),
             }),
         }
     }
@@ -284,14 +373,63 @@ impl AnalysisExecutor {
     pub(crate) async fn execute(
         &self,
         request: &AnalysisBuildRequest,
-    ) -> Result<Arc<DocumentAnalysisContext>, AnalysisExecutionError> {
-        let key = request.key();
+    ) -> Result<AnalysisExecutionLease, AnalysisExecutionError> {
+        let key = AnalysisWorkKey::Build(request.key());
+        let waiter = self
+            .execute_work(
+                key,
+                AnalysisWork::Build(request.clone()),
+                self.inner.cancellation_parent.child(),
+            )
+            .await?;
+        let output = waiter.wait().await?;
+        let AnalysisWorkOutput::Build(context) = output else {
+            return Err(AnalysisExecutionError::new(
+                "analysis executor returned a diagnostic projection for a build request",
+            ));
+        };
+        Ok(AnalysisExecutionLease {
+            context,
+            _waiter: waiter,
+        })
+    }
+
+    pub(crate) async fn execute_diagnostic_reprojection(
+        &self,
+        request: &DiagnosticReprojectionRequest,
+    ) -> Result<DiagnosticReprojectionLease, AnalysisExecutionError> {
+        let key = AnalysisWorkKey::Reproject(request.key());
+        let waiter = self
+            .execute_work(
+                key,
+                AnalysisWork::Reproject(request.clone()),
+                request.cancellation_child(),
+            )
+            .await?;
+        let output = waiter.wait().await?;
+        let AnalysisWorkOutput::Reproject(batch) = output else {
+            return Err(AnalysisExecutionError::new(
+                "analysis executor returned a build result for a diagnostic projection request",
+            ));
+        };
+        Ok(DiagnosticReprojectionLease {
+            batch,
+            _waiter: waiter,
+        })
+    }
+
+    async fn execute_work(
+        &self,
+        key: AnalysisWorkKey,
+        work: AnalysisWork,
+        cancellation: AnalysisCancellationToken,
+    ) -> Result<AnalysisWaiter, AnalysisExecutionError> {
+        let mut work = Some(work);
         loop {
             let capacity_changed = self.inner.capacity_changed.notified();
             let admission = {
                 let mut registry = lock_recovering_poison(&self.inner.registry);
-                if Some(request.analysis_job_generation())
-                    != registry.current_generation_for(request.uri())
+                if Some(key.analysis_job_generation()) != registry.current_generation_for(key.uri())
                 {
                     return Err(AnalysisExecutionError::stale());
                 }
@@ -300,10 +438,11 @@ impl AnalysisExecutor {
                         AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(job)),
                         None,
                     ))
-                } else if registry.jobs.len() < LSP_ANALYSIS_IN_FLIGHT_LIMIT {
-                    let job = Arc::new(AnalysisJob::new(self.inner.cancellation_parent.child()));
+                } else if registry.active_distinct < LSP_ANALYSIS_IN_FLIGHT_LIMIT {
+                    let job = Arc::new(AnalysisJob::new(cancellation.clone()));
                     let waiter = AnalysisWaiter::new(&self.inner, key.clone(), Arc::clone(&job));
                     registry.jobs.insert(key.clone(), Arc::clone(&job));
+                    registry.active_distinct += 1;
                     Some((waiter, Some(job)))
                 } else {
                     None
@@ -315,13 +454,18 @@ impl AnalysisExecutor {
                 continue;
             };
             if let Some(job) = start {
-                self.start(key.clone(), request.clone(), job);
+                self.start(
+                    key.clone(),
+                    work.take()
+                        .expect("newly admitted analysis work must retain its request"),
+                    job,
+                );
             }
-            return waiter.wait().await;
+            return Ok(waiter);
         }
     }
 
-    fn start(&self, key: AnalysisBuildKey, request: AnalysisBuildRequest, job: Arc<AnalysisJob>) {
+    fn start(&self, key: AnalysisWorkKey, work: AnalysisWork, job: Arc<AnalysisJob>) {
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {
             let result = tokio::select! {
@@ -329,13 +473,27 @@ impl AnalysisExecutor {
                 permit = Arc::clone(&inner.cpu_permits).acquire_owned() => match permit {
                 Ok(permit) if !job.is_cancelled() => {
                     #[cfg(test)]
-                    inner
-                        .execution_count
-                        .fetch_add(1, Ordering::Relaxed);
+                    match &work {
+                        AnalysisWork::Build(_) => {
+                            inner.execution_count.fetch_add(1, Ordering::Relaxed);
+                        }
+                        AnalysisWork::Reproject(_) => {
+                            inner.reprojection_count.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
                     let cancellation = job.cancellation.clone();
                     tokio::task::spawn_blocking(move || {
                         let _permit = permit;
-                        request.build_cancellable(&cancellation)
+                        match work {
+                            AnalysisWork::Build(request) => request
+                                .build_cancellable(&cancellation)
+                                .map(AnalysisWorkOutput::Build)
+                                .map_err(AnalysisWorkError::Build),
+                            AnalysisWork::Reproject(request) => request
+                                .project_with_cancellation(&cancellation)
+                                .map(|batch| AnalysisWorkOutput::Reproject(Arc::new(batch)))
+                                .map_err(|_| AnalysisWorkError::Cancelled),
+                        }
                     })
                     .await
                     .map_err(|error| {
@@ -344,11 +502,12 @@ impl AnalysisExecutor {
                         ))
                     })
                     .and_then(|result| match result {
-                        Ok(context) => Ok(context),
-                        Err(AnalysisBuildError::Cancelled(_)) => {
+                        Ok(output) => Ok(output),
+                        Err(AnalysisWorkError::Build(AnalysisBuildError::Cancelled(_)))
+                        | Err(AnalysisWorkError::Cancelled) => {
                             Err(AnalysisExecutionError::cancelled())
                         }
-                        Err(AnalysisBuildError::Rejected(rejection)) => {
+                        Err(AnalysisWorkError::Build(AnalysisBuildError::Rejected(rejection))) => {
                             Err(AnalysisExecutionError::resource_rejected(rejection))
                         }
                     })
@@ -361,6 +520,7 @@ impl AnalysisExecutor {
             };
 
             job.complete(result);
+            release_active_job(&inner, &job);
             if job.is_cancelled() || job.has_error() {
                 remove_job_if_registered(&inner, &key, &job);
             }
@@ -380,14 +540,19 @@ impl AnalysisExecutor {
             let mut registry = lock_recovering_poison(&self.inner.registry);
             registry.document_generations.remove(uri);
             let mut cancelled = Vec::new();
+            let mut released_active = 0usize;
             registry.jobs.retain(|key, job| {
                 if key.uri() == uri {
+                    if job.active.swap(false, Ordering::AcqRel) {
+                        released_active += 1;
+                    }
                     cancelled.push(Arc::clone(job));
                     false
                 } else {
                     true
                 }
             });
+            registry.active_distinct = registry.active_distinct.saturating_sub(released_active);
             cancelled
         };
         for job in cancelled {
@@ -400,11 +565,16 @@ impl AnalysisExecutor {
         let cancelled = {
             let mut registry = lock_recovering_poison(&self.inner.registry);
             registry.document_generations.clear();
-            registry
+            let cancelled = registry
                 .jobs
                 .drain()
                 .map(|(_, job)| job)
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            for job in &cancelled {
+                job.active.store(false, Ordering::Release);
+            }
+            registry.active_distinct = 0;
+            cancelled
         };
         for job in cancelled {
             job.cancel(AnalysisExecutionError::stale());
@@ -416,11 +586,36 @@ impl AnalysisExecutor {
     pub(crate) fn execution_count(&self) -> usize {
         self.inner.execution_count.load(Ordering::Relaxed)
     }
+
+    #[cfg(test)]
+    pub(crate) fn reprojection_count(&self) -> usize {
+        self.inner.reprojection_count.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn registry_state(&self) -> (usize, usize, usize) {
+        let registry = lock_recovering_poison(&self.inner.registry);
+        (
+            registry.jobs.len(),
+            registry.active_distinct,
+            self.inner.cpu_permits.available_permits(),
+        )
+    }
+}
+
+fn release_active_job(inner: &AnalysisExecutorInner, job: &AnalysisJob) {
+    if !job.active.swap(false, Ordering::AcqRel) {
+        return;
+    }
+    let mut registry = lock_recovering_poison(&inner.registry);
+    registry.active_distinct = registry.active_distinct.saturating_sub(1);
+    drop(registry);
+    inner.capacity_changed.notify_waiters();
 }
 
 fn remove_job_if_registered(
     inner: &AnalysisExecutorInner,
-    key: &AnalysisBuildKey,
+    key: &AnalysisWorkKey,
     job: &Arc<AnalysisJob>,
 ) {
     let mut registry = lock_recovering_poison(&inner.registry);
@@ -435,11 +630,17 @@ fn remove_job_if_registered(
     }
 }
 
+enum AnalysisWorkError {
+    Build(AnalysisBuildError),
+    Cancelled,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis_request::{AnalysisBuildKey, TestAnalysisGate};
-    use crate::document_store::DocumentStore;
+    use crate::session::analysis::request::{AnalysisBuildKey, TestAnalysisGate};
+    use crate::session::documents::DocumentStore;
+    use merman_analysis::{AnalysisRuleConfig, DiagnosticSeverity};
     use merman_editor_core::DocumentKind;
     use std::str::FromStr;
     use std::time::Duration;
@@ -458,11 +659,12 @@ mod tests {
     }
 
     async fn wait_for_registered_job(executor: &AnalysisExecutor, key: &AnalysisBuildKey) {
+        let key = AnalysisWorkKey::Build(key.clone());
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
                 if lock_recovering_poison(&executor.inner.registry)
                     .jobs
-                    .contains_key(key)
+                    .contains_key(&key)
                 {
                     return;
                 }
@@ -491,11 +693,12 @@ mod tests {
         key: &AnalysisBuildKey,
         expected: usize,
     ) {
+        let key = AnalysisWorkKey::Build(key.clone());
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
                 let waiters = lock_recovering_poison(&executor.inner.registry)
                     .jobs
-                    .get(key)
+                    .get(&key)
                     .map(|job| job.waiters.load(std::sync::atomic::Ordering::Acquire));
                 if waiters == Some(expected) {
                     return;
@@ -552,9 +755,118 @@ mod tests {
         let second = second.unwrap().unwrap();
         let third = third.unwrap().unwrap();
 
-        assert!(Arc::ptr_eq(&first, &second));
-        assert!(Arc::ptr_eq(&first, &third));
+        assert!(Arc::ptr_eq(first.context(), second.context()));
+        assert!(Arc::ptr_eq(first.context(), third.context()));
         assert_eq!(executor.execution_count(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn completed_analysis_stays_single_flight_until_its_caller_commits() {
+        let mut store = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/commit-lease.mmd").unwrap();
+        store.upsert_text(
+            uri.clone(),
+            1,
+            "flowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        );
+        let request = store
+            .snapshot_build_request(&uri)
+            .expect("expected analysis request");
+        let executor = store.analysis_executor();
+
+        let first = executor.execute(&request).await.unwrap();
+        let second = executor.execute(&request).await.unwrap();
+
+        assert!(Arc::ptr_eq(first.context(), second.context()));
+        assert_eq!(
+            executor.execution_count(),
+            1,
+            "a completed job must remain joinable through the guarded commit window"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn completed_reprojection_stays_single_flight_and_commits_idempotently() {
+        let mut store = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/reprojection-lease.mmd").unwrap();
+        store.upsert_text(
+            uri.clone(),
+            1,
+            "flowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        );
+        let build = store
+            .snapshot_build_request(&uri)
+            .expect("expected analysis request");
+        let executor = store.analysis_executor();
+        let analysis = executor.execute(&build).await.unwrap();
+        store
+            .insert_built_analysis(&build, Arc::clone(analysis.context()))
+            .expect("analysis should commit");
+        drop(analysis);
+
+        let options = store.analyzer_options().clone().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                .unwrap(),
+        );
+        let (_, plan) = store.begin_analyzer_options(options);
+        assert!(
+            plan.is_some(),
+            "diagnostic update should capture reprojection work"
+        );
+        let request = store
+            .diagnostic_reprojection_request(&uri)
+            .expect("expected request-local reprojection");
+
+        let first = executor
+            .execute_diagnostic_reprojection(&request)
+            .await
+            .unwrap();
+        let second = executor
+            .execute_diagnostic_reprojection(&request)
+            .await
+            .unwrap();
+
+        assert!(Arc::ptr_eq(first.batch(), second.batch()));
+        assert_eq!(executor.reprojection_count(), 1);
+
+        let first_context = store
+            .commit_diagnostic_reprojection_context(&uri, first.batch().as_ref().clone())
+            .expect("first equivalent waiter should commit");
+        let second_context = store
+            .commit_diagnostic_reprojection_context(&uri, second.batch().as_ref().clone())
+            .expect("second equivalent waiter should observe the committed context");
+        assert!(Arc::ptr_eq(
+            &first_context.snapshot,
+            &second_context.snapshot
+        ));
+        assert_eq!(
+            first_context.diagnostic_generation(),
+            second_context.diagnostic_generation()
+        );
+
+        store.upsert_text(
+            uri.clone(),
+            2,
+            "flowchart TD\nA-->C\n".to_string(),
+            DocumentKind::Diagram,
+        );
+        let current_build = store
+            .snapshot_build_request(&uri)
+            .expect("expected replacement analysis request");
+        let current = executor.execute(&current_build).await.unwrap();
+        store
+            .insert_built_analysis(&current_build, Arc::clone(current.context()))
+            .expect("replacement analysis should commit");
+
+        assert!(
+            store
+                .commit_diagnostic_reprojection_context(&uri, first.batch().as_ref().clone())
+                .is_none(),
+            "an old projection must not fall through to an unrelated current context"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -593,7 +905,11 @@ mod tests {
         gate.release();
         let analysis = second.await.unwrap().unwrap();
         assert_eq!(executor.execution_count(), 1);
-        assert!(store.insert_built_analysis(&request, analysis).is_some());
+        assert!(
+            store
+                .insert_built_analysis(&request, Arc::clone(analysis.context()))
+                .is_some()
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -631,7 +947,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn completed_analysis_is_released_from_single_flight_registry() {
+    async fn committed_analysis_is_released_from_single_flight_registry() {
         let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/committed-single-flight.mmd").unwrap();
         store.upsert_text(
@@ -647,17 +963,22 @@ mod tests {
         let analysis = executor.execute(&request).await.unwrap();
 
         assert!(
-            lock_recovering_poison(&executor.inner.registry)
+            !lock_recovering_poison(&executor.inner.registry)
                 .jobs
                 .is_empty(),
-            "the final waiter should release a completed single-flight job"
+            "the execution lease must retain the completed single-flight job"
         );
-        assert!(store.insert_built_analysis(&request, analysis).is_some());
+        assert!(
+            store
+                .insert_built_analysis(&request, Arc::clone(analysis.context()))
+                .is_some()
+        );
+        drop(analysis);
         assert!(
             lock_recovering_poison(&executor.inner.registry)
                 .jobs
                 .is_empty(),
-            "committed contexts should be owned only by the document store"
+            "the completed job should be released after guarded commit"
         );
     }
 
@@ -732,7 +1053,7 @@ mod tests {
         assert_eq!(executor.execution_count(), 2);
         assert!(
             store
-                .insert_built_analysis(&fresh_request, analysis)
+                .insert_built_analysis(&fresh_request, Arc::clone(analysis.context()))
                 .is_some()
         );
     }

@@ -333,8 +333,8 @@ mod tests {
         hover, prepare_rename, references, rename, rename_with_workspace_edit_encoding,
         selection_ranges,
     };
-    use crate::document_store::DocumentStore;
     use crate::protocol::WorkspaceEditEncoding;
+    use crate::session::documents::DocumentStore;
     use std::str::FromStr;
     use tower_lsp_server::ls_types::{
         DocumentChanges, DocumentSymbolResponse, FoldingRangeKind, GotoDefinitionResponse,

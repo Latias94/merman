@@ -376,7 +376,7 @@ mod tests {
 
     #[test]
     fn fence_lookup_includes_end_position_for_completion() {
-        let mut store = crate::document_store::DocumentStore::new();
+        let mut store = crate::session::documents::DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 1, "flowchart".to_string());
 
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn cached_snapshot_retains_detection_from_the_same_analysis() {
-        let mut store = crate::document_store::DocumentStore::new();
+        let mut store = crate::session::documents::DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 7, "flowchart TD\nA[unterminated\n".to_string());
 

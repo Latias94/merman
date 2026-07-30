@@ -285,8 +285,8 @@ mod tests {
         snapshot_diagnostic_index_probe,
     };
     use crate::diagnostics::editor_diagnostics_to_versioned_diagnostics;
-    use crate::document_store::DocumentStore;
     use crate::protocol::WorkspaceEditEncoding;
+    use crate::session::documents::DocumentStore;
     use merman_analysis::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer};
     use merman_editor_core::{EditorDiagnostic, analysis_payload_to_diagnostics};
     use serde_json::json;

@@ -61,6 +61,10 @@ impl AnalysisBuildKey {
     pub(crate) fn uri(&self) -> &Uri {
         &self.uri
     }
+
+    pub(crate) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
+        self.analysis_job_generation
+    }
 }
 
 impl AnalysisBuildRequest {
@@ -104,6 +108,7 @@ impl AnalysisBuildRequest {
         self.key.document_epoch
     }
 
+    #[cfg(test)]
     pub(crate) fn build(&self) -> Result<Arc<DocumentAnalysisContext>, AnalysisRejection> {
         let context = DocumentWorkspace::build_analysis_context_with_shared_text(
             &self.analyzer,

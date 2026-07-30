@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
-use crate::document_store::DocumentStore;
+use crate::session::documents::DocumentStore;
 use tower_lsp_server::ls_types::{
     CompletionTextEdit, Documentation, InsertTextFormat, MarkupKind, Position, Uri,
 };

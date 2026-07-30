@@ -1,7 +1,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::document_store::{
+use crate::session::documents::{
     AnalyzerOptionsPreparation, DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
     DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiagnosticState, DocumentDiscardedSource,
     DocumentResourceLimit, DocumentStore, DocumentSyncError, PreparedDocumentText,
@@ -316,7 +316,7 @@ fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
     assert!(matches!(
         latest,
         AnalyzerOptionsPreparation::Applied(
-            crate::document_store::AnalyzerConfigurationChange::Unchanged,
+            crate::session::documents::AnalyzerConfigurationChange::Unchanged,
             None
         )
     ));
@@ -1207,7 +1207,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
 
     assert_eq!(
         store.apply_analyzer_options(default_lsp_analysis_options()),
-        crate::document_store::AnalyzerConfigurationChange::Unchanged
+        crate::session::documents::AnalyzerConfigurationChange::Unchanged
     );
 
     assert!(store.is_snapshot_context_current(&snapshot_context));
@@ -1262,7 +1262,7 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
 
     assert_eq!(
         change,
-        crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
+        crate::session::documents::AnalyzerConfigurationChange::DiagnosticsOnly
     );
     assert_eq!(
         store.analyzer_environment_identity(),

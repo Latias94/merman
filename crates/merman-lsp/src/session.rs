@@ -1,4 +1,5 @@
 use crate::server::MermanLanguageServer;
+use crate::session::documents::DocumentStore;
 use crate::sync::lock_recovering_poison;
 use futures::FutureExt;
 use futures::future::{AbortHandle, Abortable, BoxFuture};
@@ -9,13 +10,82 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::Notify;
 use tower::Service;
 use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
 use tower_lsp_server::ls_types::CancelParams;
 use tower_lsp_server::{ExitedError, LspService};
 
+pub(crate) mod analysis;
+#[cfg(test)]
+mod analysis_tests;
 pub(crate) mod cache;
+pub(crate) mod documents;
+#[cfg(test)]
+mod documents_tests;
+
+/// Owns all mutable language state and the workers derived from that state.
+#[derive(Debug, Clone)]
+pub(crate) struct LanguageSession {
+    state: Arc<AsyncMutex<DocumentStore>>,
+    cancellation: merman_analysis::AnalysisCancellationToken,
+    analysis_executor: analysis::executor::AnalysisExecutor,
+}
+
+impl LanguageSession {
+    pub(crate) fn with_cancellation(
+        cancellation: merman_analysis::AnalysisCancellationToken,
+    ) -> Self {
+        let state = DocumentStore::with_session_cancellation(cancellation.clone());
+        let analysis_executor = state.analysis_executor();
+        Self {
+            state: Arc::new(AsyncMutex::new(state)),
+            cancellation,
+            analysis_executor,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self {
+        let cancellation = merman_analysis::AnalysisCancellationToken::new();
+        let state = DocumentStore::with_session_cancellation_and_cache_budget(
+            cancellation.clone(),
+            analysis_cache_budget,
+        );
+        let analysis_executor = state.analysis_executor();
+        Self {
+            state: Arc::new(AsyncMutex::new(state)),
+            cancellation,
+            analysis_executor,
+        }
+    }
+
+    pub(crate) fn cancel_analysis(&self) {
+        self.cancellation.cancel();
+        self.analysis_executor.invalidate_all();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn analysis_execution_count(&self) -> usize {
+        self.analysis_executor.execution_count()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn diagnostic_reprojection_count(&self) -> usize {
+        self.analysis_executor.reprojection_count()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn analysis_registry_state(&self) -> (usize, usize, usize) {
+        self.analysis_executor.registry_state()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn state_for_tests(&self) -> tokio::sync::MutexGuard<'_, DocumentStore> {
+        self.state.lock().await
+    }
+}
 
 tokio::task_local! {
     static ACTIVE_MUTATION: MutationCompletion;

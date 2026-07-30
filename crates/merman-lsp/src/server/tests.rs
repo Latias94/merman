@@ -2,13 +2,12 @@ use std::str::FromStr;
 
 use super::MermanLanguageServer;
 use super::semantic_token_planning_error;
-use super::stale_diagnostic_recompute_error;
 use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
-use crate::document_store::{
+use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
+use crate::session::documents::{
     DocumentDiagnosticState, DocumentStore, DocumentSyncError, StoredDocument,
     default_lsp_analysis_options,
 };
-use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::structure::{
     document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references, rename,
     selection_ranges,
@@ -205,8 +204,8 @@ fn analyzer_configuration_change_classifies_diagnostic_only_rule_changes() {
     );
 
     assert_eq!(
-        crate::document_store::analyzer_configuration_change(&current, &next),
-        crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
+        crate::session::documents::analyzer_configuration_change(&current, &next),
+        crate::session::documents::AnalyzerConfigurationChange::DiagnosticsOnly
     );
 }
 
@@ -219,8 +218,8 @@ fn analyzer_configuration_change_classifies_snapshot_affecting_changes() {
 
     for next in [changed_resource, changed_date] {
         assert_eq!(
-            crate::document_store::analyzer_configuration_change(&current, &next),
-            crate::document_store::AnalyzerConfigurationChange::SnapshotAffecting
+            crate::session::documents::analyzer_configuration_change(&current, &next),
+            crate::session::documents::AnalyzerConfigurationChange::SnapshotAffecting
         );
     }
 }
@@ -230,8 +229,8 @@ fn analyzer_configuration_change_classifies_unchanged_options() {
     let current = AnalysisOptions::default();
 
     assert_eq!(
-        crate::document_store::analyzer_configuration_change(&current, &current),
-        crate::document_store::AnalyzerConfigurationChange::Unchanged
+        crate::session::documents::analyzer_configuration_change(&current, &current),
+        crate::session::documents::AnalyzerConfigurationChange::Unchanged
     );
 }
 
@@ -563,7 +562,7 @@ async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
     server.client_effects.wait_idle().await;
 
     let diagnostic_snapshot = {
-        let mut store = server.store.lock().await;
+        let mut store = server.session.state_for_tests().await;
         assert!(store.get(&uri).is_some());
         assert!(store.has_snapshot(&uri));
         assert!(store.has_analysis_payload(&uri));
@@ -582,7 +581,7 @@ async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
         .unwrap();
 
     assert!(hover.is_some());
-    let mut store = server.store.lock().await;
+    let mut store = server.session.state_for_tests().await;
     assert!(store.has_snapshot(&uri));
     let editor_snapshot = store.snapshot(&uri).expect("expected cached snapshot");
     assert!(std::sync::Arc::ptr_eq(
@@ -603,7 +602,7 @@ async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
     let version = 11;
 
     {
-        let mut store = server.store.lock().await;
+        let mut store = server.session.state_for_tests().await;
         store.apply_analyzer_options(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
@@ -771,7 +770,7 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
     let uri = Uri::from_str("file:///tmp/current-diagnostic-code-action.mmd").unwrap();
 
     {
-        let mut store = server.store.lock().await;
+        let mut store = server.session.state_for_tests().await;
         store.upsert_text(
             uri.clone(),
             1,
@@ -784,12 +783,12 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         .await
         .expect("expected initial snapshot");
     let execution_count = {
-        let store = server.store.lock().await;
+        let store = server.session.state_for_tests().await;
         store.analysis_executor().execution_count()
     };
 
     {
-        let mut store = server.store.lock().await;
+        let mut store = server.session.state_for_tests().await;
         let change = store.apply_analyzer_options(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
@@ -799,7 +798,7 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         );
         assert_eq!(
             change,
-            crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
+            crate::session::documents::AnalyzerConfigurationChange::DiagnosticsOnly
         );
         assert!(store.has_snapshot(&uri));
         assert!(store.has_analysis_payload(&uri));
@@ -811,12 +810,13 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
     }
 
     let context = {
-        let store = server.store.lock().await;
+        let store = server.session.state_for_tests().await;
         store
             .diagnostic_context(&uri)
             .expect("expected diagnostic context")
     };
     let diagnostic = server
+        .diagnostic_publisher()
         .diagnostics_for_current_context(&context)
         .await
         .expect("diagnostic analysis should succeed")
@@ -855,8 +855,8 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
     assert_cached_snapshot_identity(server, &uri, &original_snapshot).await;
     assert_eq!(
         server
-            .store
-            .lock()
+            .session
+            .state_for_tests()
             .await
             .analysis_executor()
             .execution_count(),
@@ -959,7 +959,7 @@ async fn did_change_rejects_stale_document_versions() {
         .await;
 
     let stored = {
-        let store = server.store.lock().await;
+        let store = server.session.state_for_tests().await;
         store.get(&uri).expect("expected stored document").clone()
     };
     assert_eq!(stored.version, 3);
@@ -1013,7 +1013,7 @@ async fn did_change_applies_incremental_changes_in_order() {
         .await;
 
     let stored = {
-        let store = server.store.lock().await;
+        let store = server.session.state_for_tests().await;
         store.get(&uri).expect("expected stored document").clone()
     };
     assert_eq!(stored.version, 2);
@@ -1057,7 +1057,13 @@ async fn session_routes_pipelined_messages_after_initialize_completes() {
     assert!(initialize.unwrap().expect("initialize response").is_ok());
     assert!(open.unwrap().is_none());
     assert!(
-        service.inner().store.lock().await.get(&uri).is_some(),
+        service
+            .inner()
+            .session
+            .state_for_tests()
+            .await
+            .get(&uri)
+            .is_some(),
         "didOpen must be routed after the earlier initialize succeeds"
     );
 }
@@ -1129,7 +1135,7 @@ async fn session_admission_preserves_open_change_and_close_order() {
 
     {
         let server = service.inner();
-        let store = server.store.lock().await;
+        let store = server.session.state_for_tests().await;
         let document = store.get(&uri).expect("change must follow open");
         assert_eq!(document.version, 2);
         assert_eq!(document.text.as_ref(), "flowchart TD\nA-->C\n");
@@ -1165,7 +1171,13 @@ async fn session_admission_preserves_open_change_and_close_order() {
     assert!(close.unwrap().is_none());
 
     assert!(
-        service.inner().store.lock().await.get(&uri).is_none(),
+        service
+            .inner()
+            .session
+            .state_for_tests()
+            .await
+            .get(&uri)
+            .is_none(),
         "close must follow the queued reopen"
     );
 }
@@ -1213,7 +1225,7 @@ async fn session_admission_orders_configuration_before_document_open() {
     assert!(configuration.unwrap().is_none());
     assert!(open.unwrap().is_none());
 
-    let store = service.inner().store.lock().await;
+    let store = service.inner().session.state_for_tests().await;
     let document = store
         .get(&uri)
         .expect("open must run after the queued configuration");
@@ -1323,13 +1335,13 @@ async fn cancellation_reaches_a_read_waiting_for_an_earlier_mutation() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn stale_diagnostic_context_returns_content_modified_error() {
+async fn stale_push_diagnostic_context_is_suppressed() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     {
-        let mut store = server.store.lock().await;
+        let mut store = server.session.state_for_tests().await;
         store.upsert_text(
             uri.clone(),
             1,
@@ -1338,13 +1350,13 @@ async fn stale_diagnostic_context_returns_content_modified_error() {
         );
     }
     let context = {
-        let store = server.store.lock().await;
+        let store = server.session.state_for_tests().await;
         store
             .diagnostic_context(&uri)
             .expect("expected diagnostic context")
     };
     {
-        let mut store = server.store.lock().await;
+        let mut store = server.session.state_for_tests().await;
         store.upsert_text(
             uri.clone(),
             2,
@@ -1353,67 +1365,17 @@ async fn stale_diagnostic_context_returns_content_modified_error() {
         );
     }
 
-    let error = server
+    let diagnostics = server
+        .diagnostic_publisher()
         .diagnostics_for_current_context(&context)
         .await
-        .expect("diagnostic analysis should succeed")
-        .ok_or_else(stale_diagnostic_recompute_error)
-        .expect_err("stale context should fail");
+        .expect("stale push diagnostics should be suppressed cleanly");
 
-    assert_eq!(
-        error.code,
-        tower_lsp_server::jsonrpc::ErrorCode::ContentModified
-    );
-    assert!(error.message.contains("diagnostic document changed"));
+    assert!(diagnostics.is_none());
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn stale_semantic_tokens_record_returns_content_modified_error() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-    let context = crate::snapshot_context::snapshot_context_for_uri(
-        &server.store,
-        &uri,
-        crate::snapshot_context::SnapshotContextKind::SemanticTokens,
-    )
-    .await
-    .expect("snapshot context build should not fail")
-    .expect("expected snapshot context");
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-
-    let error = server
-        .record_semantic_tokens_state(&context, Vec::new(), Some("stale-result".to_string()))
-        .await
-        .expect_err("stale semantic tokens should fail");
-
-    assert_eq!(
-        error.code,
-        tower_lsp_server::jsonrpc::ErrorCode::ContentModified
-    );
-    assert!(error.message.contains("semantic tokens document changed"));
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn stale_initial_diagnostic_context_recomputes_latest_document() {
+async fn diagnostic_pull_uses_latest_document() {
     let (service, _socket) = MermanLanguageServer::service();
     let server = service.inner();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
@@ -1433,7 +1395,7 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
         .unwrap();
 
     {
-        let mut store = server.store.lock().await;
+        let mut store = server.session.state_for_tests().await;
         store.upsert_text(
             uri.clone(),
             1,
@@ -1441,14 +1403,8 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
             DocumentKind::Diagram,
         );
     }
-    let context = {
-        let store = server.store.lock().await;
-        store
-            .diagnostic_context(&uri)
-            .expect("expected diagnostic context")
-    };
     {
-        let mut store = server.store.lock().await;
+        let mut store = server.session.state_for_tests().await;
         store.upsert_text(
             uri.clone(),
             2,
@@ -1457,12 +1413,24 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
         );
     }
 
-    let (_context, diagnostics) = server
-        .diagnostics_or_recompute_latest(context)
+    let report = server
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
         .await
-        .expect("latest diagnostic context should recompute");
+        .expect("latest diagnostic context should be analyzed");
+    let diagnostics = match report {
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
+            report.full_document_diagnostic_report.items
+        }
+        other => panic!("unexpected diagnostic report: {other:?}"),
+    };
     let parse_diagnostic = diagnostics
-        .iter()
+        .into_iter()
         .find(|diagnostic| {
             diagnostic.code
                 == Some(NumberOrString::String(
@@ -1470,58 +1438,8 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
                 ))
         })
         .expect("expected latest parse diagnostic");
-    let data = parse_diagnostic
-        .data
-        .as_ref()
-        .expect("expected diagnostic data");
+    let data = parse_diagnostic.data.expect("expected diagnostic data");
     assert_eq!(data["documentVersion"], 2);
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn stale_diagnostic_commit_returns_content_modified_error() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-    let context = {
-        let store = server.store.lock().await;
-        store
-            .diagnostic_context(&uri)
-            .expect("expected diagnostic context")
-    };
-    let state = DocumentDiagnosticState {
-        result_id: MermanLanguageServer::diagnostic_result_id(&[]),
-        diagnostics: Vec::new(),
-    };
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-
-    let error = server
-        .commit_diagnostic_state_if_current(&context, state)
-        .await
-        .expect_err("stale diagnostic commit should fail");
-
-    assert_eq!(
-        error.code,
-        tower_lsp_server::jsonrpc::ErrorCode::ContentModified
-    );
-    assert!(error.message.contains("diagnostic document changed"));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1777,7 +1695,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
         .unwrap();
 
     {
-        let mut store = server.store.lock().await;
+        let mut store = server.session.state_for_tests().await;
         store.apply_analyzer_options(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
@@ -1870,12 +1788,13 @@ async fn lsp_handlers_return_hover_and_symbols() {
     ));
 
     let context = {
-        let store = server.store.lock().await;
+        let store = server.session.state_for_tests().await;
         store
             .diagnostic_context(&uri)
             .expect("expected snapshot-backed diagnostics")
     };
     let diagnostic = server
+        .diagnostic_publisher()
         .diagnostics_for_current_context(&context)
         .await
         .expect("diagnostic analysis should succeed")

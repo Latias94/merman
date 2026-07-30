@@ -1,7 +1,8 @@
-use crate::analysis_executor::AnalysisExecutor;
+use super::LanguageSession;
+use crate::session::analysis::executor::AnalysisExecutor;
+use crate::session::analysis::request::{AnalysisBuildKey, AnalysisBuildRequest};
 #[cfg(test)]
-use crate::analysis_request::SnapshotBatchCommit;
-use crate::analysis_request::{AnalysisBuildKey, AnalysisBuildRequest};
+use crate::session::analysis::request::{SnapshotBatchCommit, TestAnalysisGate};
 #[cfg(test)]
 use crate::session::cache::WeightedCacheStatistics;
 use crate::session::cache::{WeightedLru, WeightedReplacement, conservative_weighted_entry_bytes};
@@ -11,6 +12,7 @@ use crate::snapshot::{
     DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotContext,
     SnapshotGeneration,
 };
+use futures::stream::{FuturesUnordered, StreamExt};
 #[cfg(test)]
 use merman_analysis::source_limit_diagnostic_span;
 use merman_analysis::{
@@ -56,6 +58,8 @@ pub struct DocumentStore {
     analysis_generations: WeightedLru<Uri, CachedAnalysisGeneration>,
     diagnostic_state: HashMap<Uri, StoredDiagnosticState>,
     semantic_tokens_state: HashMap<Uri, StoredSemanticTokensState>,
+    #[cfg(test)]
+    analysis_test_gate: Option<Arc<TestAnalysisGate>>,
 }
 
 #[derive(Debug)]
@@ -84,7 +88,7 @@ pub(crate) struct DiagnosticReprojectionPlan {
     sources: Vec<DiagnosticReprojectionSource>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct DiagnosticReprojectionRequest {
     analyzer: Analyzer,
     cancellation: AnalysisCancellationToken,
@@ -92,18 +96,31 @@ pub(crate) struct DiagnosticReprojectionRequest {
     source: DiagnosticReprojectionSource,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DiagnosticReprojectionSource {
     uri: Uri,
+    analysis_job_generation: crate::session::analysis::request::AnalysisJobGeneration,
     document_epoch: DocumentEpoch,
     snapshot_generation: SnapshotGeneration,
     diagnostic_generation: DiagnosticGeneration,
     context: Arc<DocumentAnalysisContext>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub(crate) struct DiagnosticReprojectionKey {
+    uri: Uri,
+    analysis_job_generation: crate::session::analysis::request::AnalysisJobGeneration,
+    document_epoch: DocumentEpoch,
+    snapshot_generation: SnapshotGeneration,
+    source_diagnostic_generation: DiagnosticGeneration,
+    target_diagnostic_generation: DiagnosticGeneration,
+    source_identity: usize,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct DiagnosticReprojectionBatch {
     generation: DiagnosticGeneration,
+    analysis_job_generation: Option<crate::session::analysis::request::AnalysisJobGeneration>,
     projections: Vec<DiagnosticReprojection>,
 }
 
@@ -138,7 +155,7 @@ struct SourceLimitDocumentProjection {
     oversized_span: Option<DiagnosticSpan>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DiagnosticReprojection {
     uri: Uri,
     document_epoch: DocumentEpoch,
@@ -150,6 +167,7 @@ struct DiagnosticReprojection {
 
 #[derive(Debug)]
 struct DiagnosticReprojectionCommit {
+    #[cfg(test)]
     committed: usize,
     contexts: Vec<(Uri, SnapshotContext)>,
 }
@@ -462,24 +480,74 @@ impl SemanticTokensState {
 }
 
 impl DiagnosticReprojectionPlan {
+    #[cfg(test)]
     pub(crate) fn project(self) -> Result<DiagnosticReprojectionBatch, AnalysisCancelled> {
         project_diagnostics(
             &self.analyzer,
             &self.cancellation,
             self.generation,
+            None,
             self.sources,
         )
+    }
+
+    pub(crate) fn into_requests(self) -> Vec<DiagnosticReprojectionRequest> {
+        self.sources
+            .into_iter()
+            .map(|source| DiagnosticReprojectionRequest {
+                analyzer: self.analyzer.clone(),
+                cancellation: self.cancellation.clone(),
+                generation: self.generation,
+                source,
+            })
+            .collect()
     }
 }
 
 impl DiagnosticReprojectionRequest {
-    pub(crate) fn project(self) -> Result<DiagnosticReprojectionBatch, AnalysisCancelled> {
+    pub(crate) fn key(&self) -> DiagnosticReprojectionKey {
+        DiagnosticReprojectionKey {
+            uri: self.source.uri.clone(),
+            analysis_job_generation: self.source.analysis_job_generation,
+            document_epoch: self.source.document_epoch,
+            snapshot_generation: self.source.snapshot_generation,
+            source_diagnostic_generation: self.source.diagnostic_generation,
+            target_diagnostic_generation: self.generation,
+            source_identity: Arc::as_ptr(&self.source.context) as usize,
+        }
+    }
+
+    pub(crate) fn cancellation_child(&self) -> AnalysisCancellationToken {
+        self.cancellation.child()
+    }
+
+    pub(crate) fn uri(&self) -> &Uri {
+        &self.source.uri
+    }
+
+    pub(crate) fn project_with_cancellation(
+        self,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<DiagnosticReprojectionBatch, AnalysisCancelled> {
         project_diagnostics(
             &self.analyzer,
-            &self.cancellation,
+            cancellation,
             self.generation,
+            Some(self.source.analysis_job_generation),
             vec![self.source],
         )
+    }
+}
+
+impl DiagnosticReprojectionKey {
+    pub(crate) fn uri(&self) -> &Uri {
+        &self.uri
+    }
+
+    pub(crate) fn analysis_job_generation(
+        &self,
+    ) -> crate::session::analysis::request::AnalysisJobGeneration {
+        self.analysis_job_generation
     }
 }
 
@@ -487,6 +555,7 @@ fn project_diagnostics(
     analyzer: &Analyzer,
     cancellation: &AnalysisCancellationToken,
     generation: DiagnosticGeneration,
+    analysis_job_generation: Option<crate::session::analysis::request::AnalysisJobGeneration>,
     sources: Vec<DiagnosticReprojectionSource>,
 ) -> Result<DiagnosticReprojectionBatch, AnalysisCancelled> {
     let mut projections = Vec::with_capacity(sources.len());
@@ -508,6 +577,7 @@ fn project_diagnostics(
     cancellation.checkpoint()?;
     Ok(DiagnosticReprojectionBatch {
         generation,
+        analysis_job_generation,
         projections,
     })
 }
@@ -554,7 +624,7 @@ impl DocumentStore {
         )
     }
 
-    fn with_session_cancellation_and_cache_budget(
+    pub(super) fn with_session_cancellation_and_cache_budget(
         session_cancellation: AnalysisCancellationToken,
         analysis_cache_budget: usize,
     ) -> Self {
@@ -572,6 +642,8 @@ impl DocumentStore {
             analysis_generations: WeightedLru::new(analysis_cache_budget),
             diagnostic_state: HashMap::new(),
             semantic_tokens_state: HashMap::new(),
+            #[cfg(test)]
+            analysis_test_gate: None,
         }
     }
 
@@ -604,6 +676,11 @@ impl DocumentStore {
         context: &DocumentAnalysisContext,
     ) -> usize {
         cached_analysis_weight(uri, context)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_analysis_test_gate(&mut self, gate: Option<Arc<TestAnalysisGate>>) {
+        self.analysis_test_gate = gate;
     }
 
     #[cfg(test)]
@@ -779,6 +856,7 @@ impl DocumentStore {
                     .get(uri)
                     .map(|record| DiagnosticReprojectionSource {
                         uri: uri.clone(),
+                        analysis_job_generation: self.analysis_executor.generation_for(uri),
                         document_epoch: record.epoch,
                         snapshot_generation: cached.snapshot_generation,
                         diagnostic_generation: cached.diagnostic_generation,
@@ -796,6 +874,7 @@ impl DocumentStore {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn commit_diagnostic_reprojection(
         &mut self,
         batch: DiagnosticReprojectionBatch,
@@ -809,10 +888,50 @@ impl DocumentStore {
         uri: &Uri,
         batch: DiagnosticReprojectionBatch,
     ) -> Option<SnapshotContext> {
-        self.commit_diagnostic_reprojection_transaction(batch)
+        let committed = self
+            .commit_diagnostic_reprojection_transaction(batch.clone())
             .contexts
             .into_iter()
-            .find_map(|(projected_uri, context)| (projected_uri == *uri).then_some(context))
+            .find_map(|(projected_uri, context)| (projected_uri == *uri).then_some(context));
+        committed.or_else(|| self.equivalent_reprojection_context(uri, &batch))
+    }
+
+    fn equivalent_reprojection_context(
+        &self,
+        uri: &Uri,
+        batch: &DiagnosticReprojectionBatch,
+    ) -> Option<SnapshotContext> {
+        let analysis_job_generation = batch.analysis_job_generation?;
+        let projection = batch
+            .projections
+            .iter()
+            .find(|projection| projection.uri == *uri)?;
+        let record = self.documents.get(uri)?;
+        if record.epoch != projection.document_epoch
+            || self.snapshot_generation != projection.snapshot_generation
+            || self.diagnostic_generation != batch.generation
+            || !self
+                .analysis_executor
+                .is_generation_current(uri, analysis_job_generation)
+        {
+            return None;
+        }
+
+        if let Some(cached) = self.analysis_generations.peek(uri)
+            && cached.document_epoch == projection.document_epoch
+            && cached.snapshot_generation == projection.snapshot_generation
+            && cached.diagnostic_generation == batch.generation
+        {
+            return Some(Self::cached_snapshot_context(cached));
+        }
+
+        Some(SnapshotContext::with_analysis(
+            Arc::clone(&projection.projected.snapshot),
+            Arc::clone(&projection.projected.payload),
+            projection.snapshot_generation,
+            batch.generation,
+            projection.document_epoch,
+        ))
     }
 
     fn commit_diagnostic_reprojection_transaction(
@@ -821,6 +940,7 @@ impl DocumentStore {
     ) -> DiagnosticReprojectionCommit {
         if batch.generation != self.diagnostic_generation {
             return DiagnosticReprojectionCommit {
+                #[cfg(test)]
                 committed: 0,
                 contexts: Vec::new(),
             };
@@ -867,10 +987,12 @@ impl DocumentStore {
             });
             contexts.push((projection.uri, context));
         }
+        #[cfg(test)]
         let committed = contexts.len();
         self.analysis_generations
             .replace_batch_preserving_recency(replacements);
         DiagnosticReprojectionCommit {
+            #[cfg(test)]
             committed,
             contexts,
         }
@@ -1210,7 +1332,7 @@ impl DocumentStore {
         self.snapshot_context(uri).map(|context| context.snapshot)
     }
 
-    pub fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
+    pub(super) fn cached_snapshot_context_for_uri(&mut self, uri: &Uri) -> Option<SnapshotContext> {
         let document_epoch = self.documents.get(uri)?.epoch;
         let snapshot_generation = self.snapshot_generation;
         if let Some(cached) = self.analysis_generations.get_if(uri, |cached| {
@@ -1220,6 +1342,14 @@ impl DocumentStore {
             return Some(Self::cached_snapshot_context(cached));
         }
         self.analysis_generations.remove(uri);
+        None
+    }
+
+    #[cfg(test)]
+    pub fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
+        if let Some(cached) = self.cached_snapshot_context_for_uri(uri) {
+            return Some(cached);
+        }
 
         let request = self.snapshot_build_request(uri)?;
         let analysis = match request.build() {
@@ -1260,12 +1390,18 @@ impl DocumentStore {
             self.diagnostic_generation,
             record.epoch,
         );
-        Some(AnalysisBuildRequest::new(
+        let request = AnalysisBuildRequest::new(
             key,
             Arc::clone(&record.document.text),
             record.document.kind,
             self.analyzer.clone(),
-        ))
+        );
+        #[cfg(test)]
+        let request = match &self.analysis_test_gate {
+            Some(gate) => request.with_test_gate(Arc::clone(gate)),
+            None => request,
+        };
+        Some(request)
     }
 
     pub fn insert_built_analysis(
@@ -1364,6 +1500,7 @@ impl DocumentStore {
             generation: self.diagnostic_generation,
             source: DiagnosticReprojectionSource {
                 uri: uri.clone(),
+                analysis_job_generation: self.analysis_executor.generation_for(uri),
                 document_epoch: record.epoch,
                 snapshot_generation: cached.snapshot_generation,
                 diagnostic_generation: cached.diagnostic_generation,
@@ -1672,4 +1809,198 @@ fn line_content_char_len(line: RopeSlice<'_>) -> usize {
 
 fn position_le(left: Position, right: Position) -> bool {
     left.line < right.line || (left.line == right.line && left.character <= right.character)
+}
+
+struct AnalyzerReplacement {
+    change: AnalyzerConfigurationChange,
+    reprojection: Option<DiagnosticReprojectionPlan>,
+}
+
+impl LanguageSession {
+    pub(crate) async fn open_document(
+        &self,
+        uri: Uri,
+        version: i32,
+        text: String,
+        kind: DocumentKind,
+    ) -> bool {
+        let cancellation = self.cancellation.child();
+        let prepared = match tokio::task::spawn_blocking(move || {
+            PreparedDocumentText::new_cancellable(text, &cancellation)
+        })
+        .await
+        {
+            Ok(Ok(prepared)) => prepared,
+            Ok(Err(_)) => return false,
+            Err(error) => {
+                tracing::error!(%error, uri = %uri.as_str(), "document open preparation worker failed");
+                return false;
+            }
+        };
+        self.state
+            .lock()
+            .await
+            .open_prepared_text(uri, version, prepared, kind);
+        true
+    }
+
+    pub(crate) async fn change_document(
+        &self,
+        uri: Uri,
+        version: i32,
+        changes: Vec<TextDocumentContentChangeEvent>,
+    ) -> Option<TextDocumentUpdate> {
+        let preparation =
+            self.state
+                .lock()
+                .await
+                .capture_text_changes(uri.clone(), version, changes);
+        match preparation {
+            TextChangePreparation::Immediate(update) => Some(update),
+            TextChangePreparation::Prepare(plan) => {
+                let prepared = match tokio::task::spawn_blocking(move || plan.prepare()).await {
+                    Ok(Ok(prepared)) => prepared,
+                    Ok(Err(_)) => return None,
+                    Err(error) => {
+                        tracing::error!(
+                            %error,
+                            uri = %uri.as_str(),
+                            "document change preparation worker failed"
+                        );
+                        return None;
+                    }
+                };
+                Some(
+                    self.state
+                        .lock()
+                        .await
+                        .commit_prepared_text_changes(prepared),
+                )
+            }
+        }
+    }
+
+    pub(crate) async fn close_document(&self, uri: &Uri) {
+        self.state.lock().await.remove(uri);
+    }
+
+    pub(crate) async fn update_configuration(
+        &self,
+        options: AnalysisOptions,
+    ) -> AnalyzerConfigurationChange {
+        let replacement = self.prepare_analyzer_replacement(options).await;
+        self.finish_analyzer_replacement(replacement).await
+    }
+
+    async fn prepare_analyzer_replacement(&self, options: AnalysisOptions) -> AnalyzerReplacement {
+        let request = self
+            .state
+            .lock()
+            .await
+            .begin_analyzer_configuration_request();
+        let (change, reprojection) = loop {
+            let preparation = self
+                .state
+                .lock()
+                .await
+                .prepare_analyzer_options(request, options.clone());
+            let Some(preparation) = preparation else {
+                return AnalyzerReplacement {
+                    change: AnalyzerConfigurationChange::Unchanged,
+                    reprojection: None,
+                };
+            };
+            match preparation {
+                AnalyzerOptionsPreparation::Applied(change, reprojection) => {
+                    break (change, reprojection);
+                }
+                AnalyzerOptionsPreparation::RequiresSourceLimitProjection(plan) => {
+                    let batch = match tokio::task::spawn_blocking(move || plan.project()).await {
+                        Ok(Ok(batch)) => batch,
+                        Ok(Err(_)) => {
+                            return AnalyzerReplacement {
+                                change: AnalyzerConfigurationChange::Unchanged,
+                                reprojection: None,
+                            };
+                        }
+                        Err(error) => {
+                            tracing::error!(%error, "source-limit projection worker failed");
+                            return AnalyzerReplacement {
+                                change: AnalyzerConfigurationChange::Unchanged,
+                                reprojection: None,
+                            };
+                        }
+                    };
+                    let mut state = self.state.lock().await;
+                    if let Some(applied) = state.commit_source_limit_reclassification(batch) {
+                        break applied;
+                    }
+                    if !state.is_analyzer_configuration_request_current(request) {
+                        return AnalyzerReplacement {
+                            change: AnalyzerConfigurationChange::Unchanged,
+                            reprojection: None,
+                        };
+                    }
+                }
+            }
+        };
+        AnalyzerReplacement {
+            change,
+            reprojection,
+        }
+    }
+
+    async fn finish_analyzer_replacement(
+        &self,
+        replacement: AnalyzerReplacement,
+    ) -> AnalyzerConfigurationChange {
+        let AnalyzerReplacement {
+            change,
+            reprojection,
+        } = replacement;
+        let Some(reprojection) = reprojection else {
+            return change;
+        };
+        let mut pending = FuturesUnordered::new();
+        for request in reprojection.into_requests() {
+            let executor = self.analysis_executor.clone();
+            pending.push(async move {
+                let uri = request.uri().clone();
+                (
+                    uri,
+                    executor.execute_diagnostic_reprojection(&request).await,
+                )
+            });
+        }
+
+        let mut projections = Vec::new();
+        let mut worker_failed = false;
+        while let Some((uri, projection)) = pending.next().await {
+            match projection {
+                Ok(projection) => projections.push((uri, projection)),
+                Err(error) if error.is_stale() => {}
+                Err(error) => {
+                    worker_failed = true;
+                    tracing::error!(%error, uri = %uri.as_str(), "diagnostic reprojection worker failed");
+                }
+            }
+        }
+        projections.sort_by(|left, right| left.0.cmp(&right.0));
+        let mut state = self.state.lock().await;
+        for (uri, projection) in projections {
+            state.commit_diagnostic_reprojection_context(&uri, projection.batch().as_ref().clone());
+        }
+        if worker_failed {
+            state.discard_stale_analysis_generations();
+        }
+        change
+    }
+
+    pub(crate) async fn diagnostic_context(&self, uri: &Uri) -> Option<DiagnosticContext> {
+        self.state.lock().await.diagnostic_context(uri)
+    }
+
+    pub(crate) async fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
+        self.state.lock().await.diagnostic_contexts()
+    }
 }

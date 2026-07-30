@@ -124,7 +124,7 @@ pub(crate) fn resolve_completion_item_with_profile(
 #[cfg(test)]
 mod tests {
     use super::completion_for_snapshot;
-    use crate::document_store::DocumentStore;
+    use crate::session::documents::DocumentStore;
     use merman_core::diagram_header_facts;
     use std::str::FromStr;
     use tower_lsp_server::ls_types::{Position, Uri};
