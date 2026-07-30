@@ -2,14 +2,18 @@
   "schema_version": 2,
   "lane_id": "binding-request-version-only-memory",
   "workload": "binding-semantic-info-analysis-ascii-svg-version-only-operation-calls-v1",
-  "evidence_class": "infrastructure-smoke",
-  "candidate_admission": false,
+  "evidence_class": "candidate-bound",
+  "candidate_admission": true,
   "probe": {
     "protocol_schema_version": 2,
     "package": "merman-bindings-core",
     "package_manifest": "crates/merman-bindings-core/Cargo.toml",
     "bench": "request_overlay_memory",
-    "features": ["analysis", "ascii", "svg"],
+    "features": [
+      "analysis",
+      "ascii",
+      "svg"
+    ],
     "default_features": false,
     "inputs": [
       {
@@ -18,7 +22,7 @@
       },
       {
         "path": "crates/merman-bindings-core/benches/request_overlay_memory/allocator.rs",
-        "sha256": "c3bf993e8075f399a4e3b8c7c58d3b3753d20e73fffa191c0708f522a82727fb"
+        "sha256": "7246b4ce80e9500c5d3069afe45d50792990153b42d8c426bae074bcdf47f42d"
       },
       {
         "path": "crates/merman-bindings-core/benches/fixtures/info_fixed_cost.mmd",

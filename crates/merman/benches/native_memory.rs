@@ -11,9 +11,7 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 
 const SCHEMA_VERSION: u32 = 1;
-const MODULAR_LANE_ID: &str = "flowchart-end-to-end-memory";
-const ADAPTER_LOW_CLUSTER_LANE_ID: &str = "flowchart-adapter-low-cluster-memory";
-const ADAPTER_HIGH_CLUSTER_LANE_ID: &str = "flowchart-adapter-high-cluster-memory";
+const LANE_ID: &str = "flowchart-end-to-end-memory";
 const PUBLIC_OPERATION: &str = "render-svg";
 const PROCESS_LIFECYCLE: &str = "fresh-process";
 const ENGINE_LIFECYCLE: &str = "reused-engine";
@@ -22,8 +20,6 @@ const MEMORY_SCALES: [u32; 6] = [1, 2, 4, 10, 32, 100];
 const MAX_REQUEST_BYTES: u64 = 4 * 1024;
 const NODES_PER_SCALE: u64 = 3;
 const EDGES_PER_SCALE: u64 = 4;
-const ADAPTER_NODES_PER_SCALE: u64 = 4;
-const ADAPTER_EDGES_PER_SCALE: u64 = 4;
 
 #[global_allocator]
 static ALLOCATOR: CountingSystemAllocator = CountingSystemAllocator::new();
@@ -33,35 +29,6 @@ static ALLOCATOR: CountingSystemAllocator = CountingSystemAllocator::new();
 enum Mode {
     Operation,
     Zero,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum WorkloadProfile {
-    Modular,
-    AdapterLowClusters,
-    AdapterHighClusters,
-}
-
-impl WorkloadProfile {
-    fn for_lane(lane_id: &str) -> Option<Self> {
-        match lane_id {
-            MODULAR_LANE_ID => Some(Self::Modular),
-            ADAPTER_LOW_CLUSTER_LANE_ID => Some(Self::AdapterLowClusters),
-            ADAPTER_HIGH_CLUSTER_LANE_ID => Some(Self::AdapterHighClusters),
-            _ => None,
-        }
-    }
-
-    fn dimensions(self, scale: u32) -> (u64, u64) {
-        let scale = u64::from(scale);
-        match self {
-            Self::Modular => (NODES_PER_SCALE * scale, EDGES_PER_SCALE * scale),
-            Self::AdapterLowClusters | Self::AdapterHighClusters => (
-                ADAPTER_NODES_PER_SCALE * scale,
-                ADAPTER_EDGES_PER_SCALE * scale,
-            ),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -150,7 +117,7 @@ fn validate_request(request: &ProbeRequest) -> Result<(), ProbeError> {
     if request.schema_version != SCHEMA_VERSION {
         return Err(ProbeError::new("unsupported schema_version"));
     }
-    if WorkloadProfile::for_lane(&request.lane_id).is_none() {
+    if request.lane_id != LANE_ID {
         return Err(ProbeError::new("unsupported lane_id"));
     }
     if !MEMORY_SCALES.contains(&request.scale) {
@@ -177,7 +144,7 @@ fn validate_request(request: &ProbeRequest) -> Result<(), ProbeError> {
     Ok(())
 }
 
-fn build_modular_flowchart(scale: u32, seed: u64) -> Result<String, ProbeError> {
+fn build_flowchart(scale: u32, seed: u64) -> Result<String, ProbeError> {
     let mut source = String::with_capacity(scale as usize * 640);
     source.push_str("flowchart LR\n");
     let last_node = NODES_PER_SCALE - 1;
@@ -206,76 +173,6 @@ fn build_modular_flowchart(scale: u32, seed: u64) -> Result<String, ProbeError> 
             .map_err(|_| ProbeError::new("failed to construct flowchart"))?;
         writeln!(&mut source, "  n{group}_0 --> n{jump}_{last_node}")
             .map_err(|_| ProbeError::new("failed to construct flowchart"))?;
-    }
-
-    Ok(source)
-}
-
-fn build_adapter_flowchart(
-    scale: u32,
-    seed: u64,
-    profile: WorkloadProfile,
-) -> Result<String, ProbeError> {
-    let node_count = ADAPTER_NODES_PER_SCALE * u64::from(scale);
-    let edge_count = ADAPTER_EDGES_PER_SCALE * u64::from(scale);
-    let cluster_count = match profile {
-        WorkloadProfile::AdapterLowClusters => 2,
-        WorkloadProfile::AdapterHighClusters => u64::from(scale),
-        WorkloadProfile::Modular => {
-            return Err(ProbeError::new(
-                "modular workload cannot use the adapter generator",
-            ));
-        }
-    };
-
-    let mut members = vec![Vec::new(); cluster_count as usize];
-    for node in 1..node_count {
-        members[((node - 1) % cluster_count) as usize].push(node);
-    }
-
-    let mut source = String::with_capacity(scale as usize * 768);
-    source.push_str("flowchart LR\n");
-    writeln!(&mut source, "  n0[\"Hub {seed:016x}\"]")
-        .map_err(|_| ProbeError::new("failed to construct adapter flowchart"))?;
-    for (cluster, cluster_members) in members.iter().enumerate() {
-        writeln!(
-            &mut source,
-            "  subgraph c{cluster}[\"Partition {cluster}\"]"
-        )
-        .map_err(|_| ProbeError::new("failed to construct adapter flowchart"))?;
-        for node in cluster_members {
-            writeln!(&mut source, "    n{node}[\"Node {node}:{seed:016x}\"]")
-                .map_err(|_| ProbeError::new("failed to construct adapter flowchart"))?;
-        }
-        source.push_str("  end\n");
-    }
-
-    // Even clusters connect to the unclustered hub and therefore have boundary edges. Odd
-    // clusters remain isolated and exercise recursive extraction. Both profiles keep identical
-    // node and edge counts, so their difference isolates cluster-density overhead.
-    let mut emitted_edges = 0_u64;
-    'clusters: for (cluster, cluster_members) in members.iter().enumerate() {
-        if cluster % 2 != 0 {
-            continue;
-        }
-        for node in cluster_members {
-            for (from, to) in [
-                (format!("n{node}"), "n0".to_string()),
-                ("n0".to_string(), format!("n{node}")),
-            ] {
-                writeln!(&mut source, "  {from} --> {to}")
-                    .map_err(|_| ProbeError::new("failed to construct adapter flowchart"))?;
-                emitted_edges += 1;
-                if emitted_edges == edge_count {
-                    break 'clusters;
-                }
-            }
-        }
-    }
-    if emitted_edges != edge_count {
-        return Err(ProbeError::new(format!(
-            "adapter generator emitted {emitted_edges} edges, expected {edge_count}"
-        )));
     }
 
     Ok(source)
@@ -344,20 +241,14 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
 
     let request = read_request()?;
     validate_request(&request)?;
-    let profile = WorkloadProfile::for_lane(&request.lane_id)
-        .ok_or_else(|| ProbeError::new("unsupported lane_id"))?;
     let executable_sha256 = executable_sha256()?;
-    let source = match profile {
-        WorkloadProfile::Modular => build_modular_flowchart(request.scale, request.seed)?,
-        WorkloadProfile::AdapterLowClusters | WorkloadProfile::AdapterHighClusters => {
-            build_adapter_flowchart(request.scale, request.seed, profile)?
-        }
-    };
+    let source = build_flowchart(request.scale, request.seed)?;
     let renderer = HeadlessRenderer::new()
         .with_strict_parsing()
         .with_runtime_policy(RuntimePolicy::deterministic().with_fixed_seed(request.seed))
         .with_diagram_id("native-memory-flowchart");
-    let (input_nodes, input_edges) = profile.dimensions(request.scale);
+    let input_nodes = NODES_PER_SCALE * u64::from(request.scale);
+    let input_edges = EDGES_PER_SCALE * u64::from(request.scale);
 
     let snapshot_live_bytes = ALLOCATOR.begin_measurement();
     let render_result = match request.mode {

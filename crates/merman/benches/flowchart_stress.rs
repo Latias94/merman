@@ -9,8 +9,6 @@ use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::hint::black_box;
 
-const CLASS_MEDIUM: &str = include_str!("fixtures/class_medium.mmd");
-const FLOWCHART_LARGE: &str = include_str!("fixtures/flowchart_large.mmd");
 const FLOWCHART_MEDIUM: &str = include_str!("fixtures/flowchart_medium.mmd");
 const FLOWCHART_PORTS_HEAVY: &str = include_str!("fixtures/flowchart_ports_heavy.mmd");
 const SCALE_POINTS: [usize; 6] = [1, 2, 4, 10, 32, 100];
@@ -333,67 +331,6 @@ fn emit_cluster(
     writeln!(source, "{padding}end").expect("write to String");
 }
 
-fn bench_registered_operation_gates(c: &mut Criterion) {
-    let engine = Engine::new();
-    let parse_opts = ParseOptions::strict();
-    let layout = headless_layout_options();
-    let environment = RenderEnvironment::deterministic();
-    let cases = [
-        ("flowchart_medium", FLOWCHART_MEDIUM),
-        ("flowchart_large", FLOWCHART_LARGE),
-        ("flowchart_ports_heavy", FLOWCHART_PORTS_HEAVY),
-        ("class_medium", CLASS_MEDIUM),
-    ];
-
-    let mut public = c.benchmark_group("end_to_end");
-    for (name, source) in cases {
-        let svg_opts = SvgRenderOptions {
-            diagram_id: Some(merman::svg::sanitize_svg_id(name)),
-            ..SvgRenderOptions::default()
-        };
-        public.bench_with_input(BenchmarkId::from_parameter(name), source, |b, source| {
-            b.iter(|| {
-                let svg = merman::svg::render_svg_sync(
-                    &engine,
-                    black_box(source),
-                    parse_opts,
-                    &layout,
-                    &svg_opts,
-                )
-                .expect("render")
-                .expect("supported diagram");
-                black_box(svg.len());
-            });
-        });
-    }
-    public.finish();
-
-    let mut prepare = c.benchmark_group("layout");
-    for (name, source) in cases {
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(source, parse_opts)
-            .expect("parse")
-            .expect("supported diagram");
-        prepare.bench_with_input(BenchmarkId::from_parameter(name), &parsed, |b, parsed| {
-            b.iter_batched(
-                || {
-                    (
-                        (*parsed).clone(),
-                        environment.begin_session().expect("render session"),
-                    )
-                },
-                |(parsed, session)| {
-                    black_box(
-                        merman_render::family::prepare(parsed, &layout, session).expect("prepare"),
-                    );
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-    prepare.finish();
-}
-
 #[allow(clippy::too_many_arguments)]
 fn register_synthetic_cases(
     c: &mut Criterion,
@@ -568,10 +505,5 @@ fn bench_emit_svg_controls(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(
-    benches,
-    bench_registered_operation_gates,
-    bench_flowchart_curves,
-    bench_emit_svg_controls
-);
+criterion_group!(benches, bench_flowchart_curves, bench_emit_svg_controls);
 criterion_main!(benches);

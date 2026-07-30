@@ -1,23 +1,25 @@
 ---
 name: optimize-merman-performance
-description: Diagnose and improve Merman latency, throughput, memory use, dependency closure, or artifact size with reproducible A/B evidence and semantics-preserving implementation. Use when investigating a performance regression, profiling a Rust render stage, optimizing parser/layout/SVG/text paths, comparing Node N-API with Node-WASM, tuning browser WASM or CLI/native artifacts, or deciding whether a proposed fast path, cache, or refactor is a real improvement.
+description: Diagnose and improve Merman latency, throughput, memory use, input-amplification complexity, dependency closure, or artifact size with evidence matched to the claim and semantics-preserving implementation. Use when investigating a performance regression, profiling a Rust render stage, removing superlinear or attacker-controlled work, optimizing parser/layout/SVG/text paths, comparing Node N-API with Node-WASM, tuning browser WASM or CLI/native artifacts, or deciding whether a proposed fast path, cache, or refactor is a real improvement.
 ---
 
 # Optimize Merman Performance
 
 ## Objective
 
-Deliver a measured improvement without changing Mermaid semantics, output policy, security,
-resource limits, supported capabilities, or error behavior. Treat an attractive timing result as a
-hypothesis until the same-input A/B, correctness gates, and a causal explanation all agree.
+Deliver a measured workload improvement or a proven resource-bound improvement without changing
+Mermaid semantics, output policy, security, resource limits, supported capabilities, or error
+behavior. Match evidence to the claim: timing requires same-input A/B; complexity requires explicit
+input variables, old/new bounds, and a reachable causal path. Never present one as the other.
 
 ## Operating Contract
 
 - Preserve correctness, Mermaid parity, and deterministic policy ahead of speed.
 - Compare equivalent operations and capability sets on the same host. Keep native Rust, Node
   N-API, Node-WASM, browser-WASM, and external renderers in separate lanes.
-- Register the primary metric, control metrics, minimum relative and absolute effect, corpus, and
-  correctness gates before editing production code.
+- Select the admission class before editing production code. Register its primary metric or work
+  bound, controls, thresholds, corpus, and correctness gates; do not apply one universal latency
+  threshold to every performance claim.
 - Run Cargo work serially. Use an isolated worktree when the active checkout is dirty or when two
   revisions must be built. Never reset, stash, or overwrite unrelated work.
 - Reuse the checked-in benchmark tools. Read [benchmark-surfaces.md](references/benchmark-surfaces.md)
@@ -31,6 +33,7 @@ Classify the work as one primary lane:
 
 - latency or throughput for parse, layout, render, end-to-end, cold start, or concurrency;
 - peak or retained memory;
+- worst-case or expected complexity and input-amplifiable resource work;
 - native, WASM, compressed, installed, or packaged artifact size;
 - resolved dependency closure or compile-time cost.
 
@@ -38,9 +41,21 @@ State the exact user workflow, surface, operation, feature or artifact profile, 
 fixtures, and expected benefit. Inspect `docs/performance/PERF_PLAN.md`,
 `docs/performance/RUNBOOK.md`, and `docs/performance/BENCHMARKING.md` before creating new work.
 
-Do not optimize a percentage alone. Use both a relative gate and an absolute-cost gate. The active
-plan's ordinary regression threshold is the default unless the workload has a documented frame,
-memory, throughput, or package-size budget.
+Preregister one admission model; do not optimize a percentage or a universal absolute number:
+
+- For ordinary end-to-end latency, use the active plan's joint relative and absolute gate.
+- For a complete public operation below the plan's low-latency cutoff, use the noise-adaptive gate
+  from `BENCHMARKING.md`. Private stages remain attribution evidence, not admission surfaces.
+- For a real frame, throughput, memory, package-size, or high-volume integration objective, freeze
+  that workload and budget before confirmation.
+- For structural complexity or resource amplification, name every input variable, prove the
+  reachable old and new time/space bounds, and use an exact work counter or scale curve when code
+  inspection alone is insufficient.
+
+A structural repair may be accepted without an ordinary-fixture speedup when it removes a
+higher-order user-controlled term or enforces a resource bound and passes its semantic, security,
+resource-accounting, memory, and representative non-regression gates. Report it as a complexity or
+resource-bound repair; claim a measured speedup only after the separate latency gate passes.
 
 ## 2. Register the Experiment
 
@@ -50,7 +65,9 @@ Create an ignored ledger under `target/bench/experiments/<slug>/experiment.yaml`
 - host, OS, CPU, toolchains, target, profile, lockfile digest, and relevant package versions;
 - exact command, fixture or corpus digest, options, capabilities, warmups, samples, repetitions,
   concurrency, and run order;
-- primary metric and direction, absolute and relative acceptance thresholds, and control metrics;
+- admission model, primary metric or work bound, direction, thresholds, and control metrics;
+- for structural work, the named input variables, reachable pre-change and post-change time/space
+  bounds, expected-versus-worst-case qualifier, and the proof, counter, or scale-curve method;
 - semantic, layout, SVG/DOM, security, resource-policy, and error-contract gates;
 - each hypothesis, diff or commit, raw samples, outcome (`kept`, `rejected`, or `inconclusive`),
   and reason.
@@ -61,9 +78,10 @@ abandoned.
 
 ## 3. Establish and Attribute the Baseline
 
-Run correctness first, then collect a same-host baseline. Use the `long` preset and at least three
-base/head repetitions for a decision. Alternate which revision runs first and normalize every
-result to the same target/base direction.
+Run correctness first, then collect the registered baseline. Use the `long` preset for latency
+exploration. For a timing decision, follow `BENCHMARKING.md`: calibrate both executables with
+balanced A/A, derive a fixed power-sized AB/BA confirmation count that is never below eight, and
+alternate order. Normalize every result to the same target/base direction.
 
 Split a regression across `parse`, `parse_cold_engine`, `layout`, `render`, and `end_to_end` before
 profiling. Add a nearby unaffected fixture or family as a control. Record input/output size and
@@ -75,6 +93,11 @@ acceptance measurement.
 
 If the baseline is noisy enough to overlap the proposed effect, improve the harness, batch the
 operation, lengthen the run, or classify the result as inconclusive before changing code.
+
+For a structural complexity lane, baseline the reachable work rather than forcing a clock result:
+define the input variables and resource limits, trace the repeated operation, and capture either an
+exact test-only work counter or a preregistered multi-scale curve. Wall-clock measurements remain a
+secondary workload control unless latency is also an explicit claim.
 
 ## 4. Form a Causal Hypothesis
 
@@ -112,7 +135,8 @@ in one measurement.
 During each iteration:
 
 1. Run focused semantic and output-contract tests.
-2. Run the identical quick A/B command used for the baseline.
+2. Run the identical registered quick measurement used for the baseline: A/B, resource probe, or
+   work curve according to the admission model.
 3. Inspect the primary metric, controls, output/parity, and errors.
 4. Mark the experiment kept, rejected, or inconclusive in the ledger.
 5. Abandon rejected branches without merging them; do not leave dead fast paths or benchmark-only
@@ -125,13 +149,19 @@ measure debug builds unless debug performance is the explicit user contract.
 
 For an accepted candidate:
 
-- rerun the decision-grade A/B at least three times with alternating order;
+- rerun decision-grade A/B with alternating order for latency or throughput claims;
+- for memory, artifact size, dependency closure, or compile cost, rerun the frozen controlled
+  measurement and its absolute/growth bounds;
+- for structural claims, rerun the registered counter/curve and independently review the bound
+  derivation;
 - run affected crate tests with `cargo nextest`, then expand coverage with blast radius;
 - run `cargo fmt --all -- --check` and Clippy with the production feature set;
 - run strict verification and SVG DOM parity for shared parse/layout/render behavior;
 - test hostile, malformed, Unicode, entity, Markdown/HTML, math/icon, custom configuration,
   custom measurer, resource-limit, and cancellation cases when those paths are relevant;
-- run a cross-family control for shared code and the matching stress bench for microsecond work;
+- run a cross-family control for shared code and the matching stress bench when timing is claimed;
+- for structural work, cover the adversarial shape, boundary limits, expected-versus-worst-case
+  qualifier, added-space bound, and exact semantic/error/resource-accounting equivalence;
 - confirm artifact size, dependency closure, RSS, or installed footprint did not regress when the
   optimization can move those costs.
 
@@ -147,7 +177,9 @@ handoff.
 
 Report:
 
-- baseline, candidate, absolute delta, relative delta, thresholds, and raw-run count;
+- for timing or size, baseline, candidate, absolute delta, relative delta, thresholds, and raw-run
+  count; for structural work, named variables, reachable old/new bounds, evidence method, and added
+  space;
 - the isolated stage and causal explanation;
 - correctness and parity gates;
 - rejected hypotheses and why they failed;
@@ -164,11 +196,13 @@ optimization run into a release claim.
 - Dirty or moving comparison refs: isolate them before measuring.
 - Failed correctness, parity, sanitizer, resource, or error gate: reject the experiment.
 - Material control regression: attribute it before accepting the primary win.
-- Single run, overlapping noise, missing raw samples, or unpinned external reference:
+- For a timing claim, a single run, overlapping noise, missing raw samples, or unpinned external
+  reference:
   report `inconclusive`.
 - Historical locked build failure: record `blocked`; do not regenerate its lockfile in place.
-- Missing harness support: add the smallest reusable benchmark case before optimizing production
-  code, and keep benchmark infrastructure separate from the implementation commit.
+- Missing observation support: add the smallest reusable benchmark, counter, or resource probe only
+  when existing surfaces cannot test the primary contract. Keep it separate from production code,
+  and remove candidate-only lanes after rejection instead of retaining one-fixture infrastructure.
 
 ## Resource Map
 
