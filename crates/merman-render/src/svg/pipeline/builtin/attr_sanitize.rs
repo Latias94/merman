@@ -1,5 +1,5 @@
 use crate::Result;
-use cssparser::{Delimiter, Parser, ParserInput, Token};
+use cssparser::{Delimiter, Parser, ParserInput};
 use std::borrow::Cow;
 
 use super::css_sanitize::sanitize_css_value;
@@ -318,42 +318,7 @@ fn is_same_document_fragment_normalized(value: &str) -> bool {
 
 fn css_value_violates_url_safety(value: &str) -> bool {
     let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
-    let mut input = ParserInput::new(&decoded);
-    let mut parser = Parser::new(&mut input);
-    validate_css_urls(&mut parser).is_err()
-}
-
-fn validate_css_urls<'i, 't>(
-    parser: &mut Parser<'i, 't>,
-) -> std::result::Result<(), cssparser::ParseError<'i, ()>> {
-    while !parser.is_exhausted() {
-        let token = parser.next_including_whitespace()?.clone();
-        match token {
-            Token::UnquotedUrl(url) if is_unsafe_render_resource_url_value(&url) => {
-                return Err(parser.new_custom_error(()));
-            }
-            Token::Function(name) if name.eq_ignore_ascii_case("url") => {
-                parser.parse_nested_block(|nested| {
-                    let url = nested.expect_string_cloned()?;
-                    if is_unsafe_render_resource_url_value(&url) {
-                        return Err(nested.new_custom_error(()));
-                    }
-                    Ok(())
-                })?;
-            }
-            Token::Function(_)
-            | Token::ParenthesisBlock
-            | Token::SquareBracketBlock
-            | Token::CurlyBracketBlock => {
-                parser.parse_nested_block(validate_css_urls)?;
-            }
-            Token::BadUrl(_) | Token::BadString(_) => {
-                return Err(parser.new_custom_error(()));
-            }
-            _ => {}
-        }
-    }
-    Ok(())
+    sanitize_css_value(decoded.as_ref()).is_none()
 }
 
 fn normalize_url_attr_for_scheme_check(value: &str) -> String {
@@ -584,7 +549,9 @@ fn parse_css_declarations(value: &str) -> Vec<(String, String)> {
             let property = declaration.expect_ident_cloned()?.to_string();
             declaration.expect_colon()?;
             let value_start = declaration.position();
-            declaration.expect_no_error_token()?;
+            // `expect_no_error_token` recursively descends into every block. The bounded
+            // sanitizer below validates the raw value after this iterative boundary scan.
+            while declaration.next_including_whitespace().is_ok() {}
             let value = declaration.slice_from(value_start).trim().to_string();
             Ok::<_, cssparser::ParseError<'_, ()>>((property, value))
         });

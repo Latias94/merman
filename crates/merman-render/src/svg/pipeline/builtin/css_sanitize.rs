@@ -10,6 +10,8 @@ use super::attr_sanitize::is_unsafe_render_resource_url_value;
 use super::util::find_tag_end;
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
+const CSS_NESTING_HARD_LIMIT: u8 = 64;
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SanitizeCssPostprocessor;
 
@@ -71,7 +73,12 @@ pub(crate) fn sanitize_css(css: &str) -> String {
 pub(super) fn sanitize_css_value(value: &str) -> Option<String> {
     let mut input = ParserInput::new(value);
     let mut parser = Parser::new(&mut input);
-    rewrite_component_values(&mut parser, CssProcessingMode::Sanitize).ok()
+    rewrite_component_values(
+        &mut parser,
+        CssProcessingMode::Sanitize,
+        CssNestingDepth::default(),
+    )
+    .ok()
 }
 
 pub(in crate::svg::pipeline) fn validate_resvg_css_stylesheet(
@@ -85,15 +92,34 @@ pub(in crate::svg::pipeline) fn validate_resvg_css_declaration_list(
 ) -> std::result::Result<(), String> {
     let mut input = ParserInput::new(css);
     let mut parser = Parser::new(&mut input);
-    rewrite_declaration_list(&mut parser, CssProcessingMode::Validate)
-        .map(|_| ())
-        .map_err(format_parse_error)
+    rewrite_declaration_list(
+        &mut parser,
+        CssProcessingMode::Validate,
+        CssNestingDepth::default(),
+    )
+    .map(|_| ())
+    .map_err(format_parse_error)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CssProcessingMode {
     Sanitize,
     Validate,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct CssNestingDepth(u8);
+
+impl CssNestingDepth {
+    fn descend<'i, 't>(
+        self,
+        input: &Parser<'i, 't>,
+    ) -> std::result::Result<Self, ParseError<'i, CssViolation>> {
+        if self.0 >= CSS_NESTING_HARD_LIMIT {
+            return Err(input.new_custom_error(CssViolation::NestingLimit));
+        }
+        Ok(Self(self.0 + 1))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +129,7 @@ enum CssViolation {
     Degrees,
     EmptyDeclaration,
     MarkerReference,
+    NestingLimit,
     RootSelector,
     UnsafeUrl,
     UnsupportedAtRule(String),
@@ -120,6 +147,10 @@ impl fmt::Display for CssViolation {
             Self::MarkerReference => {
                 f.write_str("CSS marker references are not part of the resvg-safe contract")
             }
+            Self::NestingLimit => write!(
+                f,
+                "CSS nesting exceeds the resvg-safe hard limit of {CSS_NESTING_HARD_LIMIT}"
+            ),
             Self::RootSelector => {
                 f.write_str(":root rules are not part of the resvg-safe contract")
             }
@@ -149,6 +180,7 @@ enum AtRulePrelude {
 
 struct ResvgCssRuleParser {
     mode: CssProcessingMode,
+    depth: CssNestingDepth,
 }
 
 impl<'i> AtRuleParser<'i> for ResvgCssRuleParser {
@@ -161,7 +193,7 @@ impl<'i> AtRuleParser<'i> for ResvgCssRuleParser {
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        let prelude = rewrite_component_values(input, self.mode)?;
+        let prelude = rewrite_component_values(input, self.mode, self.depth)?;
         let normalized_name = name.to_ascii_lowercase();
         let body = match normalized_name.as_str() {
             "font-face" | "page" => Some(AtRuleBody::Declarations),
@@ -208,19 +240,20 @@ impl<'i> AtRuleParser<'i> for ResvgCssRuleParser {
         _start: &ParserState,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::AtRule, ParseError<'i, Self::Error>> {
+        let depth = self.depth.descend(input)?;
         let AtRulePrelude::Keep {
             name,
             prelude,
             body,
         } = prelude
         else {
-            consume_component_values(input)?;
+            consume_component_values(input, depth)?;
             return Ok(String::new());
         };
 
         let body = match body {
-            AtRuleBody::Declarations => rewrite_declaration_list(input, self.mode)?,
-            AtRuleBody::RuleList => rewrite_rule_list(input, self.mode)?,
+            AtRuleBody::Declarations => rewrite_declaration_list(input, self.mode, depth)?,
+            AtRuleBody::RuleList => rewrite_rule_list(input, self.mode, depth)?,
         };
         Ok(format!("@{name}{prelude}{{{body}}}"))
     }
@@ -235,8 +268,10 @@ impl<'i> QualifiedRuleParser<'i> for ResvgCssRuleParser {
         &mut self,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::Prelude, ParseError<'i, Self::Error>> {
-        let prelude = rewrite_component_values(input, self.mode)?;
-        if selector_contains_root(&prelude) {
+        let prelude = rewrite_component_values(input, self.mode, self.depth)?;
+        if selector_contains_root(&prelude, self.depth)
+            .map_err(|violation| input.new_custom_error(violation))?
+        {
             if self.mode == CssProcessingMode::Validate {
                 return Err(input.new_custom_error(CssViolation::RootSelector));
             }
@@ -251,11 +286,12 @@ impl<'i> QualifiedRuleParser<'i> for ResvgCssRuleParser {
         _start: &ParserState,
         input: &mut Parser<'i, 't>,
     ) -> std::result::Result<Self::QualifiedRule, ParseError<'i, Self::Error>> {
+        let depth = self.depth.descend(input)?;
         let Some(prelude) = prelude else {
-            consume_component_values(input)?;
+            consume_component_values(input, depth)?;
             return Ok(String::new());
         };
-        let declarations = rewrite_declaration_list(input, self.mode)?;
+        let declarations = rewrite_declaration_list(input, self.mode, depth)?;
         Ok(format!("{prelude}{{{declarations}}}"))
     }
 }
@@ -263,14 +299,15 @@ impl<'i> QualifiedRuleParser<'i> for ResvgCssRuleParser {
 fn process_stylesheet(css: &str, mode: CssProcessingMode) -> std::result::Result<String, String> {
     let mut input = ParserInput::new(css);
     let mut input = Parser::new(&mut input);
-    rewrite_rule_list(&mut input, mode).map_err(format_parse_error)
+    rewrite_rule_list(&mut input, mode, CssNestingDepth::default()).map_err(format_parse_error)
 }
 
 fn rewrite_rule_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     mode: CssProcessingMode,
+    depth: CssNestingDepth,
 ) -> std::result::Result<String, ParseError<'i, CssViolation>> {
-    let mut parser = ResvgCssRuleParser { mode };
+    let mut parser = ResvgCssRuleParser { mode, depth };
     let mut output = String::new();
 
     for rule in StyleSheetParser::new(input, &mut parser) {
@@ -287,6 +324,7 @@ fn rewrite_rule_list<'i, 't>(
 fn rewrite_declaration_list<'i, 't>(
     input: &mut Parser<'i, 't>,
     mode: CssProcessingMode,
+    depth: CssNestingDepth,
 ) -> std::result::Result<String, ParseError<'i, CssViolation>> {
     let mut output = String::new();
 
@@ -305,7 +343,7 @@ fn rewrite_declaration_list<'i, 't>(
             let prefix = declaration.slice(prefix_start..value_start).to_string();
 
             if is_animation_property(&property) {
-                consume_component_values(declaration)?;
+                consume_component_values(declaration, depth)?;
                 if mode == CssProcessingMode::Validate {
                     return Err(declaration.new_custom_error(CssViolation::Animation));
                 }
@@ -313,14 +351,14 @@ fn rewrite_declaration_list<'i, 't>(
             }
 
             if is_marker_reference_property(&property) {
-                consume_component_values(declaration)?;
+                consume_component_values(declaration, depth)?;
                 if mode == CssProcessingMode::Validate {
                     return Err(declaration.new_custom_error(CssViolation::MarkerReference));
                 }
                 return Ok(None);
             }
 
-            let value = rewrite_component_values(declaration, mode)?;
+            let value = rewrite_component_values(declaration, mode, depth)?;
             if value.trim().is_empty() {
                 return Err(declaration.new_custom_error(CssViolation::EmptyDeclaration));
             }
@@ -350,6 +388,7 @@ fn rewrite_declaration_list<'i, 't>(
 fn rewrite_component_values<'i, 't>(
     input: &mut Parser<'i, 't>,
     mode: CssProcessingMode,
+    depth: CssNestingDepth,
 ) -> std::result::Result<String, ParseError<'i, CssViolation>> {
     let mut output = String::new();
 
@@ -391,21 +430,24 @@ fn rewrite_component_values<'i, 't>(
                 output.push_str(input.slice(token_start..token_end));
             }
             Token::Function(name) => {
+                let nested_depth = depth.descend(input)?;
                 output.push_str(input.slice(token_start..token_end));
                 let nested = input.parse_nested_block(|nested| {
                     if name.eq_ignore_ascii_case("url") {
-                        rewrite_quoted_url(nested, mode)
+                        rewrite_quoted_url(nested, mode, nested_depth)
                     } else {
-                        rewrite_component_values(nested, mode)
+                        rewrite_component_values(nested, mode, nested_depth)
                     }
                 })?;
                 output.push_str(&nested);
                 output.push(')');
             }
             Token::ParenthesisBlock | Token::SquareBracketBlock | Token::CurlyBracketBlock => {
+                let nested_depth = depth.descend(input)?;
                 output.push_str(input.slice(token_start..token_end));
-                let nested =
-                    input.parse_nested_block(|nested| rewrite_component_values(nested, mode))?;
+                let nested = input.parse_nested_block(|nested| {
+                    rewrite_component_values(nested, mode, nested_depth)
+                })?;
                 output.push_str(&nested);
                 output.push(match token {
                     Token::ParenthesisBlock => ')',
@@ -425,6 +467,7 @@ fn rewrite_component_values<'i, 't>(
 fn rewrite_quoted_url<'i, 't>(
     input: &mut Parser<'i, 't>,
     mode: CssProcessingMode,
+    depth: CssNestingDepth,
 ) -> std::result::Result<String, ParseError<'i, CssViolation>> {
     let url_start = input.position();
     let url = input.expect_string_cloned()?;
@@ -436,11 +479,12 @@ fn rewrite_quoted_url<'i, 't>(
     let raw = input.slice_from(url_start);
     let mut raw_input = ParserInput::new(raw);
     let mut raw_parser = Parser::new(&mut raw_input);
-    rewrite_component_values(&mut raw_parser, mode)
+    rewrite_component_values(&mut raw_parser, mode, depth)
 }
 
 fn consume_component_values<'i, 't>(
     input: &mut Parser<'i, 't>,
+    depth: CssNestingDepth,
 ) -> std::result::Result<(), ParseError<'i, CssViolation>> {
     loop {
         let token = match input.next_including_whitespace() {
@@ -455,7 +499,8 @@ fn consume_component_values<'i, 't>(
                 | Token::SquareBracketBlock
                 | Token::CurlyBracketBlock
         ) {
-            input.parse_nested_block(consume_component_values)?;
+            let nested_depth = depth.descend(input)?;
+            input.parse_nested_block(|nested| consume_component_values(nested, nested_depth))?;
         }
     }
 }
@@ -472,14 +517,21 @@ fn is_marker_reference_property(property: &str) -> bool {
     )
 }
 
-fn selector_contains_root(selector: &str) -> bool {
+fn selector_contains_root(
+    selector: &str,
+    depth: CssNestingDepth,
+) -> std::result::Result<bool, CssViolation> {
     let mut input = ParserInput::new(selector);
     let mut parser = Parser::new(&mut input);
-    parser_contains_root_selector(&mut parser).unwrap_or(false)
+    parser_contains_root_selector(&mut parser, depth).map_err(|error| match error.kind {
+        cssparser::ParseErrorKind::Custom(violation) => violation,
+        cssparser::ParseErrorKind::Basic(_) => CssViolation::BadToken,
+    })
 }
 
 fn parser_contains_root_selector<'i, 't>(
     input: &mut Parser<'i, 't>,
+    depth: CssNestingDepth,
 ) -> std::result::Result<bool, ParseError<'i, CssViolation>> {
     let mut after_colon = false;
     loop {
@@ -499,13 +551,19 @@ fn parser_contains_root_selector<'i, 't>(
                 if after_colon && name.eq_ignore_ascii_case("root") {
                     return Ok(true);
                 }
-                if input.parse_nested_block(parser_contains_root_selector)? {
+                let nested_depth = depth.descend(input)?;
+                if input.parse_nested_block(|nested| {
+                    parser_contains_root_selector(nested, nested_depth)
+                })? {
                     return Ok(true);
                 }
                 after_colon = false;
             }
             Token::ParenthesisBlock | Token::SquareBracketBlock | Token::CurlyBracketBlock => {
-                if input.parse_nested_block(parser_contains_root_selector)? {
+                let nested_depth = depth.descend(input)?;
+                if input.parse_nested_block(|nested| {
+                    parser_contains_root_selector(nested, nested_depth)
+                })? {
                     return Ok(true);
                 }
                 after_colon = false;
@@ -526,6 +584,19 @@ fn format_parse_error(error: ParseError<'_, CssViolation>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn nested_function(depth: usize, leaf: &str) -> String {
+        format!("{}{}{}", "f(".repeat(depth), leaf, ")".repeat(depth))
+    }
+
+    fn nested_media(depth: usize, rule: &str) -> String {
+        format!(
+            "{}{}{}",
+            "@media all{".repeat(depth),
+            rule,
+            "}".repeat(depth)
+        )
+    }
 
     #[test]
     fn css_sanitize_removes_active_rules_and_declarations_after_tokenization() {
@@ -605,6 +676,72 @@ mod tests {
             sanitize_css_value(r##"rotate(.5deg) \"45deg\" url(#a45deg) foo45deg 90deg-foo"##)
                 .as_deref(),
             Some(r##"rotate(0.5) \"45deg\" url(#a45deg) foo45deg 90deg-foo"##)
+        );
+    }
+
+    #[test]
+    fn css_nesting_limit_is_inclusive_and_validation_reports_the_limit() {
+        let exact = nested_function(CSS_NESTING_HARD_LIMIT.into(), "red");
+        let over = nested_function(usize::from(CSS_NESTING_HARD_LIMIT) + 1, "red");
+
+        assert_eq!(sanitize_css_value(&exact).as_deref(), Some(exact.as_str()));
+        assert_eq!(sanitize_css_value(&over), None);
+        assert!(validate_resvg_css_declaration_list(&format!("fill:{exact}")).is_ok());
+
+        let error = validate_resvg_css_declaration_list(&format!("fill:{over}"))
+            .expect_err("one nesting level past the hard limit must be rejected");
+        assert!(error.contains("CSS nesting exceeds"), "{error}");
+        assert!(
+            error.contains(&CSS_NESTING_HARD_LIMIT.to_string()),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn css_nesting_limit_bounds_rules_selectors_and_drop_traversal() {
+        let exact_rule_value = nested_function(usize::from(CSS_NESTING_HARD_LIMIT) - 1, "red");
+        let over_rule_value = nested_function(CSS_NESTING_HARD_LIMIT.into(), "red");
+        let declarations =
+            format!(".exact{{fill:{exact_rule_value}}}.over{{fill:{over_rule_value};stroke:blue}}");
+        assert_eq!(
+            sanitize_css(&declarations),
+            format!(".exact{{fill:{exact_rule_value}}}.over{{stroke:blue}}")
+        );
+
+        let selector_exact = format!(
+            "{}.exact-selector{}{{fill:red}}",
+            ":is(".repeat(CSS_NESTING_HARD_LIMIT.into()),
+            ")".repeat(CSS_NESTING_HARD_LIMIT.into())
+        );
+        let selector_over = format!(
+            "{}.over-selector{}{{fill:red}}",
+            ":is(".repeat(usize::from(CSS_NESTING_HARD_LIMIT) + 1),
+            ")".repeat(usize::from(CSS_NESTING_HARD_LIMIT) + 1)
+        );
+        assert!(validate_resvg_css_stylesheet(&selector_exact).is_ok());
+        let selector_error = validate_resvg_css_stylesheet(&selector_over)
+            .expect_err("an over-limit selector function must be rejected");
+        assert!(selector_error.contains("CSS nesting exceeds"));
+        assert!(sanitize_css(&selector_over).is_empty());
+
+        let media_exact = nested_media(CSS_NESTING_HARD_LIMIT.into(), "");
+        let media_over = nested_media(usize::from(CSS_NESTING_HARD_LIMIT) + 1, "");
+        assert!(validate_resvg_css_stylesheet(&media_exact).is_ok());
+        let media_error = validate_resvg_css_stylesheet(&media_over)
+            .expect_err("an over-limit grouping rule must be rejected");
+        assert!(media_error.contains("CSS nesting exceeds"));
+        assert_eq!(
+            sanitize_css(&media_over).matches("@media").count(),
+            usize::from(CSS_NESTING_HARD_LIMIT)
+        );
+
+        let deeply_nested = nested_function(4_096, "spin");
+        let dropped = format!(
+            ".animation{{animation:{deeply_nested};stroke:blue}}:root{{--x:{deeply_nested}}}@unknown x{{value:{deeply_nested}}}.safe{{fill:red}}"
+        );
+        assert_eq!(
+            sanitize_css(&dropped),
+            ".animation{stroke:blue}.safe{fill:red}"
         );
     }
 }

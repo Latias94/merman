@@ -488,6 +488,94 @@ mod tests {
         assert!(!out.contains(r#"stroke="url("#), "{out}");
     }
 
+    #[test]
+    fn resvg_safe_pipeline_bounds_css_nesting_on_a_small_thread_stack() {
+        const CSS_NESTING_LIMIT: usize = 64;
+
+        fn nested_function(depth: usize, leaf: &str) -> String {
+            format!("{}{}{}", "f(".repeat(depth), leaf, ")".repeat(depth))
+        }
+
+        fn nested_media(depth: usize, rule: &str) -> String {
+            format!(
+                "{}{}{}",
+                "@media all{".repeat(depth),
+                rule,
+                "}".repeat(depth)
+            )
+        }
+
+        std::thread::Builder::new()
+            .name("bounded-css-nesting".into())
+            .stack_size(512 * 1024)
+            .spawn(|| {
+                let style_exact = nested_function(CSS_NESTING_LIMIT - 1, "red");
+                let style_over = nested_function(CSS_NESTING_LIMIT, "red");
+                let inline_exact = nested_function(CSS_NESTING_LIMIT, "red");
+                let selector_exact = format!(
+                    "{}.selector-exact{}",
+                    ":is(".repeat(CSS_NESTING_LIMIT),
+                    ")".repeat(CSS_NESTING_LIMIT)
+                );
+                let selector_over = format!(
+                    "{}.selector-over{}",
+                    ":is(".repeat(CSS_NESTING_LIMIT + 1),
+                    ")".repeat(CSS_NESTING_LIMIT + 1)
+                );
+                let media_exact = nested_media(CSS_NESTING_LIMIT - 1, ".media-exact{fill:red}");
+                let media_over = nested_media(CSS_NESTING_LIMIT, ".media-over{fill:red}");
+                let very_deep = nested_function(4_096, "red");
+                let svg = format!(
+                    r#"<svg xmlns="http://www.w3.org/2000/svg"><style>
+.style-exact{{fill:{style_exact}}}
+.style-over{{fill:{style_over};stroke:blue}}
+{selector_exact}{{fill:red}}
+{selector_over}{{fill:red}}
+{media_exact}
+{media_over}
+</style>
+<path id="inline-exact" style="fill:{inline_exact};stroke:blue"/>
+<path id="inline-over" style="fill:{very_deep};stroke:blue"/>
+<path id="presentation-over" fill="{very_deep}" stroke="blue"/>
+</svg>"#
+                );
+
+                let session = render_session();
+                let out = SvgPipeline::resvg_safe()
+                    .process_to_string(&svg, &session)
+                    .expect("resvg-safe CSS sanitization must remain bounded");
+
+                assert!(out.contains(".style-exact{fill:"), "{out}");
+                assert!(out.contains(".style-over{stroke:blue}"), "{out}");
+                assert!(out.contains(".selector-exact"), "{out}");
+                assert!(out.contains("){fill:red}"), "{out}");
+                assert!(!out.contains("selector-over"), "{out}");
+                assert!(out.contains("media-exact"), "{out}");
+                assert!(!out.contains("media-over"), "{out}");
+
+                let document = roxmltree::Document::parse(&out).expect("valid sanitized SVG");
+                let inline_exact = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("inline-exact"))
+                    .unwrap();
+                assert!(inline_exact.attribute("style").unwrap().contains("fill:"));
+                let inline_over = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("inline-over"))
+                    .unwrap();
+                assert_eq!(inline_over.attribute("style"), Some("stroke:blue"));
+                let presentation_over = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some("presentation-over"))
+                    .unwrap();
+                assert_eq!(presentation_over.attribute("fill"), None);
+                assert_eq!(presentation_over.attribute("stroke"), Some("blue"));
+            })
+            .expect("small-stack CSS regression thread must start")
+            .join()
+            .expect("bounded CSS traversal must not overflow the small thread stack");
+    }
+
     struct AppendPass(&'static str);
 
     impl SvgPostprocessor for AppendPass {
