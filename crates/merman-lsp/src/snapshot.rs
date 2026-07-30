@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 
 #[derive(Debug, Clone)]
-pub struct DocumentSnapshot {
+pub(crate) struct DocumentSnapshot {
     uri: Uri,
     editor: merman_editor_core::DocumentSnapshot,
     #[cfg(test)]
@@ -18,12 +18,12 @@ pub struct DocumentSnapshot {
 /// The LSP-owned form of one editor-core analysis generation.
 ///
 /// The snapshot and payload originate from the same cancellable analysis request and remain
-/// paired while the document-store cache is current.
+/// paired while the private session cache entry is current.
 #[derive(Debug)]
-pub struct DocumentAnalysisContext {
-    pub snapshot: Arc<DocumentSnapshot>,
+pub(crate) struct DocumentAnalysisContext {
+    pub(crate) snapshot: Arc<DocumentSnapshot>,
     generation: Arc<AnalysisGeneration>,
-    pub payload: Arc<AnalysisPayload>,
+    pub(crate) payload: Arc<AnalysisPayload>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,7 +93,10 @@ impl SnapshotContext {
 }
 
 impl DocumentAnalysisContext {
-    pub fn from_editor(context: merman_editor_core::DocumentAnalysisContext, uri: Uri) -> Self {
+    pub(crate) fn from_editor(
+        context: merman_editor_core::DocumentAnalysisContext,
+        uri: Uri,
+    ) -> Self {
         debug_assert_eq!(context.snapshot().uri().as_str(), uri.as_str());
         #[cfg(test)]
         let detection = context.detection().cloned();
@@ -112,7 +115,7 @@ impl DocumentAnalysisContext {
         }
     }
 
-    pub fn reproject_cancellable(
+    pub(crate) fn reproject_cancellable(
         &self,
         analyzer: &Analyzer,
         cancellation: &AnalysisCancellationToken,
@@ -169,7 +172,7 @@ impl DocumentAnalysisContext {
     }
 
     #[cfg(test)]
-    pub fn generation(&self) -> &Arc<AnalysisGeneration> {
+    pub(crate) fn generation(&self) -> &Arc<AnalysisGeneration> {
         &self.generation
     }
 }
@@ -194,35 +197,35 @@ pub(crate) fn snapshot_for_test(
 }
 
 impl DocumentSnapshot {
-    pub fn uri(&self) -> &Uri {
+    pub(crate) fn uri(&self) -> &Uri {
         &self.uri
     }
 
-    pub fn version(&self) -> i32 {
+    pub(crate) fn version(&self) -> i32 {
         self.editor.version()
     }
 
     #[cfg(test)]
-    pub fn kind(&self) -> merman_editor_core::DocumentKind {
+    pub(crate) fn kind(&self) -> merman_editor_core::DocumentKind {
         self.editor.kind()
     }
 
     #[cfg(test)]
-    pub fn fences(&self) -> &[merman_editor_core::FenceSnapshot] {
+    pub(crate) fn fences(&self) -> &[merman_editor_core::FenceSnapshot] {
         self.editor.fences()
     }
 
-    pub fn as_editor(&self) -> &merman_editor_core::DocumentSnapshot {
+    pub(crate) fn as_editor(&self) -> &merman_editor_core::DocumentSnapshot {
         &self.editor
     }
 
     #[cfg(test)]
-    pub fn detection(&self) -> Option<&EditorDiagramDetection> {
+    pub(crate) fn detection(&self) -> Option<&EditorDiagramDetection> {
         self.detection.as_ref()
     }
 
     #[cfg(test)]
-    pub fn fence_at_position(
+    pub(crate) fn fence_at_position(
         &self,
         position: tower_lsp_server::ls_types::Position,
     ) -> Option<&merman_editor_core::FenceSnapshot> {

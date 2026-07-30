@@ -10,6 +10,8 @@ use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
@@ -28,9 +30,9 @@ mod documents;
 mod lifecycle;
 
 pub(crate) use documents::{
-    ConfigurationUpdateOutcome, DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext,
-    DocumentDiagnosticState, DocumentSyncError, SemanticTokensState, StoredDocument,
-    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
+    DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext, DocumentDiagnosticState, DocumentSyncError,
+    SemanticTokensState, StoredDocument, analysis_options_with_lsp_resource_defaults,
+    default_lsp_analysis_options,
 };
 #[cfg(test)]
 pub(crate) use documents::{DocumentDiscardedSource, DocumentResourceLimit};
@@ -176,7 +178,7 @@ impl LanguageSession {
         self.inner.lifecycle.terminated().await;
     }
 
-    pub(crate) async fn enqueue_client_effect(
+    pub(crate) async fn enqueue_latest_client_effect(
         &self,
         key: ClientEffectKey,
         effect: impl Future<Output = ()> + Send + 'static,
@@ -184,10 +186,27 @@ impl LanguageSession {
         self.inner.client_effects.enqueue_latest(key, effect).await;
     }
 
+    pub(crate) async fn enqueue_client_effect(
+        &self,
+        effect: impl Future<Output = ()> + Send + 'static,
+    ) {
+        self.inner.client_effects.enqueue(effect).await;
+    }
+
     pub(crate) fn request_refresh(&self, semantic_tokens: bool, diagnostics: bool) {
         self.inner
             .refresh_coordinator
             .request(semantic_tokens, diagnostics);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn client_effect_admission_count(&self) -> usize {
+        self.inner.client_effects.admission_count()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn refresh_request_counts(&self) -> (usize, usize) {
+        self.inner.refresh_coordinator.request_counts()
     }
 
     #[cfg(test)]
@@ -583,7 +602,7 @@ pub(crate) enum ClientEffectKey {
 }
 
 struct QueuedClientEffect {
-    key: ClientEffectKey,
+    key: Option<ClientEffectKey>,
     effect: ClientEffect,
 }
 
@@ -605,6 +624,8 @@ struct ClientEffectState {
     cancelled: bool,
     next_worker_id: u64,
     active_worker: Option<ActiveClientEffectWorker>,
+    #[cfg(test)]
+    admitted_count: usize,
 }
 
 struct ActiveClientEffectWorker {
@@ -640,6 +661,18 @@ impl ClientEffectDispatcher {
         key: ClientEffectKey,
         effect: impl Future<Output = ()> + Send + 'static,
     ) {
+        self.enqueue_with_key(Some(key), effect).await;
+    }
+
+    async fn enqueue(&self, effect: impl Future<Output = ()> + Send + 'static) {
+        self.enqueue_with_key(None, effect).await;
+    }
+
+    async fn enqueue_with_key(
+        &self,
+        key: Option<ClientEffectKey>,
+        effect: impl Future<Output = ()> + Send + 'static,
+    ) {
         let mut effect = Some(Box::pin(effect) as ClientEffect);
         let registration = loop {
             let capacity = self.inner.capacity.notified();
@@ -648,7 +681,12 @@ impl ClientEffectDispatcher {
                 if state.cancelled {
                     return;
                 }
-                if let Some(index) = state.queue.iter().position(|queued| queued.key == key) {
+                if let Some(key) = key.as_ref()
+                    && let Some(index) = state
+                        .queue
+                        .iter()
+                        .position(|queued| queued.key.as_ref() == Some(key))
+                {
                     state.queue.remove(index);
                 }
                 if state.queue.len() >= LSP_CLIENT_EFFECT_QUEUE_LIMIT {
@@ -660,6 +698,10 @@ impl ClientEffectDispatcher {
                             .take()
                             .expect("a client effect is admitted at most once"),
                     });
+                    #[cfg(test)]
+                    {
+                        state.admitted_count += 1;
+                    }
                     let registration = if state.active_worker.is_some() {
                         None
                     } else {
@@ -694,6 +736,11 @@ impl ClientEffectDispatcher {
         }
         self.inner.capacity.notify_waiters();
         self.inner.idle.notify_waiters();
+    }
+
+    #[cfg(test)]
+    fn admission_count(&self) -> usize {
+        lock_recovering_poison(&self.inner.state).admitted_count
     }
 
     #[cfg(test)]
@@ -1033,6 +1080,31 @@ mod tests {
 
         assert!(!superseded_ran.load(Ordering::Acquire));
         assert!(latest_ran.load(Ordering::Acquire));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn unkeyed_client_effects_preserve_every_admitted_effect() {
+        let dispatcher = ClientEffectDispatcher::new();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let completed = Arc::new(AtomicUsize::new(0));
+
+        dispatcher
+            .enqueue(async move {
+                let _ = release_rx.await;
+            })
+            .await;
+        for _ in 0..2 {
+            let completed = Arc::clone(&completed);
+            dispatcher
+                .enqueue(async move {
+                    completed.fetch_add(1, Ordering::Release);
+                })
+                .await;
+        }
+
+        release_tx.send(()).unwrap();
+        dispatcher.wait_idle().await;
+        assert_eq!(completed.load(Ordering::Acquire), 2);
     }
 
     #[tokio::test(flavor = "current_thread")]

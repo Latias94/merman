@@ -73,23 +73,13 @@ struct DiagnosticReprojectionKey {
 pub(in crate::session) struct DiagnosticReprojectionRequest {
     analyzer: Analyzer,
     cancellation: AnalysisCancellationToken,
-    target_diagnostic_generation: DiagnosticGeneration,
-    uri: Uri,
-    analysis_job_generation: AnalysisJobGeneration,
-    document_epoch: DocumentEpoch,
-    snapshot_generation: SnapshotGeneration,
-    source_diagnostic_generation: DiagnosticGeneration,
+    key: DiagnosticReprojectionKey,
     context: Arc<DocumentAnalysisContext>,
 }
 
 #[derive(Debug, Clone)]
 struct DiagnosticReprojectionResult {
-    uri: Uri,
-    analysis_job_generation: AnalysisJobGeneration,
-    document_epoch: DocumentEpoch,
-    snapshot_generation: SnapshotGeneration,
-    source_diagnostic_generation: DiagnosticGeneration,
-    target_diagnostic_generation: DiagnosticGeneration,
+    key: DiagnosticReprojectionKey,
     original: Arc<DocumentAnalysisContext>,
     projected: Arc<DocumentAnalysisContext>,
 }
@@ -107,29 +97,25 @@ impl DiagnosticReprojectionRequest {
         source_diagnostic_generation: DiagnosticGeneration,
         context: Arc<DocumentAnalysisContext>,
     ) -> Self {
+        let source_identity = Arc::as_ptr(&context) as usize;
         Self {
             analyzer,
             cancellation,
-            target_diagnostic_generation,
-            uri,
-            analysis_job_generation,
-            document_epoch,
-            snapshot_generation,
-            source_diagnostic_generation,
+            key: DiagnosticReprojectionKey {
+                uri,
+                analysis_job_generation,
+                document_epoch,
+                snapshot_generation,
+                source_diagnostic_generation,
+                target_diagnostic_generation,
+                source_identity,
+            },
             context,
         }
     }
 
     fn key(&self) -> DiagnosticReprojectionKey {
-        DiagnosticReprojectionKey {
-            uri: self.uri.clone(),
-            analysis_job_generation: self.analysis_job_generation,
-            document_epoch: self.document_epoch,
-            snapshot_generation: self.snapshot_generation,
-            source_diagnostic_generation: self.source_diagnostic_generation,
-            target_diagnostic_generation: self.target_diagnostic_generation,
-            source_identity: Arc::as_ptr(&self.context) as usize,
-        }
+        self.key.clone()
     }
 
     fn cancellation_child(&self) -> AnalysisCancellationToken {
@@ -137,7 +123,7 @@ impl DiagnosticReprojectionRequest {
     }
 
     pub(in crate::session) fn uri(&self) -> &Uri {
-        &self.uri
+        self.key.uri()
     }
 
     fn project_with_cancellation(
@@ -151,12 +137,7 @@ impl DiagnosticReprojectionRequest {
         );
         cancellation.checkpoint()?;
         Ok(DiagnosticReprojectionResult {
-            uri: self.uri,
-            analysis_job_generation: self.analysis_job_generation,
-            document_epoch: self.document_epoch,
-            snapshot_generation: self.snapshot_generation,
-            source_diagnostic_generation: self.source_diagnostic_generation,
-            target_diagnostic_generation: self.target_diagnostic_generation,
+            key: self.key,
             original: self.context,
             projected,
         })
@@ -347,27 +328,27 @@ impl fmt::Debug for DiagnosticReprojectionLease {
 
 impl DiagnosticReprojectionLease {
     pub(in crate::session) fn uri(&self) -> &Uri {
-        &self.result.uri
+        self.result.key.uri()
     }
 
     pub(in crate::session) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
-        self.result.analysis_job_generation
+        self.result.key.analysis_job_generation
     }
 
     pub(in crate::session) fn document_epoch(&self) -> DocumentEpoch {
-        self.result.document_epoch
+        self.result.key.document_epoch
     }
 
     pub(in crate::session) fn snapshot_generation(&self) -> SnapshotGeneration {
-        self.result.snapshot_generation
+        self.result.key.snapshot_generation
     }
 
     pub(in crate::session) fn source_diagnostic_generation(&self) -> DiagnosticGeneration {
-        self.result.source_diagnostic_generation
+        self.result.key.source_diagnostic_generation
     }
 
     pub(in crate::session) fn target_diagnostic_generation(&self) -> DiagnosticGeneration {
-        self.result.target_diagnostic_generation
+        self.result.key.target_diagnostic_generation
     }
 
     pub(in crate::session) fn original(&self) -> &Arc<DocumentAnalysisContext> {

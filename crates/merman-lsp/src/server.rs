@@ -16,9 +16,8 @@ use crate::semantic_tokens::{
 };
 use crate::session::{ClientEffectKey, LanguageSession, MermanLspService, commit_active_mutation};
 use crate::session::{
-    ConfigurationUpdateOutcome, DiagnosticContext, DocumentDiagnosticState, DocumentSyncError,
-    SemanticTokensState, StoredDocument, analysis_options_with_lsp_resource_defaults,
-    default_lsp_analysis_options,
+    DiagnosticContext, DocumentDiagnosticState, DocumentSyncError, SemanticTokensState,
+    StoredDocument, analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
 };
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
@@ -30,7 +29,7 @@ use crate::structure::{
     selection_ranges as structure_selection_ranges,
 };
 use merman_analysis::{
-    AnalysisOptions, AnalysisPayload, SourceKind, options_json::analysis_options_from_json_value,
+    AnalysisPayload, SourceKind, options_json::analysis_options_from_json_value,
     source_descriptor_for_kind, source_discarded_after_limit_change_diagnostic_with_span,
     source_limit_diagnostic_for_len_and_span,
 };
@@ -210,11 +209,11 @@ impl MermanLanguageServer {
         }
     }
 
-    pub async fn rule_catalog(&self) -> Result<RuleCatalogResponse> {
+    async fn rule_catalog(&self) -> Result<RuleCatalogResponse> {
         Ok(RuleCatalogResponse::current())
     }
 
-    pub async fn config_schema(&self) -> Result<ConfigSchemaResponse> {
+    async fn config_schema(&self) -> Result<ConfigSchemaResponse> {
         Ok(ConfigSchemaResponse::current())
     }
 
@@ -347,45 +346,61 @@ impl MermanLanguageServer {
         ))
     }
 
-    fn diagnostic_publisher(&self) -> DiagnosticPublisher {
-        DiagnosticPublisher {
+    fn diagnostic_publisher(&self) -> Option<DiagnosticPublisher> {
+        let profile = self.client_profile();
+        if profile.diagnostic_pull {
+            return None;
+        }
+        Some(DiagnosticPublisher {
             client: self.client.clone(),
             session: self.session.clone(),
-            profile: self.client_profile().clone(),
-        }
+            profile: profile.clone(),
+        })
     }
 
     async fn enqueue_publish_for_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
-        let publisher = self.diagnostic_publisher();
+        let Some(publisher) = self.diagnostic_publisher() else {
+            return;
+        };
         let key = ClientEffectKey::Document(uri.as_str().to_owned());
         self.session
-            .enqueue_client_effect(key, async move {
+            .enqueue_latest_client_effect(key, async move {
                 publisher.publish_for_uri(uri).await;
             })
             .await;
     }
 
     async fn enqueue_clear_diagnostics(&self, uri: tower_lsp_server::ls_types::Uri) {
-        let publisher = self.diagnostic_publisher();
+        let Some(publisher) = self.diagnostic_publisher() else {
+            return;
+        };
         let key = ClientEffectKey::Document(uri.as_str().to_owned());
         self.session
-            .enqueue_client_effect(key, async move {
+            .enqueue_latest_client_effect(key, async move {
                 publisher.clear(uri).await;
             })
             .await;
     }
 
     async fn enqueue_republish_all(&self) {
-        let publisher = self.diagnostic_publisher();
+        let Some(publisher) = self.diagnostic_publisher() else {
+            return;
+        };
         self.session
-            .enqueue_client_effect(ClientEffectKey::AllDiagnostics, async move {
+            .enqueue_latest_client_effect(ClientEffectKey::AllDiagnostics, async move {
                 publisher.publish_all().await;
             })
             .await;
     }
 
-    async fn replace_analyzer(&self, options: AnalysisOptions) -> ConfigurationUpdateOutcome {
-        self.session.update_configuration(options).await
+    async fn enqueue_log_message(&self, kind: MessageType, message: impl Into<String>) {
+        let client = self.client.clone();
+        let message = message.into();
+        self.session
+            .enqueue_client_effect(async move {
+                client.log_message(kind, message).await;
+            })
+            .await;
     }
 
     async fn apply_initialization_options(
@@ -400,7 +415,7 @@ impl MermanLanguageServer {
                 })?,
             ),
         };
-        if self.replace_analyzer(options).await.accepted() {
+        if self.session.update_configuration(options).await.accepted() {
             Ok(())
         } else {
             let mut error = tower_lsp_server::jsonrpc::Error::internal_error();
@@ -433,9 +448,6 @@ impl DiagnosticPublisher {
     }
 
     async fn publish_for_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
-        if self.profile.diagnostic_pull {
-            return;
-        }
         let context = self.session.diagnostic_context(&uri).await;
         if let Some(context) = context {
             self.publish_current(&context).await;
@@ -443,9 +455,6 @@ impl DiagnosticPublisher {
     }
 
     async fn publish_all(&self) {
-        if self.profile.diagnostic_pull {
-            return;
-        }
         let contexts = self.session.diagnostic_contexts().await;
         for context in contexts {
             self.publish_current(&context).await;
@@ -479,9 +488,7 @@ impl DiagnosticPublisher {
     }
 
     async fn clear(&self, uri: tower_lsp_server::ls_types::Uri) {
-        if !self.profile.diagnostic_pull {
-            self.client.publish_diagnostics(uri, Vec::new(), None).await;
-        }
+        self.client.publish_diagnostics(uri, Vec::new(), None).await;
     }
 }
 
@@ -501,8 +508,8 @@ impl LanguageServer for MermanLanguageServer {
     }
 
     async fn initialized(&self, _: tower_lsp_server::ls_types::InitializedParams) {
-        self.client
-            .log_message(MessageType::INFO, "merman-lsp initialized")
+        commit_active_mutation();
+        self.enqueue_log_message(MessageType::INFO, "merman-lsp initialized")
             .await;
     }
 
@@ -559,26 +566,25 @@ impl LanguageServer for MermanLanguageServer {
             match analysis_options_from_json_value(&params.settings) {
                 Ok(options) => analysis_options_with_lsp_resource_defaults(options),
                 Err(err) => {
-                    self.client
-                        .log_message(
-                            MessageType::ERROR,
-                            format!("invalid merman analysis settings: {err}"),
-                        )
-                        .await;
+                    commit_active_mutation();
+                    self.enqueue_log_message(
+                        MessageType::ERROR,
+                        format!("invalid merman analysis settings: {err}"),
+                    )
+                    .await;
                     return;
                 }
             }
         };
 
-        let change = self.replace_analyzer(options).await;
+        let change = self.session.update_configuration(options).await;
         commit_active_mutation();
         if change.failed() {
-            self.client
-                .log_message(
-                    MessageType::ERROR,
-                    "failed to apply merman analysis settings",
-                )
-                .await;
+            self.enqueue_log_message(
+                MessageType::ERROR,
+                "failed to apply merman analysis settings",
+            )
+            .await;
             return;
         }
         if change.affects_diagnostics() {

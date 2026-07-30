@@ -95,6 +95,26 @@ The contract has these rules:
    - Production analysis must not shell out to Node or invoke Mermaid JS as an authoritative
      fallback unless a future ADR explicitly changes the runtime boundary.
 
+### Current Rust ownership amendment
+
+The original JSON contract remains stable, but the rich Rust ownership model is now explicitly
+two-phase. `Analyzer::analyze_generation*` captures one sealed, immutable `AnalysisGeneration`
+containing source mapping, parser disposition, normalized editor facts, and policy-neutral
+diagnostic candidates. The generation retains its opaque analyzer-environment identity and source
+descriptor, not the heavyweight site configuration, runtime policy, source limit, or an initial
+diagnostic payload.
+
+`AnalysisGeneration::project` accepts an `AnalysisDiagnosticPolicy` and produces the current
+`AnalysisPayload`. Diagnostic-policy-only changes therefore reproject the same generation and
+preserve parser/editor identity. Snapshot-policy or parser-environment changes require a new
+generation. Payload-only `Analyzer::analyze*` and facts adapters use the same private capture and
+projection pipeline without introducing another rich ownership type.
+
+The alpha migration intentionally retains no deprecated Rust aliases: `AnalysisResult` became
+`AnalysisGeneration`, `Analyzer::analyze_result` became `Analyzer::analyze_generation`, and the
+document `*_result` functions became `*_generation`. The TypeScript `AnalysisResult` remains the
+name of the independently versioned schema-1 diagnostic wire/API result.
+
 The canonical JSON shape starts as:
 
 ```json

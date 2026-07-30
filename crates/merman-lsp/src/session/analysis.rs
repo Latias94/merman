@@ -90,7 +90,7 @@ impl LanguageSession {
         previous_result_id: Option<&str>,
         compute: impl FnOnce(
             &DocumentSnapshot,
-            Option<SemanticTokensState>,
+            Option<Arc<SemanticTokensState>>,
         ) -> Result<Option<(T, Option<SemanticTokensState>)>>,
     ) -> Result<Option<T>> {
         let Some(context) = self
@@ -158,10 +158,8 @@ impl LanguageSession {
                     .map(SnapshotContext::analysis_payload),
             );
             let mut state = self.inner.state.lock().await;
-            let current = state.is_diagnostic_context_current(&diagnostic_context)
-                && analysis_context
-                    .as_ref()
-                    .is_none_or(|context| state.is_analysis_context_current(context));
+            let current = state
+                .diagnostic_contexts_are_current(&diagnostic_context, analysis_context.as_ref());
             if current
                 && state.set_diagnostic_state_if_current(&diagnostic_context, state_value.clone())
             {
@@ -193,10 +191,7 @@ impl LanguageSession {
                 .map(SnapshotContext::analysis_payload),
         );
         let state = self.inner.state.lock().await;
-        let current = state.is_diagnostic_context_current(context)
-            && analysis_context
-                .as_ref()
-                .is_none_or(|context| state.is_analysis_context_current(context));
+        let current = state.diagnostic_contexts_are_current(context, analysis_context.as_ref());
         Ok(current.then_some(result))
     }
 
@@ -259,11 +254,7 @@ impl LanguageSession {
         let mut state = self.inner.state.lock().await;
         match state.insert_built_analysis(&request, context) {
             Some(context) => Ok(Some(context)),
-            None if state.get(request.uri()).is_some() => match purpose {
-                SnapshotPurpose::Diagnostics => Ok(None),
-                _ => Err(purpose.stale_error()),
-            },
-            None => Ok(None),
+            None => stale_or_missing_result(purpose, state.get(request.uri()).is_some()),
         }
     }
 
@@ -277,11 +268,7 @@ impl LanguageSession {
         if let Some(context) = state.commit_diagnostic_reprojection_context(projection) {
             return Ok(Some(context));
         }
-        if state.get(uri).is_none() || purpose == SnapshotPurpose::Diagnostics {
-            Ok(None)
-        } else {
-            Err(purpose.stale_error())
-        }
+        stale_or_missing_result(purpose, state.get(uri).is_some())
     }
 
     async fn stale_or_missing(
@@ -290,11 +277,7 @@ impl LanguageSession {
         purpose: SnapshotPurpose,
     ) -> Result<Option<SnapshotContext>> {
         let document_exists = self.inner.state.lock().await.get(uri).is_some();
-        if !document_exists || purpose == SnapshotPurpose::Diagnostics {
-            Ok(None)
-        } else {
-            Err(purpose.stale_error())
-        }
+        stale_or_missing_result(purpose, document_exists)
     }
 
     async fn ensure_current(
@@ -313,6 +296,17 @@ impl LanguageSession {
         } else {
             Err(purpose.stale_error())
         }
+    }
+}
+
+fn stale_or_missing_result(
+    purpose: SnapshotPurpose,
+    document_exists: bool,
+) -> Result<Option<SnapshotContext>> {
+    if !document_exists || purpose == SnapshotPurpose::Diagnostics {
+        Ok(None)
+    } else {
+        Err(purpose.stale_error())
     }
 }
 

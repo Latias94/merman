@@ -2,6 +2,8 @@ use crate::refresh_transport::{RefreshClient, RefreshKind};
 use crate::sync::recover_poison;
 use futures::future::{AbortHandle, Abortable};
 use std::fmt;
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
@@ -28,6 +30,8 @@ struct RefreshLane {
     receiver: Mutex<Option<mpsc::Receiver<()>>>,
     worker: Mutex<Option<AbortHandle>>,
     idle: Notify,
+    #[cfg(test)]
+    requests: AtomicUsize,
 }
 
 impl RefreshLane {
@@ -39,6 +43,17 @@ impl RefreshLane {
             receiver: Mutex::new(Some(receiver)),
             worker: Mutex::new(None),
             idle: Notify::new(),
+            #[cfg(test)]
+            requests: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl RefreshCoordinatorInner {
+    fn lane(&self, kind: RefreshKind) -> &RefreshLane {
+        match kind {
+            RefreshKind::SemanticTokens => &self.semantic_tokens,
+            RefreshKind::Diagnostics => &self.diagnostics,
         }
     }
 }
@@ -92,28 +107,23 @@ impl RefreshCoordinator {
         if self.inner.cancelled.load(Ordering::Acquire) {
             return;
         }
-        let lane = self.lane(kind);
+        let lane = self.inner.lane(kind);
         lane.pending.store(true, Ordering::Release);
         if self.inner.cancelled.load(Ordering::Acquire) {
             lane.pending.store(false, Ordering::Release);
             return;
         }
+        #[cfg(test)]
+        lane.requests.fetch_add(1, Ordering::Relaxed);
         self.ensure_worker(kind);
         let _ = lane.wake.try_send(());
-    }
-
-    fn lane(&self, kind: RefreshKind) -> &RefreshLane {
-        match kind {
-            RefreshKind::SemanticTokens => &self.inner.semantic_tokens,
-            RefreshKind::Diagnostics => &self.inner.diagnostics,
-        }
     }
 
     fn ensure_worker(&self, kind: RefreshKind) {
         if self.inner.cancelled.load(Ordering::Acquire) {
             return;
         }
-        let lane = self.lane(kind);
+        let lane = self.inner.lane(kind);
         let Ok(runtime) = tokio::runtime::Handle::try_current() else {
             tracing::warn!("refresh requested outside a Tokio runtime");
             return;
@@ -172,6 +182,14 @@ impl RefreshCoordinator {
     }
 
     #[cfg(test)]
+    pub(crate) fn request_counts(&self) -> (usize, usize) {
+        (
+            self.inner.semantic_tokens.requests.load(Ordering::Relaxed),
+            self.inner.diagnostics.requests.load(Ordering::Relaxed),
+        )
+    }
+
+    #[cfg(test)]
     pub(crate) async fn wait_stopped(&self) {
         for lane in [&self.inner.semantic_tokens, &self.inner.diagnostics] {
             loop {
@@ -214,10 +232,7 @@ fn worker_finished(inner: Weak<RefreshCoordinatorInner>, kind: RefreshKind) {
     let Some(inner) = inner.upgrade() else {
         return;
     };
-    let lane = match kind {
-        RefreshKind::SemanticTokens => &inner.semantic_tokens,
-        RefreshKind::Diagnostics => &inner.diagnostics,
-    };
+    let lane = inner.lane(kind);
     recover_poison(lane.worker.lock()).take();
     lane.idle.notify_waiters();
 }
@@ -243,7 +258,75 @@ mod tests {
     use super::*;
     use crate::refresh_transport::RefreshClient;
     use futures::StreamExt;
+    use std::task::Poll;
     use tower_lsp_server::jsonrpc::Response;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pending_refresh_requests_coalesce_to_one_follow_up() {
+        let (client, mut requests, responses) = RefreshClient::channel();
+        let coordinator = RefreshCoordinator::new(client);
+
+        coordinator.request(true, false);
+        let first = requests
+            .next()
+            .await
+            .expect("expected first refresh request");
+        assert_eq!(responses.pending_count(), 1);
+
+        coordinator.request(true, false);
+        coordinator.request(true, false);
+        assert_eq!(coordinator.request_counts(), (3, 0));
+        assert!(
+            coordinator
+                .inner
+                .semantic_tokens
+                .pending
+                .load(Ordering::Acquire)
+        );
+
+        let mut next_request = Box::pin(requests.next());
+        assert!(matches!(
+            futures::poll!(next_request.as_mut()),
+            Poll::Pending
+        ));
+
+        assert!(
+            responses
+                .route(Response::from_ok(
+                    first.id().cloned().expect("first refresh id"),
+                    serde_json::Value::Null,
+                ))
+                .is_none()
+        );
+        let follow_up = next_request
+            .await
+            .expect("expected one coalesced follow-up refresh");
+        assert_ne!(first.id(), follow_up.id());
+        assert_eq!(responses.pending_count(), 1);
+        assert!(
+            !coordinator
+                .inner
+                .semantic_tokens
+                .pending
+                .load(Ordering::Acquire)
+        );
+
+        assert!(
+            responses
+                .route(Response::from_ok(
+                    follow_up.id().cloned().expect("follow-up refresh id"),
+                    serde_json::Value::Null,
+                ))
+                .is_none()
+        );
+        tokio::task::yield_now().await;
+        assert_eq!(responses.pending_count(), 0);
+        let mut extra_request = Box::pin(requests.next());
+        assert!(matches!(
+            futures::poll!(extra_request.as_mut()),
+            Poll::Pending
+        ));
+    }
 
     #[tokio::test(start_paused = true)]
     async fn timed_out_refresh_releases_waiter_and_allows_a_follow_up() {

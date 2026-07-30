@@ -82,6 +82,48 @@ async fn initialize_test_service(service: &mut crate::MermanLspService) {
     assert!(response.is_ok());
 }
 
+async fn saturate_client_effect_queue(session: &crate::session::LanguageSession) {
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    session
+        .enqueue_latest_client_effect(
+            ClientEffectKey::Document("blocker".to_string()),
+            async move {
+                let _ = started_tx.send(());
+                std::future::pending::<()>().await;
+            },
+        )
+        .await;
+    started_rx
+        .await
+        .expect("blocking client effect should start");
+    for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
+        session
+            .enqueue_latest_client_effect(
+                ClientEffectKey::Document(format!("queued-{index}")),
+                async {},
+            )
+            .await;
+    }
+}
+
+async fn initialize_test_backend(server: &MermanLanguageServer, capabilities: serde_json::Value) {
+    let params: InitializeParams = serde_json::from_value(serde_json::json!({
+        "capabilities": capabilities,
+    }))
+    .expect("valid initialize params");
+    server.initialize(params).await.expect("initialize backend");
+}
+
+fn diagnostic_only_configuration() -> DidChangeConfigurationParams {
+    DidChangeConfigurationParams {
+        settings: serde_json::json!({
+            "lint": {
+                "disable_rules": ["merman.git_graph.duplicate_commit_id"]
+            }
+        }),
+    }
+}
+
 #[test]
 fn semantic_token_planner_failures_are_typed_internal_errors() {
     let snapshot = snapshot_for_test(
@@ -361,6 +403,143 @@ fn capabilities_report_the_full_server_envelope() {
             "renamePolicies": EditorRenamePolicy::IDS,
         })
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn configuration_side_effects_follow_the_changed_policy_scope() {
+    let (service, _socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    initialize_test_backend(
+        server,
+        serde_json::json!({
+            "textDocument": {
+                "semanticTokens": {
+                    "requests": { "full": true },
+                    "tokenTypes": ["keyword"],
+                    "tokenModifiers": [],
+                    "formats": ["relative"]
+                }
+            },
+            "workspace": {
+                "semanticTokens": { "refreshSupport": true }
+            }
+        }),
+    )
+    .await;
+    let uri = Uri::from_str("file:///tmp/configuration-effects.mmd").unwrap();
+
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri,
+                language_id: "mermaid".to_string(),
+                version: 1,
+                text: "gitGraph\ncommit id:\"dup\"\ncommit id:\"dup\"\n".to_string(),
+            },
+        })
+        .await;
+    assert_eq!(server.session.client_effect_admission_count(), 1);
+
+    server
+        .did_change_configuration(DidChangeConfigurationParams {
+            settings: serde_json::Value::Null,
+        })
+        .await;
+    assert_eq!(server.session.client_effect_admission_count(), 1);
+    assert_eq!(server.session.refresh_request_counts(), (0, 0));
+
+    server
+        .did_change_configuration(diagnostic_only_configuration())
+        .await;
+    assert_eq!(server.session.client_effect_admission_count(), 2);
+    assert_eq!(
+        server.session.refresh_request_counts(),
+        (0, 0),
+        "diagnostic-only changes must not refresh semantic tokens"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn pull_diagnostic_effects_require_negotiated_refresh_support() {
+    for (refresh_support, expected_refreshes) in [(false, 0), (true, 1)] {
+        let (service, _socket) = MermanLanguageServer::service();
+        let server = service.inner();
+        initialize_test_backend(
+            server,
+            serde_json::json!({
+                "textDocument": { "diagnostic": {} },
+                "workspace": {
+                    "diagnostics": { "refreshSupport": refresh_support }
+                }
+            }),
+        )
+        .await;
+        let uri = Uri::from_str("file:///tmp/pull-diagnostic-effects.mmd").unwrap();
+
+        server
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri,
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "gitGraph\ncommit id:\"dup\"\ncommit id:\"dup\"\n".to_string(),
+                },
+            })
+            .await;
+        server
+            .did_change_configuration(diagnostic_only_configuration())
+            .await;
+
+        assert_eq!(
+            server.session.client_effect_admission_count(),
+            0,
+            "pull diagnostics must not enqueue no-op push effects"
+        );
+        assert_eq!(
+            server.session.refresh_request_counts(),
+            (0, expected_refreshes)
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn push_diagnostics_admit_exactly_one_effect_per_document_event() {
+    let (service, _socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    initialize_test_backend(server, serde_json::json!({})).await;
+    let uri = Uri::from_str("file:///tmp/push-effect-count.mmd").unwrap();
+
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 1,
+                text: "flowchart TD\nA-->B\n".to_string(),
+            },
+        })
+        .await;
+    server
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "flowchart LR\nA-->B\n".to_string(),
+            }],
+        })
+        .await;
+    server
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+            text: None,
+        })
+        .await;
+
+    assert_eq!(server.session.client_effect_admission_count(), 3);
 }
 
 #[test]
@@ -707,6 +886,7 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         .expect("expected diagnostic context");
     let diagnostic = server
         .diagnostic_publisher()
+        .expect("the default test client uses push diagnostics")
         .diagnostics_for_current_context(&context)
         .await
         .expect("diagnostic analysis should succeed")
@@ -1047,31 +1227,23 @@ async fn exit_preserves_an_already_admitted_shutdown_error() {
 #[tokio::test(flavor = "current_thread")]
 async fn client_effect_backpressure_does_not_hold_the_mutation_fence() {
     let (mut service, _socket) = MermanLanguageServer::service();
-    initialize_test_service(&mut service).await;
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    assert!(
+        service
+            .ready()
+            .await
+            .unwrap()
+            .call(initialize)
+            .await
+            .unwrap()
+            .is_some_and(|response| response.is_ok())
+    );
     let session = service.inner().session.clone();
     let uri = Uri::from_str("file:///tmp/effect-backpressure.mmd").unwrap();
-    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-
-    session
-        .enqueue_client_effect(
-            ClientEffectKey::Document("blocker".to_string()),
-            async move {
-                let _ = started_tx.send(());
-                std::future::pending::<()>().await;
-            },
-        )
-        .await;
-    started_rx
-        .await
-        .expect("blocking client effect should start");
-    for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
-        session
-            .enqueue_client_effect(
-                ClientEffectKey::Document(format!("queued-{index}")),
-                async {},
-            )
-            .await;
-    }
+    saturate_client_effect_queue(&session).await;
 
     let save = service.call(
         Request::build("textDocument/didSave")
@@ -1097,6 +1269,48 @@ async fn client_effect_backpressure_does_not_hold_the_mutation_fence() {
     session.terminate();
     assert!(save.await.unwrap().is_none());
     session.wait_stopped().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn client_log_backpressure_does_not_hold_mutation_fences() {
+    let cases = [
+        ("initialized", serde_json::json!({})),
+        (
+            "workspace/didChangeConfiguration",
+            serde_json::json!({
+                "settings": {
+                    "lint": {
+                        "rule_severities": [{
+                            "rule_id": "merman.resource.source_bytes_exceeded",
+                            "severity": "hint"
+                        }]
+                    }
+                }
+            }),
+        ),
+    ];
+
+    for (method, params) in cases {
+        let (mut service, _socket) = MermanLanguageServer::service();
+        initialize_test_service(&mut service).await;
+        let session = service.inner().session.clone();
+        saturate_client_effect_queue(&session).await;
+
+        let notification = service.call(Request::build(method).params(params).finish());
+        tokio::pin!(notification);
+        assert!(futures::poll!(&mut notification).is_pending());
+
+        let response = service
+            .call(Request::build(RULE_CATALOG_METHOD).id(2).finish())
+            .await
+            .unwrap()
+            .expect("a read should not wait for client log capacity");
+        assert!(response.is_ok());
+
+        session.terminate();
+        assert!(notification.await.unwrap().is_none());
+        session.wait_stopped().await;
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1224,7 +1438,8 @@ async fn session_admission_orders_configuration_before_document_open() {
 
     service
         .inner()
-        .replace_analyzer(
+        .session
+        .update_configuration(
             default_lsp_analysis_options().with_max_source_bytes(Some(source.len() - 1)),
         )
         .await;
@@ -1406,6 +1621,7 @@ async fn stale_push_diagnostic_context_is_suppressed() {
 
     let diagnostics = server
         .diagnostic_publisher()
+        .expect("the default test client uses push diagnostics")
         .diagnostics_for_current_context(&context)
         .await
         .expect("stale push diagnostics should be suppressed cleanly");
@@ -1843,6 +2059,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
         .expect("expected snapshot-backed diagnostics");
     let diagnostic = server
         .diagnostic_publisher()
+        .expect("the default test client uses push diagnostics")
         .diagnostics_for_current_context(&context)
         .await
         .expect("diagnostic analysis should succeed")

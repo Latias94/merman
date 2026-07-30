@@ -129,12 +129,6 @@ struct ConfigurationRevision(u64);
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct DocumentsRevision(u64);
 
-impl Default for SessionState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct StoredDocument {
     pub uri: Uri,
@@ -154,7 +148,7 @@ enum DocumentSource {
 #[derive(Debug)]
 struct PreparedDocumentText {
     text: String,
-    span: DiagnosticSpan,
+    oversized_span: Option<DiagnosticSpan>,
 }
 
 #[derive(Debug)]
@@ -163,6 +157,7 @@ struct OpenDocumentTicket {
     expected_document_epoch: Option<DocumentEpoch>,
     expected_uri_revision: u64,
     expected_configuration_revision: ConfigurationRevision,
+    max_source_bytes: Option<usize>,
     tracker: Arc<OpenDocumentTracker>,
 }
 
@@ -235,16 +230,30 @@ impl OpenDocumentTracker {
 impl PreparedDocumentText {
     #[cfg(test)]
     pub(crate) fn new(text: String) -> Self {
-        let span = source_limit_diagnostic_span(&text);
-        Self { text, span }
+        let oversized_span = Some(source_limit_diagnostic_span(&text));
+        Self {
+            text,
+            oversized_span,
+        }
     }
 
     pub(crate) fn new_cancellable(
         text: String,
+        max_source_bytes: Option<usize>,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<Self, AnalysisCancelled> {
-        let span = source_limit_diagnostic_span_cancellable(&text, cancellation)?;
-        Ok(Self { text, span })
+        cancellation.checkpoint()?;
+        let oversized_span = match max_source_bytes {
+            Some(limit) if text.len() > limit => Some(source_limit_diagnostic_span_cancellable(
+                &text,
+                cancellation,
+            )?),
+            _ => None,
+        };
+        Ok(Self {
+            text,
+            oversized_span,
+        })
     }
 }
 
@@ -256,27 +265,15 @@ impl TextChangePlan {
             kind,
             expected_epoch,
             expected_configuration_revision,
+            max_source_bytes,
             source,
             changes,
             cancellation,
         } = self;
         cancellation.checkpoint()?;
-        let mutation = match source {
+        let prepared_text = match source {
             CapturedDocumentSource::Available(current_text) => {
-                cancellation.checkpoint()?;
-                let mut text = Rope::from_str(&current_text);
-                cancellation.checkpoint()?;
-                let changes = changes_from_last_full_replacement(changes);
-                match apply_text_content_changes(&mut text, changes, &cancellation)? {
-                    Ok(()) => {
-                        let text = text.to_string();
-                        PreparedTextMutation::Text(PreparedDocumentText::new_cancellable(
-                            text,
-                            &cancellation,
-                        )?)
-                    }
-                    Err(()) => invalid_range_mutation(),
-                }
+                apply_available_text_changes(&current_text, changes, &cancellation)?
             }
             CapturedDocumentSource::Unavailable(unavailable_source) => {
                 let Some(recovery_start) =
@@ -291,25 +288,16 @@ impl TextChangePlan {
                         mutation: full_sync_mutation(unavailable_source),
                     });
                 };
-                let mut changes = changes.into_iter().skip(recovery_start);
-                let replacement = changes
-                    .next()
-                    .expect("full-replacement position must name an existing change");
-                debug_assert!(replacement.range.is_none());
-                cancellation.checkpoint()?;
-                let mut text = Rope::from_str(&replacement.text);
-                cancellation.checkpoint()?;
-                match apply_text_content_changes(&mut text, changes, &cancellation)? {
-                    Ok(()) => {
-                        let text = text.to_string();
-                        PreparedTextMutation::Text(PreparedDocumentText::new_cancellable(
-                            text,
-                            &cancellation,
-                        )?)
-                    }
-                    Err(()) => invalid_range_mutation(),
-                }
+                apply_changes_from_full_replacement(changes, recovery_start, &cancellation)?
             }
+        };
+        let mutation = match prepared_text {
+            Ok(text) => PreparedTextMutation::Text(PreparedDocumentText::new_cancellable(
+                text,
+                max_source_bytes,
+                &cancellation,
+            )?),
+            Err(()) => invalid_range_mutation(),
         };
         cancellation.checkpoint()?;
         Ok(PreparedTextChanges {
@@ -320,6 +308,51 @@ impl TextChangePlan {
             expected_configuration_revision,
             mutation,
         })
+    }
+}
+
+fn apply_available_text_changes(
+    current_text: &str,
+    changes: Vec<TextDocumentContentChangeEvent>,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<Result<String, ()>, AnalysisCancelled> {
+    if let Some(replacement_index) = changes.iter().rposition(|change| change.range.is_none()) {
+        apply_changes_from_full_replacement(changes, replacement_index, cancellation)
+    } else {
+        apply_changes_to_base(current_text, changes, cancellation)
+    }
+}
+
+fn apply_changes_from_full_replacement(
+    changes: Vec<TextDocumentContentChangeEvent>,
+    replacement_index: usize,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<Result<String, ()>, AnalysisCancelled> {
+    let mut changes = changes.into_iter().skip(replacement_index);
+    let replacement = changes
+        .next()
+        .expect("full-replacement position must name an existing change");
+    debug_assert!(replacement.range.is_none());
+    cancellation.checkpoint()?;
+
+    let mut changes = changes.peekable();
+    if changes.peek().is_none() {
+        return Ok(Ok(replacement.text));
+    }
+    apply_changes_to_base(&replacement.text, changes, cancellation)
+}
+
+fn apply_changes_to_base(
+    base: &str,
+    changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<Result<String, ()>, AnalysisCancelled> {
+    cancellation.checkpoint()?;
+    let mut text = Rope::from_str(base);
+    cancellation.checkpoint()?;
+    match apply_text_content_changes(&mut text, changes, cancellation)? {
+        Ok(()) => Ok(Ok(text.to_string())),
+        Err(()) => Ok(Err(())),
     }
 }
 
@@ -380,6 +413,7 @@ struct TextChangePlan {
     kind: DocumentKind,
     expected_epoch: DocumentEpoch,
     expected_configuration_revision: ConfigurationRevision,
+    max_source_bytes: Option<usize>,
     source: CapturedDocumentSource,
     changes: Vec<TextDocumentContentChangeEvent>,
     cancellation: AnalysisCancellationToken,
@@ -619,11 +653,12 @@ impl SnapshotConfigurationPlan {
 }
 
 impl SessionState {
-    pub fn new() -> Self {
+    #[cfg(test)]
+    fn new() -> Self {
         Self::with_session_cancellation(AnalysisCancellationToken::new())
     }
 
-    pub(crate) fn with_session_cancellation(
+    pub(super) fn with_session_cancellation(
         session_cancellation: AnalysisCancellationToken,
     ) -> Self {
         Self::with_session_cancellation_and_cache_budget(
@@ -665,7 +700,7 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_analyzer_for_tests(analyzer: Analyzer) -> Self {
+    fn with_analyzer_for_tests(analyzer: Analyzer) -> Self {
         Self::with_analyzer_and_cache_budget(
             analyzer,
             AnalysisCancellationToken::new(),
@@ -674,7 +709,7 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self {
+    fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self {
         Self::with_session_cancellation_and_cache_budget(
             AnalysisCancellationToken::new(),
             analysis_cache_budget,
@@ -682,22 +717,22 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub(crate) fn analysis_cache_total_weight(&self) -> usize {
+    pub(super) fn analysis_cache_total_weight(&self) -> usize {
         self.analysis_generations.total_weight()
     }
 
     #[cfg(test)]
-    pub(crate) fn analysis_cache_len(&self) -> usize {
+    pub(super) fn analysis_cache_len(&self) -> usize {
         self.analysis_generations.len()
     }
 
     #[cfg(test)]
-    pub(crate) fn analysis_cache_statistics(&self) -> WeightedCacheStatistics {
+    fn analysis_cache_statistics(&self) -> WeightedCacheStatistics {
         self.analysis_generations.statistics()
     }
 
     #[cfg(test)]
-    pub(crate) fn estimated_analysis_cache_entry_weight(
+    fn estimated_analysis_cache_entry_weight(
         uri: &Uri,
         context: &DocumentAnalysisContext,
     ) -> usize {
@@ -705,7 +740,7 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub(crate) fn set_analysis_test_gate(&mut self, gate: Option<Arc<TestAnalysisGate>>) {
+    pub(super) fn set_analysis_test_gate(&mut self, gate: Option<Arc<TestAnalysisGate>>) {
         self.analysis_test_gate = gate;
     }
 
@@ -841,10 +876,7 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub fn apply_analyzer_options(
-        &mut self,
-        options: AnalysisOptions,
-    ) -> AnalyzerConfigurationChange {
+    fn apply_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
         let (change, requests) = self.begin_analyzer_options(options);
         assert!(
             requests.is_empty(),
@@ -1018,7 +1050,7 @@ impl SessionState {
         DocumentEpoch(self.next_document_epoch)
     }
 
-    pub fn diagnostic_context(&self, uri: &Uri) -> Option<DiagnosticContext> {
+    pub(super) fn diagnostic_context(&self, uri: &Uri) -> Option<DiagnosticContext> {
         self.documents.get(uri).map(|record| {
             DiagnosticContext::new(
                 record.document.clone(),
@@ -1028,13 +1060,13 @@ impl SessionState {
         })
     }
 
-    pub fn is_diagnostic_context_current(&self, context: &DiagnosticContext) -> bool {
+    pub(super) fn is_diagnostic_context_current(&self, context: &DiagnosticContext) -> bool {
         self.diagnostic_generation == context.generation
             && self.is_document_epoch_current(&context.document.uri, context.document_epoch)
     }
 
     #[cfg(test)]
-    pub fn upsert_text(
+    fn upsert_text(
         &mut self,
         uri: Uri,
         version: i32,
@@ -1057,6 +1089,7 @@ impl SessionState {
             uri,
             expected_uri_revision,
             expected_configuration_revision: self.configuration_revision,
+            max_source_bytes: self.analyzer.options().max_source_bytes(),
             tracker: Arc::clone(&self.open_document_tracker),
         }
     }
@@ -1098,7 +1131,9 @@ impl SessionState {
                 DocumentResourceLimit {
                     source_len: prepared.text.len(),
                     max_source_bytes,
-                    span: prepared.span,
+                    span: prepared
+                        .oversized_span
+                        .expect("oversized prepared source must carry a diagnostic span"),
                 },
             );
         }
@@ -1134,20 +1169,23 @@ impl SessionState {
         self.open_document_tracker.advance(&uri);
         self.analysis_executor.invalidate(&uri);
         self.analysis_generations.remove(&uri);
-        let semantic_tokens_state = self
-            .documents
-            .get(&uri)
-            .and_then(|record| record.semantic_tokens_state.clone());
         let epoch = self.next_document_epoch();
-        self.documents.insert(
-            uri,
-            DocumentRecord {
-                document: document.clone(),
-                epoch,
-                diagnostic_state: None,
-                semantic_tokens_state,
-            },
-        );
+        match self.documents.entry(uri) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let record = entry.get_mut();
+                record.document = document.clone();
+                record.epoch = epoch;
+                record.diagnostic_state = None;
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(DocumentRecord {
+                    document: document.clone(),
+                    epoch,
+                    diagnostic_state: None,
+                    semantic_tokens_state: None,
+                });
+            }
+        }
         self.advance_documents_revision();
         document
     }
@@ -1221,7 +1259,7 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub fn open_text(
+    fn open_text(
         &mut self,
         uri: Uri,
         version: i32,
@@ -1232,7 +1270,7 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub fn apply_text_changes(
+    fn apply_text_changes(
         &mut self,
         uri: Uri,
         version: i32,
@@ -1274,6 +1312,7 @@ impl SessionState {
             kind: current.kind,
             expected_epoch: record.epoch,
             expected_configuration_revision: self.configuration_revision,
+            max_source_bytes: self.analyzer.options().max_source_bytes(),
             source: current.captured_source(),
             changes,
             cancellation: self.session_cancellation.child(),
@@ -1306,29 +1345,29 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub fn upsert(&mut self, uri: Uri, version: i32, text: String) -> Arc<DocumentSnapshot> {
+    fn upsert(&mut self, uri: Uri, version: i32, text: String) -> Arc<DocumentSnapshot> {
         let kind = DocumentKind::from_path(uri.path().as_str());
         self.upsert_text(uri.clone(), version, text, kind);
         self.snapshot(&uri)
             .expect("snapshot should exist after inserting document text")
     }
 
-    pub fn get(&self, uri: &Uri) -> Option<&StoredDocument> {
+    pub(super) fn get(&self, uri: &Uri) -> Option<&StoredDocument> {
         self.documents.get(uri).map(|record| &record.document)
     }
 
     #[cfg(test)]
-    pub fn analyzer_options(&self) -> &AnalysisOptions {
+    fn analyzer_options(&self) -> &AnalysisOptions {
         self.analyzer.options()
     }
 
     #[cfg(test)]
-    pub fn analyzer_environment_identity(&self) -> &merman_analysis::AnalysisEnvironmentIdentity {
+    fn analyzer_environment_identity(&self) -> &merman_analysis::AnalysisEnvironmentIdentity {
         self.analyzer.environment_identity()
     }
 
     #[cfg(test)]
-    pub fn snapshot(&mut self, uri: &Uri) -> Option<Arc<DocumentSnapshot>> {
+    fn snapshot(&mut self, uri: &Uri) -> Option<Arc<DocumentSnapshot>> {
         self.snapshot_context(uri).map(|context| context.snapshot)
     }
 
@@ -1355,7 +1394,7 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
+    fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
         if let Some(cached) = self.cached_snapshot_context_for_uri(uri) {
             return Some(cached);
         }
@@ -1386,7 +1425,7 @@ impl SessionState {
         self.insert_built_analysis(&request, analysis)
     }
 
-    pub(crate) fn snapshot_build_request(&self, uri: &Uri) -> Option<AnalysisBuildRequest> {
+    pub(super) fn snapshot_build_request(&self, uri: &Uri) -> Option<AnalysisBuildRequest> {
         let record = self.documents.get(uri)?;
         if record.document.has_unavailable_source() || self.has_snapshot(uri) {
             return None;
@@ -1413,7 +1452,7 @@ impl SessionState {
         Some(request)
     }
 
-    pub fn insert_built_analysis(
+    pub(super) fn insert_built_analysis(
         &mut self,
         request: &AnalysisBuildRequest,
         analysis: Arc<DocumentAnalysisContext>,
@@ -1448,18 +1487,27 @@ impl SessionState {
         ))
     }
 
-    pub fn is_snapshot_context_current(&self, context: &SnapshotContext) -> bool {
+    pub(super) fn is_snapshot_context_current(&self, context: &SnapshotContext) -> bool {
         self.snapshot_generation == context.generation
             && self.is_document_epoch_current(context.snapshot.uri(), context.document_epoch)
     }
 
-    pub fn is_analysis_context_current(&self, context: &SnapshotContext) -> bool {
+    pub(super) fn is_analysis_context_current(&self, context: &SnapshotContext) -> bool {
         self.is_snapshot_context_current(context)
             && context.diagnostic_generation() == self.diagnostic_generation
     }
 
+    pub(super) fn diagnostic_contexts_are_current(
+        &self,
+        diagnostic: &DiagnosticContext,
+        analysis: Option<&SnapshotContext>,
+    ) -> bool {
+        self.is_diagnostic_context_current(diagnostic)
+            && analysis.is_none_or(|context| self.is_analysis_context_current(context))
+    }
+
     #[cfg(test)]
-    pub fn is_snapshot_contexts_current(&self, contexts: &[SnapshotContext]) -> bool {
+    fn is_snapshot_contexts_current(&self, contexts: &[SnapshotContext]) -> bool {
         contexts
             .iter()
             .all(|context| self.is_snapshot_context_current(context))
@@ -1471,7 +1519,7 @@ impl SessionState {
             .is_some_and(|record| record.epoch == document_epoch)
     }
 
-    pub fn has_snapshot(&self, uri: &Uri) -> bool {
+    pub(super) fn has_snapshot(&self, uri: &Uri) -> bool {
         let Some(record) = self.documents.get(uri) else {
             return false;
         };
@@ -1481,7 +1529,7 @@ impl SessionState {
         })
     }
 
-    pub fn has_analysis_payload(&self, uri: &Uri) -> bool {
+    pub(super) fn has_analysis_payload(&self, uri: &Uri) -> bool {
         self.analysis_generations.peek(uri).is_some_and(|cached| {
             cached.diagnostic_generation == self.diagnostic_generation
                 && cached.snapshot_generation == self.snapshot_generation
@@ -1489,7 +1537,7 @@ impl SessionState {
         })
     }
 
-    pub(crate) fn diagnostic_reprojection_request(
+    pub(super) fn diagnostic_reprojection_request(
         &self,
         uri: &Uri,
     ) -> Option<DiagnosticReprojectionRequest> {
@@ -1517,20 +1565,17 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub(crate) fn cached_analysis_generation(
-        &self,
-        uri: &Uri,
-    ) -> Option<&Arc<DocumentAnalysisContext>> {
+    fn cached_analysis_generation(&self, uri: &Uri) -> Option<&Arc<DocumentAnalysisContext>> {
         self.analysis_generations
             .peek(uri)
             .map(|cached| &cached.context)
     }
 
-    pub(crate) fn analysis_executor(&self) -> AnalysisExecutor {
+    pub(super) fn analysis_executor(&self) -> AnalysisExecutor {
         self.analysis_executor.clone()
     }
 
-    pub fn remove(&mut self, uri: &Uri) {
+    pub(super) fn remove(&mut self, uri: &Uri) {
         self.analysis_executor.forget(uri);
         if self.documents.remove(uri).is_some() {
             self.open_document_tracker.advance(uri);
@@ -1539,7 +1584,7 @@ impl SessionState {
         self.analysis_generations.remove(uri);
     }
 
-    pub(crate) fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
+    fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
         self.documents
             .values()
             .map(|record| {
@@ -1553,7 +1598,7 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub fn snapshot_build_requests(&self) -> (Vec<SnapshotContext>, Vec<AnalysisBuildRequest>) {
+    fn snapshot_build_requests(&self) -> (Vec<SnapshotContext>, Vec<AnalysisBuildRequest>) {
         let mut contexts = Vec::new();
         let mut requests = Vec::new();
 
@@ -1582,7 +1627,7 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub fn snapshot_contexts_for_requests(
+    fn snapshot_contexts_for_requests(
         &mut self,
         requests: Vec<(AnalysisBuildRequest, Arc<DocumentAnalysisContext>)>,
     ) -> SnapshotBatchCommit {
@@ -1606,29 +1651,29 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    pub fn semantic_tokens_state(&self, uri: &Uri) -> Option<&SemanticTokensState> {
+    pub(super) fn semantic_tokens_state(&self, uri: &Uri) -> Option<&SemanticTokensState> {
         self.documents
             .get(uri)
             .and_then(|record| record.semantic_tokens_state.as_ref())
-            .map(|stored| &stored.state)
+            .map(|stored| stored.state.as_ref())
     }
 
-    pub fn semantic_tokens_state_for_delta(
+    pub(super) fn semantic_tokens_state_for_delta(
         &self,
         uri: &Uri,
         previous_result_id: &str,
-    ) -> Option<SemanticTokensState> {
+    ) -> Option<Arc<SemanticTokensState>> {
         self.documents
             .get(uri)
             .and_then(|record| record.semantic_tokens_state.as_ref())
             .and_then(|stored| {
                 (stored.snapshot_generation == self.snapshot_generation
                     && stored.state.result_id.as_deref() == Some(previous_result_id))
-                .then(|| stored.state.clone())
+                .then(|| Arc::clone(&stored.state))
             })
     }
 
-    pub fn set_semantic_tokens_state_if_current(
+    pub(super) fn set_semantic_tokens_state_if_current(
         &mut self,
         context: &SnapshotContext,
         state: SemanticTokensState,
@@ -1642,12 +1687,12 @@ impl SessionState {
         };
         record.semantic_tokens_state = Some(StoredSemanticTokensState {
             snapshot_generation: context.generation,
-            state,
+            state: Arc::new(state),
         });
         true
     }
 
-    pub fn diagnostic_state(&self, uri: &Uri) -> Option<DocumentDiagnosticState> {
+    pub(super) fn diagnostic_state(&self, uri: &Uri) -> Option<DocumentDiagnosticState> {
         self.documents.get(uri).and_then(|record| {
             record.diagnostic_state.as_ref().and_then(|stored| {
                 (stored.generation == self.diagnostic_generation
@@ -1657,7 +1702,7 @@ impl SessionState {
         })
     }
 
-    pub fn set_diagnostic_state_if_current(
+    pub(super) fn set_diagnostic_state_if_current(
         &mut self,
         context: &DiagnosticContext,
         state: DocumentDiagnosticState,
@@ -1689,7 +1734,7 @@ struct DocumentRecord {
 #[derive(Debug, Clone)]
 struct StoredSemanticTokensState {
     snapshot_generation: SnapshotGeneration,
-    state: SemanticTokensState,
+    state: Arc<SemanticTokensState>,
 }
 
 #[derive(Debug, Clone)]
@@ -1734,7 +1779,11 @@ pub(crate) enum AnalyzerConfigurationChange {
 }
 
 impl AnalyzerConfigurationChange {
-    pub fn affects_snapshots(self) -> bool {
+    pub(crate) fn affects_diagnostics(self) -> bool {
+        !matches!(self, Self::Unchanged)
+    }
+
+    pub(crate) fn affects_snapshots(self) -> bool {
         matches!(self, Self::SnapshotAffecting)
     }
 }
@@ -1757,20 +1806,11 @@ impl ConfigurationUpdateOutcome {
     }
 
     pub(crate) fn affects_diagnostics(self) -> bool {
-        matches!(
-            self,
-            Self::Applied(
-                AnalyzerConfigurationChange::DiagnosticsOnly
-                    | AnalyzerConfigurationChange::SnapshotAffecting
-            )
-        )
+        matches!(self, Self::Applied(change) if change.affects_diagnostics())
     }
 
     pub(crate) fn affects_snapshots(self) -> bool {
-        matches!(
-            self,
-            Self::Applied(AnalyzerConfigurationChange::SnapshotAffecting)
-        )
+        matches!(self, Self::Applied(change) if change.affects_snapshots())
     }
 
     pub(crate) fn failed(self) -> bool {
@@ -1806,15 +1846,6 @@ fn apply_text_content_change(text: &mut Rope, change: TextDocumentContentChangeE
         *text = Rope::from_str(&change.text);
     }
     true
-}
-
-fn changes_from_last_full_replacement(
-    changes: Vec<TextDocumentContentChangeEvent>,
-) -> Vec<TextDocumentContentChangeEvent> {
-    let Some(recovery_start) = changes.iter().rposition(|change| change.range.is_none()) else {
-        return changes;
-    };
-    changes.into_iter().skip(recovery_start).collect()
 }
 
 fn lsp_range_to_char_range(text: &Rope, range: Range) -> Option<std::ops::Range<usize>> {
@@ -1904,9 +1935,10 @@ impl LanguageSession {
             .lock()
             .await
             .capture_open_document(uri.clone());
+        let max_source_bytes = ticket.max_source_bytes;
         let cancellation = self.inner.cancellation.child();
         let prepared = match tokio::task::spawn_blocking(move || {
-            PreparedDocumentText::new_cancellable(text, &cancellation)
+            PreparedDocumentText::new_cancellable(text, max_source_bytes, &cancellation)
         })
         .await
         {

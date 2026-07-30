@@ -3,7 +3,7 @@
 //! Diagnostics-first analysis contracts and source mapping for Merman.
 //!
 //! This crate is intentionally render-free. It owns the JSON payload shape and source-position
-//! helpers that FFI, UniFFI, WASM, CLI linting, Markdown scanning, and future LSP adapters can share.
+//! helpers that FFI, UniFFI, WASM, CLI linting, Markdown scanning, and the LSP adapter share.
 
 mod analyzer;
 mod cancellation;

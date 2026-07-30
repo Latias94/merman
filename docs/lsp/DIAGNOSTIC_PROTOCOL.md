@@ -11,7 +11,7 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 
 ## Canonical rules
 
-- Source of truth: `merman-analysis::AnalysisPayload`
+- Source of truth for analysis diagnostics: `merman-analysis::AnalysisPayload`
 - Ownership: core emits structured parse diagnostics; analysis owns canonical merge, fallback,
   and recovery policy; editor-core and LSP only project that payload.
 - Transport and server service: `tower-lsp-server`; LSP wire types come from its maintained
@@ -21,13 +21,19 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 - Coordinate system: UTF-16 LSP positions
 - Markdown fences: remapped to the host document URI and range
 - Visible Problems code: string analysis rule id such as `merman.parse.diagram_parse`; numeric
-  analysis status code and camelCase metadata such as `codeName` and `diagramType` remain only in
-  diagnostic `data`.
+  analysis status and auxiliary fields such as `codeName` and `diagramType` remain in
+  `AnalysisPayload` and are not copied to LSP `Diagnostic.data`. When diagnostic data is negotiated,
+  analysis diagnostics carry only the server-owned diagnostic id and current document version used
+  to validate code actions.
 
 ## Compatibility
 
 - Plain Mermaid documents publish diagnostics against the file URI directly.
 - Markdown/MDX documents publish diagnostics against the containing document URI.
+- `merman.lsp.document_sync_lost` is the one LSP-owned protocol-integrity diagnostic. It reports
+  that an invalid incremental edit or a ranged edit after source discard left the server without
+  authoritative text. It is not an analysis rule or rule-catalog entry, and its negotiated data
+  contains only the document version.
 
 ## Current Surface
 
@@ -56,9 +62,11 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
 
 ## Request Interleaving
 
-Diagnostics are computed from captured document/analyzer contexts so the server can release the
-document-store lock while projecting analysis payloads. Before sending push diagnostics, the server
-checks that the captured document epoch and diagnostic configuration generation are still current;
+Diagnostics are computed through typed `LanguageSession` operations. Each operation captures a
+document/analyzer ticket under the short-lived session mutex, projects analysis payloads without
+holding that mutex, and commits only while the document epoch and diagnostic configuration
+generation are still current. Before sending push diagnostics, the server
+checks that the captured context remains current;
 stale contexts observed before the final publish attempt are suppressed. A notification already
 handed to the client transport is outside this cancellation boundary.
 

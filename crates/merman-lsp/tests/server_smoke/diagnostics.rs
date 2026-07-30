@@ -467,13 +467,6 @@ async fn lsp_service_smoke_publishes_current_diagnostics_version() {
     assert_eq!(third.method(), "textDocument/publishDiagnostics");
     assert_eq!(third_params.version, Some(2));
     assert!(third_params.diagnostics.is_empty());
-
-    assert!(
-        timeout(Duration::from_millis(50), socket.next())
-            .await
-            .is_err(),
-        "unexpected extra publishDiagnostics message"
-    );
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -192,14 +192,19 @@ settings completion, settings validation hints, and profile/rule pickers, then u
 
 ## Standard LSP Pairing
 
-- Diagnostics use standard `textDocument/publishDiagnostics`.
+- Clients that do not negotiate pull diagnostics receive standard
+  `textDocument/publishDiagnostics`; pull clients request `textDocument/diagnostic` instead and do
+  not also receive pushed analysis diagnostics.
 - Rule ids appear on Merman diagnostics and code actions through the shared analysis payload.
 - Quickfixes use standard `textDocument/codeAction` and only exist when the current server
   analysis snapshot carries explicit `DiagnosticFix` metadata; diagnostic data contains identity
   and version validation only.
-- Runtime lint configuration should flow through initialization options or
-  `workspace/didChangeConfiguration`; the server then republishes diagnostics and refreshes semantic
-  tokens when the client advertises refresh support.
+- Runtime analysis configuration should flow through initialization options or
+  `workspace/didChangeConfiguration`. A diagnostic-affecting change republishes open-document
+  diagnostics for push clients, or sends `workspace/diagnostic/refresh` for pull clients only when
+  they advertise diagnostic refresh support. A snapshot-affecting change independently sends
+  `workspace/semanticTokens/refresh` when semantic tokens and refresh support are negotiated;
+  diagnostic-only lint changes do not invalidate or refresh semantic tokens.
 
 Analysis always retains family parse failures in its closed snapshot. The removed
 `parse.suppress_errors` analysis setting is not an ignored compatibility field; clients must remove

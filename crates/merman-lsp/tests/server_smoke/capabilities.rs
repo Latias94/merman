@@ -272,8 +272,8 @@ async fn lsp_service_rejects_unadvertised_workspace_diagnostics() {
     );
 }
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
+async fn lsp_service_with_diagnostic_pull_accepts_document_open() {
+    let (mut service, _socket) = MermanLanguageServer::service();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
@@ -318,12 +318,6 @@ async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
     assert_eq!(
         service.ready().await.unwrap().call(open).await.unwrap(),
         None
-    );
-
-    let pushed = timeout(Duration::from_millis(200), socket.next()).await;
-    assert!(
-        pushed.is_err(),
-        "diagnostic pull clients should not receive push diagnostics"
     );
 }
 

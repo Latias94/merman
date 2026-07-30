@@ -14,10 +14,11 @@ status: active
 `merman-editor-core` owns protocol-neutral document snapshots, UTF-16 ranges, completion, hover, document symbols, selection and folding ranges, navigation, rename, and semantic-token planning. `merman-lsp` owns:
 
 - LSP initialization, lifecycle, capability negotiation, and `tower_lsp_server::ls_types` projection;
-- open-document state, incremental changes, stale-result suppression, and diagnostics publication;
+- synchronous message admission plus ordered document and configuration transactions;
+- generation acquisition, singleflight execution, weighted caching, stale-result suppression, and diagnostics publication;
 - semantic-token result IDs and delta state;
 - standard request handlers and Merman-specific extension requests; and
-- client refresh coordination after configuration changes.
+- client effects, refresh coordination, cancellation, and bounded session shutdown.
 
 Preview, export, and editor UI stay in their host integrations.
 
@@ -42,7 +43,9 @@ The server advertises editor-agnostic Merman requests under `ServerCapabilities.
 
 Plain Mermaid files and Mermaid fences in Markdown and MDX use the same typed `DocumentSnapshot`/`FenceTextIndex` model. Host-document positions remain UTF-16 correct, including diagnostics, fixes, completion edits, navigation, rename, and semantic tokens.
 
-`MermanLspService` synchronously admits each JSON-RPC message before transport futures can run concurrently. State mutations are ordered by arrival, while reads wait for every earlier mutation to commit or abort. The document store versions source and analyzer configuration independently. Request handlers capture the relevant generations before doing projection work outside the store lock, then reject or suppress results whose snapshot is no longer current.
+`MermanLspService` synchronously admits each JSON-RPC message before transport futures can run concurrently. State mutations are ordered by arrival, while reads wait for every earlier mutation to commit or abort. One private `LanguageSession` versions source and analyzer configuration independently and owns generation acquisition, singleflight execution, weighted LRU entries, guarded commits, client effects, refresh coordination, cancellation, and endpoint lifetime. Typed session operations capture a short-lived state ticket, perform parsing or projection outside the session mutex, then commit only if the captured epoch and configuration remain current. Handlers do not own transaction choreography.
+
+The service and client socket are two endpoints of that same session. Dropping either endpoint, receiving `exit`, or closing the socket stream terminates the shared lifecycle and cancels child work exactly once. The bundled stdio transport keeps cancellation and `exit` reachable under ordinary-handler saturation and applies one absolute deadline to handler, write, flush, and output-shutdown drain work.
 
 - Push diagnostics re-check currentness immediately before publication.
 - Pull diagnostics retry bounded stale computations against the latest context.

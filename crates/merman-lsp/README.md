@@ -39,7 +39,7 @@ cargo run -p merman-lsp --features stdio
 - Mermaid code fences in Markdown, MDX, and Markdown-family documents.
 - Multiple fences per document with source ranges mapped back to the host file.
 
-Language behavior comes from `merman-analysis` and `merman-editor-core`; the LSP layer only owns document lifecycle, request cancellation, stale-result suppression, and protocol projection.
+Language behavior comes from `merman-analysis` and `merman-editor-core`. `MermanLspService` owns synchronous message admission, while its private `LanguageSession` owns document and configuration transactions, generation acquisition and caching, stale-result suppression, cancellation, client effects, refresh coordination, and shutdown. The remaining LSP layer projects those results onto the protocol.
 
 ## Language Features
 
@@ -109,13 +109,13 @@ fn create_session() -> (MermanLspService, MermanClientSocket) {
 }
 ```
 
-The host transport should poll these directions concurrently. It owns the request queue: reject encoded messages larger than `LSP_MAX_MESSAGE_BYTES`, retain no more than `LSP_REQUEST_BYTE_BUDGET` across queued and running messages, and poll at most `LSP_HANDLER_CONCURRENCY` handler futures concurrently. Call the service as each accepted message enters that bounded queue so a later `$/cancelRequest` can cancel a request that is still waiting for ordered admission. Dropping either half closes its associated pending work; do not leave the socket undriven because diagnostics, logs, and refresh requests use it.
+The host transport should poll these directions concurrently. It owns the request queue: reject encoded messages larger than `LSP_MAX_MESSAGE_BYTES`, retain no more than `LSP_REQUEST_BYTE_BUDGET` across queued and running messages, and poll at most `LSP_HANDLER_CONCURRENCY` handler futures concurrently. Call the service as each accepted message enters that bounded queue so a later `$/cancelRequest` can cancel a request that is still waiting for ordered admission, and reserve a bounded path for cancellation and `exit` even while ordinary handlers are saturated. Dropping either the service or socket terminates the whole shared session and cancels its pending work exactly once. Do not leave the socket undriven because diagnostics, logs, and refresh requests use it.
 
 ## Runtime And Contract Boundaries
 
 LSP analysis uses deterministic runtime state. Initialization and workspace settings can provide `fixed_today` and `fixed_local_offset_minutes`, but the server does not expose a native runtime selector or forward `system-*` Cargo features.
 
-The document store consumes typed editor snapshots backed by `FenceTextIndex`; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `1`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
+The private session cache consumes typed editor snapshots backed by `FenceTextIndex` and retains weighted generation/payload entries; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `1`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
 
 When a family parser cannot provide complete or recovered body facts, Merman does not guess body symbols, references, or rename targets. Source-start diagram headers and templates remain available from the static family catalog.
 

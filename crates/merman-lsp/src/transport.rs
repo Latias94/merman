@@ -545,15 +545,11 @@ where
 async fn output_drain_deadline(
     drain_deadline: &mut watch::Receiver<Option<Instant>>,
 ) -> Option<Instant> {
-    loop {
-        let deadline = *drain_deadline.borrow_and_update();
-        if deadline.is_some() {
-            return deadline;
-        }
-        if drain_deadline.changed().await.is_err() {
-            return None;
-        }
-    }
+    drain_deadline
+        .wait_for(Option::is_some)
+        .await
+        .ok()
+        .and_then(|deadline| *deadline)
 }
 
 async fn write_message_bounded<O>(

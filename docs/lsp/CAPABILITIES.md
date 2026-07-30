@@ -33,15 +33,15 @@ description change cannot create a false LSP/WASM incompatibility.
 baseline plus malformed recovery, and LSP, Web WASM, Monaco, and VS Code gates consume that one
 generated evidence artifact without transport-local sorting or token name lookup.
 
-The LSP document store keeps lazy editor snapshots, but those snapshots are built from the same
-active analyzer configuration used for diagnostics. Diagnostic-only lint rule changes refresh
-diagnostics without invalidating editor snapshots or semantic-token result state. Snapshot-affecting
-changes such as site config, fixed date/time, resource limits, or source descriptor
-changes clear snapshot-dependent state.
+The private `LanguageSession` keeps weighted lazy editor generations built from the same active
+analyzer environment used for diagnostics. Diagnostic-only lint rule changes reproject diagnostics
+without invalidating editor snapshots or semantic-token result state. Snapshot-affecting changes
+such as site config, fixed date/time, resource limits, or source descriptor changes clear
+snapshot-dependent state.
 
-Request handlers capture document/configuration generations before running projection work outside
-the store lock. Semantic-token responses only commit cached token state while the captured snapshot
-is still current; stale previous result ids fall back to full tokens after snapshot-affecting
+Typed session operations capture document/configuration generations before running projection work
+outside the session mutex. Semantic-token responses only commit cached token state while the captured
+snapshot is still current; stale previous result ids fall back to full tokens after snapshot-affecting
 configuration changes. Push diagnostics re-check currentness immediately before publishing and
 suppress contexts that are already stale. Pull diagnostics use a bounded retry loop, recomputing
 from the latest context up to three times when stale analyzer output is detected. This is a bounded
@@ -183,12 +183,15 @@ Remaining fallback ledger:
 
 ## Feature Gates
 
-- Diagnostics: shared `merman-analysis` payloads only. Core parser errors carry structured
-  metadata when the family can prove an exact token span or insertion point. Analysis owns merge
-  and fallback policy: recovered parser facts may improve the primary span, but matching recovery
-  errors must not create a duplicate user-visible diagnostic. Whole-source spans are reserved for
-  source-wide conditions such as no diagram, unsupported family, resource limits, or genuinely
-  unlocatable parser failures.
+- Diagnostics: analysis and lint diagnostics come only from shared `merman-analysis` payloads. Core
+  parser errors carry structured metadata when the family can prove an exact token span or insertion
+  point. Analysis owns merge and fallback policy: recovered parser facts may improve the primary
+  span, but matching recovery errors must not create a duplicate user-visible diagnostic.
+  Whole-source spans are reserved for source-wide conditions such as no diagram, unsupported family,
+  resource limits, or genuinely unlocatable parser failures. The sole LSP-owned exception is
+  `merman.lsp.document_sync_lost`, a protocol-integrity diagnostic emitted when an invalid
+  incremental edit or a ranged edit after source discard leaves no authoritative server text; it is
+  not an analysis rule or rule-catalog entry.
 - LSP diagnostic projection: `Diagnostic.source` is `merman`; the visible `Diagnostic.code` is the
   stable string rule id such as `merman.parse.diagram_parse`, not the numeric analysis status.
   When diagnostic data is negotiated, it contains only the diagnostic id and current document

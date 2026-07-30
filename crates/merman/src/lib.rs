@@ -17,6 +17,8 @@
 //! | Goal | Feature | Start with |
 //! | --- | --- | --- |
 //! | Parse Mermaid or produce semantic JSON | none | [`Engine`] and [`ParseOptions`] |
+//! | Analyze diagnostics or Markdown fences | `analysis` | [`analysis::Analyzer`] |
+//! | Build parser-backed editor snapshots | `editor` | [`editor::DocumentWorkspace`] |
 //! | Render Mermaid-like SVG | `svg` | [`render_svg`] |
 //! | Prepare SVG for export | `svg` | `HeadlessRenderer::render_resvg_compatible_svg_with_pipeline_sync` |
 //! | Render terminal-friendly text | `ascii` | `merman::ascii::HeadlessAsciiRenderer` |
@@ -31,6 +33,10 @@
 //!
 //! # Features
 //!
+//! - `analysis`: render-free diagnostics, source mapping, and Markdown analysis through
+//!   `merman::analysis`.
+//! - `editor`: parser-backed editor snapshots and queries through `merman::editor`; this implies
+//!   `analysis`.
 //! - `svg`: layout plus SVG rendering through `merman::svg`.
 //! - `ascii`: ASCII/Unicode text rendering through `merman::ascii`.
 //! - `png`, `jpeg`, and `pdf`: bounded binary export through `merman::svg::export`; each

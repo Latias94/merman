@@ -126,20 +126,24 @@ The facts schema version is unrelated to:
 - One generated token descriptor owns token codes, modifiers, precedence, LSP legend indices, and
   the five-word LSP-relative UTF-16 packed representation. Editor-core validates, sorts, resolves
   overlaps, splits multiline spans, converts UTF-16 positions, and packs the sequence once.
-- `merman-lsp` owns its transport `DocumentAnalysisContext`, request-scoped `SnapshotContext`,
-  request lifecycle, URI/range projection, full/delta result state, capability advertising, and
-  stale-result suppression. It does not sort tokens, assign legend indices, or define language
+- `merman-lsp` has one private `LanguageSession` owner for ordered document/configuration
+  transactions, generation acquisition and singleflight, weighted cache entries, guarded commits,
+  client effects, refresh coordination, cancellation, and endpoint lifetime. Its transport
+  `DocumentAnalysisContext` and request-scoped `SnapshotContext` remain implementation details.
+  The adapter owns URI/range projection, full/delta result state, capability advertising, and
+  stale-result suppression; it does not sort tokens, assign legend indices, or define language
   semantics.
 - WASM validates the same descriptor and returns the same packed words. Monaco and VS Code consume
   that descriptor without a second enum, lookup table, sort, or regex grammar.
 
-One cached LSP `DocumentAnalysisContext` pairs an editor-core `DocumentSnapshot` with its canonical
+One weighted session-cache entry pairs an editor-core `DocumentSnapshot` with its canonical
 `AnalysisGeneration` and current diagnostic `AnalysisPayload` for a source version and analyzer
-configuration. Each request borrows a `SnapshotContext`, which captures the document epoch and
-snapshot generation together with the diagnostic generation. The request kind determines whether
-currentness requires only the snapshot or both the snapshot and diagnostic payload. Completion,
-hover/structure, rename, code actions, diagnostics, detection, and tokens therefore use one coherent
-parse generation.
+configuration. A typed session operation borrows a `SnapshotContext`, which captures the document
+epoch and snapshot generation together with the diagnostic generation, performs expensive work
+outside the session mutex, and commits only if its guard is still current. The request kind
+determines whether currentness requires only the snapshot or both the snapshot and diagnostic
+payload. Completion, hover/structure, rename, code actions, diagnostics, detection, and tokens
+therefore use one coherent parse generation.
 
 A rule-only analyzer change advances the diagnostic generation and reprojects `AnalysisPayload`
 from the cached canonical `AnalysisGeneration` through `AnalysisGeneration::project`; it retains the

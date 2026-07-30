@@ -277,6 +277,32 @@ fn prepared_text_limits_oversized_documents_without_scanning_under_the_store_loc
 }
 
 #[test]
+fn prepared_text_only_projects_a_span_when_the_source_is_oversized() {
+    let source = "flowchart TD\nA-->B\n".to_string();
+    let cancellation = AnalysisCancellationToken::new();
+
+    let admitted =
+        PreparedDocumentText::new_cancellable(source.clone(), Some(source.len()), &cancellation)
+            .expect("the admitted source should be prepared");
+    assert_eq!(admitted.oversized_span, None);
+
+    let unlimited = PreparedDocumentText::new_cancellable(source.clone(), None, &cancellation)
+        .expect("the unlimited source should be prepared");
+    assert_eq!(unlimited.oversized_span, None);
+
+    let oversized = PreparedDocumentText::new_cancellable(
+        source.clone(),
+        Some(source.len() - 1),
+        &cancellation,
+    )
+    .expect("the oversized source should be prepared");
+    assert_eq!(
+        oversized.oversized_span,
+        Some(source_limit_diagnostic_span(&source))
+    );
+}
+
+#[test]
 fn source_limit_reclassification_rejects_a_stale_document_epoch() {
     let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/reclassified.mmd").unwrap();
@@ -1115,6 +1141,43 @@ fn full_replacement_later_in_available_batch_ignores_prior_invalid_ranges() {
         "sequenceDiagram\nAlice->>Bob: Hi\n"
     );
     assert_eq!(stored.sync_error_state(), None);
+}
+
+#[test]
+fn ranged_changes_after_a_full_replacement_apply_to_the_replacement() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [
+            TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+            },
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(1, 13), Position::new(1, 15))),
+                range_length: None,
+                text: "Hello".to_string(),
+            },
+        ],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected updated document");
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "sequenceDiagram\nAlice->>Bob: Hello\n"
+    );
 }
 
 #[test]

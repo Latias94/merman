@@ -37,7 +37,33 @@ impl RefreshKind {
     }
 }
 
-type PendingRefreshes = Arc<Mutex<HashMap<Id, oneshot::Sender<JsonRpcResult<()>>>>>;
+type PendingRefreshMap = HashMap<Id, oneshot::Sender<JsonRpcResult<()>>>;
+
+#[derive(Clone, Default)]
+struct PendingRefreshes(Arc<Mutex<PendingRefreshMap>>);
+
+impl PendingRefreshes {
+    fn insert(&self, id: Id, response: oneshot::Sender<JsonRpcResult<()>>) {
+        lock_recovering_poison(&self.0).insert(id, response);
+    }
+
+    fn remove(&self, id: &Id) -> Option<oneshot::Sender<JsonRpcResult<()>>> {
+        lock_recovering_poison(&self.0).remove(id)
+    }
+
+    fn cancel_all(&self) {
+        lock_recovering_poison(&self.0).clear();
+    }
+
+    fn len(&self) -> usize {
+        lock_recovering_poison(&self.0).len()
+    }
+
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        lock_recovering_poison(&self.0).is_empty()
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct RefreshClient {
@@ -50,7 +76,7 @@ impl fmt::Debug for RefreshClient {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("RefreshClient")
-            .field("pending", &lock_recovering_poison(&self.pending).len())
+            .field("pending", &self.pending.len())
             .finish_non_exhaustive()
     }
 }
@@ -58,11 +84,11 @@ impl fmt::Debug for RefreshClient {
 impl RefreshClient {
     pub(crate) fn channel() -> (Self, mpsc::Receiver<Request>, RefreshResponseRouter) {
         let (outgoing, requests) = mpsc::channel(REFRESH_REQUEST_CHANNEL_CAPACITY);
-        let pending = Arc::new(Mutex::new(HashMap::new()));
+        let pending = PendingRefreshes::default();
         (
             Self {
                 outgoing,
-                pending: Arc::clone(&pending),
+                pending: pending.clone(),
                 next_request_id: Arc::new(AtomicU64::new(0)),
             },
             requests,
@@ -80,10 +106,10 @@ impl RefreshClient {
             .id(id.clone())
             .finish();
         let (response, receive_response) = oneshot::channel();
-        lock_recovering_poison(&self.pending).insert(id.clone(), response);
+        self.pending.insert(id.clone(), response);
         let _guard = PendingRefreshGuard {
             id,
-            pending: Arc::clone(&self.pending),
+            pending: self.pending.clone(),
         };
 
         let mut outgoing = self.outgoing.clone();
@@ -96,7 +122,7 @@ impl RefreshClient {
     }
 
     pub(crate) fn cancel_all(&self) {
-        lock_recovering_poison(&self.pending).clear();
+        self.pending.cancel_all();
     }
 }
 
@@ -107,7 +133,7 @@ struct PendingRefreshGuard {
 
 impl Drop for PendingRefreshGuard {
     fn drop(&mut self) {
-        lock_recovering_poison(&self.pending).remove(&self.id);
+        self.pending.remove(&self.id);
     }
 }
 
@@ -120,7 +146,7 @@ impl fmt::Debug for RefreshResponseRouter {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("RefreshResponseRouter")
-            .field("pending", &lock_recovering_poison(&self.pending).len())
+            .field("pending", &self.pending.len())
             .finish()
     }
 }
@@ -132,7 +158,7 @@ impl RefreshResponseRouter {
         }
 
         let (id, result) = response.into_parts();
-        let waiter = lock_recovering_poison(&self.pending).remove(&id);
+        let waiter = self.pending.remove(&id);
         match waiter {
             Some(waiter) => {
                 let _ = waiter.send(result.map(|_| ()));
@@ -145,12 +171,12 @@ impl RefreshResponseRouter {
     }
 
     fn cancel_all(&self) {
-        lock_recovering_poison(&self.pending).clear();
+        self.pending.cancel_all();
     }
 
     #[cfg(test)]
     pub(crate) fn pending_count(&self) -> usize {
-        lock_recovering_poison(&self.pending).len()
+        self.pending.len()
     }
 }
 
@@ -342,7 +368,7 @@ mod tests {
         });
 
         tokio::time::timeout(Duration::from_secs(1), async {
-            while lock_recovering_poison(&refresh_client.pending).is_empty() {
+            while refresh_client.pending.is_empty() {
                 tokio::task::yield_now().await;
             }
             tokio::task::yield_now().await;
