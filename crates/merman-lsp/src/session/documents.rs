@@ -1898,8 +1898,13 @@ impl LanguageSession {
         text: String,
         kind: DocumentKind,
     ) -> bool {
-        let ticket = self.state.lock().await.capture_open_document(uri.clone());
-        let cancellation = self.cancellation.child();
+        let ticket = self
+            .inner
+            .state
+            .lock()
+            .await
+            .capture_open_document(uri.clone());
+        let cancellation = self.inner.cancellation.child();
         let prepared = match tokio::task::spawn_blocking(move || {
             PreparedDocumentText::new_cancellable(text, &cancellation)
         })
@@ -1912,7 +1917,8 @@ impl LanguageSession {
                 return false;
             }
         };
-        self.state
+        self.inner
+            .state
             .lock()
             .await
             .commit_open_document(ticket, version, prepared, kind)
@@ -1925,7 +1931,8 @@ impl LanguageSession {
         changes: Vec<TextDocumentContentChangeEvent>,
     ) -> Option<TextDocumentUpdate> {
         let preparation =
-            self.state
+            self.inner
+                .state
                 .lock()
                 .await
                 .capture_text_changes(uri.clone(), version, changes);
@@ -1945,7 +1952,8 @@ impl LanguageSession {
                     }
                 };
                 Some(
-                    self.state
+                    self.inner
+                        .state
                         .lock()
                         .await
                         .commit_prepared_text_changes(prepared),
@@ -1955,7 +1963,7 @@ impl LanguageSession {
     }
 
     pub(crate) async fn close_document(&self, uri: &Uri) {
-        self.state.lock().await.remove(uri);
+        self.inner.state.lock().await.remove(uri);
     }
 
     pub(crate) async fn update_configuration(
@@ -1968,12 +1976,14 @@ impl LanguageSession {
 
     async fn prepare_analyzer_replacement(&self, options: AnalysisOptions) -> AnalyzerReplacement {
         let request = self
+            .inner
             .state
             .lock()
             .await
             .begin_analyzer_configuration_request();
         let (change, reprojections) = loop {
             let preparation = self
+                .inner
                 .state
                 .lock()
                 .await
@@ -2000,7 +2010,7 @@ impl LanguageSession {
                             );
                         }
                     };
-                    let mut state = self.state.lock().await;
+                    let mut state = self.inner.state.lock().await;
                     if let Some(applied) = state.commit_snapshot_configuration(batch) {
                         break applied;
                     }
@@ -2029,7 +2039,7 @@ impl LanguageSession {
         reprojections.sort_by(|left, right| left.uri().cmp(right.uri()));
         let mut pending = stream::iter(reprojections)
             .map(|request| {
-                let executor = self.analysis_executor.clone();
+                let executor = self.inner.analysis_executor.clone();
                 async move {
                     let uri = request.uri().clone();
                     (
@@ -2044,7 +2054,8 @@ impl LanguageSession {
         while let Some((uri, projection)) = pending.next().await {
             match projection {
                 Ok(projection) => {
-                    self.state
+                    self.inner
+                        .state
                         .lock()
                         .await
                         .commit_diagnostic_reprojection_context(&projection);
@@ -2057,17 +2068,21 @@ impl LanguageSession {
             }
         }
         if worker_failed {
-            self.state.lock().await.discard_stale_analysis_generations();
+            self.inner
+                .state
+                .lock()
+                .await
+                .discard_stale_analysis_generations();
         }
         outcome
     }
 
     pub(crate) async fn diagnostic_context(&self, uri: &Uri) -> Option<DiagnosticContext> {
-        self.state.lock().await.diagnostic_context(uri)
+        self.inner.state.lock().await.diagnostic_context(uri)
     }
 
     pub(crate) async fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
-        self.state.lock().await.diagnostic_contexts()
+        self.inner.state.lock().await.diagnostic_contexts()
     }
 }
 

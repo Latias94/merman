@@ -1,9 +1,11 @@
 use crate::refresh_transport::{RefreshClient, RefreshKind};
 use crate::sync::recover_poison;
+use futures::future::{AbortHandle, Abortable};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio::sync::mpsc;
 
 const REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
@@ -17,13 +19,15 @@ struct RefreshCoordinatorInner {
     semantic_tokens: RefreshLane,
     diagnostics: RefreshLane,
     client: RefreshClient,
+    cancelled: Arc<AtomicBool>,
 }
 
 struct RefreshLane {
     pending: Arc<AtomicBool>,
     wake: mpsc::Sender<()>,
     receiver: Mutex<Option<mpsc::Receiver<()>>>,
-    started: AtomicBool,
+    worker: Mutex<Option<AbortHandle>>,
+    idle: Notify,
 }
 
 impl RefreshLane {
@@ -33,7 +37,8 @@ impl RefreshLane {
             pending: Arc::new(AtomicBool::new(false)),
             wake,
             receiver: Mutex::new(Some(receiver)),
-            started: AtomicBool::new(false),
+            worker: Mutex::new(None),
+            idle: Notify::new(),
         }
     }
 }
@@ -44,7 +49,7 @@ impl fmt::Debug for RefreshCoordinator {
             .debug_struct("RefreshCoordinator")
             .field(
                 "semantic_tokens_started",
-                &self.inner.semantic_tokens.started.load(Ordering::Acquire),
+                &recover_poison(self.inner.semantic_tokens.worker.lock()).is_some(),
             )
             .field(
                 "semantic_tokens_pending",
@@ -52,7 +57,7 @@ impl fmt::Debug for RefreshCoordinator {
             )
             .field(
                 "diagnostics_started",
-                &self.inner.diagnostics.started.load(Ordering::Acquire),
+                &recover_poison(self.inner.diagnostics.worker.lock()).is_some(),
             )
             .field(
                 "diagnostics_pending",
@@ -69,6 +74,7 @@ impl RefreshCoordinator {
                 semantic_tokens: RefreshLane::new(),
                 diagnostics: RefreshLane::new(),
                 client,
+                cancelled: Arc::new(AtomicBool::new(false)),
             }),
         }
     }
@@ -83,8 +89,15 @@ impl RefreshCoordinator {
     }
 
     fn request_lane(&self, kind: RefreshKind) {
+        if self.inner.cancelled.load(Ordering::Acquire) {
+            return;
+        }
         let lane = self.lane(kind);
         lane.pending.store(true, Ordering::Release);
+        if self.inner.cancelled.load(Ordering::Acquire) {
+            lane.pending.store(false, Ordering::Release);
+            return;
+        }
         self.ensure_worker(kind);
         let _ = lane.wake.try_send(());
     }
@@ -97,25 +110,21 @@ impl RefreshCoordinator {
     }
 
     fn ensure_worker(&self, kind: RefreshKind) {
-        let lane = self.lane(kind);
-        if lane.started.load(Ordering::Acquire) {
+        if self.inner.cancelled.load(Ordering::Acquire) {
             return;
         }
+        let lane = self.lane(kind);
         let Ok(runtime) = tokio::runtime::Handle::try_current() else {
             tracing::warn!("refresh requested outside a Tokio runtime");
             return;
         };
-        if lane
-            .started
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
+        let mut worker = recover_poison(lane.worker.lock());
+        if worker.is_some() || self.inner.cancelled.load(Ordering::Acquire) {
             return;
         }
 
         let receiver = recover_poison(lane.receiver.lock()).take();
         let Some(receiver) = receiver else {
-            lane.started.store(false, Ordering::Release);
             tracing::warn!(
                 refresh_kind = kind.label(),
                 "refresh worker receiver was unavailable"
@@ -124,7 +133,55 @@ impl RefreshCoordinator {
         };
         let pending = Arc::clone(&lane.pending);
         let client = self.inner.client.clone();
-        runtime.spawn(run_worker(receiver, pending, client, kind));
+        let cancelled = Arc::clone(&self.inner.cancelled);
+        let inner = Arc::downgrade(&self.inner);
+        let (abort, registration) = AbortHandle::new_pair();
+        *worker = Some(abort);
+        drop(worker);
+        runtime.spawn(async move {
+            let _ = Abortable::new(
+                run_worker(receiver, pending, client, cancelled, kind),
+                registration,
+            )
+            .await;
+            worker_finished(inner, kind);
+        });
+    }
+
+    pub(crate) fn cancel(&self) {
+        if self.inner.cancelled.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        self.inner
+            .semantic_tokens
+            .pending
+            .store(false, Ordering::Release);
+        self.inner
+            .diagnostics
+            .pending
+            .store(false, Ordering::Release);
+        self.inner.client.cancel_all();
+        for lane in [&self.inner.semantic_tokens, &self.inner.diagnostics] {
+            if let Some(abort) = recover_poison(lane.worker.lock()).as_ref() {
+                abort.abort();
+            } else {
+                lane.idle.notify_waiters();
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn wait_stopped(&self) {
+        for lane in [&self.inner.semantic_tokens, &self.inner.diagnostics] {
+            loop {
+                let idle = lane.idle.notified();
+                if recover_poison(lane.worker.lock()).is_none() {
+                    break;
+                }
+                idle.await;
+            }
+        }
     }
 }
 
@@ -132,10 +189,14 @@ async fn run_worker(
     mut receiver: mpsc::Receiver<()>,
     pending: Arc<AtomicBool>,
     client: RefreshClient,
+    cancelled: Arc<AtomicBool>,
     kind: RefreshKind,
 ) {
     while receiver.recv().await.is_some() {
         loop {
+            if cancelled.load(Ordering::Acquire) {
+                return;
+            }
             if !pending.swap(false, Ordering::AcqRel) {
                 break;
             }
@@ -147,6 +208,18 @@ async fn run_worker(
             }
         }
     }
+}
+
+fn worker_finished(inner: Weak<RefreshCoordinatorInner>, kind: RefreshKind) {
+    let Some(inner) = inner.upgrade() else {
+        return;
+    };
+    let lane = match kind {
+        RefreshKind::SemanticTokens => &inner.semantic_tokens,
+        RefreshKind::Diagnostics => &inner.diagnostics,
+    };
+    recover_poison(lane.worker.lock()).take();
+    lane.idle.notify_waiters();
 }
 
 async fn supervise_refresh<F>(kind: &str, refresh: F)
@@ -220,6 +293,26 @@ mod tests {
                 .is_none()
         );
         tokio::task::yield_now().await;
+        assert_eq!(responses.pending_count(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancellation_aborts_refresh_workers_and_response_waiters() {
+        let (client, mut requests, responses) = RefreshClient::channel();
+        let coordinator = RefreshCoordinator::new(client);
+
+        coordinator.request(true, false);
+        requests
+            .next()
+            .await
+            .expect("expected an in-flight refresh request");
+        assert_eq!(responses.pending_count(), 1);
+
+        coordinator.cancel();
+        coordinator.wait_stopped().await;
+
+        assert_eq!(responses.pending_count(), 0);
+        coordinator.request(true, true);
         assert_eq!(responses.pending_count(), 0);
     }
 }

@@ -2,7 +2,7 @@ use crate::session::{LSP_HANDLER_CONCURRENCY, LSP_MAX_MESSAGE_BYTES, LSP_REQUEST
 use futures::channel::mpsc;
 use futures::future::{self, BoxFuture};
 use futures::stream;
-use futures::{Sink, SinkExt, StreamExt};
+use futures::{FutureExt, Sink, SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
 use std::io;
@@ -11,13 +11,21 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
-use tokio::sync::{Notify, Semaphore};
+use tokio::sync::{Notify, Semaphore, watch};
+use tokio::time::Instant;
 use tower::{BoxError, Service};
 use tower_lsp_server::Loopback;
 use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
 
 const MESSAGE_QUEUE_SIZE: usize = 100;
+const CONTROL_HANDLER_RESERVE: usize = LSP_HANDLER_CONCURRENCY;
+const MAIN_HANDLER_LIMIT: usize = MESSAGE_QUEUE_SIZE - CONTROL_HANDLER_RESERVE;
 const MAX_HEADER_BYTES: usize = 8 * 1024;
+// Cancellation carries only a JSON-RPC envelope and request id. Keep enough room for string ids
+// without allowing method-name spoofing to reserve an ordinary source-sized request.
+const MAX_CONTROL_MESSAGE_BYTES: usize = 4 * 1024;
+const CONTROL_REQUEST_BYTE_BUDGET: usize = MAX_CONTROL_MESSAGE_BYTES * LSP_HANDLER_CONCURRENCY;
+const INPUT_DISPATCH_TIMEOUT: Duration = Duration::from_secs(30);
 const OUTPUT_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 const OUTPUT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -40,12 +48,12 @@ pub enum StdioTermination {
 }
 
 #[derive(Debug, Default)]
-struct LifecycleState {
+struct ProtocolLifecycleState {
     state: AtomicU8,
     exit_signal: Notify,
 }
 
-impl LifecycleState {
+impl ProtocolLifecycleState {
     fn observe_shutdown(&self) {
         let _ = self.state.compare_exchange(
             RUNNING,
@@ -91,12 +99,12 @@ impl LifecycleState {
     }
 }
 
-struct LifecycleService<S> {
+struct ProtocolLifecycleService<S> {
     inner: S,
-    lifecycle: Arc<LifecycleState>,
+    lifecycle: Arc<ProtocolLifecycleState>,
 }
 
-impl<S> Service<Request> for LifecycleService<S>
+impl<S> Service<Request> for ProtocolLifecycleService<S>
 where
     S: Service<Request, Response = Option<Response>>,
     S::Future: Send + 'static,
@@ -534,6 +542,61 @@ where
     output.flush().await
 }
 
+async fn output_drain_deadline(
+    drain_deadline: &mut watch::Receiver<Option<Instant>>,
+) -> Option<Instant> {
+    loop {
+        let deadline = *drain_deadline.borrow_and_update();
+        if deadline.is_some() {
+            return deadline;
+        }
+        if drain_deadline.changed().await.is_err() {
+            return None;
+        }
+    }
+}
+
+async fn write_message_bounded<O>(
+    output: &mut O,
+    message: &OutgoingMessage,
+    drain_deadline: &mut watch::Receiver<Option<Instant>>,
+) -> Result<io::Result<()>, tokio::time::error::Elapsed>
+where
+    O: AsyncWrite + Unpin,
+{
+    let write_deadline = Instant::now() + OUTPUT_WRITE_TIMEOUT;
+    let mut write = std::pin::pin!(write_message(output, message));
+
+    let active_drain_deadline = *drain_deadline.borrow();
+    if let Some(drain_deadline) = active_drain_deadline {
+        return tokio::time::timeout_at(write_deadline.min(drain_deadline), &mut write).await;
+    }
+
+    tokio::select! {
+        result = tokio::time::timeout_at(write_deadline, &mut write) => result,
+        drain_deadline = output_drain_deadline(drain_deadline) => {
+            let deadline = drain_deadline.map_or(write_deadline, |deadline| {
+                write_deadline.min(deadline)
+            });
+            tokio::time::timeout_at(deadline, &mut write).await
+        }
+    }
+}
+
+async fn shutdown_output_bounded<O>(
+    output: &mut O,
+    drain_deadline: &watch::Receiver<Option<Instant>>,
+) -> Result<io::Result<()>, tokio::time::error::Elapsed>
+where
+    O: AsyncWrite + Unpin,
+{
+    let shutdown_deadline = Instant::now() + OUTPUT_SHUTDOWN_TIMEOUT;
+    let deadline = (*drain_deadline.borrow()).map_or(shutdown_deadline, |deadline| {
+        shutdown_deadline.min(deadline)
+    });
+    tokio::time::timeout_at(deadline, output.shutdown()).await
+}
+
 fn display_sources(error: &dyn std::error::Error) -> String {
     error.source().map_or_else(
         || error.to_string(),
@@ -556,6 +619,8 @@ pub struct StdioServer<I, O, L> {
     loopback: L,
     max_concurrency: usize,
     request_byte_budget: usize,
+    max_control_message_bytes: usize,
+    control_request_byte_budget: usize,
 }
 
 impl<I, O, L> StdioServer<I, O, L>
@@ -576,6 +641,25 @@ where
     fn request_byte_budget(mut self, max_bytes: usize) -> Self {
         assert!(max_bytes > 0, "request byte budget must be positive");
         self.request_byte_budget = max_bytes;
+        self
+    }
+
+    #[cfg(test)]
+    fn control_request_byte_budget(
+        mut self,
+        max_message_bytes: usize,
+        max_total_bytes: usize,
+    ) -> Self {
+        assert!(
+            max_message_bytes > 0,
+            "control message byte limit must be positive"
+        );
+        assert!(
+            max_total_bytes > 0,
+            "control request byte budget must be positive"
+        );
+        self.max_control_message_bytes = max_message_bytes;
+        self.control_request_byte_budget = max_total_bytes;
         self
     }
 
@@ -603,13 +687,44 @@ where
         let max_concurrency = self.max_concurrency.max(1);
         let request_byte_budget = self.request_byte_budget;
         let request_budget = Arc::new(Semaphore::new(request_byte_budget));
+        let max_control_message_bytes = self.max_control_message_bytes;
+        let control_request_byte_budget = self.control_request_byte_budget;
+        let control_request_budget = Arc::new(Semaphore::new(control_request_byte_budget));
+        let handler_budget = Arc::new(Semaphore::new(MESSAGE_QUEUE_SIZE));
+        let main_handler_budget = Arc::new(Semaphore::new(MAIN_HANDLER_LIMIT));
+        let (output_drain_tx, mut output_drain_rx) = watch::channel(None::<Instant>);
+        let mut task_drain_rx = output_drain_rx.clone();
 
         let (server_tasks_abort, server_tasks_registration) = future::AbortHandle::new_pair();
         let input_server_tasks_abort = server_tasks_abort.clone();
         let process_server_tasks = future::Abortable::new(
             async move {
                 let mut tasks = server_tasks_rx.buffer_unordered(max_concurrency);
-                while let Some(response) = tasks.next().await {
+                let mut drain_deadline = None;
+                loop {
+                    let response = match drain_deadline {
+                        Some(deadline) => {
+                            match tokio::time::timeout_at(deadline, tasks.next()).await {
+                                Ok(response) => response,
+                                Err(_) => break,
+                            }
+                        }
+                        None => {
+                            tokio::select! {
+                                response = tasks.next() => response,
+                                deadline = output_drain_deadline(&mut task_drain_rx) => {
+                                    let Some(deadline) = deadline else {
+                                        break;
+                                    };
+                                    drain_deadline = Some(deadline);
+                                    continue;
+                                }
+                            }
+                        }
+                    };
+                    let Some(response) = response else {
+                        break;
+                    };
                     let Some(response) = response else {
                         continue;
                     };
@@ -646,12 +761,27 @@ where
                         } => {
                             // A handler may be waiting for this response, so request admission
                             // must never consume or wait for budget on the response path.
-                            if let Err(error) = client_responses.send(response).await {
-                                tracing::error!(
-                                    error = %display_sources(&error),
-                                    "failed to route LSP client response"
-                                );
-                                break TransportStop::InputClosed;
+                            match tokio::time::timeout(
+                                INPUT_DISPATCH_TIMEOUT,
+                                client_responses.send(response),
+                            )
+                            .await
+                            {
+                                Ok(Ok(())) => {}
+                                Ok(Err(error)) => {
+                                    tracing::error!(
+                                        error = %display_sources(&error),
+                                        "failed to route LSP client response"
+                                    );
+                                    break TransportStop::InputClosed;
+                                }
+                                Err(_) => {
+                                    tracing::error!(
+                                        timeout_seconds = INPUT_DISPATCH_TIMEOUT.as_secs(),
+                                        "timed out while routing an LSP client response"
+                                    );
+                                    break TransportStop::InputClosed;
+                                }
                             }
                         }
                         FrameRead::Message {
@@ -659,21 +789,36 @@ where
                             body_length,
                         } => {
                             let will_exit = request.method() == "exit" && request.id().is_none();
-                            let request_budget_permit = if will_exit {
-                                // LifecycleService must observe exit even when active handlers
-                                // consume the entire request budget.
+                            let bounded_exit =
+                                will_exit && body_length <= max_control_message_bytes;
+                            let bounded_cancel = request.method() == "$/cancelRequest"
+                                && body_length <= max_control_message_bytes;
+                            let request_budget_permit = if bounded_exit {
+                                // Protocol lifecycle routing must observe exit even when active
+                                // handlers consume both request budgets. The byte cap prevents a
+                                // forged oversized control frame from bypassing both.
                                 None
                             } else {
                                 let permits = u32::try_from(body_length)
                                     .expect("validated LSP body length fits in u32");
-                                match Arc::clone(&request_budget).try_acquire_many_owned(permits) {
+                                let (budget, budget_limit, budget_name) = if bounded_cancel {
+                                    (
+                                        Arc::clone(&control_request_budget),
+                                        control_request_byte_budget,
+                                        "control",
+                                    )
+                                } else {
+                                    (Arc::clone(&request_budget), request_byte_budget, "request")
+                                };
+                                match budget.try_acquire_many_owned(permits) {
                                     Ok(permit) => Some(permit),
                                     Err(error) => {
                                         tracing::error!(
                                             %error,
                                             body_length,
-                                            request_byte_budget,
-                                            "LSP request byte budget exhausted"
+                                            budget_limit,
+                                            budget_name,
+                                            "LSP message byte budget exhausted"
                                         );
                                         input_server_tasks_abort.abort();
                                         break TransportStop::InputClosed;
@@ -681,17 +826,74 @@ where
                                 }
                             };
 
-                            if let Err(error) = future::poll_fn(|cx| service.poll_ready(cx)).await {
-                                let error: BoxError = error.into();
-                                tracing::error!(
-                                    error = %display_sources(error.as_ref()),
-                                    "LSP service was not ready"
-                                );
-                                break TransportStop::InputClosed;
+                            let main_handler_permit = if bounded_cancel || bounded_exit {
+                                None
+                            } else {
+                                match Arc::clone(&main_handler_budget).try_acquire_owned() {
+                                    Ok(permit) => Some(permit),
+                                    Err(error) => {
+                                        tracing::error!(
+                                            %error,
+                                            handler_limit = MAIN_HANDLER_LIMIT,
+                                            "LSP main handler admission exhausted"
+                                        );
+                                        break TransportStop::InputClosed;
+                                    }
+                                }
+                            };
+                            let handler_permit = if bounded_exit {
+                                None
+                            } else {
+                                match Arc::clone(&handler_budget).try_acquire_owned() {
+                                    Ok(permit) => Some(permit),
+                                    Err(error) => {
+                                        tracing::error!(
+                                            %error,
+                                            handler_limit = MESSAGE_QUEUE_SIZE,
+                                            "LSP handler admission exhausted"
+                                        );
+                                        break TransportStop::InputClosed;
+                                    }
+                                }
+                            };
+
+                            match tokio::time::timeout(
+                                INPUT_DISPATCH_TIMEOUT,
+                                future::poll_fn(|cx| service.poll_ready(cx)),
+                            )
+                            .await
+                            {
+                                Ok(Ok(())) => {}
+                                Ok(Err(error)) => {
+                                    let error: BoxError = error.into();
+                                    tracing::error!(
+                                        error = %display_sources(error.as_ref()),
+                                        "LSP service was not ready"
+                                    );
+                                    break TransportStop::InputClosed;
+                                }
+                                Err(_) => {
+                                    tracing::error!(
+                                        timeout_seconds = INPUT_DISPATCH_TIMEOUT.as_secs(),
+                                        "timed out while waiting for LSP service readiness"
+                                    );
+                                    break TransportStop::InputClosed;
+                                }
                             }
 
+                            let request_id = request.id().cloned();
                             let handler = service.call(request);
+                            if will_exit {
+                                // `Service::call` performs synchronous protocol/session routing.
+                                // Poll once so a generic service can observe dispatch in its
+                                // future, then drop Pending work because exit has no response.
+                                let _ = handler.now_or_never();
+                                drop(request_budget_permit);
+                                break TransportStop::ExitNotification;
+                            }
                             let task = async move {
+                                let _handler_permit = handler_permit;
+                                let _main_handler_permit = main_handler_permit;
                                 let response = match handler.await {
                                     Ok(response) => response,
                                     Err(error) => {
@@ -706,22 +908,38 @@ where
                                 drop(request_budget_permit);
                                 response
                             };
-                            if server_tasks_tx.send(task).await.is_err() {
-                                break TransportStop::InputClosed;
-                            }
-                            if will_exit {
-                                break TransportStop::ExitNotification;
+                            match server_tasks_tx.try_send(task) {
+                                Ok(()) => {}
+                                Err(error) => {
+                                    // Handler permits are acquired before `Service::call`, so a
+                                    // full queue is an internal invariant failure rather than an
+                                    // overload path that may discard an admitted mutation.
+                                    tracing::error!(
+                                        %error,
+                                        request_id = ?request_id,
+                                        "LSP handler queue rejected a reserved task"
+                                    );
+                                    drop(error);
+                                    break TransportStop::InputClosed;
+                                }
                             }
                         }
                         FrameRead::Error(error, recovery) => {
                             tracing::error!(%error, "failed to decode LSP message");
                             let response = Response::from_error(Id::Null, error.jsonrpc_error());
-                            if responses_tx
-                                .send(OutgoingMessage::Response(response))
-                                .await
-                                .is_err()
-                            {
-                                break TransportStop::InputClosed;
+                            match responses_tx.try_send(OutgoingMessage::Response(response)) {
+                                Ok(()) => {}
+                                Err(error) if error.is_full() => {
+                                    // Output backpressure must not prevent the reader from
+                                    // reaching a later cancellation, exit, or EOF marker.
+                                    tracing::warn!(
+                                        "dropping protocol error response because output is full"
+                                    );
+                                }
+                                Err(error) => {
+                                    tracing::error!(%error, "failed to queue protocol error response");
+                                    break TransportStop::InputClosed;
+                                }
                             }
                             if recovery == Recovery::Stop {
                                 break TransportStop::InputClosed;
@@ -730,6 +948,7 @@ where
                     }
                 };
 
+                output_drain_tx.send_replace(Some(Instant::now() + OUTPUT_WRITE_TIMEOUT));
                 server_tasks_tx.disconnect();
                 responses_tx.disconnect();
                 client_abort.abort();
@@ -747,12 +966,7 @@ where
                 stream::select(responses_rx, client_requests.map(OutgoingMessage::Request));
             let mut output_failed = false;
             while let Some(message) = messages.next().await {
-                match tokio::time::timeout(
-                    OUTPUT_WRITE_TIMEOUT,
-                    write_message(&mut stdout, &message),
-                )
-                .await
-                {
+                match write_message_bounded(&mut stdout, &message, &mut output_drain_rx).await {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
                         tracing::error!(%error, "failed to write LSP message");
@@ -771,7 +985,7 @@ where
             }
 
             if !output_failed {
-                match tokio::time::timeout(OUTPUT_SHUTDOWN_TIMEOUT, stdout.shutdown()).await {
+                match shutdown_output_bounded(&mut stdout, &output_drain_rx).await {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
                         tracing::error!(%error, "failed to close stdio output");
@@ -813,6 +1027,8 @@ where
         loopback: socket,
         max_concurrency: LSP_HANDLER_CONCURRENCY,
         request_byte_budget: LSP_REQUEST_BYTE_BUDGET,
+        max_control_message_bytes: MAX_CONTROL_MESSAGE_BYTES,
+        control_request_byte_budget: CONTROL_REQUEST_BYTE_BUDGET,
     }
 }
 
@@ -831,8 +1047,8 @@ where
     S::Error: Into<BoxError> + Send + 'static,
     S::Future: Send + 'static,
 {
-    let lifecycle = Arc::new(LifecycleState::default());
-    let service = LifecycleService {
+    let lifecycle = Arc::new(ProtocolLifecycleState::default());
+    let service = ProtocolLifecycleService {
         inner: service,
         lifecycle: Arc::clone(&lifecycle),
     };
@@ -874,6 +1090,10 @@ mod tests {
         responses: mpsc::UnboundedSender<Response>,
     }
 
+    struct PendingResponseLoopback;
+
+    struct PendingResponseSink;
+
     impl Loopback for ResponseLoopback {
         type RequestStream = stream::Empty<Request>;
         type ResponseSink = mpsc::UnboundedSender<Response>;
@@ -883,11 +1103,231 @@ mod tests {
         }
     }
 
+    impl Loopback for PendingResponseLoopback {
+        type RequestStream = stream::Empty<Request>;
+        type ResponseSink = PendingResponseSink;
+
+        fn split(self) -> (Self::RequestStream, Self::ResponseSink) {
+            (stream::empty(), PendingResponseSink)
+        }
+    }
+
+    impl Sink<Response> for PendingResponseSink {
+        type Error = Infallible;
+
+        fn poll_ready(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn start_send(self: Pin<&mut Self>, _item: Response) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        fn poll_flush(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn poll_close(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
     struct BudgetedService {
         calls: Arc<AtomicUsize>,
         first_started: Option<oneshot::Sender<()>>,
         release_first: Option<oneshot::Receiver<()>>,
         second_called: Option<oneshot::Sender<()>>,
+    }
+
+    struct ExitReleasesBudgetedService {
+        calls: Arc<AtomicUsize>,
+        main_release: Option<oneshot::Receiver<()>>,
+        control_release: Option<oneshot::Receiver<()>>,
+        release_main: Option<oneshot::Sender<()>>,
+        release_control: Option<oneshot::Sender<()>>,
+        exit_seen: Option<oneshot::Sender<()>>,
+    }
+
+    impl Service<Request> for ExitReleasesBudgetedService {
+        type Response = Option<Response>;
+        type Error = Infallible;
+        type Future =
+            Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, request: Request) -> Self::Future {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            match request.method() {
+                "test/block" => {
+                    let release = self.main_release.take().expect("single main request");
+                    Box::pin(async move {
+                        let _ = release.await;
+                        Ok(None)
+                    })
+                }
+                "$/cancelRequest" => {
+                    let release = self.control_release.take().expect("single control request");
+                    Box::pin(async move {
+                        let _ = release.await;
+                        Ok(None)
+                    })
+                }
+                "exit" => {
+                    let _ = self
+                        .release_main
+                        .take()
+                        .expect("single exit notification")
+                        .send(());
+                    let _ = self
+                        .release_control
+                        .take()
+                        .expect("single exit notification")
+                        .send(());
+                    let _ = self
+                        .exit_seen
+                        .take()
+                        .expect("single exit notification")
+                        .send(());
+                    Box::pin(async { Ok(None) })
+                }
+                method => panic!("unexpected test method: {method}"),
+            }
+        }
+    }
+
+    struct PendingService {
+        calls: Arc<AtomicUsize>,
+    }
+
+    struct NeverReadyService {
+        calls: Arc<AtomicUsize>,
+    }
+
+    struct ReservedControlService {
+        calls: Arc<AtomicUsize>,
+        cancel_seen: Option<oneshot::Sender<()>>,
+        exit_seen: Option<oneshot::Sender<()>>,
+    }
+
+    struct SharedDeadlineWrite {
+        first_flush_release: oneshot::Receiver<()>,
+        first_flush_released: bool,
+        flush_started: mpsc::UnboundedSender<usize>,
+        active_flush: Option<usize>,
+        completed_flushes: usize,
+    }
+
+    impl AsyncWrite for SharedDeadlineWrite {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buffer: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            Poll::Ready(Ok(buffer.len()))
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            let flush = self.completed_flushes + 1;
+            if self.active_flush != Some(flush) {
+                self.active_flush = Some(flush);
+                let _ = self.flush_started.unbounded_send(flush);
+            }
+
+            if flush == 1 && !self.first_flush_released {
+                match Pin::new(&mut self.first_flush_release).poll(cx) {
+                    Poll::Ready(_) => self.first_flush_released = true,
+                    Poll::Pending => return Poll::Pending,
+                }
+            }
+            if flush > 1 {
+                return Poll::Pending;
+            }
+
+            self.completed_flushes = flush;
+            self.active_flush = None;
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    impl Service<Request> for PendingService {
+        type Response = Option<Response>;
+        type Error = Infallible;
+        type Future =
+            Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, _request: Request) -> Self::Future {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Box::pin(std::future::pending())
+        }
+    }
+
+    impl Service<Request> for NeverReadyService {
+        type Response = Option<Response>;
+        type Error = Infallible;
+        type Future =
+            Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Pending
+        }
+
+        fn call(&mut self, _request: Request) -> Self::Future {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async { Ok(None) })
+        }
+    }
+
+    impl Service<Request> for ReservedControlService {
+        type Response = Option<Response>;
+        type Error = Infallible;
+        type Future =
+            Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + 'static>>;
+
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, request: Request) -> Self::Future {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            match request.method() {
+                "$/cancelRequest" => {
+                    let _ = self
+                        .cancel_seen
+                        .take()
+                        .expect("single cancel notification")
+                        .send(());
+                }
+                "exit" => {
+                    let _ = self
+                        .exit_seen
+                        .take()
+                        .expect("single exit notification")
+                        .send(());
+                }
+                _ => {}
+            }
+            Box::pin(std::future::pending())
+        }
     }
 
     impl Service<Request> for BudgetedService {
@@ -1041,6 +1481,57 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
     }
 
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn pending_client_response_routing_is_bounded() {
+        let response = br#"{"jsonrpc":"2.0","id":99,"result":null}"#;
+        let exit = br#"{"jsonrpc":"2.0","method":"exit","params":null}"#;
+        let mut input = frame(response);
+        input.extend(frame(exit));
+        let calls = Arc::new(AtomicUsize::new(0));
+
+        let stop = timeout(
+            INPUT_DISPATCH_TIMEOUT + Duration::from_secs(1),
+            stdio_server(
+                Cursor::new(input),
+                Vec::<u8>::new(),
+                PendingResponseLoopback,
+            )
+            .serve_inner(PendingService {
+                calls: Arc::clone(&calls),
+            }),
+        )
+        .await
+        .expect("pending response routing must hit the input dispatch bound");
+
+        assert_eq!(stop, TransportStop::InputClosed);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn pending_service_readiness_is_bounded_before_call() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (responses_tx, _responses_rx) = mpsc::unbounded();
+
+        let stop = timeout(
+            INPUT_DISPATCH_TIMEOUT + Duration::from_secs(1),
+            stdio_server(
+                Cursor::new(frame(br#"{"jsonrpc":"2.0","method":"exit","params":null}"#)),
+                Vec::<u8>::new(),
+                ResponseLoopback {
+                    responses: responses_tx,
+                },
+            )
+            .serve_inner(NeverReadyService {
+                calls: Arc::clone(&calls),
+            }),
+        )
+        .await
+        .expect("pending service readiness must hit the input dispatch bound");
+
+        assert_eq!(stop, TransportStop::InputClosed);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn request_byte_budget_fails_closed_without_blocking_prior_client_responses() {
         let first = br#"{"jsonrpc":"2.0","id":1,"method":"test/block","params":null}"#;
@@ -1098,5 +1589,292 @@ mod tests {
             .await
             .expect("server should stop after exhausting the request byte budget")
             .expect("server task should not panic");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn bounded_cancel_and_exit_bypass_a_saturated_main_request_budget() {
+        let main = br#"{"jsonrpc":"2.0","id":1,"method":"test/block","params":null}"#;
+        let cancel = br#"{"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1}}"#;
+        let exit = br#"{"jsonrpc":"2.0","method":"exit","params":null}"#;
+        assert!(exit.len() <= cancel.len());
+
+        let mut input = frame(main);
+        input.extend(frame(cancel));
+        input.extend(frame(exit));
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (release_main, main_release) = oneshot::channel();
+        let (release_control, control_release) = oneshot::channel();
+        let (exit_seen, exit_observed) = oneshot::channel();
+        let (responses_tx, _responses_rx) = mpsc::unbounded();
+
+        let stop = timeout(
+            Duration::from_secs(2),
+            stdio_server(
+                Cursor::new(input),
+                Vec::<u8>::new(),
+                ResponseLoopback {
+                    responses: responses_tx,
+                },
+            )
+            .request_byte_budget(main.len())
+            .control_request_byte_budget(cancel.len(), cancel.len())
+            .serve_inner(ExitReleasesBudgetedService {
+                calls: Arc::clone(&calls),
+                main_release: Some(main_release),
+                control_release: Some(control_release),
+                release_main: Some(release_main),
+                release_control: Some(release_control),
+                exit_seen: Some(exit_seen),
+            }),
+        )
+        .await
+        .expect("bounded control messages should remain reachable");
+
+        assert_eq!(stop, TransportStop::ExitNotification);
+        exit_observed
+            .await
+            .expect("the exit notification should reach the service");
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn control_messages_use_reserved_handler_capacity() {
+        let mut input = Vec::new();
+        for id in 0..MAIN_HANDLER_LIMIT {
+            input.extend(frame(
+                format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"test/block"}}"#).as_bytes(),
+            ));
+        }
+        input.extend(frame(
+            br#"{"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":0}}"#,
+        ));
+        input.extend(frame(br#"{"jsonrpc":"2.0","method":"exit","params":null}"#));
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (cancel_seen_tx, cancel_seen_rx) = oneshot::channel();
+        let (exit_seen_tx, exit_seen_rx) = oneshot::channel();
+        let (responses_tx, _responses_rx) = mpsc::unbounded();
+        let server = tokio::spawn({
+            let calls = Arc::clone(&calls);
+            async move {
+                serve_stdio(
+                    Cursor::new(input),
+                    Vec::<u8>::new(),
+                    ResponseLoopback {
+                        responses: responses_tx,
+                    },
+                    ReservedControlService {
+                        calls,
+                        cancel_seen: Some(cancel_seen_tx),
+                        exit_seen: Some(exit_seen_tx),
+                    },
+                )
+                .await
+            }
+        });
+
+        timeout(Duration::from_secs(1), cancel_seen_rx)
+            .await
+            .expect("cancel should use the reserved handler capacity")
+            .expect("cancel service call should signal synchronously");
+        timeout(Duration::from_secs(1), exit_seen_rx)
+            .await
+            .expect("exit should bypass all handler capacity")
+            .expect("exit service call should signal synchronously");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            MAIN_HANDLER_LIMIT + 2,
+            "ordinary work must leave the reserved control capacity intact"
+        );
+
+        timeout(OUTPUT_WRITE_TIMEOUT + Duration::from_secs(1), server)
+            .await
+            .expect("pending handlers should share the absolute drain deadline")
+            .expect("stdio task should not panic");
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn handler_saturation_fails_before_service_admission() {
+        let mut input = Vec::new();
+        for id in 0..=MAIN_HANDLER_LIMIT {
+            input.extend(frame(
+                format!(r#"{{"jsonrpc":"2.0","id":{id},"method":"test/block"}}"#).as_bytes(),
+            ));
+        }
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (responses_tx, _responses_rx) = mpsc::unbounded();
+
+        let termination = timeout(
+            Duration::from_secs(1),
+            serve_stdio(
+                Cursor::new(input),
+                Vec::<u8>::new(),
+                ResponseLoopback {
+                    responses: responses_tx,
+                },
+                PendingService {
+                    calls: Arc::clone(&calls),
+                },
+            ),
+        )
+        .await
+        .expect("handler saturation should fail closed without waiting for pending work");
+
+        assert_eq!(termination, StdioTermination::InputClosed);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            MAIN_HANDLER_LIMIT,
+            "the rejected message must not reach Service::call or ordered admission"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn exit_polls_once_without_waiting_for_a_pending_handler() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (responses_tx, _responses_rx) = mpsc::unbounded();
+
+        let termination = timeout(
+            Duration::from_secs(1),
+            serve_stdio(
+                Cursor::new(frame(br#"{"jsonrpc":"2.0","method":"exit","params":null}"#)),
+                Vec::<u8>::new(),
+                ResponseLoopback {
+                    responses: responses_tx,
+                },
+                PendingService {
+                    calls: Arc::clone(&calls),
+                },
+            ),
+        )
+        .await
+        .expect("a pending exit handler must not hold transport shutdown open");
+
+        assert_eq!(termination, StdioTermination::ExitWithoutShutdown);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn control_request_byte_budget_is_bounded() {
+        let first = br#"{"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1}}"#;
+        let second = br#"{"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":2}}"#;
+        assert_eq!(first.len(), second.len());
+
+        let mut input = frame(first);
+        input.extend(frame(second));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (responses_tx, _responses_rx) = mpsc::unbounded();
+
+        let stop = timeout(
+            Duration::from_secs(2),
+            stdio_server(
+                Cursor::new(input),
+                Vec::<u8>::new(),
+                ResponseLoopback {
+                    responses: responses_tx,
+                },
+            )
+            .control_request_byte_budget(first.len(), first.len())
+            .serve_inner(PendingService {
+                calls: Arc::clone(&calls),
+            }),
+        )
+        .await
+        .expect("exhausting the control budget should fail closed");
+
+        assert_eq!(stop, TransportStop::InputClosed);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn oversized_cancel_cannot_bypass_the_main_request_budget() {
+        let main = br#"{"jsonrpc":"2.0","id":1,"method":"test/block","params":null}"#;
+        let normal_cancel = br#"{"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":1}}"#;
+        let oversized_cancel = format!(
+            r#"{{"jsonrpc":"2.0","method":"$/cancelRequest","params":{{"id":1,"padding":"{}"}}}}"#,
+            "x".repeat(normal_cancel.len())
+        );
+        assert!(oversized_cancel.len() > normal_cancel.len());
+
+        let mut input = frame(main);
+        input.extend(frame(oversized_cancel.as_bytes()));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (responses_tx, _responses_rx) = mpsc::unbounded();
+
+        let stop = timeout(
+            Duration::from_secs(2),
+            stdio_server(
+                Cursor::new(input),
+                Vec::<u8>::new(),
+                ResponseLoopback {
+                    responses: responses_tx,
+                },
+            )
+            .request_byte_budget(main.len())
+            .control_request_byte_budget(normal_cancel.len(), normal_cancel.len())
+            .serve_inner(PendingService {
+                calls: Arc::clone(&calls),
+            }),
+        )
+        .await
+        .expect("an oversized pseudo-control message should fail closed");
+
+        assert_eq!(stop, TransportStop::InputClosed);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn queued_messages_share_one_absolute_output_drain_deadline() {
+        let (_drain_tx, mut drain_rx) = watch::channel(Some(Instant::now() + OUTPUT_WRITE_TIMEOUT));
+        let (release_first_flush, first_flush_release) = oneshot::channel();
+        let (flush_started_tx, mut flush_started_rx) = mpsc::unbounded();
+        let writer = SharedDeadlineWrite {
+            first_flush_release,
+            first_flush_released: false,
+            flush_started: flush_started_tx,
+            active_flush: None,
+            completed_flushes: 0,
+        };
+
+        let output = tokio::spawn(async move {
+            let mut writer = writer;
+            let first = OutgoingMessage::Response(Response::from_ok(
+                Id::Number(1),
+                serde_json::Value::Null,
+            ));
+            let second = OutgoingMessage::Response(Response::from_ok(
+                Id::Number(2),
+                serde_json::Value::Null,
+            ));
+            let first_result = write_message_bounded(&mut writer, &first, &mut drain_rx).await;
+            let second_result = write_message_bounded(&mut writer, &second, &mut drain_rx).await;
+            (first_result, second_result)
+        });
+
+        assert_eq!(
+            flush_started_rx
+                .next()
+                .await
+                .expect("the first message should begin flushing"),
+            1
+        );
+        tokio::time::advance(Duration::from_secs(20)).await;
+        release_first_flush
+            .send(())
+            .expect("the first message should still be draining");
+        assert_eq!(
+            flush_started_rx
+                .next()
+                .await
+                .expect("the second message should begin flushing"),
+            2
+        );
+
+        let (first_result, second_result) = timeout(Duration::from_secs(11), output)
+            .await
+            .expect("the second message must use the remaining shared deadline")
+            .expect("output task should not panic");
+        assert!(matches!(first_result, Ok(Ok(()))));
+        assert!(second_result.is_err());
     }
 }

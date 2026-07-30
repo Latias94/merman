@@ -1,14 +1,17 @@
 use self::documents::SessionState;
+use self::lifecycle::SessionLifecycle;
+use crate::refresh_coordinator::RefreshCoordinator;
+use crate::refresh_transport::RefreshClient;
 use crate::server::MermanLanguageServer;
 use crate::sync::lock_recovering_poison;
 use futures::FutureExt;
-use futures::future::{AbortHandle, Abortable, BoxFuture};
+use futures::future::{AbortHandle, AbortRegistration, Abortable, BoxFuture};
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::sync::Notify;
@@ -22,6 +25,7 @@ mod analysis;
 mod analysis_tests;
 mod cache;
 mod documents;
+mod lifecycle;
 
 pub(crate) use documents::{
     ConfigurationUpdateOutcome, DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext,
@@ -34,21 +38,100 @@ pub(crate) use documents::{DocumentDiscardedSource, DocumentResourceLimit};
 /// Owns all mutable language state and the workers derived from that state.
 #[derive(Debug, Clone)]
 pub(crate) struct LanguageSession {
+    inner: Arc<LanguageSessionInner>,
+}
+
+#[derive(Debug)]
+struct LanguageSessionInner {
     state: Arc<AsyncMutex<SessionState>>,
     cancellation: merman_analysis::AnalysisCancellationToken,
     analysis_executor: analysis::executor::AnalysisExecutor,
+    client_effects: ClientEffectDispatcher,
+    refresh_coordinator: RefreshCoordinator,
+    lifecycle: SessionLifecycle,
+    input_order: Arc<InputOrder>,
+    admission_cancellations: Arc<AdmissionCancellationRegistry>,
+}
+
+impl LanguageSessionInner {
+    fn terminate(&self) -> bool {
+        if !self.lifecycle.terminate() {
+            return false;
+        }
+
+        self.cancellation.cancel();
+        self.analysis_executor.invalidate_all();
+        self.admission_cancellations.cancel_all();
+        self.client_effects.cancel();
+        self.refresh_coordinator.cancel();
+        true
+    }
+}
+
+impl Drop for LanguageSessionInner {
+    fn drop(&mut self) {
+        self.terminate();
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct SessionEndpointGuard {
+    session: Weak<LanguageSessionInner>,
+}
+
+impl SessionEndpointGuard {
+    pub(crate) fn terminate(&self) {
+        if let Some(session) = self.session.upgrade() {
+            session.terminate();
+        }
+    }
+
+    pub(crate) fn is_terminated(&self) -> bool {
+        self.session
+            .upgrade()
+            .is_none_or(|session| session.lifecycle.is_terminated())
+    }
+}
+
+impl Drop for SessionEndpointGuard {
+    fn drop(&mut self) {
+        self.terminate();
+    }
 }
 
 impl LanguageSession {
+    #[cfg(test)]
     pub(crate) fn with_cancellation(
         cancellation: merman_analysis::AnalysisCancellationToken,
     ) -> Self {
         let state = SessionState::with_session_cancellation(cancellation.clone());
+        let (refresh_client, _, _) = RefreshClient::channel();
+        Self::from_state(state, cancellation, refresh_client)
+    }
+
+    pub(crate) fn with_refresh_client(refresh_client: RefreshClient) -> Self {
+        let cancellation = merman_analysis::AnalysisCancellationToken::new();
+        let state = SessionState::with_session_cancellation(cancellation.clone());
+        Self::from_state(state, cancellation, refresh_client)
+    }
+
+    fn from_state(
+        state: SessionState,
+        cancellation: merman_analysis::AnalysisCancellationToken,
+        refresh_client: RefreshClient,
+    ) -> Self {
         let analysis_executor = state.analysis_executor();
         Self {
-            state: Arc::new(AsyncMutex::new(state)),
-            cancellation,
-            analysis_executor,
+            inner: Arc::new(LanguageSessionInner {
+                state: Arc::new(AsyncMutex::new(state)),
+                cancellation,
+                analysis_executor,
+                client_effects: ClientEffectDispatcher::new(),
+                refresh_coordinator: RefreshCoordinator::new(refresh_client),
+                lifecycle: SessionLifecycle::default(),
+                input_order: Arc::new(InputOrder::default()),
+                admission_cancellations: Arc::new(AdmissionCancellationRegistry::default()),
+            }),
         }
     }
 
@@ -59,12 +142,8 @@ impl LanguageSession {
             cancellation.clone(),
             analysis_cache_budget,
         );
-        let analysis_executor = state.analysis_executor();
-        Self {
-            state: Arc::new(AsyncMutex::new(state)),
-            cancellation,
-            analysis_executor,
-        }
+        let (refresh_client, _, _) = RefreshClient::channel();
+        Self::from_state(state, cancellation, refresh_client)
     }
 
     #[cfg(test)]
@@ -75,39 +154,83 @@ impl LanguageSession {
             cancellation.clone(),
             documents::DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
         );
-        let analysis_executor = state.analysis_executor();
-        Self {
-            state: Arc::new(AsyncMutex::new(state)),
-            cancellation,
-            analysis_executor,
+        let (refresh_client, _, _) = RefreshClient::channel();
+        Self::from_state(state, cancellation, refresh_client)
+    }
+
+    pub(crate) fn endpoint_guard(&self) -> SessionEndpointGuard {
+        SessionEndpointGuard {
+            session: Arc::downgrade(&self.inner),
         }
     }
 
-    pub(crate) fn cancel_analysis(&self) {
-        self.cancellation.cancel();
-        self.analysis_executor.invalidate_all();
+    pub(crate) fn terminate(&self) -> bool {
+        self.inner.terminate()
+    }
+
+    fn is_terminated(&self) -> bool {
+        self.inner.lifecycle.is_terminated()
+    }
+
+    async fn terminated(&self) {
+        self.inner.lifecycle.terminated().await;
+    }
+
+    pub(crate) async fn enqueue_client_effect(
+        &self,
+        key: ClientEffectKey,
+        effect: impl Future<Output = ()> + Send + 'static,
+    ) {
+        self.inner.client_effects.enqueue_latest(key, effect).await;
+    }
+
+    pub(crate) fn request_refresh(&self, semantic_tokens: bool, diagnostics: bool) {
+        self.inner
+            .refresh_coordinator
+            .request(semantic_tokens, diagnostics);
     }
 
     #[cfg(test)]
     pub(crate) fn analysis_execution_count(&self) -> usize {
-        self.analysis_executor.execution_count()
+        self.inner.analysis_executor.execution_count()
     }
 
     #[cfg(test)]
     pub(crate) fn diagnostic_reprojection_count(&self) -> usize {
-        self.analysis_executor.reprojection_count()
+        self.inner.analysis_executor.reprojection_count()
     }
 
     #[cfg(test)]
     pub(crate) fn analysis_registry_state(&self) -> (usize, usize, usize) {
-        self.analysis_executor.registry_state()
+        self.inner.analysis_executor.registry_state()
     }
 
     #[cfg(test)]
     pub(crate) fn probe(&self) -> SessionProbe {
         SessionProbe {
-            state: Arc::clone(&self.state),
+            state: Arc::clone(&self.inner.state),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn wait_client_effects_idle(&self) {
+        self.inner.client_effects.wait_idle().await;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn termination_count(&self) -> usize {
+        self.inner.lifecycle.termination_count()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn analysis_is_cancelled(&self) -> bool {
+        self.inner.cancellation.is_cancelled()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn wait_stopped(&self) {
+        self.inner.client_effects.wait_idle().await;
+        self.inner.refresh_coordinator.wait_stopped().await;
     }
 }
 
@@ -160,28 +283,40 @@ pub const LSP_REQUEST_BYTE_BUDGET: usize = LSP_MAX_MESSAGE_BYTES * LSP_HANDLER_C
 /// [`LSP_MAX_MESSAGE_BYTES`], and [`LSP_REQUEST_BYTE_BUDGET`] before retaining request futures.
 #[derive(Debug)]
 pub struct MermanLspService {
+    _endpoint: SessionEndpointGuard,
     inner: Arc<Mutex<LspService<MermanLanguageServer>>>,
-    _backend: MermanLanguageServer,
-    input_order: Arc<InputOrder>,
-    admission_cancellations: Arc<AdmissionCancellationRegistry>,
+    session: LanguageSession,
+    #[cfg(test)]
+    backend: Option<MermanLanguageServer>,
 }
 
 impl MermanLspService {
-    pub(crate) fn new(
-        inner: LspService<MermanLanguageServer>,
-        backend: MermanLanguageServer,
-    ) -> Self {
+    pub(crate) fn new(inner: LspService<MermanLanguageServer>, session: LanguageSession) -> Self {
         Self {
+            _endpoint: session.endpoint_guard(),
             inner: Arc::new(Mutex::new(inner)),
-            _backend: backend,
-            input_order: Arc::new(InputOrder::default()),
-            admission_cancellations: Arc::new(AdmissionCancellationRegistry::default()),
+            session,
+            #[cfg(test)]
+            backend: None,
         }
     }
 
     #[cfg(test)]
+    pub(crate) fn with_backend_for_tests(
+        inner: LspService<MermanLanguageServer>,
+        session: LanguageSession,
+        backend: MermanLanguageServer,
+    ) -> Self {
+        let mut service = Self::new(inner, session);
+        service.backend = Some(backend);
+        service
+    }
+
+    #[cfg(test)]
     pub(crate) fn inner(&self) -> &MermanLanguageServer {
-        &self._backend
+        self.backend
+            .as_ref()
+            .expect("test services retain their backend probe")
     }
 
     fn route(
@@ -191,46 +326,111 @@ impl MermanLspService {
         cancellation: Option<AdmissionCancellation>,
     ) -> BoxFuture<'static, Result<Option<Response>, ExitedError>> {
         let inner = Arc::clone(&self.inner);
+        let session = self.session.clone();
+        let preserve_ready_response = request.method() == "shutdown" && request.id().is_some();
         match admission {
-            Admission::Immediate => Box::pin(route_after_admission(inner, request, cancellation)),
+            Admission::Immediate => route_admitted(
+                inner,
+                session,
+                request,
+                cancellation,
+                preserve_ready_response,
+            ),
             Admission::Read { order, target } => Box::pin(async move {
-                order.wait_until_completed(target).await;
-                route_after_admission(inner, request, cancellation).await
+                if !wait_for_admission(&order, target, &session).await {
+                    return Ok(None);
+                }
+                route_admitted(
+                    inner,
+                    session,
+                    request,
+                    cancellation,
+                    preserve_ready_response,
+                )
+                .await
             }),
             Admission::Mutation {
                 order,
                 predecessor,
                 completion,
-            } => Box::pin(async move {
-                order.wait_until_completed(predecessor).await;
-                ACTIVE_MUTATION
-                    .scope(
-                        completion,
-                        route_after_admission(inner, request, cancellation),
-                    )
-                    .await
-            }),
+            } => {
+                if preserve_ready_response && order.is_completed(predecessor) {
+                    let future = route_admitted(
+                        inner,
+                        session,
+                        request,
+                        cancellation,
+                        preserve_ready_response,
+                    );
+                    return Box::pin(ACTIVE_MUTATION.scope(completion, future));
+                }
+                Box::pin(async move {
+                    if !wait_for_admission(&order, predecessor, &session).await {
+                        return Ok(None);
+                    }
+                    let future = route_admitted(
+                        inner,
+                        session,
+                        request,
+                        cancellation,
+                        preserve_ready_response,
+                    );
+                    ACTIVE_MUTATION.scope(completion, future).await
+                })
+            }
         }
     }
 }
 
-async fn route_after_admission(
+async fn wait_for_admission(order: &InputOrder, target: u64, session: &LanguageSession) -> bool {
+    tokio::select! {
+        biased;
+        () = session.terminated() => false,
+        () = order.wait_until_completed(target) => true,
+    }
+}
+
+fn route_admitted(
     inner: Arc<Mutex<LspService<MermanLanguageServer>>>,
+    session: LanguageSession,
     request: Request,
     cancellation: Option<AdmissionCancellation>,
-) -> Result<Option<Response>, ExitedError> {
+    preserve_ready_response: bool,
+) -> BoxFuture<'static, Result<Option<Response>, ExitedError>> {
+    if session.is_terminated() {
+        return Box::pin(async { Ok(None) });
+    }
+
     // `LspService::call` performs lifecycle routing synchronously. Keep that call behind ordered
     // admission, but release the mutex before polling the handler so unrelated reads can overlap.
     let future = match cancellation {
         Some(cancellation) => match cancellation.route(&inner, request) {
             AdmissionRoute::Cancelled(id) => {
-                return Ok(Some(Response::from_error(id, Error::request_cancelled())));
+                return Box::pin(async move {
+                    Ok(Some(Response::from_error(id, Error::request_cancelled())))
+                });
             }
             AdmissionRoute::Routed(future) => future,
         },
         None => lock_recovering_poison(&inner).call(request),
     };
-    future.await
+    if preserve_ready_response {
+        Box::pin(async move {
+            tokio::select! {
+                biased;
+                result = future => result,
+                () = session.terminated() => Ok(None),
+            }
+        })
+    } else {
+        Box::pin(async move {
+            tokio::select! {
+                biased;
+                () = session.terminated() => Ok(None),
+                result = future => result,
+            }
+        })
+    }
 }
 
 impl Service<Request> for MermanLspService {
@@ -246,14 +446,24 @@ impl Service<Request> for MermanLspService {
     }
 
     fn call(&mut self, request: Request) -> Self::Future {
+        if request.method() == "exit" && request.id().is_none() {
+            let future = lock_recovering_poison(&self.inner).call(request);
+            self.session.terminate();
+            return future;
+        }
+        if self.session.is_terminated() {
+            return Box::pin(async { Ok(None) });
+        }
         if let Some(id) = cancellation_request_id(&request) {
-            self.admission_cancellations.cancel(&id);
+            self.session.inner.admission_cancellations.cancel(&id);
         }
         let cancellation = request
             .id()
             .cloned()
-            .and_then(|id| self.admission_cancellations.register(id));
+            .and_then(|id| self.session.inner.admission_cancellations.register(id));
         let admission = self
+            .session
+            .inner
             .input_order
             .admit(request.method(), request.id().is_none());
         self.route(request, admission, cancellation)
@@ -294,6 +504,14 @@ impl AdmissionCancellationRegistry {
         if let Some(cancellation) = lock_recovering_poison(&self.pending).get(id) {
             cancellation.store(true, Ordering::Release);
         }
+    }
+
+    fn cancel_all(&self) {
+        let mut pending = lock_recovering_poison(&self.pending);
+        for cancellation in pending.values() {
+            cancellation.store(true, Ordering::Release);
+        }
+        pending.clear();
     }
 }
 
@@ -384,9 +602,14 @@ struct ClientEffectDispatcherInner {
 #[derive(Default)]
 struct ClientEffectState {
     queue: VecDeque<QueuedClientEffect>,
-    running: bool,
     cancelled: bool,
-    worker_abort: Option<AbortHandle>,
+    next_worker_id: u64,
+    active_worker: Option<ActiveClientEffectWorker>,
+}
+
+struct ActiveClientEffectWorker {
+    id: u64,
+    abort: AbortHandle,
 }
 
 impl std::fmt::Debug for ClientEffectDispatcher {
@@ -395,7 +618,7 @@ impl std::fmt::Debug for ClientEffectDispatcher {
         formatter
             .debug_struct("ClientEffectDispatcher")
             .field("queued", &state.queue.len())
-            .field("running", &state.running)
+            .field("running", &state.active_worker.is_some())
             .field("cancelled", &state.cancelled)
             .finish()
     }
@@ -437,13 +660,10 @@ impl ClientEffectDispatcher {
                             .take()
                             .expect("a client effect is admitted at most once"),
                     });
-                    let registration = if state.running {
+                    let registration = if state.active_worker.is_some() {
                         None
                     } else {
-                        state.running = true;
-                        let (abort, registration) = AbortHandle::new_pair();
-                        state.worker_abort = Some(abort);
-                        Some(registration)
+                        Some(Self::register_worker(&mut state))
                     };
                     Some(registration)
                 }
@@ -454,11 +674,8 @@ impl ClientEffectDispatcher {
             capacity.await;
         };
 
-        if let Some(registration) = registration {
-            let dispatcher = self.clone();
-            tokio::spawn(async move {
-                let _ = Abortable::new(dispatcher.drain(), registration).await;
-            });
+        if let Some((worker_id, registration)) = registration {
+            self.spawn_worker(worker_id, registration);
         }
     }
 
@@ -466,9 +683,11 @@ impl ClientEffectDispatcher {
         let worker_abort = {
             let mut state = lock_recovering_poison(&self.inner.state);
             state.cancelled = true;
-            state.running = false;
             state.queue.clear();
-            state.worker_abort.take()
+            state
+                .active_worker
+                .as_ref()
+                .map(|worker| worker.abort.clone())
         };
         if let Some(worker_abort) = worker_abort {
             worker_abort.abort();
@@ -483,7 +702,7 @@ impl ClientEffectDispatcher {
             let idle = self.inner.idle.notified();
             let is_idle = {
                 let state = lock_recovering_poison(&self.inner.state);
-                !state.running && state.queue.is_empty()
+                state.active_worker.is_none() && state.queue.is_empty()
             };
             if is_idle {
                 return;
@@ -499,12 +718,7 @@ impl ClientEffectDispatcher {
                 if state.cancelled {
                     return;
                 }
-                let queued = state.queue.pop_front();
-                if queued.is_none() {
-                    state.running = false;
-                    state.worker_abort = None;
-                }
-                queued
+                state.queue.pop_front()
             };
             let Some(queued) = queued else {
                 self.inner.idle.notify_waiters();
@@ -518,6 +732,54 @@ impl ClientEffectDispatcher {
             {
                 tracing::error!("LSP client effect panicked");
             }
+        }
+    }
+
+    fn register_worker(state: &mut ClientEffectState) -> (u64, AbortRegistration) {
+        state.next_worker_id = state
+            .next_worker_id
+            .checked_add(1)
+            .expect("client effect worker sequence exhausted");
+        let worker_id = state.next_worker_id;
+        let (abort, registration) = AbortHandle::new_pair();
+        state.active_worker = Some(ActiveClientEffectWorker {
+            id: worker_id,
+            abort,
+        });
+        (worker_id, registration)
+    }
+
+    fn spawn_worker(&self, worker_id: u64, registration: AbortRegistration) {
+        let dispatcher = self.clone();
+        tokio::spawn(async move {
+            let _ = Abortable::new(dispatcher.drain(), registration).await;
+            dispatcher.worker_finished(worker_id);
+        });
+    }
+
+    fn worker_finished(&self, worker_id: u64) {
+        let replacement = {
+            let mut state = lock_recovering_poison(&self.inner.state);
+            if state
+                .active_worker
+                .as_ref()
+                .is_none_or(|worker| worker.id != worker_id)
+            {
+                return;
+            }
+            state.active_worker = None;
+            if !state.cancelled && !state.queue.is_empty() {
+                Some(Self::register_worker(&mut state))
+            } else {
+                None
+            }
+        };
+
+        self.inner.capacity.notify_waiters();
+        if let Some((worker_id, registration)) = replacement {
+            self.spawn_worker(worker_id, registration);
+        } else {
+            self.inner.idle.notify_waiters();
         }
     }
 }
@@ -583,6 +845,10 @@ impl InputOrder {
             }
             changed.await;
         }
+    }
+
+    fn is_completed(&self, target: u64) -> bool {
+        lock_recovering_poison(&self.state).completed_mutation >= target
     }
 
     fn complete(&self, sequence: u64) {
@@ -767,6 +1033,30 @@ mod tests {
 
         assert!(!superseded_ran.load(Ordering::Acquire));
         assert!(latest_ran.load(Ordering::Acquire));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancelling_client_effects_waits_for_the_active_future_to_drop() {
+        let dispatcher = ClientEffectDispatcher::new();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (effect_alive_tx, effect_dropped_rx) = tokio::sync::oneshot::channel::<()>();
+
+        dispatcher
+            .enqueue_latest(ClientEffectKey::AllDiagnostics, async move {
+                let _effect_alive = effect_alive_tx;
+                let _ = started_tx.send(());
+                std::future::pending::<()>().await;
+            })
+            .await;
+        started_rx.await.expect("client effect should start");
+
+        dispatcher.cancel();
+        dispatcher.wait_idle().await;
+
+        assert!(
+            effect_dropped_rx.await.is_err(),
+            "idle must mean the aborted effect future has actually been dropped"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

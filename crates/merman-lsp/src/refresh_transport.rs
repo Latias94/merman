@@ -1,3 +1,4 @@
+use crate::session::SessionEndpointGuard;
 use crate::sync::lock_recovering_poison;
 use futures::channel::mpsc;
 use futures::{Sink, SinkExt, Stream, StreamExt};
@@ -93,6 +94,10 @@ impl RefreshClient {
             internal_error("refresh request transport closed before the client response arrived")
         })?
     }
+
+    pub(crate) fn cancel_all(&self) {
+        lock_recovering_poison(&self.pending).clear();
+    }
 }
 
 struct PendingRefreshGuard {
@@ -151,6 +156,7 @@ impl RefreshResponseRouter {
 
 /// Loopback socket that adds cancellation-safe server-to-client refresh requests.
 pub struct MermanClientSocket {
+    endpoint: SessionEndpointGuard,
     inner: ClientSocket,
     refresh_requests: mpsc::Receiver<Request>,
     refresh_responses: RefreshResponseRouter,
@@ -173,8 +179,10 @@ impl MermanClientSocket {
         inner: ClientSocket,
         refresh_requests: mpsc::Receiver<Request>,
         refresh_responses: RefreshResponseRouter,
+        endpoint: SessionEndpointGuard,
     ) -> Self {
         Self {
+            endpoint,
             inner,
             refresh_requests,
             refresh_responses,
@@ -184,7 +192,10 @@ impl MermanClientSocket {
     }
 
     fn close_refresh_transport(&mut self) {
+        self.endpoint.terminate();
         self.refresh_requests.close();
+        while self.refresh_requests.try_recv().is_ok() {}
+        self.pending_inner_request = None;
         self.refresh_responses.cancel_all();
     }
 }
@@ -200,6 +211,10 @@ impl Stream for MermanClientSocket {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
+        if this.endpoint.is_terminated() {
+            this.close_refresh_transport();
+            return Poll::Ready(None);
+        }
         if this.pending_inner_request.is_none() {
             match Pin::new(&mut this.inner).poll_next(cx) {
                 Poll::Ready(Some(request)) => this.pending_inner_request = Some(request),
@@ -314,6 +329,33 @@ mod tests {
                 .is_none()
         );
         assert_eq!(responses.pending_count(), 0);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn terminated_session_discards_a_buffered_refresh_before_socket_delivery() {
+        let (service, mut socket, refresh_client) =
+            MermanLanguageServer::service_with_refresh_client();
+        let retained_client = service.inner().client_for_tests();
+        let request_task = tokio::spawn({
+            let refresh_client = refresh_client.clone();
+            async move { refresh_client.request(RefreshKind::SemanticTokens).await }
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while lock_recovering_poison(&refresh_client.pending).is_empty() {
+                tokio::task::yield_now().await;
+            }
+            tokio::task::yield_now().await;
+        })
+        .await
+        .expect("refresh request should enter the bounded socket queue");
+
+        drop(service);
+        let mut next = Box::pin(socket.next());
+        assert!(matches!(futures::poll!(&mut next), Poll::Ready(None)));
+        assert!(request_task.await.unwrap().is_err());
+
+        drop(retained_client);
     }
 
     #[tokio::test]

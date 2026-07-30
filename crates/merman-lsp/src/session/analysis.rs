@@ -101,6 +101,7 @@ impl LanguageSession {
         };
         let previous = match previous_result_id {
             Some(result_id) => self
+                .inner
                 .state
                 .lock()
                 .await
@@ -111,7 +112,7 @@ impl LanguageSession {
             return Ok(None);
         };
 
-        let mut state = self.state.lock().await;
+        let mut state = self.inner.state.lock().await;
         let current = match next_state {
             Some(next_state) => state.set_semantic_tokens_state_if_current(&context, next_state),
             None => state.is_snapshot_context_current(&context),
@@ -130,7 +131,7 @@ impl LanguageSession {
     ) -> Result<Option<DocumentDiagnosticState>> {
         for _ in 0..MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS {
             let (diagnostic_context, cached) = {
-                let state = self.state.lock().await;
+                let state = self.inner.state.lock().await;
                 (state.diagnostic_context(uri), state.diagnostic_state(uri))
             };
             if let Some(cached) = cached {
@@ -156,7 +157,7 @@ impl LanguageSession {
                     .as_ref()
                     .map(SnapshotContext::analysis_payload),
             );
-            let mut state = self.state.lock().await;
+            let mut state = self.inner.state.lock().await;
             let current = state.is_diagnostic_context_current(&diagnostic_context)
                 && analysis_context
                     .as_ref()
@@ -191,7 +192,7 @@ impl LanguageSession {
                 .as_ref()
                 .map(SnapshotContext::analysis_payload),
         );
-        let state = self.state.lock().await;
+        let state = self.inner.state.lock().await;
         let current = state.is_diagnostic_context_current(context)
             && analysis_context
                 .as_ref()
@@ -205,7 +206,7 @@ impl LanguageSession {
         purpose: SnapshotPurpose,
     ) -> Result<Option<SnapshotContext>> {
         let (reprojection, request, executor) = {
-            let mut state = self.state.lock().await;
+            let mut state = self.inner.state.lock().await;
             let cache_ready = if purpose.requires_analysis_payload() {
                 state.has_analysis_payload(uri)
             } else {
@@ -255,7 +256,7 @@ impl LanguageSession {
             Err(error) => return Err(analysis_execution_error(error)),
         };
         let context = Arc::clone(analysis.context());
-        let mut state = self.state.lock().await;
+        let mut state = self.inner.state.lock().await;
         match state.insert_built_analysis(&request, context) {
             Some(context) => Ok(Some(context)),
             None if state.get(request.uri()).is_some() => match purpose {
@@ -272,7 +273,7 @@ impl LanguageSession {
         purpose: SnapshotPurpose,
     ) -> Result<Option<SnapshotContext>> {
         let uri = projection.uri();
-        let mut state = self.state.lock().await;
+        let mut state = self.inner.state.lock().await;
         if let Some(context) = state.commit_diagnostic_reprojection_context(projection) {
             return Ok(Some(context));
         }
@@ -288,7 +289,7 @@ impl LanguageSession {
         uri: &Uri,
         purpose: SnapshotPurpose,
     ) -> Result<Option<SnapshotContext>> {
-        let document_exists = self.state.lock().await.get(uri).is_some();
+        let document_exists = self.inner.state.lock().await.get(uri).is_some();
         if !document_exists || purpose == SnapshotPurpose::Diagnostics {
             Ok(None)
         } else {
@@ -301,7 +302,7 @@ impl LanguageSession {
         context: &SnapshotContext,
         purpose: SnapshotPurpose,
     ) -> Result<()> {
-        let state = self.state.lock().await;
+        let state = self.inner.state.lock().await;
         let current = if purpose.requires_analysis_payload() {
             state.is_analysis_context_current(context)
         } else {

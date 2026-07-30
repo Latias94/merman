@@ -57,6 +57,7 @@ async fn edit_during_structure_analysis_rejects_the_old_commit() {
     open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
     let gate = Arc::new(TestAnalysisGate::default());
     session
+        .inner
         .state
         .lock()
         .await
@@ -93,6 +94,7 @@ async fn pull_diagnostics_retries_an_execution_that_becomes_stale() {
     open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
     let gate = Arc::new(TestAnalysisGate::default());
     session
+        .inner
         .state
         .lock()
         .await
@@ -177,6 +179,7 @@ async fn snapshot_policy_change_cancels_an_older_session_query() {
     open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
     let gate = Arc::new(TestAnalysisGate::default());
     session
+        .inner
         .state
         .lock()
         .await
@@ -206,14 +209,19 @@ async fn evicted_generation_rebuilds_once_for_concurrent_session_queries() {
     let sizing = session();
     open(&sizing, &a, 1, text).await;
     sizing.structure_snapshot(&a).await.unwrap();
-    let budget = sizing.state.lock().await.analysis_cache_total_weight();
+    let budget = sizing
+        .inner
+        .state
+        .lock()
+        .await
+        .analysis_cache_total_weight();
 
     let session = LanguageSession::with_analysis_cache_budget(budget);
     open(&session, &a, 1, text).await;
     open(&session, &b, 1, text).await;
     session.structure_snapshot(&a).await.unwrap();
     session.structure_snapshot(&b).await.unwrap();
-    assert!(!session.state.lock().await.has_snapshot(&a));
+    assert!(!session.inner.state.lock().await.has_snapshot(&a));
     let executions = session.analysis_execution_count();
 
     let (first, second) = tokio::join!(
@@ -231,6 +239,7 @@ async fn dropping_the_last_session_waiter_does_not_admit_a_cache_entry() {
     open(&session, &uri, 1, "flowchart TD\nA-->B\n").await;
     let gate = Arc::new(TestAnalysisGate::default());
     session
+        .inner
         .state
         .lock()
         .await
@@ -258,7 +267,7 @@ async fn dropping_the_last_session_waiter_does_not_admit_a_cache_entry() {
     .await
     .expect("cancelled analysis did not release its registry and CPU admission");
 
-    let state = session.state.lock().await;
+    let state = session.inner.state.lock().await;
     assert_eq!(state.analysis_cache_len(), 0);
     assert!(!state.has_snapshot(&uri));
 }

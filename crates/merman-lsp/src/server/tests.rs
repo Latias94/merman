@@ -5,8 +5,8 @@ use super::semantic_token_planning_error;
 use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::session::{
-    DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError, StoredDocument,
-    default_lsp_analysis_options,
+    ClientEffectKey, DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError,
+    LSP_CLIENT_EFFECT_QUEUE_LIMIT, StoredDocument, default_lsp_analysis_options,
 };
 use crate::snapshot::snapshot_for_test;
 use crate::structure::{
@@ -26,14 +26,15 @@ use tower_lsp_server::ls_types::SemanticTokensResult;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionParams,
     DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
-    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse,
-    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents,
-    HoverParams, InitializeParams, NumberOrString, Position, Range, RenameParams,
-    SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokensParams,
-    SemanticTokensRangeParams, SemanticTokensRangeResult, TextDocumentContentChangeEvent,
-    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Uri, VersionedTextDocumentIdentifier,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentChanges,
+    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRangeParams,
+    FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
+    InitializeParams, NumberOrString, Position, Range, RenameParams, SelectionRangeParams,
+    SelectionRangeProviderCapability, SemanticTokensParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    Uri, VersionedTextDocumentIdentifier,
 };
 use tower_lsp_server::ls_types::{HoverProviderCapability, OneOf};
 
@@ -446,7 +447,7 @@ async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
             },
         })
         .await;
-    server.client_effects.wait_idle().await;
+    server.session.wait_client_effects_idle().await;
 
     let probe = server.session.probe();
     assert!(probe.document(&uri).await.is_some());
@@ -957,6 +958,145 @@ async fn session_routes_pipelined_messages_after_initialize_completes() {
             .is_some(),
         "didOpen must be routed after the earlier initialize succeeds"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn dropping_either_session_endpoint_terminates_all_work_exactly_once() {
+    let (service, socket) = MermanLanguageServer::service();
+    let socket_session = service.inner().session.clone();
+
+    drop(socket);
+    socket_session.wait_stopped().await;
+    assert!(socket_session.analysis_is_cancelled());
+    assert_eq!(socket_session.termination_count(), 1);
+
+    drop(service);
+    assert_eq!(socket_session.termination_count(), 1);
+
+    let (service, socket) = MermanLanguageServer::service();
+    let service_session = service.inner().session.clone();
+
+    drop(service);
+    service_session.wait_stopped().await;
+    assert!(service_session.analysis_is_cancelled());
+    assert_eq!(service_session.termination_count(), 1);
+
+    drop(socket);
+    assert_eq!(service_session.termination_count(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn exit_cancels_queued_mutations_and_stops_new_admission() {
+    let (mut service, socket) = MermanLanguageServer::service();
+    let session = service.inner().session.clone();
+    let uri = Uri::from_str("file:///tmp/exit-cancels-queued-open.mmd").unwrap();
+
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let exit = service.call(Request::build("exit").finish());
+
+    assert!(exit.await.unwrap().is_none());
+    assert!(open.await.unwrap().is_none());
+    assert!(session.probe().document(&uri).await.is_none());
+    assert!(
+        service
+            .call(Request::build(RULE_CATALOG_METHOD).id(2).finish())
+            .await
+            .unwrap()
+            .is_none(),
+        "terminated sessions must not admit new work"
+    );
+    assert_eq!(session.termination_count(), 1);
+
+    drop(socket);
+    drop(service);
+    assert_eq!(session.termination_count(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn exit_preserves_an_already_admitted_shutdown_error() {
+    let (mut service, socket) = MermanLanguageServer::service();
+
+    let shutdown = service.call(Request::build("shutdown").id(1).finish());
+    let exit = service.call(Request::build("exit").finish());
+
+    assert!(exit.await.unwrap().is_none());
+    let response = shutdown
+        .await
+        .unwrap()
+        .expect("the rejected shutdown should retain its response");
+    assert!(response.error().is_some());
+
+    drop(socket);
+    drop(service);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn client_effect_backpressure_does_not_hold_the_mutation_fence() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
+    let session = service.inner().session.clone();
+    let uri = Uri::from_str("file:///tmp/effect-backpressure.mmd").unwrap();
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+
+    session
+        .enqueue_client_effect(
+            ClientEffectKey::Document("blocker".to_string()),
+            async move {
+                let _ = started_tx.send(());
+                std::future::pending::<()>().await;
+            },
+        )
+        .await;
+    started_rx
+        .await
+        .expect("blocking client effect should start");
+    for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
+        session
+            .enqueue_client_effect(
+                ClientEffectKey::Document(format!("queued-{index}")),
+                async {},
+            )
+            .await;
+    }
+
+    let save = service.call(
+        Request::build("textDocument/didSave")
+            .params(
+                serde_json::to_value(DidSaveTextDocumentParams {
+                    text_document: TextDocumentIdentifier { uri },
+                    text: None,
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    tokio::pin!(save);
+    assert!(futures::poll!(&mut save).is_pending());
+
+    let response = service
+        .call(Request::build(RULE_CATALOG_METHOD).id(2).finish())
+        .await
+        .unwrap()
+        .expect("a read after the committed save should not wait for client capacity");
+    assert!(response.is_ok());
+
+    session.terminate();
+    assert!(save.await.unwrap().is_none());
+    session.wait_stopped().await;
 }
 
 #[tokio::test(flavor = "current_thread")]

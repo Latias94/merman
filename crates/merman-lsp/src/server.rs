@@ -8,17 +8,13 @@ use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, DiagnosticVersionData, RULE_CATALOG_METHOD,
     RuleCatalogResponse, experimental_capabilities,
 };
-use crate::refresh_coordinator::RefreshCoordinator;
 use crate::refresh_transport::{MermanClientSocket, RefreshClient};
 use crate::semantic_tokens::{
     semantic_tokens_delta_result, semantic_tokens_for_snapshot_range_with_profile,
     semantic_tokens_for_snapshot_with_profile, semantic_tokens_options_with_profile,
     semantic_tokens_result_id,
 };
-use crate::session::{
-    ClientEffectDispatcher, ClientEffectKey, LanguageSession, MermanLspService,
-    commit_active_mutation,
-};
+use crate::session::{ClientEffectKey, LanguageSession, MermanLspService, commit_active_mutation};
 use crate::session::{
     ConfigurationUpdateOutcome, DiagnosticContext, DocumentDiagnosticState, DocumentSyncError,
     SemanticTokensState, StoredDocument, analysis_options_with_lsp_resource_defaults,
@@ -77,32 +73,14 @@ pub struct MermanLanguageServer {
     client: Client,
     session: LanguageSession,
     client_profile: Arc<OnceLock<ClientProtocolProfile>>,
-    refresh_coordinator: RefreshCoordinator,
-    client_effects: ClientEffectDispatcher,
-    _lifetime: Arc<MermanLanguageServerLifetime>,
-}
-
-#[derive(Debug)]
-struct MermanLanguageServerLifetime {
-    session: LanguageSession,
-    client_effects: ClientEffectDispatcher,
 }
 
 impl MermanLanguageServer {
-    fn new(client: Client, refresh_client: RefreshClient) -> Self {
-        let session =
-            LanguageSession::with_cancellation(merman_analysis::AnalysisCancellationToken::new());
-        let client_effects = ClientEffectDispatcher::new();
+    fn new(client: Client, session: LanguageSession) -> Self {
         Self {
             client,
-            session: session.clone(),
+            session,
             client_profile: Arc::new(OnceLock::new()),
-            refresh_coordinator: RefreshCoordinator::new(refresh_client),
-            client_effects: client_effects.clone(),
-            _lifetime: Arc::new(MermanLanguageServerLifetime {
-                session,
-                client_effects,
-            }),
         }
     }
 
@@ -115,10 +93,15 @@ impl MermanLanguageServer {
     fn service_components() -> (MermanLspService, MermanClientSocket, RefreshClient) {
         let (refresh_client, refresh_requests, refresh_responses) = RefreshClient::channel();
         let refresh_handle = refresh_client.clone();
+        let session = LanguageSession::with_refresh_client(refresh_client);
+        let backend_session = session.clone();
+        #[cfg(test)]
         let backend = Arc::new(OnceLock::new());
+        #[cfg(test)]
         let backend_slot = Arc::clone(&backend);
         let (service, socket) = LspService::build(move |client| {
-            let server = Self::new(client, refresh_client);
+            let server = Self::new(client, backend_session.clone());
+            #[cfg(test)]
             backend_slot
                 .set(server.clone())
                 .expect("LSP backend is constructed exactly once");
@@ -127,15 +110,22 @@ impl MermanLanguageServer {
         .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
         .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
         .finish();
+        #[cfg(test)]
         let backend = backend
             .get()
             .expect("LSP service builder constructs its backend")
             .clone();
-        (
-            MermanLspService::new(service, backend),
-            MermanClientSocket::new(socket, refresh_requests, refresh_responses),
-            refresh_handle,
-        )
+        #[cfg(test)]
+        let service = MermanLspService::with_backend_for_tests(service, session.clone(), backend);
+        #[cfg(not(test))]
+        let service = MermanLspService::new(service, session.clone());
+        let socket = MermanClientSocket::new(
+            socket,
+            refresh_requests,
+            refresh_responses,
+            session.endpoint_guard(),
+        );
+        (service, socket, refresh_handle)
     }
 
     #[cfg(test)]
@@ -368,8 +358,8 @@ impl MermanLanguageServer {
     async fn enqueue_publish_for_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
         let publisher = self.diagnostic_publisher();
         let key = ClientEffectKey::Document(uri.as_str().to_owned());
-        self.client_effects
-            .enqueue_latest(key, async move {
+        self.session
+            .enqueue_client_effect(key, async move {
                 publisher.publish_for_uri(uri).await;
             })
             .await;
@@ -378,8 +368,8 @@ impl MermanLanguageServer {
     async fn enqueue_clear_diagnostics(&self, uri: tower_lsp_server::ls_types::Uri) {
         let publisher = self.diagnostic_publisher();
         let key = ClientEffectKey::Document(uri.as_str().to_owned());
-        self.client_effects
-            .enqueue_latest(key, async move {
+        self.session
+            .enqueue_client_effect(key, async move {
                 publisher.clear(uri).await;
             })
             .await;
@@ -387,8 +377,8 @@ impl MermanLanguageServer {
 
     async fn enqueue_republish_all(&self) {
         let publisher = self.diagnostic_publisher();
-        self.client_effects
-            .enqueue_latest(ClientEffectKey::AllDiagnostics, async move {
+        self.session
+            .enqueue_client_effect(ClientEffectKey::AllDiagnostics, async move {
                 publisher.publish_all().await;
             })
             .await;
@@ -495,13 +485,6 @@ impl DiagnosticPublisher {
     }
 }
 
-impl Drop for MermanLanguageServerLifetime {
-    fn drop(&mut self) {
-        self.session.cancel_analysis();
-        self.client_effects.cancel();
-    }
-}
-
 impl LanguageServer for MermanLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let profile = ClientProtocolProfile::negotiate(&params.capabilities);
@@ -535,10 +518,10 @@ impl LanguageServer for MermanLanguageServer {
             .session
             .open_document(uri.clone(), doc.version, doc.text, kind)
             .await;
+        commit_active_mutation();
         if committed {
             self.enqueue_publish_for_uri(uri).await;
         }
-        commit_active_mutation();
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -547,23 +530,23 @@ impl LanguageServer for MermanLanguageServer {
             .session
             .change_document(doc.uri.clone(), doc.version, params.content_changes)
             .await;
+        commit_active_mutation();
         if update.is_some_and(|update| update.affects_document_state()) {
             self.enqueue_publish_for_uri(doc.uri).await;
         }
-        commit_active_mutation();
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
-        self.enqueue_publish_for_uri(uri).await;
         commit_active_mutation();
+        self.enqueue_publish_for_uri(uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
         self.session.close_document(&uri).await;
-        self.enqueue_clear_diagnostics(uri).await;
         commit_active_mutation();
+        self.enqueue_clear_diagnostics(uri).await;
     }
 
     async fn did_change_configuration(
@@ -602,7 +585,7 @@ impl LanguageServer for MermanLanguageServer {
             self.enqueue_republish_all().await;
         }
         let profile = self.client_profile();
-        self.refresh_coordinator.request(
+        self.session.request_refresh(
             change.affects_snapshots()
                 && profile.semantic_tokens.is_some()
                 && profile.semantic_tokens_refresh,

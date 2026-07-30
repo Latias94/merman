@@ -285,6 +285,8 @@ struct WriteFailureWithPendingShutdown {
 
 struct PendingWrite;
 
+struct PendingShutdownWrite;
+
 struct EofNotifyingRead<R> {
     inner: R,
     eof_observed: Option<oneshot::Sender<()>>,
@@ -356,6 +358,24 @@ impl AsyncWrite for PendingWrite {
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Poll::Pending
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Pending
+    }
+}
+
+impl AsyncWrite for PendingShutdownWrite {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buffer: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        Poll::Ready(Ok(buffer.len()))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -703,6 +723,64 @@ async fn stdio_pending_write_times_out_and_cancels_input() {
     )
     .await
     .expect("pending output write should be bounded");
+
+    assert_eq!(termination, StdioTermination::OutputClosed);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn stdio_exit_remains_reachable_when_protocol_error_output_is_saturated() {
+    let (mut client_stdin, server_stdin) = tokio::io::duplex(4096);
+    let (unused_notification_tx, _unused_notification_rx) = oneshot::channel();
+    let (exit_seen_tx, exit_seen_rx) = oneshot::channel();
+
+    let server_task = tokio::spawn(async move {
+        serve_stdio(
+            server_stdin,
+            PendingWrite,
+            EmptyLoopback,
+            PendingNotificationService {
+                notification_started: Some(unused_notification_tx),
+                exit_seen: Some(exit_seen_tx),
+            },
+        )
+        .await
+    });
+
+    let invalid = frame(r#"{"jsonrpc":"2.0","method":"#);
+    let mut input = invalid.clone();
+    input.extend(invalid);
+    input.extend(frame(r#"{"jsonrpc":"2.0","method":"exit","params":null}"#));
+    client_stdin
+        .write_all(&input)
+        .await
+        .expect("write malformed messages followed by exit");
+
+    timeout(Duration::from_secs(1), exit_seen_rx)
+        .await
+        .expect("output backpressure must not block the exit notification")
+        .expect("exit service should signal receipt");
+    drop(client_stdin);
+
+    let termination = timeout(Duration::from_secs(31), server_task)
+        .await
+        .expect("stalled protocol-error output should hit the drain deadline")
+        .expect("stdio server task should not panic");
+    assert_eq!(termination, StdioTermination::OutputClosed);
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn stdio_output_shutdown_remains_bounded_after_eof() {
+    let termination = timeout(
+        Duration::from_secs(2),
+        serve_stdio(
+            tokio::io::empty(),
+            PendingShutdownWrite,
+            EmptyLoopback,
+            LoopbackOnlyService,
+        ),
+    )
+    .await
+    .expect("a pending output shutdown should hit its own bound");
 
     assert_eq!(termination, StdioTermination::OutputClosed);
 }
