@@ -98,8 +98,9 @@ The remaining user-facing and distribution gaps are different:
   and exits `2` before input acquisition.
 - R7. Explicit `mmdc -e/--outputFormat` remains part of the pinned upstream compatibility
   contract and never emits the native deprecation warning.
-- R8. The already documented hidden root-level `mmdc` bridge remains through `0.8.x` and is
-  removed in `v0.9.0`; it is not reintroduced into help or completion.
+- R8. The hidden root-level `mmdc` bridge is a permanent, silent compatibility alias. It inserts
+  the explicit `mmdc` subcommand before the one authoritative parser and remains absent from help
+  and completion.
 - R9. Native `--theme` accepts exactly the themes reported by the compiled runtime catalog.
   Unknown values fail with exit `2` before input acquisition. `mmdc --theme` remains restricted to
   the four upstream CLI themes.
@@ -215,10 +216,10 @@ The remaining user-facing and distribution gaps are different:
   - **Covered by:** R1-R6, R9, R14, R16
 - F2. Compatibility migration
   - **Trigger:** A3 invokes a root compatibility flag, explicit `mmdc`, or native `-e`.
-  - **Steps:** The bounded `0.8.x` bridge or hidden native spelling is detected; the command emits
-    an exact migration warning; explicit `mmdc` remains warning-free.
-  - **Outcome:** Existing automation has a migration window without preserving ambiguous public
-    syntax into `v0.9.0`.
+  - **Steps:** Root compatibility flags silently enter the explicit `mmdc` parser, while the hidden
+    native `-e` spelling emits an exact `-f` migration warning; explicit `mmdc` remains warning-free.
+  - **Outcome:** Existing `mmdc`-style automation remains valid without reintroducing root flags
+    into the advertised command tree or weakening the native command contracts.
   - **Covered by:** R6-R8, R13, R15, R42, R44
 - F3. Machine lint
   - **Trigger:** A2 invokes `lint --format json`.
@@ -264,8 +265,8 @@ The remaining user-facing and distribution gaps are different:
   `0.8.x`, warns with the `-f` replacement, and does not appear in help or completion. Supplying
   `-e` with `-f` or `--format`, in either order, exits `2` before reading input.
 - AE7. Explicit `mmdc -e` remains visible and emits no native deprecation warning.
-- AE8. The hidden root-level bridge behaves as documented through `0.8.x`; tests and migration
-  docs fix its removal at `v0.9.0`.
+- AE8. The hidden root-level bridge remains silent and behaviorally identical to explicit `mmdc`,
+  preserves attached and non-UTF-8 arguments, and remains absent from help and completion.
 - AE9. Bare `lint` emits text. `lint --format json` preserves the current JSON schema.
   `lint-rules` remains JSON by default.
 - AE10. `lint --pretty` says to use `--format json --pretty`; that explicit form succeeds.
@@ -402,18 +403,17 @@ The remaining user-facing and distribution gaps are different:
    `mmdc` command keeps upstream names and semantics. A compatibility claim never forces native
    commands to inherit upstream ergonomics.
 
-3. **Use a bounded deprecation bridge instead of permanent aliases.**
-   *(session-settled: user-approved; rejected alternative: remove compatibility syntax
-   immediately or retain it indefinitely)*
-   Root compatibility forwarding and native `-e` survive only through `0.8.x`, remain hidden from
-   discovery, produce exact replacement guidance, and have tests fixing removal at `v0.9.0`.
-   This preserves migration time without creating two permanent ways to express the same native
-   operation.
+3. **Keep the root compatibility bridge permanent but bounded in surface.**
+   *(session-settled: user-approved after implementation; supersedes the planned `v0.9.0` removal)*
+   Root compatibility forwarding is a silent token-insertion adapter into the explicit `mmdc`
+   parser and remains hidden from discovery. Native `-e` is a separate migration alias that still
+   warns and is removed in `v0.9.0`. This preserves existing `mmdc`-style automation without
+   creating a second parser, executor, help surface, or native command contract.
 
 4. **Version the behavioral break.**
    The native interface changes increment `cli_contract_version` to `3`. Capability JSON schema
-   remains at `2` because its structure does not change. The later root-bridge removal is a
-   separate contract event.
+   remains at `2` because its structure does not change. Contract `3` includes the permanent
+   hidden root compatibility bridge and the release-bounded native `-e` migration alias.
 
 5. **Generate package-manager candidates from verified bytes.**
    Scoop, WinGet, and provenance consume checksums and archives from the post-verification bundle.
@@ -440,8 +440,8 @@ The remaining user-facing and distribution gaps are different:
   or rewriting them.
 - The complete CLI remains the default for `cargo install merman-cli`; this plan does not change
   the feature architecture selected in the capability-driven distribution plan.
-- `v0.8.x` is the migration window and `v0.9.0` is the earliest removal release for the hidden
-  root bridge and native `-e`.
+- The hidden root bridge is permanent; `v0.8.x` remains the migration window for native `-e`, which
+  is removed in `v0.9.0`.
 - External Homebrew/Scoop/WinGet repositories, package signing identities, and registry
   credentials are not available to this execution. Repository-owned candidates and evidence are
   the completion boundary.
@@ -613,7 +613,8 @@ been generated; validators reject it once a manifest is present.
 - Increment only `cli_contract_version` to `3`.
 - Make archive verification require the new contract version without changing capability schema
   version.
-- Preserve tests for the root bridge and make the `v0.9.0` removal boundary explicit.
+- Preserve tests proving that the root bridge is silent, argument-preserving, absent from generated
+  discovery surfaces, and routed through the explicit `mmdc` parser.
 
 **Verification:**
 
@@ -882,7 +883,8 @@ complete support claim.
 
 - Present the three primary paths first: complete binary install, native `render`, and explicit
   `mmdc`.
-- Explain the `0.8.x` warnings, `v0.9.0` removals, native `-f`, lint default, and CLI contract `3`.
+- Explain the permanent hidden root bridge, the native `-e` warning and `v0.9.0` removal, native
+  `-f`, lint default, and CLI contract `3`.
 - Explain why native behavior diverges and what users gain.
 - Publish a channel matrix that distinguishes binary-only installers, bundled assets, source
   builds, candidates, and externally published channels.

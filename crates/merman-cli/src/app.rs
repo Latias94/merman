@@ -107,11 +107,6 @@ impl CliApp {
                 return print_clap_error(error, &execution.stdout, &execution.stderr);
             }
         };
-        if parsed.should_warn_about_deprecated_root_mmdc()
-            && let Err(source) = execution.stderr.write_all(DEPRECATED_ROOT_MMDC_WARNING)
-        {
-            return CliError::stream("stderr", source).exit_code();
-        }
         if let Some(warning) = parsed.deprecated_native_format_warning()
             && let Err(source) = execution.stderr.write_all(warning.as_bytes())
         {
@@ -248,28 +243,12 @@ pub(crate) fn completion_script(shell: clap_complete::aot::Shell) -> Vec<u8> {
     output
 }
 
-const DEPRECATED_ROOT_MMDC_WARNING: &[u8] = b"warning: root-level mmdc-compatible options are deprecated and will be removed in v0.9.0\nhelp: use `merman-cli mmdc ...`; the explicit `mmdc` subcommand remains supported\n";
-
 struct ParsedCli {
     cli: Cli,
-    deprecated_root_mmdc: bool,
     deprecated_native_format: bool,
 }
 
 impl ParsedCli {
-    fn should_warn_about_deprecated_root_mmdc(&self) -> bool {
-        #[cfg(feature = "svg")]
-        {
-            self.deprecated_root_mmdc
-                && matches!(&self.cli.command, RawCommand::Mmdc(args) if !args.quiet)
-        }
-        #[cfg(not(feature = "svg"))]
-        {
-            let _ = self.deprecated_root_mmdc;
-            false
-        }
-    }
-
     fn deprecated_native_format_warning(&self) -> Option<String> {
         if !self.deprecated_native_format {
             return None;
@@ -303,13 +282,12 @@ impl ParsedCli {
 fn parse_cli(args: &[OsString]) -> Result<ParsedCli, clap::Error> {
     let mut command = cli_command();
     let deprecated_native_format = uses_deprecated_native_format(args);
-    let normalized_args = deprecated_root_mmdc_args(&command, args);
-    let deprecated_root_mmdc = normalized_args.is_some();
+    let normalized_args = root_mmdc_compatibility_args(&command, args);
+    let root_mmdc_compatibility = normalized_args.is_some();
     let parse_args = normalized_args.as_deref().unwrap_or(args);
     match command.try_get_matches_from_mut(parse_args) {
         Ok(mut matches) => Cli::from_arg_matches_mut(&mut matches).map(|cli| ParsedCli {
             cli,
-            deprecated_root_mmdc,
             deprecated_native_format,
         }),
         Err(error) => {
@@ -320,7 +298,7 @@ fn parse_cli(args: &[OsString]) -> Result<ParsedCli, clap::Error> {
                 )
                 .with_cmd(&command));
             }
-            if !deprecated_root_mmdc
+            if !root_mmdc_compatibility
                 && let Some(argument) = removed_root_render_flag(error.kind(), args)
             {
                 return Err(clap::Error::raw(
@@ -353,7 +331,10 @@ fn uses_deprecated_native_format(args: &[OsString]) -> bool {
         })
 }
 
-fn deprecated_root_mmdc_args(command: &clap::Command, args: &[OsString]) -> Option<Vec<OsString>> {
+fn root_mmdc_compatibility_args(
+    command: &clap::Command,
+    args: &[OsString],
+) -> Option<Vec<OsString>> {
     let argument = args.get(1)?.to_string_lossy();
     if !is_mmdc_option(command, &argument) {
         return None;
@@ -1000,28 +981,6 @@ mod tests {
             execution: execution(io::empty(), stdout, SharedWriter::new(FailingWriter)),
         };
         assert_eq!(usage.execute(), ExitCode::from(3));
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn deprecated_root_warning_failure_stops_before_input_acquisition() {
-        let reads = Arc::new(AtomicUsize::new(0));
-        let (stdout, stdout_bytes) = capture();
-        let app = CliApp {
-            process: snapshot(&["-i", "-", "-o", "-"], Ok(PathBuf::from(".")), false),
-            execution: execution(
-                CountingReader {
-                    reads: Arc::clone(&reads),
-                    source: Cursor::new(b"flowchart LR\nA-->B\n".to_vec()),
-                },
-                stdout,
-                SharedWriter::new(FailingWriter),
-            ),
-        };
-
-        assert_eq!(app.execute(), ExitCode::from(3));
-        assert_eq!(reads.load(Ordering::SeqCst), 0);
-        assert!(bytes(&stdout_bytes).is_empty());
     }
 
     #[cfg(any(feature = "svg", feature = "ascii"))]

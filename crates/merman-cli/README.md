@@ -119,11 +119,11 @@ Run `merman-cli --help` to see only the commands compiled into your binary, then
 
 `lint` defaults to stable human-readable text. Automation should request `--format json` explicitly; `lint-rules` remains JSON by default, and `--pretty` is valid only with JSON output.
 
-## Migrating From The Old Root Syntax
+## Command Dialects And Root Compatibility
 
-Root-level render flags are moving behind explicit subcommands. They were ambiguous with native subcommands, exposed options that silently did nothing for some formats, and made compatibility behavior impossible to version independently. The break gives each workflow its own parser, defaults, validation, help, completion output, input rules, and publication guarantees.
+Root-level render flags no longer belong to the advertised command tree. Keeping native and compatibility arguments in separate parsers gives each workflow its own defaults, validation, help, completion output, input rules, and publication guarantees without breaking existing root-level `mmdc` scripts.
 
-| Before | Now |
+| Existing or upstream syntax | Preferred explicit syntax |
 | --- | --- |
 | `mmdc -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` |
 | `merman-cli -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` |
@@ -134,9 +134,9 @@ Root-level render flags are moving behind explicit subcommands. They were ambigu
 | `merman-cli render diagram.mmd -e png` | `merman-cli render diagram.mmd -f png` |
 | `merman-cli batch README.md -e png` | `merman-cli batch README.md -f png` |
 
-During the `0.8.x` transition, an invocation whose first argument is an option owned by `mmdc`, such as `-i` or `--input`, is forwarded to the same parser and execution path as `merman-cli mmdc`. It prints a deprecation warning to stderr unless `--quiet` is present. This root-level forwarding is not advertised in help or completions and will be removed in `v0.9.0`; the explicit `merman-cli mmdc` subcommand remains supported.
+An invocation whose first argument is an option owned by `mmdc`, such as `-i` or `--input`, is permanently forwarded to the same parser and execution path as `merman-cli mmdc`. This silent compatibility alias is intentionally absent from help and completions. Explicit `merman-cli mmdc` remains the preferred compatibility spelling because it makes the selected contract visible to readers and tooling.
 
-Bare root inputs and native-only root options still exit `2` with a targeted message pointing to `mmdc`, `render`, and `batch`. New scripts should choose an explicit subcommand now.
+Bare root inputs and native-only root options exit `2` with a targeted message pointing to `mmdc`, `render`, and `batch`. New scripts should choose an explicit subcommand.
 
 Native `render -e` and `batch -e` are hidden aliases for `-f/--format` during `0.8.x`. Their bounded migration warnings remain visible even with `--quiet`, and the aliases are removed in `v0.9.0`. This does not affect `merman-cli mmdc -e/--outputFormat`, which remains part of the pinned compatibility interface.
 

@@ -53,7 +53,7 @@ fn root_requires_an_explicit_subcommand_without_side_effects() {
 }
 
 #[test]
-fn legacy_root_mmdc_options_forward_with_a_removal_warning() {
+fn root_mmdc_options_forward_without_compatibility_noise() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(tmp.path().join("diagram.mmd"), "flowchart LR\nA-->B\n").expect("write input");
     let exe = assert_cmd::cargo_bin!("merman-cli");
@@ -61,7 +61,7 @@ fn legacy_root_mmdc_options_forward_with_a_removal_warning() {
         .current_dir(tmp.path())
         .args(["-i", "diagram.mmd", "-o", "legacy.svg"])
         .output()
-        .expect("run legacy root invocation");
+        .expect("run root compatibility invocation");
 
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     assert!(
@@ -69,18 +69,28 @@ fn legacy_root_mmdc_options_forward_with_a_removal_warning() {
         "file output must not write a payload"
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
-    assert!(
-        stderr.contains("deprecated")
-            && stderr.contains("v0.9.0")
-            && stderr.contains("merman-cli mmdc"),
-        "legacy root invocation needs an actionable removal warning:\n{stderr}"
-    );
+    assert!(!stderr.contains("deprecated"), "{stderr}");
+    assert!(!stderr.contains("v0.9.0"), "{stderr}");
     let svg = fs::read_to_string(tmp.path().join("legacy.svg")).expect("read legacy SVG");
     assert!(svg.trim_start().starts_with("<svg"));
 }
 
 #[test]
-fn quiet_suppresses_only_the_legacy_root_removal_warning() {
+fn root_mmdc_options_are_an_exact_alias_for_explicit_mmdc() {
+    let source = "flowchart LR\nA-->B\n";
+    let root = run_with_stdin(&["-i", "-", "-o", "-", "-e", "svg", "--quiet"], source);
+    let explicit = run_with_stdin(
+        &["mmdc", "-i", "-", "-o", "-", "-e", "svg", "--quiet"],
+        source,
+    );
+
+    assert_eq!(exit_code(root.status), exit_code(explicit.status));
+    assert_eq!(root.stdout, explicit.stdout);
+    assert_eq!(root.stderr, explicit.stderr);
+}
+
+#[test]
+fn root_mmdc_quiet_remains_silent() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(tmp.path().join("diagram.mmd"), "flowchart LR\nA-->B\n").expect("write input");
     let exe = assert_cmd::cargo_bin!("merman-cli");
@@ -88,19 +98,19 @@ fn quiet_suppresses_only_the_legacy_root_removal_warning() {
         .current_dir(tmp.path())
         .args(["--input=diagram.mmd", "--output=quiet.svg", "--quiet"])
         .output()
-        .expect("run quiet legacy root invocation");
+        .expect("run quiet root compatibility invocation");
 
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     assert!(
         output.stderr.is_empty(),
-        "quiet legacy invocation must suppress the removal warning: {:?}",
+        "quiet root compatibility invocation must remain silent: {:?}",
         output.stderr
     );
     assert!(tmp.path().join("quiet.svg").exists());
 }
 
 #[test]
-fn compact_legacy_root_options_use_the_mmdc_parser() {
+fn compact_root_options_use_the_mmdc_parser_without_compatibility_noise() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(tmp.path().join("diagram.mmd"), "flowchart LR\nA-->B\n").expect("write input");
     let exe = assert_cmd::cargo_bin!("merman-cli");
@@ -108,14 +118,13 @@ fn compact_legacy_root_options_use_the_mmdc_parser() {
         .current_dir(tmp.path())
         .args(["-idiagram.mmd", "-ocompact.svg"])
         .output()
-        .expect("run compact legacy root invocation");
+        .expect("run compact root compatibility invocation");
 
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     assert!(tmp.path().join("compact.svg").exists());
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("v0.9.0"),
-        "compact mmdc options must use the same transition path"
-    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("deprecated"), "{stderr}");
+    assert!(!stderr.contains("v0.9.0"), "{stderr}");
 }
 
 #[cfg(unix)]
@@ -136,13 +145,16 @@ fn attached_non_utf8_input_reaches_the_mmdc_parser_unchanged() {
             std::ffi::OsString::from("non-utf8.svg"),
         ])
         .output()
-        .expect("run legacy root invocation with a non-UTF-8 path");
+        .expect("run root compatibility invocation with a non-UTF-8 path");
 
     assert_eq!(exit_code(output.status), 2);
     assert!(!tmp.path().join("non-utf8.svg").exists());
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(
-        stderr.contains("v0.9.0") && stderr.contains("Input file") && stderr.contains("\\xFF"),
+        !stderr.contains("v0.9.0")
+            && !stderr.contains("deprecated")
+            && stderr.contains("Input file")
+            && stderr.contains("\\xFF"),
         "the original non-UTF-8 argument must reach mmdc unchanged:\n{stderr}"
     );
 }

@@ -79,7 +79,7 @@ Scripts migrating from the official CLI use the pinned compatibility command:
 merman-cli mmdc -i diagram.mmd -o diagram.svg
 ```
 
-Root help and completions no longer advertise `-i` / `-o`. During `0.8.x`, root invocations that begin with an `mmdc` option are still forwarded to `merman-cli mmdc` and warn unless `--quiet` is present; bare root inputs and native-only root options already fail. The forwarding bridge is removed in `v0.9.0`, while the explicit `mmdc` subcommand remains supported.
+Root help and completions do not advertise `-i` / `-o`. Root invocations that begin with an `mmdc` option remain permanently supported as silent compatibility aliases and use the exact `merman-cli mmdc` parser and execution path; bare root inputs and native-only root options fail with guidance to an explicit workflow. New scripts should still choose `render`, `batch`, or explicit `mmdc` so their intended contract is visible.
 
 Native `render` and `batch` use `-f/--format`; their hidden `-e` aliases share the `v0.9.0` removal date, but `mmdc -e/--outputFormat` remains part of the compatibility interface. See the [`merman-cli` guide](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md) for the migration table, PDF, ASCII/Unicode, Iconify, runtime policy, and recoverable batch output.
 

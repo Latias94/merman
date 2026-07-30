@@ -32,10 +32,10 @@ Contract 3 advertises `-f/--format` for native `render` and `batch`, makes `lint
 keeping explicit JSON stable, and removes no-op configuration and rendering controls from `detect`.
 The archive, installation, and Homebrew verifiers require that exact contract.
 
-Two hidden migration bridges remain only through `0.8.x`: root invocations beginning with an
-`mmdc`-owned option forward to the explicit compatibility command and warn unless quiet, while
-native `render -e` / `batch -e` map to `-f` and retain their bounded warning even when quiet. Both
-bridges are removed in `v0.9.0`. The explicit `merman-cli mmdc` command and its
+Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
+the explicit compatibility command while remaining absent from help and completions. The separate
+native `render -e` / `batch -e` migration aliases map to `-f`, retain their bounded warning even
+when quiet, and are removed in `v0.9.0`. The explicit `merman-cli mmdc` command and its
 `-e/--outputFormat` option remain supported.
 
 ## Installation channels

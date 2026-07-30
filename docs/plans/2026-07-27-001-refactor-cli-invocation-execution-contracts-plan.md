@@ -17,7 +17,7 @@ execution: code
 |---|---|
 | Objective | Replace the current flattened CLI and side-effectful `RenderPlan` with explicit native and `mmdc` command contracts, bounded acquisition, typed execution, and staged publication. |
 | Authority | The latest maintainer direction wins, followed by Product Contract requirements, Key Technical Decisions, repository capability contracts, and implementation-unit detail. |
-| Execution profile | Breaking refactor is authorized. Remove obsolete execution paths and compatibility aliases; retain only the bounded `0.8.x` root-option forwarding bridge described by R37, with removal fixed for `v0.9.0`. |
+| Execution profile | Breaking refactor is authorized. Remove obsolete execution paths and compatibility aliases; retain only the permanent hidden root-option forwarding bridge described by R37. |
 | Stop conditions | Stop only for a scope-changing contradiction, an unsatisfied cross-platform data-integrity contract, or overlapping user changes that cannot be merged without choosing which behavior to keep. |
 | Verification posture | Characterize invariants first, test boundary values and failure phases, then run the full CLI and exact artifact-profile matrices. |
 | Tail ownership | `ce-work` owns implementation, simplification, review, focused local commits, and final verification. Do not push or open a pull request unless separately requested. |
@@ -51,7 +51,7 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 
 **Command and input contracts**
 
-- R1. The advertised root command requires a subcommand and groups concise help by user task: native rendering (`render`, `batch`), analysis (`lint`, `fix`), compatibility (`mmdc`), then capability and tooling commands, with one-line cues that distinguish the three rendering workflows. The temporary R37 bridge is absent from help and completions.
+- R1. The advertised root command requires a subcommand and groups concise help by user task: native rendering (`render`, `batch`), analysis (`lint`, `fix`), compatibility (`mmdc`), then capability and tooling commands, with one-line cues that distinguish the three rendering workflows. The hidden R37 bridge is absent from help and completions.
 - R2. `mmdc` owns the upstream-compatible argument names, defaults, theme values, Markdown detection, and output naming for the pinned `mmdc@11.16.0` baseline.
 - R3. `render` owns native single-diagram rendering and rejects Markdown input.
 - R4. `batch` owns native Markdown rendering and writes into a tool-owned output directory.
@@ -61,7 +61,7 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 - R8. Raw SVG conversion is native-only, inferred from a named `.svg` input or selected for stdin with `--input-kind svg`; content sniffing is not part of the contract.
 - R9. Every command rejects irrelevant, unavailable, conflicting, or ambiguous arguments before reading stdin, accessing the network, creating output directories, or rendering; an upstream option retained as a documented `mmdc` compatibility no-op is relevant only on that command.
 - R36. The `mmdc` contract is a versioned compatibility snapshot pinned by each Merman release; it changes only through Mermaid baseline alignment with an updated compatibility register and migration note.
-- R37. During `0.8.x`, an invocation whose first argument is owned by the pinned `mmdc` command is normalized by inserting the explicit `mmdc` subcommand, then parsed and executed by that same command path. It emits a removal warning unless `--quiet` is present, is absent from help and completions, and is removed in `v0.9.0`. Bare root inputs and root options not owned by `mmdc` still exit `2` with the targeted migration diagnostic.
+- R37. An invocation whose first argument is owned by the pinned `mmdc` command is permanently normalized by inserting the explicit `mmdc` subcommand, then parsed and executed by that same command path without a compatibility-layer warning. It remains absent from help and completions. Bare root inputs and root options not owned by `mmdc` still exit `2` with the targeted workflow diagnostic.
 - R38. Missing required terminal input at the root, `render`, or `batch` prints concise help to stderr and exits `2`; explicit `--help` prints help to stdout and exits `0`.
 - R39. A native `batch` input with zero eligible charts is a valid empty generation: publish the document and manifest, produce no image artifacts, and remove only stale artifacts owned by the prior validated manifest. Strict `mmdc` behavior remains pinned separately.
 
@@ -151,7 +151,7 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 - AE15. Given a URL with user information, path secrets, a query token, and a fragment, when validation or a request fails, then stderr contains only the sanitized scheme, host, and explicit port.
 - AE16. Given two processes targeting one Markdown output root, when the first holds the transaction lock, then the second exits with an operational lock-contention error without inspecting recovery state or modifying final files.
 - AE17. Given a file changed, renamed, or relinked after `fix` acquires it but before the final comparison, when `fix --write` reaches publication, then it exits with an operational concurrent-modification error and preserves the newer target; the documented compare-to-rename race remains a filesystem limitation rather than a claimed compare-and-swap guarantee.
-- AE18. Given a root invocation beginning with a pinned `mmdc` option, when parsing succeeds during `0.8.x`, then it uses the exact explicit `mmdc` parser and executor and emits the `v0.9.0` removal warning unless quiet. Given any other removed root render syntax, parsing exits `2` with the targeted migration and performs no side effect.
+- AE18. Given a root invocation beginning with a pinned `mmdc` option, when parsing succeeds, then it silently uses the exact explicit `mmdc` parser and executor while preserving attached and non-UTF-8 arguments. Given any other removed root render syntax, parsing exits `2` with the targeted workflow guidance and performs no side effect.
 - AE19. Given an interrupted owned transaction, when the next batch invocation acquires the lock, then it restores or completes that transaction before new staging; if recovery cannot complete, no new transaction is created.
 - AE20. Given a forged or unsupported manifest or journal containing traversal, absolute paths, invalid generated names, or symlink substitution, when recovery begins, then it exits `3` without touching any path outside the canonical output root.
 - AE21. Given an authorized public URL that redirects to a loopback or private address, when only `--allow-network` is set, then the redirect is rejected before a request reaches that destination and the error reveals no path or credential.
@@ -172,7 +172,7 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 - CLI-owned resource defaults cite measured high-water evidence and a margin rather than only satisfying synthetic limit boundary tests.
 - `crates/merman-cli/src/ascii_render.rs` and the old wide `RenderPlan` no longer exist.
 - Full and slim process tests pass on the supported host matrix, and exact artifact dependency exclusions remain true.
-- User-facing docs contain the migration from the unadvertised `0.8.x` root-option bridge to explicit `mmdc`, `render`, or `batch`, including its `v0.9.0` removal boundary.
+- User-facing docs distinguish the permanent unadvertised root-option bridge from the preferred explicit `mmdc`, `render`, and `batch` spellings.
 
 ### Scope Boundaries
 
@@ -202,7 +202,7 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 ### Key Technical Decisions
 
 - KTD1. **Separate explicit command dialects.** `mmdc`, `render`, and `batch` use different Clap argument types and concrete normalization functions before converging on shared resolved types. The root declares no rendering arguments; R37 may only insert the explicit `mmdc` token before the one authoritative parser runs. (session-settled: user-approved — chosen over a shared flattened command surface: compatibility behavior and native ergonomics must evolve independently.)
-- KTD2. **Delete replaced contracts in the same migration.** Remove root export argument definitions, the old `RenderPlan`, ASCII-only execution, legacy merge helpers, and superseded compatibility tests after their replacement is proven. Do not retain a second parser, executor, alias in help, or permanent compatibility path. The one R37 forwarding adapter is a release-bounded migration exception and must disappear in `v0.9.0` without changing the explicit `mmdc` command. (decision amended after implementation review: exact forwarding avoids a needless `0.8.x` cliff while preserving the target architecture.)
+- KTD2. **Delete replaced contracts in the same migration.** Remove root export argument definitions, the old `RenderPlan`, ASCII-only execution, legacy merge helpers, and superseded compatibility tests after their replacement is proven. Do not retain a second parser, executor, or alias in help. The sole R37 forwarding adapter is permanent because exact token insertion preserves existing automation without duplicating the explicit `mmdc` command path. (decision amended after implementation review and user approval.)
 - KTD3. **Use a staged type-state pipeline.** The common lifecycle is `RawInvocation -> ResolvedInvocation -> LocalPreflight -> AcquiredInvocation -> PreparedInvocation`. Stdout and single-file work then becomes `ExecutedOutput -> Publication`; Markdown work becomes `LockedRecoveredTransaction -> TransactionStaging -> ReadyTransaction -> Commit`. Local preflight may read filesystem metadata without mutation, acquisition alone reads input payloads or accesses the network, the transaction branch mutates only tool-owned lock/recovery/staging state before commit, and publication or commit alone mutates final targets.
 - KTD4. **Make invalid combinations unrepresentable.** `ResolvedOutput::{Svg, Text, Png, Jpeg, Pdf}` and `ResolvedWorkflow::{Single, MarkdownBatch}` contain only their applicable options. A compatibility no-op with an auxiliary path remains a typed resolved input through preflight and bounded acquisition, then its validated contents are discarded with a documented diagnostic before preparation.
 - KTD5. **Inject process context at the application boundary.** A thin `CliApp` receives terminal detection, current directory, stdin/stdout/stderr, network acquisition, and publication interfaces. Production uses system adapters; unit tests inject deterministic contexts without making the internal modules public.
@@ -300,7 +300,7 @@ flowchart TB
 
 | Risk | Mitigation |
 |---|---|
-| Compatibility users depend on root-level flags | Keep only the unadvertised R37 forwarding bridge through `0.8.x`, warn on every non-quiet use, document the explicit `mmdc` replacement, and remove the bridge in `v0.9.0`. |
+| Compatibility users depend on root-level flags | Keep only the permanent unadvertised R37 token-insertion bridge, route it through the exact explicit `mmdc` parser, and test that it remains silent and argument-preserving. |
 | Cross-platform replacement semantics differ | Use `atomic-write-file`, make link and metadata behavior explicit, and run target-specific unit tests where behavior differs. |
 | Multi-file publication fails after the first commit | Journal prior and staged state, publish the document last, attempt deterministic rollback, and expose a partial-publication error with recovery paths. |
 | Concurrent batch publishers corrupt each other's state | Use `std::fs::File::try_lock` on a stable reserved regular lock file beneath the canonical output root, retain it for the root's lifetime, and fail the second publisher without inspecting transaction state. |
@@ -505,8 +505,8 @@ Run the full CLI, clippy, artifact, dependency, feature-matrix, and projection g
 - Input acquisition is bounded at the reader, output aliases are rejected before work, single files use atomic commit, and Markdown publication reports its real recovery state.
 - Aggregate backend working set is reserved before execution, network authorization is destination-aware on every hop, and transaction state cannot escape its canonical output root.
 - Compatibility and native behavior have separate parsers, defaults, Markdown scanners, tests, and documentation before they converge on shared resolved types.
-- `RenderPlan`, `ascii_render.rs`, root-level export argument definitions, `fix --all`, format no-ops in native mode, and superseded duplicate helpers are removed; only the R37 token-insertion bridge remains through `0.8.x`.
+- `RenderPlan`, `ascii_render.rs`, root-level export argument definitions, `fix --all`, format no-ops in native mode, and superseded duplicate helpers are removed; only the permanent hidden R37 token-insertion bridge remains.
 - Error messages carry safe context, remote endpoints reveal no path data, stdout remains payload-only, quiet covers timing, and BrokenPipe remains successful.
 - README, compatibility matrix, completion output, capability JSON, changelog, and release projections agree with the compiled command surface.
 - `cargo fmt`, targeted and full `cargo nextest`, clippy, exact artifact builds, dependency-closure checks, strict feature matrix, and projection tests pass.
-- A final simplification and code-review pass finds no abandoned experiments, unbounded compatibility shims, dead cfg branches, duplicated execution paths, or unresolved high-confidence findings; the sole R37 bridge is covered by its removal-version contract.
+- A final simplification and code-review pass finds no abandoned experiments, broad compatibility shims, dead cfg branches, duplicated execution paths, or unresolved high-confidence findings; the sole R37 bridge is covered by permanent equivalence and discovery-absence contracts.
