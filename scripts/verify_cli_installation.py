@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 from datetime import date
+import gzip
+import io
 import json
 from pathlib import Path
 import re
@@ -154,6 +156,26 @@ def _read_regular_file(path: Path, label: str) -> bytes:
             f"installed {label} exceeds {SUPPORT_ASSET_MAX_BYTES} bytes: {path}"
         )
     return contents
+
+
+def _read_manpage(path: Path, name: str) -> bytes:
+    contents = _read_regular_file(path, f"man page {name}")
+    if path.suffix != ".gz":
+        return contents
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(contents)) as archive:
+            decompressed = archive.read(SUPPORT_ASSET_MAX_BYTES + 1)
+    except (EOFError, OSError) as error:
+        raise CliInstallationError(
+            f"cannot decompress installed man page {name}: {error}"
+        ) from error
+    if not decompressed:
+        raise CliInstallationError(f"installed man page is empty: {path}")
+    if len(decompressed) > SUPPORT_ASSET_MAX_BYTES:
+        raise CliInstallationError(
+            f"installed man page exceeds {SUPPORT_ASSET_MAX_BYTES} bytes: {path}"
+        )
+    return decompressed
 
 
 def _string_set(value: object, label: str) -> set[str]:
@@ -329,18 +351,24 @@ def verify_cli_installation(
         runner=runner,
     )
     man_root = installed_prefix / "share/man/man1"
-    observed_manpages = {
-        path.name
-        for path in man_root.glob("merman-cli*.1")
-        if path.is_file() and not path.is_symlink()
-    }
-    if observed_manpages != set(MANPAGE_NAMES):
+    installed_manpages: dict[str, Path] = {}
+    for pattern in ("merman-cli*.1", "merman-cli*.1.gz"):
+        for path in man_root.glob(pattern):
+            if not path.is_file() or path.is_symlink():
+                continue
+            name = path.name.removesuffix(".gz")
+            if name in installed_manpages:
+                raise CliInstallationError(
+                    f"installed man page has compressed and uncompressed copies: {name}"
+                )
+            installed_manpages[name] = path
+    if set(installed_manpages) != set(MANPAGE_NAMES):
         raise CliInstallationError(
             "installed man page set differs from CLI contract 3: "
-            f"expected {sorted(MANPAGE_NAMES)}, got {sorted(observed_manpages)}"
+            f"expected {sorted(MANPAGE_NAMES)}, got {sorted(installed_manpages)}"
         )
     for name in MANPAGE_NAMES:
-        contents = _read_regular_file(man_root / name, f"man page {name}")
+        contents = _read_manpage(installed_manpages[name], name)
         _verify_manpage(contents, name=name, package_version=package_version)
 
 

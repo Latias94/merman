@@ -1069,7 +1069,7 @@ fn validate_wasm_owner_closures(profiles: &[WasmArtifactProfile]) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
     use std::sync::OnceLock;
 
     fn committed_value() -> Value {

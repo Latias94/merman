@@ -1150,6 +1150,7 @@ dependencies = [
  "merman-render",
  "quick-xml",
  "resvg",
+ "svgtypes",
  "thiserror 2.0.19",
  "tiny-skia",
  "usvg",

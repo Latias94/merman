@@ -52,13 +52,19 @@ EXPECTED_ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanOperationResult.class",
     "io/merman/MermanReusableEngine.class",
     "io/merman/MermanException.class",
+    "io/merman/MermanResourceLimitId.class",
     "io/merman/MermanResourceOptions.class",
+    "io/merman/MermanResourceOptionsBuilder.class",
+    "io/merman/MermanResourceProfile.class",
     "io/merman/MermanTextMeasureRequest.class",
     "io/merman/MermanTextMeasureResult.class",
+    "io/merman/MermanTextDirection.class",
+    "io/merman/MermanTextMeasurementPhase.class",
     "io/merman/MermanTextMeasurementOperation.class",
     "io/merman/MermanTextMeasurementResultKind.class",
-    "io/merman/MermanTextMeasurementVocabulary.class",
     "io/merman/MermanTextMeasurer.class",
+    "io/merman/MermanTextWhiteSpace.class",
+    "io/merman/MermanTextWrapMode.class",
 ]
 EXPECTED_ANDROID_NATIVE_LIBRARIES = [
     "jni/arm64-v8a/libmerman_android_jni.so",
@@ -459,9 +465,27 @@ class AndroidAarVerificationTests(unittest.TestCase):
             / "io"
             / "merman"
         )
+        multi_type_sources = {
+            "MermanResourceOptions": (
+                "MermanResourceLimitId",
+                "MermanResourceOptions",
+                "MermanResourceOptionsBuilder",
+                "MermanResourceProfile",
+            ),
+            "MermanTextMeasurementVocabulary": (
+                "MermanTextDirection",
+                "MermanTextMeasurementPhase",
+                "MermanTextWhiteSpace",
+                "MermanTextWrapMode",
+            ),
+        }
         source_classes = sorted(
-            f"io/merman/{source_path.stem}.class"
+            f"io/merman/{class_name}.class"
             for source_path in kotlin_root.glob("*.kt")
+            for class_name in multi_type_sources.get(
+                source_path.stem,
+                (source_path.stem,),
+            )
         )
 
         self.assertEqual(

@@ -424,6 +424,8 @@ def cargo_tree_command(case: VerificationCase) -> list[str]:
     command = [
         "cargo",
         "tree",
+        "--color",
+        "never",
         "--locked",
         "--package",
         recipe.package,

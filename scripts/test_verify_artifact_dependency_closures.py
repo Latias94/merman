@@ -319,6 +319,7 @@ class CargoTreeCommandTests(unittest.TestCase):
         )
 
         self.assertEqual(command[:2], ["cargo", "tree"])
+        self.assertEqual(command[command.index("--color") + 1], "never")
         self.assertIn("--locked", command)
         self.assertIn("--no-default-features", command)
         self.assertEqual(command[command.index("--package") + 1], "merman-cli")

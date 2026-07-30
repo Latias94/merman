@@ -56,7 +56,13 @@ def syntax_command(check_id: str, executable: str, path: Path) -> tuple[list[str
     if check_id == "fish":
         return [executable, "--no-execute", str(path)], environment
     if check_id == "elvish":
-        return [executable, "-compileonly", str(path)], environment
+        try:
+            source = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            raise AssetValidationError(
+                f"cannot read generated Elvish completion {path}: {error}"
+            ) from error
+        return [executable, "-compileonly", "-c", f"use edit\n{source}"], environment
     if check_id == "powershell":
         environment["MERMAN_COMPLETION_PATH"] = str(path)
         parser = (

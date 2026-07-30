@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 from pathlib import Path
 import subprocess
@@ -116,6 +117,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 path = fixture.prefix / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(fixture.completion(shell))
+            fixture.gzip_manpages()
 
             installation_verifier.verify_cli_installation(
                 package_version="0.8.0",
@@ -124,6 +126,24 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 completion_layout="nix",
                 runner=fixture.run,
             )
+
+    def test_generic_installation_contract_rejects_duplicate_manpage_encodings(self) -> None:
+        with self.installation_fixture() as fixture:
+            name = installation_verifier.MANPAGE_NAMES[0]
+            source = fixture.prefix / "share/man/man1" / name
+            source.with_name(f"{name}.gz").write_bytes(gzip.compress(source.read_bytes()))
+
+            with self.assertRaisesRegex(
+                installation_verifier.CliInstallationError,
+                "compressed and uncompressed copies",
+            ):
+                installation_verifier.verify_cli_installation(
+                    package_version="0.8.0",
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    completion_layout="homebrew",
+                    runner=fixture.run,
+                )
 
     def test_generic_installation_contract_requires_nix_elvish_completion(self) -> None:
         with self.installation_fixture() as fixture:
@@ -422,6 +442,12 @@ class InstallationFixture:
             contents,
             encoding="utf-8",
         )
+
+    def gzip_manpages(self) -> None:
+        for name in verifier.MANPAGE_NAMES:
+            path = self.prefix / "share/man/man1" / name
+            path.with_name(f"{name}.gz").write_bytes(gzip.compress(path.read_bytes()))
+            path.unlink()
 
     def run(self, command: list[str], **_kwargs) -> subprocess.CompletedProcess[bytes]:
         if command[1:] == ["capabilities", "--json"]:
