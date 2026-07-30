@@ -42,6 +42,8 @@ export interface MermanLanguageWorkerStartup {
   readonly ready: Promise<EditorLanguageIdentity>;
 }
 
+const DEFAULT_EDITOR_WORKER_INITIALIZATION_TIMEOUT_MS = 30_000;
+
 export interface EditorLanguageIdentity {
   readonly legend: EditorSemanticTokenLegend;
   readonly legendDigest: string;
@@ -104,8 +106,15 @@ export function createMermanLanguageWorkerClient(
 
 export function startMermanLanguageWorkerClient(
   worker: EditorWorkerPort,
-  expectedLegendDigest: string
+  expectedLegendDigest: string,
+  timeoutMs = DEFAULT_EDITOR_WORKER_INITIALIZATION_TIMEOUT_MS
 ): MermanLanguageWorkerStartup {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    worker.terminate();
+    throw new EditorWorkerProtocolError(
+      "A positive editor worker initialization timeout is required."
+    );
+  }
   let client: MermanLanguageWorkerClient;
   try {
     client = createMermanLanguageWorkerClient(worker, expectedLegendDigest);
@@ -113,10 +122,26 @@ export function startMermanLanguageWorkerClient(
     worker.terminate();
     throw error;
   }
-  const ready = client.initialize().catch((error: unknown) => {
-    client.dispose();
-    throw error;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(
+      () =>
+        reject(
+          new EditorWorkerProtocolError(
+            `Merman editor worker initialization timed out after ${timeoutMs} ms.`
+          )
+        ),
+      timeoutMs
+    );
   });
+  const ready = Promise.race([client.initialize(), deadline])
+    .finally(() => {
+      if (timeout !== undefined) clearTimeout(timeout);
+    })
+    .catch((error: unknown) => {
+      client.dispose();
+      throw error;
+    });
   return Object.freeze({ client, ready });
 }
 

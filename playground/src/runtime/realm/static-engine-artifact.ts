@@ -124,15 +124,16 @@ async function fetchEngineArtifactSource(
       const error = new RealmProtocolError(
         `Realm engine artifact request failed with HTTP ${response.status}.`
       );
-      await cancelEngineResponseBody(response, error);
-      throw error;
+      const failure = abortEngineArtifactRequest(controller, error);
+      cancelEngineResponseBody(response, failure);
+      throw failure;
     }
-    return await readBoundedEngineSource(response, controller.signal);
+    return await readBoundedEngineSource(response, controller);
   } catch (error) {
     if (controller.signal.aborted) {
       throw engineArtifactAbortError(controller.signal);
     }
-    throw error;
+    throw abortEngineArtifactRequest(controller, error);
   } finally {
     clearTimeout(timeout);
     request.signal?.removeEventListener("abort", abortFromCaller);
@@ -141,8 +142,9 @@ async function fetchEngineArtifactSource(
 
 async function readBoundedEngineSource(
   response: Response,
-  signal: AbortSignal
+  controller: AbortController
 ): Promise<string> {
+  const { signal } = controller;
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null) {
     const declared = Number(contentLength);
@@ -154,8 +156,9 @@ async function readBoundedEngineSource(
       const error = new RealmProtocolError(
         "Realm engine artifact exceeds its byte budget."
       );
-      await cancelEngineResponseBody(response, error);
-      throw error;
+      const failure = abortEngineArtifactRequest(controller, error);
+      cancelEngineResponseBody(response, failure);
+      throw failure;
     }
   }
   const reader = response.body?.getReader();
@@ -179,8 +182,9 @@ async function readBoundedEngineSource(
     }
     chunks.push(decodeEngineChunk(decoder, undefined, false));
   } catch (error) {
-    await cancelEngineReader(reader, engineArtifactFailureReason(error));
-    throw error;
+    const failure = abortEngineArtifactRequest(controller, error);
+    cancelEngineReader(reader, failure);
+    throw failure;
   } finally {
     if (!signal.aborted) {
       reader.releaseLock();
@@ -201,7 +205,7 @@ function readEngineChunk(
 ): ReturnType<ReadableStreamDefaultReader<Uint8Array>["read"]> {
   if (signal.aborted) {
     const error = engineArtifactAbortError(signal);
-    void cancelEngineReader(reader, error);
+    cancelEngineReader(reader, error);
     return Promise.reject(error);
   }
   return new Promise((resolve, reject) => {
@@ -214,7 +218,7 @@ function readEngineChunk(
     };
     const onAbort = () => {
       const error = engineArtifactAbortError(signal);
-      void cancelEngineReader(reader, error);
+      cancelEngineReader(reader, error);
       settle(() => reject(error));
     };
     signal.addEventListener("abort", onAbort, { once: true });
@@ -226,26 +230,33 @@ function readEngineChunk(
   });
 }
 
-async function cancelEngineReader(
+function cancelEngineReader(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   reason: Error
-): Promise<void> {
+): void {
   try {
-    await reader.cancel(reason);
+    void reader.cancel(reason).catch(() => {});
   } catch {
     // The stream may already be errored or canceled by the underlying fetch.
   }
 }
 
-async function cancelEngineResponseBody(
-  response: Response,
-  reason: Error
-): Promise<void> {
+function cancelEngineResponseBody(response: Response, reason: Error): void {
   try {
-    await response.body?.cancel(reason);
+    void response.body?.cancel(reason).catch(() => {});
   } catch {
     // The stream may already be errored or canceled by the underlying fetch.
   }
+}
+
+function abortEngineArtifactRequest(
+  controller: AbortController,
+  error: unknown
+): Error {
+  if (!controller.signal.aborted) {
+    controller.abort(engineArtifactFailureReason(error));
+  }
+  return engineArtifactAbortError(controller.signal);
 }
 
 function engineArtifactFailureReason(error: unknown): Error {

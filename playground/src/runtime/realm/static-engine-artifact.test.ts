@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
-import { REALM_BUDGETS } from "./channel-protocol.ts";
+import {
+  REALM_BUDGETS,
+  RealmProtocolError,
+} from "./channel-protocol.ts";
 import {
   createStaticRealmEngineArtifact,
   type StaticEngineArtifactEnvironment,
@@ -184,6 +187,42 @@ test("static engine artifacts cancel response bodies after invalid UTF-8", async
   assert.match(String(cancelReason), /not valid UTF-8/);
 });
 
+test("static engine artifact errors do not await response cancellation", async () => {
+  for (const testCase of [
+    {
+      name: "HTTP error",
+      fixture: nonSettlingCancellationResponse({ status: 503 }),
+      message: /HTTP 503/,
+    },
+    {
+      name: "invalid UTF-8",
+      fixture: nonSettlingCancellationResponse({
+        bytes: Uint8Array.of(0xff),
+        contentLength: "1",
+      }),
+      message: /not valid UTF-8/,
+    },
+  ]) {
+    await assert.rejects(
+      rejectBeforeWatchdog(
+        createStaticRealmEngineArtifact(
+          {
+            manifest,
+            resourceUrl: null,
+            sourceUrl: "assets/mermaid-engine.js",
+            timeoutMs: 10,
+          },
+          environment(() => testCase.fixture.response)
+        )
+      ),
+      (error: unknown) =>
+        error instanceof RealmProtocolError && testCase.message.test(error.message),
+      testCase.name
+    );
+    assert.equal(testCase.fixture.cancelled(), true, testCase.name);
+  }
+});
+
 test("static engine artifact acquisition obeys caller cancellation", async () => {
   const controller = new AbortController();
   controller.abort(new Error("artifact acquisition cancelled"));
@@ -278,6 +317,32 @@ test("static engine artifact caller cancellation remains active while the respon
   assert.equal(cancelReason, cancellation);
 });
 
+test("static engine artifact caller cancellation does not await stream cleanup", async () => {
+  const controller = new AbortController();
+  const cancellation = new Error("artifact body cancelled without cleanup acknowledgement");
+  const stalled = nonSettlingCancellationResponse({
+    contentLength: String(manifest.bytes),
+  });
+  const acquisition = createStaticRealmEngineArtifact(
+    {
+      manifest,
+      resourceUrl: null,
+      signal: controller.signal,
+      sourceUrl: "assets/mermaid-engine.js",
+      timeoutMs: 1_000,
+    },
+    environment(() => stalled.response)
+  );
+
+  controller.abort(cancellation);
+
+  await assert.rejects(
+    rejectBeforeWatchdog(acquisition),
+    (error: unknown) => error === cancellation
+  );
+  assert.equal(stalled.cancelled(), true);
+});
+
 function environment(
   fetchResponse: (
     url: URL,
@@ -342,6 +407,49 @@ function cancellableResponse(
       : undefined,
     status: options.status,
   });
+}
+
+function nonSettlingCancellationResponse(
+  options: Readonly<{
+    bytes?: Uint8Array;
+    contentLength?: string;
+    status?: number;
+  }>
+): Readonly<{ response: Response; cancelled: () => boolean }> {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (options.bytes) controller.enqueue(options.bytes);
+    },
+    cancel() {
+      cancelled = true;
+      return new Promise<void>(() => {});
+    },
+  });
+  return {
+    response: new Response(body, {
+      headers: options.contentLength
+        ? { "content-length": options.contentLength }
+        : undefined,
+      status: options.status,
+    }),
+    cancelled: () => cancelled,
+  };
+}
+
+async function rejectBeforeWatchdog<Result>(operation: Promise<Result>): Promise<Result> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const watchdog = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(
+      () => reject(new Error("static engine artifact operation exceeded its test watchdog")),
+      100
+    );
+  });
+  try {
+    return await Promise.race([operation, watchdog]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
 }
 
 function engineManifest(body: string) {

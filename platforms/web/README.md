@@ -54,6 +54,10 @@ const wasm = await fetch(MERMAN_WASM_URL, { cache: "reload" });
 await initMerman({ loader: loadMermanWasmModule, wasm });
 ```
 
+## Runtime Lifecycle
+
+Initialize Merman once per browser realm and reuse it; repeated `initMerman()` calls share the cached initialization and module. There is no separate WASM unload API, so a main-thread runtime lives for the page realm. The package does not create or own a Worker: a host that loads Merman in a dedicated Worker must terminate that Worker after initialization failure, replacement, or application teardown. Synchronous WASM calls cannot be interrupted from the same realm, so Worker termination is the hard cancellation boundary. Dispose every `BrowserTextMeasurementSession` created by `createBrowserTextMeasurementSession()` as soon as it is no longer needed.
+
 Call `runtimeCatalog()` after initialization when an integration needs to inspect the compiled capabilities, operations, and resource profiles. Validate the flat catalog's local relations and tolerate newly introduced stable IDs; do not infer availability from package names or Cargo feature names. Resource limits are described in [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md); browser preview normally uses the `interactive` profile, while a public submission service needs host-level timeout, memory, concurrency, and process-isolation controls in addition to `constrained` limits.
 
 ## Maintainer Build

@@ -26,10 +26,10 @@ const svg = renderSvg(`flowchart TD
   A --> B`);
 ```
 
-It requires a browser main-thread or Web Worker realm for WASM loading and is not a Node.js or SSR transport. A server-side application must use a separately admitted native transport.
+It requires a browser main-thread or Web Worker realm for WASM loading and is not a Node.js or SSR transport. Initialize it once per realm and reuse it; when a host creates a dedicated Worker, that host owns Worker termination after failure, replacement, or teardown. A server-side application must use a separately admitted native transport.
 
 Browser bindings use the `interactive` resource profile by default. For untrusted public input, pass `{ resources: { profile: "constrained" } }` and also enforce host timeout, memory, concurrency, and process-isolation limits.
 
 The package participates in the same lockstep release, provenance, legal-material, declaration, and lifecycle checks as the rest of the public browser package group. Its size is measured against `@mermanjs/web`, but its product boundary is complete SVG capability rather than a 15% slim-workflow threshold.
 
-See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for custom WASM loading and resource-policy guidance.
+See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#runtime-lifecycle) for custom WASM loading, runtime lifecycle, and resource-policy guidance.
