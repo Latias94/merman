@@ -590,6 +590,7 @@ class ReleaseProjectionTests(unittest.TestCase):
                 },
             )
 
+
 class ReleaseProjectionWriteTests(unittest.TestCase):
     def test_installs_workspace_authority_last_and_preserves_modes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -633,31 +634,18 @@ class ReleaseProjectionWriteTests(unittest.TestCase):
             )
             self.assertEqual(projection.stat().st_mode & 0o777, 0o640)
             self.assertEqual(list(root.rglob(".*.release-version-*")), [])
-    def test_edit_during_preparation_is_preserved_before_any_replace(self) -> None:
+
+    def test_stale_plan_is_rejected_before_any_replace(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             first = root / "first.txt"
             second = root / "second.txt"
             first.write_text("first-old", encoding="utf-8")
-            second.write_text("second-old", encoding="utf-8")
-            real_write_temp = release_projection._write_projection_temp
-            write_count = 0
+            second.write_text("external edit", encoding="utf-8")
 
-            def edit_after_preparing_temp(target, content, mode):  # noqa: ANN001
-                nonlocal write_count
-                temp_path = real_write_temp(target, content, mode)
-                write_count += 1
-                if write_count == 2:
-                    first.write_text("external edit", encoding="utf-8")
-                return temp_path
-
-            with mock.patch.object(
-                release_projection,
-                "_write_projection_temp",
-                side_effect=edit_after_preparing_temp,
-            ), self.assertRaisesRegex(
+            with self.assertRaisesRegex(
                 release_projection.ReleaseProjectionError,
-                "changed while preparing",
+                "changed while planning",
             ):
                 release_projection._replace_projection_files(
                     root,
@@ -671,63 +659,13 @@ class ReleaseProjectionWriteTests(unittest.TestCase):
                     },
                 )
 
-            self.assertEqual(first.read_text(encoding="utf-8"), "external edit")
-            self.assertEqual(second.read_text(encoding="utf-8"), "second-old")
+            self.assertEqual(first.read_text(encoding="utf-8"), "first-old")
+            self.assertEqual(second.read_text(encoding="utf-8"), "external edit")
             self.assertEqual(list(root.rglob(".*.release-version-*")), [])
 
-    def test_interrupted_group_is_completed_by_rerunning(self) -> None:
+    def test_rejects_path_escape(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            manifest = root / release_projection.ROOT_MANIFEST
-            projection = root / "projection.txt"
-            manifest.write_text("old authority", encoding="utf-8")
-            projection.write_text("old projection", encoding="utf-8")
-            real_replace = release_projection.os.replace
-
-            def fail_authority_replace(source, destination):  # noqa: ANN001
-                if Path(destination) == manifest.resolve():
-                    raise OSError("injected replace failure")
-                return real_replace(source, destination)
-
-            with mock.patch.object(
-                release_projection.os,
-                "replace",
-                side_effect=fail_authority_replace,
-            ), self.assertRaisesRegex(
-                release_projection.ReleaseProjectionError,
-                "rerun the same command",
-            ):
-                release_projection._replace_projection_files(
-                    root,
-                    {
-                        release_projection.ROOT_MANIFEST: "new authority",
-                        Path("projection.txt"): "new projection",
-                    },
-                    expected={
-                        release_projection.ROOT_MANIFEST: "old authority",
-                        Path("projection.txt"): "old projection",
-                    },
-                )
-
-            self.assertEqual(manifest.read_text(encoding="utf-8"), "old authority")
-            self.assertEqual(projection.read_text(encoding="utf-8"), "new projection")
-            self.assertEqual(list(root.rglob(".*.release-version-*")), [])
-
-            release_projection._replace_projection_files(
-                root,
-                {release_projection.ROOT_MANIFEST: "new authority"},
-                expected={release_projection.ROOT_MANIFEST: "old authority"},
-            )
-            self.assertEqual(manifest.read_text(encoding="utf-8"), "new authority")
-
-    def test_rejects_escape_and_symlink_targets(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            target = root / "target.txt"
-            target.write_text("old", encoding="utf-8")
-            link = root / "link.txt"
-            link.symlink_to(target.name)
-
             with self.assertRaisesRegex(
                 release_projection.ReleaseProjectionError,
                 "escapes repository root",
@@ -737,16 +675,4 @@ class ReleaseProjectionWriteTests(unittest.TestCase):
                     {Path("../outside.txt"): "new"},
                     expected={Path("../outside.txt"): "old"},
                 )
-
-            with self.assertRaisesRegex(
-                release_projection.ReleaseProjectionError,
-                "regular non-symlink",
-            ):
-                release_projection._replace_projection_files(
-                    root,
-                    {Path("link.txt"): "new"},
-                    expected={Path("link.txt"): "old"},
-                )
-
-            self.assertEqual(target.read_text(encoding="utf-8"), "old")
             self.assertEqual(list(root.rglob(".*.release-version-*")), [])

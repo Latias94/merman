@@ -1462,79 +1462,40 @@ def _replace_projection_files(
     *,
     expected: Mapping[Path, str],
 ) -> None:
-    """Install validated projections in an exclusive Git worktree.
-
-    Each file replacement is atomic, but the group is intentionally not a
-    filesystem transaction. The workspace authority is installed last, so an
-    interrupted update can be completed by rerunning the same command.
-    """
-
+    """Install a validated version plan in an exclusive Git worktree."""
     root = root.resolve()
-    prepared: list[tuple[Path, Path, Path, bytes, int]] = []
-    installed: list[Path] = []
-    try:
-        for relative, content in sorted(
-            updates.items(),
-            key=lambda item: (item[0] == ROOT_MANIFEST, str(item[0])),
-        ):
-            normalized, target = _projection_target(root, relative)
-            try:
-                expected_text = expected[relative]
-            except KeyError as exc:
-                raise ReleaseProjectionError(
-                    f"missing expected pre-update content for {relative}"
-                ) from exc
-            original, mode = _read_projection_preimage(target, normalized)
-            expected_bytes = expected_text.encode("utf-8")
-            if original != expected_bytes:
-                raise ReleaseProjectionError(
-                    f"{normalized} changed while planning the release update; "
-                    "no files were written"
-                )
-            temp_path = _write_projection_temp(
-                target,
-                content.encode("utf-8"),
-                mode,
-            )
-            prepared.append(
-                (normalized, target, temp_path, expected_bytes, mode)
-            )
-
-        # Catch edits made while temporary files were being prepared before
-        # replacing any tracked file.
-        for relative, target, _temp_path, expected_bytes, mode in prepared:
-            _require_projection_preimage(
-                target,
-                relative,
-                expected_bytes,
-                mode,
-            )
-
-        for relative, target, temp_path, expected_bytes, mode in prepared:
-            # This is a cooperative check, not a claim to serialize arbitrary
-            # editors. Release preparation requires an exclusive worktree.
-            _require_projection_preimage(
-                target,
-                relative,
-                expected_bytes,
-                mode,
-            )
-            os.replace(temp_path, target)
-            installed.append(relative)
-
-        for directory in {target.parent for _, target, _, _, _ in prepared}:
-            _sync_projection_directory(directory)
-    except BaseException as exc:
-        if installed:
+    planned: list[tuple[Path, Path, str]] = []
+    for relative, content in sorted(
+        updates.items(),
+        key=lambda item: (item[0] == ROOT_MANIFEST, str(item[0])),
+    ):
+        normalized, target = _projection_target(root, relative)
+        try:
+            expected_text = expected[relative]
+        except KeyError as exc:
             raise ReleaseProjectionError(
-                "release projection update stopped after changing "
-                f"{', '.join(str(path) for path in installed)}; keep the "
-                "worktree and rerun the same command"
+                f"missing expected pre-update content for {relative}"
             ) from exc
-        raise
-    finally:
-        for _relative, _target, temp_path, _expected_bytes, _mode in prepared:
-            temp_path.unlink(missing_ok=True)
+        try:
+            current = target.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ReleaseProjectionError(
+                f"cannot read release projection {normalized}: {exc}"
+            ) from exc
+        if current != expected_text:
+            raise ReleaseProjectionError(
+                f"{normalized} changed while planning the release update; "
+                "no files were written"
+            )
+        planned.append((normalized, target, content))
+
+    for relative, target, content in planned:
+        try:
+            _replace_projection_file(target, content)
+        except OSError as exc:
+            raise ReleaseProjectionError(
+                f"cannot update release projection {relative}: {exc}"
+            ) from exc
 
 
 def _projection_target(root: Path, relative: Path) -> tuple[Path, Path]:
@@ -1549,57 +1510,11 @@ def _projection_target(root: Path, relative: Path) -> tuple[Path, Path]:
             f"release projection path escapes repository root: {relative}"
         )
 
-    target = root / normalized
-    current = root
-    for component in normalized.parts[:-1]:
-        current /= component
-        try:
-            metadata = current.lstat()
-        except OSError as exc:
-            raise ReleaseProjectionError(
-                f"release projection has an inaccessible parent: {normalized}"
-            ) from exc
-        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-            raise ReleaseProjectionError(
-                f"release projection has an unsafe parent: {normalized}"
-            )
-    return normalized, target
+    return normalized, root / normalized
 
 
-def _read_projection_preimage(target: Path, relative: Path) -> tuple[bytes, int]:
-    try:
-        metadata = target.lstat()
-    except OSError as exc:
-        raise ReleaseProjectionError(
-            f"cannot inspect release projection {relative}: {exc}"
-        ) from exc
-    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-        raise ReleaseProjectionError(
-            f"release projection must be a regular non-symlink file: {relative}"
-        )
-    try:
-        return target.read_bytes(), stat.S_IMODE(metadata.st_mode)
-    except OSError as exc:
-        raise ReleaseProjectionError(
-            f"cannot read release projection {relative}: {exc}"
-        ) from exc
-
-
-def _require_projection_preimage(
-    target: Path,
-    relative: Path,
-    expected: bytes,
-    expected_mode: int,
-) -> None:
-    content, mode = _read_projection_preimage(target, relative)
-    if content != expected or mode != expected_mode:
-        raise ReleaseProjectionError(
-            f"{relative} changed while preparing the release update; "
-            "no further files were written"
-        )
-
-
-def _write_projection_temp(target: Path, content: bytes, mode: int) -> Path:
+def _replace_projection_file(target: Path, content: str) -> None:
+    mode = stat.S_IMODE(target.stat().st_mode)
     descriptor, raw_path = tempfile.mkstemp(
         prefix=f".{target.name}.release-version-",
         dir=target.parent,
@@ -1607,24 +1522,11 @@ def _write_projection_temp(target: Path, content: bytes, mode: int) -> Path:
     temp_path = Path(raw_path)
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            handle.write(content)
-            handle.flush()
+            handle.write(content.encode("utf-8"))
             os.chmod(temp_path, mode)
-            os.fsync(handle.fileno())
-    except BaseException:
-        temp_path.unlink(missing_ok=True)
-        raise
-    return temp_path
-
-
-def _sync_projection_directory(path: Path) -> None:
-    if os.name == "nt":
-        return
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
+        os.replace(temp_path, target)
     finally:
-        os.close(descriptor)
+        temp_path.unlink(missing_ok=True)
 
 
 def format_verification_failures(result: VerificationResult) -> list[str]:
