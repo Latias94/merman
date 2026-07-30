@@ -28,3 +28,5 @@ pub use cross_count::cross_count;
 
 mod ordering;
 pub use ordering::{OrderOptions, order};
+
+mod workspace;
