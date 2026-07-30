@@ -840,7 +840,9 @@ mod tests {
             TEST_SOURCE,
             analyzer.clone(),
         );
-        let context = build.build().expect("test analysis should be ready");
+        let context = build
+            .build_cancellable(&AnalysisCancellationToken::new())
+            .expect("test analysis should be ready");
         DiagnosticReprojectionRequest::new(
             analyzer.with_diagnostic_policy(analyzer.options().diagnostic_policy().clone()),
             AnalysisCancellationToken::new(),

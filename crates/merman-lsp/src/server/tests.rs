@@ -1,7 +1,10 @@
 use std::str::FromStr;
 
-use super::MermanLanguageServer;
 use super::semantic_token_planning_error;
+use super::{
+    CLIENT_LOG_TRUNCATION_SUFFIX, MAX_CLIENT_LOG_MESSAGE_BYTES, MermanLanguageServer,
+    bounded_client_log_message,
+};
 use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::session::{
@@ -13,6 +16,7 @@ use crate::structure::{
     document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references, rename,
     selection_ranges,
 };
+use futures::StreamExt;
 use merman_analysis::{
     AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, DiagnosticCategory, DiagnosticFix,
     DiagnosticFixEdit, SourceMap, source_limit_diagnostic_span,
@@ -25,12 +29,13 @@ use tower_lsp_server::jsonrpc::Request;
 use tower_lsp_server::ls_types::SemanticTokensResult;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionParams,
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentChanges,
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    DocumentSymbolParams, DocumentSymbolResponse, FoldingRangeParams,
-    FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents, HoverParams,
-    InitializeParams, NumberOrString, Position, Range, RenameParams, SelectionRangeParams,
+    CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse,
+    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents,
+    HoverParams, InitializeParams, LogMessageParams, MessageType, NumberOrString, Position,
+    PublishDiagnosticsParams, Range, RenameParams, SelectionRangeParams,
     SelectionRangeProviderCapability, SemanticTokensParams, SemanticTokensRangeParams,
     SemanticTokensRangeResult, TextDocumentContentChangeEvent, TextDocumentIdentifier,
     TextDocumentItem, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
@@ -82,6 +87,28 @@ async fn initialize_test_service(service: &mut crate::MermanLspService) {
     assert!(response.is_ok());
 }
 
+async fn initialize_push_test_service(service: &mut crate::MermanLspService) {
+    let request = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": { "versionSupport": true }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("initialize response");
+    assert!(response.is_ok());
+}
+
 async fn saturate_client_effect_queue(session: &crate::session::LanguageSession) {
     let (started_tx, started_rx) = tokio::sync::oneshot::channel();
     session
@@ -104,6 +131,26 @@ async fn saturate_client_effect_queue(session: &crate::session::LanguageSession)
             )
             .await;
     }
+}
+
+async fn block_client_effect_worker(
+    session: &crate::session::LanguageSession,
+) -> tokio::sync::oneshot::Sender<()> {
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    session
+        .enqueue_latest_client_effect(
+            ClientEffectKey::Document("controlled-blocker".to_string()),
+            async move {
+                let _ = started_tx.send(());
+                let _ = release_rx.await;
+            },
+        )
+        .await;
+    started_rx
+        .await
+        .expect("controlled client effect should start");
+    release_tx
 }
 
 async fn initialize_test_backend(server: &MermanLanguageServer, capabilities: serde_json::Value) {
@@ -540,6 +587,149 @@ async fn push_diagnostics_admit_exactly_one_effect_per_document_event() {
         .await;
 
     assert_eq!(server.session.client_effect_admission_count(), 3);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn queued_diagnostic_sync_clears_a_document_closed_before_execution() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    initialize_push_test_service(&mut service).await;
+    let server = service.inner();
+    let uri = Uri::from_str("file:///tmp/queued-diagnostic-close.mmd").unwrap();
+    let release = block_client_effect_worker(&server.session).await;
+
+    assert!(
+        server
+            .session
+            .open_document(uri.clone(), 1, String::new(), DocumentKind::Diagram,)
+            .await
+    );
+    server.enqueue_diagnostic_sync(uri.clone()).await;
+    server.session.close_document(&uri).await;
+
+    release.send(()).expect("client effect gate should be open");
+    let notification = socket.next().await.expect("expected diagnostic clear");
+    server.session.wait_client_effects_idle().await;
+    assert_eq!(notification.method(), "textDocument/publishDiagnostics");
+    let params: PublishDiagnosticsParams = serde_json::from_value(
+        notification
+            .params()
+            .cloned()
+            .expect("diagnostic clear params"),
+    )
+    .expect("valid diagnostic clear params");
+    assert_eq!(params.uri, uri);
+    assert_eq!(params.version, None);
+    assert!(params.diagnostics.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn queued_diagnostic_sync_publishes_a_document_opened_before_execution() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    initialize_push_test_service(&mut service).await;
+    let server = service.inner();
+    let uri = Uri::from_str("file:///tmp/queued-diagnostic-open.mmd").unwrap();
+    let release = block_client_effect_worker(&server.session).await;
+
+    server.enqueue_diagnostic_sync(uri.clone()).await;
+    assert!(
+        server
+            .session
+            .open_document(uri.clone(), 7, String::new(), DocumentKind::Diagram,)
+            .await
+    );
+
+    release.send(()).expect("client effect gate should be open");
+    let notification = socket
+        .next()
+        .await
+        .expect("expected current diagnostic publish");
+    server.session.wait_client_effects_idle().await;
+    assert_eq!(notification.method(), "textDocument/publishDiagnostics");
+    let params: PublishDiagnosticsParams = serde_json::from_value(
+        notification
+            .params()
+            .cloned()
+            .expect("diagnostic publish params"),
+    )
+    .expect("valid diagnostic publish params");
+    assert_eq!(params.uri, uri);
+    assert_eq!(params.version, Some(7));
+    assert!(!params.diagnostics.is_empty());
+}
+
+#[test]
+fn client_log_messages_have_a_bounded_utf8_allocation() {
+    let oversized = "界".repeat(MAX_CLIENT_LOG_MESSAGE_BYTES);
+    let bounded = bounded_client_log_message(oversized);
+
+    assert!(bounded.len() <= MAX_CLIENT_LOG_MESSAGE_BYTES);
+    assert!(bounded.capacity() <= MAX_CLIENT_LOG_MESSAGE_BYTES);
+    assert!(bounded.ends_with(CLIENT_LOG_TRUNCATION_SUFFIX));
+
+    let mut oversized_capacity = String::with_capacity(MAX_CLIENT_LOG_MESSAGE_BYTES * 2);
+    oversized_capacity.push_str("small");
+    let bounded = bounded_client_log_message(oversized_capacity);
+    assert_eq!(bounded, "small");
+    assert!(bounded.capacity() <= MAX_CLIENT_LOG_MESSAGE_BYTES);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stalled_configuration_error_log_is_bounded() {
+    let (service, mut socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    initialize_test_backend(server, serde_json::json!({})).await;
+    let release = block_client_effect_worker(&server.session).await;
+    let mut resources = serde_json::Map::new();
+    resources.insert(
+        "界".repeat(MAX_CLIENT_LOG_MESSAGE_BYTES),
+        serde_json::Value::from(1),
+    );
+
+    server
+        .did_change_configuration(DidChangeConfigurationParams {
+            settings: serde_json::json!({
+                "resources": serde_json::Value::Object(resources)
+            }),
+        })
+        .await;
+
+    release.send(()).expect("client effect gate should be open");
+    let notification = socket
+        .next()
+        .await
+        .expect("expected bounded configuration error log");
+    server.session.wait_client_effects_idle().await;
+    assert_eq!(notification.method(), "window/logMessage");
+    let params: LogMessageParams =
+        serde_json::from_value(notification.params().cloned().expect("client log params"))
+            .expect("valid client log params");
+    assert_eq!(params.typ, MessageType::ERROR);
+    assert!(params.message.len() <= MAX_CLIENT_LOG_MESSAGE_BYTES);
+    assert!(params.message.ends_with(CLIENT_LOG_TRUNCATION_SUFFIX));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stalled_client_logs_are_latest_wins() {
+    let (service, mut socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    let release = block_client_effect_worker(&server.session).await;
+
+    server
+        .enqueue_log_message(MessageType::INFO, "obsolete client log")
+        .await;
+    server
+        .enqueue_log_message(MessageType::ERROR, "latest client log")
+        .await;
+
+    release.send(()).expect("client effect gate should be open");
+    let notification = socket.next().await.expect("expected latest client log");
+    server.session.wait_client_effects_idle().await;
+    assert_eq!(notification.method(), "window/logMessage");
+    let params: LogMessageParams =
+        serde_json::from_value(notification.params().cloned().expect("client log params"))
+            .expect("valid client log params");
+    assert_eq!(params.typ, MessageType::ERROR);
+    assert_eq!(params.message, "latest client log");
 }
 
 #[test]
@@ -1512,7 +1702,7 @@ async fn read_requests_wait_for_earlier_unpolled_mutations() {
             .params(
                 serde_json::to_value(HoverParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier { uri },
+                        TextDocumentIdentifier { uri: uri.clone() },
                         Position::new(1, 2),
                     ),
                     work_done_progress_params: Default::default(),
@@ -1532,6 +1722,102 @@ async fn read_requests_wait_for_earlier_unpolled_mutations() {
         .expect("hover response after admitted open");
     assert!(response.is_ok());
     assert_ne!(response.result(), Some(&serde_json::Value::Null));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn completion_after_an_unpolled_change_uses_only_the_committed_text() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/completion-after-change.mmd").unwrap();
+
+    let open = service
+        .call(
+            Request::build("textDocument/didOpen")
+                .params(
+                    serde_json::to_value(DidOpenTextDocumentParams {
+                        text_document: TextDocumentItem {
+                            uri: uri.clone(),
+                            language_id: "mermaid".to_string(),
+                            version: 1,
+                            text: concat!(
+                                "flowchart TD\n",
+                                "A-->B\n",
+                                "classDef old fill:#f00\n",
+                                "class A o\n",
+                            )
+                            .to_string(),
+                        },
+                    })
+                    .unwrap(),
+                )
+                .finish(),
+        )
+        .await;
+    assert!(open.unwrap().is_none());
+
+    let change = service.call(
+        Request::build("textDocument/didChange")
+            .params(
+                serde_json::to_value(DidChangeTextDocumentParams {
+                    text_document: VersionedTextDocumentIdentifier {
+                        uri: uri.clone(),
+                        version: 2,
+                    },
+                    content_changes: vec![TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text: concat!(
+                            "flowchart TD\n",
+                            "A-->B\n",
+                            "classDef fresh fill:#0f0\n",
+                            "class A f\n",
+                        )
+                        .to_string(),
+                    }],
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let completion = service.call(
+        Request::build("textDocument/completion")
+            .params(
+                serde_json::to_value(CompletionParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier { uri },
+                        Position::new(3, 9),
+                    ),
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                    context: None,
+                })
+                .unwrap(),
+            )
+            .id(2)
+            .finish(),
+    );
+    tokio::pin!(completion);
+    assert!(futures::poll!(&mut completion).is_pending());
+
+    assert!(change.await.unwrap().is_none());
+    let response = completion
+        .await
+        .unwrap()
+        .expect("completion response after admitted change");
+    assert!(response.is_ok());
+    let result: CompletionResponse = serde_json::from_value(
+        response
+            .result()
+            .cloned()
+            .expect("successful completion result"),
+    )
+    .expect("valid completion response");
+    let items = match result {
+        CompletionResponse::Array(items) => items,
+        CompletionResponse::List(list) => list.items,
+    };
+    assert!(items.iter().any(|item| item.label == "fresh"));
+    assert!(!items.iter().any(|item| item.label == "old"));
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1560,7 +1846,7 @@ async fn cancellation_reaches_a_read_waiting_for_an_earlier_mutation() {
             .params(
                 serde_json::to_value(HoverParams {
                     text_document_position_params: TextDocumentPositionParams::new(
-                        TextDocumentIdentifier { uri },
+                        TextDocumentIdentifier { uri: uri.clone() },
                         Position::new(1, 0),
                     ),
                     work_done_progress_params: Default::default(),
@@ -1570,6 +1856,9 @@ async fn cancellation_reaches_a_read_waiting_for_an_earlier_mutation() {
             .id(2)
             .finish(),
     );
+    tokio::pin!(hover);
+    assert!(futures::poll!(&mut hover).is_pending());
+
     let cancel = service.call(
         Request::build("$/cancelRequest")
             .params(serde_json::json!({ "id": 2 }))
@@ -1577,12 +1866,30 @@ async fn cancellation_reaches_a_read_waiting_for_an_earlier_mutation() {
     );
 
     assert!(cancel.await.unwrap().is_none());
-    assert!(open.await.unwrap().is_none());
-    let hover = hover.await.unwrap().expect("cancelled hover response");
+    let hover = match futures::poll!(&mut hover) {
+        std::task::Poll::Ready(response) => response,
+        std::task::Poll::Pending => {
+            panic!("cancelled read must not remain pinned behind ordered admission")
+        }
+    }
+    .unwrap()
+    .expect("cancelled hover response");
     assert_eq!(
         hover.error().expect("request cancellation error").code,
         tower_lsp_server::jsonrpc::ErrorCode::RequestCancelled
     );
+    assert!(
+        service
+            .inner()
+            .session
+            .probe()
+            .document(&uri)
+            .await
+            .is_none(),
+        "the predecessor must still be unpolled when cancellation resolves"
+    );
+
+    assert!(open.await.unwrap().is_none());
 }
 
 #[tokio::test(flavor = "current_thread")]

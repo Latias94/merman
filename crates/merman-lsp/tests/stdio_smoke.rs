@@ -443,7 +443,18 @@ struct DelayedShutdownService {
 
 struct PendingNotificationService {
     notification_started: Option<oneshot::Sender<()>>,
+    notification_cancelled: Option<oneshot::Sender<()>>,
     exit_seen: Option<oneshot::Sender<()>>,
+}
+
+struct DropNotifier(Option<oneshot::Sender<()>>);
+
+impl Drop for DropNotifier {
+    fn drop(&mut self) {
+        if let Some(notifier) = self.0.take() {
+            let _ = notifier.send(());
+        }
+    }
 }
 
 impl Service<Request> for PendingNotificationService {
@@ -464,7 +475,9 @@ impl Service<Request> for PendingNotificationService {
                     .notification_started
                     .take()
                     .expect("single blocking notification");
+                let cancelled = self.notification_cancelled.take();
                 Box::pin(async move {
+                    let _cancelled = DropNotifier(cancelled);
                     let _ = started.send(());
                     std::future::pending::<()>().await;
                     Ok(None)
@@ -730,7 +743,8 @@ async fn stdio_pending_write_times_out_and_cancels_input() {
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn stdio_exit_remains_reachable_when_protocol_error_output_is_saturated() {
     let (mut client_stdin, server_stdin) = tokio::io::duplex(4096);
-    let (unused_notification_tx, _unused_notification_rx) = oneshot::channel();
+    let (notification_started_tx, notification_started_rx) = oneshot::channel();
+    let (notification_cancelled_tx, notification_cancelled_rx) = oneshot::channel();
     let (exit_seen_tx, exit_seen_rx) = oneshot::channel();
 
     let server_task = tokio::spawn(async move {
@@ -739,12 +753,23 @@ async fn stdio_exit_remains_reachable_when_protocol_error_output_is_saturated() 
             PendingWrite,
             EmptyLoopback,
             PendingNotificationService {
-                notification_started: Some(unused_notification_tx),
+                notification_started: Some(notification_started_tx),
+                notification_cancelled: Some(notification_cancelled_tx),
                 exit_seen: Some(exit_seen_tx),
             },
         )
         .await
     });
+
+    client_stdin
+        .write_all(&frame(
+            r#"{"jsonrpc":"2.0","method":"test/block-notification","params":null}"#,
+        ))
+        .await
+        .expect("write blocking notification");
+    notification_started_rx
+        .await
+        .expect("blocking notification should start");
 
     let invalid = frame(r#"{"jsonrpc":"2.0","method":"#);
     let mut input = invalid.clone();
@@ -766,6 +791,55 @@ async fn stdio_exit_remains_reachable_when_protocol_error_output_is_saturated() 
         .expect("stalled protocol-error output should hit the drain deadline")
         .expect("stdio server task should not panic");
     assert_eq!(termination, StdioTermination::OutputClosed);
+    notification_cancelled_rx
+        .await
+        .expect("exit should cancel the pending handler despite stalled output");
+}
+
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn stdio_eof_with_stalled_output_cancels_an_in_flight_notification() {
+    let (mut client_stdin, server_stdin) = tokio::io::duplex(4096);
+    let (notification_started_tx, notification_started_rx) = oneshot::channel();
+    let (notification_cancelled_tx, notification_cancelled_rx) = oneshot::channel();
+    let (exit_seen_tx, _exit_seen_rx) = oneshot::channel();
+
+    let server_task = tokio::spawn(async move {
+        serve_stdio(
+            server_stdin,
+            PendingWrite,
+            EmptyLoopback,
+            PendingNotificationService {
+                notification_started: Some(notification_started_tx),
+                notification_cancelled: Some(notification_cancelled_tx),
+                exit_seen: Some(exit_seen_tx),
+            },
+        )
+        .await
+    });
+
+    client_stdin
+        .write_all(&frame(
+            r#"{"jsonrpc":"2.0","method":"test/block-notification","params":null}"#,
+        ))
+        .await
+        .expect("write blocking notification");
+    notification_started_rx
+        .await
+        .expect("blocking notification should start");
+    client_stdin
+        .write_all(&frame(r#"{"jsonrpc":"2.0","method":"#))
+        .await
+        .expect("write malformed message for stalled output");
+    drop(client_stdin);
+
+    let termination = timeout(Duration::from_secs(31), server_task)
+        .await
+        .expect("EOF with stalled output should hit the bounded drain deadline")
+        .expect("stdio server task should not panic");
+    assert_eq!(termination, StdioTermination::OutputClosed);
+    notification_cancelled_rx
+        .await
+        .expect("EOF should cancel the pending handler despite stalled output");
 }
 
 #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -911,6 +985,7 @@ async fn stdio_eof_cancels_an_in_flight_notification() {
             EmptyLoopback,
             PendingNotificationService {
                 notification_started: Some(notification_started_tx),
+                notification_cancelled: None,
                 exit_seen: Some(exit_seen_tx),
             },
         )
@@ -1001,6 +1076,7 @@ async fn stdio_exit_cancels_an_in_flight_notification() {
             EmptyLoopback,
             PendingNotificationService {
                 notification_started: Some(notification_started_tx),
+                notification_cancelled: None,
                 exit_seen: Some(exit_seen_tx),
             },
         )

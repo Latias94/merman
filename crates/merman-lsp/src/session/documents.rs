@@ -3,9 +3,9 @@ use crate::session::analysis::executor::{
     AnalysisExecutor, DiagnosticReprojectionLease, DiagnosticReprojectionRequest,
     LSP_ANALYSIS_IN_FLIGHT_LIMIT,
 };
-use crate::session::analysis::request::{AnalysisBuildKey, AnalysisBuildRequest};
 #[cfg(test)]
-use crate::session::analysis::request::{SnapshotBatchCommit, TestAnalysisGate};
+use crate::session::analysis::request::TestAnalysisGate;
+use crate::session::analysis::request::{AnalysisBuildKey, AnalysisBuildRequest};
 #[cfg(test)]
 use crate::session::cache::WeightedCacheStatistics;
 use crate::session::cache::{WeightedLru, WeightedReplacement, conservative_weighted_entry_bytes};
@@ -16,8 +16,6 @@ use crate::snapshot::{
     SnapshotGeneration,
 };
 use futures::stream::{self, StreamExt};
-#[cfg(test)]
-use merman_analysis::source_limit_diagnostic_span;
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisCancelled, AnalysisOptions, Analyzer, DiagnosticSpan,
     source_limit_diagnostic_span_cancellable,
@@ -228,15 +226,6 @@ impl OpenDocumentTracker {
 }
 
 impl PreparedDocumentText {
-    #[cfg(test)]
-    pub(crate) fn new(text: String) -> Self {
-        let oversized_span = Some(source_limit_diagnostic_span(&text));
-        Self {
-            text,
-            oversized_span,
-        }
-    }
-
     pub(crate) fn new_cancellable(
         text: String,
         max_source_bytes: Option<usize>,
@@ -653,11 +642,6 @@ impl SnapshotConfigurationPlan {
 }
 
 impl SessionState {
-    #[cfg(test)]
-    fn new() -> Self {
-        Self::with_session_cancellation(AnalysisCancellationToken::new())
-    }
-
     pub(super) fn with_session_cancellation(
         session_cancellation: AnalysisCancellationToken,
     ) -> Self {
@@ -700,23 +684,6 @@ impl SessionState {
     }
 
     #[cfg(test)]
-    fn with_analyzer_for_tests(analyzer: Analyzer) -> Self {
-        Self::with_analyzer_and_cache_budget(
-            analyzer,
-            AnalysisCancellationToken::new(),
-            DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
-        )
-    }
-
-    #[cfg(test)]
-    fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self {
-        Self::with_session_cancellation_and_cache_budget(
-            AnalysisCancellationToken::new(),
-            analysis_cache_budget,
-        )
-    }
-
-    #[cfg(test)]
     pub(super) fn analysis_cache_total_weight(&self) -> usize {
         self.analysis_generations.total_weight()
     }
@@ -742,30 +709,6 @@ impl SessionState {
     #[cfg(test)]
     pub(super) fn set_analysis_test_gate(&mut self, gate: Option<Arc<TestAnalysisGate>>) {
         self.analysis_test_gate = gate;
-    }
-
-    #[cfg(test)]
-    fn begin_analyzer_options(
-        &mut self,
-        options: AnalysisOptions,
-    ) -> (
-        AnalyzerConfigurationChange,
-        Vec<DiagnosticReprojectionRequest>,
-    ) {
-        let request = self.begin_analyzer_configuration_request();
-        match self
-            .prepare_analyzer_options(request, options)
-            .expect("a synchronous analyzer update cannot be superseded")
-        {
-            AnalyzerOptionsPreparation::Applied(change, requests) => (change, requests),
-            AnalyzerOptionsPreparation::RequiresSnapshotPreparation(plan) => {
-                let batch = plan
-                    .prepare()
-                    .expect("a synchronous analyzer update cannot be cancelled");
-                self.commit_snapshot_configuration(batch)
-                    .expect("a synchronous analyzer update cannot become stale")
-            }
-        }
     }
 
     fn begin_analyzer_configuration_request(&mut self) -> ConfigurationRequestId {
@@ -805,14 +748,6 @@ impl SessionState {
             };
             Some(AnalyzerOptionsPreparation::Applied(change, requests))
         }
-    }
-
-    #[cfg(test)]
-    fn prepare_snapshot_configuration(
-        &self,
-        next_options: AnalysisOptions,
-    ) -> SnapshotConfigurationPlan {
-        self.prepare_snapshot_configuration_for(self.latest_configuration_request, next_options)
     }
 
     fn prepare_snapshot_configuration_for(
@@ -873,16 +808,6 @@ impl SessionState {
 
         self.replace_analyzer(batch.analyzer, batch.oversized_spans.as_ref());
         Some((change, Vec::new()))
-    }
-
-    #[cfg(test)]
-    fn apply_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
-        let (change, requests) = self.begin_analyzer_options(options);
-        assert!(
-            requests.is_empty(),
-            "synchronous analyzer updates cannot execute diagnostic reprojection"
-        );
-        change
     }
 
     fn set_diagnostic_analyzer(
@@ -1065,23 +990,6 @@ impl SessionState {
             && self.is_document_epoch_current(&context.document.uri, context.document_epoch)
     }
 
-    #[cfg(test)]
-    fn upsert_text(
-        &mut self,
-        uri: Uri,
-        version: i32,
-        text: String,
-        kind: DocumentKind,
-    ) -> StoredDocument {
-        if let Some(resource_limit) = self.resource_limit_for_source(&text) {
-            return self.upsert_resource_limited(uri, version, kind, resource_limit);
-        }
-
-        let document =
-            StoredDocument::available(uri.clone(), version, kind, Arc::<str>::from(text));
-        self.upsert_document(uri, document)
-    }
-
     fn capture_open_document(&self, uri: Uri) -> OpenDocumentTicket {
         let expected_uri_revision = self.open_document_tracker.capture(&uri);
         OpenDocumentTicket {
@@ -1190,16 +1098,6 @@ impl SessionState {
         document
     }
 
-    #[cfg(test)]
-    fn resource_limit_for_source(&self, source: &str) -> Option<DocumentResourceLimit> {
-        let max_source_bytes = self.analyzer.options().max_source_bytes()?;
-        (source.len() > max_source_bytes).then(|| DocumentResourceLimit {
-            source_len: source.len(),
-            max_source_bytes,
-            span: source_limit_diagnostic_span(source),
-        })
-    }
-
     fn reclassify_documents_for_current_limit(
         &mut self,
         oversized_spans: &HashMap<Uri, DiagnosticSpan>,
@@ -1255,33 +1153,6 @@ impl SessionState {
                 DocumentSource::SyncError(_) => continue,
             };
             record.document.source = next_source;
-        }
-    }
-
-    #[cfg(test)]
-    fn open_text(
-        &mut self,
-        uri: Uri,
-        version: i32,
-        text: String,
-        kind: DocumentKind,
-    ) -> StoredDocument {
-        self.upsert_text(uri, version, text, kind)
-    }
-
-    #[cfg(test)]
-    fn apply_text_changes(
-        &mut self,
-        uri: Uri,
-        version: i32,
-        changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
-    ) -> TextDocumentUpdate {
-        match self.capture_text_changes(uri, version, changes) {
-            TextChangePreparation::Immediate(update) => update,
-            TextChangePreparation::Prepare(plan) => self.commit_prepared_text_changes(
-                plan.prepare()
-                    .expect("a private text-change token cannot be cancelled"),
-            ),
         }
     }
 
@@ -1344,14 +1215,6 @@ impl SessionState {
         }
     }
 
-    #[cfg(test)]
-    fn upsert(&mut self, uri: Uri, version: i32, text: String) -> Arc<DocumentSnapshot> {
-        let kind = DocumentKind::from_path(uri.path().as_str());
-        self.upsert_text(uri.clone(), version, text, kind);
-        self.snapshot(&uri)
-            .expect("snapshot should exist after inserting document text")
-    }
-
     pub(super) fn get(&self, uri: &Uri) -> Option<&StoredDocument> {
         self.documents.get(uri).map(|record| &record.document)
     }
@@ -1364,11 +1227,6 @@ impl SessionState {
     #[cfg(test)]
     fn analyzer_environment_identity(&self) -> &merman_analysis::AnalysisEnvironmentIdentity {
         self.analyzer.environment_identity()
-    }
-
-    #[cfg(test)]
-    fn snapshot(&mut self, uri: &Uri) -> Option<Arc<DocumentSnapshot>> {
-        self.snapshot_context(uri).map(|context| context.snapshot)
     }
 
     pub(super) fn cached_snapshot_context_for_uri(&mut self, uri: &Uri) -> Option<SnapshotContext> {
@@ -1391,38 +1249,6 @@ impl SessionState {
         (cached.document_epoch == document_epoch
             && cached.snapshot_generation == self.snapshot_generation)
             .then(|| Arc::clone(&cached.context.snapshot))
-    }
-
-    #[cfg(test)]
-    fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
-        if let Some(cached) = self.cached_snapshot_context_for_uri(uri) {
-            return Some(cached);
-        }
-
-        let request = self.snapshot_build_request(uri)?;
-        let analysis = match request.build() {
-            Ok(analysis) => analysis,
-            Err(rejection) => {
-                let document = self.documents.get(uri)?.document.clone();
-                self.upsert_resource_limited(
-                    document.uri,
-                    document.version,
-                    document.kind,
-                    DocumentResourceLimit {
-                        source_len: rejection.source_len(),
-                        max_source_bytes: rejection.max_source_bytes(),
-                        span: rejection
-                            .payload()
-                            .diagnostics
-                            .first()
-                            .and_then(|diagnostic| diagnostic.span)
-                            .expect("source-limit rejection must retain its source span"),
-                    },
-                );
-                return None;
-            }
-        };
-        self.insert_built_analysis(&request, analysis)
     }
 
     pub(super) fn snapshot_build_request(&self, uri: &Uri) -> Option<AnalysisBuildRequest> {
@@ -1504,13 +1330,6 @@ impl SessionState {
     ) -> bool {
         self.is_diagnostic_context_current(diagnostic)
             && analysis.is_none_or(|context| self.is_analysis_context_current(context))
-    }
-
-    #[cfg(test)]
-    fn is_snapshot_contexts_current(&self, contexts: &[SnapshotContext]) -> bool {
-        contexts
-            .iter()
-            .all(|context| self.is_snapshot_context_current(context))
     }
 
     fn is_document_epoch_current(&self, uri: &Uri, document_epoch: DocumentEpoch) -> bool {
@@ -1597,25 +1416,6 @@ impl SessionState {
             .collect()
     }
 
-    #[cfg(test)]
-    fn snapshot_build_requests(&self) -> (Vec<SnapshotContext>, Vec<AnalysisBuildRequest>) {
-        let mut contexts = Vec::new();
-        let mut requests = Vec::new();
-
-        for (uri, record) in &self.documents {
-            if let Some(cached) = self.analysis_generations.peek(uri).filter(|cached| {
-                cached.document_epoch == record.epoch
-                    && cached.snapshot_generation == self.snapshot_generation
-            }) {
-                contexts.push(Self::cached_snapshot_context(cached));
-            } else if let Some(request) = self.snapshot_build_request(uri) {
-                requests.push(request);
-            }
-        }
-
-        (contexts, requests)
-    }
-
     fn cached_snapshot_context(cached: &CachedAnalysisGeneration) -> SnapshotContext {
         SnapshotContext::with_analysis(
             Arc::clone(&cached.context.snapshot),
@@ -1624,30 +1424,6 @@ impl SessionState {
             cached.diagnostic_generation,
             cached.document_epoch,
         )
-    }
-
-    #[cfg(test)]
-    fn snapshot_contexts_for_requests(
-        &mut self,
-        requests: Vec<(AnalysisBuildRequest, Arc<DocumentAnalysisContext>)>,
-    ) -> SnapshotBatchCommit {
-        let mut contexts = Vec::new();
-        let mut stale_open_documents = false;
-
-        for (request, analysis) in requests {
-            match self.insert_built_analysis(&request, analysis) {
-                Some(_context) => {
-                    contexts.push(_context);
-                }
-                None if self.get(request.uri()).is_some() => stale_open_documents = true,
-                None => {}
-            }
-        }
-
-        SnapshotBatchCommit {
-            contexts,
-            stale_open_documents,
-        }
     }
 
     #[cfg(test)]
@@ -2115,142 +1891,6 @@ impl LanguageSession {
 
     pub(crate) async fn diagnostic_contexts(&self) -> Vec<DiagnosticContext> {
         self.inner.state.lock().await.diagnostic_contexts()
-    }
-}
-
-#[cfg(test)]
-mod private_transaction_tests {
-    use super::*;
-    use std::str::FromStr;
-
-    #[test]
-    fn open_commit_is_uri_local_and_rejects_changed_target_or_configuration_state() {
-        let mut state = SessionState::new();
-        let uri = Uri::from_str("file:///tmp/open-ticket.mmd").unwrap();
-        let other = Uri::from_str("file:///tmp/other.mmd").unwrap();
-        let ticket = state.capture_open_document(uri.clone());
-        state.upsert_text(
-            other,
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        assert!(state.commit_open_document(
-            ticket,
-            1,
-            PreparedDocumentText::new("flowchart TD\nA-->B\n".to_string()),
-            DocumentKind::Diagram,
-        ));
-        assert_eq!(state.get(&uri).unwrap().version, 1);
-
-        let ticket = state.capture_open_document(uri.clone());
-        state.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        assert!(!state.commit_open_document(
-            ticket,
-            3,
-            PreparedDocumentText::new("flowchart TD\nA-->D\n".to_string()),
-            DocumentKind::Diagram,
-        ));
-        assert_eq!(state.get(&uri).unwrap().version, 2);
-
-        let ticket = state.capture_open_document(uri.clone());
-        state.apply_analyzer_options(
-            default_lsp_analysis_options().with_rule_config(
-                merman_analysis::AnalysisRuleConfig::default()
-                    .with_rule_severity(
-                        "merman.parse.no_diagram",
-                        merman_analysis::DiagnosticSeverity::Hint,
-                    )
-                    .unwrap(),
-            ),
-        );
-        assert!(!state.commit_open_document(
-            ticket,
-            3,
-            PreparedDocumentText::new("flowchart TD\nA-->D\n".to_string()),
-            DocumentKind::Diagram,
-        ));
-        assert_eq!(state.get(&uri).unwrap().version, 2);
-    }
-
-    #[test]
-    fn open_commit_rejects_an_absent_present_absent_aba() {
-        let mut state = SessionState::new();
-        let uri = Uri::from_str("file:///tmp/open-ticket-aba.mmd").unwrap();
-        let ticket = state.capture_open_document(uri.clone());
-
-        state.open_prepared_text(
-            uri.clone(),
-            1,
-            PreparedDocumentText::new("flowchart TD\nA-->B\n".to_string()),
-            DocumentKind::Diagram,
-        );
-        state.remove(&uri);
-        assert!(state.get(&uri).is_none());
-
-        assert!(!state.commit_open_document(
-            ticket,
-            2,
-            PreparedDocumentText::new("flowchart TD\nA-->C\n".to_string()),
-            DocumentKind::Diagram,
-        ));
-        assert!(state.get(&uri).is_none());
-        assert!(
-            crate::sync::lock_recovering_poison(&state.open_document_tracker.entries).is_empty(),
-            "completed open tickets must not leave URI tombstones"
-        );
-    }
-
-    #[test]
-    fn open_tickets_share_a_uri_clock_until_the_last_ticket_finishes() {
-        let mut state = SessionState::new();
-        let uri = Uri::from_str("file:///tmp/open-ticket-overlap.mmd").unwrap();
-        let first = state.capture_open_document(uri.clone());
-        let second = state.capture_open_document(uri.clone());
-
-        assert_eq!(
-            crate::sync::lock_recovering_poison(&state.open_document_tracker.entries)
-                .get(&uri)
-                .map(|clock| clock.active_tickets),
-            Some(2)
-        );
-        drop(first);
-        assert_eq!(
-            crate::sync::lock_recovering_poison(&state.open_document_tracker.entries)
-                .get(&uri)
-                .map(|clock| clock.active_tickets),
-            Some(1),
-            "dropping one ticket must not erase another ticket's URI clock"
-        );
-
-        assert!(state.commit_open_document(
-            second,
-            1,
-            PreparedDocumentText::new("flowchart TD\nA-->B\n".to_string()),
-            DocumentKind::Diagram,
-        ));
-        assert!(
-            crate::sync::lock_recovering_poison(&state.open_document_tracker.entries).is_empty(),
-            "the last completed ticket must release its URI clock"
-        );
-    }
-
-    #[test]
-    fn dropping_an_uncommitted_open_ticket_releases_its_uri_clock() {
-        let state = SessionState::new();
-        let uri = Uri::from_str("file:///tmp/open-ticket-dropped.mmd").unwrap();
-        let ticket = state.capture_open_document(uri);
-
-        drop(ticket);
-
-        assert!(
-            crate::sync::lock_recovering_poison(&state.open_document_tracker.entries).is_empty()
-        );
     }
 }
 

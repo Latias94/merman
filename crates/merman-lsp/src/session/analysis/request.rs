@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::snapshot::SnapshotContext;
 use crate::snapshot::{
     DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotGeneration,
 };
@@ -108,20 +106,6 @@ impl AnalysisBuildRequest {
         self.key.document_epoch
     }
 
-    #[cfg(test)]
-    pub(in crate::session) fn build(
-        &self,
-    ) -> Result<Arc<DocumentAnalysisContext>, AnalysisRejection> {
-        let context = DocumentWorkspace::build_analysis_context_with_shared_text(
-            &self.analyzer,
-            self.key.uri.as_str(),
-            self.key.version,
-            Arc::clone(&self.text),
-            self.kind,
-        );
-        document_analysis_context(context, self.key.uri.clone())
-    }
-
     pub(in crate::session) fn build_cancellable(
         &self,
         cancellation: &AnalysisCancellationToken,
@@ -163,13 +147,6 @@ fn document_analysis_context(
 ) -> Result<Arc<DocumentAnalysisContext>, AnalysisRejection> {
     let context = outcome.into_ready()?;
     Ok(Arc::new(DocumentAnalysisContext::from_editor(context, uri)))
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone)]
-pub(in crate::session) struct SnapshotBatchCommit {
-    pub(in crate::session) contexts: Vec<SnapshotContext>,
-    pub(in crate::session) stale_open_documents: bool,
 }
 
 #[cfg(test)]

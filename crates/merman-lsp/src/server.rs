@@ -60,6 +60,26 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{Client, LanguageServer, LspService};
 
+const MAX_CLIENT_LOG_MESSAGE_BYTES: usize = 4 * 1024;
+const CLIENT_LOG_TRUNCATION_SUFFIX: &str = " [truncated]";
+
+fn bounded_client_log_message(message: impl Into<String>) -> String {
+    let message = message.into();
+    let (prefix, suffix) = if message.len() <= MAX_CLIENT_LOG_MESSAGE_BYTES {
+        (message.as_str(), "")
+    } else {
+        let mut end = MAX_CLIENT_LOG_MESSAGE_BYTES - CLIENT_LOG_TRUNCATION_SUFFIX.len();
+        while !message.is_char_boundary(end) {
+            end -= 1;
+        }
+        (&message[..end], CLIENT_LOG_TRUNCATION_SUFFIX)
+    };
+    let mut bounded = String::with_capacity(prefix.len() + suffix.len());
+    bounded.push_str(prefix);
+    bounded.push_str(suffix);
+    bounded
+}
+
 #[derive(Clone)]
 struct DiagnosticPublisher {
     client: Client,
@@ -358,26 +378,14 @@ impl MermanLanguageServer {
         })
     }
 
-    async fn enqueue_publish_for_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
+    async fn enqueue_diagnostic_sync(&self, uri: tower_lsp_server::ls_types::Uri) {
         let Some(publisher) = self.diagnostic_publisher() else {
             return;
         };
         let key = ClientEffectKey::Document(uri.as_str().to_owned());
         self.session
             .enqueue_latest_client_effect(key, async move {
-                publisher.publish_for_uri(uri).await;
-            })
-            .await;
-    }
-
-    async fn enqueue_clear_diagnostics(&self, uri: tower_lsp_server::ls_types::Uri) {
-        let Some(publisher) = self.diagnostic_publisher() else {
-            return;
-        };
-        let key = ClientEffectKey::Document(uri.as_str().to_owned());
-        self.session
-            .enqueue_latest_client_effect(key, async move {
-                publisher.clear(uri).await;
+                publisher.synchronize_uri(uri).await;
             })
             .await;
     }
@@ -395,9 +403,9 @@ impl MermanLanguageServer {
 
     async fn enqueue_log_message(&self, kind: MessageType, message: impl Into<String>) {
         let client = self.client.clone();
-        let message = message.into();
+        let message = bounded_client_log_message(message);
         self.session
-            .enqueue_client_effect(async move {
+            .enqueue_latest_client_effect(ClientEffectKey::LogMessage, async move {
                 client.log_message(kind, message).await;
             })
             .await;
@@ -447,10 +455,10 @@ impl DiagnosticPublisher {
             .await
     }
 
-    async fn publish_for_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
-        let context = self.session.diagnostic_context(&uri).await;
-        if let Some(context) = context {
-            self.publish_current(&context).await;
+    async fn synchronize_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
+        match self.session.diagnostic_context(&uri).await {
+            Some(context) => self.publish_current(&context).await,
+            None => self.clear(uri).await,
         }
     }
 
@@ -527,7 +535,7 @@ impl LanguageServer for MermanLanguageServer {
             .await;
         commit_active_mutation();
         if committed {
-            self.enqueue_publish_for_uri(uri).await;
+            self.enqueue_diagnostic_sync(uri).await;
         }
     }
 
@@ -539,21 +547,21 @@ impl LanguageServer for MermanLanguageServer {
             .await;
         commit_active_mutation();
         if update.is_some_and(|update| update.affects_document_state()) {
-            self.enqueue_publish_for_uri(doc.uri).await;
+            self.enqueue_diagnostic_sync(doc.uri).await;
         }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
         commit_active_mutation();
-        self.enqueue_publish_for_uri(uri).await;
+        self.enqueue_diagnostic_sync(uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
         self.session.close_document(&uri).await;
         commit_active_mutation();
-        self.enqueue_clear_diagnostics(uri).await;
+        self.enqueue_diagnostic_sync(uri).await;
     }
 
     async fn did_change_configuration(

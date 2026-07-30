@@ -6,10 +6,12 @@ use super::{
     AnalyzerConfigurationChange, AnalyzerOptionsPreparation,
     DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES, DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiagnosticState,
     DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError, PreparedDocumentText,
-    SemanticTokensState, SessionState, TextChangePreparation, TextDocumentUpdate,
-    default_lsp_analysis_options,
+    SemanticTokensState, SessionState, SnapshotConfigurationPlan, StoredDocument,
+    TextChangePreparation, TextDocumentUpdate, default_lsp_analysis_options,
 };
 use crate::session::analysis::executor::DiagnosticReprojectionRequest;
+use crate::session::analysis::request::AnalysisBuildError;
+use crate::snapshot::{DocumentSnapshot, SnapshotContext};
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisRuleConfig,
     AnalysisRuleProfile, Analyzer, DiagnosticSeverity, FenceSemanticRole, FenceTextIndexSource,
@@ -59,6 +61,230 @@ fn repeated_diagnostic_flowchart_parser(
     control.checkpoint()?;
     REPEATED_DIAGNOSTIC_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
     Ok(Ok(serde_json::json!({ "warningFacts": [] })))
+}
+
+trait PreparedDocumentTextTestExt {
+    fn new(text: String) -> Self;
+}
+
+impl PreparedDocumentTextTestExt for PreparedDocumentText {
+    fn new(text: String) -> Self {
+        let oversized_span = Some(source_limit_diagnostic_span(&text));
+        Self {
+            text,
+            oversized_span,
+        }
+    }
+}
+
+trait SessionStateTestExt: Sized {
+    fn new() -> Self;
+
+    fn with_analyzer_for_tests(analyzer: Analyzer) -> Self;
+
+    fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self;
+
+    fn begin_analyzer_options(
+        &mut self,
+        options: AnalysisOptions,
+    ) -> (
+        AnalyzerConfigurationChange,
+        Vec<DiagnosticReprojectionRequest>,
+    );
+
+    fn prepare_snapshot_configuration(
+        &self,
+        next_options: AnalysisOptions,
+    ) -> SnapshotConfigurationPlan;
+
+    fn apply_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange;
+
+    fn upsert_text(
+        &mut self,
+        uri: Uri,
+        version: i32,
+        text: String,
+        kind: DocumentKind,
+    ) -> StoredDocument;
+
+    fn resource_limit_for_source(&self, source: &str) -> Option<DocumentResourceLimit>;
+
+    fn open_text(
+        &mut self,
+        uri: Uri,
+        version: i32,
+        text: String,
+        kind: DocumentKind,
+    ) -> StoredDocument;
+
+    fn apply_text_changes(
+        &mut self,
+        uri: Uri,
+        version: i32,
+        changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
+    ) -> TextDocumentUpdate;
+
+    fn upsert(&mut self, uri: Uri, version: i32, text: String) -> Arc<DocumentSnapshot>;
+
+    fn snapshot(&mut self, uri: &Uri) -> Option<Arc<DocumentSnapshot>>;
+
+    fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext>;
+}
+
+impl SessionStateTestExt for SessionState {
+    fn new() -> Self {
+        Self::with_session_cancellation(AnalysisCancellationToken::new())
+    }
+
+    fn with_analyzer_for_tests(analyzer: Analyzer) -> Self {
+        Self::with_analyzer_and_cache_budget(
+            analyzer,
+            AnalysisCancellationToken::new(),
+            DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
+        )
+    }
+
+    fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self {
+        Self::with_session_cancellation_and_cache_budget(
+            AnalysisCancellationToken::new(),
+            analysis_cache_budget,
+        )
+    }
+
+    fn begin_analyzer_options(
+        &mut self,
+        options: AnalysisOptions,
+    ) -> (
+        AnalyzerConfigurationChange,
+        Vec<DiagnosticReprojectionRequest>,
+    ) {
+        let request = self.begin_analyzer_configuration_request();
+        match self
+            .prepare_analyzer_options(request, options)
+            .expect("a synchronous analyzer update cannot be superseded")
+        {
+            AnalyzerOptionsPreparation::Applied(change, requests) => (change, requests),
+            AnalyzerOptionsPreparation::RequiresSnapshotPreparation(plan) => {
+                let batch = plan
+                    .prepare()
+                    .expect("a synchronous analyzer update cannot be cancelled");
+                self.commit_snapshot_configuration(batch)
+                    .expect("a synchronous analyzer update cannot become stale")
+            }
+        }
+    }
+
+    fn prepare_snapshot_configuration(
+        &self,
+        next_options: AnalysisOptions,
+    ) -> SnapshotConfigurationPlan {
+        self.prepare_snapshot_configuration_for(self.latest_configuration_request, next_options)
+    }
+
+    fn apply_analyzer_options(&mut self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
+        let (change, requests) = self.begin_analyzer_options(options);
+        assert!(
+            requests.is_empty(),
+            "synchronous analyzer updates cannot execute diagnostic reprojection"
+        );
+        change
+    }
+
+    fn upsert_text(
+        &mut self,
+        uri: Uri,
+        version: i32,
+        text: String,
+        kind: DocumentKind,
+    ) -> StoredDocument {
+        if let Some(resource_limit) = self.resource_limit_for_source(&text) {
+            return self.upsert_resource_limited(uri, version, kind, resource_limit);
+        }
+
+        let document =
+            StoredDocument::available(uri.clone(), version, kind, Arc::<str>::from(text));
+        self.upsert_document(uri, document)
+    }
+
+    fn resource_limit_for_source(&self, source: &str) -> Option<DocumentResourceLimit> {
+        let max_source_bytes = self.analyzer.options().max_source_bytes()?;
+        (source.len() > max_source_bytes).then(|| DocumentResourceLimit {
+            source_len: source.len(),
+            max_source_bytes,
+            span: source_limit_diagnostic_span(source),
+        })
+    }
+
+    fn open_text(
+        &mut self,
+        uri: Uri,
+        version: i32,
+        text: String,
+        kind: DocumentKind,
+    ) -> StoredDocument {
+        self.upsert_text(uri, version, text, kind)
+    }
+
+    fn apply_text_changes(
+        &mut self,
+        uri: Uri,
+        version: i32,
+        changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
+    ) -> TextDocumentUpdate {
+        match self.capture_text_changes(uri, version, changes) {
+            TextChangePreparation::Immediate(update) => update,
+            TextChangePreparation::Prepare(plan) => self.commit_prepared_text_changes(
+                plan.prepare()
+                    .expect("a private text-change token cannot be cancelled"),
+            ),
+        }
+    }
+
+    fn upsert(&mut self, uri: Uri, version: i32, text: String) -> Arc<DocumentSnapshot> {
+        let kind = DocumentKind::from_path(uri.path().as_str());
+        self.upsert_text(uri.clone(), version, text, kind);
+        self.snapshot(&uri)
+            .expect("snapshot should exist after inserting document text")
+    }
+
+    fn snapshot(&mut self, uri: &Uri) -> Option<Arc<DocumentSnapshot>> {
+        self.snapshot_context(uri).map(|context| context.snapshot)
+    }
+
+    fn snapshot_context(&mut self, uri: &Uri) -> Option<SnapshotContext> {
+        if let Some(cached) = self.cached_snapshot_context_for_uri(uri) {
+            return Some(cached);
+        }
+
+        let request = self.snapshot_build_request(uri)?;
+        let cancellation = AnalysisCancellationToken::new();
+        let analysis = match request.build_cancellable(&cancellation) {
+            Ok(analysis) => analysis,
+            Err(AnalysisBuildError::Rejected(rejection)) => {
+                let document = self.documents.get(uri)?.document.clone();
+                self.upsert_resource_limited(
+                    document.uri,
+                    document.version,
+                    document.kind,
+                    DocumentResourceLimit {
+                        source_len: rejection.source_len(),
+                        max_source_bytes: rejection.max_source_bytes(),
+                        span: rejection
+                            .payload()
+                            .diagnostics
+                            .first()
+                            .and_then(|diagnostic| diagnostic.span)
+                            .expect("source-limit rejection must retain its source span"),
+                    },
+                );
+                return None;
+            }
+            Err(AnalysisBuildError::Cancelled(_)) => {
+                unreachable!("a fresh test snapshot cancellation cannot be cancelled")
+            }
+        };
+        self.insert_built_analysis(&request, analysis)
+    }
 }
 
 #[test]
@@ -1191,12 +1417,11 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let (snapshots, mut requests) = store.snapshot_build_requests();
-    assert!(snapshots.is_empty());
-    assert_eq!(requests.len(), 1);
-    let stale_request = requests.pop().unwrap();
+    let stale_request = store
+        .snapshot_build_request(&uri)
+        .expect("uncached document should require analysis");
     let stale_snapshot = stale_request
-        .build()
+        .build_cancellable(&AnalysisCancellationToken::new())
         .expect("test source should be accepted");
 
     store.upsert_text(
@@ -1206,9 +1431,11 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
         DocumentKind::Diagram,
     );
 
-    let committed = store.snapshot_contexts_for_requests(vec![(stale_request, stale_snapshot)]);
-    assert!(committed.contexts.is_empty());
-    assert!(committed.stale_open_documents);
+    assert!(
+        store
+            .insert_built_analysis(&stale_request, stale_snapshot)
+            .is_none()
+    );
     assert!(!store.has_snapshot(&uri));
 
     let current = store
@@ -1216,46 +1443,6 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
         .expect("current snapshot should build after rejecting stale request");
     assert_eq!(current.version(), 2);
     assert_eq!(current.fences()[0].diagram_type(), Some("sequence"));
-}
-
-#[test]
-fn snapshot_build_requests_reuse_current_cached_snapshots() {
-    let mut store = SessionState::new();
-    let cached_uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
-    let missing_uri = Uri::from_str("file:///tmp/missing.mmd").unwrap();
-
-    store.upsert_text(
-        cached_uri.clone(),
-        1,
-        "flowchart TD\nA-->B\n".to_string(),
-        DocumentKind::Diagram,
-    );
-    let cached_snapshot = store
-        .snapshot(&cached_uri)
-        .expect("expected cached snapshot");
-    store.upsert_text(
-        missing_uri.clone(),
-        1,
-        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
-        DocumentKind::Diagram,
-    );
-
-    let (contexts, mut requests) = store.snapshot_build_requests();
-
-    assert_eq!(contexts.len(), 1);
-    assert_eq!(contexts[0].snapshot.uri(), &cached_uri);
-    assert!(std::sync::Arc::ptr_eq(
-        &contexts[0].snapshot,
-        &cached_snapshot
-    ));
-    assert!(store.is_snapshot_context_current(&contexts[0]));
-    assert_eq!(requests.len(), 1);
-    let request = requests.pop().unwrap();
-    let built = request.build().expect("test source should be accepted");
-    let committed = store.snapshot_contexts_for_requests(vec![(request, built)]);
-    assert_eq!(committed.contexts.len(), 1);
-    assert_eq!(committed.contexts[0].snapshot.uri(), &missing_uri);
-    assert!(!committed.stale_open_documents);
 }
 
 #[test]
@@ -1289,13 +1476,10 @@ fn cached_snapshot_build_context_stales_after_text_replacement() {
     );
     let cached_snapshot = store.snapshot(&uri).expect("expected cached snapshot");
 
-    let (contexts, requests) = store.snapshot_build_requests();
-    assert_eq!(contexts.len(), 1);
-    assert!(requests.is_empty());
-    assert!(std::sync::Arc::ptr_eq(
-        &contexts[0].snapshot,
-        &cached_snapshot
-    ));
+    let context = store
+        .cached_snapshot_context_for_uri(&uri)
+        .expect("cached document should reuse its current context");
+    assert!(std::sync::Arc::ptr_eq(&context.snapshot, &cached_snapshot));
 
     store.upsert_text(
         uri,
@@ -1304,7 +1488,7 @@ fn cached_snapshot_build_context_stales_after_text_replacement() {
         DocumentKind::Diagram,
     );
 
-    assert!(!store.is_snapshot_contexts_current(&contexts));
+    assert!(!store.is_snapshot_context_current(&context));
 }
 
 #[test]
@@ -3236,7 +3420,9 @@ fn estimated_entry_weight(uri: &Uri, text: &str, kind: DocumentKind) -> usize {
     let request = sizing
         .snapshot_build_request(uri)
         .expect("sizing document should require analysis");
-    let analysis = request.build().expect("sizing analysis should be accepted");
+    let analysis = request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .expect("sizing analysis should be accepted");
     SessionState::estimated_analysis_cache_entry_weight(uri, &analysis)
 }
 
@@ -3244,7 +3430,9 @@ fn assert_default_cache_admits(uri: Uri, text: String, kind: DocumentKind) {
     let mut store = SessionState::new();
     store.upsert_text(uri.clone(), 1, text, kind);
     let request = store.snapshot_build_request(&uri).unwrap();
-    let analysis = request.build().unwrap();
+    let analysis = request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
     let weight = SessionState::estimated_analysis_cache_entry_weight(&uri, &analysis);
     assert!(weight <= DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES);
     assert!(store.insert_built_analysis(&request, analysis).is_some());
@@ -3301,7 +3489,9 @@ fn oversized_analysis_is_returned_current_without_disturbing_cache_invariants() 
     let request = store
         .snapshot_build_request(&uri)
         .expect("uncached document should require analysis");
-    let analysis = request.build().expect("analysis should succeed");
+    let analysis = request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .expect("analysis should succeed");
     let weak = Arc::downgrade(&analysis);
 
     let context = store
@@ -3348,7 +3538,9 @@ fn cancelled_and_stale_builds_do_not_change_cache_weight_or_eviction_order() {
         before
     );
 
-    let stale_analysis = request.build().unwrap();
+    let stale_analysis = request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
     store.upsert_text(
         uri.clone(),
         2,
@@ -3379,7 +3571,9 @@ fn eviction_releases_cache_ownership_but_preserves_request_local_generation() {
     let mut store = SessionState::with_analysis_cache_budget(entry_weight);
     store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
     let request = store.snapshot_build_request(&a).unwrap();
-    let analysis = request.build().unwrap();
+    let analysis = request
+        .build_cancellable(&AnalysisCancellationToken::new())
+        .unwrap();
     let weak_context = Arc::downgrade(&analysis);
     let weak_generation = Arc::downgrade(analysis.generation());
     let weak_payload = Arc::downgrade(&analysis.payload);
@@ -3516,4 +3710,129 @@ fn default_cache_admits_representative_source_limit_boundary_documents() {
     ));
     assert_eq!(high_fact.len(), DEFAULT_LSP_MAX_SOURCE_BYTES);
     assert_default_cache_admits(high_fact_uri, high_fact, DocumentKind::Diagram);
+}
+
+#[test]
+fn open_commit_is_uri_local_and_rejects_changed_target_or_configuration_state() {
+    let mut state = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/open-ticket.mmd").unwrap();
+    let other = Uri::from_str("file:///tmp/other.mmd").unwrap();
+    let ticket = state.capture_open_document(uri.clone());
+    state.upsert_text(
+        other,
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    assert!(state.commit_open_document(
+        ticket,
+        1,
+        PreparedDocumentText::new("flowchart TD\nA-->B\n".to_string()),
+        DocumentKind::Diagram,
+    ));
+    assert_eq!(state.get(&uri).unwrap().version, 1);
+
+    let ticket = state.capture_open_document(uri.clone());
+    state.upsert_text(
+        uri.clone(),
+        2,
+        "flowchart TD\nA-->C\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    assert!(!state.commit_open_document(
+        ticket,
+        3,
+        PreparedDocumentText::new("flowchart TD\nA-->D\n".to_string()),
+        DocumentKind::Diagram,
+    ));
+    assert_eq!(state.get(&uri).unwrap().version, 2);
+
+    let ticket = state.capture_open_document(uri.clone());
+    state.apply_analyzer_options(
+        default_lsp_analysis_options().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                .unwrap(),
+        ),
+    );
+    assert!(!state.commit_open_document(
+        ticket,
+        3,
+        PreparedDocumentText::new("flowchart TD\nA-->D\n".to_string()),
+        DocumentKind::Diagram,
+    ));
+    assert_eq!(state.get(&uri).unwrap().version, 2);
+}
+
+#[test]
+fn open_commit_rejects_an_absent_present_absent_aba() {
+    let mut state = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/open-ticket-aba.mmd").unwrap();
+    let ticket = state.capture_open_document(uri.clone());
+
+    state.open_prepared_text(
+        uri.clone(),
+        1,
+        PreparedDocumentText::new("flowchart TD\nA-->B\n".to_string()),
+        DocumentKind::Diagram,
+    );
+    state.remove(&uri);
+    assert!(state.get(&uri).is_none());
+
+    assert!(!state.commit_open_document(
+        ticket,
+        2,
+        PreparedDocumentText::new("flowchart TD\nA-->C\n".to_string()),
+        DocumentKind::Diagram,
+    ));
+    assert!(state.get(&uri).is_none());
+    assert!(
+        crate::sync::lock_recovering_poison(&state.open_document_tracker.entries).is_empty(),
+        "completed open tickets must not leave URI tombstones"
+    );
+}
+
+#[test]
+fn open_tickets_share_a_uri_clock_until_the_last_ticket_finishes() {
+    let mut state = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/open-ticket-overlap.mmd").unwrap();
+    let first = state.capture_open_document(uri.clone());
+    let second = state.capture_open_document(uri.clone());
+
+    assert_eq!(
+        crate::sync::lock_recovering_poison(&state.open_document_tracker.entries)
+            .get(&uri)
+            .map(|clock| clock.active_tickets),
+        Some(2)
+    );
+    drop(first);
+    assert_eq!(
+        crate::sync::lock_recovering_poison(&state.open_document_tracker.entries)
+            .get(&uri)
+            .map(|clock| clock.active_tickets),
+        Some(1),
+        "dropping one ticket must not erase another ticket's URI clock"
+    );
+
+    assert!(state.commit_open_document(
+        second,
+        1,
+        PreparedDocumentText::new("flowchart TD\nA-->B\n".to_string()),
+        DocumentKind::Diagram,
+    ));
+    assert!(
+        crate::sync::lock_recovering_poison(&state.open_document_tracker.entries).is_empty(),
+        "the last completed ticket must release its URI clock"
+    );
+}
+
+#[test]
+fn dropping_an_uncommitted_open_ticket_releases_its_uri_clock() {
+    let state = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/open-ticket-dropped.mmd").unwrap();
+    let ticket = state.capture_open_document(uri);
+
+    drop(ticket);
+
+    assert!(crate::sync::lock_recovering_poison(&state.open_document_tracker.entries).is_empty());
 }
