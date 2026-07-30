@@ -317,6 +317,7 @@ struct BkWorkspace<'a> {
     first_predecessor: Vec<Option<usize>>,
     first_dummy_predecessor: Vec<Option<usize>>,
     conflicts: Vec<(usize, usize)>,
+    conflicts_seen: HashSet<(usize, usize)>,
     root: Vec<usize>,
     align: Vec<usize>,
     pos: Vec<usize>,
@@ -474,6 +475,7 @@ impl<'a> BkWorkspace<'a> {
             first_predecessor,
             first_dummy_predecessor,
             conflicts: Vec::new(),
+            conflicts_seen: HashSet::default(),
             root: (0..node_count).collect(),
             align: (0..node_count).collect(),
             pos: vec![NONE; node_count],
@@ -511,11 +513,14 @@ impl<'a> BkWorkspace<'a> {
         self.find_type1_conflicts();
         self.find_type2_conflicts();
         self.conflicts.sort_unstable();
-        self.conflicts.dedup();
+        self.conflicts_seen = HashSet::default();
     }
 
     fn add_conflict(&mut self, v: usize, w: usize) {
-        self.conflicts.push(if v <= w { (v, w) } else { (w, v) });
+        let conflict = if v <= w { (v, w) } else { (w, v) };
+        if self.conflicts_seen.insert(conflict) {
+            self.conflicts.push(conflict);
+        }
     }
 
     fn has_conflict(&self, v: usize, w: usize) -> bool {
@@ -1226,4 +1231,79 @@ pub fn balance(
 pub fn position_x(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> HashMap<String, f64> {
     let layering = crate::util::build_layer_matrix(g);
     position_x_with_layering(g, &layering)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fallback_graph(
+        intermediate_count: usize,
+    ) -> (Graph<NodeLabel, EdgeLabel, GraphLabel>, Vec<Vec<String>>) {
+        let mut g = Graph::new(GraphOptions::default());
+        g.set_graph(GraphLabel::default());
+
+        let north = vec![
+            "north-low".to_string(),
+            "north-middle".to_string(),
+            "north-high".to_string(),
+        ];
+        for (order, id) in north.iter().enumerate() {
+            g.set_node(
+                id.clone(),
+                NodeLabel {
+                    rank: Some(0),
+                    order: Some(order),
+                    dummy: Some("dummy".to_string()),
+                    ..Default::default()
+                },
+            );
+        }
+
+        let mut south = Vec::with_capacity(intermediate_count + 2);
+        south.push("border-high".to_string());
+        south.extend((0..intermediate_count).map(|index| format!("dummy-{index}")));
+        south.push("border-low".to_string());
+
+        for (order, id) in south.iter().enumerate() {
+            let dummy = if id.starts_with("border-") {
+                "border"
+            } else {
+                "dummy"
+            };
+            g.set_node(
+                id.clone(),
+                NodeLabel {
+                    rank: Some(1),
+                    order: Some(order),
+                    dummy: Some(dummy.to_string()),
+                    ..Default::default()
+                },
+            );
+        }
+
+        g.set_edge("north-high", "border-high");
+        for id in south.iter().skip(1) {
+            g.set_edge("north-low", id);
+        }
+
+        (g, vec![north, south])
+    }
+
+    #[test]
+    fn indexed_type2_fallback_retains_only_unique_conflicts() {
+        for intermediate_count in [8, 64] {
+            let (g, layering) = fallback_graph(intermediate_count);
+            let expected = find_type2_conflicts(&g, &layering);
+            let expected_count: usize = expected.values().map(BTreeSet::len).sum();
+            assert_eq!(expected_count, intermediate_count + 2);
+
+            let mut workspace = BkWorkspace::new(&g, &layering);
+            assert!(workspace.type2_requires_fallback(1));
+            workspace.find_type2_conflicts();
+
+            assert_eq!(workspace.conflicts.len(), expected_count);
+            assert_eq!(workspace.conflicts_seen.len(), expected_count);
+        }
+    }
 }
