@@ -23,6 +23,7 @@ from artifact_profile_recipe import (
     ArtifactProfileError,
     CargoArtifactRecipe,
     load_artifact_profiles,
+    rustc_host_target,
 )
 from verify_rustsec_exceptions import (
     RustSecExceptionError,
@@ -511,12 +512,18 @@ def parse_cargo_tree(output: str) -> DependencyClosure:
 
 
 def _normalize_cargo_source(annotations: str) -> str:
-    source_annotation = annotations
-    if source_annotation.endswith(CARGO_PROC_MACRO_ANNOTATION):
+    source_annotation = annotations.strip()
+    proc_macro_annotation = CARGO_PROC_MACRO_ANNOTATION.strip()
+    if source_annotation.startswith(proc_macro_annotation):
+        source_annotation = source_annotation.removeprefix(
+            proc_macro_annotation
+        ).strip()
+    elif source_annotation.endswith(proc_macro_annotation):
         source_annotation = source_annotation.removesuffix(
-            CARGO_PROC_MACRO_ANNOTATION
-        )
-    source_annotation = source_annotation.strip()
+            proc_macro_annotation
+        ).strip()
+    if proc_macro_annotation in source_annotation:
+        raise ValueError("has invalid Cargo proc-macro annotations")
     if not source_annotation:
         return DEFAULT_REGISTRY_SOURCE
     if not (source_annotation.startswith("(") and source_annotation.endswith(")")):
@@ -634,28 +641,12 @@ def _default_runner(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def rustc_host_target() -> str:
-    """Return the host triple whose proc-macro dependencies Cargo resolves."""
-    completed = _default_runner(("rustc", "-vV"))
-    if completed.returncode != 0:
-        stderr = (completed.stderr or "").strip() or "<empty stderr>"
-        raise ClosureVerificationError(
-            f"rustc -vV exited with {completed.returncode}: {stderr}"
-        )
-    for line in completed.stdout.splitlines():
-        if line.startswith("host: "):
-            host = line.removeprefix("host: ").strip()
-            if host:
-                return host
-    raise ClosureVerificationError("rustc -vV did not report a host target")
-
-
 def verify_cases(
     cases: Iterable[VerificationCase],
     *,
     runner: CommandRunner = _default_runner,
     enforce_fingerprints: bool = True,
-    running_host_target: str = HOST_CLOSURE_REFERENCE_TARGET,
+    running_host_target: str,
 ) -> tuple[ClosureObservation, ...]:
     """Run every selected profile-target case and aggregate all failures."""
     failures: list[str] = []
@@ -753,10 +744,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             load_verification_cases(descriptor_path=args.descriptor),
             args.profile,
         )
+        try:
+            running_host_target = rustc_host_target()
+        except RuntimeError as error:
+            raise ClosureVerificationError(str(error)) from error
         observations = verify_cases(
             cases,
             enforce_fingerprints=not args.print_fingerprints,
-            running_host_target=rustc_host_target(),
+            running_host_target=running_host_target,
         )
         if not args.profile and args.descriptor.resolve() == DEFAULT_DESCRIPTOR.resolve():
             profile_packages: dict[str, frozenset[tuple[str, str]]] = {}
@@ -781,6 +776,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"build-target-kind={observation.build_target_kind} "
             f"closure-scope={observation.closure_scope} "
             f"closure-target={observation.closure_target} "
+            f"verifier-host={running_host_target} "
             "closure=runtime "
             f"packages={observation.package_count} "
             f"fingerprint={observation.fingerprint} "

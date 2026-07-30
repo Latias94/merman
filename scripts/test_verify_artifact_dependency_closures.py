@@ -30,7 +30,9 @@ from github_workflow_contract import (  # noqa: E402
     workflow_step,
 )
 from verify_artifact_dependency_closures import (  # noqa: E402
+    FEATURE_MARKER,
     LINUX_REFERENCE_SCOPE,
+    PACKAGE_MARKER,
     PROFILE_TARGET_SCOPE,
     SEMANTIC_CLAIMS,
     ClosureClaim,
@@ -376,16 +378,26 @@ class CargoTreeParserTests(unittest.TestCase):
         self.assertEqual(closure.features_by_package["root"], {"one", "two"})
 
     def test_parser_normalizes_workspace_registry_git_and_proc_macro_sources(self) -> None:
+        workspace_path = SCRIPT_DIR.parent / "crates/merman"
         closure = parse_cargo_tree(
             "\n".join(
                 (
-                    tree_line("workspace", source=str(SCRIPT_DIR.parent / "crates/merman")),
+                    tree_line("workspace", source=str(workspace_path)),
                     tree_line("registry"),
                     tree_line(
                         "git-package",
                         source="https://example.com/repo?rev=main#01234567",
                     ),
                     tree_line("macro", proc_macro=True),
+                    tree_line(
+                        "workspace-macro",
+                        source=str(workspace_path),
+                        proc_macro=True,
+                    ),
+                    (
+                        f"{PACKAGE_MARKER}workspace-macro-first v1.2.3 "
+                        f"(proc-macro) ({workspace_path})\t{FEATURE_MARKER}svg"
+                    ),
                 )
             )
         )
@@ -416,6 +428,15 @@ class CargoTreeParserTests(unittest.TestCase):
             ),
             identities,
         )
+        for package in ("workspace-macro", "workspace-macro-first"):
+            self.assertIn(
+                (
+                    package,
+                    "1.2.3",
+                    "path+workspace://crates/merman",
+                ),
+                identities,
+            )
 
     def test_parser_rejects_unmarked_or_empty_output(self) -> None:
         for output in ("", "root v1.2.3"):
@@ -423,6 +444,18 @@ class CargoTreeParserTests(unittest.TestCase):
                 ClosureVerificationError
             ):
                 parse_cargo_tree(output)
+
+    def test_parser_rejects_ambiguous_proc_macro_annotations(self) -> None:
+        output = (
+            f"{PACKAGE_MARKER}root v1.2.3 (proc-macro) (proc-macro)"
+            f"\t{FEATURE_MARKER}"
+        )
+
+        with self.assertRaisesRegex(
+            ClosureVerificationError,
+            "invalid Cargo proc-macro annotations",
+        ):
+            parse_cargo_tree(output)
 
     def test_fingerprint_includes_version_features_and_source(self) -> None:
         closures = (
@@ -551,7 +584,11 @@ class VerificationTests(unittest.TestCase):
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
 
-        observations = verify_cases(cases, runner=runner)
+        observations = verify_cases(
+            cases,
+            runner=runner,
+            running_host_target="aarch64-apple-darwin",
+        )
 
         self.assertEqual(
             tuple(command[command.index("--target") + 1] for command in commands),
@@ -585,7 +622,11 @@ class VerificationTests(unittest.TestCase):
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
 
-        observations = verify_cases(cases, runner=runner)
+        observations = verify_cases(
+            cases,
+            runner=runner,
+            running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
+        )
 
         self.assertEqual(len(commands), 1)
         self.assertEqual(len(observations), 2)
@@ -619,6 +660,25 @@ class VerificationTests(unittest.TestCase):
             observations[0].fingerprint,
             closure_fingerprint(parse_cargo_tree(output)),
         )
+
+        semantic_case = case(
+            loaded_claim=claim("fixture", forbidden=("forbidden",)),
+            fingerprint="sha256:" + "0" * 64,
+        )
+        with self.assertRaisesRegex(
+            ClosureVerificationError,
+            "forbidden packages present",
+        ):
+            verify_cases(
+                (semantic_case,),
+                runner=lambda command: subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout="\n".join((output, tree_line("forbidden"))),
+                    stderr="",
+                ),
+                running_host_target="aarch64-apple-darwin",
+            )
 
     def test_target_set_fingerprint_remains_enforced_off_reference_host(self) -> None:
         loaded = recipe(
@@ -668,7 +728,12 @@ class VerificationTests(unittest.TestCase):
             )
 
         with self.assertRaises(ClosureVerificationError) as raised:
-            verify_cases(cases, runner=runner, enforce_fingerprints=False)
+            verify_cases(
+                cases,
+                runner=runner,
+                enforce_fingerprints=False,
+                running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
+            )
 
         message = str(raised.exception)
         self.assertIn("one-claim (one", message)
@@ -689,7 +754,12 @@ class VerificationTests(unittest.TestCase):
             ClosureVerificationError,
             "dependency resolution failed",
         ):
-            verify_cases((case(),), runner=runner, enforce_fingerprints=False)
+            verify_cases(
+                (case(),),
+                runner=runner,
+                enforce_fingerprints=False,
+                running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
+            )
 
     def test_unknown_profile_selection_is_rejected(self) -> None:
         with self.assertRaisesRegex(

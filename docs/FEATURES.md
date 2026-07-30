@@ -269,8 +269,10 @@ the exact artifact recipe and its owner-specific dependency or size evidence.
 For a `target-set` recipe, dependency evidence is checked independently for every declared target.
 For a `host` recipe, the build still uses the executing host, while the frozen normal-dependency
 closure is only the `x86_64-unknown-linux-gnu` reference closure and excludes build and proc-macro
-edges. It is not a full clean-build cost metric and does not prove dependency absence on macOS or
-Windows.
+edges. The exact fingerprint is enforced only when the verifier itself runs on that reference
+host; other hosts retain required/forbidden semantic checks but report their host-profile
+fingerprints as non-enforced observations. It is not a full clean-build cost metric and does not
+prove dependency absence on macOS or Windows.
 
 When comparing builds, record the target, compiler, lockfile, direct feature set, uncompressed and
 compressed sizes, dependency closure, licenses, and advisory results. A feature name alone is not a
