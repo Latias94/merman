@@ -699,6 +699,23 @@ def verify_cases(
     return tuple(observations)
 
 
+def authoritative_rustsec_profile_ids(
+    observations: Iterable[ClosureObservation],
+    *,
+    running_host_target: str,
+) -> frozenset[str]:
+    """Select profiles whose package observations are authoritative on this host."""
+    return frozenset(
+        observation.profile_id
+        for observation in observations
+        if observation.build_target_kind == "target-set"
+        or (
+            observation.build_target_kind == "host"
+            and observation.closure_target == running_host_target
+        )
+    )
+
+
 def _select_cases(
     cases: Sequence[VerificationCase],
     profile_ids: Sequence[str],
@@ -763,6 +780,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             validate_profile_coverage(
                 load_exception_records(REPO_ROOT),
                 profile_packages,
+                authoritative_profile_ids=authoritative_rustsec_profile_ids(
+                    observations,
+                    running_host_target=running_host_target,
+                ),
             )
     except (ClosureVerificationError, RustSecExceptionError) as error:
         print(error, file=sys.stderr)

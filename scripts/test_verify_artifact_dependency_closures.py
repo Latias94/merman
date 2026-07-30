@@ -36,10 +36,12 @@ from verify_artifact_dependency_closures import (  # noqa: E402
     PROFILE_TARGET_SCOPE,
     SEMANTIC_CLAIMS,
     ClosureClaim,
+    ClosureObservation,
     ClosureVerificationError,
     PackageFeatureExclusion,
     VerificationCase,
     _select_cases,
+    authoritative_rustsec_profile_ids,
     cargo_tree_command,
     check_case,
     closure_fingerprint,
@@ -558,6 +560,47 @@ class ClaimTests(unittest.TestCase):
 
 
 class VerificationTests(unittest.TestCase):
+    def test_rustsec_authority_uses_recipe_scope_not_fingerprint_mode(self) -> None:
+        observations = (
+            ClosureObservation(
+                profile_id="host",
+                build_target_kind="host",
+                closure_scope=LINUX_REFERENCE_SCOPE,
+                closure_target=HOST_CLOSURE_REFERENCE_TARGET,
+                package_count=1,
+                package_versions=frozenset({("host", "1.0.0")}),
+                observed_residual_packages=(),
+                fingerprint="sha256:" + "0" * 64,
+                fingerprint_enforced=False,
+            ),
+            ClosureObservation(
+                profile_id="cross",
+                build_target_kind="target-set",
+                closure_scope=PROFILE_TARGET_SCOPE,
+                closure_target="x86_64-unknown-linux-gnu",
+                package_count=1,
+                package_versions=frozenset({("cross", "1.0.0")}),
+                observed_residual_packages=(),
+                fingerprint="sha256:" + "0" * 64,
+                fingerprint_enforced=False,
+            ),
+        )
+
+        self.assertEqual(
+            authoritative_rustsec_profile_ids(
+                observations,
+                running_host_target="aarch64-apple-darwin",
+            ),
+            frozenset({"cross"}),
+        )
+        self.assertEqual(
+            authoritative_rustsec_profile_ids(
+                observations,
+                running_host_target=HOST_CLOSURE_REFERENCE_TARGET,
+            ),
+            frozenset({"cross", "host"}),
+        )
+
     def test_every_target_runs_once_and_produces_runtime_evidence(self) -> None:
         targets = ("target-one", "target-two")
         loaded = recipe(

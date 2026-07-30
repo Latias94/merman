@@ -217,23 +217,39 @@ def parse_exception(
 def validate_profile_coverage(
     records: Sequence[RustSecException],
     profile_packages: Mapping[str, frozenset[tuple[str, str]]],
+    *,
+    authoritative_profile_ids: frozenset[str],
 ) -> None:
-    """Require each ledger profile list to equal target-scoped closure coverage."""
+    """Require ledger coverage to match authoritative closure observations."""
     if not profile_packages:
         raise RustSecExceptionError("artifact profile package observations must not be empty")
+    unknown_authoritative_profiles = sorted(
+        authoritative_profile_ids - profile_packages.keys()
+    )
+    if unknown_authoritative_profiles:
+        raise RustSecExceptionError(
+            "unknown authoritative profiles: "
+            + ", ".join(unknown_authoritative_profiles)
+        )
     failures: list[str] = []
     for record in records:
+        expected = tuple(
+            profile_id
+            for profile_id in record.affected_artifact_profiles
+            if profile_id in authoritative_profile_ids
+        )
         observed = tuple(
             sorted(
                 profile_id
                 for profile_id, packages in profile_packages.items()
+                if profile_id in authoritative_profile_ids
                 if (record.package_name, record.package_version) in packages
             )
         )
-        if observed != record.affected_artifact_profiles:
+        if observed != expected:
             failures.append(
                 f"{record.advisory_id} affected_artifact_profiles drifted: "
-                f"ledger={record.affected_artifact_profiles!r} observed={observed!r}"
+                f"ledger={expected!r} observed={observed!r}"
             )
     if failures:
         raise RustSecExceptionError(
