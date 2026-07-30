@@ -8,7 +8,7 @@ const extensionRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(extensionRoot, "../..");
 const platformKey = `${process.platform}-${process.arch}`;
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
-const targetProfile = process.env.MERMAN_VSCODE_TARGET_PROFILE ?? "release";
+const targetProfile = process.env.MERMAN_VSCODE_TARGET_PROFILE ?? "dist";
 const targetDir =
   process.env.MERMAN_VSCODE_TARGET_DIR ??
   path.join(repoRoot, "target", targetProfile);
