@@ -41,8 +41,6 @@ __all__ = (
 
 MANIFEST_NAME = "release-verification.json"
 MANIFEST_SCHEMA_VERSION = 1
-RELEASE_WORKFLOW = ".github/workflows/release.yml"
-RELEASE_JOB = "host"
 PACKAGES = {
     "merman-cli": "cli-release",
     "merman-lsp": "lsp-stdio-release",
@@ -202,45 +200,6 @@ def _asset_identity(name: str) -> tuple[str, dict[str, str]]:
     raise ReleaseArtifactError(f"unsupported release asset name: {name}")
 
 
-def _expected_asset_names(surfaces_path: Path) -> tuple[str, ...]:
-    document = _read_json_object(Path(surfaces_path))
-    surfaces = document.get("surfaces")
-    if not isinstance(surfaces, list):
-        raise ReleaseArtifactError("release surface document has no surfaces array")
-    names: set[str] = set()
-    for surface in surfaces:
-        if not isinstance(surface, dict):
-            raise ReleaseArtifactError("release surface entry must be an object")
-        channels = surface.get("channels")
-        if not isinstance(channels, list):
-            raise ReleaseArtifactError("release surface entry has no channels array")
-        for channel in channels:
-            if not isinstance(channel, dict):
-                raise ReleaseArtifactError("release channel entry must be an object")
-            if (
-                channel.get("workflow") != RELEASE_WORKFLOW
-                or channel.get("workflow_job") != RELEASE_JOB
-            ):
-                continue
-            patterns = channel.get("asset_patterns")
-            if not isinstance(patterns, list):
-                raise ReleaseArtifactError("release channel has no asset_patterns array")
-            for pattern in patterns:
-                if not isinstance(pattern, dict):
-                    raise ReleaseArtifactError("release asset pattern must be an object")
-                names.add(
-                    _require_root_filename(
-                        pattern.get("glob"),
-                        label="release asset contract",
-                    )
-                )
-    if MANIFEST_NAME not in names:
-        raise ReleaseArtifactError(f"release asset contract must declare {MANIFEST_NAME}")
-    names.remove(MANIFEST_NAME)
-    _validate_asset_contract(names)
-    return tuple(sorted(names))
-
-
 def _validate_asset_contract(names: set[str]) -> None:
     identities = {name: _asset_identity(name) for name in names}
     archives = {name for name, (kind, _) in identities.items() if kind == "archive"}
@@ -329,15 +288,19 @@ def _verify_checksums(
 def _validate_plan_manifest(
     manifest: dict[str, object],
     *,
-    names: tuple[str, ...],
     tag: str,
     version: str,
-) -> dict[str, dict[str, object]]:
+) -> tuple[tuple[str, ...], dict[str, dict[str, object]]]:
     if manifest.get("announcement_tag") != tag:
         raise ReleaseArtifactError("cargo-dist plan has the wrong release tag")
     artifacts = manifest.get("artifacts")
-    if not isinstance(artifacts, dict) or set(artifacts) != set(names):
-        raise ReleaseArtifactError("cargo-dist plan artifact set differs from release surfaces")
+    if not isinstance(artifacts, dict):
+        raise ReleaseArtifactError("cargo-dist plan has no artifact set")
+    names = {
+        _require_root_filename(name, label="cargo-dist artifact name")
+        for name in artifacts
+    }
+    _validate_asset_contract(names)
     releases = manifest.get("releases")
     if not isinstance(releases, list) or len(releases) != len(PACKAGES):
         raise ReleaseArtifactError("cargo-dist plan has the wrong release set")
@@ -360,7 +323,7 @@ def _validate_plan_manifest(
         "checksum-index": "unified-checksum",
     }
     typed: dict[str, dict[str, object]] = {}
-    for name in names:
+    for name in sorted(names):
         entry = artifacts.get(name)
         if not isinstance(entry, dict):
             raise ReleaseArtifactError(f"cargo-dist artifact must be an object: {name}")
@@ -374,7 +337,17 @@ def _validate_plan_manifest(
             if entry.get("target_triples") != [target]:
                 raise ReleaseArtifactError(f"cargo-dist target mismatch: {name}")
         typed[name] = entry
-    return typed
+    return tuple(sorted(names)), typed
+
+
+def _staged_plan_asset_names(root: Path, *, version: str) -> tuple[str, ...]:
+    plan = _read_json_object(Path(root) / DIST_INPUT_MANIFEST)
+    names, _ = _validate_plan_manifest(
+        plan,
+        tag=f"v{version}",
+        version=version,
+    )
+    return names
 
 
 def _validate_local_manifest(
@@ -437,11 +410,11 @@ def _require_shell_archive_digest_pairs(
             )
 
 
-def harden_installers(root: Path, surfaces_path: Path, *, version: str) -> None:
+def harden_installers(root: Path, *, version: str) -> None:
     """Make cargo-dist 0.32.0 script installers fail closed on SHA-256 verification."""
     root = Path(root)
     version = _require_version(version)
-    names = _expected_asset_names(surfaces_path)
+    names = _staged_plan_asset_names(root, version=version)
     archives = _archive_names(names)
     digests = {
         name: read_checksum(root / f"{name}.sha256", name) for name in archives
@@ -489,7 +462,6 @@ def prepare_global_inputs(
     local_producers: Path,
     verified_archives: Path,
     plan_manifest: Path,
-    surfaces_path: Path,
     destination: Path,
     *,
     tag: str,
@@ -499,7 +471,12 @@ def prepare_global_inputs(
     version = _require_version(version)
     if tag != f"v{version}":
         raise ReleaseArtifactError("release tag and version differ")
-    names = _expected_asset_names(surfaces_path)
+    plan = _read_json_object(plan_manifest)
+    names, plan_artifacts = _validate_plan_manifest(
+        plan,
+        tag=tag,
+        version=version,
+    )
     archives = _archive_names(names)
     targets = sorted({_asset_identity(name)[1]["target"] for name in archives})
     expected_producers = {f"artifacts-build-local-{target}" for target in targets}
@@ -508,13 +485,6 @@ def prepare_global_inputs(
     if _root_regular_files(verified_archives) != set(archives):
         raise ReleaseArtifactError("verified archive set differs from release targets")
 
-    plan = _read_json_object(plan_manifest)
-    plan_artifacts = _validate_plan_manifest(
-        plan,
-        names=names,
-        tag=tag,
-        version=version,
-    )
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=False)
     try:
@@ -625,7 +595,6 @@ def assemble_bundle(
     generated_root: Path,
     verified_archives: Path,
     destination: Path,
-    surfaces_path: Path,
     *,
     version: str,
     source_sha: str,
@@ -633,7 +602,7 @@ def assemble_bundle(
     """Assemble final assets without accepting an unverified archive fallback."""
     version = _require_version(version)
     source_sha = _require_source_sha(source_sha)
-    names = _expected_asset_names(surfaces_path)
+    names = _staged_plan_asset_names(generated_root, version=version)
     expected_generated = {*names, DIST_INPUT_MANIFEST, DIST_OUTPUT_MANIFEST}
     if _root_regular_files(generated_root) != expected_generated:
         raise ReleaseArtifactError("generated release payload differs from the asset contract")
@@ -644,12 +613,13 @@ def assemble_bundle(
     _validate_installers(generated_root, names, version=version)
 
     generated_manifest = _read_json_object(Path(generated_root) / DIST_OUTPUT_MANIFEST)
-    _validate_plan_manifest(
+    generated_names, _ = _validate_plan_manifest(
         generated_manifest,
-        names=names,
         tag=f"v{version}",
         version=version,
     )
+    if generated_names != names:
+        raise ReleaseArtifactError("cargo-dist generated artifact set differs from its plan")
 
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=False)
@@ -798,7 +768,6 @@ def _build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("local_producers", type=Path)
     prepare.add_argument("verified_archives", type=Path)
     prepare.add_argument("plan_manifest", type=Path)
-    prepare.add_argument("surfaces", type=Path)
     prepare.add_argument("destination", type=Path)
     prepare.add_argument("--tag", required=True)
     prepare.add_argument("--version", required=True)
@@ -807,13 +776,11 @@ def _build_parser() -> argparse.ArgumentParser:
     assemble.add_argument("generated_root", type=Path)
     assemble.add_argument("verified_archives", type=Path)
     assemble.add_argument("destination", type=Path)
-    assemble.add_argument("surfaces", type=Path)
     assemble.add_argument("--version", required=True)
     assemble.add_argument("--source-sha", required=True)
 
     harden = commands.add_parser("harden-installers")
     harden.add_argument("generated_root", type=Path)
-    harden.add_argument("surfaces", type=Path)
     harden.add_argument("--version", required=True)
 
     verify = commands.add_parser("verify-bundle")
@@ -830,7 +797,6 @@ def main(argv: list[str] | None = None) -> int:
             args.local_producers,
             args.verified_archives,
             args.plan_manifest,
-            args.surfaces,
             args.destination,
             tag=args.tag,
             version=args.version,
@@ -840,14 +806,12 @@ def main(argv: list[str] | None = None) -> int:
             args.generated_root,
             args.verified_archives,
             args.destination,
-            args.surfaces,
             version=args.version,
             source_sha=args.source_sha,
         )
     elif args.command == "harden-installers":
         harden_installers(
             args.generated_root,
-            args.surfaces,
             version=args.version,
         )
     elif args.command == "verify-bundle":

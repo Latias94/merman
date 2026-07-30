@@ -17,43 +17,18 @@ Prefer extending an existing package with a documented subpath or feature when t
 user dependency weight. Add a new package only when it gives users a meaningfully smaller install,
 separate host contract, separate registry policy, or clearer compatibility boundary.
 
-## Update The Contract
+## Record Ownership
 
-Edit `docs/release/SURFACES.json` and add:
+Put each fact beside its natural owner instead of adding it to a central release database:
 
-- a stable `id`;
-- the exact `entry_point` users will type;
-- `dependency_weight` and `capabilities`;
-- every package manifest that owns the surface;
-- every channel and its `declared_state`;
-- docs paths and release gates.
+- define the stable package, binary, import path, or artifact name in its manifest or descriptor;
+- add its exact artifact profile when the shipped closure differs from the source default;
+- make the publishing workflow build, package, verify, and upload that owner’s artifact;
+- add an owner-specific smoke or install test that proves the published boundary;
+- document the delivery route in the closest package README and in `PACKAGE_SURFACES.md`.
 
-Use these declared states:
-
-- `published`: registry or install channel is intended to publish for this release kind.
-- `artifact-only`: CI builds or uploads an artifact, but no registry package is published.
-- `credential-blocked`: the registry path exists in design but lacks credentials or signing setup.
-- `registry-blocked`: the package manager contract needs more design before publication.
-- `manual-registry`: publication happens outside this repo through a manual registry PR or review.
-- `not-built`: the surface is documented as not produced by current automation.
-- `not-applicable`: the channel cannot apply to the selected release kind.
-
-Run:
-
-```bash
-python scripts/release-status.py --view public
-python scripts/verify-release-surfaces.py
-```
-
-For a release candidate, also run:
-
-```bash
-VERSION="<version>"
-python scripts/release-status.py --version "$VERSION" --view maintainer
-```
-
-Add `--probe` only when you want best-effort network checks against npm, pub.dev, PyPI, crates.io,
-or GitHub Release after publication.
+Use direct registry or GitHub Release queries after publication. A planned, manual, or credential-gated
+delivery path belongs in its owner documentation and workflow issue, not in a second status model.
 
 ## Update User Docs
 
@@ -69,12 +44,12 @@ feature with that name. Public names should describe what a user can install or 
 
 ## Update CI
 
-The release surface verifier should fail until the new surface is represented from both sides:
+The new surface must be represented from both sides:
 
-- the contract declares it;
-- the manifest or workflow exists;
+- its manifest, descriptor, or artifact profile declares the boundary;
+- the owning workflow exists and has security tests before credentials are enabled;
 - docs explain the user-facing choice;
-- generated artifact source contracts are covered by the relevant build or prepack gate.
+- generated artifact source contracts are covered by the relevant build, prepack, or installation gate.
 
 When adding a registry publish job, also add workflow-security tests before enabling credentials.
 Marketplace and registry jobs must verify the artifact they publish, not just build something with a

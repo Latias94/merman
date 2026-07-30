@@ -110,9 +110,9 @@ not establish independent provenance because cargo-dist produced all three.
 The central verifier is the independent trust boundary. It binds every raw archive to its adjacent
 checksum, safely validates the structure and product contract of all four CLI and all four LSP
 archives, and copies the accepted bytes into a verified snapshot. Global installer and checksum
-generation receives only those snapshot archives. The final bundle is checked against the exact
-asset inventory declared by `docs/release/SURFACES.json` and uploaded as one read-only
-`verified-release-assets` workflow artifact. This central phase never executes target binaries.
+generation receives only those snapshot archives. The final bundle derives its exact asset inventory
+from the validated cargo-dist plan and is uploaded as one read-only `verified-release-assets`
+workflow artifact. This central phase never executes target binaries.
 
 Eight target-native jobs consume only that bundle: one isolated job for each product and target.
 CLI jobs execute version, capability, completion, SVG, PNG, JPEG, and PDF smokes. LSP jobs execute
@@ -206,7 +206,7 @@ archive and glibc evidence.
 The repository can generate draft candidate files for a stable release, but it does not
 claim that either central registry already provides Merman. Do not add `scoop install` or
 `winget install` instructions to user documentation until the corresponding external submission
-is accepted and `docs/release/SURFACES.json` is updated from `manual-registry`.
+is accepted and the user-facing installation guidance is updated with the approved registry command.
 
 The generator consumes the exact Windows x86_64 archive and adjacent checksum from the verified
 release bundle. It runs the release-archive verifier again, requires the requested version to
@@ -236,7 +236,6 @@ Run the repository checks with:
 
 ```bash
 python3 -m unittest scripts.test_generate_cli_registry_candidates
-python3 scripts/verify-release-surfaces.py
 ```
 
 Before submission, run `winget validate <generated-winget-directory>` on Windows. The tag workflow

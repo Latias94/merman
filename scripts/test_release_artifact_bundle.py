@@ -57,34 +57,13 @@ def release_names() -> set[str]:
     }
 
 
-def write_surface(path: Path, names: set[str] | None = None) -> None:
+def plan_document(names: set[str] | None = None) -> dict[str, object]:
     names = release_names() if names is None else names
-    path.write_text(
-        json.dumps(
-            {
-                "surfaces": [
-                    {
-                        "channels": [
-                            {
-                                "workflow": bundle.RELEASE_WORKFLOW,
-                                "workflow_job": bundle.RELEASE_JOB,
-                                "asset_patterns": [
-                                    {"glob": name}
-                                    for name in sorted({*names, bundle.MANIFEST_NAME})
-                                ],
-                            }
-                        ]
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-
-
-def plan_document() -> dict[str, object]:
     artifacts: dict[str, dict[str, object]] = {}
-    for name in sorted(release_names()):
+    for name in sorted(names):
+        if name not in release_names():
+            artifacts[name] = {"kind": "unexpected", "target_triples": []}
+            continue
         if name.endswith((".tar.xz", ".zip")):
             kind = "executable-zip"
             target_triples = [bundle._asset_identity(name)[1]["target"]]
@@ -110,7 +89,7 @@ def plan_document() -> dict[str, object]:
                 "app_version": VERSION,
                 "artifacts": sorted(
                     name
-                    for name in release_names()
+                    for name in names
                     if name.startswith(f"{package}-") or name == "sha256.sum"
                 ),
             }
@@ -204,7 +183,6 @@ def checksum_probe_script() -> str:
 def complete_global_generation(
     root: Path,
     digests: dict[str, str],
-    surfaces: Path,
     *,
     harden: bool = True,
 ) -> None:
@@ -224,29 +202,26 @@ def complete_global_generation(
             encoding="utf-8",
         )
     if harden:
-        bundle.harden_installers(root, surfaces, version=VERSION)
+        bundle.harden_installers(root, version=VERSION)
 
 
 class ReleaseArtifactBundleTests(unittest.TestCase):
-    def prepare(self, temp: Path) -> tuple[Path, Path, Path, Path, dict[str, str]]:
+    def prepare(self, temp: Path) -> tuple[Path, Path, Path, dict[str, str]]:
         local = temp / "local"
         verified = temp / "verified"
         generated = temp / "generated"
-        surfaces = temp / "surfaces.json"
         plan = temp / "plan-dist-manifest.json"
         local.mkdir()
-        write_surface(surfaces)
         digests = write_local_inputs(local, verified, plan)
         bundle.prepare_global_inputs(
             local,
             verified,
             plan,
-            surfaces,
             generated,
             tag=TAG,
             version=VERSION,
         )
-        return local, verified, generated, surfaces, digests
+        return local, verified, generated, digests
 
     def test_public_api_is_explicit_and_product_bounded(self) -> None:
         self.assertEqual(
@@ -263,14 +238,13 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
     def test_prepare_harden_assemble_and_verify_close_end_to_end(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
-            _, verified, generated, surfaces, digests = self.prepare(temp)
-            complete_global_generation(generated, digests, surfaces)
+            _, verified, generated, digests = self.prepare(temp)
+            complete_global_generation(generated, digests)
             destination = temp / "bundle"
             bundle.assemble_bundle(
                 generated,
                 verified,
                 destination,
-                surfaces,
                 version=VERSION,
                 source_sha=SOURCE_SHA,
             )
@@ -289,10 +263,8 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
             temp = Path(temp_dir)
             local = temp / "local"
             verified = temp / "verified"
-            surfaces = temp / "surfaces.json"
             plan = temp / "plan.json"
             local.mkdir()
-            write_surface(surfaces)
             write_local_inputs(local, verified, plan)
             with mock.patch.object(
                 bundle.shutil,
@@ -303,7 +275,6 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
                     local,
                     verified,
                     plan,
-                    surfaces,
                     temp / "generated",
                     tag=TAG,
                     version=VERSION,
@@ -318,10 +289,8 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
             temp = Path(temp_dir)
             local = temp / "local"
             verified = temp / "verified"
-            surfaces = temp / "surfaces.json"
             plan = temp / "plan.json"
             local.mkdir()
-            write_surface(surfaces)
             write_local_inputs(local, verified, plan)
             (verified / archive_name("merman-lsp")).unlink()
             with self.assertRaises(bundle.ReleaseArtifactError):
@@ -329,7 +298,6 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
                     local,
                     verified,
                     plan,
-                    surfaces,
                     temp / "generated",
                     tag=TAG,
                     version=VERSION,
@@ -340,10 +308,8 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
             temp = Path(temp_dir)
             local = temp / "local"
             verified = temp / "verified"
-            surfaces = temp / "surfaces.json"
             plan = temp / "plan.json"
             local.mkdir()
-            write_surface(surfaces)
             write_local_inputs(local, verified, plan)
             source_target, destination_target = TARGETS[:2]
             name = archive_name("merman-cli", source_target)
@@ -356,7 +322,6 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
                     local,
                     verified,
                     plan,
-                    surfaces,
                     temp / "generated",
                     tag=TAG,
                     version=VERSION,
@@ -368,10 +333,8 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
                 temp = Path(temp_dir)
                 local = temp / "local"
                 verified = temp / "verified"
-                surfaces = temp / "surfaces.json"
                 plan = temp / "plan.json"
                 local.mkdir()
-                write_surface(surfaces)
                 write_local_inputs(local, verified, plan)
                 target = TARGETS[-1]
                 name = archive_name("merman-cli", target)
@@ -399,7 +362,6 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
                         local,
                         verified,
                         plan,
-                        surfaces,
                         destination,
                         tag=TAG,
                         version=VERSION,
@@ -409,8 +371,8 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
     def test_hardening_rejects_cargo_dist_template_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
-            _, _, generated, surfaces, digests = self.prepare(temp)
-            complete_global_generation(generated, digests, surfaces, harden=False)
+            _, _, generated, digests = self.prepare(temp)
+            complete_global_generation(generated, digests, harden=False)
             path = generated / "merman-cli-installer.sh"
             path.write_text(
                 path.read_text(encoding="utf-8").replace(
@@ -420,13 +382,13 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaises(bundle.ReleaseArtifactError):
-                bundle.harden_installers(generated, surfaces, version=VERSION)
+                bundle.harden_installers(generated, version=VERSION)
 
     def test_installer_archive_digest_mapping_is_exact(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
-            _, _, generated, surfaces, digests = self.prepare(temp)
-            complete_global_generation(generated, digests, surfaces)
+            _, _, generated, digests = self.prepare(temp)
+            complete_global_generation(generated, digests)
             first, second = sorted(
                 name for name in digests if name.startswith("merman-cli-")
             )[:2]
@@ -488,14 +450,32 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
     def test_assemble_rejects_unhardened_installers(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
-            _, verified, generated, surfaces, digests = self.prepare(temp)
-            complete_global_generation(generated, digests, surfaces, harden=False)
+            _, verified, generated, digests = self.prepare(temp)
+            complete_global_generation(generated, digests, harden=False)
             with self.assertRaises(bundle.ReleaseArtifactError):
                 bundle.assemble_bundle(
                     generated,
                     verified,
                     temp / "bundle",
-                    surfaces,
+                    version=VERSION,
+                    source_sha=SOURCE_SHA,
+                )
+
+    def test_assemble_rejects_generated_plan_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            _, verified, generated, digests = self.prepare(temp)
+            complete_global_generation(generated, digests)
+            manifest_path = generated / bundle.DIST_OUTPUT_MANIFEST
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["artifacts"].pop(archive_name("merman-cli"))
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            with self.assertRaises(bundle.ReleaseArtifactError):
+                bundle.assemble_bundle(
+                    generated,
+                    verified,
+                    temp / "bundle",
                     version=VERSION,
                     source_sha=SOURCE_SHA,
                 )
@@ -503,14 +483,13 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
     def test_bundle_tampering_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
-            _, verified, generated, surfaces, digests = self.prepare(temp)
-            complete_global_generation(generated, digests, surfaces)
+            _, verified, generated, digests = self.prepare(temp)
+            complete_global_generation(generated, digests)
             destination = temp / "bundle"
             bundle.assemble_bundle(
                 generated,
                 verified,
                 destination,
-                surfaces,
                 version=VERSION,
                 source_sha=SOURCE_SHA,
             )
@@ -518,18 +497,20 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
             with self.assertRaises(bundle.ReleaseArtifactError):
                 bundle.verify_bundle(destination, version=VERSION, source_sha=SOURCE_SHA)
 
-    def test_surface_contract_rejects_unknown_source_or_glob_assets(self) -> None:
+    def test_plan_rejects_unknown_source_or_glob_assets(self) -> None:
         for unexpected in ("source.tar.gz", "*.zip"):
             with self.subTest(unexpected=unexpected), tempfile.TemporaryDirectory() as temp_dir:
                 temp = Path(temp_dir)
-                surfaces = temp / "surfaces.json"
-                write_surface(surfaces, {*release_names(), unexpected})
+                plan = temp / "plan.json"
+                plan.write_text(
+                    json.dumps(plan_document({*release_names(), unexpected})),
+                    encoding="utf-8",
+                )
                 with self.assertRaises(bundle.ReleaseArtifactError):
                     bundle.prepare_global_inputs(
                         temp / "missing-local",
                         temp / "missing-verified",
-                        temp / "missing-plan",
-                        surfaces,
+                        plan,
                         temp / "generated",
                         tag=TAG,
                         version=VERSION,

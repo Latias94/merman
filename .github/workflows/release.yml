@@ -292,7 +292,6 @@ jobs:
             "$LOCAL_ARTIFACT_DIR" \
             "$VERIFIED_ARCHIVE_DIR" \
             plan-artifact/plan-dist-manifest.json \
-            docs/release/SURFACES.json \
             "$GENERATED_ASSET_DIR" \
             --tag "$RELEASE_TAG" \
             --version "$RELEASE_VERSION"
@@ -319,7 +318,6 @@ jobs:
           mv generated-global-dist-manifest.json "$GENERATED_ASSET_DIR/dist-manifest.json"
           python3 scripts/release_artifact_bundle.py harden-installers \
             "$GENERATED_ASSET_DIR" \
-            docs/release/SURFACES.json \
             --version "$RELEASE_VERSION"
           sh -n "$GENERATED_ASSET_DIR/merman-cli-installer.sh"
           sh -n "$GENERATED_ASSET_DIR/merman-lsp-installer.sh"
@@ -331,7 +329,6 @@ jobs:
             "$GENERATED_ASSET_DIR" \
             "$VERIFIED_ARCHIVE_DIR" \
             "$RELEASE_ASSET_DIR" \
-            docs/release/SURFACES.json \
             --version "$RELEASE_VERSION" \
             --source-sha "$SOURCE_SHA"
           chmod -R a-w "$RELEASE_ASSET_DIR"

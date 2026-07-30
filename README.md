@@ -116,7 +116,7 @@ For a shell, `cargo binstall merman-cli` installs the registry-selected release,
 
 The Git installation above follows the remote default branch at install time; add `--rev FULL_COMMIT_SHA` or install from a local checkout to pin an exact source revision. Starting with `0.8.0-alpha.4`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
 
-Publication status differs by platform. The [release surface contract](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md) distinguishes registry packages from repository or CI artifacts.
+Publication routes differ by platform. The [package surface guide](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md) distinguishes registry packages from repository or CI artifacts.
 
 ## Bring Only What You Need
 

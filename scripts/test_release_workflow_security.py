@@ -1151,11 +1151,6 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn(lsp_command, surfaces_doc)
         self.assertNotIn(cli_command, surfaces_doc)
 
-        surfaces = json.loads((ROOT / "docs/release/SURFACES.json").read_text(encoding="utf-8"))
-        by_id = {surface["id"]: surface for surface in surfaces["surfaces"]}
-        self.assertIn(lsp_command, by_id["rust-editor-lsp"]["gates"])
-        self.assertIn(cli_command, by_id["cli"]["gates"])
-        self.assertEqual(by_id["vscode"]["gates"][:2], [lsp_command, cli_command])
 
     def test_typst_dependency_gate_uses_the_exact_artifact_profile(self) -> None:
         command = exact_dependency_gate_command("typst-wasm")
@@ -1174,12 +1169,6 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertNotIn(command, surfaces_doc)
-
-        surfaces = json.loads(
-            (ROOT / "docs/release/SURFACES.json").read_text(encoding="utf-8")
-        )
-        by_id = {surface["id"]: surface for surface in surfaces["surfaces"]}
-        self.assertIn(command, by_id["typst"]["gates"])
 
     def test_cargo_dist_metadata_matches_exact_release_profiles(self) -> None:
         dist_config = tomllib.loads((ROOT / "dist-workspace.toml").read_text(encoding="utf-8"))

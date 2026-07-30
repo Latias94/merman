@@ -310,9 +310,7 @@ class ReleaseArtifactWorkflowTests(unittest.TestCase):
 
     def test_cargo_dist_source_tarball_is_intentionally_disabled(self) -> None:
         config = (ROOT / "dist-workspace.toml").read_text(encoding="utf-8")
-        surfaces = (ROOT / "docs/release/SURFACES.json").read_text(encoding="utf-8")
         self.assertIn("source-tarball = false", config)
-        self.assertNotIn('"glob": "source.tar.gz"', surfaces)
 
     def test_archive_includes_are_explicit_for_both_products(self) -> None:
         with (ROOT / "dist-workspace.toml").open("rb") as source:

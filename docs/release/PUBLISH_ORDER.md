@@ -120,9 +120,8 @@ Before upstream crates for the same release are visible in crates.io, keep using
 
 ## Pre-Alpha.3 Package Evidence Snapshot
 
-The table below is historical pre-publication evidence captured on 2026-07-03. Use
-`scripts/release-status.py` for current registry state; do not infer current availability from this
-snapshot.
+The table below is historical pre-publication evidence captured on 2026-07-03. Query crates.io or
+the owning artifact release directly for current availability; do not infer it from this snapshot.
 
 | Crate | Gate | Current result |
 | --- | --- | --- |

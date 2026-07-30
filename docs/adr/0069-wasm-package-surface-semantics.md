@@ -101,7 +101,7 @@ flowchart LR
 | Metric | Target | Measurement |
 | --- | --- | --- |
 | Browser publication default | Default npm entry uses `browser-full` | `npm run prepack --prefix platforms/web` rejects a non-full default artifact unless an explicit local override is supplied |
-| Public browser packages | Every wrapper has matching TS, wasm-bindgen, WASM, profile metadata, exports, and size evidence | package contract/smoke checks, `SURFACES.json`, and `xtask wasm-size-matrix` |
+| Public browser packages | Every wrapper has matching TS, wasm-bindgen, WASM, profile metadata, exports, and size evidence | package contract/smoke checks, the Web descriptor, and `xtask wasm-size-matrix` |
 | Editor Worker surface | `./editor` exposes parser-backed language APIs on Web transport API 3/runtime-catalog schema 1 without render/ASCII/ELK | Web contract tests plus Playground Worker browser tests |
 | Browser profile evidence | All named browser profiles build and report accurate capabilities | `npm run build:surfaces --prefix platforms/web`, package smoke, and profile manifests |
 | Runtime capability discovery | Active artifact reports compiled capabilities | `bindingCapabilities()` returns booleans and legacy artifacts fall back to full capabilities |

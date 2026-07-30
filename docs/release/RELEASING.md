@@ -90,20 +90,13 @@ verify formula freshness and run the installed CLI, linkage, and formula-test co
 workflow is deliberately independent of repository tags because Homebrew/core tracks stable
 versions on its own publication schedule.
 
-## Release Surface Status
+## Release Evidence
 
-Before tagging, check the declared release surface contract:
-
-```bash
-VERSION="<version>"
-python3 scripts/verify-release-surfaces.py
-python3 scripts/release-status.py --version "$VERSION" --view maintainer
-python3 scripts/release-status.py --version "$VERSION" --view public
-```
-
-After publication, add `--probe --format json` when network access and registry tools are available.
-The JSON output keeps declared release state separate from observed registry status, so a
-credential-blocked or artifact-only channel is not confused with a missing publish.
+Before tagging, identify the packages and artifact workflows that will actually publish, then run
+their owner-specific dry runs. `PACKAGE_SURFACES.md` is a package-choice guide; manifests,
+descriptors, artifact profiles, and workflows are the executable evidence. After publication, query
+the owning registry or `gh release view "v$VERSION"` directly instead of inferring availability from
+a repository-maintained status cache.
 
 ## Version Checklist
 
@@ -152,13 +145,10 @@ For local spot checks, run the normal Rust and platform gates:
 cargo nextest run --cargo-quiet
 python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
 python3 -m py_compile \
-  scripts/release-status.py \
-  scripts/verify-release-surfaces.py \
   scripts/verify-platform-bindings.py \
   scripts/build-python-uniffi-wheel.py \
   platforms/android/build-android.py \
   platforms/flutter/tool/android-smoke.py
-python3 scripts/verify-release-surfaces.py
 bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-ios.sh platforms/flutter/build-desktop.sh
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```

@@ -1,42 +1,33 @@
 # Package Surfaces
 
-Status: maintained release surface contract.
+This guide describes the supported package and artifact choices. It is not a live registry-status
+database; verify a specific version at its owning registry or GitHub Release before recommending an
+installation command.
 
-This document records merman package surfaces, current readiness, and the CI gates that protect
-each publication or artifact build.
+## Choose A Surface
 
-## Current Surfaces
+| Need | Entry point | Delivery |
+| --- | --- | --- |
+| Parsing and typed models without rendering | `merman-core` | crates.io |
+| Diagnostics, linting, Markdown/MDX scanning, and editor facts | `merman-analysis` | crates.io |
+| Complete Rust rendering facade | `merman` | crates.io |
+| A command-line renderer, linter, and exporter | `merman-cli` | GitHub Release archive or crates.io |
+| A ready-to-run language server | `merman-lsp` | GitHub Release archive or crates.io |
+| Rustdoc Mermaid fences | `merman-rustdoc` | crates.io |
+| Browser SVG, analysis, ASCII, or editor SDK | one `@mermanjs/web*` package | npm package group |
+| Python host integration | `merman` | PyPI and release wheels |
+| Flutter/Dart host integration | `merman` | pub.dev |
+| Android host integration | `io.merman:merman-android` | GitHub Release AAR |
+| Apple host integration | `Merman.xcframework` | GitHub Release asset or local SwiftPM package |
+| Typst plugin package | `packages/typst/merman` | manual Typst registry submission |
+| VS Code integration | `merman-vscode` | GitHub Actions VSIX artifact |
 
-<!-- BEGIN GENERATED RELEASE SURFACES -->
-| Contract ID | Surface | Entry point | Support | Channels |
-| --- | --- | --- | --- | --- |
-| `rust-core` | Rust core crate | `merman-core` | `published` | `crates.io` (`published`) |
-| `rust-analysis` | Rust analysis crate | `merman-analysis` | `published` | `crates.io` (`published`) |
-| `rust-render` | Rust render facade | `merman` | `published` | `crates.io` (`published`) |
-| `rust-editor-lsp` | Rust editor and LSP crates | `merman-lsp` | `published` | `github-release` (`published`), `crates.io` (`published`) |
-| `rustdoc` | Rustdoc integration | `merman-rustdoc` | `published` | `crates.io` (`published`) |
-| `cli` | Command line interface | `merman-cli` | `published` | `github-release` (`published`), `crates.io` (`published`) |
-| `homebrew` | Homebrew CLI formula | `merman-cli` | `stable-only` | `homebrew-core` (`published`) |
-| `web-package-group` | Browser WebAssembly package group | `@mermanjs/web` | `published` | `npm` (`published`) |
-| `vscode` | VS Code extension | `merman-vscode` | `artifact-only` | `github-actions-vsix` (`artifact-only`), `vs-marketplace` (`credential-blocked`) |
-| `c-abi` | Native C ABI | `merman-ffi` | `published` | `crates.io` (`published`) |
-| `python` | Python UniFFI package | `merman` | `published` | `pypi` (`published`), `github-release-wheels` (`published`), `crates.io` (`published`) |
-| `flutter` | Flutter and Dart FFI package | `merman` | `published` | `pub.dev` (`published`) |
-| `android` | Android JNI package | `io.merman:merman-android` | `artifact-only` | `github-release-aar` (`artifact-only`), `maven-central` (`credential-blocked`) |
-| `apple` | Apple Swift package and XCFramework | `Merman` | `artifact-only` | `github-release-xcframework` (`artifact-only`), `swiftpm-remote-binary` (`registry-blocked`) |
-| `typst` | Typst package and WASM plugin | `packages/typst/merman` | `manual-registry` | `typst-registry` (`manual-registry`), `crates.io` (`published`) |
-<!-- END GENERATED RELEASE SURFACES -->
+Foundational Rust implementation crates are not product entry points. Homebrew/core owns formula
+publication; this repository only validates the external formula after a stable release.
 
-The generated table is the public view of `SURFACES.json`; refresh it with
-`python scripts/verify-release-surfaces.py --write-docs`. Foundational Rust crates are intentionally
-hidden from this user-choice table while remaining part of the maintainer and crates.io contract.
-Homebrew/core owns formula publication. Merman verifies the external stable formula rather than
-claiming to publish it from this repository. Registry-blocked and credential-blocked channels are
-not silently presented as available install paths.
+## Release Delivery
 
-## Release Surface Set
-
-The repository-owned release surface set is:
+The repository-owned delivery routes are:
 
 1. crates.io for Rust crates, using `docs/release/PUBLISH_ORDER.md`.
 2. GitHub Release artifacts for `merman-cli` and `merman-lsp`.
@@ -50,45 +41,10 @@ The repository-owned release surface set is:
    `vscode-extension.yml`; Marketplace publishing needs an explicit release decision and credentials
    before it is enabled.
 
-## Release Status States
-
-`docs/release/SURFACES.json` is the machine-readable source of truth for public package surfaces and
-release channels. The status terms are intentionally user-facing:
-
-| State | Meaning |
-| --- | --- |
-| `published` | The registry or install channel is expected to publish for the selected release kind. |
-| `artifact-only` | CI produces or uploads an artifact, but no registry package is published from this repo yet. |
-| `credential-blocked` | The registry path is designed but blocked on credentials, signing, or marketplace setup. |
-| `registry-blocked` | The registry package contract needs more release-manifest design before publication. |
-| `manual-registry` | Publication happens through a manual registry PR or external review flow. |
-| `not-built` | The surface is documented but not produced by current automation. |
-| `not-applicable` | The channel does not apply to the selected release kind, such as Homebrew for prereleases. |
-
-For a user-facing package-choice table:
-
-```bash
-python scripts/release-status.py --view public
-```
-
-For maintainer readiness against a candidate version:
-
-```bash
-VERSION="<version>"
-python scripts/release-status.py --version "$VERSION" --view maintainer
-python scripts/release-status.py --version "$VERSION" --probe --format json
-```
-
-`--probe` is best-effort and should be used after publication when network and registry tools are
-available. It reports observed status separately from the declared release state.
-
 ## CI Gates
 
 Merman CI keeps publication separate from validation:
 
-- `python scripts/verify-release-surfaces.py` checks `SURFACES.json`, package manifests, the closed
-  Web package descriptor, public/candidate ownership, and release workflow operations. It does not
-  treat prose wording as a build gate.
 - `cargo run -p xtask -- verify-mermaid-reference` checks that the selected Mermaid and companion
   behavior graph, package locks, generated runtime labels, and provenance agree.
 - `cargo run -p xtask -- verify-editor-token-descriptor` checks the single editor-language token
@@ -190,7 +146,7 @@ a second SKU and a stable budget.
 
 ## Release Gates By Surface
 
-`docs/release/RELEASING.md` owns the operator sequence and cross-surface commands. `docs/release/SURFACES.json` owns the machine-readable command for each surface gate. This document records what each gate must prove:
+`docs/release/RELEASING.md` owns the operator sequence and cross-surface commands. Each package, artifact profile, descriptor, and release workflow owns its direct build and publication evidence. This document records what each gate must prove:
 
 | Surface | Required evidence |
 | --- | --- |

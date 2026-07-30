@@ -1,6 +1,6 @@
 # Workflow Recommendation Framework
 
-Use this as a report skeleton, not a catalog of current products. Fill every selection from the target revision's release facts: `capabilities/feature-surface-v1.json`, `capabilities/artifact-profiles-v1.json`, `platforms/web/web-surface-descriptor.json`, `docs/release/SURFACES.json`, package manifests, and the relevant runtime or admission evidence.
+Use this as a report skeleton, not a catalog of current products. Fill every selection from the target revision's release facts: `capabilities/feature-surface-v1.json`, `capabilities/artifact-profiles-v1.json`, `platforms/web/web-surface-descriptor.json`, package manifests, release workflows, and the relevant runtime or admission evidence.
 
 | User need | Selected surface | Exact target selection | Evidence | User-visible trade-off | Migration action |
 | --- | --- | --- | --- | --- | --- |
@@ -17,7 +17,7 @@ Use this as a report skeleton, not a catalog of current products. Fill every sel
 
 - Compare the same user-visible capability contract before reporting a size, dependency, or performance change; a product gaining capabilities is not a like-for-like regression.
 - Distinguish Cargo features from exact artifact profiles, package identities, and runtime capability catalogs. A feature name alone does not prove shipped contents or omissions.
-- Treat release descriptors as declared state and use release-status probes or registry evidence before calling a version published.
+- Treat manifests, descriptors, and release workflows as release evidence; use direct registry or release evidence before calling a version published.
 - Keep private candidates and artifact-only channels out of present-tense product recommendations until their admission and target evidence are complete.
 - Use concrete migration replacements only when the compared range changed them, and derive those replacements from the target revision's user guide and migration evidence.
 - Add native SDK or language-binding rows when the compared range changes those surfaces; do not force unaffected products into every report.
