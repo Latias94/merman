@@ -84,7 +84,7 @@ impl RelativeTarget {
         Self::from_components(components, evidence)
     }
 
-    fn from_components(
+    pub(super) fn from_components(
         components: Vec<OsString>,
         _evidence: &Path,
     ) -> Result<Self, TransactionError> {
@@ -1240,7 +1240,7 @@ fn validate_windows_component(component: &OsStr) -> Result<(), TransactionError>
     Ok(())
 }
 
-fn encode_component(component: &OsStr) -> Result<String, TransactionError> {
+pub(super) fn encode_component(component: &OsStr) -> Result<String, TransactionError> {
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;

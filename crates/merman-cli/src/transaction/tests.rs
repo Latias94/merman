@@ -50,6 +50,7 @@ fn existing_generation(path: &Path) -> TargetGeneration {
     TargetGeneration::Existing(Arc::new(same_file::Handle::from_path(path).unwrap()))
 }
 
+#[cfg(unix)]
 #[test]
 fn approved_root_replacement_is_rejected_before_lock_creation() {
     let temp = tempfile::tempdir().unwrap();
@@ -65,6 +66,23 @@ fn approved_root_replacement_is_rejected_before_lock_creation() {
     assert!(matches!(error, TransactionError::InvalidState { .. }));
     assert!(!root.join(LOCK_FILE_NAME).exists());
     assert!(!displaced.join(LOCK_FILE_NAME).exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn approved_root_handle_prevents_replacement_before_lock_creation() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("output");
+    let displaced = temp.path().join("displaced");
+    std::fs::create_dir(&root).unwrap();
+    let approved = crate::output::ApprovedTransactionRoot::for_test(&root).unwrap();
+
+    std::fs::rename(&root, &displaced).unwrap_err();
+
+    assert!(root.is_dir());
+    assert!(!displaced.exists());
+    assert!(!root.join(LOCK_FILE_NAME).exists());
+    drop(approved);
 }
 
 #[test]
@@ -1295,10 +1313,7 @@ fn complete_pending_successor_is_promoted_before_recovery() {
 #[test]
 fn bootstrap_pending_is_recovered_but_only_eof_truncation_is_discarded() {
     for bytes in [
-        serde_json::to_vec(&valid_staging_value(
-            "2e6d65726d616e2d6d616e69666573742e6a736f6e",
-        ))
-        .unwrap(),
+        serde_json::to_vec(&valid_staging_value()).unwrap(),
         b"{\"schema\":".to_vec(),
     ] {
         let temp = tempfile::tempdir().unwrap();
@@ -1309,7 +1324,7 @@ fn bootstrap_pending_is_recovered_but_only_eof_truncation_is_discarded() {
     }
 
     for bytes in [b"{]".to_vec(), vec![b'x'; MAX_STATE_BYTES as usize + 1], {
-        let mut value = valid_staging_value("2e6d65726d616e2d6d616e69666573742e6a736f6e");
+        let mut value = valid_staging_value();
         value["version"] = serde_json::json!(999);
         serde_json::to_vec(&value).unwrap()
     }] {
@@ -1337,7 +1352,7 @@ fn truncated_journal_slots_are_not_treated_as_recoverable_pending_writes() {
 fn nonconsecutive_or_regressive_valid_slots_are_rejected() {
     let temp = tempfile::tempdir().unwrap();
     let transaction = make_private_transaction_dir(temp.path());
-    let mut first = valid_staging_value("2e6d65726d616e2d6d616e69666573742e6a736f6e");
+    let mut first = valid_staging_value();
     first["sequence"] = serde_json::json!(1);
     let mut second = first.clone();
     second["sequence"] = serde_json::json!(100);
@@ -1360,10 +1375,7 @@ fn hard_linked_journal_slots_are_rejected_without_truncating_the_other_link() {
     let temp = tempfile::tempdir().unwrap();
     let transaction = make_private_transaction_dir(temp.path());
     let slot = transaction.join(STATE_A_NAME);
-    let bytes = serde_json::to_vec(&valid_staging_value(
-        "2e6d65726d616e2d6d616e69666573742e6a736f6e",
-    ))
-    .unwrap();
+    let bytes = serde_json::to_vec(&valid_staging_value()).unwrap();
     write_private_bytes(&slot, &bytes);
     let external = temp.path().join("external-journal-link");
     std::fs::hard_link(&slot, &external).unwrap();
@@ -1597,22 +1609,25 @@ fn write_forged_state(path: &Path, state: ForgedState) {
         ForgedState::Malformed => b"{\"schema\":".to_vec(),
         ForgedState::Oversized => vec![b'x'; MAX_STATE_BYTES as usize + 1],
         ForgedState::Unsupported => {
-            let mut value = valid_staging_value("2e6d65726d616e2d6d616e69666573742e6a736f6e");
+            let mut value = valid_staging_value();
             value["version"] = serde_json::json!(999);
             serde_json::to_vec(&value).unwrap()
         }
         ForgedState::Traversal => {
-            let mut value = valid_staging_value("2e6d65726d616e2d6d616e69666573742e6a736f6e");
-            value["entries"][0]["target"] = serde_json::json!(["2e2e", "657363617065642e747874"]);
+            let mut value = valid_staging_value();
+            value["entries"][0]["target"] = serde_json::json!([
+                format::encode_component(std::ffi::OsStr::new("..")).unwrap(),
+                format::encode_component(std::ffi::OsStr::new("escaped.txt")).unwrap(),
+            ]);
             serde_json::to_vec(&value).unwrap()
         }
         ForgedState::UnknownField => {
-            let mut value = valid_staging_value("2e6d65726d616e2d6d616e69666573742e6a736f6e");
+            let mut value = valid_staging_value();
             value["late_malicious_field"] = serde_json::json!("ignored by weak parsers");
             serde_json::to_vec(&value).unwrap()
         }
         ForgedState::ModeWithoutPrior => {
-            let mut value = valid_staging_value("2e6d65726d616e2d6d616e69666573742e6a736f6e");
+            let mut value = valid_staging_value();
             value["entries"][0]["prior_mode"] = serde_json::json!(0o644);
             serde_json::to_vec(&value).unwrap()
         }
@@ -1620,7 +1635,7 @@ fn write_forged_state(path: &Path, state: ForgedState) {
     write_private_bytes(path, &bytes);
 }
 
-fn valid_staging_value(manifest_component: &str) -> serde_json::Value {
+fn valid_staging_value() -> serde_json::Value {
     let state = JournalState {
         id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
         owner: GenerationOwner::test_fixture(),
@@ -1630,9 +1645,8 @@ fn valid_staging_value(manifest_component: &str) -> serde_json::Value {
         entries: vec![JournalEntry {
             role: TransactionRole::Manifest,
             operation: TransactionOperation::Write,
-            target: RelativeTarget::from_encoded(
-                vec![manifest_component.to_string()],
-                format::PathEncoding::native(),
+            target: RelativeTarget::from_components(
+                vec![std::ffi::OsString::from(".merman-manifest.json")],
                 Path::new(TRANSACTION_DIR_NAME),
             )
             .unwrap(),
