@@ -1,5 +1,5 @@
 {
   "replace": {
-    "cytoscape": "./node_modules/cytoscape/LICENSE"
+    "cytoscape@3.34.0": "./public/THIRD_PARTY_LICENSES/cytoscape/LICENSE"
   }
 }
