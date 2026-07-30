@@ -17,7 +17,7 @@ execution: code
 |---|---|
 | Objective | Replace the current flattened CLI and side-effectful `RenderPlan` with explicit native and `mmdc` command contracts, bounded acquisition, typed execution, and staged publication. |
 | Authority | The latest maintainer direction wins, followed by Product Contract requirements, Key Technical Decisions, repository capability contracts, and implementation-unit detail. |
-| Execution profile | Breaking refactor is authorized. Remove obsolete paths and compatibility aliases instead of preserving them behind deprecation shims. |
+| Execution profile | Breaking refactor is authorized. Remove obsolete execution paths and compatibility aliases; retain only the bounded `0.8.x` root-option forwarding bridge described by R37, with removal fixed for `v0.9.0`. |
 | Stop conditions | Stop only for a scope-changing contradiction, an unsatisfied cross-platform data-integrity contract, or overlapping user changes that cannot be merged without choosing which behavior to keep. |
 | Verification posture | Characterize invariants first, test boundary values and failure phases, then run the full CLI and exact artifact-profile matrices. |
 | Tail ownership | `ce-work` owns implementation, simplification, review, focused local commits, and final verification. Do not push or open a pull request unless separately requested. |
@@ -51,7 +51,7 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 
 **Command and input contracts**
 
-- R1. The root command requires a subcommand and groups concise help by user task: native rendering (`render`, `batch`), analysis (`lint`, `fix`), compatibility (`mmdc`), then capability and tooling commands, with one-line cues that distinguish the three rendering workflows.
+- R1. The advertised root command requires a subcommand and groups concise help by user task: native rendering (`render`, `batch`), analysis (`lint`, `fix`), compatibility (`mmdc`), then capability and tooling commands, with one-line cues that distinguish the three rendering workflows. The temporary R37 bridge is absent from help and completions.
 - R2. `mmdc` owns the upstream-compatible argument names, defaults, theme values, Markdown detection, and output naming for the pinned `mmdc@11.16.0` baseline.
 - R3. `render` owns native single-diagram rendering and rejects Markdown input.
 - R4. `batch` owns native Markdown rendering and writes into a tool-owned output directory.
@@ -61,7 +61,7 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 - R8. Raw SVG conversion is native-only, inferred from a named `.svg` input or selected for stdin with `--input-kind svg`; content sniffing is not part of the contract.
 - R9. Every command rejects irrelevant, unavailable, conflicting, or ambiguous arguments before reading stdin, accessing the network, creating output directories, or rendering; an upstream option retained as a documented `mmdc` compatibility no-op is relevant only on that command.
 - R36. The `mmdc` contract is a versioned compatibility snapshot pinned by each Merman release; it changes only through Mermaid baseline alignment with an updated compatibility register and migration note.
-- R37. Removed root-level render flags produce a targeted usage error that exits `2` and points to `merman-cli mmdc`; they are neither parsed as a compatibility shim nor executed.
+- R37. During `0.8.x`, an invocation whose first argument is owned by the pinned `mmdc` command is normalized by inserting the explicit `mmdc` subcommand, then parsed and executed by that same command path. It emits a removal warning unless `--quiet` is present, is absent from help and completions, and is removed in `v0.9.0`. Bare root inputs and root options not owned by `mmdc` still exit `2` with the targeted migration diagnostic.
 - R38. Missing required terminal input at the root, `render`, or `batch` prints concise help to stderr and exits `2`; explicit `--help` prints help to stdout and exits `0`.
 - R39. A native `batch` input with zero eligible charts is a valid empty generation: publish the document and manifest, produce no image artifacts, and remove only stale artifacts owned by the prior validated manifest. Strict `mmdc` behavior remains pinned separately.
 
@@ -151,7 +151,7 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 - AE15. Given a URL with user information, path secrets, a query token, and a fragment, when validation or a request fails, then stderr contains only the sanitized scheme, host, and explicit port.
 - AE16. Given two processes targeting one Markdown output root, when the first holds the transaction lock, then the second exits with an operational lock-contention error without inspecting recovery state or modifying final files.
 - AE17. Given a file changed, renamed, or relinked after `fix` acquires it but before the final comparison, when `fix --write` reaches publication, then it exits with an operational concurrent-modification error and preserves the newer target; the documented compare-to-rename race remains a filesystem limitation rather than a claimed compare-and-swap guarantee.
-- AE18. Given removed root-level render flags, when parsing fails, then exit `2` identifies the breaking migration and suggests `merman-cli mmdc` without executing a legacy path.
+- AE18. Given a root invocation beginning with a pinned `mmdc` option, when parsing succeeds during `0.8.x`, then it uses the exact explicit `mmdc` parser and executor and emits the `v0.9.0` removal warning unless quiet. Given any other removed root render syntax, parsing exits `2` with the targeted migration and performs no side effect.
 - AE19. Given an interrupted owned transaction, when the next batch invocation acquires the lock, then it restores or completes that transaction before new staging; if recovery cannot complete, no new transaction is created.
 - AE20. Given a forged or unsupported manifest or journal containing traversal, absolute paths, invalid generated names, or symlink substitution, when recovery begins, then it exits `3` without touching any path outside the canonical output root.
 - AE21. Given an authorized public URL that redirects to a loopback or private address, when only `--allow-network` is set, then the redirect is rejected before a request reaches that destination and the error reveals no path or credential.
@@ -172,7 +172,7 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 - CLI-owned resource defaults cite measured high-water evidence and a margin rather than only satisfying synthetic limit boundary tests.
 - `crates/merman-cli/src/ascii_render.rs` and the old wide `RenderPlan` no longer exist.
 - Full and slim process tests pass on the supported host matrix, and exact artifact dependency exclusions remain true.
-- User-facing docs contain a breaking migration from root-level export to `mmdc`, `render`, or `batch`.
+- User-facing docs contain the migration from the unadvertised `0.8.x` root-option bridge to explicit `mmdc`, `render`, or `batch`, including its `v0.9.0` removal boundary.
 
 ### Scope Boundaries
 
@@ -201,8 +201,8 @@ These defects make the CLI harder to learn, unsafe under constrained profiles, a
 
 ### Key Technical Decisions
 
-- KTD1. **Separate explicit command dialects.** `mmdc`, `render`, and `batch` use different Clap argument types and concrete normalization functions before converging on shared resolved types. The root has no rendering shorthand. (session-settled: user-approved — chosen over a shared flattened command surface: compatibility behavior and native ergonomics must evolve independently.)
-- KTD2. **Delete replaced contracts in the same migration.** Remove root export arguments, the old `RenderPlan`, ASCII-only execution, legacy merge helpers, and superseded compatibility tests after their replacement is proven. Do not retain aliases or parallel implementations. (session-settled: user-directed — chosen over incremental compatibility shims: this refactor may break callers to reach the correct long-term architecture.)
+- KTD1. **Separate explicit command dialects.** `mmdc`, `render`, and `batch` use different Clap argument types and concrete normalization functions before converging on shared resolved types. The root declares no rendering arguments; R37 may only insert the explicit `mmdc` token before the one authoritative parser runs. (session-settled: user-approved — chosen over a shared flattened command surface: compatibility behavior and native ergonomics must evolve independently.)
+- KTD2. **Delete replaced contracts in the same migration.** Remove root export argument definitions, the old `RenderPlan`, ASCII-only execution, legacy merge helpers, and superseded compatibility tests after their replacement is proven. Do not retain a second parser, executor, alias in help, or permanent compatibility path. The one R37 forwarding adapter is a release-bounded migration exception and must disappear in `v0.9.0` without changing the explicit `mmdc` command. (decision amended after implementation review: exact forwarding avoids a needless `0.8.x` cliff while preserving the target architecture.)
 - KTD3. **Use a staged type-state pipeline.** The common lifecycle is `RawInvocation -> ResolvedInvocation -> LocalPreflight -> AcquiredInvocation -> PreparedInvocation`. Stdout and single-file work then becomes `ExecutedOutput -> Publication`; Markdown work becomes `LockedRecoveredTransaction -> TransactionStaging -> ReadyTransaction -> Commit`. Local preflight may read filesystem metadata without mutation, acquisition alone reads input payloads or accesses the network, the transaction branch mutates only tool-owned lock/recovery/staging state before commit, and publication or commit alone mutates final targets.
 - KTD4. **Make invalid combinations unrepresentable.** `ResolvedOutput::{Svg, Text, Png, Jpeg, Pdf}` and `ResolvedWorkflow::{Single, MarkdownBatch}` contain only their applicable options. A compatibility no-op with an auxiliary path remains a typed resolved input through preflight and bounded acquisition, then its validated contents are discarded with a documented diagnostic before preparation.
 - KTD5. **Inject process context at the application boundary.** A thin `CliApp` receives terminal detection, current directory, stdin/stdout/stderr, network acquisition, and publication interfaces. Production uses system adapters; unit tests inject deterministic contexts without making the internal modules public.
@@ -300,7 +300,7 @@ flowchart TB
 
 | Risk | Mitigation |
 |---|---|
-| Compatibility users depend on root-level flags | Ship the command migration, completion changes, examples, changelog, and explicit `mmdc` replacement in the same release. |
+| Compatibility users depend on root-level flags | Keep only the unadvertised R37 forwarding bridge through `0.8.x`, warn on every non-quiet use, document the explicit `mmdc` replacement, and remove the bridge in `v0.9.0`. |
 | Cross-platform replacement semantics differ | Use `atomic-write-file`, make link and metadata behavior explicit, and run target-specific unit tests where behavior differs. |
 | Multi-file publication fails after the first commit | Journal prior and staged state, publish the document last, attempt deterministic rollback, and expose a partial-publication error with recovery paths. |
 | Concurrent batch publishers corrupt each other's state | Use `std::fs::File::try_lock` on a stable reserved regular lock file beneath the canonical output root, retain it for the root's lifetime, and fail the second publisher without inspecting transaction state. |
@@ -324,14 +324,14 @@ flowchart TB
 2. **P0 mutation integrity — U6 and U10.** Repair `fix` selection/writeback and introduce locked, recoverable multi-file publication as soon as their U3/U4 prerequisites exist. These address known source-corruption and mixed-generation failures.
 3. **P1 execution convergence — U5, U7, and U11.** Replace the duplicate render paths, separate Markdown dialects, and connect them through the transaction engine. U5 may proceed before or alongside U6/U10 only when file ownership is disjoint; canonical integration remains serial.
 4. **P1 distribution proof — U8.** Verify that every additive leaf exposes callable behavior and that exact slim artifacts retain their promised dependency exclusions.
-5. **P2 migration and cleanup — U9.** Remove the final legacy surfaces and publish the breaking contract only after all replacement commands and verification recipes are green.
+5. **P2 migration and cleanup — U9.** Remove obsolete legacy surfaces, retain only the release-bounded R37 bridge, and publish the migration contract after all replacement commands and verification recipes are green.
 
 ### U1. Characterize preserved and breaking CLI contracts
 
-- **Goal:** Replace the monolithic full-feature test as the sole contract with focused tests that distinguish invariants from intentionally removed root behavior.
+- **Goal:** Replace the monolithic full-feature test as the sole contract with focused tests that distinguish invariants, the temporary R37 bridge, and intentionally removed root behavior.
 - **Requirements:** R25-R28, R31-R33
 - **Files:** `crates/merman-cli/tests/cli_compat.rs`, new `crates/merman-cli/tests/cli_contract.rs`, new `crates/merman-cli/tests/process_contract.rs`, `docs/alignment/CLI_COMPATIBILITY.md`
-- **Approach:** Extract currently green tests for exit classes, stdout/stderr, BrokenPipe, explicit networking, deterministic ordering, pinned `mmdc` defaults, and compiled help. Record intentionally breaking root behavior in the plan and migration document; add each new red contract only inside the implementation unit that will make it green before that unit is committed.
+- **Approach:** Extract currently green tests for exit classes, stdout/stderr, BrokenPipe, explicit networking, deterministic ordering, pinned `mmdc` defaults, and compiled help. Record the bounded R37 forwarding behavior and the remaining intentionally breaking root behavior in the plan and migration document; add each new red contract only inside the implementation unit that will make it green before that unit is committed.
 - **Test scenarios:** Existing payload-only stdout, BrokenPipe success, quiet diagnostics, explicit network authorization, deterministic ordering/runtime defaults, compiled capability help, and exit `0/1/2/3` behavior that the breaking contract preserves.
 - **Verification:** Run the extracted characterization tests against the current implementation and commit only a green baseline.
 - **Dependencies:** None.
@@ -341,7 +341,7 @@ flowchart TB
 - **Goal:** Make the public syntax and resolved job model unambiguous before changing execution.
 - **Requirements:** R1-R9, R29-R33, R36-R38
 - **Files:** `crates/merman-cli/src/main.rs`, `crates/merman-cli/src/cli.rs`, `crates/merman-cli/src/commands.rs`, new `crates/merman-cli/src/app.rs`, new `crates/merman-cli/src/invocation.rs`, `crates/merman-cli/src/config.rs`
-- **Approach:** Require a subcommand, add explicit `mmdc` and `batch`, narrow every command-specific argument type, use `PathBuf`, and implement concrete native and compatibility normalizers that return typed inputs, outputs, workflows, and runtime selections. Add an injectable application context, ensure normalization is pure, group help by task, and emit the targeted root-flag migration diagnostic without retaining a legacy parser.
+- **Approach:** Require a subcommand in the advertised grammar, add explicit `mmdc` and `batch`, narrow every command-specific argument type, use `PathBuf`, and implement concrete native and compatibility normalizers that return typed inputs, outputs, workflows, and runtime selections. Add an injectable application context, ensure normalization is pure, group help by task, and implement R37 by inserting `mmdc` only when the first token names an argument owned by that command. The bridge must call the same parser and executor rather than retaining a legacy parser.
 - **Test scenarios:** AE1-AE3, AE18, native file/stdin defaults, explicit-help channel and exit behavior, task-oriented help grouping, strict theme sets, raw SVG input-kind rules, icon option arity, conflicting lint rule configuration, and all output/option validity combinations.
 - **Verification:** `cargo nextest run --locked -p merman-cli --all-features --test cli_contract --test process_contract`
 - **Dependencies:** U1.
@@ -426,13 +426,13 @@ flowchart TB
 - **Verification:** Run the Exact slim process matrix gate after U8; defer artifact recipes, dependency-closure verification, and the workspace strict feature matrix to the full post-U9 Verification Contract.
 - **Dependencies:** U2, U5, U6, U11.
 
-### U9. Remove legacy surfaces and publish the breaking migration
+### U9. Remove obsolete surfaces and publish the bounded migration
 
 - **Goal:** Leave one documented CLI architecture with no obsolete code or contradictory compatibility claims.
 - **Requirements:** R1-R9, R18-R20, R25-R33, R36-R42
 - **Files:** `crates/merman-cli/README.md`, `docs/alignment/CLI_COMPATIBILITY.md`, `docs/FEATURES.md`, `README.md`, `CHANGELOG.md`, `scripts/release_readme.py`, `scripts/test_release_readme.py`, `docs/plans/2026-06-23-001-refactor-cli-functional-parity-ergonomics-plan.md`, `docs/plans/2026-07-02-001-refactor-cli-rust-best-practices-plan.md`, remaining `crates/merman-cli/src/**/*.rs`, remaining `crates/merman-cli/tests/*.rs`
-- **Approach:** Document the three command dialects, task-oriented help, defaults, exit classes, versioned `mmdc` lifecycle, resource and network policy, recovery flow, exact feature recipes, and migration commands. Mark old plans superseded, split or delete the old monolithic compatibility test, regenerate completion/readme projections where owned, and remove dead helpers, cfg branches, and abandoned experiments.
-- **Test scenarios:** Documentation command snippets, release README projection, help snapshots for full and slim artifacts, and absence of root export examples or claims of globally atomic Markdown publication.
+- **Approach:** Document the three command dialects, task-oriented help, defaults, exit classes, versioned `mmdc` lifecycle, the R37 removal boundary, resource and network policy, recovery flow, exact feature recipes, and migration commands. Mark old plans superseded, split or delete the old monolithic compatibility test, regenerate completion/readme projections where owned, and remove dead helpers, cfg branches, and abandoned experiments.
+- **Test scenarios:** Documentation command snippets, release README projection, help snapshots for full and slim artifacts, exact forwarding and warning behavior for the unadvertised R37 bridge, and absence of claims of globally atomic Markdown publication.
 - **Verification:** Run documentation/script tests, search for removed symbols and root-level examples, then execute the full Verification Contract.
 - **Dependencies:** U1-U8, U10-U11.
 
@@ -505,8 +505,8 @@ Run the full CLI, clippy, artifact, dependency, feature-matrix, and projection g
 - Input acquisition is bounded at the reader, output aliases are rejected before work, single files use atomic commit, and Markdown publication reports its real recovery state.
 - Aggregate backend working set is reserved before execution, network authorization is destination-aware on every hop, and transaction state cannot escape its canonical output root.
 - Compatibility and native behavior have separate parsers, defaults, Markdown scanners, tests, and documentation before they converge on shared resolved types.
-- `RenderPlan`, `ascii_render.rs`, root-level export mode, `fix --all`, format no-ops in native mode, and superseded duplicate helpers are removed.
+- `RenderPlan`, `ascii_render.rs`, root-level export argument definitions, `fix --all`, format no-ops in native mode, and superseded duplicate helpers are removed; only the R37 token-insertion bridge remains through `0.8.x`.
 - Error messages carry safe context, remote endpoints reveal no path data, stdout remains payload-only, quiet covers timing, and BrokenPipe remains successful.
 - README, compatibility matrix, completion output, capability JSON, changelog, and release projections agree with the compiled command surface.
 - `cargo fmt`, targeted and full `cargo nextest`, clippy, exact artifact builds, dependency-closure checks, strict feature matrix, and projection tests pass.
-- A final simplification and code-review pass finds no abandoned experiments, compatibility shims, dead cfg branches, duplicated execution paths, or unresolved high-confidence findings.
+- A final simplification and code-review pass finds no abandoned experiments, unbounded compatibility shims, dead cfg branches, duplicated execution paths, or unresolved high-confidence findings; the sole R37 bridge is covered by its removal-version contract.

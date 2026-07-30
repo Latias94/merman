@@ -24,13 +24,27 @@ python3 scripts/cli_installation_contract.py
 The check binds the Cargo manifest to `dist-workspace.toml`, the artifact profile, and the archive
 layout accepted by `scripts/verify_cli_release_archive.py`.
 
+## CLI contract migration
+
+Complete releases governed by this contract, beginning with `0.8.0-alpha.4`, report capability
+document schema 2 and CLI contract 3.
+Contract 3 advertises `-f/--format` for native `render` and `batch`, makes `lint` text-first while
+keeping explicit JSON stable, and removes no-op configuration and rendering controls from `detect`.
+The archive, installation, and Homebrew verifiers require that exact contract.
+
+Two hidden migration bridges remain only through `0.8.x`: root invocations beginning with an
+`mmdc`-owned option forward to the explicit compatibility command and warn unless quiet, while
+native `render -e` / `batch -e` map to `-f` and retain their bounded warning even when quiet. Both
+bridges are removed in `v0.9.0`. The explicit `merman-cli mmdc` command and its
+`-e/--outputFormat` option remain supported.
+
 ## Installation channels
 
 | Channel | Build source | Installs support assets | Repository claim |
 | --- | --- | --- | --- |
 | Direct GitHub archive | cargo-dist `cli-release` binary | Yes, under `completions/` and `man/` | Published release artifact |
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
-| `cargo binstall merman-cli` | Official release archive, then source fallback | No | Explicit manifest metadata |
+| `cargo binstall merman-cli` | `0.8.0-alpha.4` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
 | `cargo install merman-cli` | crates.io source | No | Complete defaults; custom features supported |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
 | Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
@@ -63,23 +77,28 @@ repository-owned deterministic hardening step. PowerShell binds the downloaded W
 or the absence of every supported SHA-256 tool stops installation. Template drift stops the release
 instead of falling back to an unmodified installer.
 
-Every GitHub Release also includes `release-verification.json`. It binds each uploaded asset to its
-SHA-256 digest and size, records the source commit and release version, and maps each CLI and LSP
-archive to its artifact profile and Rust target. It describes the exact files copied from the
-verified workflow bundle; the release job does not repack them.
+Every release produced by this contract, beginning with `0.8.0-alpha.4`, includes
+`release-verification.json`. It binds every other workflow-owned release asset to its SHA-256 digest
+and size, records the source commit and release version, and maps each CLI and LSP archive to its
+artifact profile and Rust target. It describes the exact payload files copied from the verified
+workflow bundle; the release job does not repack them. The manifest cannot hash itself and is instead
+covered by the GitHub attestation described below.
 
-GitHub artifact attestations cover the binary archives, adjacent checksums, installers, checksum
-index, and verification manifest. GitHub's automatically generated tag source snapshots are outside
-this workflow-owned bundle. After downloading a binary asset, verify its repository-owned
-attestation with GitHub CLI:
+For those releases, GitHub artifact attestations cover the binary archives, adjacent checksums,
+installers, checksum index, and verification manifest. GitHub's automatically generated tag source
+snapshots are outside this workflow-owned bundle. After downloading a binary asset, verify its
+release-workflow identity and expected tag with GitHub CLI:
 
 ```bash
 gh attestation verify merman-cli-x86_64-unknown-linux-gnu.tar.xz \
-  --repo Latias94/merman
+  --repo Latias94/merman \
+  --signer-workflow Latias94/merman/.github/workflows/release.yml \
+  --source-ref "refs/tags/v<VERSION>"
 ```
 
-The adjacent checksum detects byte corruption and the attestation binds those bytes to the release
-workflow identity. Use both checks when consuming a binary outside a package manager.
+Replace `<VERSION>` with the selected release version. The adjacent checksum detects byte corruption;
+the signer and source-ref constraints bind the attestation to the repository's release workflow and
+tag. Use both checks when consuming a binary outside a package manager.
 
 ## Final archive verification
 

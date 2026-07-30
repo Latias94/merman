@@ -14,13 +14,13 @@ The command line has three explicit workflows:
 
 ## Install
 
-Prefer the stable complete prebuilt binary, with a source-build fallback when no official archive is available for the current target:
+This README describes the current source revision. For a published release, prefer the complete prebuilt binary, with a source-build fallback when no official archive is available for the current target:
 
 ```sh
 cargo binstall merman-cli
 ```
 
-Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the current target, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable.
+Starting with `0.8.0-alpha.4`, Merman's cargo-binstall metadata uses the repository's cargo-dist GitHub Release archive for the current target, disables third-party QuickInstall artifacts, and preserves `cargo install` as the fallback when an official archive is unavailable. Published binary channels can trail this development branch; check `merman-cli --version` first, then use `merman-cli capabilities --json` on `0.8.0-alpha.4` and later. Pin a source revision when you need the exact contract documented here.
 
 Homebrew users can install the stable formula:
 
@@ -29,6 +29,8 @@ brew install merman-cli
 ```
 
 The formula follows stable releases and may trail this pre-release documentation.
+
+Starting with `0.8.0-alpha.4`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
 Install the complete CLI from source:
 
@@ -40,23 +42,31 @@ cargo install --git https://github.com/Latias94/merman --locked merman-cli
 
 <!-- END GENERATED RELEASE README CLI_PACKAGE_INSTALL -->
 
+The Git command follows the repository's default branch at install time. Add `--rev FULL_COMMIT_SHA` to pin a remote revision.
+
 From a local checkout:
 
 ```sh
 cargo install --path crates/merman-cli
 ```
 
-Every standard installation selects the complete `cli-release` capability set. Cargo-dist and cargo-binstall consume the project-built `dist` artifact; source channels build the same features with their package manager's release profile. Channels also differ in which support files they place on disk:
+The standard commands above and project release artifacts select the complete `cli-release` capability set. Cargo-dist and, beginning with `0.8.0-alpha.4`, cargo-binstall consume the project-built `dist` artifact; source channels build the same features with their package manager's release profile. Channels also differ in which support files they place on disk and who publishes them:
 
-| Channel | Binary | Completion and man pages |
-| --- | --- | --- |
-| `cargo binstall merman-cli` | Project release archive, with source fallback | Not installed |
-| GitHub shell or PowerShell installer | Project release archive | Not installed |
-| Direct GitHub archive | Included | Bundled under `completions/` and `man/` |
-| Homebrew formula `0.8.x` | Source build or Homebrew bottle | Bash, Zsh, Fish, PowerShell, and man pages installed |
-| `cargo install` | Built from source | Not installed |
+| Channel | Binary source | Completion and man pages | Availability |
+| --- | --- | --- | --- |
+| `cargo binstall merman-cli` | `0.8.0-alpha.4` and later: project release archive, with source fallback | Not installed | Registry-selected version; its own metadata governs |
+| GitHub shell or PowerShell installer | Project release archive | Not installed | `0.8.0-alpha.4` and later |
+| Direct GitHub archive | Project release archive | Bundled under `completions/` and `man/` | `0.8.0-alpha.4` and later |
+| Homebrew formula | Formula source build or Homebrew bottle | `0.8.0` and later: Bash, Zsh, Fish, PowerShell, and man pages installed | External stable channel; selected formula version governs |
+| Repository Nix package | Built from locked repository source | Bash, Zsh, Fish, PowerShell, Elvish, and man pages installed | First-party source interface, not a registry package |
+| `cargo install` | Built from crates.io, Git, or a checkout | Not installed | Registry or source revision selected by the user |
+| Scoop and WinGet | Verified Windows x86_64 release archive | Not installed | Stable candidates are generated; external submission is pending |
 
-Runtime completion is the universal fallback, including for custom feature builds:
+Nix users can run `nix run . -- --version` or `nix profile install .` from a checkout. An exact remote revision can be used as `nix run "github:Latias94/merman?rev=FULL_COMMIT_SHA" -- --version`. This source package is separate from the precompiled Linux archive compatibility claim.
+
+Older cargo-binstall releases follow the metadata and fallback policy embedded in that selected release; the current official-archive mapping and QuickInstall prohibition do not apply retroactively.
+
+A complete binary, or a custom build that includes `shell-completions`, can generate completion at runtime:
 
 ```sh
 merman-cli completion bash
@@ -66,7 +76,7 @@ merman-cli completion powershell
 merman-cli completion elvish
 ```
 
-The release archive also includes legal notices. Cargo-binstall installs only the executable. The cargo-dist installers likewise omit completion and man files, but may create an environment file and update shell startup configuration to expose their install directory on `PATH`. See the [CLI release contract](https://github.com/Latias94/merman/blob/main/docs/releasing/CLI.md) for archive paths and package-manager integration details.
+Release archives beginning with `0.8.0-alpha.4` also include legal notices. Cargo-binstall installs only the executable. The cargo-dist installers likewise omit completion and man files, but may create an environment file and update shell startup configuration to expose their install directory on `PATH`. Direct archive users should verify the adjacent checksum and the GitHub attestation constrained to the release workflow and tag; the [CLI release contract](https://github.com/Latias94/merman/blob/main/docs/releasing/CLI.md) provides the exact command and trust boundary.
 
 The executable is named `merman-cli`; Merman does not install an `mmdc` alias.
 
@@ -100,11 +110,14 @@ Use `--output -` to request stdout explicitly or `--output PATH` to choose a fil
 | Mermaid to vector PDF | `merman-cli render diagram.mmd --format pdf` |
 | Terminal output | `merman-cli render diagram.mmd --format unicode --output -` |
 | Markdown fences to a managed generation | `merman-cli batch README.md` |
-| Human-readable diagnostics | `merman-cli lint diagram.mmd --format text` |
+| Human-readable diagnostics | `merman-cli lint diagram.mmd` |
+| Machine-readable diagnostics | `merman-cli lint diagram.mmd --format json` |
 | Check whether fixes are needed | `merman-cli fix diagram.mmd --check` |
 | Inspect the compiled binary | `merman-cli capabilities --json` |
 
 Run `merman-cli --help` to see only the commands compiled into your binary, then use `<command> --help` for command-owned options.
+
+`lint` defaults to stable human-readable text. Automation should request `--format json` explicitly; `lint-rules` remains JSON by default, and `--pretty` is valid only with JSON output.
 
 ## Migrating From The Old Root Syntax
 
@@ -112,15 +125,20 @@ Root-level render flags are moving behind explicit subcommands. They were ambigu
 
 | Before | Now |
 | --- | --- |
+| `mmdc -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` |
 | `merman-cli -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` |
 | `merman-cli -i diagram.mmd -o diagram.png -t dark` | `merman-cli mmdc -i diagram.mmd -o diagram.png -t dark` |
 | `merman-cli -i README.md -o README.rendered.md --artifacts docs/assets` | `merman-cli mmdc -i README.md -o README.rendered.md --artifacts docs/assets` |
 | Native single render through shared flags | `merman-cli render diagram.mmd --output diagram.svg` |
 | Native Markdown through extension inference | `merman-cli batch README.md --output-dir README.merman` |
+| `merman-cli render diagram.mmd -e png` | `merman-cli render diagram.mmd -f png` |
+| `merman-cli batch README.md -e png` | `merman-cli batch README.md -f png` |
 
 During the `0.8.x` transition, an invocation whose first argument is an option owned by `mmdc`, such as `-i` or `--input`, is forwarded to the same parser and execution path as `merman-cli mmdc`. It prints a deprecation warning to stderr unless `--quiet` is present. This root-level forwarding is not advertised in help or completions and will be removed in `v0.9.0`; the explicit `merman-cli mmdc` subcommand remains supported.
 
 Bare root inputs and native-only root options still exit `2` with a targeted message pointing to `mmdc`, `render`, and `batch`. New scripts should choose an explicit subcommand now.
+
+Native `render -e` and `batch -e` are hidden aliases for `-f/--format` during `0.8.x`. Their bounded migration warnings remain visible even with `--quiet`, and the aliases are removed in `v0.9.0`. This does not affect `merman-cli mmdc -e/--outputFormat`, which remains part of the pinned compatibility interface.
 
 The `mmdc` subcommand is a release-pinned compatibility snapshot. This release follows the supported command behavior of `@mermaid-js/mermaid-cli@11.16.0`; future changes are tied to an explicit Mermaid baseline update. See the [compatibility register](https://github.com/Latias94/merman/blob/main/docs/alignment/CLI_COMPATIBILITY.md) for exact coverage and deliberate browserless divergences.
 
@@ -202,7 +220,7 @@ cargo install --git https://github.com/Latias94/merman --locked merman-cli \
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. It reports the CLI contract version, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 3`, package and pinned compatibility versions, descriptor digest, compiled commands, capabilities, and outputs. Contract 3 records the native `-f` spelling, text-first `lint`, and narrowed `detect` surface; automation that depends on CLI behavior should version-check this field independently from the JSON schema.
 
 ## Rendering And Runtime Policy
 
@@ -283,11 +301,12 @@ merman-cli completion fish > merman-cli.fish
 merman-cli completion powershell > merman-cli.ps1
 ```
 
-Release archives also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository; Scoop and WinGet manifests are not currently published.
+Release archives beginning with `0.8.0-alpha.4` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository; Scoop and WinGet manifests are not currently published.
 
 The checked-in completion and manual assets represent the canonical `cli-release` complete profile.
-For a custom slim build, generate completion from that binary at runtime so omitted commands,
-options, and values stay omitted.
+For a custom slim build with `shell-completions`, generate completion from that binary at runtime so
+omitted commands, options, and values stay omitted. A build without that feature has no
+`completion` subcommand.
 
 ## License
 

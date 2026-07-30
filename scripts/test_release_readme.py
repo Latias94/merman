@@ -72,6 +72,34 @@ def generated_blocks(path: str, text: str, mode: str) -> tuple[str, ...]:
 class ReleaseReadmeTests(unittest.TestCase):
     release = parse_release_version("0.8.0-alpha.4")
 
+    def test_cli_release_guarantees_are_version_scoped(self) -> None:
+        root = (ROOT / "README.md").read_text(encoding="utf-8")
+        cli = (ROOT / "crates/merman-cli/README.md").read_text(encoding="utf-8")
+        releasing = (ROOT / "docs/releasing/CLI.md").read_text(encoding="utf-8")
+
+        self.assertIn("Starting with `0.8.0-alpha.4`, direct GitHub archives", root)
+        self.assertIn("Starting with `0.8.0-alpha.4`, Merman's cargo-binstall metadata", cli)
+        self.assertIn(
+            "| `cargo binstall merman-cli` | `0.8.0-alpha.4` and later:", cli
+        )
+        self.assertIn("Release archives beginning with `0.8.0-alpha.4`", cli)
+        self.assertIn("adjacent checksum", cli)
+        self.assertIn("release workflow and tag", cli)
+        self.assertIn("custom build that includes `shell-completions`", cli)
+        self.assertNotIn("Runtime completion is the universal fallback", cli)
+        self.assertIn("beginning with `0.8.0-alpha.4`, includes", releasing)
+
+        match = re.search(r"```bash\n(gh attestation verify .*?)\n```", releasing, re.DOTALL)
+        self.assertIsNotNone(match)
+        assert match is not None
+        command = match.group(1)
+        self.assertIn("--repo Latias94/merman", command)
+        self.assertIn(
+            "--signer-workflow Latias94/merman/.github/workflows/release.yml",
+            command,
+        )
+        self.assertIn('--source-ref "refs/tags/v<VERSION>"', command)
+
     def test_every_readme_verifies_and_round_trips_between_modes(self) -> None:
         for path in (
             release_readme.ROOT_README,

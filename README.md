@@ -49,7 +49,7 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 
 <!-- merman-release-install-mode: source -->
 
-The generated installation commands below follow the repository release state. Development versions use this checkout; release commits use exact registry versions. Registry-form commands prepare release artifacts but do not prove that every independent package channel is already live.
+The generated installation commands below follow the repository release state. Development versions use the repository's Git default branch; release commits use exact registry versions. Registry-form commands prepare release artifacts but do not prove that every independent package channel is already live.
 
 ### Command Line
 
@@ -79,7 +79,9 @@ Scripts migrating from the official CLI use the pinned compatibility command:
 merman-cli mmdc -i diagram.mmd -o diagram.svg
 ```
 
-Root-level `-i` / `-o` rendering was removed so native and compatibility defaults, validation, help, and publication guarantees can evolve independently. See the [`merman-cli` guide](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md) for the migration table, PDF, ASCII/Unicode, Iconify, runtime policy, and recoverable batch output.
+Root help and completions no longer advertise `-i` / `-o`. During `0.8.x`, root invocations that begin with an `mmdc` option are still forwarded to `merman-cli mmdc` and warn unless `--quiet` is present; bare root inputs and native-only root options already fail. The forwarding bridge is removed in `v0.9.0`, while the explicit `mmdc` subcommand remains supported.
+
+Native `render` and `batch` use `-f/--format`; their hidden `-e` aliases share the `v0.9.0` removal date, but `mmdc -e/--outputFormat` remains part of the compatibility interface. See the [`merman-cli` guide](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md) for the migration table, PDF, ASCII/Unicode, Iconify, runtime policy, and recoverable batch output.
 
 ### Rust
 
@@ -120,7 +122,9 @@ The default dependency enables complete deterministic SVG rendering, including b
 | Call Merman from another language | [Python](https://pypi.org/project/merman/), [C/C++](https://github.com/Latias94/merman/tree/main/crates/merman-ffi#readme), [Flutter/Dart](https://pub.dev/packages/merman), [Android](https://github.com/Latias94/merman/tree/main/platforms/android#readme), or [Apple](https://github.com/Latias94/merman/tree/main/platforms/apple#readme) |
 | Render in Rustdoc or Typst | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) or the [Typst package](https://github.com/Latias94/merman/tree/main/packages/typst/merman#readme) |
 
-For a shell, install the complete stable CLI with `cargo binstall merman-cli` or `brew install merman-cli`. GitHub archives also bundle checked completion and man-page assets; binary-only installers keep `merman-cli completion <shell>` available as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
+For a shell, `cargo binstall merman-cli` installs the registry-selected release, while `brew install merman-cli` follows the stable Homebrew formula. Those external channels can trail the current source documentation, so check `merman-cli --version` before depending on a new contract.
+
+The generated Git installation above follows the remote default branch at install time; add `--rev FULL_COMMIT_SHA` or install from a local checkout to pin an exact source revision. Starting with `0.8.0-alpha.4`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
 
 Publication status differs by platform. The [release surface contract](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md) distinguishes registry packages from repository or CI artifacts.
 

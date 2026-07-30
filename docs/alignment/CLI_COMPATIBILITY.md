@@ -6,6 +6,7 @@
 | Baseline | `@mermaid-js/mermaid-cli@11.16.0` |
 | Interface | `merman-cli mmdc` |
 | Transitional alias | Root-level `mmdc` options through `0.8.x`; removed in `v0.9.0` |
+| Native format transition | `render` / `batch -e` through `0.8.x`; use `-f/--format`; removed in `v0.9.0` |
 | Reference source | `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js` |
 | Last updated | 2026-07-29 |
 
@@ -15,8 +16,9 @@ The root command no longer owns or advertises render flags. During the `0.8.x` m
 
 ## Migration
 
-| Previous Merman syntax | Pinned compatibility | Recommended native workflow |
+| Previous command | Pinned compatibility | Recommended native workflow |
 | --- | --- | --- |
+| `mmdc -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` | `merman-cli render diagram.mmd -o diagram.svg` |
 | `merman-cli -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` | `merman-cli render diagram.mmd -o diagram.svg` |
 | `merman-cli -i diagram.mmd` | `merman-cli mmdc -i diagram.mmd` | `merman-cli render diagram.mmd` |
 | `merman-cli -i - -o -` | `merman-cli mmdc -i - -o -` | `merman-cli render` with piped stdin |
@@ -33,6 +35,8 @@ The default output names intentionally differ:
   enables quiet output.
 
 The transitional root rewrite uses the exact `mmdc` parser, defaults, validation, and execution path. It emits a deprecation warning to stderr unless `--quiet` is present. The rewrite is intentionally absent from root help and completions and will be removed in `v0.9.0`; the explicit `merman-cli mmdc` interface is not scheduled for removal. Bare root inputs and options that are not owned by `mmdc` still fail with exit `2` and a targeted migration message.
+
+Native `render -e` and `batch -e` are separate temporary aliases for `-f/--format`. They are hidden from help and completions, their bounded migration warnings remain visible even with `--quiet`, and they are removed in `v0.9.0`. The removal does not apply to `mmdc -e/--outputFormat`.
 
 ## Contract Boundary
 
@@ -66,7 +70,7 @@ Compatibility and native commands converge only after argument normalization. Th
 | `mmdc@11.16.0` option | Local contract |
 | --- | --- |
 | `-i, --input` | File or `-`; omission reads stdin and emits the pinned warning even with `--quiet` |
-| `-o, --output` | File or `-`; omission writes `<input>.<selected-format>` or `out.<selected-format>`; without `-e`, the selected format is SVG; stdout without `-e` warns before selecting SVG |
+| `-o, --output` | File or `-`; `-e` selects the format when present, while the output path must still use a supported compatibility extension; without `-e`, a supported non-stdout extension selects the format, omission defaults to SVG, and stdout warns before selecting SVG; missing or unsupported non-stdout extensions are rejected |
 | `-e, --outputFormat` | `svg`, `png`, or `pdf`, limited further by compiled output features |
 | `-t, --theme` | Exactly `default`, `forest`, `dark`, or `neutral` |
 | `-w, --width`; `-H, --height` | Pinned positive-integer parsing; defaults are 800 by 600 |
@@ -148,7 +152,7 @@ The compatibility version is generated from `tools/upstreams/MERMAID_REFERENCE_B
 merman-cli capabilities --json
 ```
 
-The JSON document includes the Merman package version, pinned Mermaid and `mmdc` versions, compiled command/capability/output sets, and the canonical descriptor digest. An `mmdc` behavior change requires a Mermaid baseline alignment, updated tests, this register, and a migration note. Merman does not silently follow the latest npm release.
+The JSON document uses capability schema 2 and current CLI contract 3. It includes the Merman package version, pinned Mermaid and `mmdc` versions, compiled command/capability/output sets, and the canonical descriptor digest. The CLI contract version tracks native command behavior independently from this pinned compatibility baseline. An `mmdc` behavior change requires a Mermaid baseline alignment, updated tests, this register, and a migration note. Merman does not silently follow the latest npm release.
 
 ## Verification
 
