@@ -56,6 +56,50 @@ archives use a `merman-cli-<target>/` wrapper; the Windows ZIP is flat. In both 
 payload contains the executable, `completions/`, `man/`, `THIRD_PARTY_NOTICES.md`, and
 `THIRD_PARTY_LICENSES/`.
 
+Every GitHub Release also includes `release-verification.json`. It binds each uploaded asset to its
+SHA-256 digest and size, records the source commit and release version, and maps each CLI and LSP
+archive to its artifact profile and Rust target. It describes the exact files copied from the
+verified workflow bundle; the release job does not repack them.
+
+GitHub artifact attestations cover the binary archives, adjacent checksums, installers, checksum
+index, and verification manifest. GitHub's automatically generated tag source snapshots are outside
+this workflow-owned bundle. After downloading a binary asset, verify its repository-owned
+attestation with GitHub CLI:
+
+```bash
+gh attestation verify merman-cli-x86_64-unknown-linux-gnu.tar.xz \
+  --repo Latias94/merman
+```
+
+The adjacent checksum detects byte corruption and the attestation binds those bytes to the release
+workflow identity. Use both checks when consuming a binary outside a package manager.
+
+## Final archive verification
+
+Cargo-dist outputs for each target are downloaded into an isolated producer directory. Exact
+producer and file inventories reject cross-target or unexpected payloads. The producer-local
+manifest, archive, and adjacent checksum are checked for mutual consistency, but this check does
+not establish independent provenance because cargo-dist produced all three.
+
+The central verifier is the independent trust boundary. It binds every raw archive to its adjacent
+checksum, safely validates the structure and product contract of all four CLI and all four LSP
+archives, and copies the accepted bytes into a verified snapshot. Global installer and checksum
+generation receives only those snapshot archives. The final bundle is checked against the exact
+asset inventory declared by `docs/release/SURFACES.json` and uploaded as one read-only
+`verified-release-assets` workflow artifact. This central phase never executes target binaries.
+
+Four target-native jobs consume only that bundle. Each job executes the matching CLI archive
+through version, capability, completion, SVG, PNG, JPEG, and PDF smokes, and executes the matching
+LSP archive through initialize, initialized, shutdown, and exit. Receipt generation then rechecks
+the complete bundle and emits a target result bound to the verification manifest. An aggregate job
+requires the complete target set before any registry candidate, attestation, or GitHub Release job
+can run.
+
+Stable releases additionally generate Scoop and WinGet candidates from the verified Windows
+archive. The Windows job parses the Scoop JSON and requires `winget validate` to pass without
+interactive prompts. Prereleases take an explicit successful no-candidate path. Candidate files
+remain workflow artifacts for external submission; they are not uploaded as product release assets.
+
 ## cargo-binstall
 
 `crates/merman-cli/Cargo.toml` resolves the four published targets as follows:
@@ -78,7 +122,9 @@ is absent, cargo-binstall falls back to `cargo install` instead of silently subs
 uncontrolled binary. Do not disable the `compile` strategy.
 
 The metadata does not claim Linux ARM64 until that target passes the repository's full admission
-gate. A Homebrew ARM64 Linux bottle belongs to a different build and verification channel.
+gate. The current decision and required evidence are recorded in
+[`docs/release/CLI_TARGET_ADMISSION.md`](../release/CLI_TARGET_ADMISSION.md). A Homebrew ARM64 Linux
+bottle belongs to a different build and verification channel.
 
 ## Nix source package
 
@@ -167,11 +213,10 @@ python3 -m unittest scripts.test_generate_cli_registry_candidates
 python3 scripts/verify-release-surfaces.py
 ```
 
-Before submission, run `winget validate <generated-winget-directory>` on Windows. When U7 wires
-candidates into publication, that command will become a Windows release gate over the real verified
-archive; stable releases will require it and prereleases will take an explicit no-candidate branch.
-Until then, draft generation is an independently runnable maintainer check and is not a
-release-workflow claim.
+Before submission, run `winget validate <generated-winget-directory>` on Windows. The tag workflow
+runs this command as a release gate over the real verified archive for stable releases. Prereleases
+take an explicit no-candidate branch. Candidate generation remains independently runnable for
+maintainer review and does not submit to either registry.
 
 ## Homebrew formula contract
 

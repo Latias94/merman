@@ -175,6 +175,14 @@ class ReleaseReadmeTests(unittest.TestCase):
         self.assertGreater(cargo_dependencies, 0)
         self.assertGreater(npm_installs, 0)
 
+    def test_cli_install_heading_is_valid_in_source_and_registry_modes(self) -> None:
+        path = "crates/merman-cli/README.md"
+        for mode in (release_readme.SOURCE_MODE, release_readme.REGISTRY_MODE):
+            with self.subTest(mode=mode):
+                rendered = render_document(path, mode)
+                self.assertIn("Install the complete CLI from source:", rendered)
+                self.assertNotIn("current repository revision", rendered)
+
     def test_source_commands_use_the_repository_and_keep_version_guards(self) -> None:
         cargo_adds = 0
         cargo_installs = 0

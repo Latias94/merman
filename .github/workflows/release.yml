@@ -52,9 +52,12 @@ jobs:
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
       tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      source_sha: ${{ steps.release.outputs.source_sha }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
       publishing: ${{ true }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
           submodules: recursive
@@ -70,17 +73,28 @@ jobs:
             exit 1
           fi
           python3 scripts/release-version.py check --version "$RELEASE_TAG"
-          printf 'tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          source_sha="$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")"
+          if [[ "$source_sha" != "$(git rev-parse HEAD)" ]]; then
+            echo "::error::Release tag does not resolve to the checked-out commit." >&2
+            exit 1
+          fi
+          {
+            printf 'tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$canonical_version"
+            printf 'source_sha=%s\n' "$source_sha"
+          } >> "$GITHUB_OUTPUT"
       - name: Install dist
-        # we specify bash to get pipefail; it guards against the `curl` command
-        # failing. otherwise `sh` won't catch that `curl` returned non-0
         shell: bash
-        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh"
-      - name: Cache dist
-        uses: actions/upload-artifact@v7
-        with:
-          name: cargo-dist-cache
-          path: ~/.cargo/bin/dist
+        env:
+          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/cargo-dist-installer.sh"
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            -o "$installer" \
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+          printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
+          sh "$installer"
       - id: plan
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -90,8 +104,9 @@ jobs:
           echo "dist ran successfully"
           cat plan-dist-manifest.json
           echo "manifest=$(jq -c "." plan-dist-manifest.json)" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$(jq -r '.announcement_is_prerelease' plan-dist-manifest.json)" >> "$GITHUB_OUTPUT"
       - name: "Upload dist-manifest.json"
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: artifacts-plan-dist-manifest
           path: plan-dist-manifest.json
@@ -125,7 +140,7 @@ jobs:
       - name: enable windows longpaths
         run: |
           git config --global core.longpaths true
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
           submodules: recursive
@@ -136,15 +151,44 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           fi
-      - name: Install dist
-        run: ${{ matrix.install_dist.run }}
-      # Get the dist-manifest
-      - name: Fetch local artifacts
-        uses: actions/download-artifact@v8
+      - name: Install pinned dist on Unix
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        env:
+          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/cargo-dist-installer.sh"
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            -o "$installer" \
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+          observed="$(shasum -a 256 "$installer" | awk '{print $1}')"
+          if [[ "$observed" != "$DIST_INSTALLER_SHA256" ]]; then
+            echo "::error::cargo-dist installer checksum mismatch." >&2
+            exit 1
+          fi
+          sh "$installer"
+      - name: Install pinned dist on Windows
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        env:
+          DIST_INSTALLER_SHA256: a3435e9944f1a1297add11c6a8ac1f543c14a5ea88879ee05b24ff8218d46d87
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installer = Join-Path $env:RUNNER_TEMP "cargo-dist-installer.ps1"
+          Invoke-WebRequest `
+            -Uri "https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.ps1" `
+            -OutFile $installer
+          $observed = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
+          if ($observed -ne $env:DIST_INSTALLER_SHA256) {
+            throw "cargo-dist installer checksum mismatch"
+          }
+          & $installer
+      - name: Fetch the cargo-dist plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          pattern: artifacts-*
+          name: artifacts-plan-dist-manifest
           path: target/distrib/
-          merge-multiple: true
       - name: Install dependencies
         run: |
           ${{ matrix.packages_install }}
@@ -170,205 +214,362 @@ jobs:
 
           cp dist-manifest.json "$BUILD_MANIFEST_NAME"
       - name: "Upload artifacts"
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: artifacts-build-local-${{ join(matrix.targets, '_') }}
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
 
-  # Build and package all the platform-agnostic(ish) things
-  build-global-artifacts:
+  # Verify local archives before generating any executable installer from them.
+  verify-release-archives:
     needs:
       - plan
       - build-local-artifacts
-    runs-on: "ubuntu-24.04"
-    env:
-      BUILD_MANIFEST_NAME: target/distrib/global-dist-manifest.json
-      RELEASE_TAG: ${{ needs.plan.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-          submodules: recursive
-      - name: Install cached dist
-        uses: actions/download-artifact@v8
-        with:
-          name: cargo-dist-cache
-          path: ~/.cargo/bin/
-      - run: chmod +x ~/.cargo/bin/dist
-      # Get all the local artifacts for the global tasks to use (for e.g. checksums)
-      - name: Fetch local artifacts
-        uses: actions/download-artifact@v8
-        with:
-          pattern: artifacts-*
-          path: target/distrib/
-          merge-multiple: true
-      - id: cargo-dist
-        shell: bash
-        run: |
-          dist build "--tag=$RELEASE_TAG" --output-format=json "--artifacts=global" > dist-manifest.json
-          echo "dist ran successfully"
-
-          # Parse out what we just built and upload it to scratch storage
-          {
-            echo "paths<<EOF"
-            jq --raw-output ".upload_files[]" dist-manifest.json
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          cp dist-manifest.json "$BUILD_MANIFEST_NAME"
-      - name: "Upload artifacts"
-        uses: actions/upload-artifact@v7
-        with:
-          name: artifacts-build-global
-          path: |
-            ${{ steps.cargo-dist.outputs.paths }}
-            ${{ env.BUILD_MANIFEST_NAME }}
-
-  # Verify every CLI archive before anything with release authority can consume it.
-  verify-cli-archives:
-    needs:
-      - plan
-      - build-local-artifacts
-      - build-global-artifacts
     runs-on: "ubuntu-24.04"
     permissions:
       contents: read
     env:
-      RAW_ARTIFACT_DIR: artifacts
-      RELEASE_ASSET_DIR: ${{ runner.temp }}/verified-release-assets
+      GENERATED_ASSET_DIR: ${{ github.workspace }}/target/distrib
+      LOCAL_ARTIFACT_DIR: ${{ github.workspace }}/local-artifacts
+      RELEASE_ASSET_DIR: ${{ github.workspace }}/release-verification/assets
       RELEASE_TAG: ${{ needs.plan.outputs.tag }}
-      VERIFIED_CLI_DIR: ${{ runner.temp }}/verified-cli
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+      SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+      VERIFIED_ARCHIVE_DIR: ${{ github.workspace }}/release-verification/archives
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
           submodules: recursive
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-      - name: Download cargo-dist artifacts
-        uses: actions/download-artifact@v8
+      - name: Download isolated local cargo-dist artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          pattern: artifacts-*
-          path: artifacts
-          merge-multiple: true
-      - name: Verify CLI release archives
+          pattern: artifacts-build-local-*
+          path: ${{ env.LOCAL_ARTIFACT_DIR }}
+      - name: Download the trusted cargo-dist plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: artifacts-plan-dist-manifest
+          path: plan-artifact
+      - name: Verify CLI and LSP archive structure
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$VERIFIED_CLI_DIR" "$RELEASE_ASSET_DIR"
-
-          release_version="$(
-            python3 scripts/release-version.py canonical --version "$RELEASE_TAG"
-          )"
-          host_target="$(rustc -vV | sed -n 's/^host: //p')"
-          if [[ -z "$host_target" ]]; then
-            echo "::error::Could not determine the Rust host target." >&2
-            exit 1
-          fi
-          expected_targets_csv="$(
-            python3 scripts/artifact_profile_recipe.py cli-release --field triples
-          )"
-          IFS=',' read -r -a expected_targets <<<"$expected_targets_csv"
-          if (( ${#expected_targets[@]} == 0 )); then
-            echo "::error::The cli-release profile declares no build targets." >&2
-            exit 1
-          fi
-          declare -A expected_target_set=()
-          declare -A observed_target_set=()
-          for expected_target in "${expected_targets[@]}"; do
-            expected_target_set["$expected_target"]=1
-          done
-          host_archive_executed=false
-
-          mapfile -d '' cli_archives < <(
-            find "$RAW_ARTIFACT_DIR" -maxdepth 1 -type f \
-              \( -name 'merman-cli-*.tar.xz' -o -name 'merman-cli-*.zip' \) \
-              -print0
-          )
-          if (( ${#cli_archives[@]} == 0 )); then
-            echo "::error::No merman-cli release archives were produced." >&2
-            exit 1
-          fi
-
-          for archive in "${cli_archives[@]}"; do
-            archive_name="${archive##*/}"
-            case "$archive_name" in
-              merman-cli-*.tar.xz)
-                target="${archive_name#merman-cli-}"
-                target="${target%.tar.xz}"
-                ;;
-              merman-cli-*.zip)
-                target="${archive_name#merman-cli-}"
-                target="${target%.zip}"
-                ;;
-              *)
-                echo "::error::Unexpected CLI archive name: $archive_name" >&2
-                exit 1
-                ;;
-            esac
-            if [[ -z "${expected_target_set[$target]+present}" ]]; then
-              echo "::error::Unexpected merman-cli archive target: $target" >&2
+          mkdir -p "$VERIFIED_ARCHIVE_DIR"
+          for specification in \
+            'merman-cli:cli-release:scripts/verify_cli_release_archive.py' \
+            'merman-lsp:lsp-stdio-release:scripts/verify_lsp_release_archive.py'; do
+            IFS=: read -r package profile verifier <<<"$specification"
+            IFS=, read -r -a targets <<<"$(
+              python3 scripts/artifact_profile_recipe.py "$profile" --field triples
+            )"
+            if (( ${#targets[@]} == 0 )); then
+              echo "::error::$profile declares no release targets." >&2
               exit 1
             fi
-            if [[ -n "${observed_target_set[$target]+present}" ]]; then
-              echo "::error::Duplicate merman-cli archive target: $target" >&2
-              exit 1
-            fi
-            observed_target_set["$target"]=1
-
-            execute_args=()
-            if [[ "$target" == "$host_target" ]]; then
-              execute_args+=(--execute)
-              host_archive_executed=true
-            fi
-            python3 scripts/verify_cli_release_archive.py \
-              "$archive" \
-              --checksum "$archive.sha256" \
-              --target "$target" \
-              --version "$release_version" \
-              --repo-root "$GITHUB_WORKSPACE" \
-              --verified-output "$VERIFIED_CLI_DIR/$archive_name" \
-              "${execute_args[@]}"
+            for target in "${targets[@]}"; do
+              extension=tar.xz
+              if [[ "$target" == *-windows-* ]]; then
+                extension=zip
+              fi
+              archive_name="$package-$target.$extension"
+              producer="$LOCAL_ARTIFACT_DIR/artifacts-build-local-$target"
+              python3 "$verifier" \
+                "$producer/$archive_name" \
+                --checksum "$producer/$archive_name.sha256" \
+                --target "$target" \
+                --version "$RELEASE_VERSION" \
+                --repo-root "$GITHUB_WORKSPACE" \
+                --verified-output "$VERIFIED_ARCHIVE_DIR/$archive_name"
+            done
           done
-          for expected_target in "${expected_targets[@]}"; do
-            if [[ -z "${observed_target_set[$expected_target]+present}" ]]; then
-              echo "::error::Missing merman-cli archive target: $expected_target" >&2
-              exit 1
-            fi
-          done
-          if [[ "$host_archive_executed" != true ]]; then
-            echo "::error::The host merman-cli archive was not executed." >&2
-            exit 1
-          fi
-
-          while IFS= read -r -d '' asset; do
-            asset_name="${asset##*/}"
-            case "$asset_name" in
-              *-dist-manifest.json|merman-cli-*.tar.xz|merman-cli-*.zip)
-                continue
-                ;;
-            esac
-            cp -- "$asset" "$RELEASE_ASSET_DIR/$asset_name"
-          done < <(find "$RAW_ARTIFACT_DIR" -maxdepth 1 -type f -print0)
-          cp -- "$VERIFIED_CLI_DIR"/* "$RELEASE_ASSET_DIR/"
+      - name: Prepare trusted global-generation inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release_artifact_bundle.py prepare-global \
+            "$LOCAL_ARTIFACT_DIR" \
+            "$VERIFIED_ARCHIVE_DIR" \
+            plan-artifact/plan-dist-manifest.json \
+            docs/release/SURFACES.json \
+            "$GENERATED_ASSET_DIR" \
+            --tag "$RELEASE_TAG" \
+            --version "$RELEASE_VERSION"
+      - name: Install independently pinned dist
+        shell: bash
+        env:
+          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/cargo-dist-installer.sh"
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            -o "$installer" \
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+          printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
+          sh "$installer"
+      - name: Generate final installers and checksum index
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist build \
+            "--tag=$RELEASE_TAG" \
+            --artifacts=global \
+            --output-format=json > generated-global-dist-manifest.json
+          mv generated-global-dist-manifest.json "$GENERATED_ASSET_DIR/dist-manifest.json"
+          sh -n "$GENERATED_ASSET_DIR/merman-cli-installer.sh"
+          sh -n "$GENERATED_ASSET_DIR/merman-lsp-installer.sh"
+      - name: Assemble the verified bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release_artifact_bundle.py assemble \
+            "$GENERATED_ASSET_DIR" \
+            "$VERIFIED_ARCHIVE_DIR" \
+            "$RELEASE_ASSET_DIR" \
+            docs/release/SURFACES.json \
+            --version "$RELEASE_VERSION" \
+            --source-sha "$SOURCE_SHA"
+          chmod -R a-w "$RELEASE_ASSET_DIR"
       - name: Upload verified release assets
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: verified-release-assets
           path: ${{ env.RELEASE_ASSET_DIR }}
           if-no-files-found: error
 
-  # Determines if we should publish/announce
+  verify-release-archives-native:
+    needs:
+      - plan
+      - verify-release-archives
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    env:
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+      SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Download verified release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: verified-release-assets
+          path: verified-release-assets
+      - name: Parse generated PowerShell installers
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('merman-cli-installer.ps1', 'merman-lsp-installer.ps1')) {
+            $path = Join-Path 'verified-release-assets' $name
+            [scriptblock]::Create([IO.File]::ReadAllText($path)) | Out-Null
+          }
+      - name: Execute final CLI and LSP archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          extension=tar.xz
+          if [[ "$TARGET" == *-windows-* ]]; then
+            extension=zip
+          fi
+          for specification in \
+            'merman-cli:scripts/verify_cli_release_archive.py' \
+            'merman-lsp:scripts/verify_lsp_release_archive.py'; do
+            IFS=: read -r package verifier <<<"$specification"
+            archive="$package-$TARGET.$extension"
+            python3 "$verifier" \
+              "verified-release-assets/$archive" \
+              --checksum "verified-release-assets/$archive.sha256" \
+              --target "$TARGET" \
+              --version "$RELEASE_VERSION" \
+              --repo-root "$GITHUB_WORKSPACE" \
+              --execute
+          done
+      - name: Record native verification receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/scripts/release_artifact_bundle.py" write-receipt \
+            verified-release-assets \
+            --target "$TARGET" \
+            --source-sha "$SOURCE_SHA" \
+            --output "native-release-verification-$TARGET.json"
+      - name: Upload native verification receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: native-release-verification-${{ matrix.target }}
+          path: native-release-verification-${{ matrix.target }}.json
+          if-no-files-found: error
+
+  release-verification-gate:
+    needs:
+      - plan
+      - verify-release-archives
+      - verify-release-archives-native
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Require central and native verification success
+        env:
+          CENTRAL_RESULT: ${{ needs.verify-release-archives.result }}
+          NATIVE_RESULT: ${{ needs.verify-release-archives-native.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$CENTRAL_RESULT" != success || "$NATIVE_RESULT" != success ]]; then
+            echo "::error::Release verification failed: central=$CENTRAL_RESULT native=$NATIVE_RESULT" >&2
+            exit 1
+          fi
+      - name: Checkout verified release source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+          ref: ${{ needs.plan.outputs.source_sha }}
+      - name: Download verified release bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: verified-release-assets
+          path: verified-release-assets
+      - name: Download native verification receipts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: native-release-verification-*
+          path: native-receipts
+          merge-multiple: true
+      - name: Verify native receipt closure
+        env:
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/scripts/release_artifact_bundle.py" verify-receipts \
+            verified-release-assets \
+            native-receipts \
+            --source-sha "$SOURCE_SHA"
+
+  generate-cli-registry-candidates:
+    needs:
+      - plan
+      - release-verification-gate
+    if: ${{ always() && needs.plan.result == 'success' && needs.release-verification-gate.result == 'success' }}
+    runs-on: windows-2025
+    permissions:
+      contents: read
+    steps:
+      - name: Record prerelease candidate policy
+        if: ${{ needs.plan.outputs.prerelease == 'true' }}
+        shell: bash
+        run: echo "Registry candidates are intentionally omitted for prereleases."
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        if: ${{ needs.plan.outputs.prerelease != 'true' }}
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Download verified release bundle
+        if: ${{ needs.plan.outputs.prerelease != 'true' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: verified-release-assets
+          path: verified-release-assets
+      - name: Generate and validate stable registry candidates
+        if: ${{ needs.plan.outputs.prerelease != 'true' }}
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $output = Join-Path $env:RUNNER_TEMP "registry-candidates"
+          python3 scripts/generate_cli_registry_candidates.py `
+            verified-release-assets `
+            --version $env:RELEASE_VERSION `
+            --output-dir $output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python3 -m json.tool (Join-Path $output "scoop/merman-cli.json") > $null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+          if ($null -eq $winget) {
+            Add-AppxPackage `
+              -RegisterByFamilyName `
+              -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+            $winget = Get-Command winget.exe -ErrorAction Stop
+          }
+          & $winget.Source validate `
+            --manifest (Join-Path $output "winget") `
+            --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload stable registry candidates
+        if: ${{ needs.plan.outputs.prerelease != 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cli-registry-candidates-${{ needs.plan.outputs.version }}
+          path: ${{ runner.temp }}/registry-candidates
+          if-no-files-found: error
+
+  attest-release-assets:
+    needs:
+      - plan
+      - release-verification-gate
+    if: ${{ always() && needs.plan.result == 'success' && needs.release-verification-gate.result == 'success' }}
+    runs-on: ubuntu-24.04
+    environment: github-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download verified release bundle
+        # actions/download-artifact v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: verified-release-assets
+          path: verified-release-assets
+      - name: Verify release tag still resolves to the source commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
+          observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          if [[ "$observed" != "$SOURCE_SHA" ]]; then
+            echo "::error::Release tag moved after artifact verification." >&2
+            exit 1
+          fi
+      - name: Attest verified release assets
+        # actions/attest v4
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+        with:
+          subject-path: verified-release-assets/*
+
+  # Publish only the exact bundle that passed central, native, candidate, and attestation gates.
   host:
     needs:
       - plan
-      - build-local-artifacts
-      - build-global-artifacts
-      - verify-cli-archives
-    # Only verified snapshots may cross into the job with release authority.
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && needs.verify-cli-archives.result == 'success' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
+      - release-verification-gate
+      - generate-cli-registry-candidates
+      - attest-release-assets
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && needs.release-verification-gate.result == 'success' && needs.generate-cli-registry-candidates.result == 'success' && needs.attest-release-assets.result == 'success' }}
     environment: github-release
     permissions:
       contents: write
@@ -376,10 +577,25 @@ jobs:
     steps:
       # Create a GitHub Release while uploading all files to it
       - name: "Download GitHub Artifacts"
-        uses: actions/download-artifact@v8
+        # actions/download-artifact v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: verified-release-assets
           path: artifacts
+      - name: Verify release tag still resolves to the source commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null
+          observed="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)"
+          if [[ "$observed" != "$SOURCE_SHA" ]]; then
+            echo "::error::Release tag moved after artifact verification." >&2
+            exit 1
+          fi
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -388,7 +604,6 @@ jobs:
           IS_PRERELEASE: ${{ fromJson(needs.plan.outputs.val).announcement_is_prerelease }}
           ANNOUNCEMENT_TITLE: ${{ fromJson(needs.plan.outputs.val).announcement_title }}
           ANNOUNCEMENT_BODY: ${{ fromJson(needs.plan.outputs.val).announcement_github_body }}
-          RELEASE_COMMIT: "${{ github.sha }}"
         shell: bash
         run: |
           set -euo pipefail
@@ -396,7 +611,7 @@ jobs:
           printf '%s\n' "$ANNOUNCEMENT_BODY" > "$notes_file"
 
           mapfile -d '' assets < <(
-            find artifacts -maxdepth 1 -type f ! -name '*-dist-manifest.json' -print0
+            find artifacts -maxdepth 1 -type f -print0
           )
           if (( ${#assets[@]} == 0 )); then
             echo "::error::No release assets were produced." >&2
@@ -405,7 +620,6 @@ jobs:
 
           release_args=(
             --verify-tag
-            --target "$RELEASE_COMMIT"
             --title "$ANNOUNCEMENT_TITLE"
             --notes-file "$notes_file"
           )

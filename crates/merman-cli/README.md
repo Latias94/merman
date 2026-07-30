@@ -53,7 +53,7 @@ Every standard installation selects the complete `cli-release` capability set. C
 | `cargo binstall merman-cli` | Project release archive, with source fallback | Not installed |
 | GitHub shell or PowerShell installer | Project release archive | Not installed |
 | Direct GitHub archive | Included | Bundled under `completions/` and `man/` |
-| Homebrew formula `0.8.0` or later | Source build or Homebrew bottle | Bash, Zsh, Fish, PowerShell, and man pages installed |
+| Homebrew formula `0.8.x` | Source build or Homebrew bottle | Bash, Zsh, Fish, PowerShell, and man pages installed |
 | `cargo install` | Built from source | Not installed |
 
 Runtime completion is the universal fallback, including for custom feature builds:

@@ -257,9 +257,8 @@
             { "glob": "merman-cli-x86_64-pc-windows-msvc.zip.sha256", "min_matches": 1, "max_matches": 1 },
             { "glob": "merman-cli-installer.sh", "min_matches": 1, "max_matches": 1 },
             { "glob": "merman-cli-installer.ps1", "min_matches": 1, "max_matches": 1 },
-            { "glob": "source.tar.gz", "min_matches": 1, "max_matches": 1 },
-            { "glob": "source.tar.gz.sha256", "min_matches": 1, "max_matches": 1 },
-            { "glob": "sha256.sum", "min_matches": 1, "max_matches": 1 }
+            { "glob": "sha256.sum", "min_matches": 1, "max_matches": 1 },
+            { "glob": "release-verification.json", "min_matches": 1, "max_matches": 1 }
           ]
         },
         {

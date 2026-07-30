@@ -15,6 +15,9 @@ packages = ["merman-cli", "merman-lsp"]
 ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell"]
+# GitHub already publishes source archives for the immutable tag. Avoid cargo-dist's
+# second, package-selected source.tar.gz in this two-binary workspace.
+source-tarball = false
 # Keep archive names stable for cargo-binstall and downstream package manifests.
 unix-archive = ".tar.xz"
 windows-archive = ".zip"

@@ -1208,7 +1208,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         header = text.split("\njobs:", 1)[0]
         plan = workflow_job(workflow, "plan")
         local_build = workflow_job(workflow, "build-local-artifacts")
-        global_build = workflow_job(workflow, "build-global-artifacts")
+        central_verification = workflow_job(workflow, "verify-release-archives")
         host = workflow_job(workflow, "host")
 
         self.assertEqual(workflow["permissions"], {"contents": "read"})
@@ -1222,6 +1222,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('allow-dirty = ["ci"]', dist_config)
         self.assertIn('packages = ["merman-cli", "merman-lsp"]', dist_config)
         self.assertIn("Merman maintains the permission split", header)
+        self.assertNotIn("build-global-artifacts", workflow["jobs"])
 
         for job_name, job in workflow["jobs"].items():
             assert isinstance(job, dict)
@@ -1242,7 +1243,17 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotEqual(permissions.get("contents"), "write")
                 self.assertNotIn("GH_TOKEN", env)
                 for step in steps:
-                    self.assertNotIn("GH_TOKEN", step["env"])
+                    if (
+                        job_name == "attest-release-assets"
+                        and step.get("name")
+                        == "Verify release tag still resolves to the source commit"
+                    ):
+                        self.assertEqual(
+                            step["env"].get("GH_TOKEN"),
+                            "${{ secrets.GITHUB_TOKEN }}",
+                        )
+                    else:
+                        self.assertNotIn("GH_TOKEN", step["env"])
 
         plan_step = workflow_step(plan, step_id="plan")
         validate_tag = workflow_step(plan, name="Validate release tag")
@@ -1263,15 +1274,34 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("github.event.pull_request", text)
         self.assertNotIn("tag-flag", text)
 
-        for build_job in [local_build, global_build]:
-            self.assertEqual(build_job["env"]["RELEASE_TAG"], "${{ needs.plan.outputs.tag }}")
-            build_step = next(
-                step
-                for step in build_job["steps"]
-                if isinstance(step, dict) and "dist build" in step.get("run", "")
-            )
-            self.assertIn('dist build "--tag=$RELEASE_TAG"', build_step["run"])
-            self.assertEqual(build_step["shell"], "bash")
+        self.assertEqual(local_build["env"]["RELEASE_TAG"], "${{ needs.plan.outputs.tag }}")
+        local_build_step = next(
+            step
+            for step in local_build["steps"]
+            if isinstance(step, dict) and "dist build" in step.get("run", "")
+        )
+        self.assertIn('dist build "--tag=$RELEASE_TAG"', local_build_step["run"])
+        self.assertEqual(local_build_step["shell"], "bash")
+
+        self.assertEqual(
+            central_verification["env"]["RELEASE_TAG"],
+            "${{ needs.plan.outputs.tag }}",
+        )
+        verify_step = workflow_step(
+            central_verification,
+            name="Verify CLI and LSP archive structure",
+        )
+        global_build_step = workflow_step(
+            central_verification,
+            name="Generate final installers and checksum index",
+        )
+        self.assertLess(
+            central_verification["steps"].index(verify_step),
+            central_verification["steps"].index(global_build_step),
+        )
+        self.assertIn('"--tag=$RELEASE_TAG"', global_build_step["run"])
+        self.assertIn("--artifacts=global", global_build_step["run"])
+        self.assertEqual(global_build_step["shell"], "bash")
 
         self.assertEqual(host["environment"], "github-release")
         self.assertEqual(host["permissions"], {"contents": "write"})
