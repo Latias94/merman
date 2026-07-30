@@ -18,7 +18,7 @@
       },
       {
         "path": "crates/merman-bindings-core/benches/request_overlay_memory/allocator.rs",
-        "sha256": "c3bf993e8075f399a4e3b8c7c58d3b3753d20e73fffa191c0708f522a82727fb"
+        "sha256": "7246b4ce80e9500c5d3069afe45d50792990153b42d8c426bae074bcdf47f42d"
       },
       {
         "path": "crates/merman-bindings-core/benches/fixtures/info_fixed_cost.mmd",

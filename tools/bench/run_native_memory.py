@@ -36,7 +36,11 @@ from native_memory import (
 
 DEFAULT_CORPUS = Path("tools/bench/corpus.json")
 DEFAULT_LANE = "flowchart-end-to-end-memory"
-DEFAULT_WORKLOAD = "flowchart-modular-generator-v1"
+_SUPPORTED_LANE_WORKLOADS = {
+    DEFAULT_LANE: "flowchart-modular-generator-v1",
+    "flowchart-adapter-low-cluster-memory": "flowchart-adapter-low-cluster-generator-v1",
+    "flowchart-adapter-high-cluster-memory": "flowchart-adapter-high-cluster-generator-v1",
+}
 DEFAULT_REPORT = Path("target/bench/native_memory.json")
 DEFAULT_REPEATS = 5
 DEFAULT_SEED = 0x4D45524D414E
@@ -752,6 +756,14 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             raise DriverContractError(f"lane {lane.id!r} is not a native memory lane")
         if lane.process_lifecycle != "fresh-process":
             raise DriverContractError("native memory lane must declare fresh-process isolation")
+        registered_v1_workload = _SUPPORTED_LANE_WORKLOADS.get(lane.id)
+        if (
+            registered_v1_workload is not None
+            and lane.workload != registered_v1_workload
+        ):
+            raise DriverContractError(
+                "selected lane semantics are unsupported by the native-memory probe"
+            )
         if lane.kind != "public" or lane.logical_operations_per_estimate != 1:
             raise DriverContractError(
                 "selected lane semantics are unsupported by the native-memory probe"
@@ -761,9 +773,10 @@ def execute(args: argparse.Namespace) -> tuple[dict[str, object], int]:
             contract_path = root / contract_path
         contract = load_owner_contract(contract_path, lane=lane)
         if contract["schema_version"] == 1:
+            expected_workload = _SUPPORTED_LANE_WORKLOADS.get(lane.id)
             if (
-                lane.id != DEFAULT_LANE
-                or lane.workload != DEFAULT_WORKLOAD
+                expected_workload is None
+                or lane.workload != expected_workload
                 or lane.public_operation != "render-svg"
                 or lane.engine_lifecycle != "reused-engine"
             ):

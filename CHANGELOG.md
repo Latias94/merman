@@ -4,25 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.8.0-alpha.4] - 2026-07-26
+## [0.8.0-alpha.4] - Unreleased
 
-0.8.0-alpha.4 moves Merman to a capability-driven build and distribution architecture while
-completing the Mermaid 11.16 family catalog. It is a deliberately breaking prerelease: native
-hosts must move to ABI 3, browser consumers choose an explicit package surface, and source users
-can select product capabilities without changing parser or editor semantics.
+0.8.0-alpha.4 moves Merman to a capability-driven build and distribution architecture while completing the Mermaid 11.16 family catalog. It is a deliberately breaking prerelease: native hosts must move to ABI 3, browser consumers choose an explicit package surface, and source users can select product capabilities without changing parser or editor semantics.
 
 ### Highlights
 
-- Added source-backed parsing, editor facts, typed layout, and SVG rendering for all 35 Mermaid
-  11.16 diagram families, including Cynefin, Railroad, Swimlane, and Wardley.
-- Replaced native ABI 2 with generated ABI 3 contracts and runtime capability discovery across C,
-  Android, Apple, Flutter, and Python integrations.
-- Split browser delivery into lockstep full, render, analysis, editor, and ASCII packages, each
-  carrying one verified WASM artifact and an exact dependency and license closure.
-- Made Cargo features capability-oriented: the core catalog is invariant, lower-level crates have
-  empty defaults, and facade, CLI, binding, and transport profiles compose explicit workflows.
-- Added reproducible artifact recipes, per-target dependency fingerprints, native baseline probes,
-  governed RustSec exceptions, package-content checks, and release provenance gates.
+- Added source-backed parsing, editor facts, typed layout, and SVG rendering for all 35 Mermaid 11.16 diagram families, including Cynefin, Railroad, Swimlane, and Wardley.
+- Replaced native ABI 2 with generated ABI 3 contracts and runtime capability discovery across C, Android, Apple, Flutter, and Python integrations.
+- Split browser delivery into lockstep full, render, analysis, editor, and ASCII packages, each carrying one verified WASM artifact and an exact dependency and license closure.
+- Made Cargo features capability-oriented: the core catalog is invariant, lower-level crates have empty defaults, and facade, CLI, binding, and transport profiles compose explicit workflows.
+- Added reproducible artifact recipes, per-target dependency fingerprints, native baseline probes, governed RustSec exceptions, package-content checks, and release provenance gates.
 
 ### Breaking changes
 
@@ -31,6 +23,13 @@ can select product capabilities without changing parser or editor semantics.
 - Changed native `render` and `batch` to advertise `-f/--format`. Their hidden native `-e` aliases warn during `0.8.x` and will be removed in `v0.9.0`; explicit `merman-cli mmdc -e/--outputFormat` remains part of the pinned compatibility interface.
 - Replaced the `merman-cli capabilities --json` document with capability schema 2 and CLI contract 3. Contract 3 records the native format spelling, text-first `lint` default, and narrowed `detect` surface; `lint-rules` remains JSON-first and automation can request `lint --format json`. Consumers should read `descriptor.digest` instead of `descriptor_digest`; the redundant `target: "native"` field is removed. The document reports package and pinned compatibility versions, the compiled command set, and descriptor-backed capability/output objects so package-manager and artifact checks can validate the binary they actually installed.
 - Replaced the superseded TextScan-capable `AnalysisFactsPayload` shape with the final parser-only facts schema 1. `fact_source: "text_scan"` is removed, unavailable bodies use `"unavailable"`, and current writers include `rename_policy` on every semantic item. Other version discriminators are rejected before the payload body is decoded, while omitted additive policy still decodes as `"none"`.
+- Changed rich Rust analysis entry points to return explicit rejection outcomes: `Analyzer::analyze_generation` and `analyze_document_generation{,_shared}` now return `AnalysisCaptureOutcome`, while editor analysis builders return `DocumentAnalysisOutcome`. Match `Ready` / `Rejected` or call `into_ready()`; cancellable variants still wrap the outcome in `Result<_, AnalysisCancelled>`, and `DocumentWorkspace::upsert` now returns `Result<DocumentSnapshot, AnalysisRejection>`.
+- Sealed canonical analysis generations: `AnalysisGeneration` and `AnalyzedDiagram` can no longer be assembled from unrelated payloads, source maps, syntax facts, or parser evidence. Obtain them from `Analyzer` or the document-analysis entry points, and replace direct `AnalyzedDiagram` field access with its read-only accessors. Removed the unused process-global `AnalysisDiagramId` API; generation-backed editor snapshots retain private generation-local ordinals instead.
+- Split `AnalysisOptions` into public `snapshot` and `diagnostics` policies while retaining the existing builder methods. Direct field users must move `source`, `site_config`, `runtime_policy`, and `max_source_bytes` under `snapshot`, and `rule_config` under `diagnostics`. The removed `snapshot_affecting_eq` helper is replaced by `left.snapshot_policy() == right.snapshot_policy()` so every generation input participates in invalidation.
+- Changed custom `DiagramSemanticParser` overlays to accept `&ParseControl` and return `ParseControlResult<Result<Value>>`. Custom parsers must checkpoint long-running work, return cancellation through the outer result, and return Mermaid parse failures through the inner result. Exhaustive `merman_core::Error` matches must also handle the new `Error::ParseCancelled` variant used by non-cancellable facades when an overlay cancels unexpectedly.
+- Changed `MermanLanguageServer::service()` to return the ordered `MermanLspService` wrapper. Embedded transports must drive it through `tower::Service<Request>`; direct access to the underlying `LanguageServer` is intentionally removed because it bypassed notification admission and could let later reads observe stale document state.
+- Changed `AnalysisRuleConfig::with_rule_enabled`, `with_rule_disabled`, and `with_rule_severity` to return `Result<Self, AnalysisRuleConfigError>` so unknown or non-configurable rule ids fail explicitly. Existing builder chains must propagate the error with `?` or handle it before passing the config to `AnalysisOptions::with_rule_config`.
+- Renamed the single-document symbol search APIs without aliases: Rust `workspace_symbols` is now `search_document_symbols`, browser editor sessions use `searchDocumentSymbols`, and the one-shot Web/WASM export is `editorSearchDocumentSymbols`. Removed the unused multi-document Rust `workspace_symbols_for_snapshots` helper and the clone-producing `DocumentWorkspace::build_snapshot*`, `DocumentWorkspace::snapshots`, and `DocumentAnalysisContext::{diagnostics,reproject_diagnostics,into_parts,into_canonical_parts}` APIs; retain a `DocumentAnalysisContext`, use `snapshot()`, `payload()`, or `reproject_payload()`, and search each document explicitly.
 - Removed the historical core language registry profiles and all Cargo/Rust `full`, `tiny`, `core-full`, `core_full`, and selected-registry-profile API surfaces. Every core build now exposes the same complete Mermaid language catalog; render backends remain explicit product capabilities rather than changing parser, detector, editor, or LSP semantics. Runtime-contract schema `1` has no `core_full` or `registry.profile`; the browser `selectedRegistryProfile()` export is removed without an alias.
 - Replaced the Rust editor parser API: `Engine::parse_diagram_with_editor_facts_sync` is replaced by `parse_diagram_snapshot_sync` / `parse_diagram_snapshot_with_type_sync`; `parse_metadata{,_sync}` no longer accepts `ParseOptions` or returns `Option`; and `Engine::parse` plus the VS Code `merman.analysis.parse.suppress_errors` setting are removed. Use model-producing parse or render APIs when an editor integration previously suppressed parse errors; `ParseOptions::suppress_errors` remains supported by those model-producing facades.
 - Replaced native ABI 2 with the generated ABI 3 function table, opaque engine tokens, generic operation dispatch with per-request options, one owned binary result path, typed missing-capability errors, and 19-operation host text measurement. Generated layout digests plus surface compile-run tests replace public per-field probes. Android and Flutter consume ABI 3; Apple and Python use direct generated UniFFI bindings from the matching native artifact.
@@ -60,7 +59,7 @@ can select product capabilities without changing parser or editor semantics.
 
 - Separated oversized-output policy by format. SVG remains vector markup without a raster canvas or pixel ceiling, while the selected render-resource profile bounds source, structure, and serialized SVG size unless trusted callers explicitly opt out. PNG/JPG now preflight fit, scale, final pixmap dimensions, and embedded images through `RasterOptions`; vector PDF uses independent `PdfOptions` page, filter-bitmap, and embedded-image budgets. Markdown batches additionally reserve aggregate scheduling weight before work. The CLI adds raster fit/limit controls, PDF filter controls, `--embedded-image-max-pixels`, `--embedded-image-max-total-pixels`, and `--embedded-images-unbounded`; use `--resource-limit max_scheduling_weight_bytes=BYTES` with `--jobs` for a scoped batch-concurrency override. It reports effective constrained dimensions and maps `--pdfFit` from 96 CSS pixels to 72 PDF points.
 - Rebuilt the Playground around one document-owned Merman lifecycle and a separate latest-wins Render Coordinator. WASM import/fetch run concurrently, browser HTTP cache is the only persistent byte-cache authority, retry is staged and bounded, BFCache suspend/resume is distinct from final disposal, and the product renders the actual source without a hidden synthetic warmup.
-- Added `@mermanjs/web/editor` backed by the `browser-editor` preset: the full 35-family catalog, analysis, and `merman-editor-core` language intelligence without SVG, ASCII, host, or ELK dependencies. The Playground runs it in a dedicated local module Worker and projects diagnostics, completion, hover, code actions, symbols, navigation, rename, and semantic tokens into Monaco while keeping native ABI 3 and the final diagnostics and facts payloads at schema 1.
+- Added `@mermanjs/web-editor` backed by the `web-editor` artifact profile: the full 35-family catalog, analysis, and `merman-editor-core` language intelligence without SVG, ASCII, host, or ELK dependencies. The Playground runs it in a dedicated local module Worker and projects diagnostics, completion, hover, code actions, symbols, navigation, rename, and semantic tokens into Monaco while keeping native ABI 3 and the final diagnostics and facts payloads at schema 1.
 - Replaced the handwritten Playground example registry with an exact 35-family fixture manifest and generated typed catalog. Search, provenance, canonical detection, and generated-output freshness are checked by `xtask` against the Mermaid 11.16 baseline.
 - Isolated Compare and Bench in authenticated same-origin realms. Compare owns one failure-resilient Mermaid operation queue; Bench uses equivalent per-engine realms, versioned raw phase events, equal real-source warmups, deterministic balanced AB/BA order, explicit failure/invalidation states, fail-closed ratios, and local JSON evidence download.
 - Added parser and editor facts, typed layout, and SVG rendering for `cynefin-beta` and all four Railroad dialects: `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, and `railroad-peg-beta`. ABNF repetition bounds and the public `RailroadRepeatBound` now preserve Mermaid's JavaScript number/binary64/infinity semantics. #21 #24
@@ -86,6 +85,7 @@ can select product capabilities without changing parser or editor semantics.
 
 ### Fixes and polish
 
+- Closed `resvg-safe` non-navigation rendering resources: structural references are limited to same-document fragments, ordinary images require syntactically decodable approved inline raster data URLs, and `feImage` accepts either form. This prevents default `usvg` consumers from reading Mermaid-provided local image paths while preserving anchor navigation as metadata outside the raster-resource contract. Merman's PNG/JPG/PDF exporters continue to disable string-href resolution independently.
 - Simplified and polished the Playground shell with persistent editor/config/preview state, generated example search, keyboard-correct tabs and dialogs, synchronized system theme, safe-area/dynamic-viewport sizing, local Monaco assets, and accessible labels/focus behavior.
 - TreeView now embeds configured Iconify pack bodies at Mermaid's 14px size and shows the standard unknown icon for missing packs or entries. #23
 - Kept centered Railroad choice branches straight when equivalent lane coordinates differ only because of floating-point addition order. #22
@@ -183,7 +183,7 @@ This alpha focuses on Mermaid 11.15 parity, safer host integrations, and packagi
 
 ### Security
 
-- Hardened `resvg_safe` SVG cleanup for raw SVG and rendered icon fragments by stripping active SVG elements, event-handler attributes, unsafe URL attributes, and unsafe style/presentation `url(...)` values while preserving local paint/reference URLs and raster data images.
+- Hardened `resvg_safe` SVG cleanup for raw SVG and rendered icon fragments by stripping active SVG elements, event-handler attributes, unsafe URL attributes, and unsafe style/presentation `url(...)` values while preserving same-document fragment paint/reference URLs and raster data images.
 - Hardened diagram config and Mermaid style parsing against CSS injection while preserving trusted site-level compatibility options.
 - Added raster security regressions for default PNG/JPG pixmap budgets, custom raster size limits, and oversized intrinsic SVG rejection before PDF conversion.
 - Added a `Security Audit` GitHub Actions workflow for Rust dependency changes and weekly scheduled audit runs.

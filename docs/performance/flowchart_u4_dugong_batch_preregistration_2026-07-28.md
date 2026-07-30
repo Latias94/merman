@@ -6,19 +6,6 @@ This receipt freezes the native-memory admission bounds for the Dugong transient
 retirement candidate before any candidate allocator matrix is collected. It does not admit the
 candidate and does not close the remaining Flowchart adapter work in U4.
 
-## Outcome
-
-The latency and native-memory admission described below was not completed and must not be cited as
-a measured speedup. The mechanism remains as an algorithmic complexity repair: repeated
-`remove_node` calls invalidate and rebuild graph adjacency between removals, with worst-case
-`O(T * (V + E))` work for `T` transient nodes, while `remove_nodes` consumes the targets and scans
-the graph once in `O(T + V + E)` time with `O(V)` temporary space. Graph-mode equivalence,
-compound-parent behavior, iterator-panic atomicity, normalization, and layout semantics are covered
-by the Dugong and Graphlib suites. U10 ran all 391 tests successfully.
-
-This is structural evidence only. No ordinary-fixture latency, allocation, or peak-memory claim is
-attached to commit `c3130d4dc`.
-
 ## Frozen comparison
 
 - Adjacent base: `84790e61a035e17dbbdc07a6b59703c54a2fe52f`

@@ -188,12 +188,6 @@ CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph --profile bench \
 
 ## 5. Run confirmation without adaptive sampling
 
-This section admits latency and throughput claims. For a structural complexity or
-input-amplification repair, use the evidence model in `BENCHMARKING.md`: preregister named input
-variables, reachable old/new time and space bounds, and an exact work counter or scale curve. Keep
-public timing as a non-regression control and do not manufacture a speedup claim from an
-asymptotic proof.
-
 Freeze the confidence level, bootstrap seed/resample count, minimum detectable effects, calibration
 count, and maximum pair budget before looking at the result. The default contract is:
 
@@ -204,9 +198,7 @@ count, and maximum pair budget before looking at the result. The default contrac
 - fresh confirmation observations that do not reuse diagnostic or calibration data;
 - suite-level simultaneous 95% paired bounds for `log(head/base)` and `head - base`, using
   Bonferroni component confidence across both metrics and every comparable row;
-- a joint `>10% AND >50 us` regression threshold for ordinary end-to-end work, or the
-  preregistered low-latency public-operation formula from `BENCHMARKING.md` when the frozen baseline
-  is below 500 us.
+- a joint `>10% AND >50 us` regression threshold for ordinary end-to-end work.
 
 Use `--confidence-level`, `--bootstrap-seed`, and `--bootstrap-resamples` when an experiment needs
 explicit reproducibility values. Confirmation requires at least 10,000 bootstrap resamples;
@@ -216,8 +208,6 @@ one public operation and takes its divisor from lane metadata. Legacy schema-v1 
 requires exact benchmark identity and divisors of one. If A/A is unstable, the required count
 exceeds `--max-pairs`, or a decision interval crosses the joint boundary, record the result as
 inconclusive. Do not add samples after seeing the classification or relax either threshold.
-Exploratory owner-local results may motivate selecting the low-latency gate, but they must be
-disclosed and cannot be reused in A/A calibration or fresh public confirmation.
 
 ## 6. Run semantic and resource gates
 

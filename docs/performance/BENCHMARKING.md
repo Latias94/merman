@@ -196,37 +196,6 @@ than 50 us.
 `--absolute-threshold-us 50` is an equivalent convenience form of
 `--absolute-threshold-ns 50000`.
 
-#### Low-latency public operations
-
-The ordinary absolute threshold is structurally unreachable when the complete public-operation
-baseline is below 50 us and dominates the relative threshold for every baseline below 500 us. A
-candidate with a frozen baseline below 500 us may preregister this alternative only before
-collecting confirmation samples and only for a complete public operation with frozen base/head
-revisions and inputs. Private stages remain attribution evidence.
-
-Let `B` be the frozen baseline estimate in nanoseconds per logical operation. Let `e_r` and `e_d` be
-the maximum absolute endpoints from the independent base and head A/A simultaneous 95% intervals
-for log ratio, absolute delta, and their order effects. A/A is stable only when identity or zero is
-inside every interval, `e_r <= -ln(0.95)`, `e_d <= min(1,000 ns, 0.05 * B)`, and the power-derived
-pair count does not exceed the preregistered cap. Define:
-
-```text
-T_r = max(-ln(0.90), 3 * e_r)
-T_d = max(1,000 ns, min(50,000 ns, B * (1 - exp(-T_r))), 3 * e_d)
-```
-
-Fresh confirmation accepts the performance claim only when the simultaneous one-sided 95% upper
-bounds for `r = ln(head/base)` and `d = head-base` are below `-T_r` and `-T_d`. Derive one fixed even
-AB/BA pair count from both thresholds using the normal power procedure, with at least eight pairs
-and a preregistered cap no greater than 64. Do not reuse discovery or A/A observations, remove rows,
-change the lifecycle, or extend the budget after seeing confirmation.
-
-The low-latency gate handles measurement scale; it does not erase engineering cost. A candidate
-that adds persistent state or a large owner implementation must also preregister and pass a concrete
-memory, throughput, or documented integration objective, keep cold and unaffected paths within
-their noise budgets, and remove the superseded production path and temporary oracle before
-acceptance.
-
 Confirmation fixes `--bootstrap-resamples` at a decision-grade minimum of 10,000. Smaller values
 are permitted only for diagnostic exploration and can never produce a confirmation outcome;
 values above 100,000 are rejected to keep evidence generation bounded.
@@ -256,37 +225,6 @@ Suite exit precedence is fixed:
 The precedence is `2 > 1 > 3 > 0`. Candidate accepted/rejected/inconclusive state must be read from
 the mirrored per-row fields and mandatory non-performance gates, never inferred from this process
 code alone.
-
-### Structural complexity and resource amplification
-
-The latency gates above are not universal admission criteria. A separately preregistered
-structural lane may accept a repair without a measurable ordinary-fixture speedup when an
-externally reachable input controls repeated work, the old implementation contains a higher-order
-or unbounded term, and the candidate removes or caps that term.
-
-Freeze the evidence model before implementation:
-
-- name the independent input variables and the resource limit that bounds each one;
-- state the reachable pre-change and post-change time and added-space bounds, distinguishing
-  worst-case bounds from expected hash-table behavior;
-- identify the exact loop, lookup, rebuild, or expansion that realizes the old term;
-- choose code-path proof plus an exact test-only work counter, or a preregistered multi-scale curve
-  when the bound cannot be established directly;
-- preserve semantic output, structured errors and precedence, security policy, resource charges,
-  cancellation, and deterministic ordering;
-- run the existing representative public lane as a non-regression control when practical, and add
-  a memory bound when the data-structure change adds scale-sensitive state.
-
-Acceptance requires a reviewed causal derivation and passing correctness/resource gates. A noisy
-or sub-threshold clock result does not invalidate a proven removal of attacker-controlled
-quadratic work, but a confirmed material public-workload regression still requires rejection or an
-explicitly approved tradeoff. Describe the result as, for example, `O(A^2)` to expected `O(A)` or
-`O(T * (V + E))` to `O(T + V + E)` with its added-space bound. Do not call it a latency speedup
-unless a separate public-operation timing confirmation passes.
-
-Prefer existing correctness suites plus one combined adversarial scale test over a permanent
-fixture-specific benchmark. Delete candidate-only counters, lanes, contracts, and generators after
-rejection; retain infrastructure only when it serves a stable recurring contract.
 
 ### Report schema
 

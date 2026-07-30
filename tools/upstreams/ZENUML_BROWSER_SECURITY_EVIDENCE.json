@@ -9,7 +9,7 @@
   "sourceFiles": [
     {
       "path": "platforms/web/src/svg-safety-policy.ts",
-      "sha256": "2aba8730b2c7fb56e305659778502e59237a7752223139505d568b4cb9017d74"
+      "sha256": "f60b4a6f8f91cb92e606cb0820772e1e5cca80991eaf21af7a5528aa53f581cf"
     },
     {
       "path": "platforms/web/src/svg-safety.ts",

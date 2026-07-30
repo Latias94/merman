@@ -185,6 +185,66 @@
         "svg_viewbox_width",
         "svg_viewbox_height"
       ]
+    },
+    {
+      "id": "flowchart-adapter-low-cluster-memory",
+      "kind": "public",
+      "owner": "merman",
+      "public_operation": "render-svg",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "fresh-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-system-allocator-subprocess",
+      "required_features": ["svg"],
+      "selector": "memory/adapter_low_clusters/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 2, 4, 10, 32, 100],
+      "workload": "flowchart-adapter-low-cluster-generator-v1",
+      "evidence_contract": "docs/performance/contracts/flowchart-u4-adapter-low-cluster-memory-v1.json",
+      "measurement_metrics": [
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "input_nodes",
+        "input_edges",
+        "svg_sha256",
+        "svg_viewbox_width",
+        "svg_viewbox_height"
+      ]
+    },
+    {
+      "id": "flowchart-adapter-high-cluster-memory",
+      "kind": "public",
+      "owner": "merman",
+      "public_operation": "render-svg",
+      "diagnostic_stage": null,
+      "parent_public_lane": null,
+      "process_lifecycle": "fresh-process",
+      "engine_lifecycle": "reused-engine",
+      "logical_operations_per_estimate": 1,
+      "transport": "native-system-allocator-subprocess",
+      "required_features": ["svg"],
+      "selector": "memory/adapter_high_clusters/{fixture}",
+      "history_aliases": [],
+      "size_vector": [1, 2, 4, 10, 32, 100],
+      "workload": "flowchart-adapter-high-cluster-generator-v1",
+      "evidence_contract": "docs/performance/contracts/flowchart-u4-adapter-high-cluster-memory-v1.json",
+      "measurement_metrics": [
+        "allocation_count",
+        "allocated_bytes",
+        "peak_growth_bytes"
+      ],
+      "semantic_output_dimensions": [
+        "input_nodes",
+        "input_edges",
+        "svg_sha256",
+        "svg_viewbox_width",
+        "svg_viewbox_height"
+      ]
     }
   ],
   "fixtures": [

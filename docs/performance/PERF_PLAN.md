@@ -44,36 +44,19 @@ An ordinary regression enters the active queue when both conditions hold:
 - the same-host A/B regression exceeds 10%; and
 - the absolute median increase exceeds 50 microseconds.
 
-A fixed 50-microsecond threshold cannot classify a public operation whose complete baseline is
-itself below 50 microseconds. For a frozen baseline below 500 microseconds, a candidate may instead
-preregister the low-latency gate in [BENCHMARKING.md](BENCHMARKING.md). That gate derives both
-thresholds from the baseline and independent A/A noise, still requires fresh public-operation
-confirmation, and adds a memory, throughput, or documented high-volume objective when the
-implementation adds substantial machinery. It is not an automatic exception for a large ratio on
-a tiny private stage.
-
-A workload can also bypass the ordinary threshold when it crosses an interactive frame budget,
-materially changes throughput or memory use, or affects a documented high-volume integration. The
-exception and its evidence must be frozen before confirmation samples are collected.
-
-An externally reachable complexity or resource-amplification repair uses a different evidence
-class. It must name the user-controlled variables, prove the reachable old/new time and added-space
-bounds, preserve semantic and resource-accounting behavior, and keep representative public work
-within its non-regression budget. Such a result may be accepted as a structural repair without
-clearing a latency threshold, but it is not a measured speedup unless a separate end-to-end timing
-gate passes.
+A workload can bypass that threshold when it crosses an interactive frame budget, materially
+changes throughput or memory use, or affects a documented high-volume integration. A large ratio
+on a two-microsecond operation is evidence to retain, not automatically a priority.
 
 Before implementation:
 
-1. Select and preregister the admission class.
-2. Match capabilities between base and target revisions.
-3. Attribute parse, layout, render, and end-to-end stages.
-4. For timing or throughput, run at least eight balanced base and head A/A calibration pairs,
-   derive the fixed even AB/BA confirmation count from the preregistered MDE, and collect fresh
-   order-balanced pairs within the fixed maximum budget. For structural work, freeze the input
-   variables, old/new time and space bounds, and exact counter or scale-curve method instead.
-5. Record model size, SVG bytes/elements, and the relevant semantic, DOM, or raster parity result.
-6. Profile only after the slow stage is known.
+1. Match capabilities between base and target revisions.
+2. Attribute parse, layout, render, and end-to-end stages.
+3. Run at least eight balanced base and head A/A calibration pairs, derive the fixed even AB/BA
+   confirmation count from the preregistered MDE, and collect fresh order-balanced pairs within the
+   fixed maximum budget.
+4. Record model size, SVG bytes/elements, and the relevant semantic, DOM, or raster parity result.
+5. Profile only after the slow stage is known.
 
 ## Priorities
 
@@ -157,11 +140,6 @@ Exit: the remaining focused 2.81x layout and 3.85x SVG ratios are attributed to 
 with checked-in absolute stage receipts, and any retained change preserves Requirement goldens,
 sanitization, custom-measurer behavior, and public layout JSON.
 
-Completed on 2026-07-29. Sampling attributed 96.6% of Requirement prepare time to text/label work
-and Dugong, both excluded from the residual unit; the dispersed remainder has no qualifying
-owner-local term. U9 closes without production changes; see
-[the closure receipt](runtime_hypothesis_closures_2026-07-29.md).
-
 ### P1.1: Add fair reusable and strict cross-runner lanes
 
 The current public-path comparison is intentionally asymmetric: Merman's one-shot helper creates a
@@ -191,11 +169,6 @@ does; do not add a global cache or syntax classifier.
 Exit: Kanban semantic/layout/SVG goldens and hostile Markdown/HTML behavior remain identical, and a
 decision-grade adjacent A/B confirmation shows the exact stage and absolute saving.
 
-Completed on 2026-07-29. The accepted private artifact reuses prepared section/card-title XHTML and
-geometry while leaving detail-only measurements in SVG emission. The public medium lane improved
-from 51.65 us to 40.71 us (-21.19%, -10.94 us); see
-[the U5 receipt](kanban_prepared_labels_candidate_2026-07-29.md).
-
 ### P1.4: Avoid editor-only bookkeeping in render-only parsing
 
 Several typed render parsers reuse semantic constructors that also populate editor facts and lexeme
@@ -204,11 +177,6 @@ do not fork a second parser.
 
 Exit: semantic models, errors, recovery, spans, and editor output remain identical, while
 `parse`, `compatibility_json_parse`, and end-to-end measurements show where the fixed cost moved.
-
-Completed on 2026-07-29. Mindmap and Requirement were rejected by whole-parser upper bounds. A
-temporary Kanban no-fact candidate saved about 1.0 us (2.49%) on the accepted 40.71 us public path,
-below its 4.07 us and 10% low-latency thresholds, and was removed. See
-[the closure receipt](runtime_hypothesis_closures_2026-07-29.md).
 
 ### P1.5: Measure reporting overhead on the string-only SVG path
 
@@ -219,11 +187,6 @@ cause; reject it if the absolute saving is below the active threshold.
 
 Exit: report APIs retain identical evidence, string APIs retain identical SVG/error behavior, and
 the stage benchmark demonstrates any saving.
-
-Completed on 2026-07-29. A minimal raw-string terminal candidate improved the smallest public Info
-path by 0.391 us (9.76%), below the low-latency gate's 1 us and 10% minima. It was removed without
-expanding the API surface or tests; see
-[the closure receipt](runtime_hypothesis_closures_2026-07-29.md).
 
 ### P1.6: Optimize large Flowchart scaling
 
@@ -247,27 +210,6 @@ latency comparison before retaining production code.
 
 Exit: the curve identifies the first superlinear or allocation-heavy stage and a representative
 large preview fits the agreed interactive budget.
-
-Completed on 2026-07-29 with a split decision. The indexed Flowchart adapter candidate was rejected
-and removed after it failed to produce an admissible public-operation result. The separate Dugong
-batch-retirement mechanism remains because it bounds repeated adjacency reconstruction from
-worst-case `O(T * (V + E))` to `O(T + V + E)`; its preregistered latency and memory admission was
-not completed, so no measured speedup is claimed. Candidate-only memory lanes, contracts,
-generators, and tests were deleted. See
-[the adapter decision](flowchart_u4_adapter_candidate_2026-07-29.md) and
-[the batch preregistration outcome](flowchart_u4_dugong_batch_preregistration_2026-07-28.md).
-
-### P1.7: Bound Resvg finalization and export work
-
-Remove input-amplifiable work from terminal reference and attribute validation independently of
-ordinary-fixture latency. Measure one-shot raster export and ResvgSafe finalization on complete
-public operations before changing ownership or error-order contracts.
-
-Completed on 2026-07-29. Duplicate parsed-ID reference edges changed from `O(D * R)` to
-`O(D + R)`, and duplicate expanded-attribute membership changed from `O(A^2)` to expected `O(A)`.
-The one-worker PNG candidate saved only 0.78%; the single-reader XML candidate regressed by 0.57%.
-Both latency candidates and their one-fixture benchmark lanes were removed. See [the U8
-receipt](resvg_pipeline_candidates_2026-07-29.md).
 
 ## Guardrails
 

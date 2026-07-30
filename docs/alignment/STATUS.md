@@ -182,8 +182,8 @@ rasterizers do not reproduce every browser `foreignObject` behavior; see
   11.15 behavior locally to make affected fixtures look different from the pinned upstream.
 
 CLI compatibility details live in `docs/alignment/CLI_COMPATIBILITY.md`. The CLI supports the
-documented `mmdc`-style render/export flags under the `merman-cli` binary name; it does not install
-an `mmdc` binary alias.
+documented `mmdc@11.16.0` render/export flags through `merman-cli mmdc`; it does not install an
+`mmdc` binary alias. Native rendering uses the separate `render` and `batch` commands.
 
 ## Verification
 

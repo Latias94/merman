@@ -54,8 +54,8 @@ candidate.
 
 The indexed hierarchy, boundary, incident-edge, and extraction implementations and their private
 work probes were removed. `crates/merman-render/src/flowchart/layout.rs` is byte-identical to the
-adjacent base for this candidate. The Dugong batch-retirement change from `c3130d4dc` remains only
-as a documented asymptotic complexity repair; it carries no ordinary-latency or memory claim.
+adjacent base for this candidate. The separately admitted Dugong batch-retirement optimization from
+`c3130d4dc` remains in place.
 
 Verification after removal:
 
@@ -64,9 +64,7 @@ CARGO_BUILD_JOBS=1 cargo +1.95.0 test --locked -p merman-render --lib flowchart
 67 passed; 0 failed; 794 filtered out
 ```
 
-The candidate-bound low/high-cluster memory lanes, contracts, generators, and their dedicated
-tests were retired with the rejected implementation. The generic Flowchart public scaling/stress
-coverage and `flowchart-end-to-end-memory` lane remain useful for future adapter designs. Any new
-production candidate requires a new adjacent base, preregistration, discovery anchor, and
+The retained public and diagnostic benchmark lanes remain useful for future adapter designs. Any
+new production candidate requires a new adjacent base, preregistration, discovery anchor, and
 confirmation receipt; this result must not be reinterpreted as evidence that the original adapter
 is optimal.
