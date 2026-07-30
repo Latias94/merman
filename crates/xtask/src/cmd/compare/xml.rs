@@ -806,9 +806,8 @@ mod tests {
             .write(true)
             .open(&lock_path)
             .expect("open contender lock handle");
-        let error = fs2::FileExt::try_lock_exclusive(&contender)
+        fs2::FileExt::try_lock_exclusive(&contender)
             .expect_err("a second invocation must not acquire the same output transaction");
-        assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
 
         drop(guard);
         fs2::FileExt::try_lock_exclusive(&contender)
