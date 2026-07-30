@@ -177,7 +177,7 @@ fn command_needs_working_directory(command: &RawCommand) -> bool {
 }
 
 pub(crate) fn cli_command() -> clap::Command {
-    let mut command = Cli::command()
+    let command = Cli::command()
         .mut_subcommand("detect", |subcommand| {
             subcommand.after_help(
                 "More options: `merman-cli detect --help` shows source resource controls.",
@@ -189,56 +189,46 @@ pub(crate) fn cli_command() -> clap::Command {
             )
         });
     #[cfg(any(feature = "svg", feature = "ascii"))]
-    {
-        command = command.mut_subcommand("render", |subcommand| {
-            subcommand.after_help(
-                "Examples:\n  merman-cli render diagram.mmd\n\nMore options: `merman-cli render --help` shows advanced renderer, resource, and security controls.",
-            )
-        });
-    }
+    let command = command.mut_subcommand("render", |subcommand| {
+        subcommand.after_help(
+            "Examples:\n  merman-cli render diagram.mmd\n\nMore options: `merman-cli render --help` shows advanced renderer, resource, and security controls.",
+        )
+    });
     #[cfg(feature = "markdown")]
-    {
-        command = command.mut_subcommand("batch", |subcommand| {
+    let command = command.mut_subcommand("batch", |subcommand| {
+        subcommand.after_help(
+            "Examples:\n  merman-cli batch README.md\n\nMore options: `merman-cli batch --help` shows advanced renderer, resource, and security controls.",
+        )
+    });
+    #[cfg(feature = "analysis")]
+    let command = command
+        .mut_subcommand("lint", |subcommand| {
             subcommand.after_help(
-                "Examples:\n  merman-cli batch README.md\n\nMore options: `merman-cli batch --help` shows advanced renderer, resource, and security controls.",
+                "Examples:\n  merman-cli lint diagram.mmd\n  merman-cli lint --format json diagram.mmd\n\nMore options: `merman-cli lint --help` shows advanced rule, runtime, and resource controls.",
+            )
+        })
+        .mut_subcommand("fix", |subcommand| {
+            subcommand.after_help(
+                "Examples:\n  merman-cli fix --check diagram.mmd\n  merman-cli fix --diff diagram.mmd\n\nMore options: `merman-cli fix --help` shows advanced rule, runtime, and resource controls.",
             )
         });
-    }
-    #[cfg(feature = "analysis")]
-    {
-        command = command
-            .mut_subcommand("lint", |subcommand| {
-                subcommand.after_help(
-                    "Examples:\n  merman-cli lint diagram.mmd\n  merman-cli lint --format json diagram.mmd\n\nMore options: `merman-cli lint --help` shows advanced rule, runtime, and resource controls.",
-                )
-            })
-            .mut_subcommand("fix", |subcommand| {
-                subcommand.after_help(
-                    "Examples:\n  merman-cli fix --check diagram.mmd\n  merman-cli fix --diff diagram.mmd\n\nMore options: `merman-cli fix --help` shows advanced rule, runtime, and resource controls.",
-                )
-            });
-    }
     #[cfg(feature = "shell-completions")]
-    {
-        command = command.mut_subcommand("completion", |subcommand| {
-            subcommand
-                .after_help("Examples:\n  merman-cli completion bash\n  merman-cli completion zsh")
-        });
-    }
+    let command = command.mut_subcommand("completion", |subcommand| {
+        subcommand
+            .after_help("Examples:\n  merman-cli completion bash\n  merman-cli completion zsh")
+    });
     #[cfg(feature = "svg")]
-    {
-        command = command
-            .mut_subcommand("layout", |subcommand| {
-                subcommand.after_help(
-                    "More options: `merman-cli layout --help` shows layout, configuration, runtime, and resource controls.",
-                )
-            })
-            .mut_subcommand("mmdc", |subcommand| {
-                subcommand.after_help(
-                    "Examples:\n  merman-cli mmdc -i diagram.mmd -o diagram.svg\n\nMore options: `merman-cli mmdc --help` shows advanced compatibility, renderer, resource, and security controls.",
-                )
-            });
-    }
+    let command = command
+        .mut_subcommand("layout", |subcommand| {
+            subcommand.after_help(
+                "More options: `merman-cli layout --help` shows layout, configuration, runtime, and resource controls.",
+            )
+        })
+        .mut_subcommand("mmdc", |subcommand| {
+            subcommand.after_help(
+                "Examples:\n  merman-cli mmdc -i diagram.mmd -o diagram.svg\n\nMore options: `merman-cli mmdc --help` shows advanced compatibility, renderer, resource, and security controls.",
+            )
+        });
     let help = root_help(&command);
     command.override_help(help)
 }
@@ -666,6 +656,13 @@ mod tests {
     use super::*;
     use std::io::{Cursor, Read, Write};
     use std::path::PathBuf;
+    #[cfg(any(
+        feature = "analysis",
+        feature = "svg",
+        feature = "ascii",
+        feature = "markdown",
+        feature = "network-icons"
+    ))]
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -706,11 +703,13 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     struct CountingReader {
         reads: Arc<AtomicUsize>,
         source: Cursor<Vec<u8>>,
     }
 
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     impl Read for CountingReader {
         fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
             self.reads.fetch_add(1, Ordering::SeqCst);

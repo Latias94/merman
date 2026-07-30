@@ -340,6 +340,7 @@ fn math_renderer(
 mod tests {
     use super::*;
 
+    #[cfg(feature = "svg")]
     fn default_resources() -> ResolvedResourcePolicy {
         ResolvedResourcePolicy::for_profile(merman::resources::CLI_DEFAULT_RESOURCE_PROFILE)
     }

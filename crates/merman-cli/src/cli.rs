@@ -1863,7 +1863,10 @@ fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
     Ok(parsed)
 }
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(feature = "svg", feature = "pdf", feature = "png", feature = "jpeg")
+))]
 mod tests {
     use super::*;
 

@@ -812,6 +812,7 @@ impl CheckedSchedulingWeight {
         self.0.try_add(amount)
     }
 
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) fn check_single(&self, amount: u64) -> Result<(), ResourceLedgerError> {
         let mut empty = CheckedLedger::new(self.0.profile, self.0.id, self.0.max);
         empty.try_add(amount)
