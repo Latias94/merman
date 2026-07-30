@@ -8,6 +8,7 @@ LICENSE-*      text eol=lf
 
 # Core sources/docs/fixtures
 *.rs      text eol=lf
+*.lalrpop text eol=lf
 *.toml    text eol=lf
 *.md      text eol=lf
 *.json    text eol=lf

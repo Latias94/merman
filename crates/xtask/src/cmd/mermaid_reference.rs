@@ -1424,7 +1424,23 @@ fn resolve_typescript_import(base: &Path, import_path: &str) -> Result<PathBuf, 
     {
         normalized.set_extension("ts");
     }
-    Ok(normalized)
+    normalize_typescript_source_path(&normalized)
+}
+
+fn normalize_typescript_source_path(path: &Path) -> Result<PathBuf, String> {
+    let normalized = path
+        .to_str()
+        .ok_or_else(|| "detector source path is not valid UTF-8".to_string())?
+        .replace('\\', "/");
+    let bytes = normalized.as_bytes();
+    let has_windows_drive_prefix =
+        bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+    if has_windows_drive_prefix || !is_owned_relative_path(&normalized) {
+        return Err(format!(
+            "detector source path {normalized:?} is not a normalized checkout-relative path"
+        ));
+    }
+    Ok(PathBuf::from(normalized))
 }
 
 fn is_typescript_identifier(value: &str) -> bool {
@@ -3779,6 +3795,22 @@ mod tests {
 
     #[test]
     fn builtin_diagram_inventory_extractor_keeps_upstream_registration_order() {
+        assert_eq!(
+            normalize_typescript_source_path(Path::new(
+                r"packages\mermaid\src\diagrams\alpha\detector.ts",
+            ))
+            .expect("normalize Windows detector path"),
+            PathBuf::from("packages/mermaid/src/diagrams/alpha/detector.ts")
+        );
+        assert!(
+            normalize_typescript_source_path(Path::new(r"..\outside\detector.ts")).is_err(),
+            "path normalization must not admit a checkout escape"
+        );
+        assert!(
+            normalize_typescript_source_path(Path::new(r"C:\outside\detector.ts")).is_err(),
+            "path normalization must not admit a Windows drive path"
+        );
+
         let orchestration = r#"
 import alpha from '../diagrams/alpha/detector.js';
 import { beta } from '../diagrams/beta/detector.js';
@@ -3794,14 +3826,21 @@ const addDiagrams = () => {
         let ids = extract_builtin_diagram_ids(
             orchestration,
             Path::new("packages/mermaid/src/diagram-api/diagram-orchestration.ts"),
-            |path| match path.to_string_lossy().as_ref() {
-                "packages/mermaid/src/diagrams/alpha/detector.ts" => {
-                    Ok("const id = 'alpha';".to_string())
+            |path| {
+                let path = path.to_string_lossy();
+                assert!(
+                    !path.contains('\\'),
+                    "detector path must use portable forward slashes: {path}"
+                );
+                match path.as_ref() {
+                    "packages/mermaid/src/diagrams/alpha/detector.ts" => {
+                        Ok("const id = 'alpha';".to_string())
+                    }
+                    "packages/mermaid/src/diagrams/beta/detector.ts" => {
+                        Ok("const id = 'beta';".to_string())
+                    }
+                    other => Err(format!("unexpected detector path {other}")),
                 }
-                "packages/mermaid/src/diagrams/beta/detector.ts" => {
-                    Ok("const id = 'beta';".to_string())
-                }
-                other => Err(format!("unexpected detector path {other}")),
             },
         )
         .expect("extract static registry entries");
