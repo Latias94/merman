@@ -179,6 +179,7 @@ assert.doesNotThrow(() =>
 assert.doesNotThrow(() =>
   assertSafeSvgForDom('<svg><style>text { fill: url(/* local */ #fill); }</style><text>ok</text></svg>'),
 );
+assert.doesNotThrow(() => assertSafeSvgForDom("<svg><style/></svg>"));
 assert.doesNotThrow(() =>
   assertSafeSvgForDom(
     "<svg><style>/*\u0130*/ text { fill: red; }</StYlE><text>ok</text></svg>",
@@ -458,6 +459,14 @@ assert.throws(
       "<svg><style>text { fill: \\75\r\nrl(javascript:alert(1)); }</style></svg>",
     ),
   /CSS resource|CSS URL/,
+);
+// An unterminated raw-text element must fail before later pseudo tags are treated as CSS.
+assert.throws(
+  () =>
+    assertSafeSvgForDom(
+      '<svg><style>text { fill: red; }<style>@import "https://example.com/a.css";</svg>',
+    ),
+  /malformed SVG output/,
 );
 assert.throws(
   () =>

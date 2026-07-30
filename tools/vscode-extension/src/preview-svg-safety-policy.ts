@@ -263,13 +263,14 @@ class SvgSafetyScanner {
         this.foreignObjectDepth += 1;
       }
 
-      if (elementName === "style") {
+      if (elementName === "style" && !tag.selfClosing) {
         const styleEnd = findClosingStyle(this.source, tag.end);
-        const styleText = this.source.slice(tag.end, styleEnd ?? this.source.length);
-        this.assertSafeCss(styleText);
-        if (styleEnd !== null) {
-          this.cursor = styleEnd;
+        if (styleEnd === null) {
+          throw this.error("malformed SVG output.");
         }
+        const styleText = this.source.slice(tag.end, styleEnd);
+        this.assertSafeCss(styleText);
+        this.cursor = styleEnd;
       }
     }
 
