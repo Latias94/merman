@@ -15,5 +15,6 @@ categories = ["visualization"]
 
 [dependencies]
 indexmap.workspace = true
+libm.workspace = true
 thiserror.workspace = true
 rustc-hash.workspace = true

@@ -124,7 +124,7 @@ ARTIFACT_DEPENDENCY_APPROVALS: ApprovalCatalog = {
         ("x86_64-unknown-linux-gnu", "sha256:5a7165a057183e78f673b15efedb5f25ab88044294946b815e9ceeaabdd86c0f"),
     ),
     "typst-wasm": (
-        ("wasm32-unknown-unknown", "sha256:152fb771aafb93d14024220c27ec77845fb7363ff175f575d834bea14bbeedf1"),
+        ("wasm32-unknown-unknown", "sha256:cf6982ad961e7434c0fcc26436475a5ef8bf1b295ca5bd09f11bf3cbb21fc602"),
     ),
     "web-analysis": (
         ("wasm32-unknown-unknown", "sha256:296ab2487e983b95b516dec8b5cc325afa1d8f7471c7d221bb7d8d2a11dc67f6"),

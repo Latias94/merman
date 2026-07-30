@@ -2195,6 +2195,7 @@ name = "manatee"
 version = "0.8.0-alpha.4"
 dependencies = [
  "indexmap",
+ "libm",
  "rustc-hash",
  "thiserror 2.0.18",
 ]
@@ -2440,6 +2441,7 @@ dependencies = [
  "icu_locale_core",
  "indexmap",
  "kurbo",
+ "libm",
  "manatee",
  "merman-core",
  "merman-fixture-render-context",

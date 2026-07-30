@@ -3,7 +3,8 @@
 //! This module ports the layout/geometry path used by `@upsetjs/venn.js@2.0.0` and the minimal
 //! `fmin@0.0.4` optimizer helpers it depends on. The diagram adapter is intentionally thin: it
 //! projects the core render model into the same helper layout surface that Mermaid consumes before
-//! SVG emission.
+//! SVG emission. Geometry uses pure Rust transcendental functions because the iterative optimizer
+//! amplifies host math-library differences into visible layout drift.
 
 use crate::model::{
     Bounds as LayoutBounds, VennAreaLayout, VennCircleLayout, VennDiagramLayout,
@@ -163,8 +164,9 @@ fn layout_text_nodes(
             .circles
             .iter()
             .map(|circle| {
-                circle.radius
-                    - ((center_x - circle.x).powi(2) + (center_y - circle.y).powi(2)).sqrt()
+                let dx = center_x - circle.x;
+                let dy = center_y - circle.y;
+                circle.radius - libm::sqrt(dx * dx + dy * dy)
             })
             .fold(f64::INFINITY, f64::min);
         let mut inner_radius = if inner_radius_raw.is_finite() {
@@ -191,7 +193,7 @@ fn layout_text_nodes(
         let label_offset = label_offset_base + if nodes.len() <= 2 { 30.0 * scale } else { 0.0 };
         let start_x = center_x - inner_width / 2.0;
         let start_y = center_y - inner_height / 2.0 + label_offset;
-        let cols = (nodes.len() as f64).sqrt().ceil().max(1.0) as usize;
+        let cols = libm::sqrt(nodes.len() as f64).ceil().max(1.0) as usize;
         let rows = nodes.len().div_ceil(cols).max(1);
         let cell_width = inner_width / cols as f64;
         let cell_height = inner_height / rows as f64;
@@ -715,7 +717,8 @@ fn add_missing_areas(areas: &[VennArea], distinct: bool) -> Vec<VennArea> {
 }
 
 pub fn distance_from_intersect_area(r1: f64, r2: f64, overlap: f64) -> f64 {
-    if r1.min(r2).powi(2) * PI <= overlap + SMALL {
+    let min_radius = r1.min(r2);
+    if min_radius * min_radius * PI <= overlap + SMALL {
         return (r1 - r2).abs();
     }
     bisect(
@@ -753,7 +756,7 @@ pub fn greedy_layout(areas: &[VennArea]) -> VennLayoutResult<VennSolution> {
                     set: set.clone(),
                     x: 1e10,
                     y: 1e10,
-                    radius: (area.size / PI).sqrt(),
+                    radius: libm::sqrt(area.size / PI),
                 },
             );
             set_overlaps.insert(set, Vec::new());
@@ -968,7 +971,7 @@ fn constrained_mds_layout(areas: &[VennArea], options: &VennLayoutOptions) -> Ve
                 set: setid,
                 x: positions[2 * i] * norm,
                 y: positions[2 * i + 1] * norm,
-                radius: (set.size / PI).sqrt(),
+                radius: libm::sqrt(set.size / PI),
             },
         );
     }
@@ -990,8 +993,8 @@ fn get_distance_matrices(
         let Some(&right) = setids.get(&current.sets[1]) else {
             continue;
         };
-        let r1 = (sets[left].size / PI).sqrt();
-        let r2 = (sets[right].size / PI).sqrt();
+        let r1 = libm::sqrt(sets[left].size / PI);
+        let r2 = libm::sqrt(sets[right].size / PI);
         let distance = distance_from_intersect_area(r1, r2, current.size);
         distances[left][right] = distance;
         distances[right][left] = distance;
@@ -1025,8 +1028,10 @@ fn constrained_mds_gradient(
             let yj = x[2 * j + 1];
             let dij = distances[i][j];
             let constraint = constraints[i][j];
-            let squared_distance = (xj - xi).powi(2) + (yj - yi).powi(2);
-            let distance = squared_distance.sqrt();
+            let dx = xj - xi;
+            let dy = yj - yi;
+            let squared_distance = dx * dx + dy * dy;
+            let distance = libm::sqrt(squared_distance);
             let delta = squared_distance - dij * dij;
 
             if (constraint > 0 && distance <= dij) || (constraint < 0 && distance >= dij) {
@@ -1201,9 +1206,9 @@ fn orientate_circles(circles: &mut [VennCircle], orientation: f64) {
     }
 
     if circles.len() > 1 {
-        let rotation = circles[1].x.atan2(circles[1].y) - orientation;
-        let c = rotation.cos();
-        let s = rotation.sin();
+        let rotation = libm::atan2(circles[1].x, circles[1].y) - orientation;
+        let c = libm::cos(rotation);
+        let s = libm::sin(rotation);
         for circle in circles.iter_mut() {
             let x = circle.x;
             let y = circle.y;
@@ -1213,7 +1218,7 @@ fn orientate_circles(circles: &mut [VennCircle], orientation: f64) {
     }
 
     if circles.len() > 2 {
-        let mut angle = circles[2].x.atan2(circles[2].y) - orientation;
+        let mut angle = libm::atan2(circles[2].x, circles[2].y) - orientation;
         while angle < 0.0 {
             angle += TAU;
         }
@@ -1283,7 +1288,7 @@ pub fn scale_solution(
     }
 
     let (x_scaling, y_scaling) = if let Some(scale_to_fit) = scale_to_fit {
-        let to_scale_diameter = (scale_to_fit / PI).sqrt() * 2.0;
+        let to_scale_diameter = libm::sqrt(scale_to_fit / PI) * 2.0;
         (width / to_scale_diameter, height / to_scale_diameter)
     } else {
         (
@@ -1357,7 +1362,7 @@ fn intersection_area_stats(circles: &[VennCircle]) -> AreaStats {
     if inner_points.len() > 1 {
         let center = get_center(inner_points.iter().map(|p| p.point));
         for point in &mut inner_points {
-            point.angle = (point.point.x - center.x).atan2(point.point.y - center.y);
+            point.angle = libm::atan2(point.point.x - center.x, point.point.y - center.y);
         }
         inner_points.sort_by(|a, b| b.angle.total_cmp(&a.angle));
 
@@ -1375,8 +1380,8 @@ fn intersection_area_stats(circles: &[VennCircle]) -> AreaStats {
                     continue;
                 }
                 let circle = &circles[parent];
-                let a1 = (p1.point.x - circle.x).atan2(p1.point.y - circle.y);
-                let a2 = (p2.point.x - circle.x).atan2(p2.point.y - circle.y);
+                let a1 = libm::atan2(p1.point.x - circle.x, p1.point.y - circle.y);
+                let a2 = libm::atan2(p2.point.x - circle.x, p2.point.y - circle.y);
                 let mut angle_diff = a2 - a1;
                 if angle_diff < 0.0 {
                     angle_diff += TAU;
@@ -1385,8 +1390,8 @@ fn intersection_area_stats(circles: &[VennCircle]) -> AreaStats {
                 let mut width = distance_points(
                     mid_point,
                     VennPoint {
-                        x: circle.x + circle.radius * a.sin(),
-                        y: circle.y + circle.radius * a.cos(),
+                        x: circle.x + circle.radius * libm::sin(a),
+                        y: circle.y + circle.radius * libm::cos(a),
                     },
                 );
                 if width > circle.radius * 2.0 {
@@ -1478,7 +1483,7 @@ fn get_intersection_points(circles: &[VennCircle]) -> Vec<IntersectionPoint> {
 }
 
 pub fn circle_area(r: f64, width: f64) -> f64 {
-    r * r * (1.0 - width / r).acos() - (r - width) * (width * (2.0 * r - width)).sqrt()
+    r * r * libm::acos(1.0 - width / r) - (r - width) * libm::sqrt(width * (2.0 * r - width))
 }
 
 pub fn distance(p1: &VennCircle, p2: &VennCircle) -> f64 {
@@ -1499,7 +1504,9 @@ fn distance_point_circle(point: VennPoint, circle: &VennCircle) -> f64 {
 }
 
 fn distance_points(p1: VennPoint, p2: VennPoint) -> f64 {
-    ((p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sqrt()
+    let dx = p1.x - p2.x;
+    let dy = p1.y - p2.y;
+    libm::sqrt(dx * dx + dy * dy)
 }
 
 pub fn circle_overlap(r1: f64, r2: f64, d: f64) -> f64 {
@@ -1523,7 +1530,7 @@ pub fn circle_circle_intersection(p1: &VennCircle, p2: &VennCircle) -> Vec<VennP
     }
 
     let a = (r1 * r1 - r2 * r2 + d * d) / (2.0 * d);
-    let h = (r1 * r1 - a * a).sqrt();
+    let h = libm::sqrt(r1 * r1 - a * a);
     let x0 = p1.x + (a * (p2.x - p1.x)) / d;
     let y0 = p1.y + (a * (p2.y - p1.y)) / d;
     let rx = -(p2.y - p1.y) * (h / d);
@@ -2111,7 +2118,7 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
 }
 
 fn norm2(a: &[f64]) -> f64 {
-    dot(a, a).sqrt()
+    libm::sqrt(dot(a, a))
 }
 
 fn scale(ret: &mut [f64], value: &[f64], c: f64) {
@@ -2391,6 +2398,41 @@ mod tests {
         assert!(!layout[0].path.is_empty());
         assert_eq!(layout[2].circles.len(), 2);
         assert!(!layout[2].text.disjoint);
+    }
+
+    #[test]
+    fn three_set_layout_matches_v8_rounding_and_floor_reference() {
+        let areas = vec![
+            area(&["Frontend"], 10.0),
+            area(&["Backend"], 10.0),
+            area(&["DevOps"], 10.0),
+            area(&["Backend", "Frontend"], 2.5),
+            area(&["Backend", "DevOps"], 2.5),
+            area(&["DevOps", "Frontend"], 2.5),
+            area(&["Backend", "DevOps", "Frontend"], 1.111_111_111_111_111_2),
+        ];
+        let layout = compute_venn_layout(
+            &areas,
+            &VennLayoutOptions {
+                width: 800.0,
+                height: 426.0,
+                padding: 8.0,
+                ..Default::default()
+            },
+        )
+        .expect("three-set layout");
+
+        let frontend = layout
+            .iter()
+            .find(|area| area.data.sets == ["Frontend"])
+            .expect("Frontend area");
+        assert_eq!(round_path_value(frontend.circles[0].x, Some(3)), 316.303);
+
+        let backend_frontend = layout
+            .iter()
+            .find(|area| area.data.sets == ["Backend", "Frontend"])
+            .expect("Backend and Frontend area");
+        assert_eq!(backend_frontend.text.x.floor(), 399.0);
     }
 
     #[test]

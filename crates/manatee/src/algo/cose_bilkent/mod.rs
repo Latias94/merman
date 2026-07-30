@@ -740,8 +740,10 @@ impl SimGraph {
             }
             let node_angle = (half_interval + frame.start_angle).rem_euclid(360.0);
             let teta = (node_angle * std::f64::consts::TAU) / 360.0;
-            let x_ = frame.distance * teta.cos();
-            let y_ = frame.distance * teta.sin();
+            // Host libm implementations can differ by a few ULPs. The iterative layout amplifies
+            // those differences, so keep its radial seed on one pure Rust implementation.
+            let x_ = frame.distance * libm::cos(teta);
+            let y_ = frame.distance * libm::sin(teta);
             self.nodes[frame.node].set_center(x_, y_);
 
             let neighbor_edges: Vec<usize> = self.nodes[frame.node].edges.clone();
@@ -1944,6 +1946,13 @@ mod tests {
     fn assert_close(a: f64, b: f64) {
         let eps = 1e-3;
         assert!((a - b).abs() <= eps, "expected {a} ~= {b} (eps={eps})");
+    }
+
+    #[test]
+    fn radial_trig_matches_v8_reference_values() {
+        let radial_angle = (9.475_f64 * std::f64::consts::TAU) / 360.0;
+        assert_eq!(libm::sin(radial_angle).to_bits(), 0x3fc5_122d_8320_944e);
+        assert_eq!(libm::cos(radial_angle).to_bits(), 0x3fef_903d_a710_dece);
     }
 
     #[test]

@@ -48,6 +48,7 @@ indexmap = { workspace = true, features = ["serde"] }
 icu_collator.workspace = true
 icu_locale_core.workspace = true
 kurbo.workspace = true
+libm.workspace = true
 manatee = { workspace = true, optional = true }
 merman-layout-elk = { workspace = true, optional = true }
 merman-core.workspace = true

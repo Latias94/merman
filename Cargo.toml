@@ -57,6 +57,7 @@ indexmap = "2.2.6"
 lalrpop = "0.23.1"
 lalrpop-util = { version = "0.23.1", default-features = false }
 libc = "0.2"
+libm = { version = "=0.2.16", default-features = false }
 pulldown-cmark = { version = "0.13.4", default-features = false }
 ratex-layout = "0.1.13"
 ratex-parser = "0.1.13"
