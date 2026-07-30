@@ -10,7 +10,7 @@
 
 #include "merman_text_measurement_abi.h"
 
-#if defined(__cplusplus) && __cplusplus >= 201703L
+#if defined(__cplusplus) && (__cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L))
 #define MERMAN_NATIVE_NOEXCEPT noexcept
 #else
 #define MERMAN_NATIVE_NOEXCEPT
