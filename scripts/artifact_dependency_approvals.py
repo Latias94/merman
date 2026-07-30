@@ -20,7 +20,7 @@ ARTIFACT_DEPENDENCY_APPROVALS: ApprovalCatalog = {
         ("x86_64-unknown-linux-gnu", "sha256:f5a5a602a37f6e22229239f89f8f6233470ac2ae24a2a2fcf52ed9b8ce4d4750"),
     ),
     "rust-svg-basic": (
-        ("x86_64-unknown-linux-gnu", "sha256:b53b13b6b3b0b75db19064d820121d0a26afa305f9fa63990b9383a48a086cff"),
+        ("x86_64-unknown-linux-gnu", "sha256:b3d177d1791beeb4ad67ed082ec018b023477b9e8de687b5fb87c61f80f9c09a"),
     ),
     "cli-analysis": (
         ("aarch64-apple-darwin", "sha256:9066e7ca12db7c2383bff0cfcca880b74986c0f773ea6c36d9bbcf4e347f7749"),
