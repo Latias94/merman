@@ -286,6 +286,12 @@ fn read_descriptor(path: &Path) -> Result<ArtifactProfileDescriptor, String> {
 }
 
 fn relative_manifest(root: &Path, path: &Path) -> Result<String, String> {
+    let path = fs::canonicalize(path).map_err(|error| {
+        format!(
+            "cannot resolve Cargo manifest `{}`: {error}",
+            path.display()
+        )
+    })?;
     path.strip_prefix(root)
         .map_err(|_| {
             format!(
@@ -1081,6 +1087,22 @@ mod tests {
     fn context() -> &'static ValidationContext {
         static CONTEXT: OnceLock<ValidationContext> = OnceLock::new();
         CONTEXT.get_or_init(|| ValidationContext::load(&super::super::workspace_root()).unwrap())
+    }
+
+    #[test]
+    fn relative_manifest_normalizes_equivalent_path_spellings() {
+        let temporary = tempfile::tempdir().expect("temporary directory");
+        let root = temporary.path().join("workspace");
+        fs::create_dir_all(root.join("nested")).expect("workspace directories");
+        fs::write(root.join("Cargo.toml"), "[workspace]\n").expect("workspace manifest");
+
+        let canonical_root = fs::canonicalize(&root).expect("canonical workspace root");
+        let alternate_manifest = root.join("nested").join("..").join("Cargo.toml");
+
+        assert_eq!(
+            relative_manifest(&canonical_root, &alternate_manifest).unwrap(),
+            "Cargo.toml"
+        );
     }
 
     fn validate_fixture(value: Value) -> Result<(), String> {

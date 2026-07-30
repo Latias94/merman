@@ -571,6 +571,9 @@ fn serve_body_once(
             }
         };
         stream
+            .set_nonblocking(false)
+            .map_err(|error| format!("make HTTP fixture stream blocking: {error}"))?;
+        stream
             .set_read_timeout(Some(Duration::from_secs(5)))
             .map_err(|error| format!("set HTTP fixture timeout: {error}"))?;
         let mut request = [0_u8; 2048];
