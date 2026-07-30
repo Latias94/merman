@@ -46,6 +46,56 @@ fn round_json_numbers(v: &mut JsonValue, decimals: u32) {
     }
 }
 
+fn first_json_mismatch(expected: &JsonValue, actual: &JsonValue, path: &str) -> Option<String> {
+    match (expected, actual) {
+        (JsonValue::Array(expected), JsonValue::Array(actual)) => {
+            for (index, (expected, actual)) in expected.iter().zip(actual).enumerate() {
+                let child_path = format!("{path}/{index}");
+                if let Some(mismatch) = first_json_mismatch(expected, actual, &child_path) {
+                    return Some(mismatch);
+                }
+            }
+            (expected.len() != actual.len()).then(|| {
+                format!(
+                    "{path}: expected array length {}, actual {}",
+                    expected.len(),
+                    actual.len()
+                )
+            })
+        }
+        (JsonValue::Object(expected), JsonValue::Object(actual)) => {
+            for (key, expected) in expected {
+                let escaped_key = key.replace('~', "~0").replace('/', "~1");
+                let child_path = format!("{path}/{escaped_key}");
+                let Some(actual) = actual.get(key) else {
+                    return Some(format!("{child_path}: missing from actual value"));
+                };
+                if let Some(mismatch) = first_json_mismatch(expected, actual, &child_path) {
+                    return Some(mismatch);
+                }
+            }
+            actual
+                .keys()
+                .find(|key| !expected.contains_key(*key))
+                .map(|key| format!("{path}/{key}: unexpected in actual value"))
+        }
+        (JsonValue::Number(expected), JsonValue::Number(actual)) if expected != actual => {
+            let delta = expected
+                .as_f64()
+                .zip(actual.as_f64())
+                .map(|(expected, actual)| (expected - actual).abs());
+            Some(match delta {
+                Some(delta) => format!(
+                    "{path}: expected {expected}, actual {actual}, absolute delta {delta:e}"
+                ),
+                None => format!("{path}: expected {expected}, actual {actual}"),
+            })
+        }
+        _ if expected != actual => Some(format!("{path}: expected {expected}, actual {actual}")),
+        _ => None,
+    }
+}
+
 fn normalize_dynamic_fields(diagram_type: &str, v: &mut JsonValue) {
     // Mermaid gitGraph auto-generates commit ids using random hex suffixes.
     // Normalize these ids so snapshots are stable across runs.
@@ -291,11 +341,13 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
         normalize_dynamic_fields(&diagram_type, &mut expected);
 
         if actual != expected {
+            let first_mismatch = first_json_mismatch(&expected, &actual, "")
+                .unwrap_or_else(|| "unable to locate unequal values".to_owned());
             failures.push(format!(
-                "layout snapshot mismatch for {}\n  expected: {}\n  actual:   {}\n  hint: regenerate via `cargo run -p xtask -- update-layout-snapshots --filter {}`",
+                "layout snapshot mismatch for {}\n  expected: {}\n  first mismatch: {}\n  hint: regenerate via `cargo run -p xtask -- update-layout-snapshots --filter {}`",
                 mmd_path.display(),
                 golden_path.display(),
-                "<computed>",
+                first_mismatch,
                 mmd_path.file_stem().and_then(|s| s.to_str()).unwrap_or("")
             ));
         }
@@ -304,4 +356,14 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
     if !failures.is_empty() {
         panic!("{}", failures.join("\n\n"));
     }
+}
+
+#[test]
+fn layout_snapshot_mismatch_diagnostic_reports_the_first_json_path() {
+    let expected = serde_json::json!({"layout": {"nodes": [{"x": 1.25}]}});
+    let actual = serde_json::json!({"layout": {"nodes": [{"x": 1.251}]}});
+
+    let mismatch = first_json_mismatch(&expected, &actual, "").expect("values differ");
+    assert!(mismatch.contains("/layout/nodes/0/x"));
+    assert!(mismatch.contains("absolute delta"));
 }
