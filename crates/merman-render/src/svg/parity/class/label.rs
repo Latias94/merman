@@ -28,6 +28,7 @@ pub(super) struct ClassHtmlLabelSpec<'a> {
     pub include_p: bool,
     pub extra_span_class: Option<&'a str>,
     pub span_style: Option<&'a str>,
+    pub prepared_xhtml: Option<&'a str>,
     pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
@@ -52,15 +53,24 @@ pub(super) fn render_class_html_label(out: &mut String, spec: &ClassHtmlLabelSpe
         out.push_str(r#"">"#);
     }
 
-    let html = class_math_html_label(spec.text, spec.mermaid_config, spec.math_renderer)
-        .unwrap_or_else(|| crate::text::mermaid_markdown_to_xhtml_label_fragment(spec.text, true));
+    let html = spec
+        .prepared_xhtml
+        .map(std::borrow::Cow::Borrowed)
+        .unwrap_or_else(|| {
+            std::borrow::Cow::Owned(
+                class_math_html_label(spec.text, spec.mermaid_config, spec.math_renderer)
+                    .unwrap_or_else(|| {
+                        crate::text::mermaid_markdown_to_xhtml_label_fragment(spec.text, true)
+                    }),
+            )
+        });
     if spec.include_p {
         out.push_str(&html);
     } else {
         let inner = html
             .strip_prefix("<p>")
             .and_then(|s| s.strip_suffix("</p>"))
-            .unwrap_or(html.as_str());
+            .unwrap_or(html.as_ref());
         out.push_str(inner);
     }
     out.push_str("</span>");
@@ -378,6 +388,7 @@ mod tests {
                 include_p: true,
                 extra_span_class: Some("markdown-node-label"),
                 span_style: None,
+                prepared_xhtml: None,
                 mermaid_config: None,
                 math_renderer: None,
             },
@@ -394,6 +405,7 @@ mod tests {
                 include_p: true,
                 extra_span_class: Some("markdown-node-label"),
                 span_style: None,
+                prepared_xhtml: None,
                 mermaid_config: None,
                 math_renderer: None,
             },

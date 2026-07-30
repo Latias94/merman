@@ -767,9 +767,9 @@ fn render_class_node_id(
             node,
             basic_container.geometry,
             ctx.layout
-                .class_row_metrics_by_id
+                .class_label_plans_by_id
                 .get(n.id.as_str())
-                .map(|rows| rows.as_ref()),
+                .map(|plan| plan.as_ref()),
             &ClassHtmlNodeBodyContext {
                 measurer: ctx.measurer,
                 text_style: &settings.text_style,

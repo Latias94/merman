@@ -50,6 +50,27 @@ pub struct ClassNodeRowMetrics {
     pub methods: Vec<crate::text::TextMetrics>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ClassPreparedHtmlLabel {
+    pub metrics: crate::text::TextMetrics,
+    pub max_width_px: i64,
+    pub xhtml: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClassPreparedHtmlNodeLabels {
+    pub title: ClassPreparedHtmlLabel,
+    pub annotation: Option<ClassPreparedHtmlLabel>,
+    pub members: Vec<ClassPreparedHtmlLabel>,
+    pub methods: Vec<ClassPreparedHtmlLabel>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ClassNodeLabelPlan {
+    RowMetrics(ClassNodeRowMetrics),
+    PreparedHtml(ClassPreparedHtmlNodeLabels),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutNode {
     pub id: String,
@@ -677,7 +698,7 @@ pub struct ClassDiagramLayout {
     #[serde(skip)]
     pub uses_elk_adapter_dom: bool,
     #[serde(skip)]
-    pub class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>>,
+    pub class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
     /// DOM ownership produced by the same recursive Dagre preparation that owns layout.
     ///
     /// Compatibility layout JSON remains flat, while SVG rendering consumes this typed tree so it

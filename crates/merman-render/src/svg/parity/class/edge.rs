@@ -621,6 +621,7 @@ fn render_class_edge_label_group(
                     include_p: true,
                     extra_span_class: None,
                     span_style: None,
+                    prepared_xhtml: None,
                     mermaid_config: ctx.mermaid_config,
                     math_renderer: ctx.math_renderer,
                 },
