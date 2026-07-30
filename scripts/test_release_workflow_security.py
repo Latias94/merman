@@ -1628,14 +1628,31 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         for contract in (
             "swift package describe",
             "swift build",
-            "swift build --triple arm64-apple-ios14.0",
-            "swift build --triple arm64-apple-ios14.0-simulator",
+            "swiftc -typecheck -module-name Merman",
+            "-target arm64-apple-ios14.0",
+            "-target arm64-apple-ios14.0-simulator",
             "xcrun --sdk iphoneos --show-sdk-path",
             "xcrun --sdk iphonesimulator --show-sdk-path",
+            "-I platforms/apple/Merman.xcframework/ios-arm64/Headers",
+            "-I platforms/apple/Merman.xcframework/ios-arm64_x86_64-simulator/Headers",
+            "platforms/apple/Sources/Merman/Generated/Merman.swift",
             "swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke",
             "git diff --exit-code -- platforms/apple/Sources/Merman/Generated",
         ):
             self.assertIn(contract, validation_step["run"])
+        self.assertNotIn("swift build --triple", validation_step["run"])
+
+        modern_job = workflow_job(workflow, "apple-uniffi-smoke")
+        modern_validation_step = workflow_step(
+            modern_job, name="Validate Swift package"
+        )
+        for contract in (
+            "swift build --triple arm64-apple-ios14.0",
+            "swift build --triple arm64-apple-ios14.0-simulator",
+            "xcrun --sdk iphoneos --show-sdk-path",
+            "xcrun --sdk iphonesimulator --show-sdk-path",
+        ):
+            self.assertIn(contract, modern_validation_step["run"])
 
     def test_ci_pins_cypress_corpus_source_alignment(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "ci.yml")

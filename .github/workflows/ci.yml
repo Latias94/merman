@@ -833,8 +833,16 @@ jobs:
         run: |
           swift package describe
           swift build
-          swift build --triple arm64-apple-ios14.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
-          swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          swiftc -typecheck -module-name Merman \
+            -target arm64-apple-ios14.0 \
+            -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -I platforms/apple/Merman.xcframework/ios-arm64/Headers \
+            platforms/apple/Sources/Merman/Generated/Merman.swift
+          swiftc -typecheck -module-name Merman \
+            -target arm64-apple-ios14.0-simulator \
+            -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
+            -I platforms/apple/Merman.xcframework/ios-arm64_x86_64-simulator/Headers \
+            platforms/apple/Sources/Merman/Generated/Merman.swift
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
           git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
@@ -863,5 +871,7 @@ jobs:
         run: |
           swift package describe
           swift build
+          swift build --triple arm64-apple-ios14.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
+          swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
           git diff --exit-code -- platforms/apple/Sources/Merman/Generated
