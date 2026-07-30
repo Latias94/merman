@@ -14,16 +14,20 @@ import { buildLaunchArgs, runSmoke } from "./smoke-vsix.mjs";
 
 describe("packaged VSIX smoke", () => {
   it("keeps VS Code state inside short transaction-owned paths", () => {
+    const fixturePath = path.join(os.tmpdir(), "workspace", "fixture");
+    const tempRoot = path.join(os.tmpdir(), "mvs-123");
+    const launchArgs = buildLaunchArgs({ fixturePath, tempRoot });
+
+    assert.deepEqual(launchArgs, [
+      fixturePath,
+      `--user-data-dir=${path.join(tempRoot, "u")}`,
+      `--extensions-dir=${path.join(tempRoot, "e")}`,
+    ]);
     assert.deepEqual(
-      buildLaunchArgs({
-        fixturePath: "/workspace/fixture",
-        tempRoot: "/tmp/mvs-123",
-      }),
-      [
-        "/workspace/fixture",
-        "--user-data-dir=/tmp/mvs-123/u",
-        "--extensions-dir=/tmp/mvs-123/e",
-      ],
+      launchArgs
+        .slice(1)
+        .map((arg) => path.relative(tempRoot, arg.slice(arg.indexOf("=") + 1))),
+      ["u", "e"],
     );
   });
 
