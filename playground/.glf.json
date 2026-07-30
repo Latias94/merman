@@ -1,0 +1,5 @@
+{
+  "replace": {
+    "cytoscape": "./node_modules/cytoscape/LICENSE"
+  }
+}
