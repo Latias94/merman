@@ -496,7 +496,6 @@ fn install_with_runtime<R: ArtifactRuntime>(
     let staged_wasm = staging.path().join(&spec.artifact_name);
     runtime.strip_wasm(&private_raw, &staged_wasm)?;
     validate_regular_file(&staged_wasm, "stripped WASM artifact")?;
-    sync_file(&staged_wasm)?;
     fs::remove_file(&private_raw).map_err(|source| {
         artifact_io_error("remove private raw WASM copy", &private_raw, source)
     })?;
@@ -512,11 +511,9 @@ fn install_with_runtime<R: ArtifactRuntime>(
     let artifact = fingerprint_artifact(&staged_wasm, &spec.artifact_name)?;
     let manifest = spec.manifest(input.clone(), tools.clone(), artifact);
     write_manifest(&staging.path().join(MANIFEST_FILE_NAME), &manifest)?;
-    sync_directory(staging.path())?;
     verify_directory(spec, staging.path(), &input, &tools)?;
 
     replace_output_directory(spec, staging, runtime)?;
-    sync_directory(&artifact_root)?;
     Ok(VerifiedTypstArtifact {
         wasm_path: spec.output_wasm(),
         manifest_path: spec.output_directory().join(MANIFEST_FILE_NAME),
@@ -1294,8 +1291,7 @@ fn write_manifest(path: &Path, manifest: &ArtifactManifest) -> Result<(), XtaskE
         .map_err(|source| artifact_io_error("create artifact manifest", path, source))?;
     file.write_all(&bytes)
         .map_err(|source| artifact_io_error("write artifact manifest", path, source))?;
-    file.sync_all()
-        .map_err(|source| artifact_io_error("synchronize artifact manifest", path, source))
+    Ok(())
 }
 
 fn read_workspace_package_version(workspace_root: &Path) -> Result<String, XtaskError> {
@@ -1463,24 +1459,6 @@ fn directory_entries(directory: &Path) -> Result<BTreeSet<String>, XtaskError> {
         names.insert(name);
     }
     Ok(names)
-}
-
-fn sync_file(path: &Path) -> Result<(), XtaskError> {
-    File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(|source| artifact_io_error("synchronize artifact file", path, source))
-}
-
-#[cfg(unix)]
-fn sync_directory(path: &Path) -> Result<(), XtaskError> {
-    File::open(path)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|source| artifact_io_error("synchronize artifact directory", path, source))
-}
-
-#[cfg(not(unix))]
-fn sync_directory(_path: &Path) -> Result<(), XtaskError> {
-    Ok(())
 }
 
 fn hash_framed(hasher: &mut Sha256, bytes: &[u8]) {
