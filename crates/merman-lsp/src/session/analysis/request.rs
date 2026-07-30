@@ -11,10 +11,10 @@ use std::sync::Arc;
 use tower_lsp_server::ls_types::Uri;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub(crate) struct AnalysisJobGeneration(pub(crate) u64);
+pub(in crate::session) struct AnalysisJobGeneration(pub(in crate::session) u64);
 
 #[derive(Debug, Clone)]
-pub(crate) struct AnalysisBuildRequest {
+pub(in crate::session) struct AnalysisBuildRequest {
     key: AnalysisBuildKey,
     text: Arc<str>,
     kind: DocumentKind,
@@ -24,7 +24,7 @@ pub(crate) struct AnalysisBuildRequest {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub(crate) struct AnalysisBuildKey {
+pub(in crate::session) struct AnalysisBuildKey {
     uri: Uri,
     version: i32,
     analysis_job_generation: AnalysisJobGeneration,
@@ -34,13 +34,13 @@ pub(crate) struct AnalysisBuildKey {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum AnalysisBuildError {
+pub(in crate::session) enum AnalysisBuildError {
     Cancelled(AnalysisCancelled),
     Rejected(AnalysisRejection),
 }
 
 impl AnalysisBuildKey {
-    pub(crate) fn new(
+    pub(in crate::session) fn new(
         uri: Uri,
         version: i32,
         analysis_job_generation: AnalysisJobGeneration,
@@ -58,17 +58,17 @@ impl AnalysisBuildKey {
         }
     }
 
-    pub(crate) fn uri(&self) -> &Uri {
+    pub(in crate::session) fn uri(&self) -> &Uri {
         &self.uri
     }
 
-    pub(crate) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
+    pub(in crate::session) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
         self.analysis_job_generation
     }
 }
 
 impl AnalysisBuildRequest {
-    pub(crate) fn new(
+    pub(in crate::session) fn new(
         key: AnalysisBuildKey,
         text: Arc<str>,
         kind: DocumentKind,
@@ -84,32 +84,34 @@ impl AnalysisBuildRequest {
         }
     }
 
-    pub(crate) fn uri(&self) -> &Uri {
+    pub(in crate::session) fn uri(&self) -> &Uri {
         self.key.uri()
     }
 
-    pub(crate) fn key(&self) -> AnalysisBuildKey {
+    pub(in crate::session) fn key(&self) -> AnalysisBuildKey {
         self.key.clone()
     }
 
-    pub(crate) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
+    pub(in crate::session) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
         self.key.analysis_job_generation
     }
 
-    pub(crate) fn snapshot_generation(&self) -> SnapshotGeneration {
+    pub(in crate::session) fn snapshot_generation(&self) -> SnapshotGeneration {
         self.key.snapshot_generation
     }
 
-    pub(crate) fn diagnostic_generation(&self) -> DiagnosticGeneration {
+    pub(in crate::session) fn diagnostic_generation(&self) -> DiagnosticGeneration {
         self.key.diagnostic_generation
     }
 
-    pub(crate) fn document_epoch(&self) -> DocumentEpoch {
+    pub(in crate::session) fn document_epoch(&self) -> DocumentEpoch {
         self.key.document_epoch
     }
 
     #[cfg(test)]
-    pub(crate) fn build(&self) -> Result<Arc<DocumentAnalysisContext>, AnalysisRejection> {
+    pub(in crate::session) fn build(
+        &self,
+    ) -> Result<Arc<DocumentAnalysisContext>, AnalysisRejection> {
         let context = DocumentWorkspace::build_analysis_context_with_shared_text(
             &self.analyzer,
             self.key.uri.as_str(),
@@ -120,7 +122,7 @@ impl AnalysisBuildRequest {
         document_analysis_context(context, self.key.uri.clone())
     }
 
-    pub(crate) fn build_cancellable(
+    pub(in crate::session) fn build_cancellable(
         &self,
         cancellation: &AnalysisCancellationToken,
     ) -> Result<Arc<DocumentAnalysisContext>, AnalysisBuildError> {
@@ -149,7 +151,7 @@ impl AnalysisBuildRequest {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_test_gate(mut self, gate: Arc<TestAnalysisGate>) -> Self {
+    pub(in crate::session) fn with_test_gate(mut self, gate: Arc<TestAnalysisGate>) -> Self {
         self.test_gate = Some(gate);
         self
     }
@@ -165,14 +167,14 @@ fn document_analysis_context(
 
 #[cfg(test)]
 #[derive(Debug, Clone)]
-pub(crate) struct SnapshotBatchCommit {
-    pub(crate) contexts: Vec<SnapshotContext>,
-    pub(crate) stale_open_documents: bool,
+pub(in crate::session) struct SnapshotBatchCommit {
+    pub(in crate::session) contexts: Vec<SnapshotContext>,
+    pub(in crate::session) stale_open_documents: bool,
 }
 
 #[cfg(test)]
 #[derive(Debug, Default)]
-pub(crate) struct TestAnalysisGate {
+pub(in crate::session) struct TestAnalysisGate {
     released: std::sync::Mutex<bool>,
     wake: std::sync::Condvar,
     started: std::sync::atomic::AtomicUsize,
@@ -195,11 +197,11 @@ impl TestAnalysisGate {
         cancellation.checkpoint()
     }
 
-    pub(crate) fn started(&self) -> usize {
+    pub(in crate::session) fn started(&self) -> usize {
         self.started.load(std::sync::atomic::Ordering::Acquire)
     }
 
-    pub(crate) fn release(&self) {
+    pub(in crate::session) fn release(&self) {
         *lock_recovering_poison(&self.released) = true;
         self.wake.notify_all();
     }

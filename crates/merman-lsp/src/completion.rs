@@ -124,16 +124,15 @@ pub(crate) fn resolve_completion_item_with_profile(
 #[cfg(test)]
 mod tests {
     use super::completion_for_snapshot;
-    use crate::session::documents::DocumentStore;
+    use crate::snapshot::snapshot_for_test;
     use merman_core::diagram_header_facts;
     use std::str::FromStr;
     use tower_lsp_server::ls_types::{Position, Uri};
 
     #[test]
     fn diagram_header_items_follow_core_header_facts() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri, 1, "flow".to_string());
+        let snapshot = snapshot_for_test(uri, 1, "flow");
         let labels: Vec<_> = completion_for_snapshot(&snapshot, Position::new(0, 4))
             .items
             .into_iter()

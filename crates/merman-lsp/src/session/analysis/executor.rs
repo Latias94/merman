@@ -1,12 +1,11 @@
 use crate::session::analysis::request::{
     AnalysisBuildError, AnalysisBuildKey, AnalysisBuildRequest, AnalysisJobGeneration,
 };
-use crate::session::documents::{
-    DiagnosticReprojectionBatch, DiagnosticReprojectionKey, DiagnosticReprojectionRequest,
+use crate::snapshot::{
+    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, SnapshotGeneration,
 };
-use crate::snapshot::DocumentAnalysisContext;
 use crate::sync::lock_recovering_poison;
-use merman_analysis::AnalysisCancellationToken;
+use merman_analysis::{AnalysisCancellationToken, AnalysisCancelled, Analyzer};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -15,12 +14,12 @@ use tokio::sync::{Notify, Semaphore};
 use tower_lsp_server::ls_types::Uri;
 
 /// Maximum number of document analyses that may consume CPU concurrently.
-pub(crate) const LSP_ANALYSIS_CONCURRENCY: usize = 2;
+pub(in crate::session) const LSP_ANALYSIS_CONCURRENCY: usize = 2;
 /// Maximum number of distinct analyses that may be running or waiting for CPU.
-pub(crate) const LSP_ANALYSIS_IN_FLIGHT_LIMIT: usize = 8;
+pub(in crate::session) const LSP_ANALYSIS_IN_FLIGHT_LIMIT: usize = 8;
 
 #[derive(Clone)]
-pub(crate) struct AnalysisExecutor {
+pub(in crate::session) struct AnalysisExecutor {
     inner: Arc<AnalysisExecutorInner>,
 }
 
@@ -59,6 +58,121 @@ enum AnalysisWorkKey {
     Reproject(DiagnosticReprojectionKey),
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct DiagnosticReprojectionKey {
+    uri: Uri,
+    analysis_job_generation: AnalysisJobGeneration,
+    document_epoch: DocumentEpoch,
+    snapshot_generation: SnapshotGeneration,
+    source_diagnostic_generation: DiagnosticGeneration,
+    target_diagnostic_generation: DiagnosticGeneration,
+    source_identity: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::session) struct DiagnosticReprojectionRequest {
+    analyzer: Analyzer,
+    cancellation: AnalysisCancellationToken,
+    target_diagnostic_generation: DiagnosticGeneration,
+    uri: Uri,
+    analysis_job_generation: AnalysisJobGeneration,
+    document_epoch: DocumentEpoch,
+    snapshot_generation: SnapshotGeneration,
+    source_diagnostic_generation: DiagnosticGeneration,
+    context: Arc<DocumentAnalysisContext>,
+}
+
+#[derive(Debug, Clone)]
+struct DiagnosticReprojectionResult {
+    uri: Uri,
+    analysis_job_generation: AnalysisJobGeneration,
+    document_epoch: DocumentEpoch,
+    snapshot_generation: SnapshotGeneration,
+    source_diagnostic_generation: DiagnosticGeneration,
+    target_diagnostic_generation: DiagnosticGeneration,
+    original: Arc<DocumentAnalysisContext>,
+    projected: Arc<DocumentAnalysisContext>,
+}
+
+impl DiagnosticReprojectionRequest {
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::session) fn new(
+        analyzer: Analyzer,
+        cancellation: AnalysisCancellationToken,
+        target_diagnostic_generation: DiagnosticGeneration,
+        uri: Uri,
+        analysis_job_generation: AnalysisJobGeneration,
+        document_epoch: DocumentEpoch,
+        snapshot_generation: SnapshotGeneration,
+        source_diagnostic_generation: DiagnosticGeneration,
+        context: Arc<DocumentAnalysisContext>,
+    ) -> Self {
+        Self {
+            analyzer,
+            cancellation,
+            target_diagnostic_generation,
+            uri,
+            analysis_job_generation,
+            document_epoch,
+            snapshot_generation,
+            source_diagnostic_generation,
+            context,
+        }
+    }
+
+    fn key(&self) -> DiagnosticReprojectionKey {
+        DiagnosticReprojectionKey {
+            uri: self.uri.clone(),
+            analysis_job_generation: self.analysis_job_generation,
+            document_epoch: self.document_epoch,
+            snapshot_generation: self.snapshot_generation,
+            source_diagnostic_generation: self.source_diagnostic_generation,
+            target_diagnostic_generation: self.target_diagnostic_generation,
+            source_identity: Arc::as_ptr(&self.context) as usize,
+        }
+    }
+
+    fn cancellation_child(&self) -> AnalysisCancellationToken {
+        self.cancellation.child()
+    }
+
+    pub(in crate::session) fn uri(&self) -> &Uri {
+        &self.uri
+    }
+
+    fn project_with_cancellation(
+        self,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<DiagnosticReprojectionResult, AnalysisCancelled> {
+        cancellation.checkpoint()?;
+        let projected = Arc::new(
+            self.context
+                .reproject_cancellable(&self.analyzer, cancellation)?,
+        );
+        cancellation.checkpoint()?;
+        Ok(DiagnosticReprojectionResult {
+            uri: self.uri,
+            analysis_job_generation: self.analysis_job_generation,
+            document_epoch: self.document_epoch,
+            snapshot_generation: self.snapshot_generation,
+            source_diagnostic_generation: self.source_diagnostic_generation,
+            target_diagnostic_generation: self.target_diagnostic_generation,
+            original: self.context,
+            projected,
+        })
+    }
+}
+
+impl DiagnosticReprojectionKey {
+    fn uri(&self) -> &Uri {
+        &self.uri
+    }
+
+    fn analysis_job_generation(&self) -> AnalysisJobGeneration {
+        self.analysis_job_generation
+    }
+}
+
 impl AnalysisWorkKey {
     fn uri(&self) -> &Uri {
         match self {
@@ -83,7 +197,7 @@ enum AnalysisWork {
 #[derive(Clone)]
 enum AnalysisWorkOutput {
     Build(Arc<DocumentAnalysisContext>),
-    Reproject(Arc<DiagnosticReprojectionBatch>),
+    Reproject(Arc<DiagnosticReprojectionResult>),
 }
 
 impl AnalysisRegistry {
@@ -197,7 +311,7 @@ impl AnalysisWaiter {
     }
 }
 
-pub(crate) struct AnalysisExecutionLease {
+pub(in crate::session) struct AnalysisExecutionLease {
     context: Arc<DocumentAnalysisContext>,
     _waiter: AnalysisWaiter,
 }
@@ -212,13 +326,13 @@ impl fmt::Debug for AnalysisExecutionLease {
 }
 
 impl AnalysisExecutionLease {
-    pub(crate) fn context(&self) -> &Arc<DocumentAnalysisContext> {
+    pub(in crate::session) fn context(&self) -> &Arc<DocumentAnalysisContext> {
         &self.context
     }
 }
 
-pub(crate) struct DiagnosticReprojectionLease {
-    batch: Arc<DiagnosticReprojectionBatch>,
+pub(in crate::session) struct DiagnosticReprojectionLease {
+    result: Arc<DiagnosticReprojectionResult>,
     _waiter: AnalysisWaiter,
 }
 
@@ -226,14 +340,47 @@ impl fmt::Debug for DiagnosticReprojectionLease {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("DiagnosticReprojectionLease")
-            .field("batch", &self.batch)
+            .field("result", &self.result)
             .finish_non_exhaustive()
     }
 }
 
 impl DiagnosticReprojectionLease {
-    pub(crate) fn batch(&self) -> &Arc<DiagnosticReprojectionBatch> {
-        &self.batch
+    pub(in crate::session) fn uri(&self) -> &Uri {
+        &self.result.uri
+    }
+
+    pub(in crate::session) fn analysis_job_generation(&self) -> AnalysisJobGeneration {
+        self.result.analysis_job_generation
+    }
+
+    pub(in crate::session) fn document_epoch(&self) -> DocumentEpoch {
+        self.result.document_epoch
+    }
+
+    pub(in crate::session) fn snapshot_generation(&self) -> SnapshotGeneration {
+        self.result.snapshot_generation
+    }
+
+    pub(in crate::session) fn source_diagnostic_generation(&self) -> DiagnosticGeneration {
+        self.result.source_diagnostic_generation
+    }
+
+    pub(in crate::session) fn target_diagnostic_generation(&self) -> DiagnosticGeneration {
+        self.result.target_diagnostic_generation
+    }
+
+    pub(in crate::session) fn original(&self) -> &Arc<DocumentAnalysisContext> {
+        &self.result.original
+    }
+
+    pub(in crate::session) fn projected(&self) -> &Arc<DocumentAnalysisContext> {
+        &self.result.projected
+    }
+
+    #[cfg(test)]
+    pub(in crate::session) fn shares_result_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.result, &other.result)
     }
 }
 
@@ -279,7 +426,7 @@ impl Drop for AnalysisWaiter {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct AnalysisExecutionError {
+pub(in crate::session) struct AnalysisExecutionError {
     message: Arc<str>,
     kind: AnalysisExecutionErrorKind,
 }
@@ -326,7 +473,7 @@ impl AnalysisExecutionError {
         }
     }
 
-    pub(crate) fn is_stale(&self) -> bool {
+    pub(in crate::session) fn is_stale(&self) -> bool {
         matches!(
             self.kind,
             AnalysisExecutionErrorKind::Stale | AnalysisExecutionErrorKind::Cancelled
@@ -343,7 +490,7 @@ impl fmt::Display for AnalysisExecutionError {
 impl std::error::Error for AnalysisExecutionError {}
 
 impl AnalysisExecutor {
-    pub(crate) fn new(cancellation_parent: AnalysisCancellationToken) -> Self {
+    pub(in crate::session) fn new(cancellation_parent: AnalysisCancellationToken) -> Self {
         Self {
             inner: Arc::new(AnalysisExecutorInner {
                 cpu_permits: Arc::new(Semaphore::new(LSP_ANALYSIS_CONCURRENCY)),
@@ -358,11 +505,11 @@ impl AnalysisExecutor {
         }
     }
 
-    pub(crate) fn generation_for(&self, uri: &Uri) -> AnalysisJobGeneration {
+    pub(in crate::session) fn generation_for(&self, uri: &Uri) -> AnalysisJobGeneration {
         lock_recovering_poison(&self.inner.registry).generation_for(uri)
     }
 
-    pub(crate) fn is_generation_current(
+    pub(in crate::session) fn is_generation_current(
         &self,
         uri: &Uri,
         generation: AnalysisJobGeneration,
@@ -370,7 +517,7 @@ impl AnalysisExecutor {
         lock_recovering_poison(&self.inner.registry).current_generation_for(uri) == Some(generation)
     }
 
-    pub(crate) async fn execute(
+    pub(in crate::session) async fn execute(
         &self,
         request: &AnalysisBuildRequest,
     ) -> Result<AnalysisExecutionLease, AnalysisExecutionError> {
@@ -394,7 +541,7 @@ impl AnalysisExecutor {
         })
     }
 
-    pub(crate) async fn execute_diagnostic_reprojection(
+    pub(in crate::session) async fn execute_diagnostic_reprojection(
         &self,
         request: &DiagnosticReprojectionRequest,
     ) -> Result<DiagnosticReprojectionLease, AnalysisExecutionError> {
@@ -407,13 +554,13 @@ impl AnalysisExecutor {
             )
             .await?;
         let output = waiter.wait().await?;
-        let AnalysisWorkOutput::Reproject(batch) = output else {
+        let AnalysisWorkOutput::Reproject(result) = output else {
             return Err(AnalysisExecutionError::new(
                 "analysis executor returned a build result for a diagnostic projection request",
             ));
         };
         Ok(DiagnosticReprojectionLease {
-            batch,
+            result,
             _waiter: waiter,
         })
     }
@@ -491,7 +638,7 @@ impl AnalysisExecutor {
                                 .map_err(AnalysisWorkError::Build),
                             AnalysisWork::Reproject(request) => request
                                 .project_with_cancellation(&cancellation)
-                                .map(|batch| AnalysisWorkOutput::Reproject(Arc::new(batch)))
+                                .map(|result| AnalysisWorkOutput::Reproject(Arc::new(result)))
                                 .map_err(|_| AnalysisWorkError::Cancelled),
                         }
                     })
@@ -527,11 +674,11 @@ impl AnalysisExecutor {
         });
     }
 
-    pub(crate) fn invalidate(&self, uri: &Uri) {
+    pub(in crate::session) fn invalidate(&self, uri: &Uri) {
         self.invalidate_uri(uri);
     }
 
-    pub(crate) fn forget(&self, uri: &Uri) {
+    pub(in crate::session) fn forget(&self, uri: &Uri) {
         self.invalidate_uri(uri);
     }
 
@@ -561,7 +708,7 @@ impl AnalysisExecutor {
         self.inner.capacity_changed.notify_waiters();
     }
 
-    pub(crate) fn invalidate_all(&self) {
+    pub(in crate::session) fn invalidate_all(&self) {
         let cancelled = {
             let mut registry = lock_recovering_poison(&self.inner.registry);
             registry.document_generations.clear();
@@ -583,17 +730,17 @@ impl AnalysisExecutor {
     }
 
     #[cfg(test)]
-    pub(crate) fn execution_count(&self) -> usize {
+    pub(in crate::session) fn execution_count(&self) -> usize {
         self.inner.execution_count.load(Ordering::Relaxed)
     }
 
     #[cfg(test)]
-    pub(crate) fn reprojection_count(&self) -> usize {
+    pub(in crate::session) fn reprojection_count(&self) -> usize {
         self.inner.reprojection_count.load(Ordering::Relaxed)
     }
 
     #[cfg(test)]
-    pub(crate) fn registry_state(&self) -> (usize, usize, usize) {
+    pub(in crate::session) fn registry_state(&self) -> (usize, usize, usize) {
         let registry = lock_recovering_poison(&self.inner.registry);
         (
             registry.jobs.len(),
@@ -639,11 +786,92 @@ enum AnalysisWorkError {
 mod tests {
     use super::*;
     use crate::session::analysis::request::{AnalysisBuildKey, TestAnalysisGate};
-    use crate::session::documents::DocumentStore;
-    use merman_analysis::{AnalysisRuleConfig, DiagnosticSeverity};
     use merman_editor_core::DocumentKind;
     use std::str::FromStr;
     use std::time::Duration;
+
+    const TEST_SOURCE: &str = "flowchart TD\nA-->B\n";
+
+    fn test_executor() -> AnalysisExecutor {
+        AnalysisExecutor::new(AnalysisCancellationToken::new())
+    }
+
+    fn test_uri(name: &str) -> Uri {
+        Uri::from_str(&format!("file:///tmp/{name}.mmd")).unwrap()
+    }
+
+    fn build_request(executor: &AnalysisExecutor, name: &str) -> AnalysisBuildRequest {
+        build_request_for_uri(executor, test_uri(name), 1, DocumentEpoch(1), TEST_SOURCE)
+    }
+
+    fn build_request_for_uri(
+        executor: &AnalysisExecutor,
+        uri: Uri,
+        version: i32,
+        document_epoch: DocumentEpoch,
+        source: &str,
+    ) -> AnalysisBuildRequest {
+        build_request_with_analyzer(
+            executor,
+            uri,
+            version,
+            document_epoch,
+            source,
+            Analyzer::new(),
+        )
+    }
+
+    fn build_request_with_analyzer(
+        executor: &AnalysisExecutor,
+        uri: Uri,
+        version: i32,
+        document_epoch: DocumentEpoch,
+        source: &str,
+        analyzer: Analyzer,
+    ) -> AnalysisBuildRequest {
+        let analysis_job_generation = executor.generation_for(&uri);
+        AnalysisBuildRequest::new(
+            AnalysisBuildKey::new(
+                uri,
+                version,
+                analysis_job_generation,
+                SnapshotGeneration(1),
+                DiagnosticGeneration(1),
+                document_epoch,
+            ),
+            Arc::<str>::from(source),
+            DocumentKind::Diagram,
+            analyzer,
+        )
+    }
+
+    fn diagnostic_reprojection_request(
+        executor: &AnalysisExecutor,
+        name: &str,
+    ) -> DiagnosticReprojectionRequest {
+        let analyzer = Analyzer::new();
+        let uri = test_uri(name);
+        let build = build_request_with_analyzer(
+            executor,
+            uri.clone(),
+            1,
+            DocumentEpoch(1),
+            TEST_SOURCE,
+            analyzer.clone(),
+        );
+        let context = build.build().expect("test analysis should be ready");
+        DiagnosticReprojectionRequest::new(
+            analyzer.with_diagnostic_policy(analyzer.options().diagnostic_policy().clone()),
+            AnalysisCancellationToken::new(),
+            DiagnosticGeneration(2),
+            uri,
+            build.analysis_job_generation(),
+            build.document_epoch(),
+            build.snapshot_generation(),
+            build.diagnostic_generation(),
+            context,
+        )
+    }
 
     async fn wait_for_job_count(executor: &AnalysisExecutor, expected: usize) {
         tokio::time::timeout(Duration::from_secs(1), async {
@@ -688,6 +916,16 @@ mod tests {
         .expect("analysis CPU permits were not restored");
     }
 
+    async fn wait_for_registry_state(executor: &AnalysisExecutor, expected: (usize, usize, usize)) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while executor.registry_state() != expected {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("analysis registry did not reach the expected state");
+    }
+
     async fn wait_for_waiter_count(
         executor: &AnalysisExecutor,
         key: &AnalysisBuildKey,
@@ -712,7 +950,7 @@ mod tests {
 
     async fn wait_for_gate_starts(gate: &TestAnalysisGate, expected: usize) {
         tokio::time::timeout(Duration::from_secs(1), async {
-            while gate.started() != expected {
+            while gate.started() < expected {
                 tokio::task::yield_now().await;
             }
         })
@@ -722,21 +960,10 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn overlapping_identical_analysis_requests_share_one_cpu_execution() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/single-flight.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
+        let executor = test_executor();
         let gate = Arc::new(TestAnalysisGate::default());
-        let request = store
-            .snapshot_build_request(&uri)
-            .expect("expected analysis request")
-            .with_test_gate(Arc::clone(&gate));
+        let request = build_request(&executor, "single-flight").with_test_gate(Arc::clone(&gate));
         let key = request.key();
-        let executor = store.analysis_executor();
 
         let spawn_execution = || {
             let executor = executor.clone();
@@ -758,22 +985,14 @@ mod tests {
         assert!(Arc::ptr_eq(first.context(), second.context()));
         assert!(Arc::ptr_eq(first.context(), third.context()));
         assert_eq!(executor.execution_count(), 1);
+        drop((first, second, third));
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn completed_analysis_stays_single_flight_until_its_caller_commits() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/commit-lease.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        let request = store
-            .snapshot_build_request(&uri)
-            .expect("expected analysis request");
-        let executor = store.analysis_executor();
+    async fn completed_analysis_stays_single_flight_until_all_leases_drop() {
+        let executor = test_executor();
+        let request = build_request(&executor, "completed-single-flight");
 
         let first = executor.execute(&request).await.unwrap();
         let second = executor.execute(&request).await.unwrap();
@@ -782,43 +1001,21 @@ mod tests {
         assert_eq!(
             executor.execution_count(),
             1,
-            "a completed job must remain joinable through the guarded commit window"
+            "a completed job must remain joinable while a caller retains its lease"
         );
+        wait_for_registry_state(&executor, (1, 0, LSP_ANALYSIS_CONCURRENCY)).await;
+        assert_eq!(executor.registry_state(), (1, 0, LSP_ANALYSIS_CONCURRENCY));
+
+        drop(first);
+        assert_eq!(executor.registry_state().0, 1);
+        drop(second);
+        assert_eq!(executor.registry_state().0, 0);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn completed_reprojection_stays_single_flight_and_commits_idempotently() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/reprojection-lease.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        let build = store
-            .snapshot_build_request(&uri)
-            .expect("expected analysis request");
-        let executor = store.analysis_executor();
-        let analysis = executor.execute(&build).await.unwrap();
-        store
-            .insert_built_analysis(&build, Arc::clone(analysis.context()))
-            .expect("analysis should commit");
-        drop(analysis);
-
-        let options = store.analyzer_options().clone().with_rule_config(
-            AnalysisRuleConfig::default()
-                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
-                .unwrap(),
-        );
-        let (_, plan) = store.begin_analyzer_options(options);
-        assert!(
-            plan.is_some(),
-            "diagnostic update should capture reprojection work"
-        );
-        let request = store
-            .diagnostic_reprojection_request(&uri)
-            .expect("expected request-local reprojection");
+    async fn completed_reprojection_stays_single_flight_until_all_leases_drop() {
+        let executor = test_executor();
+        let request = diagnostic_reprojection_request(&executor, "reprojection-single-flight");
 
         let first = executor
             .execute_diagnostic_reprojection(&request)
@@ -829,63 +1026,24 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(Arc::ptr_eq(first.batch(), second.batch()));
+        assert!(first.shares_result_with(&second));
         assert_eq!(executor.reprojection_count(), 1);
+        wait_for_registry_state(&executor, (1, 0, LSP_ANALYSIS_CONCURRENCY)).await;
+        assert_eq!(executor.registry_state(), (1, 0, LSP_ANALYSIS_CONCURRENCY));
 
-        let first_context = store
-            .commit_diagnostic_reprojection_context(&uri, first.batch().as_ref().clone())
-            .expect("first equivalent waiter should commit");
-        let second_context = store
-            .commit_diagnostic_reprojection_context(&uri, second.batch().as_ref().clone())
-            .expect("second equivalent waiter should observe the committed context");
-        assert!(Arc::ptr_eq(
-            &first_context.snapshot,
-            &second_context.snapshot
-        ));
-        assert_eq!(
-            first_context.diagnostic_generation(),
-            second_context.diagnostic_generation()
-        );
-
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        let current_build = store
-            .snapshot_build_request(&uri)
-            .expect("expected replacement analysis request");
-        let current = executor.execute(&current_build).await.unwrap();
-        store
-            .insert_built_analysis(&current_build, Arc::clone(current.context()))
-            .expect("replacement analysis should commit");
-
-        assert!(
-            store
-                .commit_diagnostic_reprojection_context(&uri, first.batch().as_ref().clone())
-                .is_none(),
-            "an old projection must not fall through to an unrelated current context"
-        );
+        drop(first);
+        assert_eq!(executor.registry_state().0, 1);
+        drop(second);
+        assert_eq!(executor.registry_state().0, 0);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn cancelling_one_shared_waiter_does_not_cancel_the_analysis() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/shared-waiter-cancellation.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
+        let executor = test_executor();
         let gate = Arc::new(TestAnalysisGate::default());
-        let request = store
-            .snapshot_build_request(&uri)
-            .expect("expected analysis request")
+        let request = build_request(&executor, "shared-waiter-cancellation")
             .with_test_gate(Arc::clone(&gate));
         let key = request.key();
-        let executor = store.analysis_executor();
 
         let first_executor = executor.clone();
         let first_request = request.clone();
@@ -905,30 +1063,43 @@ mod tests {
         gate.release();
         let analysis = second.await.unwrap().unwrap();
         assert_eq!(executor.execution_count(), 1);
-        assert!(
-            store
-                .insert_built_analysis(&request, Arc::clone(analysis.context()))
-                .is_some()
+        drop(analysis);
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn dropping_the_last_waiter_cancels_unfinished_work_and_releases_capacity() {
+        let executor = test_executor();
+        let gate = Arc::new(TestAnalysisGate::default());
+        let request =
+            build_request(&executor, "last-waiter-cancellation").with_test_gate(Arc::clone(&gate));
+        let execution = tokio::spawn({
+            let executor = executor.clone();
+            async move { executor.execute(&request).await }
+        });
+        wait_for_gate_starts(&gate, 1).await;
+        assert_eq!(
+            executor.registry_state(),
+            (1, 1, LSP_ANALYSIS_CONCURRENCY - 1)
         );
+
+        execution.abort();
+        let _ = execution.await;
+
+        wait_for_job_count(&executor, 0).await;
+        wait_for_available_cpu_permits(&executor, LSP_ANALYSIS_CONCURRENCY).await;
+        assert_eq!(executor.execution_count(), 1);
+        assert_eq!(executor.registry_state(), (0, 0, LSP_ANALYSIS_CONCURRENCY));
+        gate.release();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn session_cancellation_stops_running_analysis() {
         let cancellation = AnalysisCancellationToken::new();
-        let mut store = DocumentStore::with_session_cancellation(cancellation.clone());
-        let uri = Uri::from_str("file:///tmp/session-cancellation.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
+        let executor = AnalysisExecutor::new(cancellation.clone());
         let gate = Arc::new(TestAnalysisGate::default());
-        let request = store
-            .snapshot_build_request(&uri)
-            .expect("expected analysis request")
-            .with_test_gate(Arc::clone(&gate));
-        let executor = store.analysis_executor();
+        let request =
+            build_request(&executor, "session-cancellation").with_test_gate(Arc::clone(&gate));
         let execution = tokio::spawn({
             let executor = executor.clone();
             async move { executor.execute(&request).await }
@@ -943,106 +1114,145 @@ mod tests {
             .expect("analysis task should not panic")
             .expect_err("session cancellation must reject analysis");
         assert!(error.is_stale());
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
         gate.release();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn committed_analysis_is_released_from_single_flight_registry() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/committed-single-flight.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        let request = store
-            .snapshot_build_request(&uri)
-            .expect("expected analysis request");
-        let executor = store.analysis_executor();
-        let analysis = executor.execute(&request).await.unwrap();
+    async fn invalidation_rejects_a_completed_old_generation() {
+        let executor = test_executor();
+        let uri = test_uri("completed-generation-invalidation");
+        let first = build_request_for_uri(&executor, uri.clone(), 1, DocumentEpoch(1), TEST_SOURCE);
+        let first_generation = first.analysis_job_generation();
+        let first_lease = executor.execute(&first).await.unwrap();
 
-        assert!(
-            !lock_recovering_poison(&executor.inner.registry)
-                .jobs
-                .is_empty(),
-            "the execution lease must retain the completed single-flight job"
-        );
-        assert!(
-            store
-                .insert_built_analysis(&request, Arc::clone(analysis.context()))
-                .is_some()
-        );
-        drop(analysis);
-        assert!(
-            lock_recovering_poison(&executor.inner.registry)
-                .jobs
-                .is_empty(),
-            "the completed job should be released after guarded commit"
-        );
-    }
+        executor.invalidate(&uri);
+        assert!(executor.execute(&first).await.unwrap_err().is_stale());
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn document_epoch_change_invalidates_completed_single_flight_result() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/single-flight.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        let executor = store.analysis_executor();
-        let first = store
-            .snapshot_build_request(&uri)
-            .expect("expected first analysis request");
-        executor.execute(&first).await.unwrap();
-
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        let second = store
-            .snapshot_build_request(&uri)
-            .expect("expected second analysis request");
-        executor.execute(&second).await.unwrap();
+        let second =
+            build_request_for_uri(&executor, uri, 2, DocumentEpoch(2), "flowchart TD\nA-->C\n");
+        assert_ne!(second.analysis_job_generation(), first_generation);
+        let second_lease = executor.execute(&second).await.unwrap();
 
         assert_eq!(executor.execution_count(), 2);
+        drop((first_lease, second_lease));
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn only_two_distinct_jobs_may_enter_cpu_work_concurrently() {
+        let executor = test_executor();
+        let gate = Arc::new(TestAnalysisGate::default());
+        let executions = (0..LSP_ANALYSIS_CONCURRENCY + 1)
+            .map(|index| {
+                let request = build_request(&executor, &format!("cpu-bound-{index}"))
+                    .with_test_gate(Arc::clone(&gate));
+                let executor = executor.clone();
+                tokio::spawn(async move { executor.execute(&request).await })
+            })
+            .collect::<Vec<_>>();
+
+        wait_for_job_count(&executor, LSP_ANALYSIS_CONCURRENCY + 1).await;
+        wait_for_gate_starts(&gate, LSP_ANALYSIS_CONCURRENCY).await;
+        assert_eq!(gate.started(), LSP_ANALYSIS_CONCURRENCY);
+        assert_eq!(executor.execution_count(), LSP_ANALYSIS_CONCURRENCY);
+        assert_eq!(
+            executor.registry_state(),
+            (
+                LSP_ANALYSIS_CONCURRENCY + 1,
+                LSP_ANALYSIS_CONCURRENCY + 1,
+                0
+            )
+        );
+
+        gate.release();
+        let mut leases = Vec::with_capacity(executions.len());
+        for execution in executions {
+            leases.push(execution.await.unwrap().unwrap());
+        }
+        assert_eq!(executor.execution_count(), LSP_ANALYSIS_CONCURRENCY + 1);
+        wait_for_registry_state(
+            &executor,
+            (LSP_ANALYSIS_CONCURRENCY + 1, 0, LSP_ANALYSIS_CONCURRENCY),
+        )
+        .await;
+        assert_eq!(
+            executor.registry_state(),
+            (LSP_ANALYSIS_CONCURRENCY + 1, 0, LSP_ANALYSIS_CONCURRENCY)
+        );
+
+        drop(leases);
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn document_update_invalidates_running_analysis_for_the_same_uri() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/running-generation.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
+    async fn completed_leases_do_not_consume_distinct_job_capacity() {
+        let executor = test_executor();
+        let mut leases = Vec::with_capacity(LSP_ANALYSIS_IN_FLIGHT_LIMIT);
+        for index in 0..LSP_ANALYSIS_IN_FLIGHT_LIMIT {
+            let request = build_request(&executor, &format!("completed-capacity-{index}"));
+            leases.push(executor.execute(&request).await.unwrap());
+        }
+        wait_for_registry_state(
+            &executor,
+            (LSP_ANALYSIS_IN_FLIGHT_LIMIT, 0, LSP_ANALYSIS_CONCURRENCY),
+        )
+        .await;
+        assert_eq!(
+            executor.registry_state(),
+            (LSP_ANALYSIS_IN_FLIGHT_LIMIT, 0, LSP_ANALYSIS_CONCURRENCY)
         );
+
+        let ninth = build_request(&executor, "completed-capacity-next");
+        let ninth = tokio::time::timeout(Duration::from_secs(1), executor.execute(&ninth))
+            .await
+            .expect("completed leases must not block a new distinct job")
+            .expect("the new distinct job should succeed");
+        wait_for_registry_state(
+            &executor,
+            (
+                LSP_ANALYSIS_IN_FLIGHT_LIMIT + 1,
+                0,
+                LSP_ANALYSIS_CONCURRENCY,
+            ),
+        )
+        .await;
+        assert_eq!(
+            executor.registry_state(),
+            (
+                LSP_ANALYSIS_IN_FLIGHT_LIMIT + 1,
+                0,
+                LSP_ANALYSIS_CONCURRENCY
+            )
+        );
+
+        drop(ninth);
+        drop(leases);
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn invalidating_running_analysis_releases_the_uri_for_a_fresh_generation() {
+        let executor = test_executor();
+        let uri = test_uri("running-generation");
         let gate = Arc::new(TestAnalysisGate::default());
-        let stale_request = store
-            .snapshot_build_request(&uri)
-            .expect("expected stale analysis request")
-            .with_test_gate(Arc::clone(&gate));
-        let executor = store.analysis_executor();
+        let stale_request =
+            build_request_for_uri(&executor, uri.clone(), 1, DocumentEpoch(1), TEST_SOURCE)
+                .with_test_gate(Arc::clone(&gate));
         let stale_executor = executor.clone();
         let stale = tokio::spawn(async move { stale_executor.execute(&stale_request).await });
         wait_for_gate_starts(&gate, 1).await;
 
-        store.upsert_text(
+        executor.invalidate(&uri);
+        let fresh_request = build_request_for_uri(
+            &executor,
             uri.clone(),
             2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
+            DocumentEpoch(2),
+            "flowchart TD\nA-->C\n",
         );
         assert!(stale.await.unwrap().unwrap_err().is_stale());
 
-        let fresh_request = store
-            .snapshot_build_request(&uri)
-            .expect("expected fresh analysis request");
         let analysis =
             tokio::time::timeout(Duration::from_secs(1), executor.execute(&fresh_request))
                 .await
@@ -1051,27 +1261,16 @@ mod tests {
         gate.release();
 
         assert_eq!(executor.execution_count(), 2);
-        assert!(
-            store
-                .insert_built_analysis(&fresh_request, Arc::clone(analysis.context()))
-                .is_some()
-        );
+        drop(analysis);
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn request_invalidated_before_registration_is_rejected() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/stale-before-register.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        let request = store
-            .snapshot_build_request(&uri)
-            .expect("expected analysis request");
-        let executor = store.analysis_executor();
+        let executor = test_executor();
+        let uri = test_uri("stale-before-register");
+        let request =
+            build_request_for_uri(&executor, uri.clone(), 1, DocumentEpoch(1), TEST_SOURCE);
 
         executor.invalidate(&uri);
 
@@ -1085,22 +1284,67 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn closing_document_forgets_generation_without_reusing_it_on_reopen() {
-        let mut store = DocumentStore::new();
-        let uri = Uri::from_str("file:///tmp/reopened.mmd").unwrap();
-        store.upsert_text(
-            uri.clone(),
+    async fn invalidate_all_rejects_every_old_generation_and_allocates_fresh_ones() {
+        let executor = test_executor();
+        let first_uri = test_uri("invalidate-all-first");
+        let second_uri = test_uri("invalidate-all-second");
+        let first = build_request_for_uri(
+            &executor,
+            first_uri.clone(),
             1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
+            DocumentEpoch(1),
+            TEST_SOURCE,
         );
-        let stale_request = store
-            .snapshot_build_request(&uri)
-            .expect("expected request before close");
-        let stale_generation = stale_request.analysis_job_generation();
-        let executor = store.analysis_executor();
+        let second = build_request_for_uri(
+            &executor,
+            second_uri.clone(),
+            1,
+            DocumentEpoch(1),
+            TEST_SOURCE,
+        );
+        let old_generations = (
+            first.analysis_job_generation(),
+            second.analysis_job_generation(),
+        );
 
-        store.remove(&uri);
+        executor.invalidate_all();
+
+        assert!(executor.execute(&first).await.unwrap_err().is_stale());
+        assert!(executor.execute(&second).await.unwrap_err().is_stale());
+        assert_eq!(executor.execution_count(), 0);
+        assert!(
+            lock_recovering_poison(&executor.inner.registry)
+                .document_generations
+                .is_empty()
+        );
+
+        let fresh_first =
+            build_request_for_uri(&executor, first_uri, 2, DocumentEpoch(2), TEST_SOURCE);
+        let fresh_second =
+            build_request_for_uri(&executor, second_uri, 2, DocumentEpoch(2), TEST_SOURCE);
+        assert_ne!(fresh_first.analysis_job_generation(), old_generations.0);
+        assert_ne!(fresh_second.analysis_job_generation(), old_generations.1);
+
+        let (fresh_first, fresh_second) = tokio::join!(
+            executor.execute(&fresh_first),
+            executor.execute(&fresh_second),
+        );
+        let fresh_first = fresh_first.unwrap();
+        let fresh_second = fresh_second.unwrap();
+        assert_eq!(executor.execution_count(), 2);
+        drop((fresh_first, fresh_second));
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn forgetting_a_uri_does_not_reuse_its_generation() {
+        let executor = test_executor();
+        let uri = test_uri("reopened");
+        let stale_request =
+            build_request_for_uri(&executor, uri.clone(), 1, DocumentEpoch(1), TEST_SOURCE);
+        let stale_generation = stale_request.analysis_job_generation();
+
+        executor.forget(&uri);
 
         assert!(
             lock_recovering_poison(&executor.inner.registry)
@@ -1109,27 +1353,20 @@ mod tests {
             "closed documents must not remain in the generation registry"
         );
 
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        let fresh_request = store
-            .snapshot_build_request(&uri)
-            .expect("expected request after reopen");
+        let fresh_request = build_request_for_uri(&executor, uri, 1, DocumentEpoch(2), TEST_SOURCE);
         assert_ne!(fresh_request.analysis_job_generation(), stale_generation);
 
         assert!(executor.execute(&stale_request).await.is_err());
         assert_eq!(executor.execution_count(), 0);
-        executor.execute(&fresh_request).await.unwrap();
+        let fresh = executor.execute(&fresh_request).await.unwrap();
         assert_eq!(executor.execution_count(), 1);
+        drop(fresh);
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn cancelled_queue_is_bounded_and_releases_capacity_for_the_next_job() {
-        let mut store = DocumentStore::new();
-        let executor = store.analysis_executor();
+    async fn mixed_cancelled_queue_is_bounded_and_releases_capacity_for_the_next_job() {
+        let executor = test_executor();
         let cpu_permits = executor
             .inner
             .cpu_permits
@@ -1138,18 +1375,15 @@ mod tests {
             .await
             .unwrap();
 
-        let mut requests = (0..=LSP_ANALYSIS_IN_FLIGHT_LIMIT)
+        let mut requests = (0..LSP_ANALYSIS_IN_FLIGHT_LIMIT)
             .map(|index| {
-                let uri = Uri::from_str(&format!("file:///tmp/cancel-queued-{index}.mmd")).unwrap();
-                store.upsert_text(
-                    uri.clone(),
+                build_request_for_uri(
+                    &executor,
+                    test_uri(&format!("cancel-queued-{index}")),
                     1,
-                    "flowchart TD\nA-->B\n".to_string(),
-                    DocumentKind::Diagram,
-                );
-                store
-                    .snapshot_build_request(&uri)
-                    .expect("expected analysis request")
+                    DocumentEpoch(1),
+                    TEST_SOURCE,
+                )
             })
             .collect::<Vec<_>>();
 
@@ -1163,35 +1397,49 @@ mod tests {
                 tokio::spawn(async move { executor.execute(&request).await })
             })
             .collect::<Vec<_>>();
+        let projection_request =
+            diagnostic_reprojection_request(&executor, "cancel-queued-reprojection");
+        let projection_executor = executor.clone();
+        let projection = tokio::spawn(async move {
+            projection_executor
+                .execute_diagnostic_reprojection(&projection_request)
+                .await
+        });
         wait_for_job_count(&executor, LSP_ANALYSIS_IN_FLIGHT_LIMIT).await;
+        assert_eq!(
+            executor.registry_state(),
+            (
+                LSP_ANALYSIS_IN_FLIGHT_LIMIT,
+                LSP_ANALYSIS_IN_FLIGHT_LIMIT,
+                0
+            )
+        );
 
         let ninth_executor = executor.clone();
         let duplicate_request = ninth_request.clone();
-        let mut ninth = tokio::spawn(async move { ninth_executor.execute(&ninth_request).await });
+        let mut ninth_future =
+            Box::pin(async move { ninth_executor.execute(&ninth_request).await });
         let duplicate_executor = executor.clone();
-        let mut duplicate =
-            tokio::spawn(async move { duplicate_executor.execute(&duplicate_request).await });
+        let mut duplicate_future =
+            Box::pin(async move { duplicate_executor.execute(&duplicate_request).await });
         assert!(
-            tokio::time::timeout(Duration::from_millis(25), &mut ninth)
-                .await
-                .is_err(),
+            futures::poll!(&mut ninth_future).is_pending(),
             "the ninth request must wait instead of being rejected"
         );
         assert!(
-            tokio::time::timeout(Duration::from_millis(25), &mut duplicate)
-                .await
-                .is_err(),
+            futures::poll!(&mut duplicate_future).is_pending(),
             "an identical ninth request must wait on the same bounded admission"
         );
+        let ninth = tokio::spawn(ninth_future);
+        let duplicate = tokio::spawn(duplicate_future);
         assert_eq!(
             lock_recovering_poison(&executor.inner.registry).jobs.len(),
             LSP_ANALYSIS_IN_FLIGHT_LIMIT,
             "the ninth distinct request must remain outside the job registry"
         );
 
-        let first = executions.remove(0);
-        first.abort();
-        let _ = first.await;
+        projection.abort();
+        let _ = projection.await;
         wait_for_registered_job(&executor, &ninth_key).await;
         wait_for_waiter_count(&executor, &ninth_key, 2).await;
         assert!(
@@ -1212,28 +1460,23 @@ mod tests {
         wait_for_job_count(&executor, 0).await;
 
         assert_eq!(executor.execution_count(), 0);
+        assert_eq!(executor.reprojection_count(), 0);
         drop(cpu_permits);
+        wait_for_available_cpu_permits(&executor, LSP_ANALYSIS_CONCURRENCY).await;
+        assert_eq!(executor.registry_state(), (0, 0, LSP_ANALYSIS_CONCURRENCY));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn invalidated_running_analyses_release_cpu_for_the_latest_generation() {
-        let mut store = DocumentStore::new();
-        let executor = store.analysis_executor();
+        let executor = test_executor();
         let gate = Arc::new(TestAnalysisGate::default());
 
         let stale = (0..LSP_ANALYSIS_CONCURRENCY)
             .map(|index| {
-                let uri = Uri::from_str(&format!("file:///tmp/stale-running-{index}.mmd")).unwrap();
-                store.upsert_text(
-                    uri.clone(),
-                    1,
-                    "flowchart TD\nA-->B\n".to_string(),
-                    DocumentKind::Diagram,
-                );
-                let request = store
-                    .snapshot_build_request(&uri)
-                    .expect("expected stale analysis request")
-                    .with_test_gate(Arc::clone(&gate));
+                let uri = test_uri(&format!("stale-running-{index}"));
+                let request =
+                    build_request_for_uri(&executor, uri.clone(), 1, DocumentEpoch(1), TEST_SOURCE)
+                        .with_test_gate(Arc::clone(&gate));
                 (uri, request)
             })
             .collect::<Vec<_>>();
@@ -1247,26 +1490,27 @@ mod tests {
             })
             .collect::<Vec<_>>();
         wait_for_gate_starts(&gate, LSP_ANALYSIS_CONCURRENCY).await;
-        assert_eq!(executor.inner.cpu_permits.available_permits(), 0);
+        assert_eq!(
+            executor.registry_state(),
+            (LSP_ANALYSIS_CONCURRENCY, LSP_ANALYSIS_CONCURRENCY, 0)
+        );
 
         for (uri, _) in &stale {
             executor.invalidate(uri);
         }
 
-        let latest_uri = Uri::from_str("file:///tmp/latest-running.mmd").unwrap();
-        store.upsert_text(
-            latest_uri.clone(),
+        let latest = build_request_for_uri(
+            &executor,
+            test_uri("latest-running"),
             1,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
+            DocumentEpoch(1),
+            "flowchart TD\nA-->C\n",
         );
-        let latest = store
-            .snapshot_build_request(&latest_uri)
-            .expect("expected latest analysis request");
-        tokio::time::timeout(Duration::from_secs(1), executor.execute(&latest))
+        let latest = tokio::time::timeout(Duration::from_secs(1), executor.execute(&latest))
             .await
             .expect("latest analysis remained blocked behind stale CPU work")
             .expect("latest analysis should succeed");
+        drop(latest);
 
         for execution in stale_executions {
             assert!(
@@ -1278,8 +1522,7 @@ mod tests {
             );
         }
         gate.release();
-        wait_for_job_count(&executor, 0).await;
-        wait_for_available_cpu_permits(&executor, LSP_ANALYSIS_CONCURRENCY).await;
+        wait_for_registry_state(&executor, (0, 0, LSP_ANALYSIS_CONCURRENCY)).await;
         assert_eq!(
             executor.inner.cpu_permits.available_permits(),
             LSP_ANALYSIS_CONCURRENCY

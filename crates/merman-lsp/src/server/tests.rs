@@ -4,17 +4,18 @@ use super::MermanLanguageServer;
 use super::semantic_token_planning_error;
 use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
-use crate::session::documents::{
-    DocumentDiagnosticState, DocumentStore, DocumentSyncError, StoredDocument,
+use crate::session::{
+    DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError, StoredDocument,
     default_lsp_analysis_options,
 };
+use crate::snapshot::snapshot_for_test;
 use crate::structure::{
     document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references, rename,
     selection_ranges,
 };
 use merman_analysis::{
     AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, DiagnosticCategory, DiagnosticFix,
-    DiagnosticFixEdit, DiagnosticSeverity, SourceMap,
+    DiagnosticFixEdit, SourceMap, source_limit_diagnostic_span,
 };
 use merman_core::EditorRenamePolicy;
 use merman_editor_core::{DocumentKind, semantic_token_descriptor};
@@ -81,33 +82,11 @@ async fn initialize_test_service(service: &mut crate::MermanLspService) {
 }
 
 #[test]
-fn snapshot_build_requests_keep_cached_contexts_invalidatable() {
-    let mut store = DocumentStore::new();
-    let uri = Uri::from_str("file:///tmp/workspace-symbols.mmd").unwrap();
-    store.upsert(uri.clone(), 1, "flowchart TD\nA[old] --> B\n".to_string());
-
-    let (contexts, requests) = store.snapshot_build_requests();
-    assert_eq!(contexts.len(), 1);
-    assert!(requests.is_empty());
-    assert!(store.is_snapshot_contexts_current(&contexts));
-
-    store.upsert_text(
-        uri,
-        2,
-        "flowchart TD\nA[new] --> C\n".to_string(),
-        DocumentKind::Diagram,
-    );
-
-    assert!(!store.is_snapshot_contexts_current(&contexts));
-}
-
-#[test]
 fn semantic_token_planner_failures_are_typed_internal_errors() {
-    let mut store = DocumentStore::new();
-    let snapshot = store.upsert(
+    let snapshot = snapshot_for_test(
         Uri::from_str("file:///tmp/token-plan-error.mmd").unwrap(),
         7,
-        "flowchart TD\nA --> B\n".to_string(),
+        "flowchart TD\nA --> B\n",
     );
     let error = semantic_token_planning_error(
         &snapshot,
@@ -130,11 +109,10 @@ fn semantic_token_planner_failures_are_typed_internal_errors() {
 
 #[test]
 fn invalid_semantic_token_ranges_are_invalid_params() {
-    let mut store = DocumentStore::new();
-    let snapshot = store.upsert(
+    let snapshot = snapshot_for_test(
         Uri::from_str("file:///tmp/token-range-error.mmd").unwrap(),
         7,
-        "flowchart TD\nA --> B\n".to_string(),
+        "flowchart TD\nA --> B\n",
     );
     let range = merman_editor_core::Range::new(
         merman_editor_core::Position::new(1, 4),
@@ -157,94 +135,18 @@ fn invalid_semantic_token_ranges_are_invalid_params() {
 }
 
 #[test]
-fn diagnostic_state_is_bound_to_document_epoch() {
-    let mut store = DocumentStore::new();
-    let uri = Uri::from_str("file:///tmp/diagnostic-state.mmd").unwrap();
-    store.upsert_text(
-        uri.clone(),
-        1,
-        "flowchart TD\nA-->B\n".to_string(),
-        DocumentKind::Diagram,
-    );
-    let context = store
-        .diagnostic_context(&uri)
-        .expect("expected diagnostic context");
-    let state = DocumentDiagnosticState {
-        result_id: "result-1".to_string(),
-        diagnostics: Vec::new(),
-    };
-
-    assert!(store.set_diagnostic_state_if_current(&context, state.clone()));
-    assert_eq!(
-        store
-            .diagnostic_state(&uri)
-            .expect("expected cached diagnostics")
-            .result_id,
-        "result-1"
-    );
-
-    store.upsert_text(
-        uri.clone(),
-        2,
-        "flowchart TD\nA-->C\n".to_string(),
-        DocumentKind::Diagram,
-    );
-
-    assert!(store.diagnostic_state(&uri).is_none());
-    assert!(!store.set_diagnostic_state_if_current(&context, state));
-}
-
-#[test]
-fn analyzer_configuration_change_classifies_diagnostic_only_rule_changes() {
-    let current = AnalysisOptions::default();
-    let next = AnalysisOptions::default().with_rule_config(
-        AnalysisRuleConfig::default()
-            .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
-            .unwrap(),
-    );
-
-    assert_eq!(
-        crate::session::documents::analyzer_configuration_change(&current, &next),
-        crate::session::documents::AnalyzerConfigurationChange::DiagnosticsOnly
-    );
-}
-
-#[test]
-fn analyzer_configuration_change_classifies_snapshot_affecting_changes() {
-    let current = AnalysisOptions::default();
-    let changed_resource = AnalysisOptions::default().with_max_source_bytes(Some(1));
-    let changed_date =
-        AnalysisOptions::default().with_fixed_today(Some("2026-07-02".parse().unwrap()));
-
-    for next in [changed_resource, changed_date] {
-        assert_eq!(
-            crate::session::documents::analyzer_configuration_change(&current, &next),
-            crate::session::documents::AnalyzerConfigurationChange::SnapshotAffecting
-        );
-    }
-}
-
-#[test]
-fn analyzer_configuration_change_classifies_unchanged_options() {
-    let current = AnalysisOptions::default();
-
-    assert_eq!(
-        crate::session::documents::analyzer_configuration_change(&current, &current),
-        crate::session::documents::AnalyzerConfigurationChange::Unchanged
-    );
-}
-
-#[test]
 fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_version() {
-    let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
-
-    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
-    let document = store.open_text(
+    let source = "flowchart TD\nA-->B\n";
+    let document = StoredDocument::resource_limited(
         uri.clone(),
         5,
-        "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
+        DocumentResourceLimit {
+            source_len: source.len(),
+            max_source_bytes: 8,
+            span: source_limit_diagnostic_span(source),
+        },
     );
     let analyzer = merman_analysis::Analyzer::with_options(
         AnalysisOptions::default().with_max_source_bytes(Some(8)),
@@ -278,21 +180,18 @@ fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_
 
 #[test]
 fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase() {
-    let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
-
-    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
-    store.open_text(
+    let source = "flowchart TD\nA-->B\n";
+    let document = StoredDocument::discarded(
         uri.clone(),
         5,
-        "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
+        DocumentDiscardedSource {
+            source_len: source.len(),
+            previous_max_source_bytes: 8,
+            span: source_limit_diagnostic_span(source),
+        },
     );
-    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(64)));
-    let document = store
-        .get(&uri)
-        .expect("expected discarded document")
-        .clone();
     let analyzer = merman_analysis::Analyzer::with_options(
         AnalysisOptions::default().with_max_source_bytes(Some(64)),
     );
@@ -322,15 +221,12 @@ fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase(
 #[test]
 fn diagnostics_for_unsynced_documents_request_full_replacement() {
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-    let document = StoredDocument {
+    let document = StoredDocument::sync_error(
         uri,
-        version: 9,
-        text: "".into(),
-        kind: DocumentKind::Diagram,
-        resource_limit: None,
-        discarded_source: None,
-        sync_error: Some(DocumentSyncError::InvalidIncrementalRange),
-    };
+        9,
+        DocumentKind::Diagram,
+        DocumentSyncError::InvalidIncrementalRange,
+    );
 
     let diagnostics = MermanLanguageServer::diagnostics_for_document(
         &document,
@@ -357,18 +253,15 @@ fn diagnostics_for_unsynced_documents_request_full_replacement() {
 #[test]
 fn diagnostics_for_discarded_sources_preserve_rejection_metadata_after_ranged_edits() {
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-    let document = StoredDocument {
+    let document = StoredDocument::sync_error(
         uri,
-        version: 10,
-        text: "".into(),
-        kind: DocumentKind::Diagram,
-        resource_limit: None,
-        discarded_source: None,
-        sync_error: Some(DocumentSyncError::FullReplacementRequired {
+        10,
+        DocumentKind::Diagram,
+        DocumentSyncError::FullReplacementRequired {
             source_len: 21,
             last_max_source_bytes: 8,
-        }),
-    };
+        },
+    );
 
     let diagnostics = MermanLanguageServer::diagnostics_for_document(
         &document,
@@ -472,15 +365,12 @@ fn capabilities_report_the_full_server_envelope() {
 #[test]
 fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
     let uri = Uri::from_str("untitled:notes").unwrap();
-    let document = StoredDocument {
-        uri: uri.clone(),
-        version: 7,
-        text: "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".into(),
-        kind: DocumentKind::Markdown,
-        resource_limit: None,
-        discarded_source: None,
-        sync_error: None,
-    };
+    let document = StoredDocument::available(
+        uri.clone(),
+        7,
+        DocumentKind::Markdown,
+        "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n",
+    );
     let diagnostics = MermanLanguageServer::diagnostics_for_document(
         &document,
         &merman_analysis::Analyzer::new(),
@@ -521,15 +411,12 @@ fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
 #[test]
 fn diagnostics_include_rich_editor_projection_warnings() {
     let uri = Uri::from_str("file:///tmp/cynefin.mmd").unwrap();
-    let document = StoredDocument {
+    let document = StoredDocument::available(
         uri,
-        version: 3,
-        text: "cynefin-beta\n  complicated --> complicated : \"Self-loop\"\n".into(),
-        kind: DocumentKind::Diagram,
-        resource_limit: None,
-        discarded_source: None,
-        sync_error: None,
-    };
+        3,
+        DocumentKind::Diagram,
+        "cynefin-beta\n  complicated --> complicated : \"Self-loop\"\n",
+    );
 
     let diagnostics = MermanLanguageServer::diagnostics_for_document(
         &document,
@@ -561,13 +448,13 @@ async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
         .await;
     server.client_effects.wait_idle().await;
 
-    let diagnostic_snapshot = {
-        let mut store = server.session.state_for_tests().await;
-        assert!(store.get(&uri).is_some());
-        assert!(store.has_snapshot(&uri));
-        assert!(store.has_analysis_payload(&uri));
-        store.snapshot(&uri).expect("expected diagnostic snapshot")
-    };
+    let probe = server.session.probe();
+    assert!(probe.document(&uri).await.is_some());
+    assert_eq!(probe.cache_state(&uri).await, (true, true));
+    let diagnostic_snapshot = probe
+        .cached_snapshot(&uri)
+        .await
+        .expect("expected diagnostic snapshot");
 
     let hover = server
         .hover(HoverParams {
@@ -581,9 +468,11 @@ async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
         .unwrap();
 
     assert!(hover.is_some());
-    let mut store = server.session.state_for_tests().await;
-    assert!(store.has_snapshot(&uri));
-    let editor_snapshot = store.snapshot(&uri).expect("expected cached snapshot");
+    assert!(probe.cache_state(&uri).await.0);
+    let editor_snapshot = probe
+        .cached_snapshot(&uri)
+        .await
+        .expect("expected cached snapshot");
     assert!(std::sync::Arc::ptr_eq(
         &diagnostic_snapshot,
         &editor_snapshot
@@ -601,23 +490,28 @@ async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
     let uri = Uri::from_str("file:///tmp/r24-identity.mmd").unwrap();
     let version = 11;
 
-    {
-        let mut store = server.session.state_for_tests().await;
-        store.apply_analyzer_options(
+    server
+        .session
+        .update_configuration(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
                     .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
                     .unwrap(),
             ),
-        );
-        store.upsert_text(
-            uri.clone(),
-            version,
-            "flowchart\nsubgraph group\nA-->B\nA-->C\nend\n".to_string(),
-            DocumentKind::Diagram,
-        );
-        assert!(!store.has_snapshot(&uri));
-    }
+        )
+        .await;
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                version,
+                "flowchart\nsubgraph group\nA-->B\nA-->C\nend\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    assert!(!server.session.probe().cache_state(&uri).await.0);
 
     let report = server
         .diagnostic(DocumentDiagnosticParams {
@@ -769,52 +663,47 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
         .expect("test profile should initialize once");
     let uri = Uri::from_str("file:///tmp/current-diagnostic-code-action.mmd").unwrap();
 
-    {
-        let mut store = server.session.state_for_tests().await;
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                1,
+                "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
     let original_snapshot = server
         .snapshot_for_uri(&uri)
         .await
         .expect("expected initial snapshot");
-    let execution_count = {
-        let store = server.session.state_for_tests().await;
-        store.analysis_executor().execution_count()
-    };
+    let execution_count = server.session.analysis_execution_count();
 
-    {
-        let mut store = server.session.state_for_tests().await;
-        let change = store.apply_analyzer_options(
+    let change = server
+        .session
+        .update_configuration(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
                     .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
                     .unwrap(),
             ),
-        );
-        assert_eq!(
-            change,
-            crate::session::documents::AnalyzerConfigurationChange::DiagnosticsOnly
-        );
-        assert!(store.has_snapshot(&uri));
-        assert!(store.has_analysis_payload(&uri));
-        assert_eq!(
-            store.analysis_executor().execution_count(),
-            execution_count,
-            "diagnostic reprojection must not schedule another analysis"
-        );
-    }
+        )
+        .await;
+    assert!(change.affects_diagnostics());
+    assert!(!change.affects_snapshots());
+    assert_eq!(server.session.probe().cache_state(&uri).await, (true, true));
+    assert_eq!(
+        server.session.analysis_execution_count(),
+        execution_count,
+        "diagnostic reprojection must not schedule another analysis"
+    );
 
-    let context = {
-        let store = server.session.state_for_tests().await;
-        store
-            .diagnostic_context(&uri)
-            .expect("expected diagnostic context")
-    };
+    let context = server
+        .session
+        .diagnostic_context(&uri)
+        .await
+        .expect("expected diagnostic context");
     let diagnostic = server
         .diagnostic_publisher()
         .diagnostics_for_current_context(&context)
@@ -854,12 +743,7 @@ async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuratio
     }));
     assert_cached_snapshot_identity(server, &uri, &original_snapshot).await;
     assert_eq!(
-        server
-            .session
-            .state_for_tests()
-            .await
-            .analysis_executor()
-            .execution_count(),
+        server.session.analysis_execution_count(),
         execution_count,
         "diagnostics and code actions must consume the reprojected generation"
     );
@@ -958,13 +842,15 @@ async fn did_change_rejects_stale_document_versions() {
         })
         .await;
 
-    let stored = {
-        let store = server.session.state_for_tests().await;
-        store.get(&uri).expect("expected stored document").clone()
-    };
+    let stored = server
+        .session
+        .probe()
+        .document(&uri)
+        .await
+        .expect("expected stored document");
     assert_eq!(stored.version, 3);
-    assert!(stored.text.contains("sequenceDiagram"));
-    assert!(!stored.text.contains("stale"));
+    assert!(stored.text().unwrap().contains("sequenceDiagram"));
+    assert!(!stored.text().unwrap().contains("stale"));
 
     let snapshot = server
         .snapshot_for_uri(&uri)
@@ -1012,12 +898,17 @@ async fn did_change_applies_incremental_changes_in_order() {
         })
         .await;
 
-    let stored = {
-        let store = server.session.state_for_tests().await;
-        store.get(&uri).expect("expected stored document").clone()
-    };
+    let stored = server
+        .session
+        .probe()
+        .document(&uri)
+        .await
+        .expect("expected stored document");
     assert_eq!(stored.version, 2);
-    assert_eq!(stored.text.as_ref(), "flowchart TD\nA-->C\nC-->D\n");
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "flowchart TD\nA-->C\nC-->D\n"
+    );
 
     let snapshot = server
         .snapshot_for_uri(&uri)
@@ -1060,9 +951,9 @@ async fn session_routes_pipelined_messages_after_initialize_completes() {
         service
             .inner()
             .session
-            .state_for_tests()
+            .probe()
+            .document(&uri)
             .await
-            .get(&uri)
             .is_some(),
         "didOpen must be routed after the earlier initialize succeeds"
     );
@@ -1133,13 +1024,15 @@ async fn session_admission_preserves_open_change_and_close_order() {
     assert!(open.unwrap().is_none());
     assert!(change.unwrap().is_none());
 
-    {
-        let server = service.inner();
-        let store = server.session.state_for_tests().await;
-        let document = store.get(&uri).expect("change must follow open");
-        assert_eq!(document.version, 2);
-        assert_eq!(document.text.as_ref(), "flowchart TD\nA-->C\n");
-    }
+    let document = service
+        .inner()
+        .session
+        .probe()
+        .document(&uri)
+        .await
+        .expect("change must follow open");
+    assert_eq!(document.version, 2);
+    assert_eq!(document.text().unwrap().as_ref(), "flowchart TD\nA-->C\n");
 
     let reopen = service.call(
         Request::build("textDocument/didOpen")
@@ -1174,9 +1067,9 @@ async fn session_admission_preserves_open_change_and_close_order() {
         service
             .inner()
             .session
-            .state_for_tests()
+            .probe()
+            .document(&uri)
             .await
-            .get(&uri)
             .is_none(),
         "close must follow the queued reopen"
     );
@@ -1225,14 +1118,17 @@ async fn session_admission_orders_configuration_before_document_open() {
     assert!(configuration.unwrap().is_none());
     assert!(open.unwrap().is_none());
 
-    let store = service.inner().session.state_for_tests().await;
-    let document = store
-        .get(&uri)
+    let document = service
+        .inner()
+        .session
+        .probe()
+        .document(&uri)
+        .await
         .expect("open must run after the queued configuration");
     assert_eq!(document.version, 1);
-    assert_eq!(document.text.as_ref(), source);
-    assert_eq!(document.resource_limit, None);
-    assert_eq!(document.sync_error, None);
+    assert_eq!(document.text().unwrap().as_ref(), source);
+    assert_eq!(document.resource_limit(), None);
+    assert_eq!(document.sync_error_state(), None);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1340,30 +1236,33 @@ async fn stale_push_diagnostic_context_is_suppressed() {
     let server = service.inner();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
-    {
-        let mut store = server.session.state_for_tests().await;
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-    let context = {
-        let store = server.session.state_for_tests().await;
-        store
-            .diagnostic_context(&uri)
-            .expect("expected diagnostic context")
-    };
-    {
-        let mut store = server.session.state_for_tests().await;
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    let context = server
+        .session
+        .diagnostic_context(&uri)
+        .await
+        .expect("expected diagnostic context");
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                2,
+                "flowchart TD\nA-->C\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
 
     let diagnostics = server
         .diagnostic_publisher()
@@ -1394,24 +1293,28 @@ async fn diagnostic_pull_uses_latest_document() {
         .await
         .unwrap();
 
-    {
-        let mut store = server.session.state_for_tests().await;
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-    {
-        let mut store = server.session.state_for_tests().await;
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA[unterminated\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                2,
+                "flowchart TD\nA[unterminated\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
 
     let report = server
         .diagnostic(DocumentDiagnosticParams {
@@ -1570,13 +1473,8 @@ async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
 
 #[test]
 fn structure_helpers_produce_hover_and_nested_symbols() {
-    let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-    let snapshot = store.upsert(
-        uri.clone(),
-        1,
-        "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-    );
+    let snapshot = snapshot_for_test(uri.clone(), 1, "flowchart TD\nsubgraph group\nA-->B\nend\n");
 
     let hover = hover(&snapshot, Position::new(1, 0)).unwrap();
     let text = match hover.contents {
@@ -1590,10 +1488,10 @@ fn structure_helpers_produce_hover_and_nested_symbols() {
     assert!(selection_ranges[0].parent.is_some());
 
     let markdown_uri = Uri::from_str("file:///tmp/example.md").unwrap();
-    let markdown_snapshot = store.upsert(
+    let markdown_snapshot = snapshot_for_test(
         markdown_uri,
         1,
-        "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+        "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n",
     );
     let folding_ranges = folding_ranges(&markdown_snapshot);
     assert!(
@@ -1619,9 +1517,8 @@ fn structure_helpers_produce_hover_and_nested_symbols() {
 
 #[test]
 fn structure_helpers_cover_navigation_surface() {
-    let mut store = DocumentStore::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-    let snapshot = store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
+    let snapshot = snapshot_for_test(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n");
     let position = Position::new(1, 0);
 
     assert!(matches!(
@@ -1694,26 +1591,38 @@ async fn lsp_handlers_return_hover_and_symbols() {
         .await
         .unwrap();
 
-    {
-        let mut store = server.session.state_for_tests().await;
-        store.apply_analyzer_options(
+    server
+        .session
+        .update_configuration(
             default_lsp_analysis_options().with_rule_config(
                 AnalysisRuleConfig::default()
                     .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
                     .unwrap(),
             ),
-        );
-        store.upsert(
-            uri.clone(),
-            1,
-            "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
-        store.upsert(
-            Uri::from_str("file:///tmp/example.md").unwrap(),
-            1,
-            "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
-        );
-    }
+        )
+        .await;
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                1,
+                "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    assert!(
+        server
+            .session
+            .open_document(
+                Uri::from_str("file:///tmp/example.md").unwrap(),
+                1,
+                "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+                DocumentKind::Markdown,
+            )
+            .await
+    );
 
     let hover = server
         .hover(HoverParams {
@@ -1787,12 +1696,11 @@ async fn lsp_handlers_return_hover_and_symbols() {
         Some(SemanticTokensRangeResult::Tokens(tokens)) if !tokens.data.is_empty()
     ));
 
-    let context = {
-        let store = server.session.state_for_tests().await;
-        store
-            .diagnostic_context(&uri)
-            .expect("expected snapshot-backed diagnostics")
-    };
+    let context = server
+        .session
+        .diagnostic_context(&uri)
+        .await
+        .expect("expected snapshot-backed diagnostics");
     let diagnostic = server
         .diagnostic_publisher()
         .diagnostics_for_current_context(&context)

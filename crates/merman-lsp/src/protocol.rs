@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::session::documents::DEFAULT_LSP_MAX_SOURCE_BYTES;
+use crate::session::DEFAULT_LSP_MAX_SOURCE_BYTES;
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
 use merman_core::EditorRenamePolicy;

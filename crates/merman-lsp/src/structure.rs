@@ -334,7 +334,7 @@ mod tests {
         selection_ranges,
     };
     use crate::protocol::WorkspaceEditEncoding;
-    use crate::session::documents::DocumentStore;
+    use crate::snapshot::snapshot_for_test;
     use std::str::FromStr;
     use tower_lsp_server::ls_types::{
         DocumentChanges, DocumentSymbolResponse, FoldingRangeKind, GotoDefinitionResponse,
@@ -344,13 +344,8 @@ mod tests {
 
     #[test]
     fn document_symbols_include_root_and_child_items() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
+        let snapshot = snapshot_for_test(uri, 1, "flowchart TD\nsubgraph group\nA-->B\nend\n");
 
         let response = document_symbols(&snapshot);
         let nested = match response {
@@ -372,13 +367,9 @@ mod tests {
 
     #[test]
     fn document_symbols_can_fall_back_to_flat_symbol_information() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri.clone(),
-            1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
+        let snapshot =
+            snapshot_for_test(uri.clone(), 1, "flowchart TD\nsubgraph group\nA-->B\nend\n");
 
         let response = document_symbols_with_hierarchy_support(&snapshot, false);
         let flat = match response {
@@ -399,9 +390,8 @@ mod tests {
 
     #[test]
     fn hover_reports_the_active_outline_entry() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\n".to_string());
+        let snapshot = snapshot_for_test(uri, 1, "flowchart TD\nA-->B\n");
 
         let hover = hover(&snapshot, Position::new(1, 0)).unwrap();
         let text = match hover.contents {
@@ -415,13 +405,8 @@ mod tests {
 
     #[test]
     fn selection_ranges_return_nested_parser_backed_ranges() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
+        let snapshot = snapshot_for_test(uri, 1, "flowchart TD\nsubgraph group\nA-->B\nend\n");
 
         let ranges = selection_ranges(&snapshot, &[Position::new(2, 0)]).unwrap();
 
@@ -433,12 +418,11 @@ mod tests {
 
     #[test]
     fn folding_ranges_return_lsp_regions() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.md").unwrap();
-        let snapshot = store.upsert(
+        let snapshot = snapshot_for_test(
             uri,
             1,
-            "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+            "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n",
         );
 
         let ranges = folding_ranges(&snapshot);
@@ -452,9 +436,8 @@ mod tests {
 
     #[test]
     fn rename_and_references_track_simple_identifiers() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
+        let snapshot = snapshot_for_test(uri, 1, "flowchart TD\nA-->B\nA-->C\n");
 
         let position = Position::new(1, 0);
         let prepare = prepare_rename(&snapshot, position).unwrap();
@@ -499,9 +482,8 @@ mod tests {
 
     #[test]
     fn rename_can_fall_back_to_workspace_edit_changes() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
+        let snapshot = snapshot_for_test(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n");
 
         let edit = rename_with_workspace_edit_encoding(
             &snapshot,

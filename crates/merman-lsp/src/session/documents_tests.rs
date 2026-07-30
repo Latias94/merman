@@ -1,15 +1,18 @@
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::session::documents::{
-    AnalyzerOptionsPreparation, DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
-    DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiagnosticState, DocumentDiscardedSource,
-    DocumentResourceLimit, DocumentStore, DocumentSyncError, PreparedDocumentText,
-    SemanticTokensState, TextChangePreparation, TextDocumentUpdate, default_lsp_analysis_options,
+use super::{
+    AnalyzerConfigurationChange, AnalyzerOptionsPreparation,
+    DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES, DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiagnosticState,
+    DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError, PreparedDocumentText,
+    SemanticTokensState, SessionState, TextChangePreparation, TextDocumentUpdate,
+    default_lsp_analysis_options,
 };
+use crate::session::analysis::executor::DiagnosticReprojectionRequest;
 use merman_analysis::{
     AnalysisCancellationToken, AnalysisOptions, AnalysisPayload, AnalysisRuleConfig,
-    AnalysisRuleProfile, DiagnosticSeverity, FenceSemanticRole, FenceTextIndexSource,
+    AnalysisRuleProfile, Analyzer, DiagnosticSeverity, FenceSemanticRole, FenceTextIndexSource,
     source_limit_diagnostic_span,
 };
 use merman_editor_core::DocumentKind;
@@ -17,9 +20,50 @@ use tower_lsp_server::ls_types::{
     Position, Range, SemanticToken, TextDocumentContentChangeEvent, Uri,
 };
 
+static CUSTOM_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
+static CUSTOM_ASYNC_SESSION_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
+static REPEATED_DIAGNOSTIC_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+fn one_reprojection(
+    mut requests: Vec<DiagnosticReprojectionRequest>,
+) -> DiagnosticReprojectionRequest {
+    assert_eq!(requests.len(), 1, "expected one diagnostic reprojection");
+    requests.pop().unwrap()
+}
+
+fn custom_session_flowchart_parser(
+    _source: &str,
+    _metadata: &merman_core::ParseMetadata,
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    CUSTOM_SESSION_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
+    Ok(Ok(serde_json::json!({ "warningFacts": [] })))
+}
+
+fn custom_async_session_flowchart_parser(
+    _source: &str,
+    _metadata: &merman_core::ParseMetadata,
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    CUSTOM_ASYNC_SESSION_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
+    Ok(Ok(serde_json::json!({ "warningFacts": [] })))
+}
+
+fn repeated_diagnostic_flowchart_parser(
+    _source: &str,
+    _metadata: &merman_core::ParseMetadata,
+    control: &merman_core::ParseControl,
+) -> merman_core::ParseControlResult<merman_core::Result<serde_json::Value>> {
+    control.checkpoint()?;
+    REPEATED_DIAGNOSTIC_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
+    Ok(Ok(serde_json::json!({ "warningFacts": [] })))
+}
+
 #[test]
 fn plain_mermaid_documents_create_single_snapshot_fence() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -43,7 +87,7 @@ fn plain_mermaid_documents_create_single_snapshot_fence() {
 
 #[test]
 fn new_store_uses_lsp_default_source_limit() {
-    let store = DocumentStore::new();
+    let store = SessionState::new();
 
     assert_eq!(
         store.analyzer_options().max_source_bytes(),
@@ -53,7 +97,7 @@ fn new_store_uses_lsp_default_source_limit() {
 
 #[test]
 fn markdown_documents_create_fences_for_markdown_extensions() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.markdown").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -80,7 +124,7 @@ fn markdown_documents_create_fences_for_markdown_extensions() {
 
 #[test]
 fn markdown_documents_create_multiple_mermaid_fences() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.markdown").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -140,7 +184,7 @@ fn markdown_documents_create_multiple_mermaid_fences() {
 
 #[test]
 fn newer_versions_replace_the_stored_snapshot() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let first = store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
@@ -155,8 +199,8 @@ fn newer_versions_replace_the_stored_snapshot() {
 
     let stored = store.get(&uri).unwrap();
     assert_eq!(stored.version, 2);
-    assert!(stored.text.contains("sequenceDiagram"));
-    assert!(!stored.text.contains("flowchart TD"));
+    assert!(stored.text().unwrap().contains("sequenceDiagram"));
+    assert!(!stored.text().unwrap().contains("flowchart TD"));
     let stored = store
         .snapshot(&uri)
         .expect("expected stored snapshot after replacement");
@@ -166,7 +210,7 @@ fn newer_versions_replace_the_stored_snapshot() {
 
 #[test]
 fn upsert_text_defers_snapshot_until_requested() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let document = store.upsert_text(
@@ -177,7 +221,7 @@ fn upsert_text_defers_snapshot_until_requested() {
     );
 
     assert_eq!(document.version, 1);
-    assert_eq!(document.text.as_ref(), "flowchart TD\nA-->B\n");
+    assert_eq!(document.text().unwrap().as_ref(), "flowchart TD\nA-->B\n");
     assert!(!store.has_snapshot(&uri));
 
     let snapshot = store
@@ -190,7 +234,7 @@ fn upsert_text_defers_snapshot_until_requested() {
 
 #[test]
 fn upsert_text_limits_oversized_documents_without_retaining_source() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
 
@@ -198,22 +242,22 @@ fn upsert_text_limits_oversized_documents_without_retaining_source() {
     let document = store.open_text(uri.clone(), 1, source.clone(), DocumentKind::Diagram);
 
     assert_eq!(document.version, 1);
-    assert_eq!(document.text.as_ref(), "");
+    assert!(document.text().is_none());
     assert_eq!(
-        document.resource_limit,
+        document.resource_limit(),
         Some(DocumentResourceLimit {
             source_len: source.len(),
             max_source_bytes: 8,
             span: source_limit_diagnostic_span(&source),
         })
     );
-    assert_eq!(document.discarded_source, None);
+    assert_eq!(document.discarded_source(), None);
     assert!(store.snapshot(&uri).is_none());
 }
 
 #[test]
 fn prepared_text_limits_oversized_documents_without_scanning_under_the_store_lock() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/large-prepared.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
 
@@ -221,9 +265,9 @@ fn prepared_text_limits_oversized_documents_without_scanning_under_the_store_loc
     let prepared = PreparedDocumentText::new(source.clone());
     let document = store.open_prepared_text(uri, 1, prepared, DocumentKind::Diagram);
 
-    assert_eq!(document.text.as_ref(), "");
+    assert!(document.text().is_none());
     assert_eq!(
-        document.resource_limit,
+        document.resource_limit(),
         Some(DocumentResourceLimit {
             source_len: source.len(),
             max_source_bytes: 8,
@@ -234,16 +278,16 @@ fn prepared_text_limits_oversized_documents_without_scanning_under_the_store_loc
 
 #[test]
 fn source_limit_reclassification_rejects_a_stale_document_epoch() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/reclassified.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
     store.open_text(uri.clone(), 1, source.clone(), DocumentKind::Diagram);
 
     let batch = store
-        .prepare_source_limit_reclassification(
+        .prepare_snapshot_configuration(
             default_lsp_analysis_options().with_max_source_bytes(Some(8)),
         )
-        .project()
+        .prepare()
         .expect("test projection should not be cancelled");
     store.open_text(
         uri.clone(),
@@ -252,10 +296,10 @@ fn source_limit_reclassification_rejects_a_stale_document_epoch() {
         DocumentKind::Diagram,
     );
 
-    assert!(store.commit_source_limit_reclassification(batch).is_none());
+    assert!(store.commit_snapshot_configuration(batch).is_none());
     let document = store.get(&uri).expect("replacement document should remain");
     assert_eq!(document.version, 2);
-    assert_eq!(document.resource_limit, None);
+    assert_eq!(document.resource_limit(), None);
     assert_eq!(
         store.analyzer_options().max_source_bytes(),
         Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
@@ -265,7 +309,7 @@ fn source_limit_reclassification_rejects_a_stale_document_epoch() {
 #[test]
 fn session_cancellation_aborts_pending_source_limit_projection() {
     let cancellation = AnalysisCancellationToken::new();
-    let mut store = DocumentStore::with_session_cancellation(cancellation.clone());
+    let mut store = SessionState::with_session_cancellation(cancellation.clone());
     let uri = Uri::from_str("file:///tmp/cancelled-reclassification.mmd").unwrap();
     store.open_text(
         uri,
@@ -273,21 +317,21 @@ fn session_cancellation_aborts_pending_source_limit_projection() {
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let plan = store.prepare_source_limit_reclassification(
+    let plan = store.prepare_snapshot_configuration(
         default_lsp_analysis_options().with_max_source_bytes(Some(8)),
     );
 
     cancellation.cancel();
 
     assert!(matches!(
-        plan.project(),
+        plan.prepare(),
         Err(merman_analysis::AnalysisCancelled)
     ));
 }
 
 #[test]
 fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/configuration-order.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
     store.open_text(uri.clone(), 1, source.clone(), DocumentKind::Diagram);
@@ -300,13 +344,13 @@ fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
         )
         .expect("the first request is current")
     {
-        AnalyzerOptionsPreparation::RequiresSourceLimitProjection(plan) => plan,
+        AnalyzerOptionsPreparation::RequiresSnapshotPreparation(plan) => plan,
         AnalyzerOptionsPreparation::Applied(_, _) => {
             panic!("the lower source limit must require source projection")
         }
     };
     let older_batch = older_plan
-        .project()
+        .prepare()
         .expect("test projection should not be cancelled");
 
     let latest_request = store.begin_analyzer_configuration_request();
@@ -316,29 +360,25 @@ fn source_limit_reclassification_rejects_a_superseded_configuration_request() {
     assert!(matches!(
         latest,
         AnalyzerOptionsPreparation::Applied(
-            crate::session::documents::AnalyzerConfigurationChange::Unchanged,
-            None
-        )
+            AnalyzerConfigurationChange::Unchanged,
+            requests
+        ) if requests.is_empty()
     ));
 
     assert!(!store.is_analyzer_configuration_request_current(older_request));
-    assert!(
-        store
-            .commit_source_limit_reclassification(older_batch)
-            .is_none()
-    );
+    assert!(store.commit_snapshot_configuration(older_batch).is_none());
     assert_eq!(
         store.analyzer_options().max_source_bytes(),
         Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
     );
     let document = store.get(&uri).expect("latest configuration keeps source");
-    assert_eq!(document.text.as_ref(), source);
-    assert_eq!(document.resource_limit, None);
+    assert_eq!(document.text().unwrap().as_ref(), source);
+    assert_eq!(document.resource_limit(), None);
 }
 
 #[test]
 fn full_replacement_recovers_from_resource_limited_document() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
 
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
@@ -362,14 +402,14 @@ fn full_replacement_recovers_from_resource_limited_document() {
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected recovered document");
     assert_eq!(stored.version, 2);
-    assert_eq!(stored.text.as_ref(), "A-->B\n");
-    assert_eq!(stored.resource_limit, None);
-    assert_eq!(stored.discarded_source, None);
+    assert_eq!(stored.text().unwrap().as_ref(), "A-->B\n");
+    assert_eq!(stored.resource_limit(), None);
+    assert_eq!(stored.discarded_source(), None);
 }
 
 #[test]
 fn ranged_changes_on_resource_limited_documents_keep_lightweight_state() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
 
@@ -389,11 +429,11 @@ fn ranged_changes_on_resource_limited_documents_keep_lightweight_state() {
     assert_eq!(update, TextDocumentUpdate::NeedsFullSync);
     let stored = store.get(&uri).expect("expected limited document");
     assert_eq!(stored.version, 2);
-    assert_eq!(stored.text.as_ref(), "");
-    assert_eq!(stored.resource_limit, None);
-    assert_eq!(stored.discarded_source, None);
+    assert!(stored.text().is_none());
+    assert_eq!(stored.resource_limit(), None);
+    assert_eq!(stored.discarded_source(), None);
     assert_eq!(
-        stored.sync_error,
+        stored.sync_error_state(),
         Some(DocumentSyncError::FullReplacementRequired {
             source_len: source.len(),
             last_max_source_bytes: 8,
@@ -404,7 +444,7 @@ fn ranged_changes_on_resource_limited_documents_keep_lightweight_state() {
 
 #[test]
 fn resource_limited_documents_update_limit_when_configuration_still_excludes_them() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
 
@@ -414,20 +454,20 @@ fn resource_limited_documents_update_limit_when_configuration_still_excludes_the
 
     let stored = store.get(&uri).expect("expected limited document");
     assert_eq!(
-        stored.resource_limit,
+        stored.resource_limit(),
         Some(DocumentResourceLimit {
             source_len: source.len(),
             max_source_bytes: 16,
             span: source_limit_diagnostic_span(&source),
         })
     );
-    assert_eq!(stored.discarded_source, None);
+    assert_eq!(stored.discarded_source(), None);
     assert!(store.snapshot(&uri).is_none());
 }
 
 #[test]
 fn resource_limited_documents_become_discarded_when_configuration_would_allow_them() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
     let source = "flowchart TD\nA-->B\n".to_string();
 
@@ -436,9 +476,9 @@ fn resource_limited_documents_become_discarded_when_configuration_would_allow_th
     store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(64)));
 
     let stored = store.get(&uri).expect("expected discarded document");
-    assert_eq!(stored.resource_limit, None);
+    assert_eq!(stored.resource_limit(), None);
     assert_eq!(
-        stored.discarded_source,
+        stored.discarded_source(),
         Some(DocumentDiscardedSource {
             source_len: source.len(),
             previous_max_source_bytes: 8,
@@ -459,14 +499,14 @@ fn resource_limited_documents_become_discarded_when_configuration_would_allow_th
 
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected recovered document");
-    assert_eq!(stored.resource_limit, None);
-    assert_eq!(stored.discarded_source, None);
-    assert_eq!(stored.text.as_ref(), source);
+    assert_eq!(stored.resource_limit(), None);
+    assert_eq!(stored.discarded_source(), None);
+    assert_eq!(stored.text().unwrap().as_ref(), source);
 }
 
 #[test]
 fn upsert_text_invalidates_cached_snapshot() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -498,7 +538,7 @@ fn upsert_text_invalidates_cached_snapshot() {
 
 #[test]
 fn apply_text_change_rejects_missing_documents() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/missing.mmd").unwrap();
 
     let update = store.apply_text_changes(
@@ -518,7 +558,7 @@ fn apply_text_change_rejects_missing_documents() {
 
 #[test]
 fn apply_text_change_rejects_stale_versions_without_invalidating_current_state() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -552,13 +592,13 @@ fn apply_text_change_rejects_stale_versions_without_invalidating_current_state()
     );
     let stored = store.get(&uri).expect("expected current document");
     assert_eq!(stored.version, 3);
-    assert!(stored.text.contains("sequenceDiagram"));
+    assert!(stored.text().unwrap().contains("sequenceDiagram"));
     assert!(store.has_snapshot(&uri));
 }
 
 #[test]
 fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -588,12 +628,15 @@ fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 2);
-    assert_eq!(stored.text.as_ref(), "flowchart TD\nA[C]-->B\nC-->D\n");
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "flowchart TD\nA[C]-->B\nC-->D\n"
+    );
 }
 
 #[test]
 fn prepared_text_changes_cannot_overwrite_a_newer_document_epoch() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/prepared-change-cas.mmd").unwrap();
     store.open_text(
         uri.clone(),
@@ -629,13 +672,13 @@ fn prepared_text_changes_cannot_overwrite_a_newer_document_epoch() {
         .get(&uri)
         .expect("newer document should remain stored");
     assert_eq!(stored.version, 3);
-    assert!(stored.text.starts_with("sequenceDiagram"));
+    assert!(stored.text().unwrap().starts_with("sequenceDiagram"));
 }
 
 #[test]
 fn session_cancellation_aborts_pending_text_change_preparation() {
     let cancellation = AnalysisCancellationToken::new();
-    let mut store = DocumentStore::with_session_cancellation(cancellation.clone());
+    let mut store = SessionState::with_session_cancellation(cancellation.clone());
     let uri = Uri::from_str("file:///tmp/cancelled-change.mmd").unwrap();
     store.open_text(
         uri.clone(),
@@ -665,7 +708,7 @@ fn session_cancellation_aborts_pending_text_change_preparation() {
 
 #[test]
 fn apply_text_changes_updates_line_index_between_batched_edits() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -702,12 +745,15 @@ fn apply_text_changes_updates_line_index_between_batched_edits() {
 
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected updated document");
-    assert_eq!(stored.text.as_ref(), "flowchart TD\r\nA[C\nE]\rB-->C\n");
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "flowchart TD\r\nA[C\nE]\rB-->C\n"
+    );
 }
 
 #[test]
 fn apply_text_changes_allows_nonconsecutive_versions_for_incremental_ranges() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -730,12 +776,12 @@ fn apply_text_changes_allows_nonconsecutive_versions_for_incremental_ranges() {
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 3);
-    assert_eq!(stored.text.as_ref(), "flowchart TD\nC-->B\n");
+    assert_eq!(stored.text().unwrap().as_ref(), "flowchart TD\nC-->B\n");
 }
 
 #[test]
 fn apply_text_changes_rejects_empty_change_sets_without_advancing_version() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -750,12 +796,12 @@ fn apply_text_changes_rejects_empty_change_sets_without_advancing_version() {
     assert_eq!(update, TextDocumentUpdate::EmptyChangeSet);
     let stored = store.get(&uri).expect("expected current document");
     assert_eq!(stored.version, 1);
-    assert_eq!(stored.text.as_ref(), "flowchart TD\nA-->B\n");
+    assert_eq!(stored.text().unwrap().as_ref(), "flowchart TD\nA-->B\n");
 }
 
 #[test]
 fn apply_text_changes_allows_skipped_versions_for_full_replacements() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -778,12 +824,15 @@ fn apply_text_changes_allows_skipped_versions_for_full_replacements() {
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 4);
-    assert_eq!(stored.text.as_ref(), "sequenceDiagram\nAlice->>Bob: Hi\n");
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "sequenceDiagram\nAlice->>Bob: Hi\n"
+    );
 }
 
 #[test]
 fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -811,11 +860,11 @@ fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
     assert_eq!(update, TextDocumentUpdate::InvalidRange);
     let stored = store.get(&uri).expect("expected current document");
     assert_eq!(stored.version, 2);
-    assert_eq!(stored.text.as_ref(), "");
-    assert_eq!(stored.resource_limit, None);
-    assert_eq!(stored.discarded_source, None);
+    assert!(stored.text().is_none());
+    assert_eq!(stored.resource_limit(), None);
+    assert_eq!(stored.discarded_source(), None);
     assert_eq!(
-        stored.sync_error,
+        stored.sync_error_state(),
         Some(DocumentSyncError::InvalidIncrementalRange)
     );
     assert!(!store.has_snapshot(&uri));
@@ -823,7 +872,7 @@ fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
 
 #[test]
 fn apply_text_changes_marks_document_unsynced_after_reversed_range() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -845,16 +894,16 @@ fn apply_text_changes_marks_document_unsynced_after_reversed_range() {
 
     assert_eq!(update, TextDocumentUpdate::InvalidRange);
     let stored = store.get(&uri).expect("expected unsynced document");
-    assert_eq!(stored.text.as_ref(), "");
+    assert!(stored.text().is_none());
     assert_eq!(
-        stored.sync_error,
+        stored.sync_error_state(),
         Some(DocumentSyncError::InvalidIncrementalRange)
     );
 }
 
 #[test]
 fn apply_text_changes_clamps_utf16_positions_past_line_end() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -880,13 +929,16 @@ fn apply_text_changes_clamps_utf16_positions_past_line_end() {
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 2);
-    assert_eq!(stored.text.as_ref(), "flowchart TD\nA[🤓]-->Bbad\n");
-    assert_eq!(stored.sync_error, None);
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "flowchart TD\nA[🤓]-->Bbad\n"
+    );
+    assert_eq!(stored.sync_error_state(), None);
 }
 
 #[test]
 fn full_replacement_recovers_from_unsynced_document_after_invalid_range() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -922,13 +974,16 @@ fn full_replacement_recovers_from_unsynced_document_after_invalid_range() {
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected recovered document");
     assert_eq!(stored.version, 3);
-    assert_eq!(stored.text.as_ref(), "sequenceDiagram\nAlice->>Bob: Hi\n");
-    assert_eq!(stored.sync_error, None);
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "sequenceDiagram\nAlice->>Bob: Hi\n"
+    );
+    assert_eq!(stored.sync_error_state(), None);
 }
 
 #[test]
 fn ranged_changes_on_unsynced_documents_keep_lightweight_state() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -964,16 +1019,16 @@ fn ranged_changes_on_unsynced_documents_keep_lightweight_state() {
     assert_eq!(update, TextDocumentUpdate::NeedsFullSync);
     let stored = store.get(&uri).expect("expected unsynced document");
     assert_eq!(stored.version, 3);
-    assert_eq!(stored.text.as_ref(), "");
+    assert!(stored.text().is_none());
     assert_eq!(
-        stored.sync_error,
+        stored.sync_error_state(),
         Some(DocumentSyncError::InvalidIncrementalRange)
     );
 }
 
 #[test]
 fn full_replacement_later_in_unsynced_batch_recovers_document() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -1016,13 +1071,16 @@ fn full_replacement_later_in_unsynced_batch_recovers_document() {
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected recovered document");
     assert_eq!(stored.version, 3);
-    assert_eq!(stored.text.as_ref(), "sequenceDiagram\nAlice->>Bob: Hi\n");
-    assert_eq!(stored.sync_error, None);
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "sequenceDiagram\nAlice->>Bob: Hi\n"
+    );
+    assert_eq!(stored.sync_error_state(), None);
 }
 
 #[test]
 fn full_replacement_later_in_available_batch_ignores_prior_invalid_ranges() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.open_text(
@@ -1052,13 +1110,16 @@ fn full_replacement_later_in_available_batch_ignores_prior_invalid_ranges() {
     assert_eq!(update, TextDocumentUpdate::Applied);
     let stored = store.get(&uri).expect("expected replaced document");
     assert_eq!(stored.version, 2);
-    assert_eq!(stored.text.as_ref(), "sequenceDiagram\nAlice->>Bob: Hi\n");
-    assert_eq!(stored.sync_error, None);
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "sequenceDiagram\nAlice->>Bob: Hi\n"
+    );
+    assert_eq!(stored.sync_error_state(), None);
 }
 
 #[test]
 fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1096,7 +1157,7 @@ fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
 
 #[test]
 fn snapshot_build_requests_reuse_current_cached_snapshots() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let cached_uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
     let missing_uri = Uri::from_str("file:///tmp/missing.mmd").unwrap();
 
@@ -1136,7 +1197,7 @@ fn snapshot_build_requests_reuse_current_cached_snapshots() {
 
 #[test]
 fn initial_lsp_payload_matches_the_sealed_generation_source() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/shared-payload.mmd").unwrap();
 
     store.upsert_text(
@@ -1154,7 +1215,7 @@ fn initial_lsp_payload_matches_the_sealed_generation_source() {
 
 #[test]
 fn cached_snapshot_build_context_stales_after_text_replacement() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/cached.mmd").unwrap();
 
     store.upsert_text(
@@ -1185,7 +1246,7 @@ fn cached_snapshot_build_context_stales_after_text_replacement() {
 
 #[test]
 fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1204,15 +1265,26 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
         &snapshot_context,
         SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
+    assert!(store.set_diagnostic_state_if_current(
+        &diagnostic_context,
+        DocumentDiagnosticState {
+            result_id: "diagnostics-1".to_string(),
+            diagnostics: Vec::new(),
+        },
+    ));
 
     assert_eq!(
         store.apply_analyzer_options(default_lsp_analysis_options()),
-        crate::session::documents::AnalyzerConfigurationChange::Unchanged
+        AnalyzerConfigurationChange::Unchanged
     );
 
     assert!(store.is_snapshot_context_current(&snapshot_context));
     assert!(store.is_diagnostic_context_current(&diagnostic_context));
     assert!(store.has_snapshot(&uri));
+    assert_eq!(
+        store.diagnostic_state(&uri).map(|state| state.result_id),
+        Some("diagnostics-1".to_string())
+    );
     assert_eq!(
         store
             .semantic_tokens_state(&uri)
@@ -1222,8 +1294,380 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
 }
 
 #[test]
-fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
-    let mut store = DocumentStore::new();
+fn analyzer_configuration_change_classifies_each_policy_scope() {
+    let current = AnalysisOptions::default();
+    let diagnostic_only = AnalysisOptions::default().with_rule_config(
+        AnalysisRuleConfig::default()
+            .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+            .unwrap(),
+    );
+    let source_limit = AnalysisOptions::default().with_max_source_bytes(Some(1));
+    let runtime_policy =
+        AnalysisOptions::default().with_fixed_today(Some("2026-07-02".parse().unwrap()));
+
+    assert_eq!(
+        super::analyzer_configuration_change(&current, &current),
+        super::AnalyzerConfigurationChange::Unchanged
+    );
+    assert_eq!(
+        super::analyzer_configuration_change(&current, &diagnostic_only),
+        super::AnalyzerConfigurationChange::DiagnosticsOnly
+    );
+    for next in [&source_limit, &runtime_policy] {
+        assert_eq!(
+            super::analyzer_configuration_change(&current, next),
+            super::AnalyzerConfigurationChange::SnapshotAffecting
+        );
+    }
+}
+
+#[test]
+fn diagnostic_state_is_bound_to_the_document_epoch() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/diagnostic-state.mmd").unwrap();
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let context = store
+        .diagnostic_context(&uri)
+        .expect("expected diagnostic context");
+    let state = DocumentDiagnosticState {
+        result_id: "result-1".to_string(),
+        diagnostics: Vec::new(),
+    };
+
+    assert!(store.set_diagnostic_state_if_current(&context, state.clone()));
+    assert_eq!(
+        store
+            .diagnostic_state(&uri)
+            .expect("expected cached diagnostics")
+            .result_id,
+        "result-1"
+    );
+
+    store.upsert_text(
+        uri.clone(),
+        2,
+        "flowchart TD\nA-->C\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert!(store.diagnostic_state(&uri).is_none());
+    assert!(!store.set_diagnostic_state_if_current(&context, state));
+}
+
+#[test]
+fn no_op_configuration_does_not_supersede_prepared_text_changes() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/no-op-config-text-ticket.mmd").unwrap();
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let TextChangePreparation::Prepare(plan) = store.capture_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "flowchart TD\nA-->C\n".to_string(),
+        }],
+    ) else {
+        panic!("expected a prepared text transaction");
+    };
+    let prepared = plan.prepare().expect("text preparation should succeed");
+
+    let request = store.begin_analyzer_configuration_request();
+    let preparation = store
+        .prepare_analyzer_options(request, store.analyzer_options().clone())
+        .expect("current no-op configuration should be classified");
+    assert!(matches!(
+        preparation,
+        AnalyzerOptionsPreparation::Applied(
+            AnalyzerConfigurationChange::Unchanged,
+            requests
+        ) if requests.is_empty()
+    ));
+
+    assert_eq!(
+        store.commit_prepared_text_changes(prepared),
+        TextDocumentUpdate::Applied
+    );
+    assert_eq!(store.get(&uri).unwrap().version, 2);
+}
+
+#[test]
+fn applied_configuration_supersedes_prepared_text_changes() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/applied-config-text-ticket.mmd").unwrap();
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let TextChangePreparation::Prepare(plan) = store.capture_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "flowchart TD\nA-->C\n".to_string(),
+        }],
+    ) else {
+        panic!("expected a prepared text transaction");
+    };
+    let prepared = plan.prepare().expect("text preparation should succeed");
+
+    store.apply_analyzer_options(
+        default_lsp_analysis_options().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                .unwrap(),
+        ),
+    );
+
+    assert_eq!(
+        store.commit_prepared_text_changes(prepared),
+        TextDocumentUpdate::Superseded
+    );
+    assert_eq!(store.get(&uri).unwrap().version, 1);
+}
+
+#[test]
+fn snapshot_update_without_a_source_limit_change_skips_source_projection() {
+    let mut store = SessionState::new();
+    let request = store.begin_analyzer_configuration_request();
+    let preparation = store
+        .prepare_analyzer_options(
+            request,
+            default_lsp_analysis_options().with_fixed_today(Some("2026-07-30".parse().unwrap())),
+        )
+        .expect("current configuration should be classified");
+
+    let AnalyzerOptionsPreparation::RequiresSnapshotPreparation(plan) = preparation else {
+        panic!("snapshot-affecting options must be prepared outside the session lock");
+    };
+    let batch = plan.prepare().expect("snapshot preparation should succeed");
+    assert!(batch.oversized_spans.is_none());
+    assert!(store.commit_snapshot_configuration(batch).is_some());
+}
+
+#[test]
+fn snapshot_update_without_a_source_limit_change_ignores_unrelated_document_writes() {
+    let mut store = SessionState::new();
+    let request = store.begin_analyzer_configuration_request();
+    let preparation = store
+        .prepare_analyzer_options(
+            request,
+            default_lsp_analysis_options().with_fixed_today(Some("2026-07-30".parse().unwrap())),
+        )
+        .expect("current configuration should be classified");
+    let AnalyzerOptionsPreparation::RequiresSnapshotPreparation(plan) = preparation else {
+        panic!("snapshot-affecting options must be prepared outside the session lock");
+    };
+    let batch = plan.prepare().expect("snapshot preparation should succeed");
+
+    store.upsert_text(
+        Uri::from_str("file:///tmp/unrelated-during-config.mmd").unwrap(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert!(store.commit_snapshot_configuration(batch).is_some());
+}
+
+#[test]
+fn snapshot_update_rejects_an_environment_replacement_with_the_same_request_id() {
+    let mut store = SessionState::new();
+    let request = store.begin_analyzer_configuration_request();
+    let preparation = store
+        .prepare_analyzer_options(
+            request,
+            default_lsp_analysis_options().with_fixed_today(Some("2026-07-30".parse().unwrap())),
+        )
+        .expect("current configuration should be classified");
+    let AnalyzerOptionsPreparation::RequiresSnapshotPreparation(plan) = preparation else {
+        panic!("snapshot-affecting options must be prepared outside the session lock");
+    };
+    let batch = plan.prepare().expect("snapshot preparation should succeed");
+    let replacement =
+        Analyzer::with_engine(merman_core::Engine::new(), store.analyzer.options().clone());
+
+    store.replace_analyzer(replacement, None);
+
+    assert!(store.is_analyzer_configuration_request_current(request));
+    assert!(
+        store.commit_snapshot_configuration(batch).is_none(),
+        "environment replacement must invalidate a prepared configuration even when its request id remains current"
+    );
+}
+
+#[test]
+fn snapshot_policy_update_preserves_a_custom_parser_registry() {
+    CUSTOM_SESSION_PARSE_CALLS.store(0, Ordering::SeqCst);
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", custom_session_flowchart_parser);
+    let options = default_lsp_analysis_options();
+    let analyzer = Analyzer::with_engine(engine, options.clone());
+    let initial_identity = analyzer.environment_identity().clone();
+    let mut store = SessionState::with_analyzer_for_tests(analyzer);
+    let uri = Uri::from_str("file:///tmp/custom-registry-config.mmd").unwrap();
+
+    store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\n".to_string());
+    assert_eq!(CUSTOM_SESSION_PARSE_CALLS.load(Ordering::SeqCst), 1);
+
+    let change = store.apply_analyzer_options(
+        options.with_max_source_bytes(Some(DEFAULT_LSP_MAX_SOURCE_BYTES.saturating_add(1))),
+    );
+    assert!(change.affects_snapshots());
+    assert_ne!(store.analyzer_environment_identity(), &initial_identity);
+
+    store.upsert(uri, 2, "flowchart TD\nA-->C\n".to_string());
+    assert_eq!(
+        CUSTOM_SESSION_PARSE_CALLS.load(Ordering::SeqCst),
+        2,
+        "snapshot policy derivation must retain the custom parser registry"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn language_session_configuration_preserves_a_custom_parser_registry() {
+    CUSTOM_ASYNC_SESSION_PARSE_CALLS.store(0, Ordering::SeqCst);
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", custom_async_session_flowchart_parser);
+    let options = default_lsp_analysis_options();
+    let session = super::LanguageSession::with_analyzer_for_tests(Analyzer::with_engine(
+        engine,
+        options.clone(),
+    ));
+    let uri = Uri::from_str("file:///tmp/custom-registry-session.mmd").unwrap();
+
+    assert!(
+        session
+            .open_document(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    session.structure_snapshot(&uri).await.unwrap();
+    assert_eq!(CUSTOM_ASYNC_SESSION_PARSE_CALLS.load(Ordering::SeqCst), 1);
+
+    let change = session
+        .update_configuration(
+            options.with_max_source_bytes(Some(DEFAULT_LSP_MAX_SOURCE_BYTES.saturating_add(1))),
+        )
+        .await;
+    assert!(change.affects_snapshots());
+    session.structure_snapshot(&uri).await.unwrap();
+    assert_eq!(
+        CUSTOM_ASYNC_SESSION_PARSE_CALLS.load(Ordering::SeqCst),
+        2,
+        "the typed session configuration path must retain the custom parser registry"
+    );
+}
+
+#[tokio::test]
+async fn repeated_diagnostic_updates_preserve_environment_and_parse_once() {
+    REPEATED_DIAGNOSTIC_PARSE_CALLS.store(0, Ordering::SeqCst);
+    let mut engine = merman_core::Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", repeated_diagnostic_flowchart_parser);
+    let options = default_lsp_analysis_options();
+    let analyzer = Analyzer::with_engine(engine, options.clone());
+    let identity = analyzer.environment_identity().clone();
+    let mut store = SessionState::with_analyzer_for_tests(analyzer);
+    let uri = Uri::from_str("file:///tmp/repeated-diagnostic-config.mmd").unwrap();
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    store
+        .snapshot_context(&uri)
+        .expect("initial analysis should succeed");
+    let generation = Arc::clone(
+        store
+            .cached_analysis_generation(&uri)
+            .expect("initial generation should be cached")
+            .generation(),
+    );
+    assert_eq!(REPEATED_DIAGNOSTIC_PARSE_CALLS.load(Ordering::SeqCst), 1);
+
+    for severity in [DiagnosticSeverity::Hint, DiagnosticSeverity::Warning] {
+        let (change, requests) = store.begin_analyzer_options(
+            options.clone().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_severity("merman.parse.no_diagram", severity)
+                    .unwrap(),
+            ),
+        );
+        assert_eq!(change, AnalyzerConfigurationChange::DiagnosticsOnly);
+        assert_eq!(store.analyzer_environment_identity(), &identity);
+
+        let request = one_reprojection(requests);
+        let projection = store
+            .analysis_executor()
+            .execute_diagnostic_reprojection(&request)
+            .await
+            .expect("diagnostic reprojection should succeed");
+        store
+            .commit_diagnostic_reprojection_context(&projection)
+            .expect("current diagnostic reprojection should commit");
+
+        assert!(Arc::ptr_eq(
+            &generation,
+            store
+                .cached_analysis_generation(&uri)
+                .expect("reprojected generation should remain cached")
+                .generation()
+        ));
+        assert_eq!(REPEATED_DIAGNOSTIC_PARSE_CALLS.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[test]
+fn replacing_an_engine_changes_identity_even_when_options_match() {
+    let options = default_lsp_analysis_options();
+    let mut first_engine = merman_core::Engine::new();
+    first_engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", custom_session_flowchart_parser);
+    let mut store =
+        SessionState::with_analyzer_for_tests(Analyzer::with_engine(first_engine, options.clone()));
+    let initial_identity = store.analyzer_environment_identity().clone();
+
+    let mut replacement_engine = merman_core::Engine::new();
+    replacement_engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", custom_session_flowchart_parser);
+    store.replace_analyzer(
+        Analyzer::with_engine(replacement_engine, options.clone()),
+        None,
+    );
+
+    assert_eq!(store.analyzer_options(), &options);
+    assert_ne!(store.analyzer_environment_identity(), &initial_identity);
+}
+
+#[tokio::test]
+async fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1252,7 +1696,7 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         SemanticTokensState::new(Some("tokens-1".to_string()), Vec::new()),
     ));
 
-    let (change, plan) = store.begin_analyzer_options(
+    let (change, requests) = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
@@ -1260,10 +1704,7 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         ),
     );
 
-    assert_eq!(
-        change,
-        crate::session::documents::AnalyzerConfigurationChange::DiagnosticsOnly
-    );
+    assert_eq!(change, AnalyzerConfigurationChange::DiagnosticsOnly);
     assert_eq!(
         store.analyzer_environment_identity(),
         &analyzer_environment_identity
@@ -1278,13 +1719,17 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
         "a stale diagnostic projection must not trigger another parse"
     );
 
-    let committed = store.commit_diagnostic_reprojection(
-        plan.expect("cached analysis should produce a reprojection plan")
-            .project()
-            .expect("current reprojection should complete"),
-    );
+    let request = one_reprojection(requests);
+    let projection = store
+        .analysis_executor()
+        .execute_diagnostic_reprojection(&request)
+        .await
+        .expect("current reprojection should complete");
+    let committed = store
+        .commit_diagnostic_reprojection_context(&projection)
+        .is_some();
 
-    assert_eq!(committed, 1);
+    assert!(committed);
     assert!(store.has_analysis_payload(&uri));
     let current_context = store
         .snapshot_context(&uri)
@@ -1317,9 +1762,59 @@ fn diagnostic_only_analyzer_update_reprojects_the_cached_generation() {
     );
 }
 
-#[test]
-fn diagnostic_reprojection_does_not_overwrite_a_newer_document_epoch() {
-    let mut store = DocumentStore::new();
+#[tokio::test]
+async fn equivalent_reprojection_waiters_share_work_and_commit_idempotently() {
+    let mut store = SessionState::new();
+    let uri = Uri::from_str("file:///tmp/reprojection-waiters.mmd").unwrap();
+    store.upsert_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    store
+        .snapshot_context(&uri)
+        .expect("initial analysis should be cached");
+    let (_, requests) = store.begin_analyzer_options(
+        default_lsp_analysis_options().with_rule_config(
+            AnalysisRuleConfig::default()
+                .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
+                .unwrap(),
+        ),
+    );
+    let request = one_reprojection(requests);
+    let executor = store.analysis_executor();
+
+    let first = executor
+        .execute_diagnostic_reprojection(&request)
+        .await
+        .unwrap();
+    let second = executor
+        .execute_diagnostic_reprojection(&request)
+        .await
+        .unwrap();
+
+    assert!(first.shares_result_with(&second));
+    assert_eq!(executor.reprojection_count(), 1);
+    let first_context = store
+        .commit_diagnostic_reprojection_context(&first)
+        .expect("first waiter should commit");
+    let second_context = store
+        .commit_diagnostic_reprojection_context(&second)
+        .expect("second waiter should observe the equivalent commit");
+    assert!(Arc::ptr_eq(
+        &first_context.snapshot,
+        &second_context.snapshot
+    ));
+    assert_eq!(
+        first_context.diagnostic_generation(),
+        second_context.diagnostic_generation()
+    );
+}
+
+#[tokio::test]
+async fn diagnostic_reprojection_does_not_overwrite_a_newer_document_epoch() {
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1331,16 +1826,18 @@ fn diagnostic_reprojection_does_not_overwrite_a_newer_document_epoch() {
     store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
-    let (_, plan) = store.begin_analyzer_options(
+    let (_, requests) = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
                 .unwrap(),
         ),
     );
-    let batch = plan
-        .expect("cached analysis should produce a reprojection plan")
-        .project()
+    let request = one_reprojection(requests);
+    let projection = store
+        .analysis_executor()
+        .execute_diagnostic_reprojection(&request)
+        .await
         .expect("current reprojection should complete");
 
     store.upsert_text(
@@ -1349,10 +1846,18 @@ fn diagnostic_reprojection_does_not_overwrite_a_newer_document_epoch() {
         "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
         DocumentKind::Diagram,
     );
+    let current = store
+        .snapshot_context(&uri)
+        .expect("replacement analysis should be current");
 
-    assert_eq!(store.commit_diagnostic_reprojection(batch), 0);
-    assert!(!store.has_snapshot(&uri));
-    assert!(!store.has_analysis_payload(&uri));
+    assert!(
+        store
+            .commit_diagnostic_reprojection_context(&projection)
+            .is_none()
+    );
+    assert!(store.has_snapshot(&uri));
+    assert!(store.has_analysis_payload(&uri));
+    assert!(store.is_analysis_context_current(&current));
     assert_eq!(
         store
             .get(&uri)
@@ -1362,9 +1867,9 @@ fn diagnostic_reprojection_does_not_overwrite_a_newer_document_epoch() {
     );
 }
 
-#[test]
-fn diagnostic_reprojection_does_not_commit_a_superseded_policy_epoch() {
-    let mut store = DocumentStore::new();
+#[tokio::test]
+async fn diagnostic_reprojection_does_not_commit_a_superseded_policy_epoch() {
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1376,14 +1881,14 @@ fn diagnostic_reprojection_does_not_commit_a_superseded_policy_epoch() {
     store
         .snapshot_context(&uri)
         .expect("expected initial snapshot context");
-    let (_, first_plan) = store.begin_analyzer_options(
+    let (_, first_requests) = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint)
                 .unwrap(),
         ),
     );
-    let (_, second_plan) = store.begin_analyzer_options(
+    let (_, second_requests) = store.begin_analyzer_options(
         default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Warning)
@@ -1391,26 +1896,34 @@ fn diagnostic_reprojection_does_not_commit_a_superseded_policy_epoch() {
         ),
     );
 
-    let first_projection = first_plan
-        .expect("first policy should produce a reprojection plan")
-        .project();
-    let second_batch = second_plan
-        .expect("second policy should produce a reprojection plan")
-        .project()
+    let first_request = one_reprojection(first_requests);
+    let first_projection = store
+        .analysis_executor()
+        .execute_diagnostic_reprojection(&first_request)
+        .await;
+    let second_request = one_reprojection(second_requests);
+    let second_projection = store
+        .analysis_executor()
+        .execute_diagnostic_reprojection(&second_request)
+        .await
         .expect("current reprojection should complete");
 
     assert!(matches!(
         first_projection,
-        Err(merman_analysis::AnalysisCancelled)
+        Err(error) if error.is_stale()
     ));
     assert!(!store.has_analysis_payload(&uri));
-    assert_eq!(store.commit_diagnostic_reprojection(second_batch), 1);
+    assert!(
+        store
+            .commit_diagnostic_reprojection_context(&second_projection)
+            .is_some()
+    );
     assert!(store.has_analysis_payload(&uri));
 }
 
 #[test]
 fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1450,7 +1963,7 @@ fn text_replacement_stales_contexts_but_keeps_committed_token_baseline() {
 
 #[test]
 fn snapshot_affecting_analyzer_update_stales_all_contexts_and_clears_snapshot_state() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1482,7 +1995,7 @@ fn snapshot_affecting_analyzer_update_stales_all_contexts_and_clears_snapshot_st
 
 #[test]
 fn remove_stales_existing_contexts_and_clears_document_state() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1513,7 +2026,7 @@ fn remove_stales_existing_contexts_and_clears_document_state() {
 
 #[test]
 fn stale_snapshot_context_cannot_record_semantic_token_state_after_text_replacement() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1542,7 +2055,7 @@ fn stale_snapshot_context_cannot_record_semantic_token_state_after_text_replacem
 
 #[test]
 fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_config_change() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1596,7 +2109,7 @@ fn semantic_token_delta_baseline_survives_text_replacement_but_not_snapshot_conf
 
 #[test]
 fn snapshot_affecting_source_limit_update_rejects_the_cached_generation() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     store.upsert_text(
@@ -1624,9 +2137,9 @@ fn snapshot_affecting_source_limit_update_rejects_the_cached_generation() {
     assert!(!store.has_snapshot(&uri));
     assert!(store.semantic_tokens_state(&uri).is_none());
     let stored = store.get(&uri).expect("expected resource-limited document");
-    assert_eq!(stored.text.as_ref(), "");
+    assert!(stored.text().is_none());
     assert_eq!(
-        stored.resource_limit,
+        stored.resource_limit(),
         Some(DocumentResourceLimit {
             source_len: "flowchart TD\nA-->B\n".len(),
             max_source_bytes: "flowchart TD\nA-->B\n".len() - 1,
@@ -1639,7 +2152,7 @@ fn snapshot_affecting_source_limit_update_rejects_the_cached_generation() {
 
 #[test]
 fn incomplete_flowchart_documents_use_recovered_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -1661,7 +2174,7 @@ fn incomplete_flowchart_documents_use_recovered_parser_facts() {
 
 #[test]
 fn sequence_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -1677,7 +2190,7 @@ fn sequence_documents_use_parser_facts() {
 
 #[test]
 fn sequence_payload_facts_do_not_pollute_completion_ids() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -1773,7 +2286,7 @@ fn sequence_payload_facts_do_not_pollute_completion_ids() {
 
 #[test]
 fn architecture_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -1813,7 +2326,7 @@ fn architecture_documents_use_parser_facts() {
 
 #[test]
 fn radar_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -1845,7 +2358,7 @@ fn radar_documents_use_parser_facts() {
 
 #[test]
 fn treemap_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -1883,7 +2396,7 @@ fn treemap_documents_use_parser_facts() {
 
 #[test]
 fn block_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -1927,7 +2440,7 @@ fn block_documents_use_parser_facts() {
 
 #[test]
 fn c4_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -1984,7 +2497,7 @@ fn c4_documents_use_parser_facts() {
 
 #[test]
 fn zenuml_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2117,7 +2630,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
             FenceSemanticRole::Entity,
         ),
     ] {
-        let mut store = DocumentStore::new();
+        let mut store = SessionState::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
         let snapshot = store.upsert(uri, 1, case.1.to_string());
         let index = snapshot.fences()[0].text_index();
@@ -2142,7 +2655,7 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
 
 #[test]
 fn incomplete_sequence_documents_use_recovered_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2158,7 +2671,7 @@ fn incomplete_sequence_documents_use_recovered_parser_facts() {
 
 #[test]
 fn state_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2246,7 +2759,7 @@ fn state_documents_use_parser_facts() {
 
 #[test]
 fn incomplete_state_documents_use_recovered_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2262,7 +2775,7 @@ fn incomplete_state_documents_use_recovered_parser_facts() {
 
 #[test]
 fn class_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2278,7 +2791,7 @@ fn class_documents_use_parser_facts() {
 
 #[test]
 fn incomplete_class_documents_use_recovered_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "classDiagram\nclass User\nUser <|--".to_string());
     let index = snapshot.fences()[0].text_index();
@@ -2289,7 +2802,7 @@ fn incomplete_class_documents_use_recovered_parser_facts() {
 
 #[test]
 fn class_member_outline_facts_do_not_pollute_completion_ids() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2439,7 +2952,7 @@ fn class_member_outline_facts_do_not_pollute_completion_ids() {
 
 #[test]
 fn er_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2455,7 +2968,7 @@ fn er_documents_use_parser_facts() {
 
 #[test]
 fn incomplete_er_documents_use_recovered_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "erDiagram\nCUSTOMER ||--o{ ORDER :".to_string());
     let index = snapshot.fences()[0].text_index();
@@ -2467,7 +2980,7 @@ fn incomplete_er_documents_use_recovered_parser_facts() {
 
 #[test]
 fn er_attribute_payload_facts_do_not_pollute_completion_ids() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2499,7 +3012,7 @@ fn er_attribute_payload_facts_do_not_pollute_completion_ids() {
 
 #[test]
 fn gantt_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2599,7 +3112,7 @@ fn gantt_documents_use_parser_facts() {
 
 #[test]
 fn incomplete_gantt_documents_use_recovered_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2615,7 +3128,7 @@ fn incomplete_gantt_documents_use_recovered_parser_facts() {
 
 #[test]
 fn mindmap_documents_use_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(
         uri,
@@ -2644,7 +3157,7 @@ fn mindmap_documents_use_parser_facts() {
 
 #[test]
 fn incomplete_mindmap_documents_use_recovered_parser_facts() {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "mindmap\nroot\n child[unterminated".to_string());
     let index = snapshot.fences()[0].text_index();
@@ -2655,21 +3168,21 @@ fn incomplete_mindmap_documents_use_recovered_parser_facts() {
 }
 
 fn estimated_entry_weight(uri: &Uri, text: &str, kind: DocumentKind) -> usize {
-    let mut sizing = DocumentStore::new();
+    let mut sizing = SessionState::new();
     sizing.upsert_text(uri.clone(), 1, text.to_string(), kind);
     let request = sizing
         .snapshot_build_request(uri)
         .expect("sizing document should require analysis");
     let analysis = request.build().expect("sizing analysis should be accepted");
-    DocumentStore::estimated_analysis_cache_entry_weight(uri, &analysis)
+    SessionState::estimated_analysis_cache_entry_weight(uri, &analysis)
 }
 
 fn assert_default_cache_admits(uri: Uri, text: String, kind: DocumentKind) {
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     store.upsert_text(uri.clone(), 1, text, kind);
     let request = store.snapshot_build_request(&uri).unwrap();
     let analysis = request.build().unwrap();
-    let weight = DocumentStore::estimated_analysis_cache_entry_weight(&uri, &analysis);
+    let weight = SessionState::estimated_analysis_cache_entry_weight(&uri, &analysis);
     assert!(weight <= DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES);
     assert!(store.insert_built_analysis(&request, analysis).is_some());
     assert_eq!(store.analysis_cache_len(), 1);
@@ -2688,7 +3201,7 @@ fn weighted_analysis_cache_touches_and_evicts_complete_generations() {
     let text = "flowchart TD\nA-->B\n";
     let entry_weight = estimated_entry_weight(&a, text, DocumentKind::Diagram);
     let budget = entry_weight.checked_mul(2).expect("test cache budget fits");
-    let mut store = DocumentStore::with_analysis_cache_budget(budget);
+    let mut store = SessionState::with_analysis_cache_budget(budget);
 
     for uri in [&a, &b] {
         store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
@@ -2720,7 +3233,7 @@ fn oversized_analysis_is_returned_current_without_disturbing_cache_invariants() 
     let uri = Uri::from_str("file:///tmp/a.mmd").unwrap();
     let text = "flowchart TD\nA-->B\n";
     let entry_weight = estimated_entry_weight(&uri, text, DocumentKind::Diagram);
-    let mut store = DocumentStore::with_analysis_cache_budget(entry_weight - 1);
+    let mut store = SessionState::with_analysis_cache_budget(entry_weight - 1);
     store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
     let request = store
         .snapshot_build_request(&uri)
@@ -2747,7 +3260,7 @@ fn oversized_analysis_is_returned_current_without_disturbing_cache_invariants() 
 #[test]
 fn cancelled_and_stale_builds_do_not_change_cache_weight_or_eviction_order() {
     let uri = Uri::from_str("file:///tmp/a.mmd").unwrap();
-    let mut store = DocumentStore::new();
+    let mut store = SessionState::new();
     store.upsert_text(
         uri.clone(),
         1,
@@ -2800,7 +3313,7 @@ fn eviction_releases_cache_ownership_but_preserves_request_local_generation() {
     let b = Uri::from_str("file:///tmp/b.mmd").unwrap();
     let text = "flowchart TD\nA-->B\n";
     let entry_weight = estimated_entry_weight(&a, text, DocumentKind::Diagram);
-    let mut store = DocumentStore::with_analysis_cache_budget(entry_weight);
+    let mut store = SessionState::with_analysis_cache_budget(entry_weight);
     store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
     let request = store.snapshot_build_request(&a).unwrap();
     let analysis = request.build().unwrap();
@@ -2830,7 +3343,7 @@ fn eviction_keeps_open_document_diagnostic_and_token_identity() {
     let b = Uri::from_str("file:///tmp/b.mmd").unwrap();
     let text = "flowchart TD\nA-->B\n";
     let entry_weight = estimated_entry_weight(&a, text, DocumentKind::Diagram);
-    let mut store = DocumentStore::with_analysis_cache_budget(entry_weight);
+    let mut store = SessionState::with_analysis_cache_budget(entry_weight);
     store.upsert_text(a.clone(), 1, text.to_string(), DocumentKind::Diagram);
     let snapshot = store.snapshot_context(&a).unwrap();
     assert!(store.set_semantic_tokens_state_if_current(
@@ -2867,28 +3380,41 @@ fn eviction_keeps_open_document_diagnostic_and_token_identity() {
     );
 }
 
-#[test]
-fn larger_diagnostic_reprojection_can_be_current_without_being_cached() {
+#[tokio::test]
+async fn larger_diagnostic_reprojection_can_be_current_without_being_cached() {
     let uri = Uri::from_str("file:///tmp/a.mmd").unwrap();
     let text = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
     let entry_weight = estimated_entry_weight(&uri, text, DocumentKind::Diagram);
-    let mut store = DocumentStore::with_analysis_cache_budget(entry_weight);
+    let mut store = SessionState::with_analysis_cache_budget(entry_weight);
     store.upsert_text(uri.clone(), 1, text.to_string(), DocumentKind::Diagram);
     store.snapshot_context(&uri).unwrap();
-    let (_, plan) = store.begin_analyzer_options(default_lsp_analysis_options().with_rule_config(
-        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-    ));
-    let batch = plan
-        .expect("recommended rules should reproject the cached generation")
-        .project()
+    let (_, requests) =
+        store.begin_analyzer_options(default_lsp_analysis_options().with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        ));
+    let request = one_reprojection(requests);
+    let executor = store.analysis_executor();
+    let first = executor
+        .execute_diagnostic_reprojection(&request)
+        .await
         .unwrap();
+    let second = executor
+        .execute_diagnostic_reprojection(&request)
+        .await
+        .unwrap();
+    assert!(first.shares_result_with(&second));
+    assert_eq!(executor.reprojection_count(), 1);
 
-    let context = store
-        .commit_diagnostic_reprojection_context(&uri, batch)
+    let first_context = store
+        .commit_diagnostic_reprojection_context(&first)
         .expect("valid projected context must be returned even when oversized");
+    let second_context = store
+        .commit_diagnostic_reprojection_context(&second)
+        .expect("an equivalent waiter must receive the current uncached result");
 
-    assert!(store.is_analysis_context_current(&context));
-    assert!(!context.analysis_payload().diagnostics.is_empty());
+    assert!(store.is_analysis_context_current(&first_context));
+    assert!(store.is_analysis_context_current(&second_context));
+    assert!(!first_context.analysis_payload().diagnostics.is_empty());
     assert_eq!(store.analysis_cache_len(), 0);
     assert_eq!(store.analysis_cache_total_weight(), 0);
     assert!(store.get(&uri).is_some());

@@ -15,14 +15,14 @@ use crate::semantic_tokens::{
     semantic_tokens_for_snapshot_with_profile, semantic_tokens_options_with_profile,
     semantic_tokens_result_id,
 };
-use crate::session::documents::{
-    AnalyzerConfigurationChange, DiagnosticContext, DocumentDiagnosticState, DocumentSyncError,
-    SemanticTokensState, StoredDocument, analysis_options_with_lsp_resource_defaults,
-    default_lsp_analysis_options,
-};
 use crate::session::{
     ClientEffectDispatcher, ClientEffectKey, LanguageSession, MermanLspService,
     commit_active_mutation,
+};
+use crate::session::{
+    ConfigurationUpdateOutcome, DiagnosticContext, DocumentDiagnosticState, DocumentSyncError,
+    SemanticTokensState, StoredDocument, analysis_options_with_lsp_resource_defaults,
+    default_lsp_analysis_options,
 };
 use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
@@ -263,7 +263,13 @@ impl MermanLanguageServer {
         }
 
         let source = source_descriptor_for_document(&document.uri, document.kind);
-        let payload = analyze_document(document.text.as_ref(), analyzer, source);
+        let payload = analyze_document(
+            document
+                .text()
+                .expect("available document diagnostics require retained source"),
+            analyzer,
+            source,
+        );
         Self::analysis_payload_diagnostics_with_profile(document, &payload, &profile)
     }
 
@@ -271,19 +277,19 @@ impl MermanLanguageServer {
         document: &StoredDocument,
         profile: &ClientProtocolProfile,
     ) -> Option<Vec<Diagnostic>> {
-        let diagnostic = if let Some(resource_limit) = document.resource_limit {
+        let diagnostic = if let Some(resource_limit) = document.resource_limit() {
             source_limit_diagnostic_for_len_and_span(
                 resource_limit.source_len,
                 resource_limit.max_source_bytes,
                 resource_limit.span,
             )
-        } else if let Some(discarded_source) = document.discarded_source {
+        } else if let Some(discarded_source) = document.discarded_source() {
             source_discarded_after_limit_change_diagnostic_with_span(
                 discarded_source.source_len,
                 discarded_source.previous_max_source_bytes,
                 discarded_source.span,
             )
-        } else if let Some(sync_error) = document.sync_error {
+        } else if let Some(sync_error) = document.sync_error_state() {
             return Some(vec![document_sync_error_diagnostic(
                 sync_error,
                 document.version,
@@ -388,7 +394,7 @@ impl MermanLanguageServer {
             .await;
     }
 
-    async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
+    async fn replace_analyzer(&self, options: AnalysisOptions) -> ConfigurationUpdateOutcome {
         self.session.update_configuration(options).await
     }
 
@@ -396,20 +402,20 @@ impl MermanLanguageServer {
         &self,
         initialization_options: Option<serde_json::Value>,
     ) -> tower_lsp_server::jsonrpc::Result<()> {
-        match initialization_options {
-            None => {
-                self.replace_analyzer(default_lsp_analysis_options()).await;
-                Ok(())
-            }
-            Some(value) => {
-                let options = analysis_options_with_lsp_resource_defaults(
-                    analysis_options_from_json_value(&value).map_err(|err| {
-                        tower_lsp_server::jsonrpc::Error::invalid_params(err.to_string())
-                    })?,
-                );
-                self.replace_analyzer(options).await;
-                Ok(())
-            }
+        let options = match initialization_options {
+            None => default_lsp_analysis_options(),
+            Some(value) => analysis_options_with_lsp_resource_defaults(
+                analysis_options_from_json_value(&value).map_err(|err| {
+                    tower_lsp_server::jsonrpc::Error::invalid_params(err.to_string())
+                })?,
+            ),
+        };
+        if self.replace_analyzer(options).await.accepted() {
+            Ok(())
+        } else {
+            let mut error = tower_lsp_server::jsonrpc::Error::internal_error();
+            error.message = "analysis configuration did not commit".into();
+            Err(error)
         }
     }
 }
@@ -583,6 +589,15 @@ impl LanguageServer for MermanLanguageServer {
 
         let change = self.replace_analyzer(options).await;
         commit_active_mutation();
+        if change.failed() {
+            self.client
+                .log_message(
+                    MessageType::ERROR,
+                    "failed to apply merman analysis settings",
+                )
+                .await;
+            return;
+        }
         if change.affects_diagnostics() {
             self.enqueue_republish_all().await;
         }

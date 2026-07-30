@@ -286,7 +286,7 @@ mod tests {
     };
     use crate::diagnostics::editor_diagnostics_to_versioned_diagnostics;
     use crate::protocol::WorkspaceEditEncoding;
-    use crate::session::documents::DocumentStore;
+    use crate::snapshot::snapshot_for_test;
     use merman_analysis::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer};
     use merman_editor_core::{EditorDiagnostic, analysis_payload_to_diagnostics};
     use serde_json::json;
@@ -449,13 +449,11 @@ mod tests {
         Uri,
     ) {
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let mut store = DocumentStore::new();
         let options = AnalysisOptions::default().with_rule_config(
             AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
         );
-        store.apply_analyzer_options(options.clone());
         let source = "flowchart\nA-->B\n".to_string();
-        let snapshot = store.upsert(uri.clone(), DOCUMENT_VERSION, source.clone());
+        let snapshot = snapshot_for_test(uri.clone(), DOCUMENT_VERSION, source.clone());
         let diagnostics =
             analysis_payload_to_diagnostics(&Analyzer::with_options(options).analyze(&source));
         let diagnostic =

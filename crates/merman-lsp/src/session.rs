@@ -1,5 +1,5 @@
+use self::documents::SessionState;
 use crate::server::MermanLanguageServer;
-use crate::session::documents::DocumentStore;
 use crate::sync::lock_recovering_poison;
 use futures::FutureExt;
 use futures::future::{AbortHandle, Abortable, BoxFuture};
@@ -17,18 +17,24 @@ use tower_lsp_server::jsonrpc::{Error, Id, Request, Response};
 use tower_lsp_server::ls_types::CancelParams;
 use tower_lsp_server::{ExitedError, LspService};
 
-pub(crate) mod analysis;
+mod analysis;
 #[cfg(test)]
 mod analysis_tests;
-pub(crate) mod cache;
-pub(crate) mod documents;
+mod cache;
+mod documents;
+
+pub(crate) use documents::{
+    ConfigurationUpdateOutcome, DEFAULT_LSP_MAX_SOURCE_BYTES, DiagnosticContext,
+    DocumentDiagnosticState, DocumentSyncError, SemanticTokensState, StoredDocument,
+    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
+};
 #[cfg(test)]
-mod documents_tests;
+pub(crate) use documents::{DocumentDiscardedSource, DocumentResourceLimit};
 
 /// Owns all mutable language state and the workers derived from that state.
 #[derive(Debug, Clone)]
 pub(crate) struct LanguageSession {
-    state: Arc<AsyncMutex<DocumentStore>>,
+    state: Arc<AsyncMutex<SessionState>>,
     cancellation: merman_analysis::AnalysisCancellationToken,
     analysis_executor: analysis::executor::AnalysisExecutor,
 }
@@ -37,7 +43,7 @@ impl LanguageSession {
     pub(crate) fn with_cancellation(
         cancellation: merman_analysis::AnalysisCancellationToken,
     ) -> Self {
-        let state = DocumentStore::with_session_cancellation(cancellation.clone());
+        let state = SessionState::with_session_cancellation(cancellation.clone());
         let analysis_executor = state.analysis_executor();
         Self {
             state: Arc::new(AsyncMutex::new(state)),
@@ -49,9 +55,25 @@ impl LanguageSession {
     #[cfg(test)]
     pub(crate) fn with_analysis_cache_budget(analysis_cache_budget: usize) -> Self {
         let cancellation = merman_analysis::AnalysisCancellationToken::new();
-        let state = DocumentStore::with_session_cancellation_and_cache_budget(
+        let state = SessionState::with_session_cancellation_and_cache_budget(
             cancellation.clone(),
             analysis_cache_budget,
+        );
+        let analysis_executor = state.analysis_executor();
+        Self {
+            state: Arc::new(AsyncMutex::new(state)),
+            cancellation,
+            analysis_executor,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_analyzer_for_tests(analyzer: merman_analysis::Analyzer) -> Self {
+        let cancellation = merman_analysis::AnalysisCancellationToken::new();
+        let state = SessionState::with_analyzer_and_cache_budget(
+            analyzer,
+            cancellation.clone(),
+            documents::DEFAULT_LSP_ANALYSIS_CACHE_BUDGET_BYTES,
         );
         let analysis_executor = state.analysis_executor();
         Self {
@@ -82,8 +104,38 @@ impl LanguageSession {
     }
 
     #[cfg(test)]
-    pub(crate) async fn state_for_tests(&self) -> tokio::sync::MutexGuard<'_, DocumentStore> {
-        self.state.lock().await
+    pub(crate) fn probe(&self) -> SessionProbe {
+        SessionProbe {
+            state: Arc::clone(&self.state),
+        }
+    }
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub(crate) struct SessionProbe {
+    state: Arc<AsyncMutex<SessionState>>,
+}
+
+#[cfg(test)]
+impl SessionProbe {
+    pub(crate) async fn document(
+        &self,
+        uri: &tower_lsp_server::ls_types::Uri,
+    ) -> Option<documents::StoredDocument> {
+        self.state.lock().await.get(uri).cloned()
+    }
+
+    pub(crate) async fn cache_state(&self, uri: &tower_lsp_server::ls_types::Uri) -> (bool, bool) {
+        let state = self.state.lock().await;
+        (state.has_snapshot(uri), state.has_analysis_payload(uri))
+    }
+
+    pub(crate) async fn cached_snapshot(
+        &self,
+        uri: &tower_lsp_server::ls_types::Uri,
+    ) -> Option<Arc<crate::snapshot::DocumentSnapshot>> {
+        self.state.lock().await.cached_snapshot_for_probe(uri)
     }
 }
 

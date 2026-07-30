@@ -257,7 +257,7 @@ fn semantic_tokens_delta_edit(
 mod tests {
     use super::*;
     use crate::client_profile::ClientProtocolProfile;
-    use crate::session::documents::DocumentStore;
+    use crate::snapshot::snapshot_for_test;
     use merman_editor_core::{PlannedTokenKind, PlannedTokenModifier};
     use serde::Deserialize;
     use std::fs;
@@ -328,17 +328,15 @@ mod tests {
 
     #[test]
     fn full_sequence_is_the_planner_packed_sequence() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
+        let snapshot = snapshot_for_test(
             uri,
             1,
             concat!(
                 "flowchart TD\n",
                 "alpha[\"Emoji 🤓\"] --> beta\n",
                 "%% trailing comment\n",
-            )
-            .to_string(),
+            ),
         );
         let plan = plan_semantic_tokens_for_snapshot(snapshot.as_editor()).unwrap();
         let lsp = semantic_tokens_for_snapshot(&snapshot).unwrap();
@@ -414,9 +412,8 @@ mod tests {
 
     #[test]
     fn unavailable_semantics_are_a_valid_empty_plan_not_a_planner_failure() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/unknown.mmd").unwrap();
-        let snapshot = store.upsert(uri, 1, "not a Mermaid diagram\n".to_string());
+        let snapshot = snapshot_for_test(uri, 1, "not a Mermaid diagram\n");
 
         let tokens = semantic_tokens_for_snapshot(&snapshot).unwrap();
         assert!(tokens.data.is_empty());
@@ -439,7 +436,6 @@ mod tests {
         assert_eq!(evidence.family_cases.len(), 35);
         assert_eq!(evidence.recovery_cases.len(), 1);
 
-        let mut store = DocumentStore::new();
         for (version, case) in evidence
             .family_cases
             .iter()
@@ -447,7 +443,7 @@ mod tests {
             .enumerate()
         {
             let uri = Uri::from_str(&format!("file:///token-equivalence/{}.mmd", case.id)).unwrap();
-            let snapshot = store.upsert(uri, version as i32 + 1, case.source.clone());
+            let snapshot = snapshot_for_test(uri, version as i32 + 1, case.source.clone());
             let tokens = semantic_tokens_for_snapshot(&snapshot).unwrap();
 
             assert_eq!(
@@ -499,9 +495,8 @@ mod tests {
 
     #[test]
     fn range_filters_absolute_plan_then_reencodes_relative_tokens() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.md").unwrap();
-        let snapshot = store.upsert(
+        let snapshot = snapshot_for_test(
             uri,
             1,
             concat!(
@@ -516,8 +511,7 @@ mod tests {
                 "title: Second 🤓\n",
                 "```\n",
                 "outro\n",
-            )
-            .to_string(),
+            ),
         );
         let range = Range::new(Position::new(6, 0), Position::new(10, 0));
         let plan = plan_semantic_tokens_for_snapshot(snapshot.as_editor()).unwrap();
@@ -553,9 +547,8 @@ mod tests {
 
     #[test]
     fn result_id_binds_document_tokens_to_descriptor_digest() {
-        let mut store = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri, 7, "flowchart TD\nA --> B\n".to_string());
+        let snapshot = snapshot_for_test(uri, 7, "flowchart TD\nA --> B\n");
         let tokens = semantic_tokens_for_snapshot(&snapshot).unwrap();
         let result_id = semantic_tokens_result_id(&snapshot, &tokens.data);
 

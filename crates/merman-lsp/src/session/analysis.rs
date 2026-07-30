@@ -1,7 +1,7 @@
+use self::executor::DiagnosticReprojectionLease;
 use super::LanguageSession;
 use super::documents::{
-    DiagnosticContext, DiagnosticReprojectionBatch, DocumentDiagnosticState, SemanticTokensState,
-    StoredDocument,
+    DiagnosticContext, DocumentDiagnosticState, SemanticTokensState, StoredDocument,
 };
 use crate::snapshot::{DocumentSnapshot, SnapshotContext};
 use merman_analysis::AnalysisPayload;
@@ -9,8 +9,8 @@ use std::sync::Arc;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::Uri;
 
-pub(crate) mod executor;
-pub(crate) mod request;
+pub(super) mod executor;
+pub(super) mod request;
 
 const MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS: usize = 3;
 
@@ -238,11 +238,7 @@ impl LanguageSession {
                 Err(error) => return Err(analysis_execution_error(error)),
             };
             let result = self
-                .commit_diagnostic_reprojection_context(
-                    uri,
-                    projection.batch().as_ref().clone(),
-                    purpose,
-                )
+                .commit_diagnostic_reprojection_context(&projection, purpose)
                 .await;
             drop(projection);
             return result;
@@ -272,12 +268,12 @@ impl LanguageSession {
 
     async fn commit_diagnostic_reprojection_context(
         &self,
-        uri: &Uri,
-        batch: DiagnosticReprojectionBatch,
+        projection: &DiagnosticReprojectionLease,
         purpose: SnapshotPurpose,
     ) -> Result<Option<SnapshotContext>> {
+        let uri = projection.uri();
         let mut state = self.state.lock().await;
-        if let Some(context) = state.commit_diagnostic_reprojection_context(uri, batch) {
+        if let Some(context) = state.commit_diagnostic_reprojection_context(projection) {
             return Ok(Some(context));
         }
         if state.get(uri).is_none() || purpose == SnapshotPurpose::Diagnostics {

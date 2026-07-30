@@ -174,6 +174,25 @@ impl DocumentAnalysisContext {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn snapshot_for_test(
+    uri: Uri,
+    version: i32,
+    source: impl Into<Arc<str>>,
+) -> Arc<DocumentSnapshot> {
+    let kind = merman_editor_core::DocumentKind::from_path(uri.path().as_str());
+    let context = merman_editor_core::DocumentWorkspace::build_analysis_context_with_shared_text(
+        &Analyzer::new(),
+        uri.as_str(),
+        version,
+        source.into(),
+        kind,
+    )
+    .into_ready()
+    .expect("test source must be within the default analysis limit");
+    DocumentAnalysisContext::from_editor(context, uri).snapshot
+}
+
 impl DocumentSnapshot {
     pub fn uri(&self) -> &Uri {
         &self.uri
@@ -376,18 +395,16 @@ mod tests {
 
     #[test]
     fn fence_lookup_includes_end_position_for_completion() {
-        let mut store = crate::session::documents::DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri, 1, "flowchart".to_string());
+        let snapshot = super::snapshot_for_test(uri, 1, "flowchart");
 
         assert!(snapshot.fence_at_position(Position::new(0, 9)).is_some());
     }
 
     #[test]
     fn cached_snapshot_retains_detection_from_the_same_analysis() {
-        let mut store = crate::session::documents::DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri, 7, "flowchart TD\nA[unterminated\n".to_string());
+        let snapshot = super::snapshot_for_test(uri, 7, "flowchart TD\nA[unterminated\n");
 
         assert_eq!(snapshot.version(), 7);
         assert_eq!(
