@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   cancelBenchmarkPage,
   runBenchmarkPageOperation,
+  runBenchmarkStartupOperation,
 } from "./benchmark-page-guards.mjs";
 
 class FakePage extends EventEmitter {
@@ -64,4 +65,33 @@ test("explicit cancellation reaches the page and closes the browser", async () =
 
   assert.equal(page.cancelReason, "sigterm");
   assert.equal(browser.closed, true);
+});
+
+test("startup deadline rejects and disposes a resource that resolves late", async () => {
+  const startup = Promise.withResolvers();
+  const disposed = [];
+  const running = runBenchmarkStartupOperation({
+    deadlineMs: Date.now() + 10,
+    disposeLateResult(resource) {
+      disposed.push(resource);
+    },
+    operation: () => startup.promise,
+  });
+
+  await assert.rejects(running, /whole-corpus CLI timeout/u);
+  startup.resolve("late-browser");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(disposed, ["late-browser"]);
+});
+
+test("one startup abort rejects before a browser handle exists", async () => {
+  const abort = new AbortController();
+  const running = runBenchmarkStartupOperation({
+    deadlineMs: Date.now() + 1_000,
+    operation: () => new Promise(() => {}),
+    signal: abort.signal,
+  });
+
+  abort.abort("sigint");
+  await assert.rejects(running, /Browser corpus interrupted: sigint/u);
 });

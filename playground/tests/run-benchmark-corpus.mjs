@@ -7,6 +7,7 @@ import { preview } from "vite";
 import {
   cancelBenchmarkPage,
   runBenchmarkPageOperation,
+  runBenchmarkStartupOperation,
 } from "../scripts/benchmark-page-guards.mjs";
 
 const testsRoot = import.meta.dirname;
@@ -19,29 +20,38 @@ const output = resolveOutput(options.output);
 await rejectExistingOutput(output);
 let page = null;
 let browser = null;
+let server = null;
 let interruptReason = null;
+const lifecycleAbort = new AbortController();
 
 const interrupt = (signal) => {
   if (interruptReason) return;
   interruptReason = signal.toLowerCase();
+  lifecycleAbort.abort(interruptReason);
   void cancelBenchmarkPage(page, browser, interruptReason);
 };
 process.once("SIGINT", () => interrupt("SIGINT"));
 process.once("SIGTERM", () => interrupt("SIGTERM"));
 
-const server = await preview({
-  root: playgroundRoot,
-  logLevel: "error",
-  preview: {
-    host: "127.0.0.1",
-    port: options.port,
-    strictPort: false,
-  },
-});
-const startedAtWallMs = Date.now();
-const startedAtMs = performance.now();
-const deadlineMs = startedAtWallMs + options.timeoutSeconds * 1000;
+const deadlineMs = Date.now() + options.timeoutSeconds * 1000;
 try {
+  server = await runBenchmarkStartupOperation({
+    deadlineMs,
+    disposeLateResult: (lateServer) => lateServer.close(),
+    operation: () =>
+      preview({
+        root: playgroundRoot,
+        logLevel: "error",
+        preview: {
+          host: "127.0.0.1",
+          port: options.port,
+          strictPort: false,
+        },
+      }),
+    signal: lifecycleAbort.signal,
+  });
+  const startedAtWallMs = Date.now();
+  const startedAtMs = performance.now();
   const baseUrl = server.resolvedUrls?.local[0];
   if (!baseUrl) throw new Error("Vite preview did not publish a local URL.");
   const fixtureIds = options.full ? undefined : options.fixtureIds;
@@ -143,11 +153,20 @@ try {
   console.error(`[merman-benchmark] interrupted: ${interruptReason}`);
   process.exitCode = 130;
 } finally {
-  await server.close();
+  await server?.close();
 }
 
 async function withBenchmarkPage(baseUrl, deadlineMs, operation) {
-  const activeBrowser = await chromium.launch({ headless: !options.headed });
+  const activeBrowser = await runBenchmarkStartupOperation({
+    deadlineMs,
+    disposeLateResult: (lateBrowser) => lateBrowser.close(),
+    operation: () =>
+      chromium.launch({
+        headless: !options.headed,
+        timeout: Math.max(1, deadlineMs - Date.now()),
+      }),
+    signal: lifecycleAbort.signal,
+  });
   let activePage = null;
   try {
     browser = activeBrowser;

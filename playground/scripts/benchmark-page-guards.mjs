@@ -16,6 +16,47 @@ export async function cancelBenchmarkPage(page, browser, reason) {
   await Promise.allSettled(operations);
 }
 
+export async function runBenchmarkStartupOperation({
+  deadlineMs,
+  disposeLateResult,
+  operation,
+  signal,
+}) {
+  const timeoutMs = deadlineMs - Date.now();
+  if (timeoutMs <= 0) throw new Error(WHOLE_CORPUS_TIMEOUT);
+  if (signal?.aborted) throw benchmarkInterruptError(signal.reason);
+
+  let expired = false;
+  let rejectTerminal;
+  const terminalFailure = new Promise((_, reject) => {
+    rejectTerminal = reject;
+  });
+  const onAbort = () => rejectTerminal(benchmarkInterruptError(signal.reason));
+  signal?.addEventListener("abort", onAbort, { once: true });
+  const timeout = setTimeout(
+    () => rejectTerminal(new Error(WHOLE_CORPUS_TIMEOUT)),
+    timeoutMs
+  );
+  const pending = Promise.resolve().then(operation);
+  void pending.then(
+    (result) => {
+      if (!expired || !disposeLateResult) return;
+      void Promise.resolve(disposeLateResult(result)).catch(() => {});
+    },
+    () => {}
+  );
+
+  try {
+    return await Promise.race([pending, terminalFailure]);
+  } catch (error) {
+    expired = true;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
 export async function runBenchmarkPageOperation({
   browser,
   deadlineMs,
@@ -60,4 +101,8 @@ export async function runBenchmarkPageOperation({
     page.off("close", onClose);
     browser.off("disconnected", onDisconnected);
   }
+}
+
+function benchmarkInterruptError(reason) {
+  return new Error(`Browser corpus interrupted: ${String(reason ?? "signal")}`);
 }
