@@ -61,7 +61,7 @@
     },
     {
       "path": "playground/src/runtime/render-artifact.ts",
-      "sha256": "b7ff5a72c05234283970aadda309be5286336ac0dbd631992031a0e7b8cc41e0"
+      "sha256": "db53c62a313bf4d93b40999c9db359ed7ae6534a5794477665dbf6e9ce4c8935"
     },
     {
       "path": "playground/tests/benchmark.realm.spec.ts",

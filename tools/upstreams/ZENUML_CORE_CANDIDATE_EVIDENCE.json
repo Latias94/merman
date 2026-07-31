@@ -2399,7 +2399,7 @@
     "probeCount": 13,
     "observationCount": 26,
     "passedObservationCount": 26,
-    "artifactSha256": "487a4e982a0660ec1e12790eeb8beaed05ce8eddf105c43ef3863fd4783c27f1"
+    "artifactSha256": "955cbfd31b9c7c92d3b858827bd4672008851a28bd8e1a3e9f1706da3e2ca626"
   },
   "security": {
     "artifact": "tools/upstreams/ZENUML_BROWSER_SECURITY_EVIDENCE.json",
@@ -2408,7 +2408,7 @@
     "probeCount": 18,
     "observationCount": 36,
     "passedObservationCount": 36,
-    "artifactSha256": "487a4e982a0660ec1e12790eeb8beaed05ce8eddf105c43ef3863fd4783c27f1"
+    "artifactSha256": "955cbfd31b9c7c92d3b858827bd4672008851a28bd8e1a3e9f1706da3e2ca626"
   },
   "resource": {
     "measurementScope": "runtime-entry",
