@@ -4,7 +4,13 @@ Browser-only Merman semantic analysis, validation, and diagram detection without
 
 ## Install
 
-Build the local package group and install this package:
+This package first ships with Merman `0.8.0-alpha.4`. After that version appears in npm, install the current alpha:
+
+```sh
+npm install @mermanjs/web-analysis@alpha
+```
+
+For local source development, build the package group and install this package from the checkout:
 
 ```sh
 npm ci --prefix /path/to/merman/platforms/web

@@ -122,7 +122,7 @@ Legend:
      covers every exact upstream `flowchart-elk.spec.js` render call and all 57 unique layout
      bodies; broad SVG parity admits those probes under the source-backed backend. Class
      `layout: elk` and `class.defaultRenderer: elk` now dispatch through the Class ELK adapter
-     under the existing `elk-layout` feature and reuse the Class SVG renderer. Remaining work is
+     under the existing `layout-elk` feature and reuse the Class SVG renderer. Remaining work is
      continued hardening from new upstream or user-reported cases, not a generic deferred
      `layout=elk` gap.
    - Risk: M/H (large surface area, but the current Mermaid spec body coverage is source-backed).

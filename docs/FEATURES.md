@@ -68,8 +68,11 @@ select their own direct leaf set instead.
 | Lean CLI lint | `merman-cli` | `--no-default-features --features analysis` |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
-| C/C++/Dart/native embedding | ABI 3 SDK | Use the published native artifact recipe |
-| Swift/Kotlin/Python | UniFFI package | Use the platform package and runtime catalog |
+| C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; no generic binary SDK is published |
+| Flutter/Dart embedding | `merman` on pub.dev | Use the Flutter package, which consumes ABI 3 internally |
+| Android/Kotlin embedding | `merman-android-<tag>.aar` | Use the direct JNI AAR from the matching GitHub Release; no remote Maven coordinate is published |
+| Apple/Swift embedding | `Merman.xcframework` | Use the UniFFI XCFramework release asset or local SwiftPM package |
+| Python embedding | `merman` on PyPI | Use the generated UniFFI wheel for the selected platform |
 
 Node/SSG transport remains a private admission candidate, so there is no public
 `@mermanjs/node` package to select yet. Browser WASM is not a supported Node transport.

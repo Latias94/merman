@@ -59,7 +59,7 @@ krilla = { workspace = true, optional = true }
 krilla-svg = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
-resvg = { workspace = true, optional = true, features = ["raster-images", "system-fonts", "text"] }
+resvg = { workspace = true, optional = true, features = ["raster-images"] }
 svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }

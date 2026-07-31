@@ -47,14 +47,14 @@ These are headless `merman-cli` outputs. The [Playground](https://frankorz.com/m
 
 ## Quick Start
 
-These examples use the repository's default branch. For a published package, use the registry link in the surface table and choose a version appropriate for your project.
+These examples use the published 0.8 prerelease channel. Check the selected package version when your integration depends on a newly introduced contract.
 
 ### Command Line
 
 Install the complete CLI and render a diagram:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli
+cargo install merman-cli --version '^0.8.0-alpha.3' --locked
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | \
   merman-cli render - --output diagram.svg
 ```
@@ -80,7 +80,7 @@ Native `render` and `batch` use `-f/--format`; their hidden `-e` aliases share t
 ### Rust
 
 ```sh
-cargo add merman --git https://github.com/Latias94/merman
+cargo add merman@^0.8.0-alpha.3
 ```
 
 ```rust
@@ -99,6 +99,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The default dependency enables complete deterministic SVG rendering, including both optional layout engines and math. It does not read ambient clock, time-zone, randomness, or timing state. More examples are organized by task in [`crates/merman/examples`](https://github.com/Latias94/merman/tree/main/crates/merman/examples).
 
+### Browser
+
+Install the complete browser package from the current alpha channel and initialize it once per browser realm:
+
+```sh
+npm install @mermanjs/web@alpha
+```
+
+```ts
+import { initMerman, renderSvg } from "@mermanjs/web";
+
+await initMerman();
+const svg = renderSvg(`flowchart TD
+  A[Start] --> B[Done]`);
+```
+
+The browser package does not provide a Node.js or SSR fallback. See the [browser package guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md) for Worker lifecycle, custom WASM loading, and resource policy.
+
+### From Source
+
+Use an immutable commit when testing unreleased source behavior:
+
+```sh
+cargo install --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA --locked merman-cli
+cargo add merman --git https://github.com/Latias94/merman --rev FULL_COMMIT_SHA
+```
+
 ## Choose Your Surface
 
 | You want to | Start with |
@@ -114,7 +141,7 @@ The default dependency enables complete deterministic SVG rendering, including b
 
 For a shell, `cargo binstall merman-cli` installs the registry-selected release, while `brew install merman-cli` follows the stable Homebrew formula. Those external channels can trail the current source documentation, so check `merman-cli --version` before depending on a new contract.
 
-The Git installation above follows the remote default branch at install time; add `--rev FULL_COMMIT_SHA` or install from a local checkout to pin an exact source revision. Starting with `0.8.0-alpha.4`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
+The source installation above pins an immutable commit. Starting with `0.8.0-alpha.4`, direct GitHub archives bundle checked completion and man-page assets, while the complete binary keeps `merman-cli completion <shell>` as the portable fallback. The [CLI guide](https://github.com/Latias94/merman/tree/main/crates/merman-cli#install) compares the installation channels and their on-disk support files.
 
 Publication routes differ by platform. The [package surface guide](https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md) distinguishes registry packages from repository or CI artifacts.
 

@@ -63,7 +63,7 @@ These fixtures are parity-gated against upstream SVG baselines under `fixtures/u
 Class ELK entry-point coverage:
 
 - Mermaid-reachable `layout: elk` and `class.defaultRenderer: elk` requests dispatch through the
-  feature-gated Class ELK adapter under `elk-layout`. The renderer shares Class semantic,
+  feature-gated Class ELK adapter under `layout-elk`. The renderer shares Class semantic,
   node, edge, and namespace emitters while selecting Mermaid 11.16's layout-adapter top-level DOM
   (`subgraphs`, `nodes`, `edges edgePaths`, and `edgeLabels`) instead of the Dagre root wrapper.
   `render_model_dispatch_uses_elk_for_class_layout_config`,

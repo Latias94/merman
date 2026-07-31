@@ -92,8 +92,8 @@ uniffi = { version = "0.32.0", default-features = false }
 futures = { version = "0.3.31", default-features = false }
 hashbrown = { version = "0.17.1", default-features = false, features = ["equivalent"] }
 hickory-resolver = { version = "0.26.1", default-features = false, features = ["tokio", "system-config"] }
-icu_collator = "2.2.1"
-icu_locale_core = "2.2.0"
+icu_collator = { version = "2.2.1", default-features = false, features = ["compiled_data"] }
+icu_locale_core = { version = "2.2.0", default-features = false, features = ["alloc"] }
 lol_html = "3.0"
 url = "2.5.4"
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
@@ -123,7 +123,7 @@ wasm-bindgen = "0.2"
 web-time = "1.1.0"
 wasm-minimal-protocol = "0.2.0"
 wasmi = { version = "1.0.9", default-features = false, features = ["simd"] }
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
+windows-sys = { version = "0.61.2", default-features = false }
 # The crate requires one transport runtime even when consumers only construct its LSP service.
 tower-lsp-server = { version = "0.23.0", default-features = false, features = ["runtime-tokio"] }
 

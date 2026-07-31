@@ -86,10 +86,9 @@ analysis = [
     "dep:same-file",
     "dep:sha2",
     "dep:similar",
-    "dep:windows-sys",
 ]
-svg = ["dep:atomic-write-file", "dep:same-file", "dep:windows-sys", "merman/svg"]
-ascii = ["dep:atomic-write-file", "dep:same-file", "dep:windows-sys", "merman/ascii"]
+svg = ["dep:atomic-write-file", "dep:same-file", "merman/svg"]
+ascii = ["dep:atomic-write-file", "dep:same-file", "merman/ascii"]
 png = ["svg", "merman/png"]
 jpeg = ["svg", "merman/jpeg"]
 pdf = ["svg", "merman/pdf"]
@@ -109,6 +108,7 @@ markdown = [
     "dep:rustix",
     "dep:same-file",
     "dep:unicode-normalization",
+    "dep:windows-sys",
 ]
 network-icons = ["icons", "dep:hickory-resolver", "dep:reqwest", "dep:tokio"]
 parallel-markdown = ["markdown", "dep:rayon"]
@@ -149,7 +149,7 @@ tempfile = "3.27.0"
 libc.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, optional = true }
+windows-sys = { workspace = true, optional = true, features = ["Win32_Storage_FileSystem"] }
 
 [[test]]
 name = "cli_native_contract"
