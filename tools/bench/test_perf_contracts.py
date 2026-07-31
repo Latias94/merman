@@ -9,6 +9,7 @@ import json
 import math
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -306,7 +307,7 @@ class PerfRunnerContractsTest(unittest.TestCase):
             out,
         )
 
-    def test_full_write_docs_dry_run_writes_suite_report_to_docs(self) -> None:
+    def test_full_write_docs_dry_run_defers_suite_report_publication(self) -> None:
         buf = io.StringIO()
 
         with redirect_stdout(buf):
@@ -327,10 +328,71 @@ class PerfRunnerContractsTest(unittest.TestCase):
             out,
         )
         self.assertIn(
+            f"target/bench/perf-runner/{perf_runner.today_stamp()}_full_suite_standard.md",
+            out,
+        )
+        self.assertIn(
             f"target/bench/perf-runner/{perf_runner.today_stamp()}_full_suite_standard.json",
             out,
         )
+        command, publication = out.split("==> publish Markdown reports", maxsplit=1)
+        self.assertNotIn("docs/performance/", command)
+        self.assertIn("docs/performance/", publication)
         self.assertNotIn("run_native_memory.py", out)
+
+    def test_write_docs_publishes_only_after_every_measurement_step(self) -> None:
+        calls: list[str] = []
+
+        def record_step(step: perf_runner.Step, *, dry_run: bool) -> None:
+            self.assertFalse(dry_run)
+            calls.append(step.label)
+
+        def record_publication(
+            publications: list[perf_runner.ReportPublication], *, dry_run: bool
+        ) -> None:
+            self.assertFalse(dry_run)
+            self.assertGreater(len(publications), 0)
+            calls.append("publish")
+
+        with (
+            mock.patch.object(perf_runner, "run_step", side_effect=record_step),
+            mock.patch.object(
+                perf_runner, "publish_reports", side_effect=record_publication
+            ),
+            redirect_stdout(io.StringIO()),
+        ):
+            result = perf_runner.main(["--profile", "canary", "--write-docs"])
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls[-1], "publish")
+        self.assertGreater(len(calls), 1)
+
+    def test_failed_measurement_never_publishes_docs(self) -> None:
+        with (
+            mock.patch.object(perf_runner, "run_step", side_effect=SystemExit(9)),
+            mock.patch.object(perf_runner, "publish_reports") as publish,
+            redirect_stdout(io.StringIO()),
+            self.assertRaisesRegex(SystemExit, "9"),
+        ):
+            perf_runner.main(["--profile", "canary", "--write-docs"])
+
+        publish.assert_not_called()
+
+    def test_report_publication_copies_only_prevalidated_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "target" / "report.md"
+            destination = root / "docs" / "report.md"
+            source.parent.mkdir(parents=True)
+            source.write_text("measured\n", encoding="utf-8")
+
+            with redirect_stdout(io.StringIO()):
+                perf_runner.publish_reports(
+                    [perf_runner.ReportPublication(source, destination)],
+                    dry_run=False,
+                )
+
+            self.assertEqual(destination.read_text(encoding="utf-8"), "measured\n")
 
     def test_native_memory_is_explicit_and_uses_the_isolated_driver(self) -> None:
         buf = io.StringIO()
@@ -2722,6 +2784,130 @@ class RendererComparisonContractsTest(unittest.TestCase):
         self.assertEqual(compare_mermaid_renderers.fmt_ratio(0.0025), "<0.01x")
         self.assertEqual(compare_mermaid_renderers.fmt_ratio(0.025), "0.03x")
 
+    def test_renderer_subprocess_timeout_fails_with_command_context(self) -> None:
+        timeout = subprocess.TimeoutExpired(["renderer"], 7, output="partial output")
+        with mock.patch.object(subprocess, "run", side_effect=timeout):
+            with self.assertRaisesRegex(RuntimeError, r"timed out after 7s") as raised:
+                compare_mermaid_renderers.run(
+                    ["renderer", "--bench"], ROOT, timeout_seconds=7
+                )
+        self.assertIn("partial output", str(raised.exception))
+        self.assertIn("renderer --bench", str(raised.exception))
+
+    def test_native_runner_prebuild_records_unique_executable_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checkout = Path(temp_dir)
+            (checkout / "Cargo.lock").write_text("", encoding="utf-8")
+            executable = checkout / "target" / "release" / "deps" / "renderer-deadbeef"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"criterion runner")
+            executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+            artifact = {
+                "reason": "compiler-artifact",
+                "target": {"name": "renderer", "kind": ["bench"]},
+                "executable": str(executable),
+            }
+            bench_env = {"MMDR_RUN_CRITERION_BENCHES": "1"}
+
+            with mock.patch.object(
+                compare_mermaid_renderers,
+                "run",
+                return_value=json.dumps(artifact),
+            ) as run_mock:
+                runner = compare_mermaid_renderers.prepare_criterion_runner(
+                    label="mmdr",
+                    cwd=checkout,
+                    bench_bin="renderer",
+                    package=None,
+                    features="benchmark",
+                    env=bench_env,
+                    toolchain="1.92.0",
+                )
+
+            command = run_mock.call_args.args[0]
+            self.assertEqual(run_mock.call_count, 1)
+            self.assertEqual(command[:4], ["cargo", "+1.92.0", "bench", "--locked"])
+            self.assertIn("--no-run", command)
+            self.assertIn("--message-format=json-render-diagnostics", command)
+            self.assertEqual(run_mock.call_args.kwargs["env"], bench_env)
+            self.assertEqual(runner.executable, executable.resolve())
+            self.assertEqual(
+                runner.sha256,
+                compare_mermaid_renderers._sha256_file(executable),
+            )
+
+            duplicate = {
+                **artifact,
+                "executable": str(executable.with_name("renderer-cafebabe")),
+            }
+            with self.assertRaisesRegex(RuntimeError, "multiple executables"):
+                compare_mermaid_renderers.parse_bench_executable(
+                    "\n".join((json.dumps(artifact), json.dumps(duplicate))),
+                    cwd=checkout,
+                    bench_bin="renderer",
+                )
+
+    def test_native_runner_uses_prebuilt_binary_and_isolates_exact_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checkout = Path(temp_dir)
+            executable = checkout / "renderer"
+            executable.write_bytes(b"criterion runner")
+            executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+            prepared = compare_mermaid_renderers.PreparedCriterionRunner(
+                executable=executable.resolve(),
+                sha256=compare_mermaid_renderers._sha256_file(executable),
+            )
+            bench_env = {"MMDR_RUN_CRITERION_BENCHES": "1"}
+            list_output = (
+                "end_to_end/first: benchmark\n"
+                "end_to_end/second: benchmark\n"
+            )
+            second_output = (
+                "end_to_end/second\n"
+                "time:   [100.0 ns 200.0 ns 300.0 ns]\n"
+            )
+
+            with mock.patch.object(
+                compare_mermaid_renderers,
+                "run",
+                side_effect=[list_output, RuntimeError("first failed"), second_output],
+            ) as run_mock, redirect_stdout(io.StringIO()):
+                bench_list = compare_mermaid_renderers.list_criterion_benches(
+                    cwd=checkout,
+                    runner=prepared,
+                    env=bench_env,
+                )
+                result = compare_mermaid_renderers.run_native_runner(
+                    label="mmdr",
+                    cwd=checkout,
+                    runner=prepared,
+                    exact_benches=["end_to_end/first", "end_to_end/second"],
+                    bench_list=bench_list,
+                    sample_size=20,
+                    warm_up=1,
+                    measurement=1,
+                    env=bench_env,
+                )
+
+            commands = [call.args[0] for call in run_mock.call_args_list]
+            self.assertEqual(run_mock.call_count, 3)
+            self.assertTrue(
+                all(
+                    command[:2] == [str(executable.resolve()), "--bench"]
+                    for command in commands
+                )
+            )
+            self.assertNotIn("cargo", {part for command in commands for part in command})
+            self.assertTrue(
+                all(
+                    call.kwargs["env"] == bench_env
+                    for call in run_mock.call_args_list
+                )
+            )
+            self.assertIn("end_to_end/first", result["errors"])
+            self.assertEqual(result["times_ns"]["end_to_end/second"], 200.0)
+            self.assertEqual(result["executable"]["status"], "verified")
+
     def test_excludes_nonidentical_fixture_inputs_from_mmdr_ratios(self) -> None:
         runner = {
             "times_ns": {"end_to_end/example": 200.0},
@@ -2771,6 +2957,182 @@ class RendererComparisonContractsTest(unittest.TestCase):
             comparable_rows[0]["ratios"]["merman_over_mermaid_rs_renderer"],
             2.0,
         )
+        family_summary = compare_mermaid_renderers.build_family_summary(comparable_rows)
+        family_coverage = compare_mermaid_renderers.build_family_coverage(family_summary)
+        self.assertEqual(family_coverage["requested_count"], 1)
+        self.assertEqual(family_coverage["native_same_byte_comparable_count"], 1)
+
+    def test_git_provenance_rejects_dirty_tree_and_fingerprints_allowed_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checkout = Path(temp_dir)
+            subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+            subprocess.run(
+                ["git", "config", "user.email", "bench@example.com"],
+                cwd=checkout,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Benchmark Contract"],
+                cwd=checkout,
+                check=True,
+            )
+            tracked = checkout / "tracked.txt"
+            tracked.write_text("one\n", encoding="utf-8")
+            subprocess.run(["git", "add", "tracked.txt"], cwd=checkout, check=True)
+            subprocess.run(["git", "commit", "-qm", "fixture"], cwd=checkout, check=True)
+
+            clean = compare_mermaid_renderers.capture_git_provenance(
+                checkout,
+                allow_dirty=False,
+                expected_revision=None,
+            )
+            self.assertFalse(clean["dirty"])
+
+            tracked.write_text("two\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "--allow-dirty"):
+                compare_mermaid_renderers.capture_git_provenance(
+                    checkout,
+                    allow_dirty=False,
+                    expected_revision=None,
+                )
+
+            first = compare_mermaid_renderers.capture_git_provenance(
+                checkout,
+                allow_dirty=True,
+                expected_revision=clean["revision"],
+            )
+            tracked.write_text("three\n", encoding="utf-8")
+            second = compare_mermaid_renderers.capture_git_provenance(
+                checkout,
+                allow_dirty=True,
+                expected_revision=clean["revision"],
+            )
+            self.assertNotEqual(first["worktree_sha256"], second["worktree_sha256"])
+
+    def test_provenance_verification_reports_repo_input_and_fixture_drift(self) -> None:
+        errors = compare_mermaid_renderers.provenance_verification_errors(
+            before=compare_mermaid_renderers.ComparisonSnapshot(
+                repositories={
+                    "merman": {"revision": "a", "worktree_sha256": "1"}
+                },
+                files={"corpus": {"sha256": "3", "bytes": 10}},
+                fixture_inputs={"flowchart_tiny": {"status": "identical"}},
+            ),
+            after=compare_mermaid_renderers.ComparisonSnapshot(
+                repositories={
+                    "merman": {"revision": "b", "worktree_sha256": "2"}
+                },
+                files={"corpus": {"sha256": "4", "bytes": 10}},
+                fixture_inputs={"flowchart_tiny": {"status": "different"}},
+            ),
+        )
+
+        self.assertEqual(len(errors), 3)
+        self.assertTrue(any("revision changed" in error for error in errors))
+        self.assertTrue(any("corpus changed" in error for error in errors))
+        self.assertTrue(any("fixture inputs changed" in error for error in errors))
+
+    def test_mermaid_js_output_retains_valid_raw_samples_and_recomputes_summary(self) -> None:
+        method = {
+            "measurement_stop_conditions": {
+                "measure_ms": 1_000,
+                "max_samples": 10,
+            },
+            "watchdogs": {
+                "navigation_timeout_ms": 30_000,
+                "fixture_timeout_ms": 62_000,
+            },
+        }
+        runner = compare_mermaid_renderers.parse_mermaid_js_output(
+            {
+                "schema_version": 3,
+                "meta": {"mermaid": "11.16.0"},
+                "method": method,
+                "results": {
+                    "flowchart_tiny": {
+                        "median_ns": 999,
+                        "times_ns": [300.0, 100.0, 200.0],
+                        "stop_reason": "measurement_time",
+                        "sample_cap": 10,
+                        "samples_truncated": False,
+                        "preflight": {
+                            "svg_chars": 123,
+                            "svg_bytes": 123,
+                            "svg_sha256": "a" * 64,
+                            "view_box": [0, 0, 100, 50],
+                        },
+                    }
+                },
+            }
+        )
+
+        self.assertEqual(runner["times_ns"]["end_to_end/flowchart_tiny"], 200.0)
+        self.assertEqual(runner["samples"]["flowchart_tiny"], 3)
+        self.assertEqual(
+            runner["raw_samples_ns"]["flowchart_tiny"],
+            [300.0, 100.0, 200.0],
+        )
+        self.assertEqual(runner["sample_stats_ns"]["flowchart_tiny"]["p95"], 300.0)
+
+        invalid = compare_mermaid_renderers.parse_mermaid_js_output(
+            {
+                "schema_version": 3,
+                "method": method,
+                "results": {
+                    "flowchart_tiny": {
+                        "times_ns": [0, float("nan")],
+                        "stop_reason": "measurement_time",
+                        "sample_cap": 10,
+                        "samples_truncated": False,
+                        "preflight": {
+                            "svg_chars": 123,
+                            "svg_bytes": 123,
+                            "svg_sha256": "a" * 64,
+                            "view_box": [0, 0, 100, 50],
+                        },
+                    }
+                },
+            }
+        )
+        self.assertIn("end_to_end/flowchart_tiny", invalid["errors"])
+        self.assertNotIn("end_to_end/flowchart_tiny", invalid["times_ns"])
+
+        mismatched_cap = compare_mermaid_renderers.parse_mermaid_js_output(
+            {
+                "schema_version": 3,
+                "method": method,
+                "results": {
+                    "flowchart_tiny": {
+                        "times_ns": [100.0],
+                        "stop_reason": "measurement_time",
+                        "sample_cap": 11,
+                        "samples_truncated": False,
+                        "preflight": {
+                            "svg_chars": 123,
+                            "svg_bytes": 123,
+                            "svg_sha256": "a" * 64,
+                            "view_box": [0, 0, 100, 50],
+                        },
+                    }
+                },
+            }
+        )
+        self.assertIn("end_to_end/flowchart_tiny", mismatched_cap["errors"])
+
+    def test_comparison_contract_fails_closed_on_required_errors_and_empty_common_set(self) -> None:
+        errors = compare_mermaid_renderers.comparison_contract_errors(
+            merman={"errors": {"end_to_end/example": "failed"}, "times_ns": {}},
+            mmdr={"errors": {}, "times_ns": {}},
+            mermaid_js={"errors": {}, "times_ns": {}},
+            rows=[],
+            require_mermaid_js=True,
+            provenance_errors=["corpus changed during sampling"],
+        )
+
+        self.assertTrue(any("merman benchmark errors" in error for error in errors))
+        self.assertTrue(any("Mermaid JS measured no fixtures" in error for error in errors))
+        self.assertTrue(any("no byte-identical" in error for error in errors))
+        self.assertIn("corpus changed during sampling", errors)
 
 
 class StageSpotcheckContractsTest(unittest.TestCase):

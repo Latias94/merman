@@ -4,12 +4,12 @@
   "suites": {
     "canary": "The four benchmark sentinels used for the default hotspot workflow.",
     "quick": "Small smoke set for local iteration; mirrors the historical comparison filter.",
-    "standard": "Balanced cross-family set for routine comparison reports.",
-    "cross_family": "One representative medium fixture per supported diagram family.",
+    "standard": "Balanced 24-family set for routine native comparison reports.",
+    "cross_family": "One representative medium fixture per family currently registered in this native corpus; not the complete supported-family inventory.",
     "flowchart": "Flowchart-focused routing and layout stress coverage.",
     "frontmatter": "Frontmatter preprocessing and config ingestion coverage.",
     "stress": "Known heavier fixtures used when validating optimization work.",
-    "full": "All fixtures in corpus order."
+    "full": "All fixtures in corpus order; fixture-complete, not family-complete."
   },
   "lanes": [
     {

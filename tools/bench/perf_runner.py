@@ -14,6 +14,7 @@ import argparse
 import datetime as dt
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -46,6 +47,12 @@ class Step:
     cmd: list[str]
     cwd: Path
     env: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class ReportPublication:
+    source: Path
+    destination: Path
 
 
 def repo_root() -> Path:
@@ -145,10 +152,96 @@ def native_memory_target_path(*, report_root: Path, profile: str) -> Path:
     return report_root / f"{today_stamp()}_{profile}_native_memory.json"
 
 
+def resolved_report_root(value: str) -> Path:
+    path = Path(value)
+    return (repo_root() / path).resolve() if not path.is_absolute() else path
+
+
+def build_report_publications(args: argparse.Namespace) -> list[ReportPublication]:
+    report_root = resolved_report_root(args.report_root)
+    publications = [
+        ReportPublication(
+            source=render_target_path(
+                report_root=report_root,
+                docs=False,
+                profile=args.profile,
+                kind="spotcheck",
+                suffix="md",
+            ),
+            destination=render_target_path(
+                report_root=report_root,
+                docs=True,
+                profile=args.profile,
+                kind="spotcheck",
+                suffix="md",
+            ),
+        )
+    ]
+    if args.profile in {"canary", "full"}:
+        publications.append(
+            ReportPublication(
+                source=render_target_path(
+                    report_root=report_root,
+                    docs=False,
+                    profile=args.profile,
+                    kind="comparison",
+                    suffix="md",
+                ),
+                destination=render_target_path(
+                    report_root=report_root,
+                    docs=True,
+                    profile=args.profile,
+                    kind="comparison",
+                    suffix="md",
+                ),
+            )
+        )
+    if args.profile == "full":
+        publications.append(
+            ReportPublication(
+                source=suite_target_path(
+                    report_root=report_root,
+                    docs=False,
+                    profile=args.profile,
+                    suite=args.compare_suite,
+                    suffix="md",
+                ),
+                destination=suite_target_path(
+                    report_root=report_root,
+                    docs=True,
+                    profile=args.profile,
+                    suite=args.compare_suite,
+                    suffix="md",
+                ),
+            )
+        )
+    return publications
+
+
+def publish_reports(
+    publications: list[ReportPublication], *, dry_run: bool
+) -> None:
+    print("\n==> publish Markdown reports")
+    for publication in publications:
+        print(
+            f"- {cli_path(repo_root(), publication.source)} -> "
+            f"{cli_path(repo_root(), publication.destination)}"
+        )
+    if dry_run:
+        return
+
+    missing = [item.source for item in publications if not item.source.is_file()]
+    if missing:
+        joined = ", ".join(str(path) for path in missing)
+        raise FileNotFoundError(f"performance reports were not produced: {joined}")
+    for publication in publications:
+        publication.destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(publication.source, publication.destination)
+
+
 def build_steps(args: argparse.Namespace) -> list[Step]:
     root = repo_root()
-    report_root = (root / args.report_root).resolve() if not Path(args.report_root).is_absolute() else Path(args.report_root)
-    docs = args.write_docs
+    report_root = resolved_report_root(args.report_root)
 
     steps: list[Step] = []
 
@@ -163,7 +256,7 @@ def build_steps(args: argparse.Namespace) -> list[Step]:
     if args.profile in {"triage", "canary", "full"}:
         stage_out = render_target_path(
             report_root=report_root,
-            docs=docs,
+            docs=False,
             profile=args.profile,
             kind="spotcheck",
             suffix="md",
@@ -212,7 +305,7 @@ def build_steps(args: argparse.Namespace) -> list[Step]:
     if args.profile in {"canary", "full"}:
         compare_out = render_target_path(
             report_root=report_root,
-            docs=docs,
+            docs=False,
             profile=args.profile,
             kind="comparison",
             suffix="md",
@@ -258,7 +351,7 @@ def build_steps(args: argparse.Namespace) -> list[Step]:
     if args.profile == "full":
         suite_compare_out = suite_target_path(
             report_root=report_root,
-            docs=docs,
+            docs=False,
             profile=args.profile,
             suite=args.compare_suite,
             suffix="md",
@@ -519,6 +612,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     steps = build_steps(args)
+    publications = build_report_publications(args) if args.write_docs else []
 
     print(f"Profile: {args.profile}")
     print(f"Preset: {args.preset}")
@@ -530,41 +624,46 @@ def main(argv: list[str]) -> int:
     for step in steps:
         run_step(step, dry_run=args.dry_run)
 
+    if publications:
+        publish_reports(publications, dry_run=args.dry_run)
+
     if not args.dry_run:
         print("\nArtifacts:")
-        root = repo_root()
+        report_root = resolved_report_root(args.report_root)
+        published_by_source = {
+            publication.source: publication.destination
+            for publication in publications
+        }
         if args.profile in {"triage", "canary", "full"}:
             stage_out = render_target_path(
-                report_root=(root / args.report_root).resolve() if not Path(args.report_root).is_absolute() else Path(args.report_root),
-                docs=args.write_docs,
+                report_root=report_root,
+                docs=False,
                 profile=args.profile,
                 kind="spotcheck",
                 suffix="md",
             )
-            print(f"- {stage_out}")
+            print(f"- {published_by_source.get(stage_out, stage_out)}")
         if args.profile in {"canary", "full"}:
             compare_out = render_target_path(
-                report_root=(root / args.report_root).resolve() if not Path(args.report_root).is_absolute() else Path(args.report_root),
-                docs=args.write_docs,
+                report_root=report_root,
+                docs=False,
                 profile=args.profile,
                 kind="comparison",
                 suffix="md",
             )
-            print(f"- {compare_out}")
+            print(f"- {published_by_source.get(compare_out, compare_out)}")
         if args.profile == "full":
             suite_out = suite_target_path(
-                report_root=(root / args.report_root).resolve() if not Path(args.report_root).is_absolute() else Path(args.report_root),
-                docs=args.write_docs,
+                report_root=report_root,
+                docs=False,
                 profile=args.profile,
                 suite=args.compare_suite,
                 suffix="md",
             )
-            print(f"- {suite_out}")
+            print(f"- {published_by_source.get(suite_out, suite_out)}")
         if args.include_native_memory:
             memory_out = native_memory_target_path(
-                report_root=(root / args.report_root).resolve()
-                if not Path(args.report_root).is_absolute()
-                else Path(args.report_root),
+                report_root=report_root,
                 profile=args.profile,
             )
             print(f"- {memory_out}")

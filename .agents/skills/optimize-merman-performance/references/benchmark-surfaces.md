@@ -37,6 +37,9 @@ Use batched benches when fixed costs are too small for stable single-operation m
 
 `python3 tools/bench/perf_runner.py --profile canary` runs the documented local workflow.
 Use `--dry-run` to inspect it and `--profile full` only for broad validation.
+With `--write-docs`, every measurement remains under `target/bench` until the complete profile
+succeeds; Markdown reports are published to `docs/performance` only after that clean measurement
+phase finishes.
 
 ## Same-Implementation Revision A/B
 
@@ -127,9 +130,22 @@ cargo run -p xtask -- wasm-size-matrix \
 ```
 
 Record raw, stripped, gzip, and Brotli bytes and the profile capabilities. Compare browser
-renderers only after one-time initialization in the same Chromium session with the same fixture,
-theme, viewport, warmup, and iteration policy. Keep browser-WASM separate from Node-WASM and native
-Rust.
+renderers with the checked-in family corpus:
+
+```console
+npm --prefix playground run benchmark:corpus -- \
+  --iterations 6 \
+  --warmups 2 \
+  --out target/bench/browser-family-corpus.json
+```
+
+The runner uses a fresh Chromium process per fixture to bound retained renderer state, while both
+engines share one page, source, theme, viewport, warmup policy, and deterministic AB/BA schedule
+inside that fixture. Keep cold first-publishable SVG separate from reused-engine warm publishable
+SVG. Each fixture mode reports its ratio as Mermaid.js divided by Merman, so values above one favor
+Merman. The runner rejects plans above its 4,096 retained-sample whole-corpus budget before timing.
+Treat two-iteration coverage runs as discovery only; target and repeat candidates before changing
+production code. Keep browser-WASM separate from Node-WASM and native Rust.
 
 ## Native Size and Dependency Closure
 

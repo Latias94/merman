@@ -91,7 +91,7 @@ on:
       mmdr_ref:
         description: "Pinned mermaid-rs-renderer ref"
         required: false
-        default: "859253415e69dce28bd65cd5a7c1d1ae8b39f4a1"
+        default: "7ff1196ed297c32a65a6b3cdc28f3ca3787fb65e"
       mmdr_toolchain:
         description: "Rust toolchain for mermaid-rs-renderer"
         required: false
@@ -610,7 +610,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: 1jehuang/mermaid-rs-renderer
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '859253415e69dce28bd65cd5a7c1d1ae8b39f4a1' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '7ff1196ed297c32a65a6b3cdc28f3ca3787fb65e' }}
           path: head/repo-ref/mermaid-rs-renderer
           fetch-depth: 1
           persist-credentials: false
@@ -681,6 +681,8 @@ jobs:
             --suite "$SUITE"
             --mmdr-dir repo-ref/mermaid-rs-renderer
             --mmdr-toolchain "$MMDR_TOOLCHAIN"
+            --expected-merman-rev "$(git rev-parse HEAD)"
+            --expected-mmdr-rev "$(git -C repo-ref/mermaid-rs-renderer rev-parse HEAD)"
             --out target/performance/reference_comparison.md
             --json-out target/performance/reference_comparison.json
           )

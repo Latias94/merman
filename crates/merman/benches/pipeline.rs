@@ -433,24 +433,26 @@ fn bench_end_to_end(c: &mut Criterion) {
         };
 
         // Pre-check end-to-end viability once to keep the bench stable.
-        if merman::svg::render_svg_sync(&engine, input, parse_opts, &layout, &svg_opts).is_err() {
+        let viable = matches!(
+            merman::svg::render_svg_sync(&engine, input, parse_opts, &layout, &svg_opts),
+            Ok(Some(svg)) if !svg.is_empty()
+        );
+        if !viable {
             eprintln!("[bench][skip][end_to_end] {name}: svg render error");
             continue;
         }
 
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter(|| {
-                let svg = match merman::svg::render_svg_sync(
+                let svg = merman::svg::render_svg_sync(
                     &engine,
                     black_box(data),
                     parse_opts,
                     &layout,
                     &svg_opts,
-                ) {
-                    Ok(Some(v)) => v,
-                    Ok(None) => return,
-                    Err(_) => return,
-                };
+                )
+                .expect("end-to-end benchmark render")
+                .expect("end-to-end benchmark SVG");
                 black_box(svg.len());
             });
         });

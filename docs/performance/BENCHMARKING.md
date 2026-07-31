@@ -384,20 +384,35 @@ context:
 
 ```bash
 python3 tools/bench/compare_mermaid_renderers.py \
+  --preset long \
   --suite standard \
+  --expected-merman-rev <merman-commit> \
+  --expected-mmdr-rev <mmdr-commit> \
+  --mmdr-toolchain 1.92.0 \
   --out target/bench/renderer_comparison.md \
   --json-out target/bench/renderer_comparison.json
 ```
 
-Use `--mmdr-toolchain 1.92.0` when the reference checkout needs that toolchain, and
-`--skip-mermaid-js` when the optional Puppeteer lane is not required. Available suites can be listed
-with `--list-suites`; `standard`, `cross_family`, `flowchart`, `stress`, and `full` progressively
-broaden diagnostic coverage.
+The runner rejects dirty Merman or mmdr checkouts before starting Cargo. `--allow-dirty` is available
+for explicitly diagnostic work: it fingerprints the tracked diff and every untracked file, then
+rechecks both repositories and all benchmark-owned inputs after sampling. A revision, worktree,
+fixture, runner, lockfile, config, or browser-bundle change fails the contract with exit `2`.
+
+Use `--skip-mermaid-js` when the optional Puppeteer lane is not required. Available suites can be
+listed with `--list-suites`; `standard`, `cross_family`, `flowchart`, `stress`, and `full` broaden the
+registered native corpus. They are not the complete supported-family inventory: `full` means every
+registered fixture, not every Merman family.
 
 Before a fixture-level ratio is shown, the harness compares the exact bytes used by both native
 benches. Missing, skipped, errored, or non-identical fixtures remain coverage facts rather than being
 treated as fast or slow. Do not use a family aggregate or a ratio spanning unlike transports as an
 optimization gate.
+
+Schema `3` retains repository and input provenance, family-level coverage, contract status, the
+Criterion console mid-point estimate kind, and all Mermaid.js per-call samples with p50/p95/p99.
+Native Criterion raw samples are not retained, so the report remains diagnostic and explicitly sets
+`baseline_eligible` to false. The runner also performs a Mermaid.js SVG preflight, but DOM and raster
+parity remain separate gates.
 
 The steady-state modes are also distinct:
 
@@ -410,16 +425,49 @@ lanes with explicit lifecycle and output contracts.
 
 ## Browser comparison with Mermaid.js
 
-For a web-to-web comparison, initialize both engines once in the same headless Chromium session,
-then measure repeated operations with the same fixture bytes, theme, viewport, warmup, and
-measurement window:
+Use the generated family-baseline corpus for the web-to-web comparison. The full command builds the
+current Web artifact and measures one baseline from each supported generated-example family:
 
-- Merman uses repeated `@mermanjs/web` `renderSvg()` calls.
-- Mermaid.js uses repeated `mermaid.render()` calls.
-- Cold start and reused-engine steady state are reported separately.
+```bash
+npm --prefix playground run benchmark:corpus -- \
+  --iterations 6 \
+  --warmups 2 \
+  --out target/bench/browser-family-corpus.json
+```
+
+After an already verified playground build, select fixtures for a diagnostic rerun with:
+
+```bash
+npm --prefix playground run benchmark:corpus:built -- \
+  --fixtures c4-system-context,mind-map,requirement-trace \
+  --iterations 6 \
+  --warmups 2 \
+  --out target/bench/browser-family-targeted.json
+```
+
+The corpus runner derives its inventory from generated examples whose evidence role is
+`family-baseline`. It starts a fresh Chromium process for every selected fixture to bound retained
+renderer state. Within that fixture, Merman and Mermaid.js still use the same page, source bytes,
+theme, viewport, warmup policy, iteration count, and deterministic AB/BA schedule. Independent cold
+and warm controller runs report first-publishable SVG and reused-engine publishable SVG separately.
+Both engines pass through the production browser adapters and the same strict SVG evidence checks.
+
+Corpus schema `1` embeds the raw schema-`5` controller reports, fixture byte counts and SHA-256
+digests, family coverage, actual order, seeds, versions, failures, skips, and process-isolation mode.
+It never overwrites an existing output. A whole-corpus budget rejects plans that would retain more
+than 4,096 raw samples before the first fixture runs. In each successful fixture mode's
+`report.aggregates.ratios`, the numerator is Mermaid.js and the denominator is Merman, so values
+greater than `1` favor Merman.
+
+An even `--iterations` value is required by the balanced schedule. A two-iteration, zero-warmup run
+is useful only to verify coverage and discover large candidates. The default six iterations and two
+warmups provide better diagnostic ranking, but they are not a universal admission threshold. Use a
+targeted rerun, inspect raw samples, variance, and absolute milliseconds, then confirm any production
+change against the same Merman base/head public operation before accepting it.
 
 `tools/bench/mermaid_js_bench.cjs` supplies the Mermaid.js side through the pinned
-`tools/mermaid-cli` dependencies. Interactive visual comparison is documented in
+`tools/mermaid-cli` dependencies for the cross-transport native diagnostic lane above; it is not the
+web-to-web admission lane. Interactive visual comparison is documented in
 `docs/workstreams/web-wasm-playground/MERMAID_COMPARE_MODE.md`.
 
 ## Stage and render diagnostics
