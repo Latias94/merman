@@ -255,6 +255,7 @@ fn rust_layout_fingerprint() -> u64 {
 
 fn assert_c_abi_native_runtime_catalog() {
     let catalog = runtime_catalog_through_function_table();
+    assert_runtime_output_contracts(&catalog);
     let profiles: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../capabilities/artifact-profiles-v1.json"
@@ -302,6 +303,195 @@ fn assert_c_abi_native_runtime_catalog() {
             "the real C ABI operation report drifted from {profile_id}"
         );
     }
+}
+
+fn assert_runtime_output_contracts(catalog: &Value) {
+    let output_ids =
+        sorted_unique_string_ids(&catalog["capabilities"]["output_ids"], "runtime output IDs");
+    let contracts = catalog["output_contracts"]
+        .as_array()
+        .expect("runtime output contracts must be an array");
+    let contract_ids = contracts
+        .iter()
+        .map(|contract| {
+            let object = contract
+                .as_object()
+                .expect("runtime output contract must be an object");
+            assert_required_fields(
+                object,
+                &["id", "media_type", "system_fonts", "embedded_images"],
+                "runtime output contract",
+            );
+            let id = contract["id"]
+                .as_str()
+                .filter(|id| !id.is_empty())
+                .expect("runtime output contract ID must be a non-empty string");
+            contract["media_type"]
+                .as_str()
+                .filter(|media_type| !media_type.is_empty())
+                .expect("runtime output media type must be a non-empty string");
+            assert_optional_system_font_contract(&contract["system_fonts"], id);
+            assert_optional_embedded_image_contract(&contract["embedded_images"], id);
+            assert_native_output_environment_facts(contract, id);
+            id
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        contract_ids.windows(2).all(|window| window[0] < window[1]),
+        "runtime output contract IDs must be sorted and unique"
+    );
+    assert_eq!(
+        contract_ids, output_ids,
+        "runtime output contract IDs must exactly match runtime output IDs"
+    );
+}
+
+fn assert_optional_system_font_contract(value: &Value, output_id: &str) {
+    if value.is_null() {
+        return;
+    }
+    let contract = value
+        .as_object()
+        .unwrap_or_else(|| panic!("{output_id} system font contract must be an object or null"));
+    assert_required_fields(
+        contract,
+        &[
+            "source_id",
+            "discovery",
+            "cache_scope",
+            "host_dependent",
+            "caller_configurable",
+            "resource_bounded",
+        ],
+        &format!("{output_id} system font contract"),
+    );
+    for key in ["source_id", "discovery", "cache_scope"] {
+        contract[key]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| panic!("{output_id} system font field `{key}` must be a string"));
+    }
+    for key in ["host_dependent", "caller_configurable", "resource_bounded"] {
+        contract[key]
+            .as_bool()
+            .unwrap_or_else(|| panic!("{output_id} system font field `{key}` must be a boolean"));
+    }
+}
+
+fn assert_optional_embedded_image_contract(value: &Value, output_id: &str) {
+    if value.is_null() {
+        return;
+    }
+    let contract = value
+        .as_object()
+        .unwrap_or_else(|| panic!("{output_id} embedded image contract must be an object or null"));
+    assert_required_fields(
+        contract,
+        &[
+            "source_ids",
+            "filesystem_access",
+            "network_access",
+            "caller_configurable",
+            "limits",
+        ],
+        &format!("{output_id} embedded image contract"),
+    );
+    sorted_unique_string_ids(
+        &contract["source_ids"],
+        &format!("{output_id} embedded image source IDs"),
+    );
+    for key in ["filesystem_access", "network_access", "caller_configurable"] {
+        contract[key].as_bool().unwrap_or_else(|| {
+            panic!("{output_id} embedded image field `{key}` must be a boolean")
+        });
+    }
+
+    let limits = contract["limits"]
+        .as_object()
+        .unwrap_or_else(|| panic!("{output_id} embedded image limits must be an object"));
+    let limit_keys = [
+        "max_bytes_per_image",
+        "max_total_bytes",
+        "max_pixels_per_image",
+        "max_total_pixels",
+    ];
+    assert_required_fields(
+        limits,
+        &limit_keys,
+        &format!("{output_id} embedded image limits"),
+    );
+    for key in limit_keys {
+        let value = &limits[key];
+        assert!(
+            value.is_null() || value.as_u64().is_some_and(|limit| limit > 0),
+            "{output_id} embedded image limit `{key}` must be a positive integer or null"
+        );
+    }
+}
+
+fn assert_native_output_environment_facts(contract: &Value, output_id: &str) {
+    let expected_media_type = match output_id {
+        "ascii" => "text/plain; charset=utf-8",
+        "jpeg" => "image/jpeg",
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "svg" => "image/svg+xml",
+        _ => panic!("native SDK smoke does not own output `{output_id}`"),
+    };
+    assert_eq!(contract["media_type"], expected_media_type);
+
+    if matches!(output_id, "ascii" | "svg") {
+        assert!(contract["system_fonts"].is_null());
+        assert!(contract["embedded_images"].is_null());
+        return;
+    }
+
+    let fonts = contract["system_fonts"]
+        .as_object()
+        .expect("binary output system font contract");
+    assert_eq!(fonts["source_id"], "host-system");
+    assert_eq!(fonts["discovery"], "first-use");
+    assert_eq!(fonts["cache_scope"], "process-global");
+    assert_eq!(fonts["host_dependent"], true);
+    assert_eq!(fonts["caller_configurable"], false);
+    assert_eq!(fonts["resource_bounded"], false);
+
+    let images = contract["embedded_images"]
+        .as_object()
+        .expect("binary output embedded image contract");
+    assert_eq!(string_ids(&images["source_ids"]), ["data-url"]);
+    assert_eq!(images["filesystem_access"], false);
+    assert_eq!(images["network_access"], false);
+    assert_eq!(images["caller_configurable"], false);
+    let limits = images["limits"]
+        .as_object()
+        .expect("binary output embedded image limits");
+    assert_eq!(limits["max_bytes_per_image"], 16 * 1024 * 1024);
+    assert_eq!(limits["max_total_bytes"], 32 * 1024 * 1024);
+    assert_eq!(limits["max_pixels_per_image"], 16 * 1024 * 1024);
+    assert_eq!(limits["max_total_pixels"], 32 * 1024 * 1024);
+}
+
+fn assert_required_fields(object: &serde_json::Map<String, Value>, required: &[&str], label: &str) {
+    for key in required {
+        assert!(
+            object.contains_key(*key),
+            "{label} is missing field `{key}`"
+        );
+    }
+}
+
+fn sorted_unique_string_ids<'a>(value: &'a Value, label: &str) -> Vec<&'a str> {
+    let values = string_ids(value);
+    assert!(
+        values.iter().all(|value| !value.is_empty()),
+        "{label} must contain non-empty strings"
+    );
+    assert!(
+        values.windows(2).all(|window| window[0] < window[1]),
+        "{label} must be sorted and unique"
+    );
+    values
 }
 
 fn expected_native_operation_ids<'a>(

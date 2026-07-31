@@ -69,6 +69,41 @@ export interface MermanRuntimeResourceProfile {
   [key: string]: unknown;
 }
 
+export interface MermanRuntimeSystemFontContract {
+  source_id: string;
+  discovery: string;
+  cache_scope: string;
+  host_dependent: boolean;
+  caller_configurable: boolean;
+  resource_bounded: boolean;
+  [key: string]: unknown;
+}
+
+export interface MermanRuntimeEmbeddedImageLimits {
+  max_bytes_per_image: number | null;
+  max_total_bytes: number | null;
+  max_pixels_per_image: number | null;
+  max_total_pixels: number | null;
+  [key: string]: unknown;
+}
+
+export interface MermanRuntimeEmbeddedImageContract {
+  source_ids: string[];
+  filesystem_access: boolean;
+  network_access: boolean;
+  caller_configurable: boolean;
+  limits: MermanRuntimeEmbeddedImageLimits;
+  [key: string]: unknown;
+}
+
+export interface MermanRuntimeOutputContract {
+  id: string;
+  media_type: string;
+  system_fonts: MermanRuntimeSystemFontContract | null;
+  embedded_images: MermanRuntimeEmbeddedImageContract | null;
+  [key: string]: unknown;
+}
+
 export interface MermanRuntimeCatalog {
   schema_version: 1;
   transport_api_version: 1;
@@ -81,6 +116,7 @@ export interface MermanRuntimeCatalog {
     text_measurement: MermanTextMeasurementCatalog | null;
     [key: string]: unknown;
   };
+  output_contracts: MermanRuntimeOutputContract[];
   registry: {
     diagram_family_count: number;
     [key: string]: unknown;

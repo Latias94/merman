@@ -34,8 +34,9 @@ pub use lifecycle::{
 pub use metadata::{
     ArtifactCapabilitySurface, BindingAsciiCapability, BindingAsciiCapabilityEvidence,
     BindingDiagramFamilyCapability, RUNTIME_CATALOG_SCHEMA_VERSION, RuleCatalogEntry,
-    RuntimeCapabilities, RuntimeCatalog, RuntimeRegistryContract, RuntimeResourceContract,
-    RuntimeResourceLimit, RuntimeResourceProfile, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+    RuntimeCapabilities, RuntimeCatalog, RuntimeEmbeddedImageContract, RuntimeEmbeddedImageLimits,
+    RuntimeOutputContract, RuntimeRegistryContract, RuntimeResourceContract, RuntimeResourceLimit,
+    RuntimeResourceProfile, RuntimeSystemFontContract, TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
     TEXT_MEASUREMENT_PROVIDER_VENDORED, TextMeasurementCapabilities,
     TextMeasurementProviderProjection, ascii_capabilities, ascii_capabilities_json,
     ascii_supported_diagrams, ascii_supported_diagrams_json, binding_transport_capability_surface,

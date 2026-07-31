@@ -33,6 +33,37 @@ class MermanRuntimeCapabilities(TypedDict):
     text_measurement: Optional[MermanTextMeasurementCapabilities]
 
 
+class MermanSystemFontContract(TypedDict):
+    source_id: str
+    discovery: str
+    cache_scope: str
+    host_dependent: bool
+    caller_configurable: bool
+    resource_bounded: bool
+
+
+class MermanEmbeddedImageLimits(TypedDict):
+    max_bytes_per_image: Optional[int]
+    max_total_bytes: Optional[int]
+    max_pixels_per_image: Optional[int]
+    max_total_pixels: Optional[int]
+
+
+class MermanEmbeddedImageContract(TypedDict):
+    source_ids: List[str]
+    filesystem_access: bool
+    network_access: bool
+    caller_configurable: bool
+    limits: MermanEmbeddedImageLimits
+
+
+class MermanOutputContract(TypedDict):
+    id: str
+    media_type: str
+    system_fonts: Optional[MermanSystemFontContract]
+    embedded_images: Optional[MermanEmbeddedImageContract]
+
+
 class MermanRuntimeRegistry(TypedDict):
     diagram_family_count: int
 
@@ -49,6 +80,7 @@ class MermanRuntimeCatalog(TypedDict):
     transport_api_version: int
     package_version: str
     capabilities: MermanRuntimeCapabilities
+    output_contracts: List[MermanOutputContract]
     registry: MermanRuntimeRegistry
     resources: MermanRuntimeResources
 
@@ -82,6 +114,7 @@ def get_runtime_catalog(engine: _RuntimeCatalogEngine) -> MermanRuntimeCatalog:
             "transport_api_version",
             "package_version",
             "capabilities",
+            "output_contracts",
             "registry",
             "resources",
         },
@@ -108,13 +141,14 @@ def get_runtime_catalog(engine: _RuntimeCatalogEngine) -> MermanRuntimeCatalog:
             "runtime catalog package_version does not match the loaded library"
         )
 
-    _validate_capabilities(catalog["capabilities"])
+    output_ids = _validate_capabilities(catalog["capabilities"])
+    _validate_output_contracts(catalog["output_contracts"], output_ids)
     _validate_registry(catalog["registry"])
     _validate_resources(catalog["resources"])
     return cast(MermanRuntimeCatalog, catalog)
 
 
-def _validate_capabilities(value: Any) -> None:
+def _validate_capabilities(value: Any) -> List[str]:
     capabilities = _expect_object(value, "runtime catalog capabilities")
     _require_required_keys(
         capabilities,
@@ -154,7 +188,7 @@ def _validate_capabilities(value: Any) -> None:
             raise MermanRuntimeCatalogError(
                 "runtime SVG capability requires text measurement metadata"
             )
-        return
+        return output_ids
     if "svg" not in capability_ids:
         raise MermanRuntimeCatalogError(
             "runtime text measurement metadata requires the SVG capability"
@@ -182,6 +216,97 @@ def _validate_capabilities(value: Any) -> None:
         raise MermanRuntimeCatalogError(
             "runtime text measurement providers must include vendored"
         )
+    return output_ids
+
+
+def _validate_output_contracts(value: Any, output_ids: List[str]) -> None:
+    if not isinstance(value, list):
+        raise MermanRuntimeCatalogError("runtime output contracts must be an array")
+
+    contract_ids: List[str] = []
+    for value_item in value:
+        item = _expect_object(value_item, "runtime output contract")
+        _require_required_keys(
+            item,
+            {"id", "media_type", "system_fonts", "embedded_images"},
+            "runtime output contract",
+        )
+        contract_ids.append(_expect_identifier(item["id"], "runtime output contract ID"))
+        _expect_non_empty_string(
+            item["media_type"], "runtime output contract media_type"
+        )
+        _validate_system_fonts(item["system_fonts"])
+        _validate_embedded_images(item["embedded_images"])
+
+    if contract_ids != output_ids:
+        raise MermanRuntimeCatalogError(
+            "runtime output contract IDs must exactly match runtime output IDs"
+        )
+
+
+def _validate_system_fonts(value: Any) -> None:
+    if value is None:
+        return
+    fonts = _expect_object(value, "runtime system font contract")
+    _require_required_keys(
+        fonts,
+        {
+            "source_id",
+            "discovery",
+            "cache_scope",
+            "host_dependent",
+            "caller_configurable",
+            "resource_bounded",
+        },
+        "runtime system font contract",
+    )
+    for field in ["source_id", "discovery", "cache_scope"]:
+        _expect_identifier(fonts[field], f"runtime system font contract {field}")
+    for field in ["host_dependent", "caller_configurable", "resource_bounded"]:
+        if type(fonts[field]) is not bool:
+            raise MermanRuntimeCatalogError(
+                f"runtime system font contract {field} must be a boolean"
+            )
+
+
+def _validate_embedded_images(value: Any) -> None:
+    if value is None:
+        return
+    images = _expect_object(value, "runtime embedded image contract")
+    _require_required_keys(
+        images,
+        {
+            "source_ids",
+            "filesystem_access",
+            "network_access",
+            "caller_configurable",
+            "limits",
+        },
+        "runtime embedded image contract",
+    )
+    _validate_identifier_list(
+        images["source_ids"], "runtime embedded image source IDs"
+    )
+    for field in ["filesystem_access", "network_access", "caller_configurable"]:
+        if type(images[field]) is not bool:
+            raise MermanRuntimeCatalogError(
+                f"runtime embedded image contract {field} must be a boolean"
+            )
+
+    limits = _expect_object(images["limits"], "runtime embedded image limits")
+    limit_fields = {
+        "max_bytes_per_image",
+        "max_total_bytes",
+        "max_pixels_per_image",
+        "max_total_pixels",
+    }
+    _require_required_keys(limits, limit_fields, "runtime embedded image limits")
+    for field in limit_fields:
+        limit = limits[field]
+        if limit is not None and (not _is_integer(limit) or limit <= 0):
+            raise MermanRuntimeCatalogError(
+                f"runtime embedded image limit {field} must be a positive integer or null"
+            )
 
 
 def _validate_registry(value: Any) -> None:

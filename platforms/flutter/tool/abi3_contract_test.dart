@@ -14,10 +14,14 @@ void main() {
   matchesThePubPackageVersionProjection();
   acceptsAFlatAbi3Catalog();
   projectsSvgPlanOperationFromGeneratedAbi();
+  preservesTypedRuntimeOutputContracts();
   preservesCompleteRuntimeResourceContract();
   acceptsInvariantOnlyCatalog();
   acceptsAdditiveRuntimeCatalogFields();
   acceptsAdditiveRuntimeResourceIds();
+  rejectsMissingRuntimeOutputContracts();
+  rejectsOutputContractIdDrift();
+  rejectsMalformedOutputContracts();
   rejectsDuplicateCapabilityIds();
   rejectsUncallableOutputIds();
   rejectsInconsistentAdapters();
@@ -155,8 +159,29 @@ void preservesCompleteRuntimeResourceContract() {
   );
 }
 
+void preservesTypedRuntimeOutputContracts() {
+  final catalog = MermanRuntimeCatalog.fromJson(_catalogWithExportOutput());
+  final png = catalog.outputContractsById['png'];
+  _expect(
+    catalog.outputContracts.map((contract) => contract.id).toList().join(',') ==
+            'png,svg' &&
+        png != null &&
+        png.mediaType == 'image/png' &&
+        png.systemFonts != null &&
+        png.systemFonts!.sourceId == 'host-system' &&
+        png.systemFonts!.hostDependent &&
+        png.embeddedImages != null &&
+        png.embeddedImages!.sourceIds.single == 'data-url' &&
+        png.embeddedImages!.limits.maxBytesPerImage == 1024 &&
+        png.embeddedImages!.limits.maxTotalBytes == null &&
+        png.embeddedImages!.limits.maxPixelsPerImage == 2048 &&
+        png.embeddedImages!.limits.maxTotalPixels == 4096,
+    'runtime output contracts must preserve typed native output behavior',
+  );
+}
+
 void acceptsAdditiveRuntimeCatalogFields() {
-  final catalog = _catalog();
+  final catalog = _catalogWithExportOutput();
   catalog['future_root'] = true;
   _runtimeCapabilities(catalog)['future_capability_metadata'] =
       <String, Object?>{};
@@ -171,6 +196,13 @@ void acceptsAdditiveRuntimeCatalogFields() {
   final textMeasurement =
       _runtimeCapabilities(catalog)['text_measurement'] as Map<String, Object?>;
   textMeasurement['future_text_measurement_metadata'] = true;
+  final png = _outputContractAt(catalog, 'png');
+  png['future_output_metadata'] = true;
+  (png['system_fonts'] as Map<String, Object?>)['future_font_metadata'] = true;
+  final embeddedImages = png['embedded_images'] as Map<String, Object?>;
+  embeddedImages['future_image_metadata'] = true;
+  (embeddedImages['limits'] as Map<String, Object?>)['future_limit_metadata'] =
+      true;
 
   final validated = MermanRuntimeCatalog.fromJson(catalog);
   _expect(
@@ -219,6 +251,7 @@ void acceptsInvariantOnlyCatalog() {
   final capabilities = _runtimeCapabilities(catalog);
   capabilities['capability_ids'] = <String>[];
   capabilities['output_ids'] = <String>[];
+  catalog['output_contracts'] = <Object?>[];
   capabilities['operation_ids'] = ['semantic-json'];
   capabilities['system_adapter_ids'] = <String>[];
   capabilities['text_measurement'] = null;
@@ -235,6 +268,53 @@ void rejectsDuplicateCapabilityIds() {
   final catalog = _catalog();
   _runtimeCapabilities(catalog)['capability_ids'] = ['svg', 'svg'];
   _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+}
+
+void rejectsMissingRuntimeOutputContracts() {
+  final catalog = _catalog();
+  catalog.remove('output_contracts');
+  _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+}
+
+void rejectsOutputContractIdDrift() {
+  for (final mutation in <void Function(Map<String, Object?>)>[
+    (catalog) => _outputContracts(catalog).removeLast(),
+    (catalog) => _outputContractAt(catalog, 'png')['id'] = 'svg',
+    (catalog) => _outputContracts(catalog).add(_outputContract('svg')),
+  ]) {
+    final catalog = _catalogWithExportOutput();
+    mutation(catalog);
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
+}
+
+void rejectsMalformedOutputContracts() {
+  for (final mutation in <void Function(Map<String, Object?>)>[
+    (catalog) => _outputContractAt(catalog, 'png')['media_type'] = 1,
+    (catalog) =>
+        _outputContractAt(catalog, 'png')['system_fonts'] = <String, Object?>{},
+    (catalog) => (_outputContractAt(catalog, 'png')['system_fonts']
+        as Map<String, Object?>)['source_id'] = 1,
+    (catalog) => (_outputContractAt(catalog, 'png')['system_fonts']
+        as Map<String, Object?>)['host_dependent'] = 'true',
+    (catalog) => (_outputContractAt(catalog, 'png')['embedded_images']
+        as Map<String, Object?>)['source_ids'] = 'data-url',
+    (catalog) => (_outputContractAt(catalog, 'png')['embedded_images']
+        as Map<String, Object?>)['filesystem_access'] = 1,
+    (catalog) => ((_outputContractAt(catalog, 'png')['embedded_images']
+            as Map<String, Object?>)['limits']
+        as Map<String, Object?>)['max_bytes_per_image'] = 0,
+    (catalog) => ((_outputContractAt(catalog, 'png')['embedded_images']
+            as Map<String, Object?>)['limits']
+        as Map<String, Object?>)['max_total_bytes'] = 1.5,
+    (catalog) => ((_outputContractAt(catalog, 'png')['embedded_images']
+            as Map<String, Object?>)['limits']
+        as Map<String, Object?>)['max_total_pixels'] = '4096',
+  ]) {
+    final catalog = _catalogWithExportOutput();
+    mutation(catalog);
+    _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
+  }
 }
 
 void rejectsUncallableOutputIds() {
@@ -538,8 +618,52 @@ Map<String, Object?> _catalog({
             }
           : null,
     },
+    'output_contracts': <Object?>[
+      for (final outputId in outputIds) _outputContract(outputId),
+    ],
     'registry': {'diagram_family_count': 35},
     'resources': _resourceContract(),
+  };
+}
+
+Map<String, Object?> _catalogWithExportOutput() => _catalog(
+      capabilityIds: const ['png', 'svg'],
+      outputIds: const ['png', 'svg'],
+      operationIds: const ['png', 'semantic-json', 'svg'],
+    );
+
+Map<String, Object?> _outputContract(String outputId) {
+  if (outputId == 'png') {
+    return <String, Object?>{
+      'id': 'png',
+      'media_type': 'image/png',
+      'system_fonts': <String, Object?>{
+        'source_id': 'host-system',
+        'discovery': 'first-use',
+        'cache_scope': 'process-global',
+        'host_dependent': true,
+        'caller_configurable': false,
+        'resource_bounded': false,
+      },
+      'embedded_images': <String, Object?>{
+        'source_ids': <String>['data-url'],
+        'filesystem_access': false,
+        'network_access': false,
+        'caller_configurable': false,
+        'limits': <String, Object?>{
+          'max_bytes_per_image': 1024,
+          'max_total_bytes': null,
+          'max_pixels_per_image': 2048,
+          'max_total_pixels': 4096,
+        },
+      },
+    };
+  }
+  return <String, Object?>{
+    'id': outputId,
+    'media_type': 'image/svg+xml',
+    'system_fonts': null,
+    'embedded_images': null,
   };
 }
 
@@ -603,6 +727,17 @@ Map<String, Object?> _profileAt(Map<String, Object?> catalog, int index) =>
 
 Map<String, Object?> _runtimeCapabilities(Map<String, Object?> catalog) =>
     catalog['capabilities']! as Map<String, Object?>;
+
+List<Object?> _outputContracts(Map<String, Object?> catalog) =>
+    catalog['output_contracts']! as List<Object?>;
+
+Map<String, Object?> _outputContractAt(
+  Map<String, Object?> catalog,
+  String outputId,
+) =>
+    _outputContracts(catalog)
+        .cast<Map<String, Object?>>()
+        .firstWhere((contract) => contract['id'] == outputId);
 
 void _expectContractFailure(void Function() action) {
   _expectThrows<MermanException>(action);

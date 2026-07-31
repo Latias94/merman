@@ -158,6 +158,12 @@ const RUNTIME_CATALOG = {
       provider_ids: ["vendored"],
     },
   },
+  output_contracts: [{
+    id: "svg",
+    media_type: "image/svg+xml",
+    system_fonts: null,
+    embedded_images: null,
+  }],
   registry: { diagram_family_count: 35 },
   resources: {
     general_binding_default_profile: "interactive",

@@ -126,13 +126,15 @@ private func integer(_ value: Any?) -> Int? {
 
 private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngine) throws {
     let requiredCatalogKeys: Set<String> = [
-        "schema_version", "transport_api_version", "package_version", "capabilities", "registry", "resources",
+        "schema_version", "transport_api_version", "package_version", "capabilities", "output_contracts",
+        "registry", "resources",
     ]
     guard requiredCatalogKeys.isSubset(of: Set(catalog.keys)),
           integer(catalog["schema_version"]) == 1,
           (integer(catalog["transport_api_version"]) ?? -1) == engine.bindingApiVersion(),
           catalog["package_version"] as? String == engine.packageVersion(),
           let capabilities = catalog["capabilities"] as? [String: Any],
+          let outputContracts = catalog["output_contracts"] as? [[String: Any]],
           let registry = catalog["registry"] as? [String: Any],
           let resources = catalog["resources"] as? [String: Any] else {
         throw SmokeError.failed("runtime catalog did not describe the native SDK artifact")
@@ -174,6 +176,7 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
           Set(systemAdapterIDs).isSubset(of: Set(capabilityIDs)) else {
         throw SmokeError.failed("runtime catalog has invalid native capability relations")
     }
+    try validateRuntimeOutputContracts(outputContracts, outputIDs: outputIDs)
 
     let requiredTextMeasurementKeys: Set<String> = ["protocol_version", "provider_ids"]
     guard requiredTextMeasurementKeys.isSubset(of: Set(textMeasurement.keys)),
@@ -217,8 +220,152 @@ private func validateRuntimeCatalog(_ catalog: [String: Any], engine: MermanEngi
     }
 }
 
+private func validateRuntimeOutputContracts(
+    _ contracts: [[String: Any]],
+    outputIDs: [String]
+) throws {
+    let requiredContractKeys: Set<String> = ["id", "media_type", "system_fonts", "embedded_images"]
+    var contractIDs: [String] = []
+    for contract in contracts {
+        guard requiredContractKeys.isSubset(of: Set(contract.keys)),
+              let id = contract["id"] as? String,
+              !id.isEmpty,
+              let mediaType = contract["media_type"] as? String,
+              !mediaType.isEmpty else {
+            throw SmokeError.failed("runtime output contract was malformed")
+        }
+        contractIDs.append(id)
+        try validateSystemFontContract(contract["system_fonts"], outputID: id)
+        try validateEmbeddedImageContract(contract["embedded_images"], outputID: id)
+        try validateNativeOutputEnvironmentFacts(contract, outputID: id, mediaType: mediaType)
+    }
+    try requireSortedUnique(contractIDs, field: "runtime output contract IDs")
+    guard contractIDs == outputIDs else {
+        throw SmokeError.failed("runtime output contract IDs did not match runtime output IDs")
+    }
+}
+
+private func validateSystemFontContract(_ value: Any?, outputID: String) throws {
+    if value is NSNull { return }
+    guard let contract = value as? [String: Any] else {
+        throw SmokeError.failed("\(outputID) system font contract was not an object or null")
+    }
+    let requiredKeys: Set<String> = [
+        "source_id", "discovery", "cache_scope", "host_dependent", "caller_configurable",
+        "resource_bounded",
+    ]
+    guard requiredKeys.isSubset(of: Set(contract.keys)),
+          let sourceID = contract["source_id"] as? String,
+          !sourceID.isEmpty,
+          let discovery = contract["discovery"] as? String,
+          !discovery.isEmpty,
+          let cacheScope = contract["cache_scope"] as? String,
+          !cacheScope.isEmpty,
+          boolean(contract["host_dependent"]) != nil,
+          boolean(contract["caller_configurable"]) != nil,
+          boolean(contract["resource_bounded"]) != nil else {
+        throw SmokeError.failed("\(outputID) system font contract was malformed")
+    }
+}
+
+private func validateEmbeddedImageContract(_ value: Any?, outputID: String) throws {
+    if value is NSNull { return }
+    guard let contract = value as? [String: Any] else {
+        throw SmokeError.failed("\(outputID) embedded image contract was not an object or null")
+    }
+    let requiredKeys: Set<String> = [
+        "source_ids", "filesystem_access", "network_access", "caller_configurable", "limits",
+    ]
+    guard requiredKeys.isSubset(of: Set(contract.keys)),
+          let sourceIDs = contract["source_ids"] as? [String],
+          boolean(contract["filesystem_access"]) != nil,
+          boolean(contract["network_access"]) != nil,
+          boolean(contract["caller_configurable"]) != nil,
+          let limits = contract["limits"] as? [String: Any] else {
+        throw SmokeError.failed("\(outputID) embedded image contract was malformed")
+    }
+    try requireSortedUnique(sourceIDs, field: "\(outputID) embedded image source IDs")
+
+    let limitKeys: Set<String> = [
+        "max_bytes_per_image", "max_total_bytes", "max_pixels_per_image", "max_total_pixels",
+    ]
+    guard limitKeys.isSubset(of: Set(limits.keys)),
+          limitKeys.allSatisfy({ isNullOrPositiveInteger(limits[$0]) }) else {
+        throw SmokeError.failed("\(outputID) embedded image limits were malformed")
+    }
+}
+
+private func validateNativeOutputEnvironmentFacts(
+    _ contract: [String: Any],
+    outputID: String,
+    mediaType: String
+) throws {
+    let expectedMediaTypes = [
+        "ascii": "text/plain; charset=utf-8",
+        "jpeg": "image/jpeg",
+        "pdf": "application/pdf",
+        "png": "image/png",
+        "svg": "image/svg+xml",
+    ]
+    guard expectedMediaTypes[outputID] == mediaType else {
+        throw SmokeError.failed("\(outputID) runtime media type drifted")
+    }
+    if outputID == "ascii" || outputID == "svg" {
+        guard contract["system_fonts"] is NSNull,
+              contract["embedded_images"] is NSNull else {
+            throw SmokeError.failed("\(outputID) unexpectedly declared binary-export resources")
+        }
+        return
+    }
+
+    guard let fonts = contract["system_fonts"] as? [String: Any],
+          fonts["source_id"] as? String == "host-system",
+          fonts["discovery"] as? String == "first-use",
+          fonts["cache_scope"] as? String == "process-global",
+          boolean(fonts["host_dependent"]) == true,
+          boolean(fonts["caller_configurable"]) == false,
+          boolean(fonts["resource_bounded"]) == false,
+          let images = contract["embedded_images"] as? [String: Any],
+          images["source_ids"] as? [String] == ["data-url"],
+          boolean(images["filesystem_access"]) == false,
+          boolean(images["network_access"]) == false,
+          boolean(images["caller_configurable"]) == false,
+          let limits = images["limits"] as? [String: Any],
+          positiveInteger(limits["max_bytes_per_image"]) == 16 * 1024 * 1024,
+          positiveInteger(limits["max_total_bytes"]) == 32 * 1024 * 1024,
+          positiveInteger(limits["max_pixels_per_image"]) == 16 * 1024 * 1024,
+          positiveInteger(limits["max_total_pixels"]) == 32 * 1024 * 1024 else {
+        throw SmokeError.failed("\(outputID) binary export environment facts drifted")
+    }
+}
+
+private func boolean(_ value: Any?) -> Bool? {
+    guard let number = value as? NSNumber,
+          CFGetTypeID(number) == CFBooleanGetTypeID() else {
+        return nil
+    }
+    return number.boolValue
+}
+
+private func positiveInteger(_ value: Any?) -> UInt64? {
+    guard let number = value as? NSNumber,
+          CFGetTypeID(number) != CFBooleanGetTypeID(),
+          !CFNumberIsFloatType(number),
+          let result = UInt64(number.stringValue),
+          result > 0 else {
+        return nil
+    }
+    return result
+}
+
+private func isNullOrPositiveInteger(_ value: Any?) -> Bool {
+    value is NSNull || positiveInteger(value) != nil
+}
+
 private func requireSortedUnique(_ values: [String], field: String) throws {
-    guard values == values.sorted(), Set(values).count == values.count else {
+    guard values.allSatisfy({ !$0.isEmpty }),
+          values == values.sorted(),
+          Set(values).count == values.count else {
         throw SmokeError.failed("\(field) must be sorted and unique")
     }
 }

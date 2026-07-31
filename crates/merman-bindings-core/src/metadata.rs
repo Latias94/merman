@@ -441,8 +441,45 @@ pub struct RuntimeCatalog {
     pub transport_api_version: u32,
     pub package_version: &'static str,
     pub capabilities: RuntimeCapabilities,
+    pub output_contracts: Vec<RuntimeOutputContract>,
     pub registry: RuntimeRegistryContract,
     pub resources: RuntimeResourceContract,
+}
+
+/// Runtime behavior of one output exposed by the concrete artifact.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeOutputContract {
+    pub id: &'static str,
+    pub media_type: &'static str,
+    pub system_fonts: Option<RuntimeSystemFontContract>,
+    pub embedded_images: Option<RuntimeEmbeddedImageContract>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeSystemFontContract {
+    pub source_id: &'static str,
+    pub discovery: &'static str,
+    pub cache_scope: &'static str,
+    pub host_dependent: bool,
+    pub caller_configurable: bool,
+    pub resource_bounded: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuntimeEmbeddedImageContract {
+    pub source_ids: &'static [&'static str],
+    pub filesystem_access: bool,
+    pub network_access: bool,
+    pub caller_configurable: bool,
+    pub limits: RuntimeEmbeddedImageLimits,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct RuntimeEmbeddedImageLimits {
+    pub max_bytes_per_image: Option<u64>,
+    pub max_total_bytes: Option<u64>,
+    pub max_pixels_per_image: Option<u64>,
+    pub max_total_pixels: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -626,15 +663,72 @@ pub fn runtime_catalog_for(
     capability_surface: ArtifactCapabilitySurface,
 ) -> RuntimeCatalog {
     let capabilities = capability_surface.runtime_capabilities();
+    let output_contracts = runtime_output_contracts_for(&capabilities);
     RuntimeCatalog {
         schema_version: RUNTIME_CATALOG_SCHEMA_VERSION,
         transport_api_version,
         package_version: env!("CARGO_PKG_VERSION"),
+        output_contracts,
         registry: RuntimeRegistryContract {
             diagram_family_count: diagram_family_capabilities().len(),
         },
         resources: runtime_resource_contract_for(&capabilities),
         capabilities,
+    }
+}
+
+fn runtime_output_contracts_for(capabilities: &RuntimeCapabilities) -> Vec<RuntimeOutputContract> {
+    capability_descriptor::OUTPUTS
+        .iter()
+        .filter(|output| capabilities.has_output(output.id))
+        .map(runtime_output_contract)
+        .collect()
+}
+
+fn runtime_output_contract(
+    output: &capability_descriptor::OutputDescriptor,
+) -> RuntimeOutputContract {
+    match output.id {
+        "ascii" | "svg" => RuntimeOutputContract {
+            id: output.id,
+            media_type: output.media_type,
+            system_fonts: None,
+            embedded_images: None,
+        },
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        "jpeg" | "pdf" | "png" => {
+            let environment = merman::svg::export::output_environment_contract(output.id)
+                .expect("a selected native export output must have an environment contract");
+            let limits = environment.embedded_images.default_limits;
+            RuntimeOutputContract {
+                id: output.id,
+                media_type: output.media_type,
+                system_fonts: Some(RuntimeSystemFontContract {
+                    source_id: environment.system_fonts.source_id,
+                    discovery: environment.system_fonts.discovery,
+                    cache_scope: environment.system_fonts.cache_scope,
+                    host_dependent: environment.system_fonts.host_dependent,
+                    caller_configurable: false,
+                    resource_bounded: environment.system_fonts.resource_bounded,
+                }),
+                embedded_images: Some(RuntimeEmbeddedImageContract {
+                    source_ids: environment.embedded_images.source_ids,
+                    filesystem_access: environment.embedded_images.filesystem_access,
+                    network_access: environment.embedded_images.network_access,
+                    caller_configurable: false,
+                    limits: RuntimeEmbeddedImageLimits {
+                        max_bytes_per_image: limits.max_bytes_per_image,
+                        max_total_bytes: limits.max_total_bytes,
+                        max_pixels_per_image: limits.max_pixels_per_image,
+                        max_total_pixels: limits.max_total_pixels,
+                    },
+                }),
+            }
+        }
+        _ => panic!(
+            "descriptor output `{}` has no runtime output-contract owner",
+            output.id
+        ),
     }
 }
 
@@ -1249,6 +1343,44 @@ mod tests {
             binding_transport_capability_surface().runtime_capabilities()
         );
         assert_eq!(
+            catalog
+                .output_contracts
+                .iter()
+                .map(|output| output.id)
+                .collect::<Vec<_>>(),
+            catalog.capabilities.output_ids
+        );
+        for output in &catalog.output_contracts {
+            match output.id {
+                "ascii" | "svg" => {
+                    assert!(output.system_fonts.is_none());
+                    assert!(output.embedded_images.is_none());
+                }
+                "jpeg" | "pdf" | "png" => {
+                    let fonts = output.system_fonts.as_ref().expect("system font contract");
+                    assert_eq!(fonts.source_id, "host-system");
+                    assert_eq!(fonts.discovery, "first-use");
+                    assert_eq!(fonts.cache_scope, "process-global");
+                    assert!(fonts.host_dependent);
+                    assert!(!fonts.caller_configurable);
+                    assert!(!fonts.resource_bounded);
+                    let images = output
+                        .embedded_images
+                        .as_ref()
+                        .expect("embedded-image contract");
+                    assert_eq!(images.source_ids, ["data-url"]);
+                    assert!(!images.filesystem_access);
+                    assert!(!images.network_access);
+                    assert!(!images.caller_configurable);
+                    assert_eq!(images.limits.max_bytes_per_image, Some(16 * 1024 * 1024));
+                    assert_eq!(images.limits.max_total_bytes, Some(32 * 1024 * 1024));
+                    assert_eq!(images.limits.max_pixels_per_image, Some(16 * 1024 * 1024));
+                    assert_eq!(images.limits.max_total_pixels, Some(32 * 1024 * 1024));
+                }
+                id => panic!("runtime output contract test does not own `{id}`"),
+            }
+        }
+        assert_eq!(
             catalog.registry.diagram_family_count,
             diagram_family_capabilities().len()
         );
@@ -1329,7 +1461,22 @@ mod tests {
             json["capabilities"],
             serde_json::to_value(&catalog.capabilities).unwrap()
         );
+        assert_eq!(
+            json["output_contracts"],
+            serde_json::to_value(&catalog.output_contracts).unwrap()
+        );
         assert_eq!(json, serde_json::to_value(catalog).unwrap());
+    }
+
+    #[test]
+    fn every_descriptor_output_has_an_explicit_runtime_contract_owner() {
+        for output in capability_descriptor::OUTPUTS {
+            assert!(
+                matches!(output.id, "ascii" | "jpeg" | "pdf" | "png" | "svg"),
+                "descriptor output `{}` needs an explicit runtime output-contract owner",
+                output.id
+            );
+        }
     }
 
     #[test]

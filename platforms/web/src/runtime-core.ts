@@ -24,6 +24,7 @@ import type {
   MermanInitInput,
   MermanWasmModule,
   RuntimeCatalog,
+  RuntimeEmbeddedImageLimits,
   ResourceOptions,
   UnavailableDiagramDetectionFacts,
 } from "./public-types.js";
@@ -283,6 +284,7 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
     value,
     [
       "capabilities",
+      "output_contracts",
       "package_version",
       "registry",
       "resources",
@@ -324,13 +326,154 @@ function normalizeRuntimeCatalog(value: unknown): RuntimeCatalog {
   if (!isRecord(value.resources)) {
     throw new Error("Merman WASM returned an invalid runtime resource contract.");
   }
+  const capabilities = normalizeRuntimeCapabilities(value.capabilities);
   return {
     schema_version: 1,
     transport_api_version: catalogTransportApiVersion,
     package_version: value.package_version,
-    capabilities: normalizeRuntimeCapabilities(value.capabilities),
+    capabilities,
+    output_contracts: normalizeRuntimeOutputContracts(
+      value.output_contracts,
+      capabilities.output_ids
+    ),
     registry: { diagram_family_count: diagramFamilyCount },
     resources: normalizeRuntimeResourceContract(value.resources),
+  };
+}
+
+function normalizeRuntimeOutputContracts(
+  value: unknown,
+  outputIds: string[]
+): RuntimeCatalog["output_contracts"] {
+  if (!Array.isArray(value)) {
+    throw new Error("Merman WASM returned invalid runtime output contracts.");
+  }
+  const contracts = value.map((entry) => {
+    if (!isRecord(entry)) {
+      throw new Error("Merman WASM returned an invalid runtime output contract.");
+    }
+    assertRequiredRecordKeys(
+      entry,
+      ["id", "media_type", "system_fonts", "embedded_images"],
+      "Merman WASM runtime output contract"
+    );
+    const id = assertRuntimeIdentifier(entry.id, "runtime output contract IDs");
+    const mediaType = assertStringField(entry.media_type, "runtime output media type");
+    if (mediaType.length === 0) {
+      throw new Error("Merman WASM returned an empty runtime output media type.");
+    }
+    return {
+      id,
+      media_type: mediaType,
+      system_fonts: normalizeRuntimeSystemFonts(entry.system_fonts),
+      embedded_images: normalizeRuntimeEmbeddedImages(entry.embedded_images),
+    };
+  });
+  const contractIds = contracts.map((contract) => contract.id);
+  for (let index = 1; index < contractIds.length; index += 1) {
+    if (contractIds[index - 1] >= contractIds[index]) {
+      throw new Error("Merman WASM runtime output contract IDs must be sorted and unique.");
+    }
+  }
+  if (
+    contractIds.length !== outputIds.length ||
+    contractIds.some((id, index) => id !== outputIds[index])
+  ) {
+    throw new Error("Merman WASM runtime output contracts do not match runtime output IDs.");
+  }
+  return contracts;
+}
+
+function normalizeRuntimeSystemFonts(
+  value: unknown
+): RuntimeCatalog["output_contracts"][number]["system_fonts"] {
+  if (value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    throw new Error("Merman WASM returned an invalid runtime system-font contract.");
+  }
+  assertRequiredRecordKeys(
+    value,
+    [
+      "source_id",
+      "discovery",
+      "cache_scope",
+      "host_dependent",
+      "caller_configurable",
+      "resource_bounded",
+    ],
+    "Merman WASM runtime system-font contract"
+  );
+  return {
+    source_id: assertRuntimeIdentifier(value.source_id, "runtime font source ID"),
+    discovery: assertRuntimeIdentifier(value.discovery, "runtime font discovery ID"),
+    cache_scope: assertRuntimeIdentifier(value.cache_scope, "runtime font cache-scope ID"),
+    host_dependent: assertBooleanField(value.host_dependent, "runtime font host dependence"),
+    caller_configurable: assertBooleanField(
+      value.caller_configurable,
+      "runtime font configurability"
+    ),
+    resource_bounded: assertBooleanField(value.resource_bounded, "runtime font resource bound"),
+  };
+}
+
+function normalizeRuntimeEmbeddedImages(
+  value: unknown
+): RuntimeCatalog["output_contracts"][number]["embedded_images"] {
+  if (value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    throw new Error("Merman WASM returned an invalid runtime embedded-image contract.");
+  }
+  assertRequiredRecordKeys(
+    value,
+    ["source_ids", "filesystem_access", "network_access", "caller_configurable", "limits"],
+    "Merman WASM runtime embedded-image contract"
+  );
+  if (!isRecord(value.limits)) {
+    throw new Error("Merman WASM returned invalid runtime embedded-image limits.");
+  }
+  const limitValues = value.limits;
+  const limitNames = [
+    "max_bytes_per_image",
+    "max_total_bytes",
+    "max_pixels_per_image",
+    "max_total_pixels",
+  ] as const;
+  assertRequiredRecordKeys(
+    limitValues,
+    [...limitNames],
+    "Merman WASM runtime embedded-image limits"
+  );
+  const readLimit = (name: (typeof limitNames)[number]): number | null => {
+    const limit = limitValues[name];
+    return limit === null
+      ? null
+      : assertSafeIntegerField(limit, `runtime embedded-image ${name}`, 1);
+  };
+  const limits: RuntimeEmbeddedImageLimits = {
+    max_bytes_per_image: readLimit("max_bytes_per_image"),
+    max_total_bytes: readLimit("max_total_bytes"),
+    max_pixels_per_image: readLimit("max_pixels_per_image"),
+    max_total_pixels: readLimit("max_total_pixels"),
+  };
+  return {
+    source_ids: normalizeSortedIdentifierIds(value.source_ids, "runtime embedded-image source IDs"),
+    filesystem_access: assertBooleanField(
+      value.filesystem_access,
+      "runtime embedded-image filesystem access"
+    ),
+    network_access: assertBooleanField(
+      value.network_access,
+      "runtime embedded-image network access"
+    ),
+    caller_configurable: assertBooleanField(
+      value.caller_configurable,
+      "runtime embedded-image configurability"
+    ),
+    limits,
   };
 }
 

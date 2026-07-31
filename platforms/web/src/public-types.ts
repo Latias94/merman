@@ -56,10 +56,42 @@ export interface RuntimeCatalog {
   transport_api_version: number;
   package_version: string;
   capabilities: RuntimeCapabilities;
+  output_contracts: RuntimeOutputContract[];
   registry: {
     diagram_family_count: number;
   };
   resources: RuntimeResourceContract;
+}
+
+export interface RuntimeOutputContract {
+  id: string;
+  media_type: string;
+  system_fonts: RuntimeSystemFontContract | null;
+  embedded_images: RuntimeEmbeddedImageContract | null;
+}
+
+export interface RuntimeSystemFontContract {
+  source_id: string;
+  discovery: string;
+  cache_scope: string;
+  host_dependent: boolean;
+  caller_configurable: boolean;
+  resource_bounded: boolean;
+}
+
+export interface RuntimeEmbeddedImageContract {
+  source_ids: string[];
+  filesystem_access: boolean;
+  network_access: boolean;
+  caller_configurable: boolean;
+  limits: RuntimeEmbeddedImageLimits;
+}
+
+export interface RuntimeEmbeddedImageLimits {
+  max_bytes_per_image: number | null;
+  max_total_bytes: number | null;
+  max_pixels_per_image: number | null;
+  max_total_pixels: number | null;
 }
 
 export interface RuntimeResourceContract {

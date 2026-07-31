@@ -28,6 +28,21 @@ Native builds accept at most 256 levels and run `usvg`, `resvg`, and `krilla-svg
 8 MiB worker stack; WebAssembly accepts at most 64 levels because it cannot create that worker
 stack. Raw parity SVG does not enter this recursive backend and is not subject to this depth cap.
 
+### Host fonts and embedded images
+
+The native PNG, JPEG, and PDF exporters discover fonts from the host system on their first use.
+That scan is cached process-wide and shared by subsequent exports. It is host-dependent: the same
+SVG can select different installed fonts, metrics, or fallback glyphs on different machines. Font
+discovery is not covered by Merman's resource profiles or raster/PDF allocation budgets, so hosts
+that require isolation or a hard memory/latency ceiling must provide it at the process boundary.
+
+Embedded images have a narrower input contract. The native exporters resolve only `data:` URLs;
+they do not read image paths from the filesystem and do not fetch images over the network. The
+default decode limits are 16,777,216 bytes and 16,777,216 intrinsic pixels per image, with
+33,554,432 bytes and 33,554,432 intrinsic pixels across the output. These limits apply before
+PNG/JPEG/PDF encoding and are independent of system-font discovery and the general resource
+profile.
+
 ### PNG and JPEG
 
 `RasterOptions` controls four independent concerns:
@@ -42,9 +57,9 @@ output exceeds a limit, Merman reduces it proportionally instead of first alloca
 pixmap. `RasterPlan` exposes both requested and final dimensions. JPEG also has the format's
 65,535-pixel per-side encoder limit.
 
-The default decoded-image budget accepts at most 16,777,216 intrinsic pixels in one embedded image
-and 33,554,432 across all embedded images, including recursively embedded SVG resources. This
-budget is separate from the final PNG/JPEG dimensions.
+The default decoded-image budget accepts the byte and intrinsic-pixel limits described above,
+including recursively embedded SVG resources. This budget is separate from the final PNG/JPEG
+dimensions.
 
 ### Vector PDF
 

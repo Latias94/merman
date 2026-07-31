@@ -102,6 +102,12 @@ function runtimeCatalog(overrides = {}) {
         provider_ids: ["vendored"],
       },
     },
+    output_contracts: [{
+      id: "svg",
+      media_type: "image/svg+xml",
+      system_fonts: null,
+      embedded_images: null,
+    }],
     registry: { diagram_family_count: 35 },
     resources: {
       general_binding_default_profile: "interactive",
@@ -138,6 +144,7 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
   const catalog = runtimeCatalog();
   catalog.future_root_metadata = true;
   catalog.capabilities.future_capability_metadata = true;
+  catalog.output_contracts[0].future_output_metadata = true;
   catalog.registry.future_registry_metadata = true;
   catalog.resources.future_resource_metadata = true;
   const factory = transportFactory({
@@ -153,7 +160,155 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
     "math",
     "svg",
   ]);
+  assert.equal(engine.runtimeCatalog.output_contracts[0].future_output_metadata, true);
   await engine.dispose();
+});
+
+test("runtime catalog validates output contracts and preserves additive nested fields", async () => {
+  const catalog = runtimeCatalog();
+  catalog.capabilities.capability_ids = [
+    ...catalog.capabilities.capability_ids,
+    "png",
+  ].sort();
+  catalog.capabilities.output_ids = ["png", "svg"];
+  catalog.capabilities.operation_ids = [
+    ...catalog.capabilities.operation_ids,
+    "png",
+  ].sort();
+  catalog.output_contracts = [
+    {
+      id: "png",
+      media_type: "image/png",
+      system_fonts: {
+        source_id: "host-system",
+        discovery: "first-use",
+        cache_scope: "process-global",
+        host_dependent: true,
+        caller_configurable: false,
+        resource_bounded: false,
+        future_font_metadata: true,
+      },
+      embedded_images: {
+        source_ids: ["data-url"],
+        filesystem_access: false,
+        network_access: false,
+        caller_configurable: false,
+        limits: {
+          max_bytes_per_image: 16 * 1024 * 1024,
+          max_total_bytes: 32 * 1024 * 1024,
+          max_pixels_per_image: 16 * 1024 * 1024,
+          max_total_pixels: 32 * 1024 * 1024,
+          future_limit_metadata: true,
+        },
+        future_image_metadata: true,
+      },
+    },
+    catalog.output_contracts[0],
+  ];
+  const factory = transportFactory({
+    runtimeCatalogJson() {
+      return JSON.stringify(catalog);
+    },
+  });
+
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  assert.deepEqual(
+    engine.runtimeCatalog.output_contracts.map(({ id }) => id),
+    catalog.capabilities.output_ids,
+  );
+  assert.equal(
+    engine.runtimeCatalog.output_contracts[0].system_fonts.future_font_metadata,
+    true,
+  );
+  assert.equal(
+    engine.runtimeCatalog.output_contracts[0].embedded_images.limits.future_limit_metadata,
+    true,
+  );
+  await engine.dispose();
+});
+
+test("runtime catalog output contracts fail closed on ID and nested-shape drift", async () => {
+  const nativeContract = {
+    id: "png",
+    media_type: "image/png",
+    system_fonts: {
+      source_id: "host-system",
+      discovery: "first-use",
+      cache_scope: "process-global",
+      host_dependent: true,
+      caller_configurable: false,
+      resource_bounded: false,
+    },
+    embedded_images: {
+      source_ids: ["data-url"],
+      filesystem_access: false,
+      network_access: false,
+      caller_configurable: false,
+      limits: {
+        max_bytes_per_image: 16 * 1024 * 1024,
+        max_total_bytes: 32 * 1024 * 1024,
+        max_pixels_per_image: 16 * 1024 * 1024,
+        max_total_pixels: 32 * 1024 * 1024,
+      },
+    },
+  };
+  const invalidCatalogs = [];
+
+  const missingContracts = runtimeCatalog();
+  delete missingContracts.output_contracts;
+  invalidCatalogs.push(missingContracts);
+
+  const missingOutputId = runtimeCatalog();
+  missingOutputId.output_contracts = [];
+  invalidCatalogs.push(missingOutputId);
+
+  const extraOutputContract = runtimeCatalog();
+  extraOutputContract.output_contracts.push(nativeContract);
+  invalidCatalogs.push(extraOutputContract);
+
+  const malformedFonts = runtimeCatalog();
+  malformedFonts.output_contracts[0] = structuredClone(nativeContract);
+  malformedFonts.capabilities.capability_ids = [
+    ...malformedFonts.capabilities.capability_ids,
+    "png",
+  ].sort();
+  malformedFonts.capabilities.output_ids = ["png"];
+  malformedFonts.capabilities.operation_ids = [
+    ...malformedFonts.capabilities.operation_ids.filter((id) => id !== "svg"),
+    "png",
+  ].sort();
+  delete malformedFonts.output_contracts[0].system_fonts.discovery;
+  invalidCatalogs.push(malformedFonts);
+
+  const malformedImages = structuredClone(malformedFonts);
+  malformedImages.output_contracts[0] = structuredClone(nativeContract);
+  malformedImages.output_contracts[0].embedded_images.filesystem_access = "false";
+  invalidCatalogs.push(malformedImages);
+
+  const malformedImageLimits = structuredClone(malformedFonts);
+  malformedImageLimits.output_contracts[0] = structuredClone(nativeContract);
+  delete malformedImageLimits.output_contracts[0].embedded_images.limits.max_total_pixels;
+  invalidCatalogs.push(malformedImageLimits);
+
+  const malformedSourceIds = structuredClone(malformedFonts);
+  malformedSourceIds.output_contracts[0] = structuredClone(nativeContract);
+  malformedSourceIds.output_contracts[0].embedded_images.source_ids = [
+    "future-source",
+    "data-url",
+  ];
+  invalidCatalogs.push(malformedSourceIds);
+
+  for (const catalog of invalidCatalogs) {
+    const factory = transportFactory({
+      runtimeCatalogJson() {
+        return JSON.stringify(catalog);
+      },
+    });
+    await assert.rejects(
+      createNodeEngine({}, { loadTransport: factory.loadTransport }),
+      MermanInvalidTransportError,
+    );
+  }
 });
 
 function transportFactory(overrides = {}) {
@@ -455,9 +610,15 @@ test("public TypeScript declarations cover the generic operation API", () => {
   assert.match(declarations, /\breadonly runtimeCatalog:/);
   assert.match(declarations, /\boptionsJson\?: string;/);
   assert.match(declarations, /provider_ids:\s*\["vendored"\]/);
+  assert.match(declarations, /output_contracts:\s*MermanRuntimeOutputContract\[\]/);
+  assert.match(declarations, /system_fonts:\s*MermanRuntimeSystemFontContract\s*\|\s*null/);
+  assert.match(
+    declarations,
+    /embedded_images:\s*MermanRuntimeEmbeddedImageContract\s*\|\s*null/,
+  );
   assert.match(declarations, /limits:\s*MermanRuntimeResourceLimit\[\]/);
   assert.match(declarations, /profiles:\s*MermanRuntimeResourceProfile\[\]/);
-  assert.doesNotMatch(declarations, /\b(?:limits|profiles):\s*unknown\[\]/);
+  assert.doesNotMatch(declarations, /\b(?:limits|output_contracts|profiles):\s*unknown\[\]/);
   assert.doesNotMatch(declarations, /\bformatOptions\??:/);
 });
 

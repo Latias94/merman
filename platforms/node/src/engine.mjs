@@ -201,9 +201,93 @@ export function validateRuntimeCatalog(value) {
     );
   }
   validateTextMeasurement(capabilities.text_measurement, capabilityIds.includes("svg"));
+  validateOutputContracts(catalog.output_contracts, outputIds);
   validateRegistry(registry);
   validateResources(resources);
   return structuredClone(catalog);
+}
+
+function validateOutputContracts(value, outputIds) {
+  if (!Array.isArray(value)) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog has invalid output contracts.",
+    );
+  }
+  const contractIds = [];
+  for (const contract of value) {
+    if (
+      !isPlainObject(contract) ||
+      typeof contract.id !== "string" ||
+      contract.id.length === 0 ||
+      typeof contract.media_type !== "string" ||
+      contract.media_type.length === 0
+    ) {
+      throw new MermanInvalidTransportError(
+        "Merman runtime catalog has an invalid output contract.",
+      );
+    }
+    contractIds.push(contract.id);
+    validateSystemFonts(contract.system_fonts);
+    validateEmbeddedImages(contract.embedded_images);
+  }
+  if (
+    contractIds.some((id, index) => index > 0 && contractIds[index - 1] >= id) ||
+    contractIds.length !== outputIds.length ||
+    contractIds.some((id, index) => id !== outputIds[index])
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog output contracts do not match output_ids.",
+    );
+  }
+}
+
+function validateSystemFonts(value) {
+  if (value === null) return;
+  if (
+    !isPlainObject(value) ||
+    typeof value.source_id !== "string" ||
+    value.source_id.length === 0 ||
+    typeof value.discovery !== "string" ||
+    value.discovery.length === 0 ||
+    typeof value.cache_scope !== "string" ||
+    value.cache_scope.length === 0 ||
+    typeof value.host_dependent !== "boolean" ||
+    typeof value.caller_configurable !== "boolean" ||
+    typeof value.resource_bounded !== "boolean"
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog has an invalid system-font output contract.",
+    );
+  }
+}
+
+function validateEmbeddedImages(value) {
+  if (value === null) return;
+  if (
+    !isPlainObject(value) ||
+    typeof value.filesystem_access !== "boolean" ||
+    typeof value.network_access !== "boolean" ||
+    typeof value.caller_configurable !== "boolean" ||
+    !isPlainObject(value.limits)
+  ) {
+    throw new MermanInvalidTransportError(
+      "Merman runtime catalog has an invalid embedded-image output contract.",
+    );
+  }
+  sortedUniqueStrings(value.source_ids, "embedded_images.source_ids");
+  for (const field of [
+    "max_bytes_per_image",
+    "max_total_bytes",
+    "max_pixels_per_image",
+    "max_total_pixels",
+  ]) {
+    const limit = value.limits[field];
+    if (limit !== null && !positiveSafeInteger(limit)) {
+      throw new MermanInvalidTransportError(
+        `Merman runtime catalog embedded-image ${field} must be null or a positive safe integer.`,
+      );
+    }
+  }
 }
 
 function validateTextMeasurement(value, hasSvg) {

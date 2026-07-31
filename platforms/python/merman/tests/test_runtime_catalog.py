@@ -19,6 +19,20 @@ def valid_catalog():
                 "provider_ids": ["host-callback", "vendored"],
             },
         },
+        "output_contracts": [
+            {
+                "id": "ascii",
+                "media_type": "text/plain; charset=utf-8",
+                "system_fonts": None,
+                "embedded_images": None,
+            },
+            {
+                "id": "svg",
+                "media_type": "image/svg+xml",
+                "system_fonts": None,
+                "embedded_images": None,
+            },
+        ],
         "registry": {"diagram_family_count": 35},
         "resources": {
             "general_binding_default_profile": "interactive",
@@ -87,6 +101,16 @@ class RuntimeCatalogTest(unittest.TestCase):
             "system-clock",
         ]
         capabilities["output_ids"] = ["ascii", "future-output", "svg"]
+        catalog["output_contracts"].insert(
+            1,
+            {
+                "id": "future-output",
+                "media_type": "application/octet-stream",
+                "system_fonts": None,
+                "embedded_images": None,
+                "future_output_metadata": True,
+            },
+        )
         capabilities["operation_ids"] = [
             "analysis-json",
             "ascii",
@@ -142,6 +166,10 @@ class RuntimeCatalogTest(unittest.TestCase):
         del missing["resources"]
         cases.append(missing)
 
+        missing_output_contracts = valid_catalog()
+        del missing_output_contracts["output_contracts"]
+        cases.append(missing_output_contracts)
+
         wrong_schema = valid_catalog()
         wrong_schema["schema_version"] = 2
         cases.append(wrong_schema)
@@ -188,6 +216,39 @@ class RuntimeCatalogTest(unittest.TestCase):
                 with self.assertRaises(merman.MermanRuntimeCatalogError):
                     merman.get_runtime_catalog(FakeEngine(catalog))
 
+    def test_rejects_invalid_output_contracts(self):
+        mismatched_ids = valid_catalog()
+        mismatched_ids["output_contracts"].pop()
+
+        invalid_fonts = valid_catalog()
+        invalid_fonts["output_contracts"][1]["system_fonts"] = {
+            "source_id": "host-system",
+            "discovery": "first-use",
+            "cache_scope": "process-global",
+            "host_dependent": "true",
+            "caller_configurable": False,
+            "resource_bounded": False,
+        }
+
+        invalid_images = valid_catalog()
+        invalid_images["output_contracts"][1]["embedded_images"] = {
+            "source_ids": ["data-url"],
+            "filesystem_access": False,
+            "network_access": False,
+            "caller_configurable": False,
+            "limits": {
+                "max_bytes_per_image": 0,
+                "max_total_bytes": None,
+                "max_pixels_per_image": None,
+                "max_total_pixels": None,
+            },
+        }
+
+        for catalog in [mismatched_ids, invalid_fonts, invalid_images]:
+            with self.subTest(catalog=catalog):
+                with self.assertRaises(merman.MermanRuntimeCatalogError):
+                    merman.get_runtime_catalog(FakeEngine(catalog))
+
     def test_rejects_invalid_text_measurement_boundary(self):
         missing = valid_catalog()
         missing["capabilities"]["text_measurement"] = None
@@ -196,6 +257,7 @@ class RuntimeCatalogTest(unittest.TestCase):
         without_svg["capabilities"]["capability_ids"].remove("svg")
         without_svg["capabilities"]["output_ids"].remove("svg")
         without_svg["capabilities"]["operation_ids"].remove("svg")
+        without_svg["output_contracts"].pop()
 
         wrong_protocol = valid_catalog()
         wrong_protocol["capabilities"]["text_measurement"]["protocol_version"] += 1

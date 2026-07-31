@@ -295,6 +295,67 @@ impl Default for EmbeddedImageLimit {
     }
 }
 
+/// Host font behavior shared by the native PNG, JPEG, and PDF exporters.
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SystemFontEnvironmentContract {
+    pub source_id: &'static str,
+    pub discovery: &'static str,
+    pub cache_scope: &'static str,
+    pub host_dependent: bool,
+    pub resource_bounded: bool,
+}
+
+/// Embedded-image behavior shared by the native PNG, JPEG, and PDF exporters.
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EmbeddedImageEnvironmentContract {
+    pub source_ids: &'static [&'static str],
+    pub filesystem_access: bool,
+    pub network_access: bool,
+    pub default_limits: EmbeddedImageLimit,
+}
+
+/// Runtime environment facts owned by a compiled native export backend.
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeExportEnvironmentContract {
+    pub system_fonts: SystemFontEnvironmentContract,
+    pub embedded_images: EmbeddedImageEnvironmentContract,
+}
+
+/// Returns the runtime environment contract for a compiled native export output.
+///
+/// SVG and ASCII do not pass through this exporter and therefore return `None`.
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[must_use]
+pub fn output_environment_contract(output_id: &str) -> Option<NativeExportEnvironmentContract> {
+    let compiled = match output_id {
+        #[cfg(feature = "png")]
+        "png" => true,
+        #[cfg(feature = "jpeg")]
+        "jpeg" => true,
+        #[cfg(feature = "pdf")]
+        "pdf" => true,
+        _ => false,
+    };
+    compiled.then_some(NativeExportEnvironmentContract {
+        system_fonts: SystemFontEnvironmentContract {
+            source_id: "host-system",
+            discovery: "first-use",
+            cache_scope: "process-global",
+            host_dependent: true,
+            resource_bounded: false,
+        },
+        embedded_images: EmbeddedImageEnvironmentContract {
+            source_ids: &["data-url"],
+            filesystem_access: false,
+            network_access: false,
+            default_limits: EmbeddedImageLimit::default_safe(),
+        },
+    })
+}
+
 /// Structural limits checked on the parsed usvg tree before resvg or krilla-svg recurse through
 /// it. These limits complement output-pixel and embedded-image budgets; they do not claim to be a
 /// byte-exact model of third-party allocator behavior.
@@ -2292,6 +2353,35 @@ mod tests {
                 "string href unexpectedly resolved: {href}"
             );
         }
+    }
+
+    #[test]
+    fn export_environment_contract_matches_font_and_image_owners() {
+        for output_id in ["jpeg", "pdf", "png"] {
+            let contract = output_environment_contract(output_id)
+                .expect("each compiled native export must disclose its environment");
+            assert_eq!(contract.system_fonts.source_id, "host-system");
+            assert_eq!(contract.system_fonts.discovery, "first-use");
+            assert_eq!(contract.system_fonts.cache_scope, "process-global");
+            assert!(contract.system_fonts.host_dependent);
+            assert!(!contract.system_fonts.resource_bounded);
+            assert_eq!(contract.embedded_images.source_ids, ["data-url"]);
+            assert!(!contract.embedded_images.filesystem_access);
+            assert!(!contract.embedded_images.network_access);
+            assert_eq!(
+                contract.embedded_images.default_limits,
+                EmbeddedImageLimit::default()
+            );
+        }
+        assert!(output_environment_contract("svg").is_none());
+        assert!(output_environment_contract("ascii").is_none());
+    }
+
+    #[test]
+    fn system_font_database_is_process_cached() {
+        let first = shared_system_fontdb();
+        let second = shared_system_fontdb();
+        assert!(Arc::ptr_eq(&first, &second));
     }
 
     fn trusted_compatible_svg(svg: &str) -> merman_render::svg::ResvgCompatibleSvg {

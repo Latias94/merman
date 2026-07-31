@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-07-23
+Last updated: 2026-07-31
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -387,7 +387,16 @@ and host-owned output postprocessing belong under `svg.*`. Unknown `environment`
 `resources` controls render-wide deterministic budgets. These limits are separate from Cargo
 features and from raster/PDF/image budgets. Cargo features decide which capabilities are compiled;
 the resource profile bounds work inside an available semantic/SVG capability. PNG/JPG pixmap,
-vector-PDF filter, embedded-image, and aggregate encoding budgets remain independent.
+vector-PDF filter, embedded-image, and aggregate encoding budgets remain independent. Native PNG,
+JPEG, and PDF export also scans the host system font database on first use and caches it for the
+process lifetime. That host-dependent scan is not caller-configurable and is not bounded by
+`resources.*` or the output allocation budgets; multi-tenant or hard-limit hosts must isolate the
+process accordingly.
+
+Native PNG, JPEG, and PDF embedded images accept only `data:` URLs. The exporters do not resolve
+filesystem paths or network URLs. Their default decode budgets allow 16,777,216 bytes and
+16,777,216 intrinsic pixels per image, and 33,554,432 bytes and 33,554,432 intrinsic pixels in
+aggregate. Those defaults belong to the output contract, not to `resources.limits`.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
@@ -471,8 +480,17 @@ versions, transport-callable capability and output IDs, complete language-catalo
 resource descriptor for every callable resource-aware operation. The system adapter IDs contain
 clock, time-zone, and randomness only when the all-or-nothing `native` policy is selectable;
 incomplete native sets and timing instrumentation unified by another Cargo user are omitted.
-Render, analysis, and ASCII artifacts expose only the limit ids their operations can enforce; an
-artifact with none of those operations returns `resources: null`.
+Every artifact exposes the input limits enforced by the invariant `semantic-json` operation. SVG
+artifacts expose the complete render limit set; narrower analysis and ASCII artifacts publish only
+the additional limits their callable operations enforce.
+
+The same catalog's `output_contracts` array has exactly one entry for every
+`capabilities.output_ids` value. Each entry publishes its media type and nullable system-font and
+embedded-image environment contracts. Hosts should validate the complete nested shape before using
+those facts while tolerating additive object fields within schema `1`. Native PNG, JPEG, and PDF
+entries disclose first-use, process-global, host-dependent system-font discovery and an
+embedded-image policy limited to data URLs with default decode budgets; SVG and ASCII report both
+environment contracts as `null`.
 
 | Surface | API |
 | --- | --- |

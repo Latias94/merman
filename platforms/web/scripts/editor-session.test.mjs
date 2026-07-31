@@ -281,12 +281,21 @@ function surfaceModule(recordDescriptorCall) {
   };
 }
 
-function runtimeCatalogFixture({ capabilities = editorCapabilities() } = {}) {
+function runtimeCatalogFixture({
+  capabilities = editorCapabilities(),
+  outputContracts = capabilities.output_ids.map((id) => ({
+    id,
+    media_type: "application/octet-stream",
+    system_fonts: null,
+    embedded_images: null,
+  })),
+} = {}) {
   return {
     schema_version: 1,
     transport_api_version: 3,
     package_version: "0.8.0-alpha.4",
     capabilities,
+    output_contracts: outputContracts,
     registry: { diagram_family_count: 0 },
     resources: {
       general_binding_default_profile: "interactive",
@@ -314,6 +323,14 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
         return catalog;
       },
       /runtime catalog is missing required fields: resources/,
+    ],
+    [
+      () => {
+        const catalog = runtimeCatalogFixture();
+        delete catalog.output_contracts;
+        return catalog;
+      },
+      /runtime catalog is missing required fields: output_contracts/,
     ],
     [
       () =>
@@ -366,6 +383,18 @@ test("runtime catalog rejects malformed shapes and invalid local relations", asy
           },
         }),
       /system adapter system-clock is absent from runtime capability IDs/,
+    ],
+    [
+      () => runtimeCatalogFixture({
+        capabilities: editorCapabilities(),
+        outputContracts: [{
+          id: "svg",
+          media_type: "image/svg+xml",
+          system_fonts: null,
+          embedded_images: null,
+        }],
+      }),
+      /runtime output contracts do not match runtime output IDs/,
     ],
   ];
 

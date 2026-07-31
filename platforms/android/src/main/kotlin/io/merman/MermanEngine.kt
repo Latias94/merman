@@ -149,6 +149,7 @@ object MermanEngine {
                     "transport_api_version",
                     "package_version",
                     "capabilities",
+                    "output_contracts",
                     "registry",
                     "resources",
                 ),
@@ -210,6 +211,7 @@ object MermanEngine {
                 )
             }
             validateTextMeasurement(capabilities.opt("text_measurement"), "svg" in capabilityIds)
+            validateRuntimeOutputContracts(root.opt("output_contracts"), outputIds)
 
             val registry = root.optJSONObject("registry")
                 ?: throw MermanException("Merman runtime catalog is missing registry")
@@ -251,6 +253,103 @@ object MermanEngine {
             throw error
         } catch (error: Exception) {
             throw MermanException("Invalid Merman runtime catalog: ${error.message}")
+        }
+    }
+
+    private fun validateRuntimeOutputContracts(value: Any?, outputIds: Set<String>) {
+        val contracts = value as? JSONArray
+            ?: throw MermanException("Merman runtime output contracts are missing")
+        val contractIds = linkedSetOf<String>()
+        var previousId: String? = null
+        for (index in 0 until contracts.length()) {
+            val contract = contracts.opt(index) as? JSONObject
+                ?: throw MermanException("Merman runtime output contract must be an object")
+            requireRequiredKeys(
+                contract,
+                setOf("id", "media_type", "system_fonts", "embedded_images"),
+                "runtime output contract",
+            )
+            val id = requiredJsonString(contract, "id", "runtime output contract")
+            val mediaType = requiredJsonString(contract, "media_type", "runtime output contract")
+            if (id.isEmpty() || mediaType.isEmpty()) {
+                throw MermanException("Merman runtime output contract has an empty ID or media type")
+            }
+            if (previousId != null && previousId >= id) {
+                throw MermanException("Merman runtime output contract IDs must be sorted and unique")
+            }
+            contractIds += id
+            previousId = id
+            validateSystemFontContract(contract.opt("system_fonts"), id)
+            validateEmbeddedImageContract(contract.opt("embedded_images"), id)
+        }
+        if (contractIds != outputIds) {
+            throw MermanException(
+                "Merman runtime output contract IDs must match runtime output IDs",
+            )
+        }
+    }
+
+    private fun validateSystemFontContract(value: Any?, outputId: String) {
+        if (value == JSONObject.NULL) return
+        val contract = value as? JSONObject
+            ?: throw MermanException("Merman `$outputId` system font contract must be an object or null")
+        requireRequiredKeys(
+            contract,
+            setOf(
+                "source_id",
+                "discovery",
+                "cache_scope",
+                "host_dependent",
+                "caller_configurable",
+                "resource_bounded",
+            ),
+            "`$outputId` system font contract",
+        )
+        for (key in listOf("source_id", "discovery", "cache_scope")) {
+            if (requiredJsonString(contract, key, "`$outputId` system font contract").isEmpty()) {
+                throw MermanException("Merman `$outputId` system font field `$key` is empty")
+            }
+        }
+        for (key in listOf("host_dependent", "caller_configurable", "resource_bounded")) {
+            requiredJsonBoolean(contract, key, "`$outputId` system font contract")
+        }
+    }
+
+    private fun validateEmbeddedImageContract(value: Any?, outputId: String) {
+        if (value == JSONObject.NULL) return
+        val contract = value as? JSONObject
+            ?: throw MermanException(
+                "Merman `$outputId` embedded image contract must be an object or null",
+            )
+        requireRequiredKeys(
+            contract,
+            setOf(
+                "source_ids",
+                "filesystem_access",
+                "network_access",
+                "caller_configurable",
+                "limits",
+            ),
+            "`$outputId` embedded image contract",
+        )
+        sortedUniqueStrings(
+            contract.optJSONArray("source_ids"),
+            "`$outputId` embedded image source IDs",
+        )
+        for (key in listOf("filesystem_access", "network_access", "caller_configurable")) {
+            requiredJsonBoolean(contract, key, "`$outputId` embedded image contract")
+        }
+        val limits = contract.optJSONObject("limits")
+            ?: throw MermanException("Merman `$outputId` embedded image limits must be an object")
+        val limitKeys = setOf(
+            "max_bytes_per_image",
+            "max_total_bytes",
+            "max_pixels_per_image",
+            "max_total_pixels",
+        )
+        requireRequiredKeys(limits, limitKeys, "`$outputId` embedded image limits")
+        for (key in limitKeys) {
+            requireNullablePositiveJsonInteger(limits, key, "`$outputId` embedded image limits")
         }
     }
 
@@ -301,6 +400,35 @@ object MermanEngine {
             throw MermanException("Merman $label field `$key` must be a string")
         }
         return raw
+    }
+
+    private fun requiredJsonBoolean(value: JSONObject, key: String, label: String): Boolean {
+        val raw = value.opt(key)
+        if (raw !is Boolean) {
+            throw MermanException("Merman $label field `$key` must be a boolean")
+        }
+        return raw
+    }
+
+    private fun requireNullablePositiveJsonInteger(
+        value: JSONObject,
+        key: String,
+        label: String,
+    ) {
+        val raw = value.opt(key)
+        if (raw == JSONObject.NULL) return
+        val integer = when (raw) {
+            is Int -> raw.toLong()
+            is Long -> raw
+            else -> throw MermanException(
+                "Merman $label field `$key` must be a positive JSON integer or null",
+            )
+        }
+        if (integer <= 0) {
+            throw MermanException(
+                "Merman $label field `$key` must be a positive JSON integer or null",
+            )
+        }
     }
 
     private fun validateTextMeasurement(

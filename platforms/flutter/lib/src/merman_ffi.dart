@@ -526,6 +526,72 @@ final class MermanResourceProfileDescriptor {
   final Map<String, int?> limits;
 }
 
+/// Runtime behavior contract for one output exposed by the loaded artifact.
+final class MermanRuntimeOutputContract {
+  const MermanRuntimeOutputContract({
+    required this.id,
+    required this.mediaType,
+    required this.systemFonts,
+    required this.embeddedImages,
+  });
+
+  final String id;
+  final String mediaType;
+  final MermanRuntimeSystemFontContract? systemFonts;
+  final MermanRuntimeEmbeddedImageContract? embeddedImages;
+}
+
+/// System-font behavior used by a native binary-output backend.
+final class MermanRuntimeSystemFontContract {
+  const MermanRuntimeSystemFontContract({
+    required this.sourceId,
+    required this.discovery,
+    required this.cacheScope,
+    required this.hostDependent,
+    required this.callerConfigurable,
+    required this.resourceBounded,
+  });
+
+  final String sourceId;
+  final String discovery;
+  final String cacheScope;
+  final bool hostDependent;
+  final bool callerConfigurable;
+  final bool resourceBounded;
+}
+
+/// Resource limits applied while a native backend decodes embedded images.
+final class MermanRuntimeEmbeddedImageLimits {
+  const MermanRuntimeEmbeddedImageLimits({
+    required this.maxBytesPerImage,
+    required this.maxTotalBytes,
+    required this.maxPixelsPerImage,
+    required this.maxTotalPixels,
+  });
+
+  final int? maxBytesPerImage;
+  final int? maxTotalBytes;
+  final int? maxPixelsPerImage;
+  final int? maxTotalPixels;
+}
+
+/// Embedded-image behavior used by a native binary-output backend.
+final class MermanRuntimeEmbeddedImageContract {
+  MermanRuntimeEmbeddedImageContract({
+    required List<String> sourceIds,
+    required this.filesystemAccess,
+    required this.networkAccess,
+    required this.callerConfigurable,
+    required this.limits,
+  }) : sourceIds = List.unmodifiable(sourceIds);
+
+  final List<String> sourceIds;
+  final bool filesystemAccess;
+  final bool networkAccess;
+  final bool callerConfigurable;
+  final MermanRuntimeEmbeddedImageLimits limits;
+}
+
 class MermanRuntimeCatalog {
   MermanRuntimeCatalog._({
     required this.packageVersion,
@@ -537,10 +603,15 @@ class MermanRuntimeCatalog {
     required this.diagramFamilyCount,
     required this.generalBindingDefaultProfile,
     required this.cliDefaultProfile,
+    required List<MermanRuntimeOutputContract> outputContracts,
     required List<MermanResourceLimitDescriptor> resourceLimits,
     required List<MermanResourceProfileDescriptor> resourceProfiles,
-  })  : resourceLimits = List.unmodifiable(resourceLimits),
+  })  : outputContracts = List.unmodifiable(outputContracts),
+        resourceLimits = List.unmodifiable(resourceLimits),
         resourceProfiles = List.unmodifiable(resourceProfiles),
+        outputContractsById = Map.unmodifiable({
+          for (final contract in outputContracts) contract.id: contract,
+        }),
         resourceLimitsById = Map.unmodifiable({
           for (final limit in resourceLimits) limit.id: limit,
         }),
@@ -556,6 +627,7 @@ class MermanRuntimeCatalog {
         'transport_api_version',
         'package_version',
         'capabilities',
+        'output_contracts',
         'registry',
         'resources',
       },
@@ -604,6 +676,10 @@ class MermanRuntimeCatalog {
       runtimeCapabilities,
       'output_ids',
       'runtime output IDs',
+    );
+    final outputContracts = _parseRuntimeOutputContracts(
+      catalog['output_contracts'],
+      outputIds,
     );
 
     final operationIds = _requiredSortedUniqueStrings(
@@ -701,6 +777,7 @@ class MermanRuntimeCatalog {
       generalBindingDefaultProfile:
           resourceContract.generalBindingDefaultProfile,
       cliDefaultProfile: resourceContract.cliDefaultProfile,
+      outputContracts: outputContracts,
       resourceLimits: resourceContract.limits,
       resourceProfiles: resourceContract.profiles,
     );
@@ -715,8 +792,10 @@ class MermanRuntimeCatalog {
   final int diagramFamilyCount;
   final String generalBindingDefaultProfile;
   final String cliDefaultProfile;
+  final List<MermanRuntimeOutputContract> outputContracts;
   final List<MermanResourceLimitDescriptor> resourceLimits;
   final List<MermanResourceProfileDescriptor> resourceProfiles;
+  final Map<String, MermanRuntimeOutputContract> outputContractsById;
   final Map<String, MermanResourceLimitDescriptor> resourceLimitsById;
   final Map<String, MermanResourceProfileDescriptor> resourceProfilesById;
 
@@ -1759,6 +1838,179 @@ _ParsedRuntimeResources _parseRuntimeResources(
   );
 }
 
+List<MermanRuntimeOutputContract> _parseRuntimeOutputContracts(
+  Object? value,
+  List<String> outputIds,
+) {
+  if (value is! List) {
+    throw MermanException.contract('runtime output contracts must be an array');
+  }
+
+  final contracts = <MermanRuntimeOutputContract>[];
+  for (final item in value) {
+    final contract = _asObject(item, 'runtime output contract');
+    _requireRequiredKeys(
+      contract,
+      const {'id', 'media_type', 'system_fonts', 'embedded_images'},
+      'runtime output contract',
+    );
+    contracts.add(MermanRuntimeOutputContract(
+      id: _requiredNonEmptyString(contract, 'id', 'runtime output contract'),
+      mediaType: _requiredNonEmptyString(
+        contract,
+        'media_type',
+        'runtime output contract',
+      ),
+      systemFonts: _parseRuntimeSystemFontContract(contract['system_fonts']),
+      embeddedImages: _parseRuntimeEmbeddedImageContract(
+        contract['embedded_images'],
+      ),
+    ));
+  }
+
+  if (contracts.length != outputIds.length) {
+    throw MermanException.contract(
+      'runtime output contract IDs must exactly match runtime output IDs',
+    );
+  }
+  for (var index = 0; index < outputIds.length; index += 1) {
+    if (contracts[index].id != outputIds[index]) {
+      throw MermanException.contract(
+        'runtime output contract IDs must exactly match runtime output IDs',
+      );
+    }
+  }
+  return contracts;
+}
+
+MermanRuntimeSystemFontContract? _parseRuntimeSystemFontContract(
+  Object? value,
+) {
+  if (value == null) {
+    return null;
+  }
+  final fonts = _asObject(value, 'runtime system font contract');
+  _requireRequiredKeys(
+    fonts,
+    const {
+      'source_id',
+      'discovery',
+      'cache_scope',
+      'host_dependent',
+      'caller_configurable',
+      'resource_bounded',
+    },
+    'runtime system font contract',
+  );
+  return MermanRuntimeSystemFontContract(
+    sourceId: _requiredNonEmptyString(
+      fonts,
+      'source_id',
+      'runtime system font contract',
+    ),
+    discovery: _requiredNonEmptyString(
+      fonts,
+      'discovery',
+      'runtime system font contract',
+    ),
+    cacheScope: _requiredNonEmptyString(
+      fonts,
+      'cache_scope',
+      'runtime system font contract',
+    ),
+    hostDependent: _requiredBool(
+      fonts,
+      'host_dependent',
+      'runtime system font contract',
+    ),
+    callerConfigurable: _requiredBool(
+      fonts,
+      'caller_configurable',
+      'runtime system font contract',
+    ),
+    resourceBounded: _requiredBool(
+      fonts,
+      'resource_bounded',
+      'runtime system font contract',
+    ),
+  );
+}
+
+MermanRuntimeEmbeddedImageContract? _parseRuntimeEmbeddedImageContract(
+  Object? value,
+) {
+  if (value == null) {
+    return null;
+  }
+  final images = _asObject(value, 'runtime embedded image contract');
+  _requireRequiredKeys(
+    images,
+    const {
+      'source_ids',
+      'filesystem_access',
+      'network_access',
+      'caller_configurable',
+      'limits',
+    },
+    'runtime embedded image contract',
+  );
+  final limits = _asObject(images['limits'], 'runtime embedded image limits');
+  _requireRequiredKeys(
+    limits,
+    const {
+      'max_bytes_per_image',
+      'max_total_bytes',
+      'max_pixels_per_image',
+      'max_total_pixels',
+    },
+    'runtime embedded image limits',
+  );
+  return MermanRuntimeEmbeddedImageContract(
+    sourceIds: _requiredSortedUniqueStrings(
+      images,
+      'source_ids',
+      'runtime embedded image source IDs',
+    ),
+    filesystemAccess: _requiredBool(
+      images,
+      'filesystem_access',
+      'runtime embedded image contract',
+    ),
+    networkAccess: _requiredBool(
+      images,
+      'network_access',
+      'runtime embedded image contract',
+    ),
+    callerConfigurable: _requiredBool(
+      images,
+      'caller_configurable',
+      'runtime embedded image contract',
+    ),
+    limits: MermanRuntimeEmbeddedImageLimits(
+      maxBytesPerImage: _requiredNullablePositiveInt(
+        limits,
+        'max_bytes_per_image',
+        'runtime embedded image limits',
+      ),
+      maxTotalBytes: _requiredNullablePositiveInt(
+        limits,
+        'max_total_bytes',
+        'runtime embedded image limits',
+      ),
+      maxPixelsPerImage: _requiredNullablePositiveInt(
+        limits,
+        'max_pixels_per_image',
+        'runtime embedded image limits',
+      ),
+      maxTotalPixels: _requiredNullablePositiveInt(
+        limits,
+        'max_total_pixels',
+        'runtime embedded image limits',
+      ),
+    ),
+  );
+}
+
 Map<String, Object?> _decodeJsonObject(Uint8List bytes, String label) {
   final decoded = jsonDecode(utf8.decode(bytes));
   return _asObject(decoded, label);
@@ -1803,6 +2055,23 @@ int _requiredInt(Map<String, Object?> source, String key) {
   final value = source[key];
   if (value is! int) {
     throw MermanException.contract('`$key` must be an integer');
+  }
+  return value;
+}
+
+int? _requiredNullablePositiveInt(
+  Map<String, Object?> source,
+  String key,
+  String label,
+) {
+  final value = source[key];
+  if (value == null) {
+    return null;
+  }
+  if (value is! int || value <= 0) {
+    throw MermanException.contract(
+      '$label.$key must be a positive integer or null',
+    );
   }
   return value;
 }

@@ -57,6 +57,35 @@ struct OutputView<'a> {
     id: &'a str,
     description: &'a str,
     media_type: &'a str,
+    system_fonts: Option<SystemFontView<'a>>,
+    embedded_images: Option<EmbeddedImageView<'a>>,
+}
+
+#[derive(Serialize)]
+struct SystemFontView<'a> {
+    source_id: &'a str,
+    discovery: &'a str,
+    cache_scope: &'a str,
+    host_dependent: bool,
+    caller_configurable: bool,
+    resource_bounded: bool,
+}
+
+#[derive(Serialize)]
+struct EmbeddedImageView<'a> {
+    source_ids: &'a [&'a str],
+    filesystem_access: bool,
+    network_access: bool,
+    caller_configurable: bool,
+    limits: EmbeddedImageLimitsView,
+}
+
+#[derive(Serialize)]
+struct EmbeddedImageLimitsView {
+    max_bytes_per_image: Option<u64>,
+    max_total_bytes: Option<u64>,
+    max_pixels_per_image: Option<u64>,
+    max_total_pixels: Option<u64>,
 }
 
 pub(crate) fn write_compiled_capabilities(
@@ -93,11 +122,7 @@ pub(crate) fn write_compiled_capabilities(
         outputs: descriptor::OUTPUTS
             .iter()
             .filter(|output| capability_ids.contains(&output.capability))
-            .map(|output| OutputView {
-                id: output.id,
-                description: output.description,
-                media_type: output.media_type,
-            })
+            .map(output_view)
             .collect(),
     };
 
@@ -115,6 +140,53 @@ pub(crate) fn write_compiled_capabilities(
         output.push('\n');
     }
     write_stdout(output.as_bytes(), stdout)
+}
+
+fn output_view(output: &descriptor::OutputDescriptor) -> OutputView<'_> {
+    match output.id {
+        "ascii" | "svg" => OutputView {
+            id: output.id,
+            description: output.description,
+            media_type: output.media_type,
+            system_fonts: None,
+            embedded_images: None,
+        },
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        "jpeg" | "pdf" | "png" => {
+            let environment = merman::svg::export::output_environment_contract(output.id)
+                .expect("a compiled CLI export must have an environment contract");
+            let limits = environment.embedded_images.default_limits;
+            OutputView {
+                id: output.id,
+                description: output.description,
+                media_type: output.media_type,
+                system_fonts: Some(SystemFontView {
+                    source_id: environment.system_fonts.source_id,
+                    discovery: environment.system_fonts.discovery,
+                    cache_scope: environment.system_fonts.cache_scope,
+                    host_dependent: environment.system_fonts.host_dependent,
+                    caller_configurable: false,
+                    resource_bounded: environment.system_fonts.resource_bounded,
+                }),
+                embedded_images: Some(EmbeddedImageView {
+                    source_ids: environment.embedded_images.source_ids,
+                    filesystem_access: environment.embedded_images.filesystem_access,
+                    network_access: environment.embedded_images.network_access,
+                    caller_configurable: true,
+                    limits: EmbeddedImageLimitsView {
+                        max_bytes_per_image: limits.max_bytes_per_image,
+                        max_total_bytes: limits.max_total_bytes,
+                        max_pixels_per_image: limits.max_pixels_per_image,
+                        max_total_pixels: limits.max_total_pixels,
+                    },
+                }),
+            }
+        }
+        _ => panic!(
+            "descriptor output `{}` has no CLI output-contract owner",
+            output.id
+        ),
+    }
 }
 
 fn compiled_command_ids() -> Vec<String> {

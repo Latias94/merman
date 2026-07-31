@@ -287,6 +287,7 @@ fun runMermanSmoke() {
     val runtimeCatalogJson = MermanEngine.runtimeCatalogJson()
     val runtimeCatalog = JSONObject(runtimeCatalogJson)
     val runtimeCapabilities = runtimeCatalog.getJSONObject("capabilities")
+    val runtimeOutputContracts = runtimeCatalog.getJSONArray("output_contracts").objectMapById()
     check(
         runtimeCatalog.getInt("schema_version") == 1 &&
             runtimeCatalog.getInt("transport_api_version") == 1 &&
@@ -300,9 +301,28 @@ fun runMermanSmoke() {
             runtimeCapabilities.getJSONArray("operation_ids").stringSet() ==
             expectedRuntimeOperations &&
             runtimeCapabilities.getJSONArray("system_adapter_ids").stringSet() ==
-            expectedSystemAdapters,
+            expectedSystemAdapters &&
+            runtimeOutputContracts.keys == expectedRuntimeOutputs,
     ) {
         "runtime catalog smoke failed"
+    }
+    check(
+        runtimeOutputContracts.getValue("ascii").getString("media_type") ==
+            "text/plain; charset=utf-8" &&
+            runtimeOutputContracts.getValue("svg").getString("media_type") == "image/svg+xml" &&
+            runtimeOutputContracts.getValue("ascii").isNull("system_fonts") &&
+            runtimeOutputContracts.getValue("ascii").isNull("embedded_images") &&
+            runtimeOutputContracts.getValue("svg").isNull("system_fonts") &&
+            runtimeOutputContracts.getValue("svg").isNull("embedded_images"),
+    ) {
+        "text output environment contract smoke failed"
+    }
+    for ((id, mediaType) in mapOf(
+        "jpeg" to "image/jpeg",
+        "pdf" to "application/pdf",
+        "png" to "image/png",
+    )) {
+        checkBinaryOutputContract(runtimeOutputContracts.getValue(id), mediaType)
     }
     check(MermanEngine.lintRuleCatalogJson().contains("\"version\":1")) {
         "lint rule catalog envelope smoke failed"
@@ -668,3 +688,36 @@ private fun JSONArray.stringSet(): Set<String> =
             add(getString(index))
         }
     }
+
+private fun JSONArray.objectMapById(): Map<String, JSONObject> =
+    buildMap {
+        for (index in 0 until length()) {
+            val value = getJSONObject(index)
+            put(value.getString("id"), value)
+        }
+    }
+
+private fun checkBinaryOutputContract(contract: JSONObject, mediaType: String) {
+    val fonts = contract.getJSONObject("system_fonts")
+    val images = contract.getJSONObject("embedded_images")
+    val limits = images.getJSONObject("limits")
+    check(
+        contract.getString("media_type") == mediaType &&
+            fonts.getString("source_id") == "host-system" &&
+            fonts.getString("discovery") == "first-use" &&
+            fonts.getString("cache_scope") == "process-global" &&
+            fonts.getBoolean("host_dependent") &&
+            !fonts.getBoolean("caller_configurable") &&
+            !fonts.getBoolean("resource_bounded") &&
+            images.getJSONArray("source_ids").stringSet() == setOf("data-url") &&
+            !images.getBoolean("filesystem_access") &&
+            !images.getBoolean("network_access") &&
+            !images.getBoolean("caller_configurable") &&
+            limits.getLong("max_bytes_per_image") == 16L * 1024 * 1024 &&
+            limits.getLong("max_total_bytes") == 32L * 1024 * 1024 &&
+            limits.getLong("max_pixels_per_image") == 16L * 1024 * 1024 &&
+            limits.getLong("max_total_pixels") == 32L * 1024 * 1024,
+    ) {
+        "binary output environment contract smoke failed for ${contract.getString("id")}"
+    }
+}

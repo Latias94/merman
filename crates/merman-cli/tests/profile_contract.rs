@@ -334,11 +334,36 @@ fn assert_capability_document(case: &str, payload: &Value) {
                     .is_some_and(|id| expected_id_set.contains(id))
             })
             .map(|entry| {
-                json!({
+                let mut output = json!({
                     "id": entry["id"],
                     "description": entry["description"],
                     "media_type": entry["media_type"],
-                })
+                    "system_fonts": null,
+                    "embedded_images": null,
+                });
+                if matches!(entry["id"].as_str(), Some("jpeg" | "pdf" | "png")) {
+                    output["system_fonts"] = json!({
+                        "source_id": "host-system",
+                        "discovery": "first-use",
+                        "cache_scope": "process-global",
+                        "host_dependent": true,
+                        "caller_configurable": false,
+                        "resource_bounded": false,
+                    });
+                    output["embedded_images"] = json!({
+                        "source_ids": ["data-url"],
+                        "filesystem_access": false,
+                        "network_access": false,
+                        "caller_configurable": true,
+                        "limits": {
+                            "max_bytes_per_image": 16 * 1024 * 1024,
+                            "max_total_bytes": 32 * 1024 * 1024,
+                            "max_pixels_per_image": 16 * 1024 * 1024,
+                            "max_total_pixels": 32 * 1024 * 1024,
+                        },
+                    });
+                }
+                output
             }),
     );
     assert_eq!(payload["outputs"], json!(expected_outputs));
