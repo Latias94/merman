@@ -177,6 +177,9 @@ Markdown conversion, native adapters, network icons, parallel Markdown, and shel
 Compiled native adapters never change the default runtime policy:
 
 ```sh
+cargo install merman-cli --version '^0.8.0-alpha.3' --locked
+printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
+
 merman-cli render --runtime deterministic diagram.mmd
 merman-cli render --runtime native diagram.mmd
 merman-cli parse --system-timing diagram.mmd
@@ -218,6 +221,40 @@ Browser package names are the user-facing selection mechanism:
 | `@mermanjs/web-ascii` | ASCII | Slim package |
 
 Browser packages require a browser realm or worker. They are not Node or SSR transports.
+
+Install the complete browser package and render after initializing its single WASM artifact:
+
+```sh
+npm install @mermanjs/web@alpha
+```
+
+```ts
+import { initMerman, renderSvg } from "@mermanjs/web";
+
+await initMerman();
+const svg = renderSvg("flowchart TD\n  A --> B");
+```
+
+For a native registry install, Python provides the shortest complete SDK path:
+
+```sh
+python -m pip install --pre merman
+```
+
+```python
+import merman
+
+engine = merman.MermanEngine()
+svg = engine.render_svg("flowchart TD\n  A --> B", None)
+```
+
+Flutter uses `flutter pub add 'merman:^0.8.0-alpha.3'` and `Merman.open()`. Android consumes the
+matching release AAR through `implementation(files(...))`; Apple consumes the matching
+XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
+artifact profile. The [Flutter](../platforms/flutter/README.md),
+[Android](../platforms/android/README.md), [Apple](../platforms/apple/README.md), and
+[C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
+and lifecycle rules; there is no interchangeable generic native binary SDK.
 
 Typst users install one package:
 

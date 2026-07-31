@@ -295,7 +295,7 @@ impl Default for EmbeddedImageLimit {
     }
 }
 
-/// Host font behavior shared by the native PNG, JPEG, and PDF exporters.
+/// Host font behavior shared by native PNG, JPEG, and PDF exporters.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SystemFontEnvironmentContract {
@@ -316,11 +316,12 @@ pub struct EmbeddedImageEnvironmentContract {
     pub default_limits: EmbeddedImageLimit,
 }
 
-/// Runtime environment facts owned by a compiled native export backend.
+/// Runtime environment facts owned by a compiled export backend.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NativeExportEnvironmentContract {
-    pub system_fonts: SystemFontEnvironmentContract,
+pub struct ExportEnvironmentContract {
+    /// System font discovery used by this target, or `None` when the target cannot discover fonts.
+    pub system_fonts: Option<SystemFontEnvironmentContract>,
     pub embedded_images: EmbeddedImageEnvironmentContract,
 }
 
@@ -329,7 +330,7 @@ pub struct NativeExportEnvironmentContract {
 /// SVG and ASCII do not pass through this exporter and therefore return `None`.
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[must_use]
-pub fn output_environment_contract(output_id: &str) -> Option<NativeExportEnvironmentContract> {
+pub fn output_environment_contract(output_id: &str) -> Option<ExportEnvironmentContract> {
     let compiled = match output_id {
         #[cfg(feature = "png")]
         "png" => true,
@@ -339,14 +340,14 @@ pub fn output_environment_contract(output_id: &str) -> Option<NativeExportEnviro
         "pdf" => true,
         _ => false,
     };
-    compiled.then_some(NativeExportEnvironmentContract {
-        system_fonts: SystemFontEnvironmentContract {
+    compiled.then_some(ExportEnvironmentContract {
+        system_fonts: cfg!(not(target_arch = "wasm32")).then_some(SystemFontEnvironmentContract {
             source_id: "host-system",
             discovery: "first-use",
             cache_scope: "process-global",
             host_dependent: true,
             resource_bounded: false,
-        },
+        }),
         embedded_images: EmbeddedImageEnvironmentContract {
             source_ids: &["data-url"],
             filesystem_access: false,
@@ -2359,12 +2360,15 @@ mod tests {
     fn export_environment_contract_matches_font_and_image_owners() {
         for output_id in ["jpeg", "pdf", "png"] {
             let contract = output_environment_contract(output_id)
-                .expect("each compiled native export must disclose its environment");
-            assert_eq!(contract.system_fonts.source_id, "host-system");
-            assert_eq!(contract.system_fonts.discovery, "first-use");
-            assert_eq!(contract.system_fonts.cache_scope, "process-global");
-            assert!(contract.system_fonts.host_dependent);
-            assert!(!contract.system_fonts.resource_bounded);
+                .expect("each compiled export must disclose its environment");
+            let system_fonts = contract
+                .system_fonts
+                .expect("native exports must disclose host system fonts");
+            assert_eq!(system_fonts.source_id, "host-system");
+            assert_eq!(system_fonts.discovery, "first-use");
+            assert_eq!(system_fonts.cache_scope, "process-global");
+            assert!(system_fonts.host_dependent);
+            assert!(!system_fonts.resource_bounded);
             assert_eq!(contract.embedded_images.source_ids, ["data-url"]);
             assert!(!contract.embedded_images.filesystem_access);
             assert!(!contract.embedded_images.network_access);

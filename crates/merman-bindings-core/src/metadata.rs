@@ -703,14 +703,16 @@ fn runtime_output_contract(
             RuntimeOutputContract {
                 id: output.id,
                 media_type: output.media_type,
-                system_fonts: Some(RuntimeSystemFontContract {
-                    source_id: environment.system_fonts.source_id,
-                    discovery: environment.system_fonts.discovery,
-                    cache_scope: environment.system_fonts.cache_scope,
-                    host_dependent: environment.system_fonts.host_dependent,
-                    caller_configurable: false,
-                    resource_bounded: environment.system_fonts.resource_bounded,
-                }),
+                system_fonts: environment
+                    .system_fonts
+                    .map(|fonts| RuntimeSystemFontContract {
+                        source_id: fonts.source_id,
+                        discovery: fonts.discovery,
+                        cache_scope: fonts.cache_scope,
+                        host_dependent: fonts.host_dependent,
+                        caller_configurable: false,
+                        resource_bounded: fonts.resource_bounded,
+                    }),
                 embedded_images: Some(RuntimeEmbeddedImageContract {
                     source_ids: environment.embedded_images.source_ids,
                     filesystem_access: environment.embedded_images.filesystem_access,

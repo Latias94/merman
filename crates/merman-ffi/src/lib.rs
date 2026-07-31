@@ -1603,6 +1603,7 @@ mod tests {
             root.keys().map(String::as_str).collect::<BTreeSet<_>>(),
             [
                 "capabilities",
+                "output_contracts",
                 "package_version",
                 "registry",
                 "resources",

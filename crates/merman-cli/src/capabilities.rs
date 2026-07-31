@@ -155,18 +155,21 @@ fn output_view(output: &descriptor::OutputDescriptor) -> OutputView<'_> {
         "jpeg" | "pdf" | "png" => {
             let environment = merman::svg::export::output_environment_contract(output.id)
                 .expect("a compiled CLI export must have an environment contract");
+            let system_fonts = environment
+                .system_fonts
+                .expect("native CLI exports must disclose host system fonts");
             let limits = environment.embedded_images.default_limits;
             OutputView {
                 id: output.id,
                 description: output.description,
                 media_type: output.media_type,
                 system_fonts: Some(SystemFontView {
-                    source_id: environment.system_fonts.source_id,
-                    discovery: environment.system_fonts.discovery,
-                    cache_scope: environment.system_fonts.cache_scope,
-                    host_dependent: environment.system_fonts.host_dependent,
+                    source_id: system_fonts.source_id,
+                    discovery: system_fonts.discovery,
+                    cache_scope: system_fonts.cache_scope,
+                    host_dependent: system_fonts.host_dependent,
                     caller_configurable: false,
-                    resource_bounded: environment.system_fonts.resource_bounded,
+                    resource_bounded: system_fonts.resource_bounded,
                 }),
                 embedded_images: Some(EmbeddedImageView {
                     source_ids: environment.embedded_images.source_ids,

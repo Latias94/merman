@@ -234,7 +234,8 @@ pub fn supported_diagrams() -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = runtimeCatalog)]
 pub fn runtime_catalog() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&wasm_runtime_catalog())
+    wasm_runtime_catalog()
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
@@ -937,6 +938,14 @@ mod tests {
             merman_bindings_core::RUNTIME_CATALOG_SCHEMA_VERSION
         );
         assert_eq!(catalog.transport_api_version, WASM_TRANSPORT_API_VERSION);
+        #[cfg(target_arch = "wasm32")]
+        assert!(
+            catalog
+                .output_contracts
+                .iter()
+                .all(|output| output.system_fonts.is_none()),
+            "browser WASM cannot discover host system fonts"
+        );
         if cfg!(feature = "svg") {
             let resources = catalog.resources;
             assert_eq!(resources.general_binding_default_profile, "interactive");

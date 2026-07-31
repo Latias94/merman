@@ -102,7 +102,7 @@ class MermanInstrumentedSmokeTest {
             .put("source_ids", JSONArray(listOf(1)))
         checkCatalogRejected(badImages.toString())
 
-        for (invalid in listOf(0, -1, 1.0, "1", true)) {
+        for (invalid in listOf(0, -1, 1.5, "1", true)) {
             val badLimit = JSONObject(MermanEngine.runtimeCatalogJson())
             badLimit.outputContract("png")
                 .getJSONObject("embedded_images")
