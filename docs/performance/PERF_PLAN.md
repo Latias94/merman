@@ -95,6 +95,10 @@ runners use the same fixture.
 
 ## Completed work
 
+### Fresh Engine baseline registry reuse
+
+Commit `b56e1ae81` initializes the immutable pinned detector and parser registry baselines once and returns clones through their existing copy-on-write storage. Clean confirmation on the public cold-engine Info parse lane measured 4.233 us to 937.97 ns (-77.84%, -3.295 us); separately constructed registries still detach on custom mutation, and the full `merman-core` suite passed. The claim is limited to repeated fresh engines in one running process; the broader Flowchart control was A/A-inconclusive and no render-latency claim is made. See [the decision receipt](cached_baseline_registries_2026-07-31.md).
+
 ### Mindmap ordinary-label rendering
 
 Commit `b2129d9ec` resolved the confirmed ordinary-label regression without a family-local
