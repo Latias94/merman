@@ -27,6 +27,7 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         playground: path.resolve(playgroundRoot, "index.html"),
+        benchmarkCorpus: path.resolve(playgroundRoot, "benchmark-corpus.html"),
         benchmarkRealm: path.resolve(playgroundRoot, "benchmark.html"),
       },
       output: {

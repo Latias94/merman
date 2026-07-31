@@ -48,11 +48,7 @@ export function createBalancedBenchmarkSchedule(
   for (let index = 0; index < iterations / 2; index += 1) {
     orders.push(AB, BA);
   }
-  const random = createUint32Random(seed);
-  for (let index = orders.length - 1; index > 0; index -= 1) {
-    const target = Math.floor(random() * (index + 1));
-    [orders[index], orders[target]] = [orders[target], orders[index]];
-  }
+  shuffleInPlace(orders, createUint32Random(seed));
 
   return Object.freeze({
     seed,
@@ -62,7 +58,7 @@ export function createBalancedBenchmarkSchedule(
   });
 }
 
-function createUint32Random(seed: number): () => number {
+export function createUint32Random(seed: number): () => number {
   let state = (seed ^ 0x9e37_79b9) >>> 0;
   if (state === 0) state = 0x6d2b_79f5;
   return () => {
@@ -71,4 +67,11 @@ function createUint32Random(seed: number): () => number {
     state ^= state << 5;
     return (state >>> 0) / 0x1_0000_0000;
   };
+}
+
+export function shuffleInPlace<T>(values: T[], random: () => number): void {
+  for (let index = values.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(random() * (index + 1));
+    [values[index], values[target]] = [values[target]!, values[index]!];
+  }
 }

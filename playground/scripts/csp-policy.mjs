@@ -23,6 +23,11 @@ export function createExpectedCspPolicies(hashes) {
     "benchmark.html",
     0,
   );
+  const corpusHashes = quotedHashes(
+    hashes["benchmark-corpus.html"],
+    "benchmark-corpus.html",
+    1,
+  );
   return Object.freeze({
     "index.html": Object.freeze({
       ...COMMON_DIRECTIVES,
@@ -33,6 +38,17 @@ export function createExpectedCspPolicies(hashes) {
         "'wasm-unsafe-eval'",
       ],
       "worker-src": ["'self'"],
+      "frame-src": ["'self'"],
+    }),
+    "benchmark-corpus.html": Object.freeze({
+      ...COMMON_DIRECTIVES,
+      "script-src": [
+        "'self'",
+        "blob:",
+        ...corpusHashes,
+        "'wasm-unsafe-eval'",
+      ],
+      "worker-src": ["'none'"],
       "frame-src": ["'self'"],
     }),
     "benchmark.html": Object.freeze({

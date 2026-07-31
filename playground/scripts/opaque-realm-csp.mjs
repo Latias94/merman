@@ -14,16 +14,28 @@ const PAGE_CONTRACTS = Object.freeze({
       placeholder: "__MERMAN_BENCHMARK_BOOTSTRAP_CSP_HASH__",
     }),
   ]),
+  "benchmark-corpus.html": Object.freeze([
+    Object.freeze({
+      manifest: "opaque-benchmark-mermaid-bootstrap.json",
+      placeholder: "__MERMAN_BENCHMARK_BOOTSTRAP_CSP_HASH__",
+    }),
+  ]),
   "benchmark.html": Object.freeze([]),
 });
 
 export function loadOpaqueRealmCspHashes(playgroundRoot) {
+  const manifestHashes = new Map();
   return Object.fromEntries(
     Object.entries(PAGE_CONTRACTS).map(([fileName, contracts]) => [
       fileName,
       Object.freeze(
         contracts.map((contract) =>
-          loadManifestHash(playgroundRoot, fileName, contract.manifest),
+          loadManifestHash(
+            playgroundRoot,
+            fileName,
+            contract.manifest,
+            manifestHashes,
+          ),
         ),
       ),
     ]),
@@ -76,8 +88,10 @@ export function createOpaqueRealmCspPlugin(hashes) {
   };
 }
 
-function loadManifestHash(playgroundRoot, fileName, manifestFile) {
+function loadManifestHash(playgroundRoot, fileName, manifestFile, cache) {
   const manifestPath = path.join(playgroundRoot, ".runtime", manifestFile);
+  const cached = cache.get(manifestPath);
+  if (cached) return cached;
   let manifest;
   try {
     manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -95,6 +109,7 @@ function loadManifestHash(playgroundRoot, fileName, manifestFile) {
       `${manifestFile} does not contain a valid schema-1 CSP hash.`,
     );
   }
+  cache.set(manifestPath, manifest.cspHash);
   return manifest.cspHash;
 }
 

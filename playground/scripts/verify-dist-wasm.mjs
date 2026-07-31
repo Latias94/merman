@@ -5,7 +5,7 @@
  * Override: SKIP_VERIFY_DIST_WASM=1
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,6 +23,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 const DIST = path.join(ROOT, "dist");
 const INDEX_HTML = path.join(DIST, "index.html");
+const BENCHMARK_CORPUS_HTML = path.join(DIST, "benchmark-corpus.html");
 const BENCHMARK_HTML = path.join(DIST, "benchmark.html");
 const MANIFEST_FILE = path.join(DIST, ".vite", "manifest.json");
 const ASSETS = path.join(DIST, "assets");
@@ -54,7 +55,8 @@ if (process.env.SKIP_VERIFY_DIST_WASM === "1") {
 
 function isNonEmptyFile(file) {
   try {
-    return existsSync(file) && statSync(file).isFile() && statSync(file).size > 0;
+    const stat = statSync(file);
+    return stat.isFile() && stat.size > 0;
   } catch {
     return false;
   }
@@ -115,6 +117,9 @@ if (!isNonEmptyFile(INDEX_HTML)) {
 if (!isNonEmptyFile(BENCHMARK_HTML)) {
   fail([`  Missing Benchmark realm entry: ${BENCHMARK_HTML}`]);
 }
+if (!isNonEmptyFile(BENCHMARK_CORPUS_HTML)) {
+  fail([`  Missing Benchmark corpus entry: ${BENCHMARK_CORPUS_HTML}`]);
+}
 if (!isNonEmptyFile(MANIFEST_FILE)) {
   fail([`  Missing Vite build manifest: ${MANIFEST_FILE}`]);
 }
@@ -123,6 +128,7 @@ const manifest = loadBuildManifest();
 verifyOwnedEditorWorkers();
 verifyOpaqueEngineAssets();
 const indexEntry = requireManifestEntry(manifest, "index.html");
+const corpusEntry = requireManifestEntry(manifest, "benchmark-corpus.html");
 const benchmarkEntry = requireManifestEntry(manifest, "benchmark.html");
 loadBenchmarkSourceBoundaries();
 const benchmarkMermanEngine = loadBenchmarkMermanEngineIdentity();
@@ -132,9 +138,11 @@ const wasm = path.join(DIST, wasmModule.chunk.file);
 const shim = path.join(DIST, shimModule.chunk.file);
 
 const indexHtml = readFileSync(INDEX_HTML, "utf8");
+const corpusHtml = readFileSync(BENCHMARK_CORPUS_HTML, "utf8");
 const benchmarkHtml = readFileSync(BENCHMARK_HTML, "utf8");
 for (const [fileName, html] of [
   ["index.html", indexHtml],
+  ["benchmark-corpus.html", corpusHtml],
   ["benchmark.html", benchmarkHtml],
 ]) {
   const violations = verifyHtmlCsp(fileName, html, expectedCspPolicies);
@@ -146,6 +154,7 @@ for (const [fileName, html] of [
   }
 }
 const indexAssets = htmlExecutableAssets(indexHtml);
+const corpusAssets = htmlExecutableAssets(corpusHtml);
 const benchmarkAssets = htmlExecutableAssets(benchmarkHtml);
 const entryScripts = indexAssets.filter((asset) => asset.kind === "script").map(
   (asset) => asset.url,
@@ -164,6 +173,7 @@ for (const script of entryScripts) {
 
 for (const { label, assets } of [
   { label: "index.html", assets: indexAssets },
+  { label: "benchmark-corpus.html", assets: corpusAssets },
   { label: "benchmark.html", assets: benchmarkAssets },
 ]) {
   for (const asset of assets) {
@@ -192,15 +202,31 @@ const indexScripts = indexAssets
 if (!indexScripts.includes(indexEntry.chunk.file)) {
   fail(["  index.html does not reference its manifest entry chunk."]);
 }
+const corpusScripts = corpusAssets
+  .filter((asset) => asset.kind === "script")
+  .map((asset) => relativeToDist(resolveDistPath(asset.url)));
+if (corpusScripts.length !== 1 || corpusScripts[0] !== corpusEntry.chunk.file) {
+  fail([
+    "  benchmark-corpus.html must reference exactly its manifest entry chunk.",
+  ]);
+}
 
 const indexStatic = collectManifestClosure(manifest, [indexEntry.key], false);
 const indexReachable = collectManifestClosure(manifest, [indexEntry.key], true);
+const corpusStatic = collectManifestClosure(manifest, [corpusEntry.key], false);
+const corpusReachable = collectManifestClosure(manifest, [corpusEntry.key], true);
 const benchmarkStatic = collectManifestClosure(
   manifest,
   [benchmarkEntry.key],
   false,
 );
 verifyHtmlStaticClosure("index.html", indexAssets, indexStatic, manifest);
+verifyHtmlStaticClosure(
+  "benchmark-corpus.html",
+  corpusAssets,
+  corpusStatic,
+  manifest,
+);
 verifyHtmlStaticClosure(
   "benchmark.html",
   benchmarkAssets,
@@ -217,7 +243,7 @@ if (uniqueBenchmarkDynamicRoots.size !== 0) {
   ]);
 }
 const eagerReferenceChunks = new Set(
-  [...indexReachable, ...benchmarkStatic].filter((key) =>
+  [...indexReachable, ...corpusReachable, ...benchmarkStatic].filter((key) =>
     isReferenceEngineModule(key, manifest[key])
   )
 );
@@ -227,7 +253,7 @@ if (eagerReferenceChunks.size > 0) {
   ]);
 }
 
-const eagerMermanChunks = [...indexStatic].filter((key) =>
+const eagerMermanChunks = [...new Set([...indexStatic, ...corpusStatic])].filter((key) =>
   isMermanEngineModule(key, manifest[key])
 );
 if (eagerMermanChunks.length > 0) {
@@ -258,6 +284,20 @@ if (mermanArtifactRoots.length !== 1) {
   ]);
 }
 const [mermanArtifactRoot] = mermanArtifactRoots;
+const corpusDynamicRoots = new Set(
+  [...corpusStatic].flatMap((key) => manifest[key].dynamicImports ?? []),
+);
+const corpusMermanArtifactRoots = [...corpusDynamicRoots].filter((key) =>
+  hasManifestSource(key, manifest[key], BENCHMARK_SOURCES.mermanArtifact),
+);
+if (
+  corpusMermanArtifactRoots.length !== 1 ||
+  corpusMermanArtifactRoots[0] !== mermanArtifactRoot
+) {
+  fail([
+    `  Benchmark corpus must expose the same single Merman engine-artifact root; found ${corpusMermanArtifactRoots.length}.`,
+  ]);
+}
 const mermanArtifactClosure = collectManifestClosure(
   manifest,
   [mermanArtifactRoot],
@@ -311,6 +351,7 @@ console.log(
     `  WASM: ${relativeToDist(wasm)}`,
     `  JS shim: ${relativeToDist(shim)}`,
     "  Compare execution: opaque verified static realm artifact",
+    `  Benchmark corpus entry: ${relativeToDist(BENCHMARK_CORPUS_HTML)}`,
     `  Benchmark entry: ${relativeToDist(BENCHMARK_HTML)}`,
     "  Trusted Benchmark engines: Merman only",
   ].join("\n"),

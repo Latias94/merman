@@ -72,6 +72,7 @@ enum VariantEvidenceKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CatalogExample {
     diagram_type: String,
+    effective_layout_id: String,
     syntax_id: String,
     id: String,
     title: String,
@@ -389,6 +390,18 @@ fn validate_manifest(
                 metadata.diagram_type
             )));
         }
+        let effective_layout_id = metadata
+            .effective_config
+            .get_str("layout")
+            .filter(|layout| !layout.trim().is_empty())
+            .ok_or_else(|| {
+                catalog_error(format!(
+                    "example `{}` fixture `{}` has no canonical effective layout",
+                    entry.id,
+                    fixture_path.display()
+                ))
+            })?
+            .to_owned();
 
         engine
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
@@ -438,6 +451,7 @@ fn validate_manifest(
 
         examples.push(CatalogExample {
             diagram_type: entry.diagram_type,
+            effective_layout_id,
             syntax_id: metadata.diagram_type,
             id: entry.id,
             title: entry.title,
@@ -513,6 +527,7 @@ export interface GeneratedExample {
   readonly category: string;
   readonly order: number;
   readonly diagramType: DiagramType;
+  readonly effectiveLayoutId: string;
   readonly syntaxId: string;
   readonly aliases: readonly string[];
   readonly fixture: string;
@@ -531,6 +546,12 @@ export type ExampleEvidence =
 
 "#,
     );
+    writeln!(
+        &mut output,
+        "export const PLAYGROUND_MERMAN_VERSION = {} as const;\n",
+        serde_json::to_string(env!("CARGO_PKG_VERSION"))?
+    )
+    .expect("writing to a String cannot fail");
     writeln!(
         &mut output,
         "export const PLAYGROUND_EXAMPLE_BASELINE = {} as const;\n",
@@ -556,6 +577,7 @@ export type ExampleEvidence =
             .expect("writing to a String cannot fail");
         for (field, value) in [
             ("diagramType", &example.diagram_type),
+            ("effectiveLayoutId", &example.effective_layout_id),
             ("syntaxId", &example.syntax_id),
         ] {
             writeln!(
@@ -748,6 +770,8 @@ mod tests {
         let typescript = render_typescript(&catalog).unwrap();
         assert!(typescript.contains("import type { DiagramType } from \"@mermanjs/web\";"));
         assert!(typescript.contains("diagramType: DiagramType;"));
+        assert!(typescript.contains("readonly effectiveLayoutId: string;"));
+        assert!(typescript.contains("export const PLAYGROUND_MERMAN_VERSION"));
         assert!(typescript.contains("readonly evidence: ExampleEvidence;"));
         assert!(!typescript.contains("export type DiagramType"));
     }

@@ -67,7 +67,11 @@ test("CSP verification rejects broad or missing ownership boundaries", () => {
 });
 
 test("HTML entry CSPs receive exactly their creator-owned bootstrap hashes", () => {
-  for (const fileName of ["index.html", "benchmark.html"]) {
+  for (const fileName of [
+    "index.html",
+    "benchmark-corpus.html",
+    "benchmark.html",
+  ]) {
     const template = readFileSync(path.join(root, fileName), "utf8");
     const html = injectOpaqueRealmCspHashes(fileName, template, hashes);
     assert.deepEqual(verifyHtmlCsp(fileName, html, expectedPolicies), []);
@@ -75,6 +79,7 @@ test("HTML entry CSPs receive exactly their creator-owned bootstrap hashes", () 
       assert.match(html, new RegExp(escapeRegExp(hash), "u"));
     }
   }
+  assert.equal(hashes["benchmark-corpus.html"].length, 1);
   assert.deepEqual(hashes["benchmark.html"], []);
 });
 
