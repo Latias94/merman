@@ -95,6 +95,9 @@ jobs:
           cargo run -p xtask -- verify-web-diagram-catalog
           cargo run -p xtask -- verify-playground-example-catalog
 
+      - name: Check exact Web WASM size budgets
+        run: cargo run --locked -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
+
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
 

@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "updated": "2026-07-30",
+  "updated": "2026-07-31",
   "compression_source": "stripped",
-  "notes": "Budgets are regression guards for the final capability-driven artifact graph, including math in web-full and the published complete-SVG web-render artifact. Gzip and Brotli are measured from the stripped artifact produced by wasm-tools strip --all. Limits retain roughly three percent headroom above accepted measurements. The Typst profile was remeasured on 2026-07-30 after resource and SVG publication hardening entered its invariant semantic path: raw 13,883,771; stripped 11,071,471; gzip 3,526,846; Brotli 2,423,203. Analysis, ASCII, and editor remain material slim artifacts; complete-SVG web-render is 5.90 percent smaller than web-full by stripped bytes and is admitted for its distinct capability contract rather than the slim-workflow threshold.",
+  "notes": "Budgets are regression guards for the final capability-driven artifact graph, including math in web-full and the published complete-SVG web-render artifact. Gzip and Brotli are measured from the stripped artifact produced by wasm-tools strip --all. Limits retain roughly three percent headroom above accepted measurements. Web profiles were remeasured at source 2a78e7493 with Rust 1.95.0 on 2026-07-31 (raw/stripped/gzip/Brotli): analysis 5,613,009/4,183,724/1,310,208/985,051; ASCII 5,756,680/4,309,947/1,361,610/1,023,742; editor 5,926,405/4,386,795/1,368,576/1,023,491; full 18,552,836/14,601,312/4,720,376/3,271,019; render 17,197,146/13,693,949/4,434,631/3,094,505. The Typst profile was remeasured on 2026-07-30 after resource and SVG publication hardening entered its invariant semantic path: raw 13,883,771; stripped 11,071,471; gzip 3,526,846; Brotli 2,423,203. Analysis, ASCII, and editor remain material slim artifacts; complete-SVG web-render is admitted for its distinct capability contract rather than the slim-workflow threshold.",
   "artifact_profiles": {
     "typst-wasm": {
       "max_raw_bytes": 14300000,
@@ -11,34 +11,34 @@
       "max_brotli_bytes": 2500000
     },
     "web-analysis": {
-      "max_raw_bytes": 5550000,
-      "max_stripped_bytes": 4150000,
-      "max_gzip_bytes": 1300000,
-      "max_brotli_bytes": 975000
-    },
-    "web-ascii": {
-      "max_raw_bytes": 5850000,
-      "max_stripped_bytes": 4375000,
-      "max_gzip_bytes": 1375000,
-      "max_brotli_bytes": 1050000
-    },
-    "web-editor": {
-      "max_raw_bytes": 5850000,
+      "max_raw_bytes": 5800000,
       "max_stripped_bytes": 4325000,
       "max_gzip_bytes": 1350000,
-      "max_brotli_bytes": 1025000
+      "max_brotli_bytes": 1015000
+    },
+    "web-ascii": {
+      "max_raw_bytes": 5950000,
+      "max_stripped_bytes": 4450000,
+      "max_gzip_bytes": 1405000,
+      "max_brotli_bytes": 1055000
+    },
+    "web-editor": {
+      "max_raw_bytes": 6125000,
+      "max_stripped_bytes": 4525000,
+      "max_gzip_bytes": 1410000,
+      "max_brotli_bytes": 1055000
     },
     "web-full": {
-      "max_raw_bytes": 18850000,
-      "max_stripped_bytes": 14850000,
-      "max_gzip_bytes": 4800000,
-      "max_brotli_bytes": 3325000
+      "max_raw_bytes": 19125000,
+      "max_stripped_bytes": 15050000,
+      "max_gzip_bytes": 4865000,
+      "max_brotli_bytes": 3370000
     },
     "web-render": {
-      "max_raw_bytes": 17300000,
-      "max_stripped_bytes": 13750000,
-      "max_gzip_bytes": 4450000,
-      "max_brotli_bytes": 3100000
+      "max_raw_bytes": 17725000,
+      "max_stripped_bytes": 14125000,
+      "max_gzip_bytes": 4570000,
+      "max_brotli_bytes": 3190000
     }
   }
 }

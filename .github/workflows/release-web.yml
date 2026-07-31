@@ -142,6 +142,9 @@ jobs:
           cargo run --locked -p xtask -- verify-artifact-profiles
           cargo run --locked -p xtask -- verify-capability-surface
 
+      - name: Check exact Web WASM size budgets
+        run: cargo run --locked -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
+
       - name: Install Web workspace dependencies
         run: npm ci --prefix platforms/web
 
