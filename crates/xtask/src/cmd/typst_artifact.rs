@@ -511,7 +511,7 @@ fn install_with_runtime<R: ArtifactRuntime>(
     let artifact = fingerprint_artifact(&staged_wasm, &spec.artifact_name)?;
     let manifest = spec.manifest(input.clone(), tools.clone(), artifact);
     write_manifest(&staging.path().join(MANIFEST_FILE_NAME), &manifest)?;
-    verify_directory(spec, staging.path(), &input, &tools)?;
+    validate_directory_manifest(spec, staging.path(), &input, &tools, &manifest)?;
 
     replace_output_directory(spec, staging, runtime)?;
     Ok(VerifiedTypstArtifact {
@@ -545,6 +545,34 @@ fn verify_directory(
     input: &InputFingerprint,
     tools: &ToolFingerprint,
 ) -> Result<PathBuf, XtaskError> {
+    let manifest_path = directory.join(MANIFEST_FILE_NAME);
+    validate_regular_file(&manifest_path, "artifact manifest")?;
+    let manifest_bytes = fs::read(&manifest_path)
+        .map_err(|source| artifact_io_error("read artifact manifest", &manifest_path, source))?;
+    let manifest: ArtifactManifest = serde_json::from_slice(&manifest_bytes).map_err(|error| {
+        artifact_error(format!(
+            "artifact manifest {} is not valid schema-{MANIFEST_SCHEMA_VERSION} JSON: {error}",
+            manifest_path.display()
+        ))
+    })?;
+    let wasm_path = validate_directory_manifest(spec, directory, input, tools, &manifest)?;
+    let artifact = fingerprint_artifact(&wasm_path, &spec.artifact_name)?;
+    if manifest.artifact != artifact {
+        return Err(artifact_error(format!(
+            "artifact digest or byte length is stale for {}",
+            wasm_path.display()
+        )));
+    }
+    Ok(wasm_path)
+}
+
+fn validate_directory_manifest(
+    spec: &TypstArtifactSpec,
+    directory: &Path,
+    input: &InputFingerprint,
+    tools: &ToolFingerprint,
+    manifest: &ArtifactManifest,
+) -> Result<PathBuf, XtaskError> {
     validate_output_directory(directory)?;
     let actual_entries = directory_entries(directory)?;
     let expected_entries =
@@ -566,16 +594,7 @@ fn verify_directory(
         )));
     }
 
-    let manifest_path = directory.join(MANIFEST_FILE_NAME);
-    validate_regular_file(&manifest_path, "artifact manifest")?;
-    let manifest_bytes = fs::read(&manifest_path)
-        .map_err(|source| artifact_io_error("read artifact manifest", &manifest_path, source))?;
-    let manifest: ArtifactManifest = serde_json::from_slice(&manifest_bytes).map_err(|error| {
-        artifact_error(format!(
-            "artifact manifest {} is not valid schema-{MANIFEST_SCHEMA_VERSION} JSON: {error}",
-            manifest_path.display()
-        ))
-    })?;
+    validate_regular_file(&directory.join(MANIFEST_FILE_NAME), "artifact manifest")?;
 
     if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
         return Err(manifest_mismatch(
@@ -681,13 +700,6 @@ fn verify_directory(
 
     let wasm_path = directory.join(&spec.artifact_name);
     validate_regular_file(&wasm_path, "WASM artifact")?;
-    let artifact = fingerprint_artifact(&wasm_path, &spec.artifact_name)?;
-    if manifest.artifact != artifact {
-        return Err(artifact_error(format!(
-            "artifact digest or byte length is stale for {}",
-            wasm_path.display()
-        )));
-    }
     Ok(wasm_path)
 }
 

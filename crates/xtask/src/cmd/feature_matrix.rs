@@ -14,13 +14,6 @@ mod capability_contract {
     ));
 }
 
-const TRANSPORT_PACKAGES: &[&str] = &[
-    "merman-android-jni",
-    "merman-ffi",
-    "merman-typst-plugin",
-    "merman-uniffi",
-    "merman-wasm",
-];
 const TRANSPORT_TARGETS: &[(&str, &str)] = &[
     ("merman-android-jni", "native"),
     ("merman-ffi", "native"),
@@ -29,7 +22,6 @@ const TRANSPORT_TARGETS: &[(&str, &str)] = &[
     ("merman-wasm", "web"),
 ];
 const HOST_TRANSPORT_PACKAGES: &[&str] = &["merman-ffi", "merman-uniffi"];
-const WASM_TRANSPORT_PACKAGES: &[&str] = &["merman-typst-plugin", "merman-wasm"];
 const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
     "merman-analysis",
     "merman-android-jni",
@@ -66,7 +58,6 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("roughr-merman", &[]),
 ];
 const SVG_ENGINE_FEATURES: &[&str] = &["layout-cytoscape", "layout-elk", "math"];
-const COMPLETE_SVG_FEATURES: &[&str] = &["layout-cytoscape", "layout-elk", "math", "svg"];
 const PRODUCT_FEATURE_CONTRACTS: usize = 5;
 const PAIRWISE_PACKAGES: &[&str] = &[
     "merman",
@@ -78,6 +69,23 @@ const PAIRWISE_PACKAGES: &[&str] = &[
     "merman-uniffi",
     "merman-wasm",
 ];
+
+fn transport_packages() -> impl Iterator<Item = &'static str> {
+    TRANSPORT_TARGETS.iter().map(|(package, _)| *package)
+}
+
+fn wasm_transport_packages() -> impl Iterator<Item = &'static str> {
+    TRANSPORT_TARGETS
+        .iter()
+        .filter_map(|(package, target)| matches!(*target, "typst" | "web").then_some(*package))
+}
+
+fn complete_svg_features() -> impl Iterator<Item = &'static str> {
+    SVG_ENGINE_FEATURES
+        .iter()
+        .copied()
+        .chain(std::iter::once("svg"))
+}
 
 #[derive(Debug, Clone, Copy)]
 struct FeatureForwardingContract {
@@ -303,7 +311,12 @@ pub(crate) fn verify_feature_matrix(args: Vec<String>) -> Result<(), XtaskError>
     if let Some(message) = super::capability_surface::verify_capability_surface_artifacts()? {
         return Err(matrix_error(message));
     }
-    super::artifact_profiles::verify_artifact_profiles(Vec::new()).map_err(matrix_error)?;
+    let artifact_profiles =
+        super::artifact_profiles::load_artifact_profile_catalog().map_err(matrix_error)?;
+    println!(
+        "validated {} exact artifact build profile(s)",
+        artifact_profiles.profile_count()
+    );
 
     let graph = FeatureGraph::load()?;
     let report = graph.validate()?;
@@ -320,10 +333,7 @@ pub(crate) fn verify_feature_matrix(args: Vec<String>) -> Result<(), XtaskError>
     );
 
     let (host_artifacts, wasm_artifacts) = if options.strict {
-        (
-            super::artifact_profiles::load_host_artifact_profiles().map_err(matrix_error)?,
-            super::artifact_profiles::load_wasm_size_artifact_profiles().map_err(matrix_error)?,
-        )
+        artifact_profiles.into_profiles()
     } else {
         (Vec::new(), Vec::new())
     };
@@ -448,7 +458,8 @@ impl FeatureGraph {
         report.forwarding_edges = self.validate_feature_forwarding(FEATURE_FORWARDING_CONTRACTS)?;
         report.dependency_feature_boundaries =
             self.validate_dependency_feature_contracts(DEPENDENCY_FEATURE_CONTRACTS)?;
-        report.transport_engines = self.validate_transport_contracts(TRANSPORT_PACKAGES)?;
+        let transport_package_names = transport_packages().collect::<Vec<_>>();
+        report.transport_engines = self.validate_transport_contracts(&transport_package_names)?;
         report.product_contracts = self.validate_product_feature_contracts()?;
         Ok(report)
     }
@@ -590,9 +601,8 @@ impl FeatureGraph {
         }
 
         let complete_svg = direct_feature_members(facade, "complete-svg")?;
-        let expected_complete_svg = COMPLETE_SVG_FEATURES
-            .iter()
-            .map(|feature| (*feature).to_string())
+        let expected_complete_svg = complete_svg_features()
+            .map(|feature| feature.to_string())
             .collect::<BTreeSet<_>>();
         if complete_svg != expected_complete_svg {
             return Err(matrix_error(format!(
@@ -814,12 +824,12 @@ impl FeatureGraph {
             None,
             "rustdoc-default",
         ));
-        let transport_packages = if strict {
-            TRANSPORT_PACKAGES
+        let transport_package_names = if strict {
+            transport_packages().collect::<Vec<_>>()
         } else {
-            HOST_TRANSPORT_PACKAGES
+            HOST_TRANSPORT_PACKAGES.to_vec()
         };
-        for package_name in transport_packages {
+        for package_name in transport_package_names {
             let package = self.package(package_name)?;
             let target = if strict {
                 self.build_target_for(package_name)
@@ -832,7 +842,7 @@ impl FeatureGraph {
                 target.clone(),
                 "transport-base",
             ));
-            for feature in std::iter::once("svg").chain(SVG_ENGINE_FEATURES.iter().copied()) {
+            for feature in complete_svg_features() {
                 if package.features.contains_key(feature) {
                     cases.insert(BuildCase::new(
                         package_name,
@@ -911,7 +921,7 @@ impl FeatureGraph {
     fn build_target_for(&self, package_name: &str) -> Option<String> {
         match package_name {
             "merman-android-jni" => Some("aarch64-linux-android".to_string()),
-            package if WASM_TRANSPORT_PACKAGES.contains(&package) => {
+            package if wasm_transport_packages().any(|candidate| candidate == package) => {
                 Some("wasm32-unknown-unknown".to_string())
             }
             _ => None,
@@ -1344,6 +1354,33 @@ mod tests {
             FeatureMatrixOptions { strict: true }
         );
         assert!(parse_options(vec!["--unknown".to_string()]).is_err());
+    }
+
+    #[test]
+    fn derived_matrix_groups_preserve_expected_members() {
+        let transports = transport_packages().collect::<Vec<_>>();
+        let wasm_transports = wasm_transport_packages().collect::<Vec<_>>();
+
+        assert_eq!(
+            transports,
+            vec![
+                "merman-android-jni",
+                "merman-ffi",
+                "merman-typst-plugin",
+                "merman-uniffi",
+                "merman-wasm",
+            ]
+        );
+        assert_eq!(wasm_transports, vec!["merman-typst-plugin", "merman-wasm"]);
+        assert!(
+            HOST_TRANSPORT_PACKAGES.iter().all(|package| {
+                transports.contains(package) && !wasm_transports.contains(package)
+            })
+        );
+        assert_eq!(
+            complete_svg_features().collect::<Vec<_>>(),
+            vec!["layout-cytoscape", "layout-elk", "math", "svg"]
+        );
     }
 
     #[test]

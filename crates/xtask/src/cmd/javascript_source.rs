@@ -302,6 +302,7 @@ impl<'source> ParsedSource<'source> {
 
     fn package_test_strings(&self) -> Vec<StaticStringExpression> {
         let mut seen = HashSet::new();
+        let dynamic_string_uses = self.dynamic_string_identifier_uses();
         let mut candidates = all_named_nodes(self.tree.root_node())
             .into_iter()
             .flat_map(|node| package_string_expression_candidates(self.source, node))
@@ -314,7 +315,7 @@ impl<'source> ParsedSource<'source> {
             .enumerate()
             .filter(|(_, node)| !self.inside_skipped_test(*node))
             .filter(|(_, node)| !is_test_title(self.source, *node))
-            .filter(|(_, node)| !self.binding_is_dynamic_fragment(*node))
+            .filter(|(_, node)| !self.binding_is_dynamic_fragment(*node, &dynamic_string_uses))
             .filter_map(|(source_ordinal, node)| {
                 evaluate_static_string(self.source, node).map(|value| StaticStringExpression {
                     source_ordinal,
@@ -324,7 +325,24 @@ impl<'source> ParsedSource<'source> {
             .collect()
     }
 
-    fn binding_is_dynamic_fragment(&self, candidate: Node<'_>) -> bool {
+    fn dynamic_string_identifier_uses(&self) -> HashMap<String, Vec<usize>> {
+        let mut uses = HashMap::<String, Vec<usize>>::new();
+        for node in all_named_nodes(self.tree.root_node()) {
+            if node.kind() != "identifier" || !identifier_is_in_dynamic_string_composition(node) {
+                continue;
+            }
+            if let Some(name) = decode_identifier_node(self.source, node) {
+                uses.entry(name).or_default().push(node.start_byte());
+            }
+        }
+        uses
+    }
+
+    fn binding_is_dynamic_fragment(
+        &self,
+        candidate: Node<'_>,
+        dynamic_string_uses: &HashMap<String, Vec<usize>>,
+    ) -> bool {
         let Some(declarator) = candidate
             .parent()
             .filter(|parent| parent.kind() == "variable_declarator")
@@ -346,16 +364,10 @@ impl<'source> ParsedSource<'source> {
             return false;
         };
 
-        all_named_nodes(self.tree.root_node())
-            .into_iter()
-            .filter(|node| node.kind() == "identifier")
-            .filter(|node| {
-                !(candidate.start_byte()..candidate.end_byte()).contains(&node.start_byte())
-            })
-            .filter(|node| {
-                decode_identifier_node(self.source, *node).as_deref() == Some(binding_name.as_str())
-            })
-            .any(identifier_is_in_dynamic_string_composition)
+        dynamic_string_uses.get(&binding_name).is_some_and(|uses| {
+            uses.iter()
+                .any(|start| !(candidate.start_byte()..candidate.end_byte()).contains(start))
+        })
     }
 
     fn inside_skipped_test(&self, node: Node<'_>) -> bool {

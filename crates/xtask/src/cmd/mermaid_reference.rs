@@ -6,7 +6,7 @@ use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const BUNDLE_RELATIVE_PATH: &str = "tools/upstreams/MERMAID_REFERENCE_BUNDLE.json";
@@ -23,6 +23,14 @@ const SLSA_ATTESTATION_PREDICATE: &str = "https://slsa.dev/provenance/v1";
 const ATTESTATION_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 const MAX_ATTESTATION_ARTIFACT_BYTES: u64 = 64 * 1024;
 const MAX_ATTESTATION_PAYLOAD_BYTES: usize = 32 * 1024;
+const BUILTIN_DIAGRAM_METADATA_SCRIPT: &str = r#"
+import mermaid from 'mermaid';
+
+mermaid.initialize({ startOnLoad: false });
+process.stdout.write(
+  JSON.stringify(mermaid.getRegisteredDiagramsMetadata().map(({ id }) => id)),
+);
+"#;
 const ZENUML_ADMISSION_GATES: [&str; 9] = [
     "plugin-contract",
     "corpus",
@@ -1195,13 +1203,9 @@ fn verify_source_checkouts(
 fn verify_builtin_registry_inventory(
     root: &Path,
     bundle: &MermaidReferenceBundle,
-    materialized: bool,
+    mermaid_runtime_verified: bool,
     failures: &mut Vec<String>,
 ) {
-    if !materialized {
-        return;
-    }
-
     let Some(checkout_path) = bundle.release.source.checkout_path.as_deref() else {
         failures.push(
             "Mermaid release must materialize a source checkout for registry inventory".to_string(),
@@ -1245,235 +1249,71 @@ fn verify_builtin_registry_inventory(
             ));
         }
 
-        let actual_ids = if kind == "built-in diagram" {
-            extract_builtin_diagram_ids(
-                &source,
-                Path::new(&registry.source_path),
-                |relative_source_path| {
-                    let path = checkout.join(relative_source_path);
-                    fs::read_to_string(&path)
-                        .map_err(|error| format!("{}: {error}", path.display()))
-                },
+        let (actual_ids, inventory_path) = if kind == "built-in diagram" {
+            if !mermaid_runtime_verified {
+                continue;
+            }
+            (
+                installed_builtin_diagram_ids(root, bundle),
+                root.join(&bundle.reference_cli.workspace)
+                    .join("node_modules")
+                    .join(&bundle.release.package),
             )
         } else {
-            extract_builtin_layout_ids(&source)
+            (extract_builtin_layout_ids(&source), source_path.clone())
         };
         match actual_ids {
             Ok(actual_ids) if actual_ids != registry.ids => failures.push(format!(
                 "{kind} registry inventory drift at {}: expected {:?}, found {actual_ids:?}",
-                source_path.display(),
+                inventory_path.display(),
                 registry.ids
             )),
             Ok(_) => {}
             Err(reason) => failures.push(format!(
                 "cannot extract {kind} registry inventory from {}: {reason}",
-                source_path.display()
+                inventory_path.display()
             )),
         }
     }
 }
 
-fn extract_builtin_diagram_ids(
-    orchestration_source: &str,
-    orchestration_path: &Path,
-    mut read_detector_source: impl FnMut(&Path) -> Result<String, String>,
+fn installed_builtin_diagram_ids(
+    root: &Path,
+    bundle: &MermaidReferenceBundle,
 ) -> Result<Vec<String>, String> {
-    let imports = diagram_detector_imports(orchestration_source, orchestration_path)?;
-    let direct_re =
-        Regex::new(r#"(?s)registerDiagram\s*\(\s*(?:\"(?P<double>[^\"]+)\"|'(?P<single>[^']+)')"#)
-            .expect("built-in direct registry regex is valid");
-    let lazy_re = Regex::new(r"(?s)registerLazyLoadedDiagrams\s*\((?P<args>.*?)\)\s*;")
-        .expect("built-in lazy registry regex is valid");
-    let direct_call_re =
-        Regex::new(r"registerDiagram\s*\(").expect("direct registry call regex is valid");
-    let lazy_call_re =
-        Regex::new(r"registerLazyLoadedDiagrams\s*\(").expect("lazy registry call regex is valid");
-    let mut registrations = Vec::new();
-    let mut direct_registration_count = 0usize;
-    let mut lazy_registration_count = 0usize;
-
-    for captures in direct_re.captures_iter(orchestration_source) {
-        direct_registration_count += 1;
-        let id = captures
-            .name("double")
-            .or_else(|| captures.name("single"))
-            .expect("static direct diagram id is captured")
-            .as_str()
-            .to_string();
-        registrations.push((
-            captures
-                .get(0)
-                .expect("direct registration is captured")
-                .start(),
-            vec![id],
-        ));
-    }
-    for captures in lazy_re.captures_iter(orchestration_source) {
-        lazy_registration_count += 1;
-        let arguments = captures
-            .name("args")
-            .expect("lazy registration arguments are captured")
-            .as_str();
-        let mut ids = Vec::new();
-        for binding in arguments
-            .split(',')
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            if !is_typescript_identifier(binding) {
-                return Err(format!(
-                    "lazy diagram registration argument {binding:?} is not a static imported identifier"
-                ));
-            }
-            let source_path = imports.get(binding).ok_or_else(|| {
-                format!("lazy diagram registration {binding:?} has no supported static import")
-            })?;
-            let detector_source = read_detector_source(source_path)?;
-            ids.push(detector_id_from_source(&detector_source, source_path)?);
-        }
-        registrations.push((
-            captures
-                .get(0)
-                .expect("lazy registration is captured")
-                .start(),
-            ids,
-        ));
-    }
-    if direct_registration_count != direct_call_re.find_iter(orchestration_source).count() {
-        return Err("a registerDiagram call does not use a static string id".to_string());
-    }
-    if lazy_registration_count != lazy_call_re.find_iter(orchestration_source).count() {
-        return Err("a registerLazyLoadedDiagrams call has unsupported syntax".to_string());
-    }
-    registrations.sort_by_key(|(offset, _)| *offset);
-    let ids = registrations
-        .into_iter()
-        .flat_map(|(_, ids)| ids)
-        .collect::<Vec<_>>();
-
-    ensure_unique_registry_ids(&ids, "diagram")?;
-    if ids.is_empty() {
-        return Err(
-            "no registerDiagram or registerLazyLoadedDiagrams calls were found".to_string(),
-        );
-    }
-    Ok(ids)
-}
-
-fn diagram_detector_imports(
-    source: &str,
-    orchestration_path: &Path,
-) -> Result<BTreeMap<String, PathBuf>, String> {
-    let import_re = Regex::new(
-        r#"(?m)^import\s+(?:(?P<default>[A-Za-z_$][A-Za-z0-9_$]*)|\{\s*(?P<named>[A-Za-z_$][A-Za-z0-9_$]*)\s*\})\s+from\s+['\"](?P<path>\.[^'\"]+)['\"];\s*$"#,
-    )
-    .expect("built-in registry import regex is valid");
-    let mut imports = BTreeMap::new();
-    for captures in import_re.captures_iter(source) {
-        let binding = captures
-            .name("default")
-            .or_else(|| captures.name("named"))
-            .expect("supported import captures one binding")
-            .as_str();
-        let import_path = captures
-            .name("path")
-            .expect("supported import captures a path")
-            .as_str();
-        if !import_path.starts_with("../diagrams/") {
-            continue;
-        }
-        let source_path = resolve_typescript_import(orchestration_path, import_path)?;
-        if imports.insert(binding.to_string(), source_path).is_some() {
-            return Err(format!("duplicate detector import binding {binding:?}"));
-        }
-    }
-    Ok(imports)
-}
-
-fn resolve_typescript_import(base: &Path, import_path: &str) -> Result<PathBuf, String> {
-    if !import_path.starts_with("../diagrams/") {
+    let workspace = root.join(&bundle.reference_cli.workspace);
+    let output = Command::new("node")
+        .arg("--input-type=module")
+        .arg("-e")
+        .arg(BUILTIN_DIAGRAM_METADATA_SCRIPT)
+        .current_dir(&workspace)
+        .output()
+        .map_err(|error| {
+            format!(
+                "failed to execute Mermaid {} diagram metadata API from {}: {error}",
+                bundle.release.version,
+                workspace.display()
+            )
+        })?;
+    if !output.status.success() {
         return Err(format!(
-            "detector import {import_path:?} is outside Mermaid's built-in diagram tree"
+            "Mermaid {} diagram metadata API failed: {}",
+            bundle.release.version,
+            String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let parent = base
-        .parent()
-        .ok_or_else(|| format!("registry source path {} has no parent", base.display()))?;
-    let mut normalized = PathBuf::new();
-    for component in parent.join(import_path).components() {
-        match component {
-            Component::Normal(component) => normalized.push(component),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !normalized.pop() {
-                    return Err(format!(
-                        "detector import {import_path:?} escapes its checkout"
-                    ));
-                }
-            }
-            Component::RootDir | Component::Prefix(_) => {
-                return Err(format!(
-                    "detector import {import_path:?} is not a relative path"
-                ));
-            }
-        }
-    }
-    if normalized
-        .extension()
-        .is_some_and(|extension| extension == "js")
-    {
-        normalized.set_extension("ts");
-    }
-    normalize_typescript_source_path(&normalized)
-}
 
-fn normalize_typescript_source_path(path: &Path) -> Result<PathBuf, String> {
-    let normalized = path
-        .to_str()
-        .ok_or_else(|| "detector source path is not valid UTF-8".to_string())?
-        .replace('\\', "/");
-    let bytes = normalized.as_bytes();
-    let has_windows_drive_prefix =
-        bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
-    if has_windows_drive_prefix || !is_owned_relative_path(&normalized) {
-        return Err(format!(
-            "detector source path {normalized:?} is not a normalized checkout-relative path"
-        ));
-    }
-    Ok(PathBuf::from(normalized))
-}
-
-fn is_typescript_identifier(value: &str) -> bool {
-    let mut characters = value.chars();
-    matches!(characters.next(), Some('_' | '$' | 'a'..='z' | 'A'..='Z'))
-        && characters
-            .all(|character| matches!(character, '_' | '$' | 'a'..='z' | 'A'..='Z' | '0'..='9'))
-}
-
-fn detector_id_from_source(source: &str, source_path: &Path) -> Result<String, String> {
-    let id_re = Regex::new(
-        r#"(?m)^\s*(?:export\s+)?const\s+id\s*=\s*(?:\"(?P<double>[^\"]+)\"|'(?P<single>[^']+)')\s*;"#,
-    )
-    .expect("detector id regex is valid");
-    let mut ids = id_re.captures_iter(source).filter_map(|captures| {
-        captures
-            .name("double")
-            .or_else(|| captures.name("single"))
-            .map(|id| id.as_str().to_string())
-    });
-    let id = ids.next().ok_or_else(|| {
+    let ids = serde_json::from_slice::<Vec<String>>(&output.stdout).map_err(|error| {
         format!(
-            "detector {} does not declare a static `const id = ...`",
-            source_path.display()
+            "Mermaid {} diagram metadata API returned invalid JSON: {error}",
+            bundle.release.version
         )
     })?;
-    if ids.next().is_some() {
-        return Err(format!(
-            "detector {} declares more than one static `id`",
-            source_path.display()
-        ));
+    ensure_unique_registry_ids(&ids, "diagram")?;
+    if ids.is_empty() {
+        return Err("Mermaid diagram metadata API returned no registered diagrams".to_string());
     }
-    Ok(id)
+    Ok(ids)
 }
 
 fn extract_builtin_layout_ids(source: &str) -> Result<Vec<String>, String> {
@@ -2790,35 +2630,16 @@ fn is_sha256_fingerprint(value: &str) -> bool {
 
 fn canonical_json(value: &JsonValue) -> Result<Vec<u8>, XtaskError> {
     let mut canonical = value.clone();
-    sort_json_keys(&mut canonical);
+    canonical.sort_all_objects();
     serde_json::to_vec(&canonical).map_err(XtaskError::from)
 }
 
 fn canonical_pretty_json(value: &JsonValue) -> Result<String, XtaskError> {
     let mut canonical = value.clone();
-    sort_json_keys(&mut canonical);
+    canonical.sort_all_objects();
     let mut output = serde_json::to_string_pretty(&canonical)?;
     output.push('\n');
     Ok(output)
-}
-
-fn sort_json_keys(value: &mut JsonValue) {
-    match value {
-        JsonValue::Object(object) => {
-            let mut entries = std::mem::take(object).into_iter().collect::<Vec<_>>();
-            entries.sort_by(|left, right| left.0.cmp(&right.0));
-            for (key, mut child) in entries {
-                sort_json_keys(&mut child);
-                object.insert(key, child);
-            }
-        }
-        JsonValue::Array(values) => {
-            for value in values {
-                sort_json_keys(value);
-            }
-        }
-        _ => {}
-    }
 }
 
 fn verify_candidate_topology_and_deltas(evidence: &JsonValue, failures: &mut Vec<String>) {
@@ -3356,8 +3177,9 @@ fn verify_installed_content(
     root: &Path,
     bundle: &MermaidReferenceBundle,
     failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
+) -> Result<bool, XtaskError> {
     let node_modules = root.join("tools/mermaid-cli/node_modules");
+    let mut mermaid_runtime_verified = false;
     for reference in materialized_runtime_references(bundle)? {
         let expected = reference
             .installed_content_sha256
@@ -3369,15 +3191,18 @@ fn verify_installed_content(
                 ))
             })?;
         let package_root = node_modules.join(&reference.package);
-        verify_installed_package_content(
+        let package_verified = verify_installed_package_content(
             &package_root,
             &reference.package,
             &reference.version,
             expected,
             failures,
         )?;
+        if reference.package == bundle.release.package {
+            mermaid_runtime_verified = package_verified;
+        }
     }
-    Ok(())
+    Ok(mermaid_runtime_verified)
 }
 
 fn verify_installed_package_content(
@@ -3386,15 +3211,16 @@ fn verify_installed_package_content(
     version: &str,
     expected: &str,
     failures: &mut Vec<String>,
-) -> Result<(), XtaskError> {
+) -> Result<bool, XtaskError> {
     let actual = crate::cmd::upstream_svg_package_tree_sha256(package_root)?;
-    if actual != expected {
+    let verified = actual == expected;
+    if !verified {
         failures.push(format!(
             "installed {package}@{version} content drift at {}: expected {expected}, found {actual}",
             package_root.display()
         ));
     }
-    Ok(())
+    Ok(verified)
 }
 
 fn verify_repository_state(
@@ -3407,7 +3233,6 @@ fn verify_repository_state(
     verify_reference_cli_files(root, bundle, &mut failures)?;
     verify_upstream_provenance_sources(root, bundle, &mut failures)?;
     verify_source_checkouts(root, bundle, materialized, &mut failures)?;
-    verify_builtin_registry_inventory(root, bundle, materialized, &mut failures);
     let zenuml = bundle
         .external_diagrams
         .iter()
@@ -3427,7 +3252,8 @@ fn verify_repository_state(
         verify_workspace_graph(root, &expectation, bundle, materialized, &mut failures)?;
     }
     if materialized {
-        verify_installed_content(root, bundle, &mut failures)?;
+        let mermaid_runtime_verified = verify_installed_content(root, bundle, &mut failures)?;
+        verify_builtin_registry_inventory(root, bundle, mermaid_runtime_verified, &mut failures);
     }
 
     for (relative, expected) in expected_projections(bundle)? {
@@ -3588,14 +3414,16 @@ mod tests {
             .expect("hash companion package");
         let mut failures = Vec::new();
 
-        verify_installed_package_content(
-            temporary.path(),
-            "@mermaid-js/layout-test",
-            "1.0.0",
-            &expected,
-            &mut failures,
-        )
-        .expect("verify matching companion content");
+        assert!(
+            verify_installed_package_content(
+                temporary.path(),
+                "@mermaid-js/layout-test",
+                "1.0.0",
+                &expected,
+                &mut failures,
+            )
+            .expect("verify matching companion content")
+        );
         assert!(failures.is_empty());
 
         fs::write(
@@ -3603,14 +3431,16 @@ mod tests {
             "export const value = 2;\n",
         )
         .expect("mutate companion package");
-        verify_installed_package_content(
-            temporary.path(),
-            "@mermaid-js/layout-test",
-            "1.0.0",
-            &expected,
-            &mut failures,
-        )
-        .expect("verify changed companion content");
+        assert!(
+            !verify_installed_package_content(
+                temporary.path(),
+                "@mermaid-js/layout-test",
+                "1.0.0",
+                &expected,
+                &mut failures,
+            )
+            .expect("verify changed companion content")
+        );
 
         assert_eq!(failures.len(), 1);
         assert!(failures[0].contains("@mermaid-js/layout-test@1.0.0"));
@@ -3794,78 +3624,6 @@ mod tests {
     }
 
     #[test]
-    fn builtin_diagram_inventory_extractor_keeps_upstream_registration_order() {
-        assert_eq!(
-            normalize_typescript_source_path(Path::new(
-                r"packages\mermaid\src\diagrams\alpha\detector.ts",
-            ))
-            .expect("normalize Windows detector path"),
-            PathBuf::from("packages/mermaid/src/diagrams/alpha/detector.ts")
-        );
-        assert!(
-            normalize_typescript_source_path(Path::new(r"..\outside\detector.ts")).is_err(),
-            "path normalization must not admit a checkout escape"
-        );
-        assert!(
-            normalize_typescript_source_path(Path::new(r"C:\outside\detector.ts")).is_err(),
-            "path normalization must not admit a Windows drive path"
-        );
-
-        let orchestration = r#"
-import alpha from '../diagrams/alpha/detector.js';
-import { beta } from '../diagrams/beta/detector.js';
-
-const addDiagrams = () => {
-  registerDiagram(
-    'error',
-    {} as never,
-  );
-  registerLazyLoadedDiagrams(alpha, beta);
-};
-"#;
-        let ids = extract_builtin_diagram_ids(
-            orchestration,
-            Path::new("packages/mermaid/src/diagram-api/diagram-orchestration.ts"),
-            |path| {
-                let path = path.to_string_lossy();
-                assert!(
-                    !path.contains('\\'),
-                    "detector path must use portable forward slashes: {path}"
-                );
-                match path.as_ref() {
-                    "packages/mermaid/src/diagrams/alpha/detector.ts" => {
-                        Ok("const id = 'alpha';".to_string())
-                    }
-                    "packages/mermaid/src/diagrams/beta/detector.ts" => {
-                        Ok("const id = 'beta';".to_string())
-                    }
-                    other => Err(format!("unexpected detector path {other}")),
-                }
-            },
-        )
-        .expect("extract static registry entries");
-
-        assert_eq!(ids, ["error", "alpha", "beta"]);
-    }
-
-    #[test]
-    fn builtin_diagram_inventory_extractor_fails_closed_on_nonstatic_registration() {
-        let source = r#"
-const id = 'untracked';
-registerDiagram(id, {} as never);
-"#;
-
-        let error = extract_builtin_diagram_ids(
-            source,
-            Path::new("packages/mermaid/src/diagram-api/diagram-orchestration.ts"),
-            |_| unreachable!("no detector source should be read"),
-        )
-        .expect_err("non-static registration must fail");
-
-        assert!(error.contains("registerDiagram call does not use a static string id"));
-    }
-
-    #[test]
     fn builtin_layout_inventory_extractor_includes_conditional_default_loaders() {
         let source = r#"
 const registerDefaultLayoutLoaders = () => {
@@ -3914,71 +3672,6 @@ registerDefaultLayoutLoaders();
                 .to_string()
                 .contains("built-in layout registry inventory has an invalid source or is empty")
         );
-    }
-
-    #[test]
-    fn materialized_registry_gate_rejects_an_unrecorded_upstream_registration() {
-        let repository_root = crate::cmd::workspace_root();
-        let mut bundle =
-            load_bundle(&repository_root.join(BUNDLE_RELATIVE_PATH)).expect("load bundle");
-        let temporary = tempfile::tempdir().expect("temporary checkout root");
-        let checkout = temporary.path().join(
-            bundle
-                .release
-                .source
-                .checkout_path
-                .as_deref()
-                .expect("Mermaid checkout path"),
-        );
-        let diagrams = r#"
-import alpha from '../diagrams/alpha/detector.js';
-import beta from '../diagrams/beta/detector.js';
-
-registerLazyLoadedDiagrams(alpha, beta);
-"#;
-        let layouts = r#"
-const registerDefaultLayoutLoaders = () => {
-  registerLayoutLoaders([
-    {
-      name: 'dagre',
-    },
-  ]);
-};
-registerDefaultLayoutLoaders();
-"#;
-        let diagram_source_path = checkout.join(&bundle.builtin_registry.diagrams.source_path);
-        let layout_source_path = checkout.join(&bundle.builtin_registry.layouts.source_path);
-        let alpha_path = checkout.join("packages/mermaid/src/diagrams/alpha/detector.ts");
-        let beta_path = checkout.join("packages/mermaid/src/diagrams/beta/detector.ts");
-        for path in [
-            &diagram_source_path,
-            &layout_source_path,
-            &alpha_path,
-            &beta_path,
-        ] {
-            fs::create_dir_all(path.parent().expect("source parent"))
-                .expect("create source parent");
-        }
-        fs::write(&diagram_source_path, diagrams).expect("write diagram registry");
-        fs::write(&layout_source_path, layouts).expect("write layout registry");
-        fs::write(&alpha_path, "const id = 'alpha';").expect("write alpha detector");
-        fs::write(&beta_path, "const id = 'beta';").expect("write beta detector");
-        bundle.builtin_registry.diagrams.ids = vec!["alpha".to_string(), "beta".to_string()];
-        bundle.builtin_registry.diagrams.source_sha256 =
-            crate::util::sha256_hex(diagrams.as_bytes());
-        bundle.builtin_registry.layouts.ids = vec!["dagre".to_string()];
-        bundle.builtin_registry.layouts.source_sha256 = crate::util::sha256_hex(layouts.as_bytes());
-
-        let mut failures = Vec::new();
-        verify_builtin_registry_inventory(temporary.path(), &bundle, true, &mut failures);
-        assert!(failures.is_empty(), "{failures:?}");
-
-        bundle.builtin_registry.diagrams.ids.pop();
-        verify_builtin_registry_inventory(temporary.path(), &bundle, true, &mut failures);
-        assert!(failures.iter().any(|failure| {
-            failure.contains("built-in diagram registry inventory drift")
-                && failure.contains("beta")
-        }));
     }
 
     #[test]

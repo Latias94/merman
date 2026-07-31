@@ -108,6 +108,24 @@ pub(crate) struct HostArtifactProfile {
     pub(crate) target_kinds: Vec<String>,
 }
 
+/// The validated artifact recipes projected from one descriptor load.
+#[derive(Debug)]
+pub(crate) struct ArtifactProfileCatalog {
+    profile_count: usize,
+    host_profiles: Vec<HostArtifactProfile>,
+    wasm_profiles: Vec<WasmArtifactProfile>,
+}
+
+impl ArtifactProfileCatalog {
+    pub(crate) fn profile_count(&self) -> usize {
+        self.profile_count
+    }
+
+    pub(crate) fn into_profiles(self) -> (Vec<HostArtifactProfile>, Vec<WasmArtifactProfile>) {
+        (self.host_profiles, self.wasm_profiles)
+    }
+}
+
 impl WasmArtifactProfile {
     pub(crate) fn configure_cargo_command(&self, command: &mut Command) {
         command.arg("--manifest-path").arg(&self.manifest_path);
@@ -937,16 +955,18 @@ pub(crate) fn verify_artifact_profiles(args: Vec<String>) -> Result<(), String> 
         }
         index += 1;
     }
-    let descriptor = read_descriptor(&descriptor_path)?;
-    let context = ValidationContext::load(&root)?;
-    validate_descriptor(&descriptor, &context)?;
-    let wasm_profiles = wasm_artifact_profiles(&descriptor)?;
-    validate_wasm_owner_closures(&wasm_profiles)?;
+    let catalog = load_artifact_profile_catalog_from(&root, &descriptor_path)?;
     println!(
         "validated {} exact artifact build profile(s)",
-        descriptor.profiles.len()
+        catalog.profile_count()
     );
     Ok(())
+}
+
+/// Loads every validated host and WASM artifact recipe from one descriptor pass.
+pub(crate) fn load_artifact_profile_catalog() -> Result<ArtifactProfileCatalog, String> {
+    let root = super::workspace_root();
+    load_artifact_profile_catalog_from(&root, &root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH))
 }
 
 /// Loads every exact artifact recipe that produces the canonical browser or
@@ -958,23 +978,47 @@ pub(crate) fn verify_artifact_profiles(args: Vec<String>) -> Result<(), String> 
 /// otherwise it cannot be measured as one stable `.wasm` artifact.
 pub(crate) fn load_wasm_size_artifact_profiles() -> Result<Vec<WasmArtifactProfile>, String> {
     let root = super::workspace_root();
-    let descriptor = read_descriptor(&root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH))?;
-    let context = ValidationContext::load(&root)?;
-    validate_descriptor(&descriptor, &context)?;
-
+    let descriptor =
+        load_validated_descriptor(&root, &root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH))?;
     let profiles = wasm_artifact_profiles(&descriptor)?;
     validate_wasm_owner_closures(&profiles)?;
     Ok(profiles)
 }
 
-/// Loads every validated exact recipe whose build target is the executing host.
-pub(crate) fn load_host_artifact_profiles() -> Result<Vec<HostArtifactProfile>, String> {
-    let root = super::workspace_root();
-    let descriptor = read_descriptor(&root.join(ARTIFACT_PROFILE_DESCRIPTOR_PATH))?;
-    let context = ValidationContext::load(&root)?;
-    validate_descriptor(&descriptor, &context)?;
+fn load_artifact_profile_catalog_from(
+    root: &Path,
+    descriptor_path: &Path,
+) -> Result<ArtifactProfileCatalog, String> {
+    let descriptor = load_validated_descriptor(root, descriptor_path)?;
+    artifact_profile_catalog(descriptor)
+}
 
-    Ok(descriptor
+fn artifact_profile_catalog(
+    descriptor: ArtifactProfileDescriptor,
+) -> Result<ArtifactProfileCatalog, String> {
+    let profile_count = descriptor.profiles.len();
+    let wasm_profiles = wasm_artifact_profiles(&descriptor)?;
+    validate_wasm_owner_closures(&wasm_profiles)?;
+    let host_profiles = host_artifact_profiles(descriptor);
+    Ok(ArtifactProfileCatalog {
+        profile_count,
+        host_profiles,
+        wasm_profiles,
+    })
+}
+
+fn load_validated_descriptor(
+    root: &Path,
+    descriptor_path: &Path,
+) -> Result<ArtifactProfileDescriptor, String> {
+    let descriptor = read_descriptor(descriptor_path)?;
+    let context = ValidationContext::load(root)?;
+    validate_descriptor(&descriptor, &context)?;
+    Ok(descriptor)
+}
+
+fn host_artifact_profiles(descriptor: ArtifactProfileDescriptor) -> Vec<HostArtifactProfile> {
+    descriptor
         .profiles
         .into_iter()
         .filter(|profile| matches!(&profile.cargo.build_target, BuildTarget::Host))
@@ -987,7 +1031,7 @@ pub(crate) fn load_host_artifact_profiles() -> Result<Vec<HostArtifactProfile>, 
             target_name: profile.cargo.target.name,
             target_kinds: profile.cargo.target.kinds,
         })
-        .collect())
+        .collect()
 }
 
 /// Loads one validated exact WASM artifact recipe by descriptor ID.
@@ -1141,6 +1185,43 @@ mod tests {
     fn committed_profiles_match_current_cargo_and_capability_authorities() {
         let value = committed_value();
         validate_fixture(value).unwrap();
+    }
+
+    #[test]
+    fn catalog_projects_host_and_wasm_profiles_from_one_validated_descriptor() {
+        let descriptor = committed_descriptor();
+        let expected_profile_count = descriptor.profiles.len();
+        let expected_host_ids = descriptor
+            .profiles
+            .iter()
+            .filter(|profile| matches!(&profile.cargo.build_target, BuildTarget::Host))
+            .map(|profile| profile.id.clone())
+            .collect::<BTreeSet<_>>();
+        let expected_wasm_ids = descriptor
+            .profiles
+            .iter()
+            .filter(|profile| matches!(profile.semantic_target.as_str(), "web" | "typst"))
+            .map(|profile| profile.id.clone())
+            .collect::<BTreeSet<_>>();
+        validate_descriptor(&descriptor, context()).unwrap();
+
+        let catalog = artifact_profile_catalog(descriptor).unwrap();
+        assert_eq!(catalog.profile_count(), expected_profile_count);
+        let (host_profiles, wasm_profiles) = catalog.into_profiles();
+        assert_eq!(
+            host_profiles
+                .into_iter()
+                .map(|profile| profile.id)
+                .collect::<BTreeSet<_>>(),
+            expected_host_ids
+        );
+        assert_eq!(
+            wasm_profiles
+                .into_iter()
+                .map(|profile| profile.id)
+                .collect::<BTreeSet<_>>(),
+            expected_wasm_ids
+        );
     }
 
     #[test]
