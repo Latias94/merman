@@ -19,10 +19,16 @@ cargo run --release -p xtask -- compare-all-svgs \
   --write-root-residual-candidate
 ```
 
-The 2026-07-26 candidate contains 1,634 observations across 25 family ids. For 1,633 entries,
+The 2026-07-26 candidate contained 1,634 observations across 25 family ids. For 1,633 entries,
 normalized descendants pass ordinary `parity`; the only `structure` descendant profile is the
 Ishikawa hand-drawn fixture. Candidate generation rejects every other mismatch, so the catalog
 cannot absorb parser, semantic, DOM-order, label-wrapper, or compared descendant-geometry failures.
+
+The current candidate contains 1,633 observations across 25 family ids. Fixture-scoped Node KaTeX
+renders are excluded from exact root approval because their local MathML viewport is measured by
+the host browser. Those fixtures still require successful rendered-output and browser-measurement
+evidence, ordinary `parity` for the complete normalized descendant tree, and a fail-closed root
+structure contract. Their positive finite viewport dimensions remain diagnostic output.
 
 Each stored entry includes:
 
@@ -40,7 +46,7 @@ a new mismatch appears, or descendants no longer satisfy their declared profile.
 | Evidence id | Kind | Entries | Families | Source-backed classification |
 | --- | --- | ---: | --- | --- |
 | `browser-root-bbox` | `browser-measurement` | 1,460 | Architecture 103; Class 207; ER 51; Event Modeling 1; Flowchart 543; GitGraph 209; Ishikawa 11; Kanban 1; Mindmap 95; Requirement 42; Sankey 3; State 177; Swimlane 2; Timeline 12; Treemap 3 | Pinned Mermaid derives the final root from `setupGraphViewbox()`, `setupViewPortForSVG()`, or a family-local SVG `getBBox()`. Those paths measure the rendered DOM, including text, strokes, transforms, fallback fonts, and the Chromium float lattice. Merman uses the same padding and sizing algorithms over deterministic emitted-content bounds. |
-| `browser-derived-layout` | `browser-measurement` | 122 | Block 41; Journey 4; Pie 43; Railroad 6; Railroad ABNF 2; Railroad EBNF 3; Railroad PEG 2; Sequence 5; TreeView 16 | These families compute root values explicitly, but their upstream dimensions consume `getBBox()`, `getBoundingClientRect()`, or `getComputedTextLength()` earlier in layout. The root residual is therefore the propagated browser measurement, not a second root formula. |
+| `browser-derived-layout` | `browser-measurement` | 121 | Block 41; Journey 4; Pie 43; Railroad 6; Railroad ABNF 2; Railroad EBNF 3; Railroad PEG 2; Sequence 4; TreeView 16 | These families compute root values explicitly, but their upstream dimensions consume `getBBox()`, `getBoundingClientRect()`, or `getComputedTextLength()` earlier in layout. The root residual is therefore the propagated browser measurement, not a second root formula. |
 | `c4-headless-layout` | `source-backed-layout-approximation` | 51 | C4 51 | C4 computes its root from `screenBounds` rather than final SVG `getBBox()`. Merman ports the pinned `Bounds` and `drawInsideBoundary()` algorithms, but replaces browser/screen-dependent text and container facts with the operation's deterministic measurement and explicit container dimensions. The root-only remainder is retained as the bounded headless-layout approximation. |
 | `ishikawa-roughjs` | `rough-js-implementation` | 1 | Ishikawa 1 | The hand-drawn fixture uses RoughJS geometry upstream. Descendants are intentionally compared with `structure`; the exact root bbox follows RoughJS path jitter and stroke bounds that Merman does not reproduce byte-for-byte. |
 
@@ -89,6 +95,27 @@ the pinned layout-adapter DOM. In every case the ordinary `parity` comparison st
 complete normalized descendant tree, so the catalog records only the remaining browser-owned root
 measurement. Contract revision, schema version, and source-backed evidence rationales are
 unchanged.
+
+## 2026-07-31 Browser Math Portability Review
+
+The exact CI recipe was repeated on macOS and Linux after Node KaTeX became a required fixture-level
+renderer. Native MathML produced different root viewports across the two host browser and font
+stacks even though the normalized descendants passed `parity`. Recording either platform's value
+as the single approved local signature would make the catalog host-specific.
+
+The comparison harness now treats only the root viewport of a fixture that actually invoked Node
+KaTeX as diagnostic when `parity-root` is requested. It still requires successful browser evidence,
+compares all normalized descendants with ordinary `parity`, requires the root `viewBox`, `max-width`,
+width/height contract, origin, and non-numeric style to remain valid, and leaves every non-math
+fixture on the exact fail-closed root catalog. Reports include exact and diagnostic-only fixture
+counts plus every browser-math root delta. No upstream/local dimension-matching tolerance or
+fixture-keyed production behavior was added.
+
+This review removed the browser-probed Sequence math observation
+`upstream_docs_math_sequence_002`, reducing `browser-derived-layout` from 122 to 121 and the catalog
+from 1,634 to 1,633 entries. Five Mindmap signatures were also regenerated after their local root
+values changed; their input and upstream SVG hashes were unchanged, their descendants retained
+`parity`, and their existing `browser-root-bbox` classification still applies.
 
 ## Production Boundary
 

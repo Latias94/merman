@@ -342,7 +342,35 @@ impl ObservedRenderOperations {
 #[derive(Debug)]
 pub(crate) struct ObservedNodeMathRenderer {
     inner: Arc<dyn merman::svg::MathRenderer + Send + Sync>,
-    successful_calls: AtomicUsize,
+    successful_renders: AtomicUsize,
+    successful_measurements: AtomicUsize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct NodeMathEvidence {
+    successful_renders: usize,
+    successful_measurements: usize,
+}
+
+impl NodeMathEvidence {
+    fn since(self, before: Self) -> Self {
+        Self {
+            successful_renders: self
+                .successful_renders
+                .saturating_sub(before.successful_renders),
+            successful_measurements: self
+                .successful_measurements
+                .saturating_sub(before.successful_measurements),
+        }
+    }
+
+    pub(crate) const fn successful_renders(self) -> usize {
+        self.successful_renders
+    }
+
+    pub(crate) const fn successful_measurements(self) -> usize {
+        self.successful_measurements
+    }
 }
 
 impl ObservedNodeMathRenderer {
@@ -351,17 +379,28 @@ impl ObservedNodeMathRenderer {
     ) -> Arc<ObservedNodeMathRenderer> {
         Arc::new(Self {
             inner,
-            successful_calls: AtomicUsize::new(0),
+            successful_renders: AtomicUsize::new(0),
+            successful_measurements: AtomicUsize::new(0),
         })
     }
 
-    fn snapshot(&self) -> usize {
-        self.successful_calls.load(Ordering::Relaxed)
+    fn snapshot(&self) -> NodeMathEvidence {
+        NodeMathEvidence {
+            successful_renders: self.successful_renders.load(Ordering::Relaxed),
+            successful_measurements: self.successful_measurements.load(Ordering::Relaxed),
+        }
     }
 
-    fn observe<T>(&self, result: Option<T>) -> Option<T> {
+    fn observe_render<T>(&self, result: Option<T>) -> Option<T> {
         if result.is_some() {
-            self.successful_calls.fetch_add(1, Ordering::Relaxed);
+            self.successful_renders.fetch_add(1, Ordering::Relaxed);
+        }
+        result
+    }
+
+    fn observe_measurement<T>(&self, result: Option<T>) -> Option<T> {
+        if result.is_some() {
+            self.successful_measurements.fetch_add(1, Ordering::Relaxed);
         }
         result
     }
@@ -369,7 +408,7 @@ impl ObservedNodeMathRenderer {
 
 impl merman::svg::MathRenderer for ObservedNodeMathRenderer {
     fn render_html_label(&self, text: &str, config: &merman::MermaidConfig) -> Option<String> {
-        self.observe(self.inner.render_html_label(text, config))
+        self.observe_render(self.inner.render_html_label(text, config))
     }
 
     fn render_sequence_html_label(
@@ -377,7 +416,7 @@ impl merman::svg::MathRenderer for ObservedNodeMathRenderer {
         text: &str,
         config: &merman::MermaidConfig,
     ) -> Option<String> {
-        self.observe(self.inner.render_sequence_html_label(text, config))
+        self.observe_render(self.inner.render_sequence_html_label(text, config))
     }
 
     fn measure_html_label(
@@ -388,10 +427,13 @@ impl merman::svg::MathRenderer for ObservedNodeMathRenderer {
         max_width_px: Option<f64>,
         wrap_mode: merman::svg::WrapMode,
     ) -> Option<merman::svg::TextMetrics> {
-        self.observe(
-            self.inner
-                .measure_html_label(text, config, style, max_width_px, wrap_mode),
-        )
+        self.observe_measurement(self.inner.measure_html_label(
+            text,
+            config,
+            style,
+            max_width_px,
+            wrap_mode,
+        ))
     }
 
     fn measure_sequence_html_label(
@@ -399,7 +441,7 @@ impl merman::svg::MathRenderer for ObservedNodeMathRenderer {
         text: &str,
         config: &merman::MermaidConfig,
     ) -> Option<merman::svg::TextMetrics> {
-        self.observe(self.inner.measure_sequence_html_label(text, config))
+        self.observe_measurement(self.inner.measure_sequence_html_label(text, config))
     }
 }
 
@@ -422,7 +464,7 @@ pub(crate) fn prepared_semantic_requires_math(
 pub(crate) fn begin_required_math_evidence(
     fixture: &str,
     renderer: Option<&ObservedNodeMathRenderer>,
-) -> Result<usize, String> {
+) -> Result<NodeMathEvidence, String> {
     renderer
         .map(ObservedNodeMathRenderer::snapshot)
         .ok_or_else(|| {
@@ -433,15 +475,20 @@ pub(crate) fn begin_required_math_evidence(
 pub(crate) fn finish_required_math_evidence(
     fixture: &str,
     renderer: &ObservedNodeMathRenderer,
-    before: usize,
-) -> Result<usize, String> {
-    let successful_calls = renderer.snapshot().saturating_sub(before);
-    if successful_calls == 0 {
+    before: NodeMathEvidence,
+) -> Result<NodeMathEvidence, String> {
+    let evidence = renderer.snapshot().since(before);
+    if evidence.successful_measurements == 0 {
         return Err(format!(
-            "math fixture {fixture} produced no successful Node KaTeX render or measurement evidence"
+            "math fixture {fixture} produced no successful Node KaTeX browser measurement evidence"
         ));
     }
-    Ok(successful_calls)
+    if evidence.successful_renders == 0 {
+        return Err(format!(
+            "math fixture {fixture} produced no successful Node KaTeX rendered-output evidence"
+        ));
+    }
+    Ok(evidence)
 }
 
 fn format_measurement_identity(identity: &merman::svg::TextMeasurementProfileIdentity) -> String {
@@ -484,6 +531,7 @@ fn validate_measurement_provenance(
 
 struct CanonicalCompareState {
     root_deltas: Vec<super::RootDelta>,
+    root_coverage: super::RootCoverageSummary,
     observed_operations: ObservedRenderOperations,
 }
 
@@ -690,9 +738,28 @@ pub(crate) enum CompareFixtureResult {
         local_svg: String,
         compare_dom: bool,
         compare_svg_when_dom_disabled: bool,
+        dom_mode_override: Option<svgdom::DomMode>,
         issues: Vec<String>,
         notes: Vec<String>,
     },
+}
+
+pub(crate) fn comparison_mode_for_browser_measured_math(
+    requested: svgdom::DomMode,
+    check_dom: bool,
+    has_browser_measurement: bool,
+) -> svgdom::DomMode {
+    if check_dom && has_browser_measurement && requested == svgdom::DomMode::ParityRoot {
+        svgdom::DomMode::Parity
+    } else {
+        requested
+    }
+}
+
+pub(crate) fn browser_measured_math_root_note(stem: &str) -> String {
+    format!(
+        "observed {stem}: numeric root dimensions are diagnostic-only because Node KaTeX uses host browser MathML measurement; the root structure remains fail-closed"
+    )
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -773,6 +840,7 @@ pub(crate) fn run_canonical_svg_compare(
         .with_environment(environment);
 
     let dom_mode = request.dom_mode.as_deref().unwrap_or(fact.default_dom_mode);
+    let requested_dom_mode = svgdom::DomMode::parse(dom_mode);
     let dom_decimals = request.dom_decimals.unwrap_or(3);
     let should_report_root = fact.diagnostics == DiagnosticsPolicy::RootDelta
         && (request.report_root || matches!(dom_mode.trim(), "parity-root" | "parity_root"));
@@ -781,6 +849,7 @@ pub(crate) fn run_canonical_svg_compare(
         .unwrap_or(super::DEFAULT_ROOT_DELTA_REPORT_LIMIT);
     let mut state = CanonicalCompareState {
         root_deltas: Vec::new(),
+        root_coverage: super::RootCoverageSummary::default(),
         observed_operations,
     };
 
@@ -897,46 +966,82 @@ pub(crate) fn run_canonical_svg_compare(
                 .observe(input.stem, rendered.report())?;
             let local_svg = rendered.into_svg();
             let mut fixture_notes = Vec::new();
-            if let Some(before) = required_math_evidence_before {
+            let browser_measured_math = if let Some(before) = required_math_evidence_before {
                 let observed = observed_node_math_renderer
                     .as_deref()
                     .expect("required math evidence checked renderer availability");
-                let successful_calls = finish_required_math_evidence(input.stem, observed, before)?;
+                let evidence = finish_required_math_evidence(input.stem, observed, before)?;
                 fixture_notes.push(format!(
-                    "observed {}: Node KaTeX successful calls={successful_calls}",
-                    input.stem
+                    "observed {}: Node KaTeX successful renders={} browser measurements={}",
+                    input.stem,
+                    evidence.successful_renders(),
+                    evidence.successful_measurements()
                 ));
+                true
+            } else {
+                false
+            };
+
+            let fixture_dom_mode = comparison_mode_for_browser_measured_math(
+                requested_dom_mode,
+                request.check_dom,
+                browser_measured_math,
+            );
+            let dom_mode_override =
+                (fixture_dom_mode != requested_dom_mode).then_some(fixture_dom_mode);
+            if dom_mode_override.is_some() {
+                fixture_notes.push(browser_measured_math_root_note(input.stem));
             }
 
             let mut issues = Vec::new();
-            if should_report_root {
-                match super::collect_root_delta(input.stem, input.upstream_svg, &local_svg) {
-                    Ok(delta) => state.root_deltas.push(delta),
-                    Err(error) => {
-                        issues.push(format!("root parse failed for {}: {error}", input.stem));
-                    }
-                }
+            let parity_root_coverage =
+                request.check_dom && requested_dom_mode == svgdom::DomMode::ParityRoot;
+            if let Err(error) = super::record_fixture_root_evidence(
+                &mut state.root_coverage,
+                &mut state.root_deltas,
+                input.stem,
+                input.upstream_svg,
+                &local_svg,
+                super::RootEvidencePolicy {
+                    parity_root_requested: parity_root_coverage,
+                    browser_math_dimensions_are_diagnostic: dom_mode_override.is_some(),
+                    report_delta: should_report_root,
+                },
+            ) {
+                issues.push(error);
             }
 
-            Ok(match fact.compare_policy {
-                FixtureComparePolicy::Dom => CompareFixtureResult::Rendered {
+            Ok(match (fact.compare_policy, dom_mode_override) {
+                (FixtureComparePolicy::Dom, None) => CompareFixtureResult::Rendered {
                     render_evidence,
                     local_svg,
                     compare_dom: true,
                     issues,
                     notes: fixture_notes,
                 },
-                FixtureComparePolicy::DomAndRawSvgFallback => {
+                (FixtureComparePolicy::Dom, dom_mode_override) => {
+                    CompareFixtureResult::RenderedWithPolicy {
+                        render_evidence,
+                        local_svg,
+                        compare_dom: true,
+                        compare_svg_when_dom_disabled: false,
+                        dom_mode_override,
+                        issues,
+                        notes: fixture_notes,
+                    }
+                }
+                (FixtureComparePolicy::DomAndRawSvgFallback, dom_mode_override) => {
                     CompareFixtureResult::RenderedWithPolicy {
                         render_evidence,
                         local_svg,
                         compare_dom: true,
                         compare_svg_when_dom_disabled: true,
+                        dom_mode_override,
                         issues,
                         notes: fixture_notes,
                     }
                 }
-                FixtureComparePolicy::Specialist => {
+                (FixtureComparePolicy::Specialist, _) => {
                     return Err(format!(
                         "specialist compare policy reached canonical runner for {}",
                         fact.diagram
@@ -951,6 +1056,9 @@ pub(crate) fn run_canonical_svg_compare(
         },
         |state, report, paths, options, failures, notes| {
             state.observed_operations.write_report(report);
+            if request.check_dom && requested_dom_mode == svgdom::DomMode::ParityRoot {
+                state.root_coverage.write_report(report);
+            }
             if should_report_root {
                 super::write_root_deltas_report(report, &mut state.root_deltas, root_report_limit);
             }
@@ -975,11 +1083,18 @@ pub(crate) fn write_verification_policy_metadata(
     root_diagnostics_reported: bool,
 ) {
     let effective_dom_mode = svgdom::DomMode::parse(dom_mode);
+    let browser_math_root_policy = matches!(
+        fact.specialist,
+        SpecialistHook::FlowchartAdapter | SpecialistHook::SequenceMath
+    ) && effective_dom_mode == svgdom::DomMode::ParityRoot;
     let normalization = if request.check_dom {
         match effective_dom_mode {
             svgdom::DomMode::Strict => "svgdom/strict",
             svgdom::DomMode::Structure => "svgdom/structure",
             svgdom::DomMode::Parity => "svgdom/parity",
+            svgdom::DomMode::ParityRoot if browser_math_root_policy => {
+                "svgdom/parity-root; browser-measured math uses descendant parity plus a structural root gate"
+            }
             svgdom::DomMode::ParityRoot => "svgdom/parity-root",
         }
     } else {
@@ -988,6 +1103,9 @@ pub(crate) fn write_verification_policy_metadata(
     let root_coverage = match (request.check_dom, effective_dom_mode) {
         (false, _) => "disabled (DOM check not requested)",
         (true, svgdom::DomMode::Strict) => "checked (svgdom/strict root attributes)",
+        (true, svgdom::DomMode::ParityRoot) if browser_math_root_policy => {
+            "fixture-scoped (exact viewport by default; browser-measured math dimensions diagnostic-only after structural validation)"
+        }
         (true, svgdom::DomMode::ParityRoot) => "checked (svgdom/parity-root viewport)",
         (true, svgdom::DomMode::Structure | svgdom::DomMode::Parity) => {
             "not-checked (selected DOM mode omits root viewport)"
@@ -1197,6 +1315,7 @@ where
                 local_svg,
                 compare_dom,
                 compare_svg_when_dom_disabled,
+                dom_mode_override,
                 issues,
                 notes: fixture_notes,
             } => {
@@ -1215,7 +1334,7 @@ where
                     stem,
                     &upstream_svg,
                     &upstream_path,
-                    mode,
+                    dom_mode_override.unwrap_or(mode),
                     run.dom_decimals,
                 )
                 .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
@@ -1467,7 +1586,7 @@ pub(crate) fn write_notes_section(report: &mut String, notes: &[String]) {
 
     let _ = writeln!(
         report,
-        "\n## Skipped\n\nThese fixtures are intentionally skipped (feature gaps / deferred parity).\n"
+        "\n## Notes\n\nFixture-scoped evidence, accepted residual profiles, and intentional skips.\n"
     );
     for note in notes {
         let _ = writeln!(report, "- {note}");
@@ -1481,7 +1600,8 @@ mod tests {
 
     #[derive(Debug)]
     struct TestMathRenderer {
-        succeeds: bool,
+        renders: bool,
+        measures: bool,
     }
 
     impl merman::svg::MathRenderer for TestMathRenderer {
@@ -1490,8 +1610,71 @@ mod tests {
             _text: &str,
             _config: &merman::MermaidConfig,
         ) -> Option<String> {
-            self.succeeds.then(|| "<span>math</span>".to_string())
+            self.renders.then(|| "<span>math</span>".to_string())
         }
+
+        fn measure_sequence_html_label(
+            &self,
+            _text: &str,
+            _config: &merman::MermaidConfig,
+        ) -> Option<merman::svg::TextMetrics> {
+            self.measures.then_some(merman::svg::TextMetrics {
+                width: 10.0,
+                height: 20.0,
+                line_count: 1,
+            })
+        }
+    }
+
+    #[test]
+    fn browser_measured_math_keeps_only_the_root_viewport_diagnostic() {
+        assert_eq!(
+            comparison_mode_for_browser_measured_math(svgdom::DomMode::ParityRoot, true, true),
+            svgdom::DomMode::Parity
+        );
+        assert_eq!(
+            comparison_mode_for_browser_measured_math(svgdom::DomMode::ParityRoot, true, false),
+            svgdom::DomMode::ParityRoot
+        );
+        assert_eq!(
+            comparison_mode_for_browser_measured_math(svgdom::DomMode::Strict, true, true),
+            svgdom::DomMode::Strict
+        );
+        assert_eq!(
+            comparison_mode_for_browser_measured_math(svgdom::DomMode::ParityRoot, false, true),
+            svgdom::DomMode::ParityRoot
+        );
+    }
+
+    #[test]
+    fn browser_measured_math_still_gates_the_complete_descendant_tree() {
+        let upstream = r#"<svg width="100%" viewBox="0 0 100 50" style="max-width: 100px; background-color: white;"><g class="semantic"><text>math</text></g></svg>"#;
+        let root_only_drift = r#"<svg width="100%" viewBox="0 0 102 54" style="max-width: 102px; background-color: white;"><g class="semantic"><text>math</text></g></svg>"#;
+        let descendant_drift = r#"<svg width="100%" viewBox="0 0 102 54" style="max-width: 102px; background-color: white;"><g class="changed"><text>math</text></g></svg>"#;
+        let mode =
+            comparison_mode_for_browser_measured_math(svgdom::DomMode::ParityRoot, true, true);
+        let profile = svgdom::DomComparisonProfile::from_mode(mode);
+
+        compare_dom_signatures(
+            "math-root-only",
+            upstream,
+            root_only_drift,
+            Path::new("upstream.svg"),
+            Path::new("local.svg"),
+            profile,
+            3,
+        )
+        .expect("browser-dependent root dimensions should be diagnostic");
+        compare_dom_signatures(
+            "math-descendant-drift",
+            upstream,
+            descendant_drift,
+            Path::new("upstream.svg"),
+            Path::new("local.svg"),
+            profile,
+            3,
+        )
+        .expect_err("math descendants must remain fail-closed");
     }
 
     #[test]
@@ -1501,7 +1684,10 @@ mod tests {
         assert!(missing.contains("math-case"));
         assert!(missing.contains("unavailable"));
 
-        let renderer = ObservedNodeMathRenderer::new(Arc::new(TestMathRenderer { succeeds: true }));
+        let renderer = ObservedNodeMathRenderer::new(Arc::new(TestMathRenderer {
+            renders: true,
+            measures: true,
+        }));
         let before = begin_required_math_evidence("math-case", Some(renderer.as_ref()))
             .expect("renderer snapshot");
         let rendered = merman::svg::MathRenderer::render_sequence_html_label(
@@ -1510,10 +1696,16 @@ mod tests {
             &merman::MermaidConfig::default(),
         );
         assert!(rendered.is_some());
-        assert_eq!(
-            finish_required_math_evidence("math-case", renderer.as_ref(), before),
-            Ok(1)
+        let measured = merman::svg::MathRenderer::measure_sequence_html_label(
+            renderer.as_ref(),
+            "$$x$$",
+            &merman::MermaidConfig::default(),
         );
+        assert!(measured.is_some());
+        let evidence = finish_required_math_evidence("math-case", renderer.as_ref(), before)
+            .expect("render and browser measurement evidence");
+        assert_eq!(evidence.successful_renders(), 1);
+        assert_eq!(evidence.successful_measurements(), 1);
         let before = begin_required_math_evidence("next-math-case", Some(renderer.as_ref()))
             .expect("renderer snapshot");
         let error = finish_required_math_evidence("next-math-case", renderer.as_ref(), before)
@@ -1521,8 +1713,10 @@ mod tests {
         assert!(error.contains("next-math-case"));
         assert!(error.contains("no successful"));
 
-        let declining =
-            ObservedNodeMathRenderer::new(Arc::new(TestMathRenderer { succeeds: false }));
+        let declining = ObservedNodeMathRenderer::new(Arc::new(TestMathRenderer {
+            renders: false,
+            measures: false,
+        }));
         let before = begin_required_math_evidence("declined-case", Some(declining.as_ref()))
             .expect("renderer snapshot");
         assert!(
@@ -1537,6 +1731,33 @@ mod tests {
             .expect_err("declined calls are not evidence");
         assert!(error.contains("declined-case"));
         assert!(error.contains("no successful"));
+    }
+
+    #[test]
+    fn rendered_math_without_browser_measurement_does_not_relax_root_coverage() {
+        let renderer = ObservedNodeMathRenderer::new(Arc::new(TestMathRenderer {
+            renders: true,
+            measures: false,
+        }));
+        let before = begin_required_math_evidence("render-only", Some(renderer.as_ref()))
+            .expect("renderer snapshot");
+        assert!(
+            merman::svg::MathRenderer::render_html_label(
+                renderer.as_ref(),
+                "$$x$$",
+                &merman::MermaidConfig::default(),
+            )
+            .is_some()
+        );
+
+        let error = finish_required_math_evidence("render-only", renderer.as_ref(), before)
+            .expect_err("render-only success is not browser measurement evidence");
+        assert!(error.contains("render-only"));
+        assert!(error.contains("browser measurement"));
+        assert_eq!(
+            comparison_mode_for_browser_measured_math(svgdom::DomMode::ParityRoot, true, false),
+            svgdom::DomMode::ParityRoot
+        );
     }
 
     #[test]
@@ -1601,9 +1822,13 @@ mod tests {
 
         write_verification_policy_metadata(&mut report, &request, fact, "parity-root", true);
 
-        assert!(report.contains("Normalization policy: `svgdom/parity-root`"));
+        assert!(report.contains(
+            "Normalization policy: `svgdom/parity-root; browser-measured math uses descendant parity plus a structural root gate`"
+        ));
         assert!(report.contains("exact fail-closed root residual registry"));
-        assert!(report.contains("Root coverage: `checked (svgdom/parity-root viewport)`"));
+        assert!(report.contains(
+            "Root coverage: `fixture-scoped (exact viewport by default; browser-measured math dimensions diagnostic-only after structural validation)`"
+        ));
         assert!(report.contains("Root-delta diagnostics: `reported`"));
     }
 

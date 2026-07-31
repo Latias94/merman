@@ -24588,8 +24588,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 627.851px; background-color: white;",
-        "view_box": "5 5 627.851 363.45",
+        "style": "max-width: 627.852px; background-color: white;",
+        "view_box": "5 5 627.852 363.492",
         "width": "100%",
         "height": null
       },
@@ -24848,8 +24848,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 388.941px; background-color: white;",
-        "view_box": "5 5 388.941 288.837",
+        "style": "max-width: 372.24px; background-color: white;",
+        "view_box": "5 5 372.24 288.688",
         "width": "100%",
         "height": null
       },
@@ -24868,8 +24868,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 388.941px; background-color: white;",
-        "view_box": "5 5 388.941 288.837",
+        "style": "max-width: 372.24px; background-color: white;",
+        "view_box": "5 5 372.24 288.688",
         "width": "100%",
         "height": null
       },
@@ -25108,8 +25108,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 666.907px; background-color: white;",
-        "view_box": "5 5 666.907 466.423",
+        "style": "max-width: 687.398px; background-color: white;",
+        "view_box": "5 5 687.398 484.012",
         "width": "100%",
         "height": null
       },
@@ -25608,8 +25608,8 @@
         "height": null
       },
       "local": {
-        "style": "max-width: 911.103px; background-color: white;",
-        "view_box": "5 5 911.103 450.938",
+        "style": "max-width: 911.096px; background-color: white;",
+        "view_box": "5 5 911.096 450.938",
         "width": "100%",
         "height": null
       },
@@ -28470,26 +28470,6 @@
       "local": {
         "style": "max-width: 2868px; background-color: white;",
         "view_box": "-50 -10 2868 10259",
-        "width": "100%",
-        "height": null
-      },
-      "evidence_id": "browser-derived-layout"
-    },
-    {
-      "diagram": "sequence",
-      "fixture": "upstream_docs_math_sequence_002",
-      "descendants": "parity",
-      "input_sha256": "45bf7dcfa15d56f2b33d1371b4ae42e475937ede30c8f85c6a9bb9694a3d5128",
-      "upstream_svg_sha256": "b125606adb32405e7108c8fc93d6025195ef7acc34261e3f15bd7e98350d1680",
-      "upstream": {
-        "style": "max-width: 550px; background-color: white;",
-        "view_box": "-50 -10 550 273",
-        "width": "100%",
-        "height": null
-      },
-      "local": {
-        "style": "max-width: 550px; background-color: white;",
-        "view_box": "-50 -10 550 281",
         "width": "100%",
         "height": null
       },

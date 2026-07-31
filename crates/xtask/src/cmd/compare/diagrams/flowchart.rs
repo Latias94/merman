@@ -5,13 +5,14 @@ use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
     CompareRunOptions, CompareRunResult, DEFAULT_LABEL_DELTA_REPORT_LIMIT,
     DEFAULT_ROOT_DELTA_REPORT_LIMIT, DiagramVerificationFact, LabelDeltaReportLimit,
-    LabelMetricDelta, ObservedNodeMathRenderer, ObservedRenderOperations, RootDelta,
-    RootDeltaReportLimit, begin_required_math_evidence, collect_label_metric_deltas,
-    finish_required_math_evidence, parse_label_delta_report_limit, parse_root_attrs,
-    parse_root_delta_report_limit, prepared_semantic_requires_math, run_svg_compare,
-    sanitize_svg_id, svg_compare_engine_with_site_config, write_compare_result_section,
-    write_label_deltas_report, write_notes_section, write_root_deltas_report,
-    write_verification_policy_metadata,
+    LabelMetricDelta, ObservedNodeMathRenderer, ObservedRenderOperations, RootCoverageSummary,
+    RootDelta, RootDeltaReportLimit, RootEvidencePolicy, begin_required_math_evidence,
+    browser_measured_math_root_note, collect_label_metric_deltas,
+    comparison_mode_for_browser_measured_math, finish_required_math_evidence,
+    parse_label_delta_report_limit, parse_root_delta_report_limit, prepared_semantic_requires_math,
+    record_fixture_root_evidence, run_svg_compare, sanitize_svg_id,
+    svg_compare_engine_with_site_config, write_compare_result_section, write_label_deltas_report,
+    write_notes_section, write_root_deltas_report, write_verification_policy_metadata,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
@@ -247,6 +248,7 @@ fn run_flowchart_compare_with_math_renderer(
         .dom_mode
         .clone()
         .unwrap_or_else(|| fact.default_dom_mode.to_string());
+    let requested_dom_mode = crate::svgdom::DomMode::parse(&dom_mode);
     let text_measurer = common
         .flowchart_text_measurer
         .clone()
@@ -281,6 +283,7 @@ fn run_flowchart_compare_with_math_renderer(
         .map_err(CompareRunFailure::without_evidence)?;
     let mut state = FlowchartCompareState {
         root_deltas: Vec::new(),
+        root_coverage: RootCoverageSummary::default(),
         label_deltas: Vec::new(),
         observed_operations,
     };
@@ -427,15 +430,31 @@ fn run_flowchart_compare_with_math_renderer(
                 .observe(input.stem, rendered.report())?;
             let local_svg = rendered.into_svg();
             let mut notes = Vec::new();
-            if let Some(before) = required_math_evidence_before {
+            let browser_measured_math = if let Some(before) = required_math_evidence_before {
                 let observed = observed_math_renderer
                     .as_deref()
                     .expect("required math evidence checked renderer availability");
-                let successful_calls = finish_required_math_evidence(input.stem, observed, before)?;
+                let evidence = finish_required_math_evidence(input.stem, observed, before)?;
                 notes.push(format!(
-                    "observed {}: Node KaTeX successful calls={successful_calls}",
-                    input.stem
+                    "observed {}: Node KaTeX successful renders={} browser measurements={}",
+                    input.stem,
+                    evidence.successful_renders(),
+                    evidence.successful_measurements()
                 ));
+                true
+            } else {
+                false
+            };
+
+            let fixture_dom_mode = comparison_mode_for_browser_measured_math(
+                requested_dom_mode,
+                check_dom,
+                browser_measured_math,
+            );
+            let dom_mode_override =
+                (fixture_dom_mode != requested_dom_mode).then_some(fixture_dom_mode);
+            if dom_mode_override.is_some() {
+                notes.push(browser_measured_math_root_note(input.stem));
             }
 
             let mut issues = Vec::new();
@@ -448,38 +467,40 @@ fn run_flowchart_compare_with_math_renderer(
                 }
             }
 
-            if should_report_root {
-                match (
-                    parse_root_attrs(input.upstream_svg),
-                    parse_root_attrs(&local_svg),
-                ) {
-                    (Ok(up), Ok(lo)) => state.root_deltas.push(RootDelta {
-                        stem: input.stem.to_string(),
-                        max_width_delta: match (up.max_width_px, lo.max_width_px) {
-                            (Some(a), Some(b)) => Some(b - a),
-                            _ => None,
-                        },
-                        upstream: up,
-                        local: lo,
-                    }),
-                    (Err(e), _) => {
-                        issues.push(format!(
-                            "root parse failed for upstream {}: {e}",
-                            input.stem
-                        ));
-                    }
-                    (_, Err(e)) => {
-                        issues.push(format!("root parse failed for local {}: {e}", input.stem));
-                    }
-                }
+            let parity_root_coverage =
+                check_dom && requested_dom_mode == crate::svgdom::DomMode::ParityRoot;
+            if let Err(error) = record_fixture_root_evidence(
+                &mut state.root_coverage,
+                &mut state.root_deltas,
+                input.stem,
+                input.upstream_svg,
+                &local_svg,
+                RootEvidencePolicy {
+                    parity_root_requested: parity_root_coverage,
+                    browser_math_dimensions_are_diagnostic: dom_mode_override.is_some(),
+                    report_delta: should_report_root,
+                },
+            ) {
+                issues.push(error);
             }
 
-            Ok(CompareFixtureResult::Rendered {
-                render_evidence,
-                local_svg,
-                compare_dom: true,
-                issues,
-                notes,
+            Ok(match dom_mode_override {
+                None => CompareFixtureResult::Rendered {
+                    render_evidence,
+                    local_svg,
+                    compare_dom: true,
+                    issues,
+                    notes,
+                },
+                dom_mode_override => CompareFixtureResult::RenderedWithPolicy {
+                    render_evidence,
+                    local_svg,
+                    compare_dom: true,
+                    compare_svg_when_dom_disabled: false,
+                    dom_mode_override,
+                    issues,
+                    notes,
+                },
             })
         },
         |_, _, _| {},
@@ -487,6 +508,9 @@ fn run_flowchart_compare_with_math_renderer(
             state.observed_operations.write_report(report);
             write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
             write_notes_section(report, notes);
+            if check_dom && requested_dom_mode == crate::svgdom::DomMode::ParityRoot {
+                state.root_coverage.write_report(report);
+            }
             if should_report_root {
                 write_root_deltas_report(report, &mut state.root_deltas[..], root_report_limit);
             }
@@ -499,6 +523,7 @@ fn run_flowchart_compare_with_math_renderer(
 
 struct FlowchartCompareState {
     root_deltas: Vec<RootDelta>,
+    root_coverage: RootCoverageSummary,
     label_deltas: Vec<LabelMetricDelta>,
     observed_operations: ObservedRenderOperations,
 }
@@ -1128,6 +1153,34 @@ mod tests {
     use std::path::Path;
     use std::sync::Arc;
 
+    #[derive(Debug)]
+    struct SuccessfulMathRenderer;
+
+    impl merman::svg::MathRenderer for SuccessfulMathRenderer {
+        fn render_html_label(
+            &self,
+            _text: &str,
+            _config: &merman::MermaidConfig,
+        ) -> Option<String> {
+            Some("<span>math</span>".to_string())
+        }
+
+        fn measure_html_label(
+            &self,
+            _text: &str,
+            _config: &merman::MermaidConfig,
+            _style: &merman::svg::TextStyle,
+            _max_width_px: Option<f64>,
+            _wrap_mode: merman::svg::WrapMode,
+        ) -> Option<merman::svg::TextMetrics> {
+            Some(merman::svg::TextMetrics {
+                width: 40.0,
+                height: 20.0,
+                line_count: 1,
+            })
+        }
+    }
+
     fn compare_flowchart(args: Vec<String>) -> Result<(), crate::XtaskError> {
         let fact = super::super::diagram_verification_fact("flowchart")
             .copied()
@@ -1281,7 +1334,33 @@ mod tests {
         let message = failure.to_string();
 
         assert!(message.contains("math fixture declined_math"));
-        assert!(message.contains("no successful Node KaTeX render or measurement evidence"));
+        assert!(message.contains("no successful Node KaTeX browser measurement evidence"));
+    }
+
+    #[test]
+    fn disabled_dom_check_does_not_activate_the_math_root_exception() {
+        let temp = tempfile::tempdir().expect("temporary compare root");
+        let fact = flowchart_fact();
+        write_flowchart_compare_fixture(
+            temp.path(),
+            "math_without_dom_check",
+            "flowchart LR\n  A[\"$$x + y$$\"] --> B\n",
+            "<svg/>",
+        );
+        let mut request = flowchart_compare_request(temp.path());
+        request.common.check_dom = false;
+        request.common.dom_mode = Some("parity-root".to_string());
+
+        let evidence = run_flowchart_compare_with_math_renderer(
+            fact,
+            request,
+            Some(Arc::new(SuccessfulMathRenderer)),
+        )
+        .expect("a disabled DOM check must not activate root comparison policy");
+
+        assert_eq!(evidence.selected_fixtures(), 1);
+        assert_eq!(evidence.rendered_fixtures(), 1);
+        assert_eq!(evidence.comparisons(), 0);
     }
 
     #[test]
