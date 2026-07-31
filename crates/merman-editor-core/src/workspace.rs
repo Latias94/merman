@@ -170,9 +170,7 @@ impl DocumentWorkspace {
         let source = source_descriptor_for_document(&uri, kind);
         let analysis =
             analyze_document_generation_shared_cancellable(text, analyzer, source, cancellation)?;
-        Ok(Self::analysis_context(
-            uri, version, kind, analyzer, analysis,
-        ))
+        Self::analysis_context_cancellable(uri, version, kind, analyzer, analysis, cancellation)
     }
 
     fn analysis_context(
@@ -183,11 +181,36 @@ impl DocumentWorkspace {
         analysis: AnalysisCaptureOutcome,
     ) -> DocumentAnalysisOutcome {
         match analysis {
-            AnalysisCaptureOutcome::Ready(generation) => DocumentAnalysisOutcome::Ready(
-                Self::analysis_context_ready(uri, version, kind, analyzer, generation),
-            ),
+            AnalysisCaptureOutcome::Ready(generation) => {
+                let payload = generation.project(analyzer.options().diagnostic_policy());
+                DocumentAnalysisOutcome::Ready(Self::analysis_context_ready(
+                    uri, version, kind, generation, payload,
+                ))
+            }
             AnalysisCaptureOutcome::Rejected(rejection) => {
                 DocumentAnalysisOutcome::Rejected(rejection)
+            }
+        }
+    }
+
+    fn analysis_context_cancellable(
+        uri: DocumentUri,
+        version: i32,
+        kind: DocumentKind,
+        analyzer: &Analyzer,
+        analysis: AnalysisCaptureOutcome,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<DocumentAnalysisOutcome, AnalysisCancelled> {
+        match analysis {
+            AnalysisCaptureOutcome::Ready(generation) => {
+                let payload = generation
+                    .project_cancellable(analyzer.options().diagnostic_policy(), cancellation)?;
+                Ok(DocumentAnalysisOutcome::Ready(
+                    Self::analysis_context_ready(uri, version, kind, generation, payload),
+                ))
+            }
+            AnalysisCaptureOutcome::Rejected(rejection) => {
+                Ok(DocumentAnalysisOutcome::Rejected(rejection))
             }
         }
     }
@@ -196,10 +219,10 @@ impl DocumentWorkspace {
         uri: DocumentUri,
         version: i32,
         kind: DocumentKind,
-        analyzer: &Analyzer,
         generation: AnalysisGeneration,
+        payload: AnalysisPayload,
     ) -> DocumentAnalysisContext {
-        let payload = Arc::new(generation.project(analyzer.options().diagnostic_policy()));
+        let payload = Arc::new(payload);
         let detection = detection_for_generation(&generation);
         let generation = Arc::new(generation);
         DocumentAnalysisContext {
@@ -316,5 +339,33 @@ mod tests {
         assert_eq!(diagnostic_projection_count(), 0);
         assert!(!analysis_payload_to_diagnostics(context.payload()).is_empty());
         assert_eq!(diagnostic_projection_count(), 1);
+    }
+
+    #[test]
+    fn initial_payload_projection_propagates_cancellation_after_capture() {
+        let analyzer = Analyzer::new();
+        let uri = DocumentUri::new("file:///tmp/example.mmd");
+        let kind = DocumentKind::Diagram;
+        let analysis = analyze_document_generation_shared(
+            Arc::from("flowchart TD\nA-->B\n"),
+            &analyzer,
+            source_descriptor_for_document(&uri, kind),
+        );
+        let cancellation = AnalysisCancellationToken::new();
+        cancellation.cancel();
+
+        let result = DocumentWorkspace::analysis_context_cancellable(
+            uri,
+            1,
+            kind,
+            &analyzer,
+            analysis,
+            &cancellation,
+        );
+
+        assert_eq!(
+            result.expect_err("initial payload projection should observe cancellation"),
+            AnalysisCancelled
+        );
     }
 }
