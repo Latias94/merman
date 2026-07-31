@@ -164,14 +164,33 @@ class NativeSdkRecipeTests(unittest.TestCase):
     def test_dart_ffi_smoke_consumes_the_exact_flutter_desktop_recipe(self) -> None:
         recipe = verify_platform_bindings.FLUTTER_DESKTOP_NATIVE_RECIPE
         target = "x86_64-unknown-linux-gnu"
-        with mock.patch.object(verify_platform_bindings, "run") as run:
-            verify_platform_bindings.run_dart_ffi_native_smoke(
-                "dart",
-                target=target,
-                host_system="Linux",
+        with tempfile.TemporaryDirectory() as temp_dir:
+            library = Path(temp_dir) / "libmerman_ffi.so"
+            library.write_bytes(b"native")
+            cargo_stdout = json.dumps(
+                {
+                    "reason": "compiler-artifact",
+                    "target": {
+                        "name": recipe.target_name,
+                        "crate_types": ["cdylib", "rlib"],
+                    },
+                    "filenames": [str(library)],
+                }
             )
+            with (
+                mock.patch.object(
+                    verify_platform_bindings,
+                    "run_capture",
+                    return_value=mock.Mock(stdout=cargo_stdout),
+                ) as run_capture,
+                mock.patch.object(verify_platform_bindings, "run") as run,
+            ):
+                verify_platform_bindings.run_dart_ffi_native_smoke(
+                    "dart",
+                    target=target,
+                )
 
-        build = run.call_args_list[0]
+        build = run_capture.call_args
         self.assertEqual(
             build.args[0][:4],
             ["cargo", "build", "--profile", "native-sdk"],
@@ -185,55 +204,60 @@ class NativeSdkRecipeTests(unittest.TestCase):
             build.args[0][build.args[0].index("--target") + 1],
             target,
         )
+        self.assertIn("--message-format=json-render-diagnostics", build.args[0])
+        self.assertEqual(
+            run.call_args_list[0].args[0],
+            [
+                "dart",
+                "run",
+                "example/smoke.dart",
+                str(library),
+            ],
+        )
         self.assertEqual(
             run.call_args_list[1].args[0],
             [
                 "dart",
                 "run",
-                "example/smoke.dart",
-                str(
-                    MODULE_PATH.parents[1]
-                    / "target"
-                    / target
-                    / "native-sdk"
-                    / "libmerman_ffi.so"
-                ),
-            ],
-        )
-        self.assertEqual(
-            run.call_args_list[2].args[0],
-            [
-                "dart",
-                "run",
                 "tool/semantic_operation_fixtures_test.dart",
-                str(
-                    MODULE_PATH.parents[1]
-                    / "target"
-                    / target
-                    / "native-sdk"
-                    / "libmerman_ffi.so"
-                ),
+                str(library),
             ],
         )
 
-    def test_native_library_path_is_derived_from_recipe_identity(self) -> None:
-        recipe = replace(
-            verify_platform_bindings.C_ABI_NATIVE_RECIPE,
-            target_name="custom-ffi",
-            cargo_profile="custom-profile",
-        )
-        self.assertEqual(
-            verify_platform_bindings.host_dynamic_library(
-                recipe,
-                target="aarch64-apple-darwin",
-                host_system="Darwin",
-            ),
-            MODULE_PATH.parents[1]
-            / "target"
-            / "aarch64-apple-darwin"
-            / "custom-profile"
-            / "libcustom_ffi.dylib",
-        )
+    def test_native_library_path_comes_from_the_matching_cargo_artifact(self) -> None:
+        recipe = verify_platform_bindings.FLUTTER_DESKTOP_NATIVE_RECIPE
+        with tempfile.TemporaryDirectory() as temp_dir:
+            library = Path(temp_dir) / "renamed-output.dylib"
+            library.write_bytes(b"native")
+            stdout = "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "reason": "compiler-artifact",
+                            "target": {
+                                "name": "other",
+                                "crate_types": ["cdylib"],
+                            },
+                            "filenames": [str(Path(temp_dir) / "other.dylib")],
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "reason": "compiler-artifact",
+                            "target": {
+                                "name": recipe.target_name,
+                                "crate_types": ["cdylib", "rlib"],
+                            },
+                            "filenames": [str(library), str(Path(temp_dir) / "lib.rlib")],
+                        }
+                    ),
+                ]
+            )
+
+            self.assertEqual(
+                verify_platform_bindings.cargo_dynamic_library(stdout, recipe),
+                library,
+            )
 
     def test_dart_ffi_smoke_rejects_target_outside_the_recipe(self) -> None:
         recipe = replace(
@@ -241,17 +265,16 @@ class NativeSdkRecipeTests(unittest.TestCase):
             build_targets=("aarch64-apple-darwin",),
         )
         with (
-            mock.patch.object(verify_platform_bindings, "run") as run,
+            mock.patch.object(verify_platform_bindings, "run_capture") as run_capture,
             self.assertRaisesRegex(RuntimeError, "does not declare target"),
         ):
             verify_platform_bindings.run_dart_ffi_native_smoke(
                 "dart",
                 recipe,
                 target="x86_64-unknown-linux-gnu",
-                host_system="Linux",
             )
 
-        run.assert_not_called()
+        run_capture.assert_not_called()
 
     def test_explicit_ndk_path_is_forwarded_to_android_slice_builds(self) -> None:
         with (
@@ -308,6 +331,33 @@ class NativeSdkRecipeTests(unittest.TestCase):
 
 
 class FlutterAndroidSmokeTests(unittest.TestCase):
+    def test_generated_consumer_uses_the_plugin_min_sdk(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            build_file = project / "android" / "app" / "build.gradle.kts"
+            build_file.parent.mkdir(parents=True)
+            build_file.write_text(
+                """android {
+    defaultConfig {
+        minSdk = flutter.minSdkVersion
+    }
+}
+""",
+                encoding="utf-8",
+            )
+
+            flutter_android_smoke.configure_android_consumer(project)
+
+            self.assertEqual(
+                build_file.read_text(encoding="utf-8"),
+                f"""android {{
+    defaultConfig {{
+        minSdk = {flutter_android_smoke.android_plugin_min_sdk()}
+    }}
+}}
+""",
+            )
+
     def test_requested_abis_only_require_requested_target_outputs(self) -> None:
         self.assertEqual(
             flutter_android_smoke.requested_abis(["aarch64-linux-android"]),
@@ -420,27 +470,6 @@ class AndroidAarVerificationTests(unittest.TestCase):
                     verify_platform_bindings.resolve_android_llvm_nm(),
                     tool.resolve(),
                 )
-
-    def test_android_compile_sources_follow_the_complete_main_source_set(self) -> None:
-        sources = verify_platform_bindings.android_kotlin_compile_sources()
-        main_sources = sources[:-1]
-
-        self.assertEqual(
-            main_sources,
-            sorted(
-                (
-                    MODULE_PATH.parents[1]
-                    / "platforms"
-                    / "android"
-                    / "src"
-                    / "main"
-                    / "kotlin"
-                    / "io"
-                    / "merman"
-                ).glob("*.kt")
-            ),
-        )
-        self.assertEqual(sources[-1].name, "MermanSmoke.kt")
 
     def test_android_wrapper_class_manifest_matches_public_kotlin_types(self) -> None:
         self.assertEqual(

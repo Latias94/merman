@@ -42,8 +42,6 @@ FLUTTER_DESKTOP_NATIVE_RECIPE = load_artifact_profile("flutter-desktop-native")
 FLUTTER_ROOT = REPO_ROOT / "platforms" / "flutter"
 ANDROID_ROOT = REPO_ROOT / "platforms" / "android"
 APPLE_ROOT = REPO_ROOT / "platforms" / "apple"
-ANDROID_COMPILE_SDK = 35
-ANDROID_JAR_OUT = REPO_ROOT / "target" / "platforms" / "android" / "merman-android.jar"
 ANDROID_RELEASE_AAR = ANDROID_ROOT / "build" / "outputs" / "aar" / "merman-android-release.aar"
 ANDROID_MAVEN_MODULE_ROOT = (
     ANDROID_ROOT / "build" / "repo" / "io" / "merman" / "merman-android"
@@ -92,7 +90,6 @@ ANDROID_MAVEN_SCM = (
     "scm:git:ssh://git@github.com/Latias94/merman.git",
     "https://github.com/Latias94/merman",
 )
-FLUTTER_JAR_OUT = REPO_ROOT / "target" / "platforms" / "flutter" / "merman-flutter-android-plugin.jar"
 FLUTTER_GENERATED_ABI = (
     FLUTTER_ROOT / "lib" / "src" / "generated" / "native_abi.dart"
 )
@@ -227,6 +224,22 @@ def step(name: str) -> None:
 def run(args: list[str], *, cwd: Path = REPO_ROOT) -> None:
     print("+", " ".join(args))
     subprocess.run(args, cwd=cwd, check=True)
+
+
+def run_capture(args: list[str], *, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
+    print("+", " ".join(args))
+    completed = subprocess.run(
+        args,
+        cwd=cwd,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    completed.check_returncode()
+    return completed
 
 
 def verify_tracked_generated_file(path: Path) -> None:
@@ -397,39 +410,6 @@ def android_jni_libs_ready() -> bool:
     )
 
 
-def android_kotlin_compile_sources(android_root: Path = ANDROID_ROOT) -> list[Path]:
-    source_root = android_root / "src" / "main" / "kotlin" / "io" / "merman"
-    sources = sorted(source_root.glob("*.kt"))
-    smoke_source = android_root / "examples" / "MermanSmoke.kt"
-    if not sources:
-        raise RuntimeError(f"Android Kotlin source set is empty: {source_root}")
-    if not smoke_source.exists():
-        raise RuntimeError(f"Android Kotlin smoke source not found: {smoke_source}")
-    return [*sources, smoke_source]
-
-
-def android_compile_jar() -> Path:
-    configured_roots = [
-        os.environ.get("ANDROID_HOME"),
-        os.environ.get("ANDROID_SDK_ROOT"),
-    ]
-    candidate_roots = [Path(root).expanduser() for root in configured_roots if root]
-    candidate_roots.extend(
-        [
-            Path.home() / "Library" / "Android" / "sdk",
-            Path.home() / "Android" / "Sdk",
-        ]
-    )
-    for root in candidate_roots:
-        android_jar = root / "platforms" / f"android-{ANDROID_COMPILE_SDK}" / "android.jar"
-        if android_jar.is_file():
-            return android_jar
-    raise RuntimeError(
-        "Android SDK platform android-35 is required to compile the Kotlin wrapper. "
-        "Set ANDROID_HOME or ANDROID_SDK_ROOT to an SDK containing platforms/android-35/android.jar."
-    )
-
-
 def android_ndk_build_args(ndk_home: str | Path | None) -> list[str]:
     if ndk_home is None:
         return []
@@ -594,17 +574,28 @@ def _require_xml_child(parent: ET.Element, child_name: str, context: str) -> ET.
     return child
 
 
-def _assert_sha256(artifact: Path) -> None:
+def _sha256_and_size(artifact: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    with artifact.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def _assert_sha256(artifact: Path) -> tuple[str, int]:
     checksum_path = artifact.with_name(f"{artifact.name}.sha256")
     if not checksum_path.is_file():
         raise RuntimeError(f"Android Maven artifact is missing SHA-256: {checksum_path}")
     expected = checksum_path.read_text(encoding="ascii").strip().lower()
-    actual = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    actual, size = _sha256_and_size(artifact)
     if expected != actual:
         raise RuntimeError(
             f"Android Maven SHA-256 mismatch for {artifact.name}: "
             f"expected {expected}, computed {actual}"
         )
+    return actual, size
 
 
 def _assert_android_maven_pom(pom_path: Path, version: str) -> None:
@@ -686,9 +677,10 @@ def _assert_android_maven_pom(pom_path: Path, version: str) -> None:
 
 
 def _assert_android_source_jar(source_jar: Path, android_root: Path) -> None:
+    source_root = android_root / "src" / "main" / "kotlin"
     expected_sources = {
-        path.relative_to(android_root / "src" / "main" / "kotlin").as_posix()
-        for path in android_kotlin_compile_sources(android_root)[:-1]
+        path.relative_to(source_root).as_posix()
+        for path in source_root.rglob("*.kt")
     }
     with zipfile.ZipFile(source_jar) as archive:
         actual_sources = {name for name in archive.namelist() if name.endswith(".kt")}
@@ -720,7 +712,7 @@ def _assert_android_javadoc_jar(javadoc_jar: Path) -> None:
 def _assert_android_gradle_module(
     module_path: Path,
     version: str,
-    published_artifacts: dict[str, Path],
+    published_artifacts: dict[str, tuple[str, int]],
 ) -> None:
     module = json.loads(module_path.read_text(encoding="utf-8"))
     group_id, artifact_id = ANDROID_MAVEN_COORDINATES
@@ -761,12 +753,10 @@ def _assert_android_gradle_module(
             + ", ".join(sorted(missing_documentation))
         )
 
-    for name, artifact in published_artifacts.items():
+    for name, (actual_sha256, actual_size) in published_artifacts.items():
         entries = variant_files.get(name, [])
         if not entries:
             raise RuntimeError(f"Android Gradle module does not declare artifact: {name}")
-        actual_sha256 = hashlib.sha256(artifact.read_bytes()).hexdigest()
-        actual_size = artifact.stat().st_size
         for entry in entries:
             if entry.get("sha256") != actual_sha256 or entry.get("size") != actual_size:
                 raise RuntimeError(
@@ -795,10 +785,11 @@ def assert_android_maven_publication(
         "sources": version_dir / f"{base_name}-sources.jar",
         "javadoc": version_dir / f"{base_name}-javadoc.jar",
     }
-    for artifact in artifacts.values():
+    verified_artifacts = {}
+    for kind, artifact in artifacts.items():
         if not artifact.is_file():
             raise RuntimeError(f"Android Maven publication is missing artifact: {artifact}")
-        _assert_sha256(artifact)
+        verified_artifacts[kind] = _assert_sha256(artifact)
 
     _assert_android_maven_pom(artifacts["pom"], version)
     assert_android_aar_contract(artifacts["aar"], android_root, llvm_nm)
@@ -808,9 +799,9 @@ def assert_android_maven_publication(
         artifacts["module"],
         version,
         {
-            artifacts["aar"].name: artifacts["aar"],
-            artifacts["sources"].name: artifacts["sources"],
-            artifacts["javadoc"].name: artifacts["javadoc"],
+            artifacts["aar"].name: verified_artifacts["aar"],
+            artifacts["sources"].name: verified_artifacts["sources"],
+            artifacts["javadoc"].name: verified_artifacts["javadoc"],
         },
     )
     return version_dir
@@ -858,22 +849,39 @@ def assert_android_instrumentation_smoke_report(
         )
 
 
-def host_dynamic_library(
-    recipe: CargoArtifactRecipe,
-    *,
-    target: str,
-    host_system: str | None = None,
-) -> Path:
-    system = platform.system() if host_system is None else host_system
-    library_stem = recipe.target_name.replace("-", "_")
-    if system == "Windows":
-        filename = f"{library_stem}.dll"
-    elif system == "Darwin":
-        filename = f"lib{library_stem}.dylib"
-    else:
-        filename = f"lib{library_stem}.so"
-    output_dir = REPO_ROOT / "target" / target
-    return output_dir / recipe.cargo_profile / filename
+def cargo_dynamic_library(cargo_stdout: str, recipe: CargoArtifactRecipe) -> Path:
+    libraries: set[Path] = set()
+    for raw in cargo_stdout.splitlines():
+        try:
+            message = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(message, dict) or message.get("reason") != "compiler-artifact":
+            continue
+        target = message.get("target")
+        if not isinstance(target, dict) or target.get("name") != recipe.target_name:
+            continue
+        crate_types = target.get("crate_types")
+        if not isinstance(crate_types, list) or "cdylib" not in crate_types:
+            continue
+        filenames = message.get("filenames")
+        if not isinstance(filenames, list):
+            continue
+        libraries.update(
+            Path(filename)
+            for filename in filenames
+            if isinstance(filename, str)
+            and Path(filename).suffix.lower() in {".dll", ".dylib", ".so"}
+        )
+    if len(libraries) != 1:
+        rendered = ", ".join(sorted(str(path) for path in libraries)) or "none"
+        raise RuntimeError(
+            f"Expected exactly one Cargo cdylib artifact for {recipe.target_name}, found: {rendered}"
+        )
+    library = next(iter(libraries))
+    if not library.is_file():
+        raise RuntimeError(f"Cargo reported a missing cdylib artifact: {library}")
+    return library
 
 
 def run_dart_ffi_native_smoke(
@@ -881,14 +889,14 @@ def run_dart_ffi_native_smoke(
     recipe: CargoArtifactRecipe = FLUTTER_DESKTOP_NATIVE_RECIPE,
     *,
     target: str | None = None,
-    host_system: str | None = None,
 ) -> None:
     selected_target = rustc_host_target() if target is None else target
-    run(project_cargo_build_args(recipe, locked=True, target=selected_target))
-    library = host_dynamic_library(
+    build_args = project_cargo_build_args(recipe, locked=True, target=selected_target)
+    build_args.append("--message-format=json-render-diagnostics")
+    build = run_capture(build_args)
+    library = cargo_dynamic_library(
+        build.stdout,
         recipe,
-        target=selected_target,
-        host_system=host_system,
     )
     run(
         [
@@ -908,24 +916,6 @@ def run_dart_ffi_native_smoke(
         ],
         cwd=FLUTTER_ROOT,
     )
-
-
-def flutter_android_embedding_jar() -> Path:
-    flutter_root_env = os.environ.get("FLUTTER_ROOT")
-    candidates: list[Path] = []
-    if flutter_root_env:
-        candidates.append(Path(flutter_root_env) / "bin" / "cache" / "artifacts" / "engine" / "android-arm64" / "flutter.jar")
-
-    flutter = shutil.which("flutter")
-    if flutter:
-        flutter_bin = Path(flutter).resolve().parent
-        candidates.append(flutter_bin.parent / "bin" / "cache" / "artifacts" / "engine" / "android-arm64" / "flutter.jar")
-
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-
-    raise RuntimeError("Flutter Android embedding jar not found. Set FLUTTER_ROOT or run flutter doctor.")
 
 
 def apple_build_args(apple_platform: str) -> list[str]:
@@ -992,20 +982,6 @@ def main() -> int:
                 ]
             )
 
-        step("Android Kotlin wrapper compile")
-        kotlinc = require_command("kotlinc")
-        ANDROID_JAR_OUT.parent.mkdir(parents=True, exist_ok=True)
-        run(
-            [
-                kotlinc,
-                *(str(path) for path in android_kotlin_compile_sources()),
-                "-classpath",
-                str(android_compile_jar()),
-                "-d",
-                str(ANDROID_JAR_OUT),
-            ]
-        )
-
         if args.build_android_slices:
             step("Android native slices")
             run(
@@ -1028,20 +1004,6 @@ def main() -> int:
         run([flutter, "analyze"], cwd=FLUTTER_ROOT)
         run([dart, "format", "--set-exit-if-changed", "lib", "example", "tool"], cwd=FLUTTER_ROOT)
         run([dart, "run", "tool/abi3_contract_test.dart"], cwd=FLUTTER_ROOT)
-
-        step("Flutter Android plugin Kotlin compile")
-        flutter_jar = flutter_android_embedding_jar()
-        FLUTTER_JAR_OUT.parent.mkdir(parents=True, exist_ok=True)
-        run(
-            [
-                kotlinc,
-                str(FLUTTER_ROOT / "android" / "src" / "main" / "kotlin" / "io" / "merman" / "flutter" / "MermanFlutterPlugin.kt"),
-                "-classpath",
-                str(flutter_jar),
-                "-d",
-                str(FLUTTER_JAR_OUT),
-            ]
-        )
 
         step("Flutter native packaging scaffold checks")
         bash = require_command("bash")

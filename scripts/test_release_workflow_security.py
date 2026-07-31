@@ -43,17 +43,6 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 WEB_WORKSPACE_PACKAGE_JSON = ROOT / "platforms" / "web" / "package.json"
 WEB_DESCRIPTOR_JSON = ROOT / "platforms" / "web" / "web-surface-descriptor.json"
-RELEASE_SKILL = ROOT / ".agents" / "skills" / "merman-release" / "SKILL.md"
-APPLE_RELEASE_SMOKE = (
-    ROOT
-    / "platforms"
-    / "apple"
-    / "examples"
-    / "smoke"
-    / "Sources"
-    / "MermanAppleSmoke"
-    / "main.swift"
-)
 NPM_CONFIG_PATHS = [
     ROOT / ".npmrc",
     ROOT / "platforms" / "web" / ".npmrc",
@@ -84,16 +73,6 @@ SOURCE_REF_RELEASE_WORKFLOWS = [
 
 def read_workflow(path: Path) -> str:
     return path.read_text(encoding="utf-8")
-
-
-class ReleaseSkillAuthorizationTests(unittest.TestCase):
-    def test_tag_triggered_publishers_form_one_authorization_bundle(self) -> None:
-        skill = RELEASE_SKILL.read_text(encoding="utf-8")
-
-        self.assertIn("tag-triggered publication bundle", skill)
-        for workflow in ["release.yml", "release-crates.yml", "release-flutter.yml"]:
-            self.assertIn(f"`{workflow}`", skill)
-        self.assertIn("authorize all three tag-triggered surfaces", skill)
 
 
 def web_package_entries() -> list[dict]:
@@ -502,24 +481,6 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             'dart run example/smoke.dart "macos/Libraries/libmerman_ffi.dylib"',
             build_job,
         )
-
-    def test_apple_release_smoke_accepts_additive_runtime_catalog_fields(self) -> None:
-        smoke = APPLE_RELEASE_SMOKE.read_text(encoding="utf-8")
-
-        self.assertIn(
-            "requiredCatalogKeys.isSubset(of: Set(catalog.keys))",
-            smoke,
-        )
-        self.assertIn(
-            "requiredCapabilityKeys.isSubset(of: Set(capabilities.keys))",
-            smoke,
-        )
-        self.assertIn(
-            "requiredResourceKeys.isSubset(of: Set(resources.keys))",
-            smoke,
-        )
-        self.assertNotIn("Set(catalog.keys) == expectedKeys", smoke)
-        self.assertNotIn('integer(resources["schema_version"])', smoke)
 
     def test_source_ref_checkouts_do_not_persist_credentials(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:

@@ -620,7 +620,6 @@ jobs:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-      KOTLIN_VERSION: "1.9.24"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -640,17 +639,6 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Kotlin compiler
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -L \
-            -o "$RUNNER_TEMP/kotlin-compiler.zip" \
-            "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip"
-          unzip -q "$RUNNER_TEMP/kotlin-compiler.zip" -d "$RUNNER_TEMP/kotlin"
-          echo "$RUNNER_TEMP/kotlin/kotlinc/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/kotlin/kotlinc/bin/kotlinc" -version
-
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -668,6 +656,9 @@ jobs:
 
       - name: Verify platform bindings
         run: python3 scripts/verify-platform-bindings.py
+
+      - name: Verify Flutter Android packaging
+        run: python3 platforms/flutter/tool/android-smoke.py --targets aarch64-linux-android
 
   android-instrumentation:
     name: android-instrumentation

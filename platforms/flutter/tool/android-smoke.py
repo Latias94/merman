@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ TARGET_TO_ABI = {
     "aarch64-linux-android": "arm64-v8a",
     "x86_64-linux-android": "x86_64",
 }
+ANDROID_PLUGIN_BUILD = PLUGIN_ROOT / "android" / "build.gradle"
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,6 +59,48 @@ def verify_requested_native_libraries(
         library = jni_libs / abi / "libmerman_ffi.so"
         if not library.is_file():
             raise RuntimeError(f"Flutter Android native library was not built: {library}")
+
+
+def android_plugin_min_sdk(build_file: Path = ANDROID_PLUGIN_BUILD) -> int:
+    matches = re.findall(
+        r"(?m)^\s*minSdk\s+(\d+)\s*$",
+        build_file.read_text(encoding="utf-8"),
+    )
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected one literal minSdk declaration in Flutter plugin build: {build_file}"
+        )
+    return int(matches[0])
+
+
+def configure_android_consumer(project_root: Path) -> None:
+    min_sdk = android_plugin_min_sdk()
+    candidates = (
+        (
+            project_root / "android" / "app" / "build.gradle.kts",
+            "minSdk = flutter.minSdkVersion",
+            f"minSdk = {min_sdk}",
+        ),
+        (
+            project_root / "android" / "app" / "build.gradle",
+            "minSdkVersion flutter.minSdkVersion",
+            f"minSdkVersion {min_sdk}",
+        ),
+    )
+    existing = [candidate for candidate in candidates if candidate[0].is_file()]
+    if len(existing) != 1:
+        raise RuntimeError(
+            "expected one generated Flutter Android app build file: "
+            + ", ".join(str(path) for path, _, _ in candidates)
+        )
+
+    build_file, generated, configured = existing[0]
+    contents = build_file.read_text(encoding="utf-8")
+    if contents.count(generated) != 1:
+        raise RuntimeError(
+            f"generated Flutter Android minSdk declaration changed: {build_file}"
+        )
+    build_file.write_text(contents.replace(generated, configured), encoding="utf-8")
 
 
 def write_smoke_main(path: Path) -> None:
@@ -116,6 +160,7 @@ def main() -> int:
             str(temp_root),
         ]
     )
+    configure_android_consumer(temp_root)
 
     pubspec = temp_root / "pubspec.yaml"
     with pubspec.open("a", encoding="utf-8") as handle:
