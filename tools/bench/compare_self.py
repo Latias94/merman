@@ -25,7 +25,6 @@ import stat
 import statistics
 import subprocess
 import sys
-import tomllib
 import uuid
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -41,6 +40,7 @@ from compare_mermaid_renderers import (
     rustc_verbose,
     split_exact_bench,
     strip_ansi,
+    write_json_report,
 )
 from corpus_utils import (
     LaneMetadata,
@@ -223,7 +223,12 @@ def fixture_byte_comparison(base_path: Path, head_path: Path) -> dict[str, Any]:
 def _percentile(values: Sequence[float], probability: float) -> float:
     if not values:
         raise ValueError("percentile requires at least one value")
-    ordered = sorted(values)
+    return _percentile_from_sorted(sorted(values), probability)
+
+
+def _percentile_from_sorted(ordered: Sequence[float], probability: float) -> float:
+    if not ordered:
+        raise ValueError("percentile requires at least one value")
     if len(ordered) == 1:
         return ordered[0]
     position = max(0.0, min(1.0, probability)) * (len(ordered) - 1)
@@ -258,7 +263,10 @@ def _bootstrap_mean_bounds(
         return {"estimate": estimate, "lower": estimate, "upper": estimate}
     rng = random.Random(seed)
     n = len(values)
-    samples = [statistics.fmean(values[rng.randrange(n)] for _ in range(n)) for _ in range(resamples)]
+    samples = sorted(
+        statistics.fmean(values[rng.randrange(n)] for _ in range(n))
+        for _ in range(resamples)
+    )
     alpha = 1.0 - confidence_level
     if interval == "one_sided":
         lower_probability = alpha
@@ -270,8 +278,8 @@ def _bootstrap_mean_bounds(
         raise ValueError(f"unknown interval kind: {interval}")
     return {
         "estimate": estimate,
-        "lower": _percentile(samples, lower_probability),
-        "upper": _percentile(samples, upper_probability),
+        "lower": _percentile_from_sorted(samples, lower_probability),
+        "upper": _percentile_from_sorted(samples, upper_probability),
     }
 
 
@@ -428,11 +436,6 @@ def benchmark_params(preset: str, sample_size: int | None, warm_up: int | None, 
         warm_up if warm_up is not None else 1,
         measurement if measurement is not None else 1,
     )
-
-
-def write_json_report(path: Path, report: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def fmt_time(value: float | None) -> str:
@@ -759,22 +762,45 @@ def _freeze_bench_executable(
     return destination, freeze
 
 
-def _find_package_manifest(checkout: Path, package: str) -> Path:
-    candidates = [checkout / "Cargo.toml"]
-    for parent in (checkout / "crates", checkout / "platforms"):
-        if parent.is_dir():
-            candidates.extend(sorted(parent.glob("*/Cargo.toml")))
-    for path in candidates:
-        if not path.is_file():
-            continue
-        try:
-            data = tomllib.loads(path.read_text(encoding="utf-8"))
-        except (OSError, tomllib.TOMLDecodeError):
-            continue
-        package_table = data.get("package")
-        if isinstance(package_table, dict) and package_table.get("name") == package:
-            return path
-    raise ContractViolation(f"could not resolve Cargo manifest for package {package!r}")
+def _find_package_manifest(
+    checkout: Path,
+    package: str,
+    *,
+    toolchain: str | None,
+    timeout_seconds: int,
+) -> Path:
+    command = ["cargo"]
+    if toolchain:
+        command.append(f"+{toolchain}")
+    command.extend(
+        ["metadata", "--locked", "--no-deps", "--format-version", "1"]
+    )
+    result = _run_process(command, cwd=checkout, timeout_seconds=timeout_seconds)
+    _require_success(result, command=command, cwd=checkout)
+    try:
+        metadata = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ContractViolation(f"cargo metadata returned invalid JSON: {error}") from error
+
+    workspace_members = set(metadata.get("workspace_members", []))
+    matches = [
+        item
+        for item in metadata.get("packages", [])
+        if isinstance(item, dict)
+        and item.get("name") == package
+        and item.get("id") in workspace_members
+        and isinstance(item.get("manifest_path"), str)
+    ]
+    if len(matches) != 1:
+        raise ContractViolation(
+            f"expected one workspace package named {package!r}, found {len(matches)}"
+        )
+    manifest = Path(matches[0]["manifest_path"])
+    if not manifest.is_file():
+        raise ContractViolation(
+            f"Cargo metadata returned a missing manifest for {package!r}: {manifest}"
+        )
+    return manifest
 
 
 def _git_provenance(
@@ -871,7 +897,12 @@ def _prepare_runner(
             timeout_seconds=timeout_seconds,
         )
         recipe.target_dir.mkdir(parents=True, exist_ok=True)
-        manifest = _find_package_manifest(recipe.checkout, recipe.package)
+        manifest = _find_package_manifest(
+            recipe.checkout,
+            recipe.package,
+            toolchain=recipe.toolchain,
+            timeout_seconds=timeout_seconds,
+        )
         workspace_manifest = recipe.checkout / "Cargo.toml"
         lockfile = recipe.checkout / "Cargo.lock"
         corpus_path = recipe.corpus if recipe.corpus.is_absolute() else recipe.checkout / recipe.corpus
@@ -1308,7 +1339,12 @@ def _prepare_reused_runner(
         )
         provenance["git"] = current_git
 
-        manifest = _find_package_manifest(recipe.checkout, recipe.package)
+        manifest = _find_package_manifest(
+            recipe.checkout,
+            recipe.package,
+            toolchain=recipe.toolchain,
+            timeout_seconds=timeout_seconds,
+        )
         workspace_manifest = recipe.checkout / "Cargo.toml"
         lockfile = recipe.checkout / "Cargo.lock"
         corpus_path = (

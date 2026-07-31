@@ -1707,6 +1707,23 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 },
             }
             listed = mock.Mock(returncode=0, stdout=discovery_stdout, stderr="")
+            package_id = f"path+file://{checkout}#merman@0.0.0"
+            metadata = mock.Mock(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "workspace_members": [package_id],
+                        "packages": [
+                            {
+                                "id": package_id,
+                                "name": "merman",
+                                "manifest_path": str(manifest),
+                            }
+                        ],
+                    }
+                ),
+                stderr="",
+            )
 
             with (
                 mock.patch.object(compare_self, "_git_provenance", return_value=git),
@@ -1716,7 +1733,11 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 mock.patch.object(
                     compare_self, "_cargo_version", return_value="cargo test"
                 ),
-                mock.patch.object(compare_self, "_run_process", return_value=listed) as run,
+                mock.patch.object(
+                    compare_self,
+                    "_run_process",
+                    side_effect=[metadata, listed],
+                ) as run,
             ):
                 runner, provenance, errors = compare_self._prepare_reused_runner(
                     recipe,
@@ -1731,9 +1752,13 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
             self.assertTrue(runner.frozen)
             self.assertEqual(runner.executable, executable.resolve())
             self.assertEqual(provenance["discovery_reuse"]["status"], "verified")
-            self.assertEqual(run.call_count, 1)
-            self.assertEqual(run.call_args.args[0][0], str(executable))
-            self.assertNotIn("cargo", run.call_args.args[0])
+            self.assertEqual(run.call_count, 2)
+            self.assertEqual(
+                run.call_args_list[0].args[0][0:3],
+                ["cargo", "+1.95.0", "metadata"],
+            )
+            self.assertEqual(run.call_args_list[1].args[0][0], str(executable))
+            self.assertNotIn("build", run.call_args_list[0].args[0])
 
             runner_mutations = {
                 "Git revision": lambda value: value["git"].__setitem__(
@@ -1776,7 +1801,9 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                         compare_self, "_cargo_version", return_value="cargo test"
                     ),
                     mock.patch.object(
-                        compare_self, "_run_process", return_value=listed
+                        compare_self,
+                        "_run_process",
+                        side_effect=[metadata, listed],
                     ),
                 ):
                     changed_runner, _changed_provenance, changed_errors = (
@@ -1821,7 +1848,11 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 mock.patch.object(
                     compare_self, "_cargo_version", return_value="cargo test"
                 ),
-                mock.patch.object(compare_self, "_run_process") as swapped_run,
+                mock.patch.object(
+                    compare_self,
+                    "_run_process",
+                    return_value=metadata,
+                ) as swapped_run,
             ):
                 swapped_runner, _provenance, swapped_errors = (
                     compare_self._prepare_reused_runner(
@@ -1837,7 +1868,11 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
 
             self.assertIsNone(swapped_runner)
             self.assertIn("destination identity differs", swapped_errors[0])
-            swapped_run.assert_not_called()
+            swapped_run.assert_called_once()
+            self.assertEqual(
+                swapped_run.call_args.args[0][0:3],
+                ["cargo", "+1.95.0", "metadata"],
+            )
 
     def test_reuse_comparison_contract_rejects_every_sampling_identity_drift(
         self,
@@ -2252,6 +2287,23 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 }
             )
             cargo_result = mock.Mock(returncode=0, stdout=cargo_stdout, stderr="")
+            package_id = f"path+file://{checkout}#merman@0.0.0"
+            metadata_result = mock.Mock(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "workspace_members": [package_id],
+                        "packages": [
+                            {
+                                "id": package_id,
+                                "name": "merman",
+                                "manifest_path": str(checkout / "Cargo.toml"),
+                            }
+                        ],
+                    }
+                ),
+                stderr="",
+            )
             clean_result = mock.Mock(
                 returncode=0,
                 stdout="",
@@ -2282,7 +2334,12 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 mock.patch.object(
                     compare_self,
                     "_run_process",
-                    side_effect=[clean_result, cargo_result, discovery_result],
+                    side_effect=[
+                        metadata_result,
+                        clean_result,
+                        cargo_result,
+                        discovery_result,
+                    ],
                 ) as run_process,
             ):
                 runner, provenance, errors = compare_self._prepare_runner(
@@ -2328,11 +2385,17 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
                 str(runner.executable),
             )
             self.assertEqual(
-                run_process.call_args_list[0].args[0][1:4],
+                run_process.call_args_list[1].args[0][1:4],
                 ["clean", "--locked", "--profile"],
             )
-            self.assertEqual(run_process.call_args_list[0].kwargs["env"]["CARGO_BUILD_JOBS"], "1")
-            self.assertEqual(run_process.call_args_list[1].kwargs["env"]["CARGO_BUILD_JOBS"], "1")
+            self.assertEqual(
+                run_process.call_args_list[1].kwargs["env"]["CARGO_BUILD_JOBS"],
+                "1",
+            )
+            self.assertEqual(
+                run_process.call_args_list[2].kwargs["env"]["CARGO_BUILD_JOBS"],
+                "1",
+            )
 
     def test_shared_target_freeze_rejects_source_digest_drift_during_copy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
