@@ -1986,6 +1986,7 @@ mod tests {
                 .collect::<std::collections::BTreeSet<_>>(),
             std::collections::BTreeSet::from([
                 "capabilities",
+                "output_contracts",
                 "package_version",
                 "registry",
                 "resources",
