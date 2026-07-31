@@ -6,6 +6,7 @@ import {
 
 import type {
   MermanDomainFacade,
+  MermanRenderFailureStage,
   MermanRenderOptions,
 } from "./merman-core.ts";
 import {
@@ -21,6 +22,10 @@ import type {
   RealmViewport,
 } from "./realm/channel-protocol.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
+import {
+  assertSafeInlineSvgArtifact,
+  type SafeInlineSvg,
+} from "./render-artifact.ts";
 
 export interface RenderCoordinatorInput {
   readonly configJson: string;
@@ -44,13 +49,13 @@ export interface FrozenRenderSnapshot {
 }
 
 export interface MermanRenderSuccess {
+  readonly artifact: SafeInlineSvg;
   readonly ascii: string | null;
   readonly asciiError: ErrorProjection | null;
   readonly engine: "merman";
   readonly presentedAt: number | null;
   readonly renderTimeMs: number;
   readonly status: "success";
-  readonly svg: string;
 }
 
 export interface MermaidRenderSuccess extends MermaidRealmRenderSuccess {
@@ -62,7 +67,7 @@ export interface MermanRenderFailure {
   readonly detail: string | null;
   readonly engine: "merman";
   readonly message: string;
-  readonly stage: "render" | "svg-validation";
+  readonly stage: MermanRenderFailureStage;
   readonly status: "failure";
 }
 
@@ -188,7 +193,6 @@ export interface RenderCoordinatorOptions {
   readonly compareViewport: RealmViewport;
   readonly debounceMs?: number;
   readonly now?: () => number;
-  readonly validateSvg: (svg: string) => void;
 }
 
 interface ScheduledRequest {
@@ -221,7 +225,6 @@ export function createRenderCoordinator({
   compareViewport,
   debounceMs = 300,
   now = () => performance.now(),
-  validateSvg,
 }: RenderCoordinatorOptions): RenderCoordinator {
   const store = createStore<RenderCoordinatorState>(() => EMPTY_STATE);
   let disposed = false;
@@ -361,7 +364,7 @@ export function createRenderCoordinator({
       snapshot,
       externalRequirements
     );
-    const merman = renderMerman(facade, snapshot, detection, validateSvg);
+    const merman = renderMerman(facade, snapshot, detection);
     const diagnostics = snapshot.diagnosticsEnabled
       ? collectDiagnostics(facade, snapshot, now)
       : null;
@@ -523,8 +526,7 @@ function renderCompare(
 function renderMerman(
   facade: MermanDomainFacade,
   snapshot: FrozenRenderSnapshot,
-  detection: DiagramDetectionFacts,
-  validateSvg: (svg: string) => void
+  detection: DiagramDetectionFacts
 ): MermanBatchResult {
   let result;
   try {
@@ -538,10 +540,10 @@ function renderMerman(
     return mermanFailure("render", error);
   }
   if (result.status === "failure") {
-    return projectedMermanFailure("render", result.error);
+    return projectedMermanFailure(result.stage, result.error);
   }
   try {
-    validateSvg(result.svg);
+    assertSafeInlineSvgArtifact(result.artifact);
   } catch (error) {
     return mermanFailure("svg-validation", error);
   }
@@ -574,7 +576,7 @@ function renderMerman(
   return {
     status: "success",
     engine: "merman",
-    svg: result.svg,
+    artifact: result.artifact,
     ascii,
     asciiError,
     renderTimeMs: result.renderTime,

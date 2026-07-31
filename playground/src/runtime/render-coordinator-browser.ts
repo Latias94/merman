@@ -1,5 +1,3 @@
-import { assertSafeSvgForDom } from "@mermanjs/web";
-
 import { compareMermaidRealmController } from "./mermaid-realm.ts";
 import { createRenderCoordinator } from "./render-coordinator.ts";
 import { PLAYGROUND_RENDER_VIEWPORT } from "./render-viewport.ts";
@@ -7,7 +5,6 @@ import { PLAYGROUND_RENDER_VIEWPORT } from "./render-viewport.ts";
 export const renderCoordinator = createRenderCoordinator({
   compare: compareMermaidRealmController,
   compareViewport: PLAYGROUND_RENDER_VIEWPORT,
-  validateSvg: assertSafeSvgForDom,
 });
 
 export const renderCoordinatorStore = renderCoordinator.store;

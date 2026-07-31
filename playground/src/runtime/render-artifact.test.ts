@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertSafeInlineSvgArtifact,
   projectSafeInlineSvg,
   type SafeInlineSvg,
 } from "./render-artifact.ts";
@@ -21,6 +22,19 @@ test("render output is projected through the strict inline SVG path", () => {
   assert.equal(artifact.svg, svg);
   assert.deepEqual(artifact.exportFormats, { png: true, svg: true });
   assert.equal(Object.isFrozen(artifact), true);
+  assert.doesNotThrow(() => assertSafeInlineSvgArtifact(artifact));
+});
+
+test("rejects spread clones that retain the compile-time SVG brand", () => {
+  const artifact = projectSafeInlineSvg(
+    '<svg xmlns="http://www.w3.org/2000/svg"><text>safe</text></svg>'
+  );
+  const forgedArtifact: SafeInlineSvg = {
+    ...artifact,
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)" />',
+  };
+
+  assert.throws(() => assertSafeInlineSvgArtifact(forgedArtifact));
 });
 
 test("strict inline rejection fails closed for unsafe publication shapes", () => {

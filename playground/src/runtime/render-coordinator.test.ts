@@ -106,7 +106,6 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
     compare,
     compareViewport: VIEWPORT,
     debounceMs: 0,
-    validateSvg: () => {},
   });
   coordinator.setCompareEnabled(true);
 
@@ -123,13 +122,102 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
   const state = coordinator.store.getState();
   assert.equal(state.status, "success");
   if (state.status !== "success") return;
-  assert.match(state.merman.svg, /second/);
+  assert.match(state.merman.artifact.svg, /second/);
   assert.ok(state.mermaid);
   assert.equal(state.mermaid.artifact.kind, "safe-inline-svg");
   if (state.mermaid.artifact.kind === "safe-inline-svg") {
     assert.match(state.mermaid.artifact.svg, /second/);
   }
   assert.equal(state.snapshot.source, "second");
+});
+
+test("publishes the producer-owned Merman artifact without reprojecting it", async () => {
+  const artifact = projectSafeInlineSvg(
+    '<svg xmlns="http://www.w3.org/2000/svg"><text>owned</text></svg>'
+  );
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setInput(
+    input("owned", {
+      ...facade(),
+      render: () => ({
+        artifact,
+        error: null,
+        renderTime: 2,
+        status: "success",
+      }),
+    })
+  );
+  await waitFor(() => coordinator.store.getState().status === "success");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "success");
+  if (state.status !== "success") return;
+  assert.equal(state.merman.status, "success");
+  if (state.merman.status !== "success") return;
+  assert.equal(state.merman.artifact, artifact);
+});
+
+test("preserves producer SVG validation failures", async () => {
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setInput(
+    input("unsafe", {
+      ...facade(),
+      render: () => ({
+        artifact: null,
+        error: { summary: "Unsafe SVG.", detail: null },
+        renderTime: 0,
+        stage: "svg-validation",
+        status: "failure",
+      }),
+    })
+  );
+  await waitFor(() => coordinator.store.getState().status === "failed");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "failed");
+  if (state.status !== "failed") return;
+  assert.equal(state.merman.stage, "svg-validation");
+  assert.equal(state.merman.message, "Unsafe SVG.");
+});
+
+test("rejects a facade artifact that was not created by the projector", async () => {
+  const artifact = projectSafeInlineSvg(
+    '<svg xmlns="http://www.w3.org/2000/svg"><text>safe</text></svg>'
+  );
+  const forgedArtifact = {
+    ...artifact,
+    svg: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)" />',
+  };
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+  });
+  coordinator.setInput(
+    input("forged", {
+      ...facade(),
+      render: () => ({
+        artifact: forgedArtifact,
+        error: null,
+        renderTime: 2,
+        status: "success",
+      }),
+    })
+  );
+  await waitFor(() => coordinator.store.getState().status === "failed");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "failed");
+  if (state.status !== "failed") return;
+  assert.equal(state.merman.stage, "svg-validation");
 });
 
 test("updating disables old pair and partial replaces the failed pane", async () => {
@@ -140,7 +228,6 @@ test("updating disables old pair and partial replaces the failed pane", async ()
     compare,
     compareViewport: VIEWPORT,
     debounceMs: 0,
-    validateSvg: () => {},
   });
   coordinator.setCompareEnabled(true);
 
@@ -179,7 +266,7 @@ test("updating disables old pair and partial replaces the failed pane", async ()
   assert.equal(partial.actionsEnabled, true);
   assert.equal(partial.merman.status, "success");
   assert.match(
-    partial.merman.status === "success" ? partial.merman.svg : "",
+    partial.merman.status === "success" ? partial.merman.artifact.svg : "",
     /partial/
   );
   assert.equal(partial.mermaid.status, "failure");
@@ -197,7 +284,6 @@ test("a completed Mermaid failure replaces stale success without borrowing Merma
     compare,
     compareViewport: VIEWPORT,
     debounceMs: 0,
-    validateSvg: () => {},
   });
   coordinator.setCompareEnabled(true);
 
@@ -236,7 +322,6 @@ test("pause waits for active work and resumes only the latest snapshot", async (
     compare,
     compareViewport: VIEWPORT,
     debounceMs: 0,
-    validateSvg: () => {},
   });
   coordinator.setCompareEnabled(true);
   coordinator.setInput(input("active"));
@@ -264,7 +349,6 @@ test("blank source and suspend reject every late completion", async () => {
     compare,
     compareViewport: VIEWPORT,
     debounceMs: 0,
-    validateSvg: () => {},
   });
   coordinator.setCompareEnabled(true);
   coordinator.setInput(input("active"));
@@ -287,7 +371,6 @@ test("request exceptions become typed failures and later work still runs", async
     compare,
     compareViewport: VIEWPORT,
     debounceMs: 0,
-    validateSvg: () => {},
   });
   coordinator.setCompareEnabled(true);
   coordinator.setInput(input("throws", throwingFacade()));
@@ -314,7 +397,6 @@ test("render failures retain binding details in the completed batch", async () =
     compare: fakeCompare([]),
     compareViewport: VIEWPORT,
     debounceMs: 0,
-    validateSvg: () => {},
   });
   coordinator.setInput(input("broken", bindingFailureFacade()));
   await waitFor(() => coordinator.store.getState().status === "failed");
@@ -349,7 +431,6 @@ test("normalizes raw Merman Error and object payloads before publication", async
       compare: fakeCompare([]),
       compareViewport: VIEWPORT,
       debounceMs: 0,
-      validateSvg: () => {},
     });
     coordinator.setInput(input("broken", rawFailureFacade(failure)));
     await waitFor(() => coordinator.store.getState().status === "failed");
@@ -370,7 +451,6 @@ test("normalizes an unprojected ASCII failure without failing the SVG result", a
     compare: fakeCompare([]),
     compareViewport: VIEWPORT,
     debounceMs: 0,
-    validateSvg: () => {},
   });
   coordinator.setInput(
     input("ascii", {
@@ -449,10 +529,11 @@ function rawFailureFacade(error: unknown): MermanDomainFacade {
     ...facade(),
     render() {
       return {
+        artifact: null,
         error,
         renderTime: 0,
+        stage: "render",
         status: "failure",
-        svg: null,
       } as unknown as ReturnType<MermanDomainFacade["render"]>;
     },
   };
@@ -470,7 +551,9 @@ function facade(): MermanDomainFacade {
     }),
     getAsciiSupportedDiagrams: () => ["flowchart"],
     render: (source: string) => ({
-      svg: `<svg xmlns="http://www.w3.org/2000/svg"><text>${source}</text></svg>`,
+      artifact: projectSafeInlineSvg(
+        `<svg xmlns="http://www.w3.org/2000/svg"><text>${source}</text></svg>`
+      ),
       error: null,
       renderTime: 2,
       status: "success",

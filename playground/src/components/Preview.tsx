@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { assertSafeSvgForDom } from "@mermanjs/web";
 import { toast } from "sonner";
 import {
   selectMermanFacade,
@@ -47,9 +46,11 @@ import type {
   MermaidRenderSuccess,
 } from "@/src/runtime/render-coordinator";
 import {
+  copySVGToClipboard,
   exportPNG,
   exportSVG,
 } from "@/src/lib/export";
+import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
 import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import {
   SvgViewport,
@@ -143,7 +144,8 @@ export function Preview({ className }: PreviewProps) {
   );
   const detectedDiagramType = selectCurrentDiagramType(renderState);
   const currentMerman = successfulMerman(currentBatch?.merman ?? null);
-  const svg = currentMerman?.svg ?? null;
+  const svgArtifact = currentMerman?.artifact ?? null;
+  const svg = svgArtifact?.svg ?? null;
   const ascii = currentMerman?.ascii ?? null;
   const asciiError = currentMerman?.asciiError ?? null;
   const error = failedMessage(currentBatch?.merman ?? null);
@@ -151,7 +153,7 @@ export function Preview({ className }: PreviewProps) {
   const errorStage = failedStage(currentBatch?.merman ?? null);
   const visibleMerman = successfulMerman(visibleBatch?.merman ?? null);
   const visibleMermaid = successfulMermaid(visibleBatch?.mermaid ?? null);
-  const mermaidSvg = visibleMermaid?.artifact.svg ?? null;
+  const mermaidSvgArtifact = visibleMermaid?.artifact ?? null;
   const mermaidError = failedMessage(visibleBatch?.mermaid ?? null);
   const mermaidErrorDetail = failedDetail(visibleBatch?.mermaid ?? null);
   const mermaidRenderTime = visibleMermaid?.renderTimeMs ?? null;
@@ -166,16 +168,8 @@ export function Preview({ className }: PreviewProps) {
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const svgViewport = useSvgViewport({
-    svg,
-    enabled: previewMode === "svg",
-  });
-  const mermanCompareViewport = useSvgViewport({
-    svg: visibleMerman?.svg ?? null,
-    enabled: previewMode === "compare",
-  });
-  const mermaidCompareViewport = useSvgViewport({
-    svg: mermaidSvg,
-    enabled: previewMode === "compare",
+    artifact: svgArtifact,
+    enabled: previewMode === "svg" && svgDisplayMode === "visual",
   });
   useEffect(() => {
     if (previewMode === "ascii" && !isAsciiSupported) {
@@ -229,13 +223,12 @@ export function Preview({ className }: PreviewProps) {
   }, [actionsEnabled, ascii, asciiActionKey, t]);
 
   const handleCopySvg = useCallback(
-    async (svgValue: string | null, actionKey: string) => {
+    async (artifact: SafeInlineSvg | null, actionKey: string) => {
       try {
-        if (!actionsEnabled || !svgValue) {
+        if (!actionsEnabled || !artifact) {
           throw new Error("Current SVG artifact is unavailable.");
         }
-        const safeSvg = requireSafeSvgString(svgValue);
-        await navigator.clipboard.writeText(safeSvg);
+        await copySVGToClipboard(artifact);
         setCopiedSvgKey(actionKey);
         if (copyTimeoutRef.current) {
           clearTimeout(copyTimeoutRef.current);
@@ -269,13 +262,12 @@ export function Preview({ className }: PreviewProps) {
   }, [diagnosticTab, diagnostics]);
 
   const handleExportSvg = useCallback(
-    (engine: EngineKey, svgValue: string | null) => {
+    (engine: EngineKey, artifact: SafeInlineSvg | null) => {
       try {
-        if (!actionsEnabled || !svgValue) {
+        if (!actionsEnabled || !artifact) {
           throw new Error("Current SVG artifact is unavailable.");
         }
-        const safeSvg = requireSafeSvgString(svgValue);
-        exportSVG(safeSvg, `merman-compare-${engine}`);
+        exportSVG(artifact, `merman-compare-${engine}`);
         toast.success(t("export.svgSuccess"));
       } catch {
         toast.error(t("export.failed"));
@@ -286,7 +278,7 @@ export function Preview({ className }: PreviewProps) {
 
   const handleExportPng = useCallback(async (
     engine: EngineKey,
-    svgValue: string | null
+    artifact: SafeInlineSvg | null
   ) => {
     if (exportingPngEnginesRef.current.has(engine)) {
       return;
@@ -295,11 +287,10 @@ export function Preview({ className }: PreviewProps) {
     setExportingPngEngines(new Set(exportingPngEnginesRef.current));
     let notificationId: string | number | undefined;
     try {
-      if (!actionsEnabled || !svgValue || !currentBatch) {
+      if (!actionsEnabled || !artifact || !currentBatch) {
         throw new Error("Current SVG artifact is unavailable.");
       }
-      const safeValue = requireSafeSvgString(svgValue);
-      let exportSvg = safeValue;
+      let exportArtifact = artifact;
       if (engine === "merman") {
         const snapshot = currentBatch.snapshot;
         const pngResult = facade?.render(
@@ -313,19 +304,24 @@ export function Preview({ className }: PreviewProps) {
             pngResult?.error.summary ?? "Failed to render PNG SVG"
           );
         }
-        exportSvg = requireSafeSvgString(pngResult.svg);
+        exportArtifact = pngResult.artifact;
       }
 
-      const plan = await exportPNG(exportSvg, `merman-compare-${engine}`, 2, {
-        onPlan: ({ outputWidth, outputHeight }) => {
-          notificationId = toast.loading(
-            t("export.pngPreparing", {
-              width: outputWidth,
-              height: outputHeight,
-            })
-          );
-        },
-      });
+      const plan = await exportPNG(
+        exportArtifact,
+        `merman-compare-${engine}`,
+        2,
+        {
+          onPlan: ({ outputWidth, outputHeight }) => {
+            notificationId = toast.loading(
+              t("export.pngPreparing", {
+                width: outputWidth,
+                height: outputHeight,
+              })
+            );
+          },
+        }
+      );
       toast.success(
         t("export.pngSuccess", {
           width: plan.outputWidth,
@@ -361,7 +357,7 @@ export function Preview({ className }: PreviewProps) {
     ? t("preview.renderingCurrent")
     : null;
   const mermaidSvgUnavailableLabel = artifactUnavailableLabel({
-    available: Boolean(mermaidSvg),
+    available: Boolean(mermaidSvgArtifact),
     error: mermaidError,
     loading: mermaidRendering,
     t,
@@ -464,7 +460,7 @@ export function Preview({ className }: PreviewProps) {
     actionsEnabled,
     title: t("preview.mermanEngine"),
     version: visibleBatch?.snapshot.mermanVersion ?? facade?.packageVersion ?? "-",
-    svg: visibleMerman?.svg ?? null,
+    svgArtifact: visibleMerman?.artifact ?? null,
     error: failedMessage(visibleBatch?.merman ?? null),
     errorDetail: failedDetail(visibleBatch?.merman ?? null),
     errorStage: failedStage(visibleBatch?.merman ?? null),
@@ -481,7 +477,7 @@ export function Preview({ className }: PreviewProps) {
     actionsEnabled,
     title: t("preview.mermaidEngine"),
     version: visibleMermaid?.version ?? MERMAID_JS_VERSION,
-    svg: mermaidSvg,
+    svgArtifact: mermaidSvgArtifact,
     error: mermaidError,
     errorDetail: mermaidErrorDetail,
     errorStage: failedStage(visibleBatch?.mermaid ?? null),
@@ -508,7 +504,7 @@ export function Preview({ className }: PreviewProps) {
                     : (mermanSvgUnavailableLabel ?? t("preview.copySvg"))
                 }
                 onClick={() =>
-                  handleCopySvg(svg, mermanSvgActionKey)
+                  handleCopySvg(svgArtifact, mermanSvgActionKey)
                 }
                 disabled={!actionsEnabled || Boolean(mermanSvgUnavailableLabel)}
               >
@@ -603,7 +599,6 @@ export function Preview({ className }: PreviewProps) {
             <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
           ) : (
             <SvgViewport
-              svg={svg}
               presentationKey={currentBatch?.snapshot.requestId ?? null}
               controller={svgViewport}
               onPresentationReady={(at) => {
@@ -623,11 +618,9 @@ export function Preview({ className }: PreviewProps) {
           <CompareView
             merman={{
               artifact: mermanArtifact,
-              controller: mermanCompareViewport,
             }}
             mermaid={{
               artifact: mermaidArtifact,
-              controller: mermaidCompareViewport,
             }}
             actions={{
               copiedSvgKey,
@@ -1053,11 +1046,6 @@ function DiagnosticArtifactView({
 
 function artifactActionKey(kind: string, renderKey: string): string {
   return JSON.stringify([kind, renderKey]);
-}
-
-function requireSafeSvgString(svg: string): string {
-  assertSafeSvgForDom(svg);
-  return svg;
 }
 
 function artifactUnavailableLabel({

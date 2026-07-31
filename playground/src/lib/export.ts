@@ -6,21 +6,29 @@ import {
   planPngRaster,
   type PngRasterPlan,
 } from "@/src/lib/png-export-plan";
+import {
+  assertSafeInlineSvgArtifact,
+  type SafeInlineSvg,
+} from "@/src/runtime/render-artifact";
 
 /** Download an SVG file. */
-export function exportSVG(svg: string, filename: string = 'diagram'): void {
-  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+export function exportSVG(
+  artifact: SafeInlineSvg,
+  filename: string = 'diagram'
+): void {
+  assertSafeInlineSvgArtifact(artifact);
+  const blob = new Blob([artifact.svg], { type: 'image/svg+xml;charset=utf-8' });
   downloadBlob(blob, `${filename}.svg`);
 }
 
 /** Download a PNG file and report its actual raster dimensions. */
 export async function exportPNG(
-  svg: string,
+  artifact: SafeInlineSvg,
   filename: string = 'diagram',
   scale: number = 2,
   hooks: PngExportHooks = {}
 ): Promise<PngRasterPlan> {
-  const { blob, plan } = await rasterizeSvgToPngBlob(svg, scale, hooks);
+  const { blob, plan } = await rasterizeSvgToPngBlob(artifact, scale, hooks);
   downloadBlob(blob, `${filename}.png`);
   return plan;
 }
@@ -40,16 +48,17 @@ export async function copyASCIIToClipboard(ascii: string): Promise<void> {
 }
 
 /** Copy an SVG artifact to the clipboard. */
-export async function copySVGToClipboard(svg: string): Promise<void> {
-  await navigator.clipboard.writeText(svg);
+export async function copySVGToClipboard(artifact: SafeInlineSvg): Promise<void> {
+  assertSafeInlineSvgArtifact(artifact);
+  await navigator.clipboard.writeText(artifact.svg);
 }
 
 /** Copy a PNG artifact to the clipboard and report its raster dimensions. */
 export async function copyPNGToClipboard(
-  svg: string,
+  artifact: SafeInlineSvg,
   scale: number = 2
 ): Promise<PngRasterPlan> {
-  const { blob, plan } = await rasterizeSvgToPngBlob(svg, scale);
+  const { blob, plan } = await rasterizeSvgToPngBlob(artifact, scale);
   await navigator.clipboard.write([
     new ClipboardItem({ 'image/png': blob }),
   ]);
@@ -74,7 +83,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 }
 
 interface RasterSvgSource {
-  svg: string;
+  artifact: SafeInlineSvg;
   width: number;
   height: number;
 }
@@ -106,26 +115,27 @@ const FALLBACK_RASTER_WIDTH = 300;
 const FALLBACK_RASTER_HEIGHT = 150;
 
 async function rasterizeSvgToPngBlob(
-  svg: string,
+  artifact: SafeInlineSvg,
   scale: number,
   hooks: PngExportHooks = {}
 ): Promise<RasterizedPng> {
-  const source = prepareSvgForRasterExport(svg);
+  assertSafeInlineSvgArtifact(artifact);
+  const source = prepareSvgForRasterExport(artifact);
   const plan = planPngRaster(source.width, source.height, normalizeScale(scale));
   hooks.onPlan?.(plan);
 
-  const rasterSvg =
-    sizeSvgForRasterization(svg, {
+  const rasterArtifact =
+    sizeSvgForRasterization(artifact, {
       width: plan.outputWidth,
       height: plan.outputHeight,
-    }) ?? source.svg;
+    }) ?? source.artifact;
   const canvas = document.createElement('canvas');
   const ctx = allocateCanvas(canvas, plan);
 
   const img = new Image();
   img.crossOrigin = 'anonymous';
 
-  const svgBlob = new Blob([rasterSvg], {
+  const svgBlob = new Blob([rasterArtifact.svg], {
     type: 'image/svg+xml;charset=utf-8',
   });
   const url = URL.createObjectURL(svgBlob);
@@ -151,14 +161,16 @@ async function rasterizeSvgToPngBlob(
   };
 }
 
-function prepareSvgForRasterExport(svg: string): RasterSvgSource {
-  const dimensions = parseSvgDimensions(svg);
-  return dimensions ? { svg, ...dimensions } : fallbackRasterSvgSource(svg);
+function prepareSvgForRasterExport(artifact: SafeInlineSvg): RasterSvgSource {
+  const dimensions = parseSvgDimensions(artifact.svg);
+  return dimensions
+    ? { artifact, ...dimensions }
+    : fallbackRasterSvgSource(artifact);
 }
 
-function fallbackRasterSvgSource(svg: string): RasterSvgSource {
+function fallbackRasterSvgSource(artifact: SafeInlineSvg): RasterSvgSource {
   return {
-    svg,
+    artifact,
     width: FALLBACK_RASTER_WIDTH,
     height: FALLBACK_RASTER_HEIGHT,
   };

@@ -18,7 +18,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ViewportControls } from "@/src/components/PreviewArtifactViews";
-import { SvgViewport, type SvgViewportController } from "@/src/components/SvgViewport";
+import {
+  SvgViewport,
+  useSvgViewport,
+  type SvgViewportController,
+} from "@/src/components/SvgViewport";
+import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
 import { cn } from "@/lib/utils";
 
 export type CompareEngineKey = "merman" | "mermaid";
@@ -31,7 +36,7 @@ export interface CompareArtifact {
   actionsEnabled: boolean;
   title: string;
   version: string;
-  svg: string | null;
+  svgArtifact: SafeInlineSvg | null;
   error: string | null;
   errorDetail: string | null;
   errorStage: string | null;
@@ -44,15 +49,14 @@ export interface CompareArtifact {
 
 export interface ComparePaneModel {
   artifact: CompareArtifact;
-  controller: SvgViewportController;
 }
 
 export interface ComparePaneActions {
   copiedSvgKey: string | null;
   exportingPngEngines: ReadonlySet<CompareEngineKey>;
-  onCopySvg(svg: string | null, actionKey: string): void;
-  onExportPng(engine: CompareEngineKey, svg: string | null): void;
-  onExportSvg(engine: CompareEngineKey, svg: string | null): void;
+  onCopySvg(artifact: SafeInlineSvg | null, actionKey: string): void;
+  onExportPng(engine: CompareEngineKey, artifact: SafeInlineSvg | null): void;
+  onExportSvg(engine: CompareEngineKey, artifact: SafeInlineSvg | null): void;
   onPresentationReady(engine: CompareEngineKey, at: number): void;
   onRetry(): void;
 }
@@ -101,15 +105,19 @@ function ComparePane({
   isDarkMode: boolean;
   t: (key: string) => string;
 }) {
-  const { artifact, controller } = model;
+  const { artifact } = model;
   const copied = actions.copiedSvgKey === artifact.artifactKey;
   const exporting = actions.exportingPngEngines.has(artifact.key);
-  const hasSvg = Boolean(artifact.svg);
+  const hasSvg = Boolean(artifact.svgArtifact);
   const actionsDisabled =
     !artifact.actionsEnabled ||
     Boolean(artifact.unavailableLabel);
   const [svgDisplayMode, setSvgDisplayMode] =
     useState<SvgDisplayMode>("visual");
+  const controller = useSvgViewport({
+    artifact: artifact.svgArtifact,
+    enabled: svgDisplayMode === "visual",
+  });
   const statusId = useId();
   const paneRef = useRef<HTMLElement>(null);
   const ownedFocus = useRef(false);
@@ -181,7 +189,9 @@ function ComparePane({
                   ? t("preview.copied")
                   : (artifact.unavailableLabel ?? t("preview.copySvg"))
               }
-              onClick={() => actions.onCopySvg(artifact.svg, artifact.artifactKey)}
+              onClick={() =>
+                actions.onCopySvg(artifact.svgArtifact, artifact.artifactKey)
+              }
               disabled={actionsDisabled}
             >
               {copied ? (
@@ -195,7 +205,9 @@ function ComparePane({
                 artifact.unavailableLabel ??
                 t("preview.exportSvg")
               }
-              onClick={() => actions.onExportSvg(artifact.key, artifact.svg)}
+              onClick={() =>
+                actions.onExportSvg(artifact.key, artifact.svgArtifact)
+              }
               disabled={actionsDisabled}
             >
               <FileCode className="size-4" />
@@ -225,7 +237,9 @@ function ComparePane({
                   ? t("preview.exporting")
                   : (artifact.unavailableLabel ?? t("preview.exportPng"))
               }
-              onClick={() => actions.onExportPng(artifact.key, artifact.svg)}
+              onClick={() =>
+                actions.onExportPng(artifact.key, artifact.svgArtifact)
+              }
               disabled={actionsDisabled || exporting}
             >
               {exporting ? (
@@ -275,7 +289,7 @@ function compareArtifactStatus(
   if (artifact.error) {
     return { label: t("preview.currentRenderFailed"), state: "rejected" };
   }
-  if (artifact.svg) {
+  if (artifact.svgArtifact) {
     const timing =
       artifact.renderTime === null ? "" : ` · ${artifact.renderTime.toFixed(1)}ms`;
     return { label: `${t("preview.artifactReady")}${timing}`, state: "ready" };
@@ -300,7 +314,7 @@ function ComparePaneBody({
   onRetry(): void;
   t: (key: string) => string;
 }) {
-  if (artifact.loading && !artifact.svg) {
+  if (artifact.loading && !artifact.svgArtifact) {
     return (
       <CenteredMessage icon={<Loader2 className="size-6 animate-spin" />}>
         {artifact.loadingLabel ?? t("preview.renderingMermaid")}
@@ -320,11 +334,15 @@ function ComparePaneBody({
     );
   }
   if (displayMode === "source") {
-    return <CompareSvgSource svg={artifact.svg} isDarkMode={isDarkMode} />;
+    return (
+      <CompareSvgSource
+        svg={artifact.svgArtifact?.svg ?? null}
+        isDarkMode={isDarkMode}
+      />
+    );
   }
   return (
     <SvgViewport
-      svg={artifact.svg}
       presentationKey={artifact.presentationKey}
       controller={controller}
       onPresentationReady={onPresentationReady}

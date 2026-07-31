@@ -12,6 +12,7 @@ import type {
 } from "@mermanjs/web";
 import type { DiagramFont } from "../lib/diagram-font.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
+import type { SafeInlineSvg } from "./render-artifact.ts";
 
 export type MermanLoadStage =
   | "acquire"
@@ -25,6 +26,7 @@ export type MermanRecovery = "reload" | "retry";
 export type MermanRequestCache = "default" | "reload";
 export type MermanSvgPipeline = "parity" | "readable" | "resvg-safe";
 export type MermanTextMeasurementMode = "browser" | "headless";
+export type MermanRenderFailureStage = "render" | "svg-validation";
 
 export interface MermanRenderOptions {
   diagramFont?: DiagramFont;
@@ -35,16 +37,17 @@ export interface MermanRenderOptions {
 
 export type MermanRenderResult =
   | {
+      readonly artifact: SafeInlineSvg;
       readonly error: null;
       readonly renderTime: number;
       readonly status: "success";
-      readonly svg: string;
     }
   | {
+      readonly artifact: null;
       readonly error: ErrorProjection;
       readonly renderTime: number;
+      readonly stage: MermanRenderFailureStage;
       readonly status: "failure";
-      readonly svg: null;
     };
 
 export type MermanAsciiResult =

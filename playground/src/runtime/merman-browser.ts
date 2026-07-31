@@ -1,7 +1,6 @@
 import {
   asciiCapabilities,
   asciiSupportedDiagrams,
-  assertSafeSvgForDom,
   createBrowserTextMeasurementSession,
   detectDiagramFacts,
   initMerman,
@@ -30,6 +29,7 @@ import {
 } from "../lib/mermaid-config.ts";
 import { configuredMermanOperationInput } from "./merman-operation-input.ts";
 import { projectError } from "./error-projection.ts";
+import { projectSafeInlineSvg } from "./render-artifact.ts";
 import type {
   MermanDomainFacade,
   MermanRuntimeDependencies,
@@ -134,6 +134,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
 
     render(code, theme, configJson = DEFAULT_MERMAID_CONFIG, options) {
       const startedAt = performance.now();
+      let svg: string;
       try {
         const input = configuredMermanOperationInput(
           code,
@@ -141,7 +142,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
           configJson,
           options,
         );
-        const svg =
+        svg =
           options?.textMeasurementMode === "browser"
             ? renderSvgWithTextMeasurer(
                 input.source,
@@ -149,19 +150,29 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
                 input.bindingOptions,
               )
             : renderSvg(input.source, input.bindingOptions);
-        assertSafeSvgForDom(svg);
+      } catch (error) {
         return {
+          artifact: null,
+          error: projectError(error),
+          renderTime: 0,
+          stage: "render",
+          status: "failure",
+        };
+      }
+      try {
+        return {
+          artifact: projectSafeInlineSvg(svg),
           error: null,
           renderTime: performance.now() - startedAt,
           status: "success",
-          svg,
         };
       } catch (error) {
         return {
+          artifact: null,
           error: projectError(error),
           renderTime: 0,
+          stage: "svg-validation",
           status: "failure",
-          svg: null,
         };
       }
     },

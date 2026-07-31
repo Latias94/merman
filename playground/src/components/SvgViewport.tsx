@@ -9,12 +9,11 @@ import {
   type RefObject,
   type WheelEvent,
 } from "react";
-import { assertSafeSvgForDom } from "@mermanjs/web";
 import {
-  normalizeSvgForResponsivePreview,
-  parseSvgDimensions,
+  prepareSvgForResponsivePreview,
   type SvgDimensions,
 } from "@/src/lib/svg-geometry";
+import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
 import { cn } from "@/lib/utils";
 
 interface Point {
@@ -40,19 +39,38 @@ export interface SvgViewportController {
   handlePointerUp(event: PointerEvent<HTMLDivElement>): void;
 }
 
+type PreparedSvgPreview = NonNullable<
+  ReturnType<typeof prepareSvgForResponsivePreview>
+>;
+
+const PREVIEW_BY_CONTROLLER = new WeakMap<
+  SvgViewportController,
+  PreparedSvgPreview
+>();
+
 interface UseSvgViewportOptions {
-  svg: string | null;
+  artifact: SafeInlineSvg | null;
   enabled: boolean;
 }
 
 export function useSvgViewport({
-  svg,
+  artifact,
   enabled,
 }: UseSvgViewportOptions): SvgViewportController {
+  const preview = useMemo(() => {
+    if (!enabled || !artifact) return null;
+
+    try {
+      return prepareSvgForResponsivePreview(artifact);
+    } catch {
+      return null;
+    }
+  }, [artifact, enabled]);
   const [zoom, setZoom] = useState(1);
   const [fitZoom, setFitZoom] = useState(1);
   const [previewSize, setPreviewSize] = useState<SvgDimensions | null>(null);
-  const [fittedSvg, setFittedSvg] = useState<string | null>(null);
+  const [fittedPreview, setFittedPreview] =
+    useState<PreparedSvgPreview | null>(null);
   const [position, setPosition] = useState<Point>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
@@ -67,7 +85,7 @@ export function useSvgViewport({
 
     const availableWidth = Math.max(container.clientWidth - 48, 1);
     const availableHeight = Math.max(container.clientHeight - 48, 1);
-    const intrinsicSize = svg ? parseSvgDimensions(svg) : null;
+    const intrinsicSize = preview?.dimensions ?? null;
     let nextZoom: number;
 
     if (intrinsicSize) {
@@ -95,12 +113,12 @@ export function useSvgViewport({
       setPreviewSize(null);
     }
 
-    setFittedSvg(svg);
+    setFittedPreview(preview);
     setIsAutoFit(true);
     setFitZoom(nextZoom);
     setZoom(nextZoom);
     setPosition({ x: 0, y: 0 });
-  }, [svg]);
+  }, [preview]);
 
   const zoomIn = useCallback(() => {
     setIsAutoFit(false);
@@ -172,15 +190,15 @@ export function useSvgViewport({
   );
 
   useEffect(() => {
-    if (!enabled || !svg) return;
+    if (!enabled || !preview) return;
 
     setIsAutoFit(true);
     const frame = requestAnimationFrame(fitToView);
     return () => cancelAnimationFrame(frame);
-  }, [enabled, fitToView, svg]);
+  }, [enabled, fitToView, preview]);
 
   useEffect(() => {
-    if (!enabled || !svg || !isAutoFit) return;
+    if (!enabled || !preview || !isAutoFit) return;
 
     const container = containerRef.current;
     if (!container || typeof ResizeObserver === "undefined") return;
@@ -197,10 +215,10 @@ export function useSvgViewport({
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [enabled, fitToView, isAutoFit, svg]);
+  }, [enabled, fitToView, isAutoFit, preview]);
 
-  const hasCurrentFit = fittedSvg === svg;
-  return {
+  const hasCurrentFit = fittedPreview === preview;
+  const controller: SvgViewportController = {
     zoom,
     contentScale: hasCurrentFit ? zoom / fitZoom : 1,
     previewSize: hasCurrentFit ? previewSize : null,
@@ -217,10 +235,13 @@ export function useSvgViewport({
     handlePointerMove,
     handlePointerUp,
   };
+  if (preview) {
+    PREVIEW_BY_CONTROLLER.set(controller, preview);
+  }
+  return controller;
 }
 
 interface SvgViewportProps {
-  svg: string | null;
   presentationKey: number | null;
   controller: SvgViewportController;
   className?: string;
@@ -230,7 +251,6 @@ interface SvgViewportProps {
 }
 
 export function SvgViewport({
-  svg,
   presentationKey,
   controller,
   className,
@@ -241,25 +261,22 @@ export function SvgViewport({
   const shadowHostRef = useRef<HTMLDivElement>(null);
   const onPresentationReadyRef = useRef(onPresentationReady);
   onPresentationReadyRef.current = onPresentationReady;
-  const displaySvg = useMemo(() => {
-    if (!svg) return null;
-
-    try {
-      assertSafeSvgForDom(svg);
-      const normalized = normalizeSvgForResponsivePreview(svg)?.svg ?? svg;
-      assertSafeSvgForDom(normalized);
-      return normalized;
-    } catch {
-      return null;
-    }
-  }, [svg]);
+  const preview = PREVIEW_BY_CONTROLLER.get(controller) ?? null;
 
   useEffect(() => {
     const host = shadowHostRef.current;
-    if (!host || !displaySvg) return;
+    if (!host || !preview) return;
 
     const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-    root.innerHTML = displaySvg;
+    root.replaceChildren(preview.takeNode());
+
+    return () => root.replaceChildren();
+  }, [preview]);
+
+  useEffect(() => {
+    const root = shadowHostRef.current?.shadowRoot;
+    if (!root || !preview) return;
+
     const frame = requestAnimationFrame(() => {
       const renderedSvg = root.querySelector("svg");
       if (!renderedSvg) return;
@@ -276,12 +293,11 @@ export function SvgViewport({
 
     return () => {
       cancelAnimationFrame(frame);
-      root.replaceChildren();
     };
   }, [
     controller.previewSize?.height,
     controller.previewSize?.width,
-    displaySvg,
+    preview,
     presentationKey,
   ]);
 
@@ -300,7 +316,7 @@ export function SvgViewport({
       onPointerCancel={controller.handlePointerUp}
       onDragStart={(event) => event.preventDefault()}
     >
-      {displaySvg ? (
+      {preview ? (
         <div
           className="absolute left-1/2 top-1/2"
           style={{

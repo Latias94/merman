@@ -189,12 +189,12 @@ export function Toolbar() {
   const currentMerman =
     currentBatch?.merman.status === "success" ? currentBatch.merman : null;
   const artifactActionsEnabled = currentMerman !== null;
-  const renderCurrentSvg = useCallback(
+  const renderCurrentSvgArtifact = useCallback(
     (pipeline?: "resvg-safe") => {
       if (!currentBatch || !currentMerman) {
         throw new Error("Current Merman render is unavailable.");
       }
-      if (!pipeline) return currentMerman.svg;
+      if (!pipeline) return currentMerman.artifact;
       if (!facade) throw new Error("Merman runtime is not ready.");
       const snapshot = currentBatch.snapshot;
       const result = facade.render(
@@ -206,7 +206,7 @@ export function Toolbar() {
       if (result.status === "failure") {
         throw new Error(result.error.summary);
       }
-      return result.svg;
+      return result.artifact;
     },
     [currentBatch, currentMerman, facade]
   );
@@ -214,19 +214,19 @@ export function Toolbar() {
   // Export actions consume only the completed, current render batch.
   const handleExportSVG = useCallback(() => {
     try {
-      exportSVG(renderCurrentSvg(), "merman-diagram");
+      exportSVG(renderCurrentSvgArtifact(), "merman-diagram");
       toast.success(t("export.svgSuccess"));
     } catch {
       toast.error(t("export.failed"));
     }
-  }, [renderCurrentSvg, t]);
+  }, [renderCurrentSvgArtifact, t]);
 
   const handleExportPNG = useCallback(async () => {
     setIsExporting(true);
     let notificationId: string | number | undefined;
     try {
       const plan = await exportPNG(
-        renderCurrentSvg("resvg-safe"),
+        renderCurrentSvgArtifact("resvg-safe"),
         "merman-diagram",
         2,
         {
@@ -252,7 +252,7 @@ export function Toolbar() {
     } finally {
       setIsExporting(false);
     }
-  }, [renderCurrentSvg, t]);
+  }, [renderCurrentSvgArtifact, t]);
 
   const handleExportASCII = useCallback(() => {
     const ascii = currentMerman?.ascii;
@@ -294,12 +294,12 @@ export function Toolbar() {
 
   const handleCopySVG = useCallback(async () => {
     try {
-      await copySVGToClipboard(renderCurrentSvg());
+      await copySVGToClipboard(renderCurrentSvgArtifact());
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [renderCurrentSvg, t]);
+  }, [renderCurrentSvgArtifact, t]);
 
   const handleShare = useCallback(async () => {
     if (!code.trim()) {
