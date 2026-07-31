@@ -402,6 +402,9 @@ jobs:
           cache: npm
           cache-dependency-path: platforms/web/package-lock.json
 
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@wasm-tools
+
       - name: Install WASM tools
         run: |
           cargo install wasm-bindgen-cli --version 0.2.108 --locked
