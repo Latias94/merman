@@ -19,6 +19,14 @@ const SCHEMA_VERSION: u32 = 1;
 const RESULT_SCHEMA_VERSION: u32 = 1;
 const ABI3_FROZEN_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
+const ABI3_FROZEN_MINIMUM_SEMANTICS: [&str; 6] = [
+    "written-results-own-nonzero-allocation-tokens",
+    "result-free-authorizes-by-token-and-clears-the-record",
+    "engine-try-close-is-nonblocking-and-success-is-quiescent",
+    "host-callback-nonlocal-exits-are-forbidden",
+    "engine-new-inputs-and-outputs-do-not-overlap",
+    "error-kind-vocabulary-is-closed",
+];
 const FFI_RUST_OUTPUT: &str = "crates/merman-ffi/src/generated/abi3.rs";
 const FFI_HEADER_OUTPUT: &str = "crates/merman-ffi/include/merman.h";
 
@@ -30,6 +38,8 @@ struct NativeAbiDescriptor {
     abi_version: u32,
     result_schema_version: u32,
     minimum_prefix: MinimumPrefixDescriptor,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    minimum_semantics: Vec<String>,
     error_kinds: Vec<ErrorKindDescriptor>,
     entry_point: EntryPoint,
     status_codes: Vec<CodeDescriptor>,
@@ -423,8 +433,22 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             "native ABI 3 minimum prefix must freeze 17 statuses, 14 operations, 5 error kinds, 1 callback, 5 function slots, and 9 records",
         ));
     }
-    if descriptor.error_kinds.len() < minimum_prefix.error_kind_count
-        || descriptor.callbacks.len() < minimum_prefix.callback_count
+    if descriptor
+        .minimum_semantics
+        .iter()
+        .map(String::as_str)
+        .ne(ABI3_FROZEN_MINIMUM_SEMANTICS)
+    {
+        return Err(descriptor_error(
+            "native ABI 3 minimum semantics changed; incompatible ownership or lifecycle changes require a new ABI version",
+        ));
+    }
+    if descriptor.error_kinds.len() != minimum_prefix.error_kind_count {
+        return Err(descriptor_error(
+            "native ABI 3 error-kind vocabulary is closed at five entries",
+        ));
+    }
+    if descriptor.callbacks.len() < minimum_prefix.callback_count
         || descriptor.records.len() < minimum_prefix.record_count
     {
         return Err(descriptor_error(
@@ -905,6 +929,7 @@ fn minimum_prefix_layout_digest(descriptor: &NativeAbiDescriptor) -> Result<Stri
     prefix.function_slots.sort_by_key(|slot| slot.code);
     prefix.function_slots.truncate(minimum.function_slot_count);
     prefix.records.truncate(minimum.record_count);
+    prefix.minimum_semantics.clear();
     prefix.ownership_rules.clear();
     strip_layout_irrelevant_metadata(&mut prefix);
     descriptor_digest(&prefix, "minimum-prefix layout")
@@ -1605,6 +1630,14 @@ mod tests {
         assert_eq!(descriptor.result_schema_version, 1);
         assert_eq!(
             descriptor
+                .minimum_semantics
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ABI3_FROZEN_MINIMUM_SEMANTICS
+        );
+        assert_eq!(
+            descriptor
                 .error_kinds
                 .iter()
                 .map(|kind| kind.json_name.as_str())
@@ -1688,6 +1721,19 @@ mod tests {
         descriptor.error_kinds[1].json_name = "generic".to_string();
 
         assert!(validate_descriptor(&descriptor).is_err());
+
+        let mut descriptor = committed_descriptor();
+        descriptor.error_kinds.push(ErrorKindDescriptor {
+            id: "future_kind".to_string(),
+            c_name: "MERMAN_NATIVE_ERROR_KIND_FUTURE_KIND".to_string(),
+            json_name: "future-kind".to_string(),
+            description: "Future error kind.".to_string(),
+        });
+        assert!(validate_descriptor(&descriptor).is_err());
+
+        let mut descriptor = committed_descriptor();
+        descriptor.minimum_semantics[0] = "changed-result-ownership".to_string();
+        assert!(validate_descriptor(&descriptor).is_err());
     }
 
     #[test]
@@ -1744,12 +1790,6 @@ mod tests {
             c_name: "MERMAN_NATIVE_STATUS_FUTURE_STATUS".to_string(),
             code: 17,
             description: "Future append-only status.".to_string(),
-        });
-        appended.error_kinds.push(ErrorKindDescriptor {
-            id: "future_kind".to_string(),
-            c_name: "MERMAN_NATIVE_ERROR_KIND_FUTURE_KIND".to_string(),
-            json_name: "future-kind".to_string(),
-            description: "Future append-only failure kind.".to_string(),
         });
         let mut future_slot = appended.function_slots.last().unwrap().clone();
         future_slot.id = "future_slot".to_string();

@@ -11,6 +11,14 @@
     "function_slot_count": 5,
     "record_count": 9
   },
+  "minimum_semantics": [
+    "written-results-own-nonzero-allocation-tokens",
+    "result-free-authorizes-by-token-and-clears-the-record",
+    "engine-try-close-is-nonblocking-and-success-is-quiescent",
+    "host-callback-nonlocal-exits-are-forbidden",
+    "engine-new-inputs-and-outputs-do-not-overlap",
+    "error-kind-vocabulary-is-closed"
+  ],
   "error_kinds": [
     { "id": "generic", "c_name": "MERMAN_NATIVE_ERROR_KIND_GENERIC", "json_name": "generic", "description": "A failure without a more specific machine-readable binding classification." },
     { "id": "unknown_operation", "c_name": "MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION", "json_name": "unknown-operation", "description": "The requested operation identifier or numeric code is not part of the ABI operation vocabulary." },
@@ -100,7 +108,7 @@
         { "name": "out_engine", "c_type": "MermanNativeEngineToken *", "rust_type": "*mut MermanNativeEngineToken" },
         { "name": "out_result", "c_type": "MermanNativeResult *", "rust_type": "*mut MermanNativeResult" }
       ],
-      "description": "Create a reusable engine from size-tagged configuration."
+      "description": "Create a reusable engine from size-tagged configuration. The caller initializes out_engine to zero. The config record, its options_json storage, out_engine, and out_result must not overlap."
     },
     {
       "id": "engine_try_close",
@@ -280,6 +288,6 @@
     { "id": "borrowed_slices", "description": "Input, media-type, and callback slices are borrowed. Hosts must not retain their pointers after the enclosing call or callback returns." },
     { "id": "engine_tokens", "description": "Engine tokens are opaque u64 values. engine_try_close never waits: callback-active returns reentrant-call, another active operation returns busy with the token still valid, and quiescent success permanently closes admission before retiring the token. A transport reference acquired before successful close cannot enter afterwards. Callback and user_data are immutable constructor-owned state and may be released after successful close." },
     { "id": "host_callbacks", "description": "Host callbacks are synchronous and borrowed for the call. They MUST NOT unwind, throw, propagate SEH, longjmp, or otherwise perform a non-local exit across the ABI boundary. Merman converts returned status values only; it cannot catch foreign exceptions." },
-    { "id": "disabled_capabilities", "description": "A known operation whose backend is absent returns unsupported_operation with kind missing-capability and the canonical capability_id before result allocation. An unknown operation code returns the same status with kind unknown-operation and a null capability_id." }
+    { "id": "disabled_capabilities", "description": "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free." }
   ]
 }

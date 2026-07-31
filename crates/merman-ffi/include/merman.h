@@ -22,7 +22,7 @@ extern "C" {
 
 #define MERMAN_NATIVE_ABI_VERSION 3u
 #define MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110"
-#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:fd23cf40afff31e77953033cb689f2ecd238685d332dffdb23405881c64135b9"
+#define MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST "sha256:4398fdaa3ef669d688402f2bb1ea864a2e42629f94f9681df8149b7d0c514cb8"
 #define MERMAN_NATIVE_RESULT_SCHEMA_VERSION 1u
 #define MERMAN_NATIVE_ERROR_KIND_BUSY "busy"
 #define MERMAN_NATIVE_ERROR_KIND_GENERIC "generic"
@@ -263,10 +263,11 @@ struct MermanNativeApi {
  * Ownership and concurrency rules from the ABI descriptor:
  * - borrowed_slices: Input, media-type, and callback slices are borrowed. Hosts must not retain
  *   their pointers after the enclosing call or callback returns.
- * - disabled_capabilities: A known operation whose backend is absent returns unsupported_operation
- *   with kind missing-capability and the canonical capability_id before result allocation. An
+ * - disabled_capabilities: A known operation whose backend is absent is rejected before backend
+ *   work with unsupported_operation, kind missing-capability, and the canonical capability_id. An
  *   unknown operation code returns the same status with kind unknown-operation and a null
- *   capability_id.
+ *   capability_id. Both failures are written results with nonzero allocation_token values and must
+ *   be released with result_free.
  * - engine_tokens: Engine tokens are opaque u64 values. engine_try_close never waits:
  *   callback-active returns reentrant-call, another active operation returns busy with the token
  *   still valid, and quiescent success permanently closes admission before retiring the token. A

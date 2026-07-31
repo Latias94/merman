@@ -127,6 +127,10 @@ MermanNativeStatus status = api.engine_new(&config, &engine, &result);
 api.result_free(&result);
 ```
 
+Initialize `out_engine` to zero before `engine_new`. The `config` record, its `options_json` byte
+storage, `out_engine`, and `out_result` must be pairwise disjoint; obvious overlap is rejected with
+`MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` before Merman writes either output.
+
 Then select an operation with `MermanNativeOperationRequest.operation` and execute the same route
 for every operation:
 
@@ -186,8 +190,9 @@ nullable `capability_id`:
 }
 ```
 
-The closed kinds are `generic`, `unknown-operation`, `missing-capability`, `reentrant-call`, and
-`busy`.
+The ABI 3 error-kind vocabulary is frozen and closed: `generic`, `unknown-operation`,
+`missing-capability`, `reentrant-call`, and `busy`. Consumers should still treat an unknown kind as
+`generic` and every unknown nonzero status as failure when diagnosing a malformed producer.
 Unknown operation IDs or numeric codes use `unknown-operation` with a null `capability_id`. A valid operation whose backend is
 absent uses `missing-capability` with the exact descriptor capability ID. Both cases retain status
 `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION`, so consumers must not infer the distinction from
@@ -257,6 +262,9 @@ function-pointer types are declared `noexcept` to make this contract visible to 
   C-consumer layout fingerprint as provenance evidence, not interchangeable compatibility keys.
 - Function slots and codes may only be appended. The frozen minimum prefix cannot change within
   ABI 3; changing its layout requires ABI 4.
+- Result ownership, token/free behavior, callback non-local-exit prohibition, nonblocking close
+  semantics, `engine_new` storage separation, and the closed error-kind vocabulary are frozen ABI 3
+  semantics. The descriptor verifier rejects changes to this explicit minimum-semantic set.
 - Except for the API table's capacity negotiation, records require exact generated sizes. The
   package's C smoke tests compile and run both the current header and the frozen minimum-prefix
   consumer; applications do not need to duplicate a runtime offset probe.

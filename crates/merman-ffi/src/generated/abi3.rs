@@ -6,7 +6,7 @@ pub const MERMAN_NATIVE_ABI_VERSION: u32 = 3;
 pub const MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST: &str =
     "sha256:c40c22461e973267106c0cbd5c2c98d7deed72fc7b94d70d45923f8f9d1c5110";
 pub const MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST: &str =
-    "sha256:fd23cf40afff31e77953033cb689f2ecd238685d332dffdb23405881c64135b9";
+    "sha256:4398fdaa3ef669d688402f2bb1ea864a2e42629f94f9681df8149b7d0c514cb8";
 pub const MERMAN_NATIVE_RESULT_SCHEMA_VERSION: u32 = 1;
 pub const MERMAN_NATIVE_ERROR_KIND_BUSY: &str = "busy";
 pub const MERMAN_NATIVE_ERROR_KIND_GENERIC: &str = "generic";
@@ -453,7 +453,7 @@ pub const MERMAN_NATIVE_ABI_OWNERSHIP_RULES: &[(&str, &str)] = &[
     ),
     (
         "disabled_capabilities",
-        "A known operation whose backend is absent returns unsupported_operation with kind missing-capability and the canonical capability_id before result allocation. An unknown operation code returns the same status with kind unknown-operation and a null capability_id.",
+        "A known operation whose backend is absent is rejected before backend work with unsupported_operation, kind missing-capability, and the canonical capability_id. An unknown operation code returns the same status with kind unknown-operation and a null capability_id. Both failures are written results with nonzero allocation_token values and must be released with result_free.",
     ),
     (
         "engine_tokens",

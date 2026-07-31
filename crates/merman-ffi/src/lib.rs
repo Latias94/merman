@@ -441,6 +441,40 @@ fn validate_struct_size<T>(actual: u32, name: &str) -> Result<(), NativeFailure>
     Ok(())
 }
 
+fn validate_disjoint_storage(
+    left: *const u8,
+    left_len: usize,
+    left_name: &str,
+    right: *const u8,
+    right_len: usize,
+    right_name: &str,
+) -> Result<(), NativeFailure> {
+    if left_len == 0 || right_len == 0 {
+        return Ok(());
+    }
+    let left_start = left as usize;
+    let right_start = right as usize;
+    let Some(left_end) = left_start.checked_add(left_len) else {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{left_name} address range overflows usize"),
+        ));
+    };
+    let Some(right_end) = right_start.checked_add(right_len) else {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{right_name} address range overflows usize"),
+        ));
+    };
+    if left_start < right_end && right_start < left_end {
+        return Err(NativeFailure::new(
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
+            format!("{left_name} and {right_name} must not overlap"),
+        ));
+    }
+    Ok(())
+}
+
 unsafe fn read_record_struct_size<T>(record: *const T) -> u32 {
     unsafe { ptr::read(record.cast::<u32>()) }
 }
@@ -563,9 +597,17 @@ unsafe fn native_slice_bytes<'a>(
     slice: MermanNativeSlice,
     name: &str,
 ) -> Result<&'a [u8], NativeFailure> {
-    validate_struct_size::<MermanNativeSlice>(slice.struct_size, name)?;
+    validate_native_slice_shape(slice, name)?;
     if slice.len == 0 {
         return Ok(&[]);
+    }
+    Ok(unsafe { std::slice::from_raw_parts(slice.data, slice.len) })
+}
+
+fn validate_native_slice_shape(slice: MermanNativeSlice, name: &str) -> Result<(), NativeFailure> {
+    validate_struct_size::<MermanNativeSlice>(slice.struct_size, name)?;
+    if slice.len == 0 {
+        return Ok(());
     }
     if slice.data.is_null() {
         return Err(NativeFailure::new(
@@ -579,7 +621,7 @@ unsafe fn native_slice_bytes<'a>(
             format!("{name}.len must not exceed isize::MAX"),
         ));
     }
-    Ok(unsafe { std::slice::from_raw_parts(slice.data, slice.len) })
+    Ok(())
 }
 
 unsafe fn read_engine_config(
@@ -1027,10 +1069,72 @@ unsafe fn engine_new_impl(
         );
         return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
     }
+    let config_ptr = config;
+    let config = match unsafe { read_engine_config(config_ptr) } {
+        Ok(config) => config,
+        Err(failure) => {
+            return unsafe {
+                write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure)
+            };
+        }
+    };
+    let storage_validation = (|| {
+        validate_native_slice_shape(config.options_json, "config.options_json")?;
+        validate_disjoint_storage(
+            out_engine.cast::<u8>(),
+            size_of::<MermanNativeEngineToken>(),
+            "out_engine",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        )?;
+        validate_disjoint_storage(
+            config_ptr.cast::<u8>(),
+            size_of::<MermanNativeEngineConfig>(),
+            "config",
+            config.options_json.data,
+            config.options_json.len,
+            "config.options_json",
+        )?;
+        validate_disjoint_storage(
+            config_ptr.cast::<u8>(),
+            size_of::<MermanNativeEngineConfig>(),
+            "config",
+            out_engine.cast::<u8>(),
+            size_of::<MermanNativeEngineToken>(),
+            "out_engine",
+        )?;
+        validate_disjoint_storage(
+            config_ptr.cast::<u8>(),
+            size_of::<MermanNativeEngineConfig>(),
+            "config",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        )?;
+        validate_disjoint_storage(
+            config.options_json.data,
+            config.options_json.len,
+            "config.options_json",
+            out_engine.cast::<u8>(),
+            size_of::<MermanNativeEngineToken>(),
+            "out_engine",
+        )?;
+        validate_disjoint_storage(
+            config.options_json.data,
+            config.options_json.len,
+            "config.options_json",
+            out_result.cast::<u8>(),
+            size_of::<MermanNativeResult>(),
+            "out_result",
+        )
+    })();
+    if let Err(failure) = storage_validation {
+        return unsafe { write_native_failure(out_result, MERMAN_NATIVE_OPERATION_NONE, &failure) };
+    }
     unsafe { ptr::write(out_engine, 0) };
 
     let outcome = (|| {
-        let config = unsafe { read_engine_config(config) }?;
         let options_json =
             unsafe { native_slice_bytes(config.options_json, "config.options_json") }?;
         let admission = BindingEngineAdmission::new(if config.text_measure.is_some() {
@@ -1581,6 +1685,67 @@ mod tests {
     }
 
     #[test]
+    fn engine_new_rejects_overlapping_output_and_option_storage() {
+        let api = api_table();
+        let config = native_config();
+        let mut result = native_result();
+        let overlapping_engine = ptr::addr_of_mut!(result.allocation_token);
+
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, overlapping_engine, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_ne!(result.allocation_token, 0);
+        assert!(
+            result_json(&result)["message"].as_str().is_some_and(
+                |message| message.contains("out_engine and out_result must not overlap")
+            )
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let mut token = 0;
+        let mut result = native_result();
+        let mut config = native_config();
+        config.options_json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(result).cast::<u8>(),
+            len: 1,
+        };
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(token, 0);
+        assert!(
+            result_json(&result)["message"]
+                .as_str()
+                .is_some_and(|message| message
+                    .contains("config.options_json and out_result must not overlap"))
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+
+        let mut token = 0;
+        let mut result = native_result();
+        let mut config = native_config();
+        config.options_json = MermanNativeSlice {
+            struct_size: native_struct_size::<MermanNativeSlice>(),
+            data: ptr::addr_of!(config).cast::<u8>(),
+            len: 1,
+        };
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut result) },
+            MERMAN_NATIVE_STATUS_INVALID_ARGUMENT
+        );
+        assert_eq!(token, 0);
+        assert!(
+            result_json(&result)["message"].as_str().is_some_and(
+                |message| message.contains("config and config.options_json must not overlap")
+            )
+        );
+        unsafe { api.result_free.unwrap()(&mut result) };
+    }
+
+    #[test]
     fn runtime_catalog_is_the_flat_artifact_owned_contract() {
         let api = api_table();
         let mut result = native_result();
@@ -1971,6 +2136,36 @@ mod tests {
         assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION);
         assert!(error["capability_id"].is_null());
         unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(
+            unsafe { api.engine_try_close.unwrap()(token) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+    }
+
+    #[cfg(not(feature = "svg"))]
+    #[test]
+    fn missing_capability_failure_is_an_owned_result() {
+        let api = api_table();
+        let mut config_result = native_result();
+        let mut token = 0;
+        assert_eq!(
+            unsafe { api.engine_new.unwrap()(&native_config(), &mut token, &mut config_result) },
+            MERMAN_NATIVE_STATUS_OK
+        );
+        unsafe { api.result_free.unwrap()(&mut config_result) };
+
+        let request = native_request(MERMAN_NATIVE_OPERATION_SVG, b"flowchart TD\nA --> B");
+        let mut result = native_result();
+        assert_eq!(
+            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+        );
+        assert_ne!(result.allocation_token, 0);
+        let error = result_json(&result);
+        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+        assert_eq!(error["capability_id"], "svg");
+        unsafe { api.result_free.unwrap()(&mut result) };
+        assert_eq!(result.allocation_token, 0);
         assert_eq!(
             unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK
