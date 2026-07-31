@@ -1,10 +1,13 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::position::bk::position_x_with_layering;
+use dugong::position::bk::{find_type1_conflicts, position_x_with_layering};
 use dugong::{EdgeLabel, GraphLabel, NodeLabel, layout, normalize};
 use std::hint::black_box;
 
 const LAYER_COUNTS: [usize; 6] = [5, 10, 20, 40, 80, 160];
+const CONFLICT_INDEX_LAYERS: usize = 4;
+const CONFLICT_INDEX_SEGMENT_WIDTH: usize = 8;
+const CONFLICT_INDEX_WIDTHS: [usize; 4] = [64, 256, 1024, 4096];
 const TYPE2_FALLBACK_WIDTHS: [usize; 5] = [64, 128, 256, 512, 1024];
 
 #[derive(Debug, Clone)]
@@ -160,6 +163,97 @@ fn bench_normalize(c: &mut Criterion) {
     group.finish();
 }
 
+fn build_conflict_index_graph(
+    layer_count: usize,
+    layer_width: usize,
+) -> (
+    Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    Vec<Vec<String>>,
+    usize,
+) {
+    let mut g = Graph::new(GraphOptions::default());
+    g.set_graph(GraphLabel::default());
+    let layering = (0..layer_count)
+        .map(|layer| {
+            (0..layer_width)
+                .map(|order| format!("conflict-l{layer}-n{order}"))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+
+    for (rank, layer) in layering.iter().enumerate() {
+        for (order, id) in layer.iter().enumerate() {
+            let is_segment =
+                order % CONFLICT_INDEX_SEGMENT_WIDTH == CONFLICT_INDEX_SEGMENT_WIDTH - 1;
+            g.set_node(
+                id.clone(),
+                NodeLabel {
+                    width: 160.0,
+                    height: 72.0,
+                    rank: Some(rank as i32),
+                    order: Some(order),
+                    dummy: is_segment.then(|| "edge".to_string()),
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    for rank in 1..layer_count {
+        for order in 0..layer_width {
+            let is_segment =
+                order % CONFLICT_INDEX_SEGMENT_WIDTH == CONFLICT_INDEX_SEGMENT_WIDTH - 1;
+            let source_order = if is_segment {
+                order
+            } else {
+                let reversed = layer_width - 1 - order;
+                if reversed % CONFLICT_INDEX_SEGMENT_WIDTH == CONFLICT_INDEX_SEGMENT_WIDTH - 1 {
+                    reversed.saturating_sub(1)
+                } else {
+                    reversed
+                }
+            };
+            g.set_edge(
+                layering[rank - 1][source_order].clone(),
+                layering[rank][order].clone(),
+            );
+        }
+    }
+
+    let conflicts = find_type1_conflicts(&g, &layering)
+        .values()
+        .map(|neighbors| neighbors.len())
+        .sum();
+    (g, layering, conflicts)
+}
+
+fn bench_bk_conflict_index(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dugong_bk_conflict_index");
+
+    for width in CONFLICT_INDEX_WIDTHS {
+        assert_eq!(width % CONFLICT_INDEX_SEGMENT_WIDTH, 0);
+        let input = build_conflict_index_graph(CONFLICT_INDEX_LAYERS, width);
+        let expected_conflicts =
+            (CONFLICT_INDEX_LAYERS - 1) * (CONFLICT_INDEX_SEGMENT_WIDTH - 1) * width
+                / CONFLICT_INDEX_SEGMENT_WIDTH;
+        assert_eq!(
+            input.2, expected_conflicts,
+            "fixture conflict growth must remain exactly linear"
+        );
+        group.throughput(criterion::Throughput::Elements(input.2 as u64));
+        group.bench_with_input(
+            BenchmarkId::new("crossing_segments", width),
+            &input,
+            |b, input| {
+                let (g, layering, _) = input;
+                b.iter(|| black_box(position_x_with_layering(black_box(g), black_box(layering))))
+            },
+        );
+    }
+
+    group.finish();
+}
+
 fn build_type2_fallback_graph(
     intermediate_count: usize,
     missing_border_order: bool,
@@ -239,6 +333,7 @@ criterion_group!(
     benches,
     bench_layout,
     bench_normalize,
+    bench_bk_conflict_index,
     bench_bk_type2_fallback
 );
 criterion_main!(benches);

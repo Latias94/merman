@@ -368,8 +368,7 @@ struct BkWorkspace<'a> {
     successors: Vec<Vec<usize>>,
     first_predecessor: Vec<Option<usize>>,
     first_dummy_predecessor: Vec<Option<usize>>,
-    conflicts: Vec<(usize, usize)>,
-    conflicts_seen: HashSet<(usize, usize)>,
+    conflicts: HashSet<(usize, usize)>,
     root: Vec<usize>,
     align: Vec<usize>,
     pos: Vec<usize>,
@@ -526,8 +525,7 @@ impl<'a> BkWorkspace<'a> {
             successors,
             first_predecessor,
             first_dummy_predecessor,
-            conflicts: Vec::new(),
-            conflicts_seen: HashSet::default(),
+            conflicts: HashSet::default(),
             root: (0..node_count).collect(),
             align: (0..node_count).collect(),
             pos: vec![NONE; node_count],
@@ -564,20 +562,16 @@ impl<'a> BkWorkspace<'a> {
     fn find_conflicts(&mut self) {
         self.find_type1_conflicts();
         self.find_type2_conflicts();
-        self.conflicts.sort_unstable();
-        self.conflicts_seen = HashSet::default();
     }
 
     fn add_conflict(&mut self, v: usize, w: usize) {
         let conflict = if v <= w { (v, w) } else { (w, v) };
-        if self.conflicts_seen.insert(conflict) {
-            self.conflicts.push(conflict);
-        }
+        self.conflicts.insert(conflict);
     }
 
     fn has_conflict(&self, v: usize, w: usize) -> bool {
         let conflict = if v <= w { (v, w) } else { (w, v) };
-        self.conflicts.binary_search(&conflict).is_ok()
+        self.conflicts.contains(&conflict)
     }
 
     fn find_type1_conflicts(&mut self) {
@@ -1395,7 +1389,7 @@ mod tests {
 
                 let expected = public_conflict_ids(&expected);
                 assert_eq!(workspace_conflict_ids(&g, &workspace), expected);
-                assert_eq!(workspace.conflicts_seen.len(), expected.len());
+                assert_eq!(workspace.conflicts.len(), expected.len());
             }
         }
     }
