@@ -1094,6 +1094,12 @@ def run_mermaid_js(
     return parsed
 
 
+def requires_mermaid_js(exact_benches: list[str], *, skip: bool) -> bool:
+    return not skip and any(
+        split_exact_bench(bench)[0] == "end_to_end" for bench in exact_benches
+    )
+
+
 def native_status(runner: dict[str, Any], exact: str, name: str) -> str:
     if exact in runner.get("times_ns", {}):
         return "measured"
@@ -1215,6 +1221,7 @@ def build_rows(
 
 def comparison_contract_errors(
     *,
+    exact_benches: list[str],
     merman: dict[str, Any],
     mmdr: dict[str, Any],
     mermaid_js: dict[str, Any],
@@ -1231,7 +1238,7 @@ def comparison_contract_errors(
         errors.append(
             f"merman benchmarks missing: {', '.join(sorted(merman['missing']))}"
         )
-    if any(merman.get("skipped", {}).values()):
+    if requested_skip_count(merman, exact_benches) > 0:
         errors.append("merman skipped one or more requested benchmarks")
     if not merman.get("times_ns"):
         errors.append("merman measured no fixtures")
@@ -1965,9 +1972,13 @@ def main(argv: list[str]) -> int:
         except Exception as error:
             native["executable"]["status"] = "failed"
             native["errors"]["__runner__"] = short_error(error)
+    require_mermaid_js = requires_mermaid_js(
+        exact_benches,
+        skip=args.skip_mermaid_js,
+    )
     expected_mermaid = locked_mermaid_version(mermaid_cli_dir / "package-lock.json")
     if (
-        not args.skip_mermaid_js
+        require_mermaid_js
         and expected_mermaid is not None
         and mermaid_js.get("revision") != f"mermaid@{expected_mermaid}"
     ):
@@ -1975,11 +1986,12 @@ def main(argv: list[str]) -> int:
             "Mermaid JS runtime version differs from the package-lock version"
         )
     contract_errors = comparison_contract_errors(
+        exact_benches=exact_benches,
         merman=merman,
         mmdr=mmdr,
         mermaid_js=mermaid_js,
         rows=rows,
-        require_mermaid_js=not args.skip_mermaid_js,
+        require_mermaid_js=require_mermaid_js,
         provenance_errors=provenance_errors,
     )
 
@@ -1999,7 +2011,7 @@ def main(argv: list[str]) -> int:
             "criterion_exact_benches": exact_benches,
             "native_estimate_kind": "criterion_console_mid_point",
             "native_raw_samples_retained": False,
-            "browser_raw_samples_retained": not args.skip_mermaid_js,
+            "browser_raw_samples_retained": require_mermaid_js,
             "cross_transport_ratios_are_context_only": True,
             "command_timeout_seconds": DEFAULT_COMMAND_TIMEOUT_SECONDS,
         },

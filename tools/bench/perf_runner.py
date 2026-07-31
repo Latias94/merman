@@ -157,6 +157,17 @@ def resolved_report_root(value: str) -> Path:
     return (repo_root() / path).resolve() if not path.is_absolute() else path
 
 
+def validate_report_root(value: str) -> Path:
+    path = resolved_report_root(value)
+    root = repo_root().resolve()
+    target_bench = (root / "target" / "bench").resolve()
+    if path.is_relative_to(root) and not path.is_relative_to(target_bench):
+        raise ValueError(
+            "an in-repository --report-root must remain under target/bench"
+        )
+    return path
+
+
 def build_report_publications(args: argparse.Namespace) -> list[ReportPublication]:
     report_root = resolved_report_root(args.report_root)
     publications = [
@@ -610,9 +621,13 @@ def main(argv: list[str]) -> int:
         help="Print the planned commands without executing them.",
     )
     args = parser.parse_args(argv)
+    try:
+        validate_report_root(args.report_root)
+    except ValueError as error:
+        parser.error(str(error))
 
     steps = build_steps(args)
-    publications = build_report_publications(args) if args.write_docs else []
+    report_publications = build_report_publications(args)
 
     print(f"Profile: {args.profile}")
     print(f"Preset: {args.preset}")
@@ -624,46 +639,19 @@ def main(argv: list[str]) -> int:
     for step in steps:
         run_step(step, dry_run=args.dry_run)
 
-    if publications:
-        publish_reports(publications, dry_run=args.dry_run)
+    if args.write_docs:
+        publish_reports(report_publications, dry_run=args.dry_run)
 
     if not args.dry_run:
         print("\nArtifacts:")
-        report_root = resolved_report_root(args.report_root)
-        published_by_source = {
-            publication.source: publication.destination
-            for publication in publications
-        }
-        if args.profile in {"triage", "canary", "full"}:
-            stage_out = render_target_path(
-                report_root=report_root,
-                docs=False,
-                profile=args.profile,
-                kind="spotcheck",
-                suffix="md",
+        for publication in report_publications:
+            artifact = (
+                publication.destination if args.write_docs else publication.source
             )
-            print(f"- {published_by_source.get(stage_out, stage_out)}")
-        if args.profile in {"canary", "full"}:
-            compare_out = render_target_path(
-                report_root=report_root,
-                docs=False,
-                profile=args.profile,
-                kind="comparison",
-                suffix="md",
-            )
-            print(f"- {published_by_source.get(compare_out, compare_out)}")
-        if args.profile == "full":
-            suite_out = suite_target_path(
-                report_root=report_root,
-                docs=False,
-                profile=args.profile,
-                suite=args.compare_suite,
-                suffix="md",
-            )
-            print(f"- {published_by_source.get(suite_out, suite_out)}")
+            print(f"- {artifact}")
         if args.include_native_memory:
             memory_out = native_memory_target_path(
-                report_root=report_root,
+                report_root=resolved_report_root(args.report_root),
                 profile=args.profile,
             )
             print(f"- {memory_out}")

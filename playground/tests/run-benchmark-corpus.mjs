@@ -22,12 +22,14 @@ let page = null;
 let browser = null;
 let server = null;
 let interruptReason = null;
-const lifecycleAbort = new AbortController();
 
 const interrupt = (signal) => {
   if (interruptReason) return;
   interruptReason = signal.toLowerCase();
-  lifecycleAbort.abort(interruptReason);
+  if (!browser) {
+    void server?.close();
+    process.exit(130);
+  }
   void cancelBenchmarkPage(page, browser, interruptReason);
 };
 process.once("SIGINT", () => interrupt("SIGINT"));
@@ -37,7 +39,6 @@ const deadlineMs = Date.now() + options.timeoutSeconds * 1000;
 try {
   server = await runBenchmarkStartupOperation({
     deadlineMs,
-    disposeLateResult: (lateServer) => lateServer.close(),
     operation: () =>
       preview({
         root: playgroundRoot,
@@ -48,7 +49,6 @@ try {
           strictPort: false,
         },
       }),
-    signal: lifecycleAbort.signal,
   });
   const startedAtWallMs = Date.now();
   const startedAtMs = performance.now();
@@ -159,13 +159,11 @@ try {
 async function withBenchmarkPage(baseUrl, deadlineMs, operation) {
   const activeBrowser = await runBenchmarkStartupOperation({
     deadlineMs,
-    disposeLateResult: (lateBrowser) => lateBrowser.close(),
     operation: () =>
       chromium.launch({
         headless: !options.headed,
         timeout: Math.max(1, deadlineMs - Date.now()),
       }),
-    signal: lifecycleAbort.signal,
   });
   let activePage = null;
   try {
@@ -173,11 +171,17 @@ async function withBenchmarkPage(baseUrl, deadlineMs, operation) {
     if (interruptReason) {
       throw new Error(`Browser corpus interrupted: ${interruptReason}`);
     }
-    const context = await activeBrowser.newContext({
-      locale: "en-US",
-      viewport: { width: 800, height: 600 },
+    activePage = await runBenchmarkStartupOperation({
+      deadlineMs,
+      onTimeout: () => activeBrowser.close(),
+      operation: async () => {
+        const context = await activeBrowser.newContext({
+          locale: "en-US",
+          viewport: { width: 800, height: 600 },
+        });
+        return context.newPage();
+      },
     });
-    activePage = await context.newPage();
     page = activePage;
     return await runBenchmarkPageOperation({
       browser: activeBrowser,

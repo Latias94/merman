@@ -37,9 +37,10 @@ Use batched benches when fixed costs are too small for stable single-operation m
 
 `python3 tools/bench/perf_runner.py --profile canary` runs the documented local workflow.
 Use `--dry-run` to inspect it and `--profile full` only for broad validation.
-With `--write-docs`, every measurement remains under `target/bench` until the complete profile
-succeeds; Markdown reports are published to `docs/performance` only after that clean measurement
-phase finishes.
+With `--write-docs`, measurement artifacts remain at the validated report root until the complete
+profile succeeds; in-repository roots are restricted to `target/bench`, while external absolute
+paths are also accepted. Markdown reports are published to `docs/performance` only after that clean
+measurement phase finishes.
 
 ## Same-Implementation Revision A/B
 

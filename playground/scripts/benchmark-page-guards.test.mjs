@@ -67,31 +67,18 @@ test("explicit cancellation reaches the page and closes the browser", async () =
   assert.equal(browser.closed, true);
 });
 
-test("startup deadline rejects and disposes a resource that resolves late", async () => {
-  const startup = Promise.withResolvers();
-  const disposed = [];
-  const running = runBenchmarkStartupOperation({
-    deadlineMs: Date.now() + 10,
-    disposeLateResult(resource) {
-      disposed.push(resource);
-    },
-    operation: () => startup.promise,
-  });
+test("startup deadline rejects and runs its cleanup", async () => {
+  let cleanedUp = false;
 
-  await assert.rejects(running, /whole-corpus CLI timeout/u);
-  startup.resolve("late-browser");
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(disposed, ["late-browser"]);
-});
-
-test("one startup abort rejects before a browser handle exists", async () => {
-  const abort = new AbortController();
-  const running = runBenchmarkStartupOperation({
-    deadlineMs: Date.now() + 1_000,
-    operation: () => new Promise(() => {}),
-    signal: abort.signal,
-  });
-
-  abort.abort("sigint");
-  await assert.rejects(running, /Browser corpus interrupted: sigint/u);
+  await assert.rejects(
+    runBenchmarkStartupOperation({
+      deadlineMs: Date.now() + 10,
+      onTimeout() {
+        cleanedUp = true;
+      },
+      operation: () => new Promise(() => {}),
+    }),
+    /whole-corpus CLI timeout/u
+  );
+  assert.equal(cleanedUp, true);
 });

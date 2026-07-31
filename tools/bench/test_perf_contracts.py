@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -393,6 +393,38 @@ class PerfRunnerContractsTest(unittest.TestCase):
                 )
 
             self.assertEqual(destination.read_text(encoding="utf-8"), "measured\n")
+
+    def test_report_root_cannot_dirty_the_repository_before_comparison(self) -> None:
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
+            perf_runner.main(
+                [
+                    "--profile",
+                    "canary",
+                    "--write-docs",
+                    "--report-root",
+                    "docs/performance",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("must remain under target/bench", stderr.getvalue())
+
+    def test_report_root_may_live_outside_the_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, redirect_stdout(io.StringIO()):
+            result = perf_runner.main(
+                [
+                    "--profile",
+                    "canary",
+                    "--report-root",
+                    temp_dir,
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(result, 0)
 
     def test_native_memory_is_explicit_and_uses_the_isolated_driver(self) -> None:
         buf = io.StringIO()
@@ -3121,6 +3153,7 @@ class RendererComparisonContractsTest(unittest.TestCase):
 
     def test_comparison_contract_fails_closed_on_required_errors_and_empty_common_set(self) -> None:
         errors = compare_mermaid_renderers.comparison_contract_errors(
+            exact_benches=["end_to_end/example"],
             merman={"errors": {"end_to_end/example": "failed"}, "times_ns": {}},
             mmdr={"errors": {}, "times_ns": {}},
             mermaid_js={"errors": {}, "times_ns": {}},
@@ -3133,6 +3166,83 @@ class RendererComparisonContractsTest(unittest.TestCase):
         self.assertTrue(any("Mermaid JS measured no fixtures" in error for error in errors))
         self.assertTrue(any("no byte-identical" in error for error in errors))
         self.assertIn("corpus changed during sampling", errors)
+
+    def test_mermaid_js_is_not_required_for_native_only_groups(self) -> None:
+        self.assertFalse(
+            compare_mermaid_renderers.requires_mermaid_js(
+                ["parse/flowchart_tiny"],
+                skip=False,
+            )
+        )
+        self.assertTrue(
+            compare_mermaid_renderers.requires_mermaid_js(
+                ["end_to_end/flowchart_tiny"],
+                skip=False,
+            )
+        )
+        self.assertFalse(
+            compare_mermaid_renderers.requires_mermaid_js(
+                ["end_to_end/flowchart_tiny"],
+                skip=True,
+            )
+        )
+
+        errors = compare_mermaid_renderers.comparison_contract_errors(
+            exact_benches=["parse/flowchart_tiny"],
+            merman={"errors": {}, "times_ns": {"parse/flowchart_tiny": 10.0}},
+            mmdr={"errors": {}, "times_ns": {"parse/flowchart_tiny": 20.0}},
+            mermaid_js={"errors": {}, "times_ns": {}},
+            rows=[
+                {
+                    "ratios": {
+                        "merman_over_mermaid_rs_renderer": 0.5,
+                    }
+                }
+            ],
+            require_mermaid_js=False,
+            provenance_errors=[],
+        )
+        self.assertFalse(any("Mermaid JS" in error for error in errors))
+
+    def test_contract_ignores_unrequested_criterion_skip_lines(self) -> None:
+        common = {
+            "errors": {},
+            "times_ns": {"end_to_end/flowchart_tiny": 10.0},
+            "skipped": {"parse": ["unrequested_fixture"]},
+        }
+        rows = [
+            {
+                "ratios": {
+                    "merman_over_mermaid_rs_renderer": 0.5,
+                }
+            }
+        ]
+
+        errors = compare_mermaid_renderers.comparison_contract_errors(
+            exact_benches=["end_to_end/flowchart_tiny"],
+            merman=common,
+            mmdr={"errors": {}, "times_ns": {"end_to_end/flowchart_tiny": 20.0}},
+            mermaid_js={"errors": {}, "times_ns": {}},
+            rows=rows,
+            require_mermaid_js=False,
+            provenance_errors=[],
+        )
+        self.assertFalse(any("skipped" in error for error in errors))
+
+        requested = {
+            **common,
+            "skipped": {"end_to_end": ["flowchart_tiny"]},
+        }
+        errors = compare_mermaid_renderers.comparison_contract_errors(
+            exact_benches=["end_to_end/flowchart_tiny"],
+            merman=requested,
+            mmdr={"errors": {}, "times_ns": {"end_to_end/flowchart_tiny": 20.0}},
+            mermaid_js={"errors": {}, "times_ns": {}},
+            rows=rows,
+            require_mermaid_js=False,
+            provenance_errors=[],
+        )
+        self.assertIn("merman skipped one or more requested benchmarks", errors)
 
 
 class StageSpotcheckContractsTest(unittest.TestCase):
