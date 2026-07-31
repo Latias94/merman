@@ -1,9 +1,11 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use dugong::graphlib::{Graph, GraphOptions};
+use dugong::position::bk::position_x_with_layering;
 use dugong::{EdgeLabel, GraphLabel, NodeLabel, layout, normalize};
 use std::hint::black_box;
 
 const LAYER_COUNTS: [usize; 6] = [5, 10, 20, 40, 80, 160];
+const TYPE2_FALLBACK_WIDTHS: [usize; 5] = [64, 128, 256, 512, 1024];
 
 #[derive(Debug, Clone)]
 struct LayeredDagSpec {
@@ -158,5 +160,85 @@ fn bench_normalize(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_layout, bench_normalize);
+fn build_type2_fallback_graph(
+    intermediate_count: usize,
+    missing_border_order: bool,
+) -> (Graph<NodeLabel, EdgeLabel, GraphLabel>, Vec<Vec<String>>) {
+    let mut g = Graph::new(GraphOptions::default());
+    g.set_graph(GraphLabel::default());
+
+    let north = vec![
+        "north-low".to_string(),
+        "north-middle".to_string(),
+        "north-high".to_string(),
+    ];
+    for (order, id) in north.iter().enumerate() {
+        g.set_node(
+            id.clone(),
+            NodeLabel {
+                rank: Some(0),
+                order: (!missing_border_order || id != "north-high").then_some(order),
+                dummy: Some("dummy".to_string()),
+                ..Default::default()
+            },
+        );
+    }
+
+    let mut south = Vec::with_capacity(intermediate_count + 2);
+    south.push("border-high".to_string());
+    south.extend((0..intermediate_count).map(|index| format!("dummy-{index}")));
+    south.push("border-low".to_string());
+
+    for (order, id) in south.iter().enumerate() {
+        g.set_node(
+            id.clone(),
+            NodeLabel {
+                rank: Some(1),
+                order: Some(order),
+                dummy: Some(
+                    if id.starts_with("border-") {
+                        "border"
+                    } else {
+                        "dummy"
+                    }
+                    .to_string(),
+                ),
+                ..Default::default()
+            },
+        );
+    }
+
+    g.set_edge("north-high", "border-high");
+    for id in south.iter().skip(1) {
+        g.set_edge("north-low", id);
+    }
+
+    (g, vec![north, south])
+}
+
+fn bench_bk_type2_fallback(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dugong_bk_type2_fallback");
+
+    for width in TYPE2_FALLBACK_WIDTHS {
+        for (case, missing_border_order) in [
+            ("nonmonotonic_border_order", false),
+            ("missing_border_order", true),
+        ] {
+            let input = build_type2_fallback_graph(width, missing_border_order);
+            group.throughput(criterion::Throughput::Elements(width as u64));
+            group.bench_with_input(BenchmarkId::new(case, width), &input, |b, (g, layering)| {
+                b.iter(|| black_box(position_x_with_layering(black_box(g), black_box(layering))))
+            });
+        }
+    }
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_layout,
+    bench_normalize,
+    bench_bk_type2_fallback
+);
 criterion_main!(benches);

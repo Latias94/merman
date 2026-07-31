@@ -27,6 +27,82 @@ pub fn has_conflict(conflicts: &Conflicts, v: &str, w: &str) -> bool {
     conflicts.get(v).map(|m| m.contains(w)).unwrap_or(false)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Type2Boundary {
+    south_index: usize,
+    north_order: Option<isize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Type2Bounds {
+    lower: isize,
+    upper: isize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Type2ScanSemantics {
+    LegacySuffixUnion,
+    MonotonicSegments,
+}
+
+fn type2_conflict_bounds(
+    south_len: usize,
+    north_len: isize,
+    boundaries: &[Type2Boundary],
+    semantics: Type2ScanSemantics,
+) -> Vec<Type2Bounds> {
+    let mut bounds = vec![
+        Type2Bounds {
+            lower: -1,
+            upper: north_len,
+        };
+        south_len
+    ];
+
+    let mut lower = -1;
+    let mut boundary_index = 0;
+    for (south_index, current) in bounds.iter_mut().enumerate() {
+        if boundaries
+            .get(boundary_index)
+            .is_some_and(|boundary| boundary.south_index == south_index)
+        {
+            lower = lower.max(boundaries[boundary_index].north_order.unwrap_or(-1));
+            boundary_index += 1;
+        }
+        current.lower = lower;
+    }
+
+    let mut upper = north_len;
+    let mut boundary_index = boundaries.len();
+    for south_index in (0..south_len).rev() {
+        bounds[south_index].upper = upper;
+        if boundary_index > 0 && boundaries[boundary_index - 1].south_index == south_index {
+            boundary_index -= 1;
+            let boundary_upper = boundaries[boundary_index].north_order.unwrap_or(-1);
+            upper = match semantics {
+                Type2ScanSemantics::LegacySuffixUnion => north_len.min(boundary_upper),
+                Type2ScanSemantics::MonotonicSegments => boundary_upper,
+            };
+        }
+    }
+
+    bounds
+}
+
+fn type2_requires_legacy_suffix_union(boundaries: &[Type2Boundary]) -> bool {
+    let mut previous_order = None;
+    for boundary in boundaries {
+        let Some(order) = boundary.north_order else {
+            return true;
+        };
+        if previous_order.is_some_and(|previous| order < previous) {
+            return true;
+        }
+        previous_order = Some(order);
+    }
+    false
+}
+
 fn first_dummy_predecessor<'a>(
     g: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
     v: &str,
@@ -105,78 +181,54 @@ pub fn find_type2_conflicts(
         return conflicts;
     }
 
-    fn scan(
-        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        conflicts: &mut Conflicts,
-        south: &[String],
-        south_pos: usize,
-        south_end: usize,
-        prev_north_border: isize,
-        next_north_border: isize,
-    ) {
-        for v in south.iter().take(south_end).skip(south_pos) {
-            let v_dummy = g.node(v).and_then(|n| n.dummy.as_deref());
-            if v_dummy.is_some() {
-                g.for_each_predecessor(v, |u| {
-                    let Some(u_node) = g.node(u) else {
-                        return;
-                    };
-                    if u_node.dummy.is_some() {
-                        let u_order = u_node.order.unwrap_or(0) as isize;
-                        if u_order < prev_north_border || u_order > next_north_border {
-                            add_conflict(conflicts, u, v);
-                        }
-                    }
-                });
-            }
-        }
-    }
-
     for i in 1..layering.len() {
         let north = &layering[i - 1];
         let south = &layering[i];
-
-        let mut prev_north_pos: isize = -1;
-        let mut next_north_pos: Option<isize> = None;
-        let mut south_pos: usize = 0;
-
-        for (south_lookahead, v) in south.iter().enumerate() {
+        let mut boundaries = Vec::new();
+        for (south_index, v) in south.iter().enumerate() {
             let is_border = g
                 .node(v)
                 .and_then(|n| n.dummy.as_deref())
                 .is_some_and(|d| d == "border");
-            if is_border {
-                let mut first: Option<&str> = None;
-                g.for_each_predecessor(v, |u| {
-                    if first.is_none() {
-                        first = Some(u);
-                    }
-                });
-                if let Some(u) = first {
-                    next_north_pos = g.node(u).and_then(|n| n.order).map(|n| n as isize);
-                    scan(
-                        g,
-                        &mut conflicts,
-                        south,
-                        south_pos,
-                        south_lookahead,
-                        prev_north_pos,
-                        next_north_pos.unwrap_or(-1),
-                    );
-                    south_pos = south_lookahead;
-                    prev_north_pos = next_north_pos.unwrap_or(prev_north_pos);
-                }
+            if !is_border {
+                continue;
             }
 
-            scan(
-                g,
-                &mut conflicts,
-                south,
-                south_pos,
-                south.len(),
-                next_north_pos.unwrap_or(-1),
-                north.len() as isize,
-            );
+            let mut first: Option<&str> = None;
+            g.for_each_predecessor(v, |u| {
+                if first.is_none() {
+                    first = Some(u);
+                }
+            });
+            if let Some(u) = first {
+                boundaries.push(Type2Boundary {
+                    south_index,
+                    north_order: g.node(u).and_then(|n| n.order).map(|n| n as isize),
+                });
+            }
+        }
+
+        let bounds = type2_conflict_bounds(
+            south.len(),
+            north.len() as isize,
+            &boundaries,
+            Type2ScanSemantics::LegacySuffixUnion,
+        );
+        for (v, bounds) in south.iter().zip(bounds) {
+            if g.node(v).and_then(|node| node.dummy.as_deref()).is_none() {
+                continue;
+            }
+            g.for_each_predecessor(v, |u| {
+                let Some(u_node) = g.node(u) else {
+                    return;
+                };
+                if u_node.dummy.is_some() {
+                    let u_order = u_node.order.unwrap_or(0) as isize;
+                    if u_order < bounds.lower || u_order > bounds.upper {
+                        add_conflict(&mut conflicts, u, v);
+                    }
+                }
+            });
         }
     }
 
@@ -571,116 +623,41 @@ impl<'a> BkWorkspace<'a> {
 
     fn find_type2_conflicts(&mut self) {
         for layer_index in 1..self.layering.len() {
-            if self.type2_requires_fallback(layer_index) {
-                self.find_type2_conflicts_fallback(layer_index);
-                continue;
-            }
-
             let north_len = self.layering[layer_index - 1].len() as isize;
             let south_len = self.layering[layer_index].len();
-            let mut prev_north_pos = -1;
-            let mut south_pos = 0;
-
-            for south_lookahead in 0..south_len {
-                let v = self.layering[layer_index][south_lookahead];
+            let mut boundaries = Vec::new();
+            for south_index in 0..south_len {
+                let v = self.layering[layer_index][south_index];
                 if !self.nodes[v].is_border {
                     continue;
                 }
                 let Some(u) = self.first_predecessor[v] else {
                     continue;
                 };
-                let Some(next_north_pos) = self.nodes[u].order.map(|order| order as isize) else {
+                boundaries.push(Type2Boundary {
+                    south_index,
+                    north_order: self.nodes[u].order.map(|order| order as isize),
+                });
+            }
+
+            let semantics = if type2_requires_legacy_suffix_union(&boundaries) {
+                Type2ScanSemantics::LegacySuffixUnion
+            } else {
+                Type2ScanSemantics::MonotonicSegments
+            };
+            let bounds = type2_conflict_bounds(south_len, north_len, &boundaries, semantics);
+            for (index, bounds) in bounds.into_iter().enumerate() {
+                let v = self.layering[layer_index][index];
+                if !self.nodes[v].metrics.is_dummy {
                     continue;
-                };
-
-                self.scan_type2_segment(
-                    layer_index,
-                    south_pos,
-                    south_lookahead,
-                    prev_north_pos,
-                    next_north_pos,
-                );
-                south_pos = south_lookahead;
-                prev_north_pos = next_north_pos;
-            }
-
-            self.scan_type2_segment(layer_index, south_pos, south_len, prev_north_pos, north_len);
-        }
-    }
-
-    fn type2_requires_fallback(&self, layer_index: usize) -> bool {
-        let mut previous_order: Option<isize> = None;
-        for &v in &self.layering[layer_index] {
-            if !self.nodes[v].is_border {
-                continue;
-            }
-            let Some(u) = self.first_predecessor[v] else {
-                continue;
-            };
-            let Some(order) = self.nodes[u].order.map(|order| order as isize) else {
-                return true;
-            };
-            if previous_order.is_some_and(|previous_order| order < previous_order) {
-                return true;
-            }
-            previous_order = Some(order);
-        }
-        false
-    }
-
-    fn find_type2_conflicts_fallback(&mut self, layer_index: usize) {
-        let north_len = self.layering[layer_index - 1].len() as isize;
-        let south_len = self.layering[layer_index].len();
-        let mut prev_north_pos = -1;
-        let mut next_north_pos: Option<isize> = None;
-        let mut south_pos = 0;
-
-        for south_lookahead in 0..south_len {
-            let v = self.layering[layer_index][south_lookahead];
-            if self.nodes[v].is_border
-                && let Some(u) = self.first_predecessor[v]
-            {
-                next_north_pos = self.nodes[u].order.map(|order| order as isize);
-                self.scan_type2_segment(
-                    layer_index,
-                    south_pos,
-                    south_lookahead,
-                    prev_north_pos,
-                    next_north_pos.unwrap_or(-1),
-                );
-                south_pos = south_lookahead;
-                prev_north_pos = next_north_pos.unwrap_or(prev_north_pos);
-            }
-
-            self.scan_type2_segment(
-                layer_index,
-                south_pos,
-                south_len,
-                next_north_pos.unwrap_or(-1),
-                north_len,
-            );
-        }
-    }
-
-    fn scan_type2_segment(
-        &mut self,
-        layer_index: usize,
-        start: usize,
-        end: usize,
-        prev_north_border: isize,
-        next_north_border: isize,
-    ) {
-        for index in start..end {
-            let v = self.layering[layer_index][index];
-            if !self.nodes[v].metrics.is_dummy {
-                continue;
-            }
-            for predecessor_index in 0..self.predecessors[v].len() {
-                let u = self.predecessors[v][predecessor_index];
-                if self.nodes[u].metrics.is_dummy {
-                    let u_order = self.nodes[u].order.unwrap_or(0) as isize;
-                    if u_order < prev_north_border || u_order > next_north_border {
-                        self.add_conflict(u, v);
+                }
+                for predecessor_index in 0..self.predecessors[v].len() {
+                    let u = self.predecessors[v][predecessor_index];
+                    if self.nodes[u].metrics.is_dummy {
+                        let u_order = self.nodes[u].order.unwrap_or(0) as isize;
+                        if u_order < bounds.lower || u_order > bounds.upper {
+                            self.add_conflict(u, v);
+                        }
                     }
                 }
             }
@@ -1290,20 +1267,178 @@ mod tests {
         (g, vec![north, south])
     }
 
-    #[test]
-    fn indexed_type2_fallback_retains_only_unique_conflicts() {
-        for intermediate_count in [8, 64] {
-            let (g, layering) = fallback_graph(intermediate_count);
-            let expected = find_type2_conflicts(&g, &layering);
-            let expected_count: usize = expected.values().map(BTreeSet::len).sum();
-            assert_eq!(expected_count, intermediate_count + 2);
+    fn reference_type2_bounds(
+        south_len: usize,
+        north_len: isize,
+        boundaries: &[Type2Boundary],
+    ) -> Vec<Type2Bounds> {
+        let mut bounds = vec![
+            Type2Bounds {
+                lower: isize::MIN,
+                upper: isize::MAX,
+            };
+            south_len
+        ];
+        let mut previous_north = -1;
+        let mut next_north: Option<isize> = None;
+        let mut south_start = 0;
+        let mut boundary_index = 0;
 
-            let mut workspace = BkWorkspace::new(&g, &layering);
-            assert!(workspace.type2_requires_fallback(1));
-            workspace.find_type2_conflicts();
+        for south_index in 0..south_len {
+            if boundaries
+                .get(boundary_index)
+                .is_some_and(|boundary| boundary.south_index == south_index)
+            {
+                next_north = boundaries[boundary_index].north_order;
+                for current in &mut bounds[south_start..south_index] {
+                    current.lower = current.lower.max(previous_north);
+                    current.upper = current.upper.min(next_north.unwrap_or(-1));
+                }
+                south_start = south_index;
+                previous_north = next_north.unwrap_or(previous_north);
+                boundary_index += 1;
+            }
 
-            assert_eq!(workspace.conflicts.len(), expected_count);
-            assert_eq!(workspace.conflicts_seen.len(), expected_count);
+            for current in &mut bounds[south_start..south_len] {
+                current.lower = current.lower.max(next_north.unwrap_or(-1));
+                current.upper = current.upper.min(north_len);
+            }
         }
+
+        bounds
+    }
+
+    fn public_conflict_ids(conflicts: &Conflicts) -> BTreeSet<(String, String)> {
+        conflicts
+            .iter()
+            .flat_map(|(left, rights)| {
+                rights
+                    .iter()
+                    .map(move |right| (left.clone(), right.clone()))
+            })
+            .collect()
+    }
+
+    fn workspace_conflict_ids(
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        workspace: &BkWorkspace<'_>,
+    ) -> BTreeSet<(String, String)> {
+        workspace
+            .conflicts
+            .iter()
+            .map(|&(left, right)| {
+                let left = g
+                    .node_id_by_ix(workspace.nodes[left].graph_ix)
+                    .expect("left conflict id");
+                let right = g
+                    .node_id_by_ix(workspace.nodes[right].graph_ix)
+                    .expect("right conflict id");
+                if left <= right {
+                    (left.to_string(), right.to_string())
+                } else {
+                    (right.to_string(), left.to_string())
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn linear_type2_bounds_match_legacy_interval_union() {
+        const STATES: [Option<Option<isize>>; 5] = [
+            None,
+            Some(None),
+            Some(Some(0)),
+            Some(Some(2)),
+            Some(Some(5)),
+        ];
+
+        for south_len in 0..=5 {
+            let combinations = STATES.len().pow(south_len as u32);
+            for mut encoded in 0..combinations {
+                let mut boundaries = Vec::new();
+                for south_index in 0..south_len {
+                    let state = STATES[encoded % STATES.len()];
+                    encoded /= STATES.len();
+                    if let Some(north_order) = state {
+                        boundaries.push(Type2Boundary {
+                            south_index,
+                            north_order,
+                        });
+                    }
+                }
+                assert_eq!(
+                    type2_conflict_bounds(
+                        south_len,
+                        3,
+                        &boundaries,
+                        Type2ScanSemantics::LegacySuffixUnion,
+                    ),
+                    reference_type2_bounds(south_len, 3, &boundaries),
+                    "south_len={south_len}, boundaries={boundaries:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn indexed_type2_scan_matches_public_conflicts() {
+        for missing_border_order in [false, true] {
+            for intermediate_count in [0, 1, 8, 64] {
+                let (mut g, layering) = fallback_graph(intermediate_count);
+                if missing_border_order {
+                    g.node_mut("north-high").expect("north-high").order = None;
+                }
+                let expected = find_type2_conflicts(&g, &layering);
+
+                let mut workspace = BkWorkspace::new(&g, &layering);
+                workspace.find_type2_conflicts();
+
+                let expected = public_conflict_ids(&expected);
+                assert_eq!(workspace_conflict_ids(&g, &workspace), expected);
+                assert_eq!(workspace.conflicts_seen.len(), expected.len());
+            }
+        }
+    }
+
+    #[test]
+    fn monotonic_workspace_segments_keep_uncapped_border_orders() {
+        let mut g = Graph::new(GraphOptions::default());
+        g.set_graph(GraphLabel::default());
+        for (id, rank, order, dummy) in [
+            ("low", 0, 0, "dummy"),
+            ("high", 0, 3, "dummy"),
+            ("south", 1, 0, "dummy"),
+            ("border", 1, 1, "border"),
+        ] {
+            g.set_node(
+                id,
+                NodeLabel {
+                    rank: Some(rank),
+                    order: Some(order),
+                    dummy: Some(dummy.to_string()),
+                    ..Default::default()
+                },
+            );
+        }
+        g.set_edge("high", "south");
+        g.set_edge("high", "border");
+
+        let layering = vec![
+            vec![
+                "low".to_string(),
+                "missing-a".to_string(),
+                "missing-b".to_string(),
+                "high".to_string(),
+            ],
+            vec!["south".to_string(), "border".to_string()],
+        ];
+        let public_conflicts = find_type2_conflicts(&g, &layering);
+        assert!(!has_conflict(&public_conflicts, "high", "south"));
+
+        let mut workspace = BkWorkspace::new(&g, &layering);
+        workspace.find_type2_conflicts();
+        let conflict_ids = workspace_conflict_ids(&g, &workspace);
+        let expected_conflicts = BTreeSet::from([("border".to_string(), "high".to_string())]);
+        assert_eq!(conflict_ids, expected_conflicts);
     }
 }
