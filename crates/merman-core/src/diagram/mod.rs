@@ -5,7 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID: &str =
@@ -141,14 +141,18 @@ impl DiagramRegistry {
             .map(ResolvedSemanticParser::BuiltIn)
     }
 
-    /// Builds the semantic parser registry for the repository's pinned Mermaid baseline.
+    /// Returns the semantic parser registry for the repository's pinned Mermaid baseline.
     pub fn pinned_mermaid_baseline() -> Self {
-        let mut reg = Self::new();
-        for fact in crate::family::semantic_parser_facts() {
-            Arc::make_mut(&mut reg.builtins).insert(fact.id, fact.parser);
-        }
-
-        reg
+        static BASELINE: OnceLock<DiagramRegistry> = OnceLock::new();
+        BASELINE
+            .get_or_init(|| {
+                let mut registry = DiagramRegistry::new();
+                for fact in crate::family::semantic_parser_facts() {
+                    Arc::make_mut(&mut registry.builtins).insert(fact.id, fact.parser);
+                }
+                registry
+            })
+            .clone()
     }
 
     #[cfg(test)]
@@ -739,14 +743,18 @@ impl RenderDiagramRegistry {
                 .is_some()
     }
 
-    /// Builds the typed render parser registry for the repository's pinned Mermaid baseline.
+    /// Returns the typed render parser registry for the repository's pinned Mermaid baseline.
     pub fn pinned_mermaid_baseline() -> Self {
-        let mut reg = Self::new();
-        for fact in crate::family::render_parser_facts() {
-            Arc::make_mut(&mut reg.builtins).insert(fact.id, fact.parser);
-        }
-
-        reg
+        static BASELINE: OnceLock<RenderDiagramRegistry> = OnceLock::new();
+        BASELINE
+            .get_or_init(|| {
+                let mut registry = RenderDiagramRegistry::new();
+                for fact in crate::family::render_parser_facts() {
+                    Arc::make_mut(&mut registry.builtins).insert(fact.id, fact.parser);
+                }
+                registry
+            })
+            .clone()
     }
 
     #[cfg(test)]
@@ -860,9 +868,9 @@ mod registry_clone_tests {
     }
 
     #[test]
-    fn semantic_registry_clone_uses_copy_on_write_storage() {
+    fn semantic_registry_baselines_share_copy_on_write_storage() {
         let original = DiagramRegistry::pinned_mermaid_baseline();
-        let mut cloned = original.clone();
+        let mut cloned = DiagramRegistry::pinned_mermaid_baseline();
 
         assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
         assert!(Arc::ptr_eq(&original.overlays, &cloned.overlays));
@@ -912,9 +920,9 @@ mod registry_clone_tests {
     }
 
     #[test]
-    fn render_registry_clone_uses_copy_on_write_storage() {
+    fn render_registry_baselines_share_copy_on_write_storage() {
         let original = RenderDiagramRegistry::pinned_mermaid_baseline();
-        let mut cloned = original.clone();
+        let mut cloned = RenderDiagramRegistry::pinned_mermaid_baseline();
 
         assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
         assert!(Arc::ptr_eq(&original.overlays, &cloned.overlays));

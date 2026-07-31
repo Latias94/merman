@@ -1,6 +1,6 @@
 use crate::{MermaidConfig, ParseControl, ParseControlResult, Result};
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 #[derive(Debug, thiserror::Error)]
 #[error("No diagram type detected matching given configuration for text: {text}")]
@@ -122,17 +122,21 @@ impl DetectorRegistry {
         .into()))
     }
 
-    /// Builds the detector registry for the pinned Mermaid baseline.
+    /// Returns the detector registry for the pinned Mermaid baseline.
     pub fn pinned_mermaid_baseline() -> Self {
-        let mut reg = Self::new();
-        for fact in crate::family::detector_facts() {
-            reg.add_fn(fact.id, fact.detector);
-            if fact.id == "error" {
-                reg.add_fn("---", detector_frontmatter_unparsed);
-            }
-        }
-
-        reg
+        static BASELINE: OnceLock<DetectorRegistry> = OnceLock::new();
+        BASELINE
+            .get_or_init(|| {
+                let mut registry = DetectorRegistry::new();
+                for fact in crate::family::detector_facts() {
+                    registry.add_fn(fact.id, fact.detector);
+                    if fact.id == "error" {
+                        registry.add_fn("---", detector_frontmatter_unparsed);
+                    }
+                }
+                registry
+            })
+            .clone()
     }
     #[cfg(test)]
     pub(crate) fn detector_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
@@ -480,9 +484,9 @@ mod registry_clone_tests {
     }
 
     #[test]
-    fn detector_registry_clone_uses_copy_on_write_storage() {
+    fn detector_registry_baselines_share_copy_on_write_storage() {
         let original = DetectorRegistry::pinned_mermaid_baseline();
-        let mut cloned = original.clone();
+        let mut cloned = DetectorRegistry::pinned_mermaid_baseline();
 
         assert!(Arc::ptr_eq(&original.detectors, &cloned.detectors));
 
