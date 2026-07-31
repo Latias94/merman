@@ -128,16 +128,11 @@ fn remove_stale_lock(directory: &Path) -> Result<bool, XtaskError> {
     match fs::read(&owner_path) {
         Ok(bytes) => match serde_json::from_slice::<LockOwner>(&bytes) {
             Ok(owner) if process_is_alive(owner.pid) => Ok(false),
-            Ok(_) => remove_lock_directory(directory),
-            Err(_) if lock_age(directory)? < INCOMPLETE_OWNER_GRACE => Ok(false),
-            Err(_) => remove_lock_directory(directory),
+            Ok(_) => quarantine_stale_lock(directory),
+            Err(_) => recover_incomplete_lock(directory),
         },
         Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
-            if lock_age(directory)? < INCOMPLETE_OWNER_GRACE {
-                Ok(false)
-            } else {
-                remove_lock_directory(directory)
-            }
+            recover_incomplete_lock(directory)
         }
         Err(source) => Err(XtaskError::ReadFile {
             path: owner_path.display().to_string(),
@@ -146,27 +141,57 @@ fn remove_stale_lock(directory: &Path) -> Result<bool, XtaskError> {
     }
 }
 
-fn remove_lock_directory(directory: &Path) -> Result<bool, XtaskError> {
-    match fs::remove_dir_all(directory) {
+fn recover_incomplete_lock(directory: &Path) -> Result<bool, XtaskError> {
+    match lock_age(directory)? {
+        Some(age) if age < INCOMPLETE_OWNER_GRACE => Ok(false),
+        Some(_) => quarantine_stale_lock(directory),
+        None => Ok(true),
+    }
+}
+
+fn quarantine_stale_lock(directory: &Path) -> Result<bool, XtaskError> {
+    let mut quarantine = directory.as_os_str().to_os_string();
+    quarantine.push(".quarantine-");
+    quarantine.push(lock_token());
+    let quarantine = PathBuf::from(quarantine);
+
+    match fs::rename(directory, &quarantine) {
+        Ok(()) => {}
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+        Err(source) => {
+            return Err(XtaskError::WriteFile {
+                path: directory.display().to_string(),
+                source,
+            });
+        }
+    }
+
+    match fs::remove_dir_all(&quarantine) {
         Ok(()) => Ok(true),
         Err(source) if source.kind() == std::io::ErrorKind::NotFound => Ok(true),
         Err(source) => Err(XtaskError::WriteFile {
-            path: directory.display().to_string(),
+            path: quarantine.display().to_string(),
             source,
         }),
     }
 }
 
-fn lock_age(directory: &Path) -> Result<Duration, XtaskError> {
-    let modified = fs::metadata(directory)
-        .and_then(|metadata| metadata.modified())
-        .map_err(|source| XtaskError::ReadFile {
-            path: directory.display().to_string(),
-            source,
-        })?;
-    Ok(SystemTime::now()
-        .duration_since(modified)
-        .unwrap_or(Duration::ZERO))
+fn lock_age(directory: &Path) -> Result<Option<Duration>, XtaskError> {
+    let modified = match fs::metadata(directory).and_then(|metadata| metadata.modified()) {
+        Ok(modified) => modified,
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(source) => {
+            return Err(XtaskError::ReadFile {
+                path: directory.display().to_string(),
+                source,
+            });
+        }
+    };
+    Ok(Some(
+        SystemTime::now()
+            .duration_since(modified)
+            .unwrap_or(Duration::ZERO),
+    ))
 }
 
 fn epoch_millis() -> u64 {
@@ -195,12 +220,14 @@ fn process_is_alive(pid: u32) -> bool {
 
 #[cfg(windows)]
 fn process_is_alive(pid: u32) -> bool {
-    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, ERROR_ACCESS_DENIED, GetLastError, INVALID_HANDLE_VALUE,
+    };
     use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
     if handle.is_null() || handle == INVALID_HANDLE_VALUE {
-        return false;
+        return unsafe { GetLastError() } == ERROR_ACCESS_DENIED;
     }
     unsafe { CloseHandle(handle) };
     true
