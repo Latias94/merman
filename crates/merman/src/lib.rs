@@ -16,7 +16,7 @@
 //!
 //! | Goal | Feature | Start with |
 //! | --- | --- | --- |
-//! | Parse Mermaid or produce semantic JSON | none | [`Engine`] and [`ParseOptions`] |
+//! | Parse Mermaid or produce semantic JSON | no facade default features | [`Engine`] and [`ParseOptions`] |
 //! | Analyze diagnostics or Markdown fences | `analysis` | [`analysis::Analyzer`] |
 //! | Build parser-backed editor snapshots | `editor` | [`editor::DocumentWorkspace`] |
 //! | Render Mermaid-like SVG | `svg` | [`render_svg`] |
@@ -48,6 +48,10 @@
 //! rendering, both optional layout engines, and math labels without compiling ambient system
 //! adapters. Use `default-features = false` with the direct capability leaves when you need a
 //! measured artifact closure.
+//!
+//! Parser-only applications should depend on `merman-core` directly. If they need this facade's
+//! re-exports instead, they must set `default-features = false`; an ordinary `merman` dependency
+//! intentionally compiles the complete SVG workflow.
 //!
 //! # SVG quickstart
 //!
