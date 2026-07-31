@@ -141,9 +141,6 @@ jobs:
       - name: Verify legal material projections
         run: python3 scripts/sync-release-legal-materials.py --check
 
-      - name: Verify FFI publish surface
-        run: python3 scripts/verify-ffi-publish-surface.py
-
       - name: Check Rust formatting
         run: cargo fmt --check
 

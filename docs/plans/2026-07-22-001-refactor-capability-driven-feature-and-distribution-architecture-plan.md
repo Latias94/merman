@@ -828,8 +828,9 @@ Each `npm pack --json` result must contain exactly one WASM, exact legal/provena
 cargo run --locked -p xtask -- build-typst-package --profile publish
 cargo run --locked -p xtask -- typst-plugin-smoke --profile publish
 cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
-python scripts/verify-ffi-publish-surface.py
-python scripts/verify-release-surfaces.py
+cargo run --locked -p xtask -- verify-generated
+python scripts/build-python-uniffi-wheel.py --run-smoke
+python scripts/verify-platform-bindings.py
 ```
 
 Run the existing C header/link/dynamic-load suite, Python wheel generation and isolated smoke, Kotlin/Android package smoke, Apple XCFramework plus Swift smoke, Flutter analyze/build/package checks, and every ABI output/capability fixture. The native gate records peak RSS and copy counts for representative large SVG/PDF owned-buffer paths and rejects any documentation or API claim of streaming. It also verifies the C ABI, UniFFI, Android JNI, Flutter, and Apple/Python contract references rather than inferring transport from package names. Missing optional local toolchains must be reported explicitly and may not be represented as passing.

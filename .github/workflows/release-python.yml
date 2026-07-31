@@ -136,9 +136,6 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: python scripts/release-version.py check --version "$VERSION"
 
-      - name: Verify FFI publish surface
-        run: python scripts/verify-ffi-publish-surface.py
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
