@@ -1,0 +1,462 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import test from "node:test";
+
+import {
+  REALM_BUDGETS,
+  RealmProtocolError,
+} from "./channel-protocol.ts";
+import {
+  createStaticRealmEngineArtifact,
+  type StaticEngineArtifactEnvironment,
+} from "./static-engine-artifact.ts";
+
+const source = "export const value = 1;";
+const manifest = Object.freeze({
+  bytes: Buffer.byteLength(source),
+  id: "mermaid",
+  schemaVersion: 1,
+  sha256: createHash("sha256").update(source).digest("hex"),
+});
+
+test("static engine artifacts bind a same-origin response to the generated manifest", async () => {
+  const artifact = await createStaticRealmEngineArtifact(
+    {
+      manifest,
+      resourceUrl: null,
+      sourceUrl: "assets/mermaid-engine.js",
+    },
+    environment(() => response(source))
+  );
+
+  assert.deepEqual(artifact, { ...manifest, resourceUrl: null, source });
+  assert(Object.isFrozen(artifact));
+});
+
+test("static engine artifacts preserve UTF-8 split across response chunks", async () => {
+  const unicodeSource = "export const value = 'A😀B';";
+  const bytes = new TextEncoder().encode(unicodeSource);
+  const split = bytes.indexOf(0xf0) + 2;
+  const streamed = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, split));
+        controller.enqueue(bytes.subarray(split));
+        controller.close();
+      },
+    }),
+    { headers: { "content-length": String(bytes.byteLength) } }
+  );
+
+  const artifact = await createStaticRealmEngineArtifact(
+    {
+      manifest: engineManifest(unicodeSource),
+      resourceUrl: null,
+      sourceUrl: "assets/mermaid-engine.js",
+    },
+    environment(() => streamed)
+  );
+  assert.equal(artifact.source, unicodeSource);
+});
+
+test("static engine artifacts reject foreign origins and manifest drift", async () => {
+  let fetchCalls = 0;
+  const host = environment(() => {
+    fetchCalls += 1;
+    return response(source);
+  });
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        sourceUrl: "https://other.example/mermaid-engine.js",
+      },
+      host
+    ),
+    /must be same-origin/
+  );
+  assert.equal(fetchCalls, 0);
+
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest: { ...manifest, bytes: manifest.bytes + 1 },
+        resourceUrl: null,
+        sourceUrl: "assets/mermaid-engine.js",
+      },
+      host
+    ),
+    /byte length is invalid/
+  );
+});
+
+test("static engine artifacts enforce the transport budget before reading", async () => {
+  const oversized = new Response(source, {
+    headers: {
+      "content-length": String(REALM_BUDGETS.engineArtifactBytes + 1),
+    },
+  });
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        sourceUrl: "assets/mermaid-engine.js",
+      },
+      environment(() => oversized)
+    ),
+    /exceeds its byte budget/
+  );
+});
+
+test("static engine artifacts cancel HTTP error response bodies", async () => {
+  let cancelReason: unknown = null;
+  const failed = cancellableResponse(
+    { status: 503 },
+    (reason) => {
+      cancelReason = reason;
+    }
+  );
+
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        sourceUrl: "assets/mermaid-engine.js",
+      },
+      environment(() => failed)
+    ),
+    /HTTP 503/
+  );
+  assert.match(String(cancelReason), /HTTP 503/);
+});
+
+test("static engine artifacts cancel invalid content-length response bodies", async () => {
+  for (const contentLength of [
+    "invalid",
+    String(REALM_BUDGETS.engineArtifactBytes + 1),
+  ]) {
+    let cancelReason: unknown = null;
+    const invalid = cancellableResponse(
+      { contentLength },
+      (reason) => {
+        cancelReason = reason;
+      }
+    );
+
+    await assert.rejects(
+      createStaticRealmEngineArtifact(
+        {
+          manifest,
+          resourceUrl: null,
+          sourceUrl: "assets/mermaid-engine.js",
+        },
+        environment(() => invalid)
+      ),
+      /exceeds its byte budget/
+    );
+    assert.match(String(cancelReason), /exceeds its byte budget/);
+  }
+});
+
+test("static engine artifacts cancel response bodies after invalid UTF-8", async () => {
+  let cancelReason: unknown = null;
+  const invalid = cancellableResponse(
+    {
+      bytes: Uint8Array.of(0xff),
+      contentLength: "1",
+    },
+    (reason) => {
+      cancelReason = reason;
+    }
+  );
+
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        sourceUrl: "assets/mermaid-engine.js",
+      },
+      environment(() => invalid)
+    ),
+    /not valid UTF-8/
+  );
+  assert.match(String(cancelReason), /not valid UTF-8/);
+});
+
+test("static engine artifact errors do not await response cancellation", async () => {
+  for (const testCase of [
+    {
+      name: "HTTP error",
+      fixture: nonSettlingCancellationResponse({ status: 503 }),
+      message: /HTTP 503/,
+    },
+    {
+      name: "invalid UTF-8",
+      fixture: nonSettlingCancellationResponse({
+        bytes: Uint8Array.of(0xff),
+        contentLength: "1",
+      }),
+      message: /not valid UTF-8/,
+    },
+  ]) {
+    await assert.rejects(
+      rejectBeforeWatchdog(
+        createStaticRealmEngineArtifact(
+          {
+            manifest,
+            resourceUrl: null,
+            sourceUrl: "assets/mermaid-engine.js",
+            timeoutMs: 10,
+          },
+          environment(() => testCase.fixture.response)
+        )
+      ),
+      (error: unknown) =>
+        error instanceof RealmProtocolError && testCase.message.test(error.message),
+      testCase.name
+    );
+    assert.equal(testCase.fixture.cancelled(), true, testCase.name);
+  }
+});
+
+test("static engine artifact acquisition obeys caller cancellation", async () => {
+  const controller = new AbortController();
+  controller.abort(new Error("artifact acquisition cancelled"));
+  let fetchCalls = 0;
+
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        signal: controller.signal,
+        sourceUrl: "assets/mermaid-engine.js",
+      },
+      environment(() => {
+        fetchCalls += 1;
+        return response(source);
+      })
+    ),
+    /artifact acquisition cancelled/
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test("static engine artifact acquisition has a bounded fetch stage", async () => {
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        sourceUrl: "assets/mermaid-engine.js",
+        timeoutMs: 1,
+      },
+      environment(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener(
+              "abort",
+              () => reject(init.signal.reason),
+              { once: true }
+            );
+          })
+      )
+    ),
+    /request timed out/
+  );
+});
+
+test("static engine artifact timeout remains active while the response body stalls", async () => {
+  let cancelReason: unknown = null;
+  const stalled = stalledResponse((reason) => {
+    cancelReason = reason;
+  });
+
+  await assert.rejects(
+    createStaticRealmEngineArtifact(
+      {
+        manifest,
+        resourceUrl: null,
+        sourceUrl: "assets/mermaid-engine.js",
+        timeoutMs: 5,
+      },
+      environment(() => stalled)
+    ),
+    /request timed out/
+  );
+  assert.match(String(cancelReason), /request timed out/);
+});
+
+test("static engine artifact caller cancellation remains active while the response body stalls", async () => {
+  const controller = new AbortController();
+  const cancellation = new Error("artifact body cancelled");
+  let cancelReason: unknown = null;
+  const stalled = stalledResponse((reason) => {
+    cancelReason = reason;
+  });
+
+  const acquisition = createStaticRealmEngineArtifact(
+    {
+      manifest,
+      resourceUrl: null,
+      signal: controller.signal,
+      sourceUrl: "assets/mermaid-engine.js",
+      timeoutMs: 1_000,
+    },
+    environment(() => {
+      setTimeout(() => controller.abort(cancellation), 0);
+      return stalled;
+    })
+  );
+
+  await assert.rejects(acquisition, cancellation);
+  assert.equal(cancelReason, cancellation);
+});
+
+test("static engine artifact caller cancellation does not await stream cleanup", async () => {
+  const controller = new AbortController();
+  const cancellation = new Error("artifact body cancelled without cleanup acknowledgement");
+  const stalled = nonSettlingCancellationResponse({
+    contentLength: String(manifest.bytes),
+  });
+  const acquisition = createStaticRealmEngineArtifact(
+    {
+      manifest,
+      resourceUrl: null,
+      signal: controller.signal,
+      sourceUrl: "assets/mermaid-engine.js",
+      timeoutMs: 1_000,
+    },
+    environment(() => stalled.response)
+  );
+
+  controller.abort(cancellation);
+
+  await assert.rejects(
+    rejectBeforeWatchdog(acquisition),
+    (error: unknown) => error === cancellation
+  );
+  assert.equal(stalled.cancelled(), true);
+});
+
+function environment(
+  fetchResponse: (
+    url: URL,
+    init: Readonly<{ cache: "default"; signal: AbortSignal }>
+  ) => Response | Promise<Response>
+): StaticEngineArtifactEnvironment {
+  return {
+    async fetch(input, init) {
+      return fetchResponse(input, init);
+    },
+    location: {
+      href: "https://playground.example/merman/",
+      origin: "https://playground.example",
+    },
+  };
+}
+
+function response(body: string): Response {
+  return new Response(body, {
+    headers: { "content-length": String(Buffer.byteLength(body)) },
+  });
+}
+
+function stalledResponse(onCancel: (reason: unknown) => void): Response {
+  let fallback: ReturnType<typeof setTimeout> | null = null;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      fallback = setTimeout(
+        () => controller.error(new Error("stalled response test cleanup")),
+        100
+      );
+    },
+    cancel(reason) {
+      if (fallback !== null) clearTimeout(fallback);
+      onCancel(reason);
+    },
+  });
+  return new Response(body, {
+    headers: { "content-length": String(manifest.bytes) },
+  });
+}
+
+function cancellableResponse(
+  options: Readonly<{
+    bytes?: Uint8Array;
+    contentLength?: string;
+    status?: number;
+  }>,
+  onCancel: (reason: unknown) => void
+): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (options.bytes) controller.enqueue(options.bytes);
+    },
+    cancel(reason) {
+      onCancel(reason);
+    },
+  });
+  return new Response(body, {
+    headers: options.contentLength
+      ? { "content-length": options.contentLength }
+      : undefined,
+    status: options.status,
+  });
+}
+
+function nonSettlingCancellationResponse(
+  options: Readonly<{
+    bytes?: Uint8Array;
+    contentLength?: string;
+    status?: number;
+  }>
+): Readonly<{ response: Response; cancelled: () => boolean }> {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (options.bytes) controller.enqueue(options.bytes);
+    },
+    cancel() {
+      cancelled = true;
+      return new Promise<void>(() => {});
+    },
+  });
+  return {
+    response: new Response(body, {
+      headers: options.contentLength
+        ? { "content-length": options.contentLength }
+        : undefined,
+      status: options.status,
+    }),
+    cancelled: () => cancelled,
+  };
+}
+
+async function rejectBeforeWatchdog<Result>(operation: Promise<Result>): Promise<Result> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const watchdog = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(
+      () => reject(new Error("static engine artifact operation exceeded its test watchdog")),
+      100
+    );
+  });
+  try {
+    return await Promise.race([operation, watchdog]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+function engineManifest(body: string) {
+  return {
+    bytes: Buffer.byteLength(body),
+    id: "mermaid",
+    schemaVersion: 1,
+    sha256: createHash("sha256").update(body).digest("hex"),
+  };
+}

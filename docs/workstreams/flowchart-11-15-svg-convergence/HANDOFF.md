@@ -1,7 +1,10 @@
 # Flowchart 11.15 SVG Convergence - Handoff
 
-Status: Active
-Last updated: 2026-06-12
+Status: Closed (historical archive)
+Last updated: 2026-07-21
+
+> Archive note: this Mermaid 11.15 lane is complete. Current Flowchart behavior is governed by
+> the pinned Mermaid 11.16 family facts and admission/parity gates.
 
 ## Current State
 
@@ -29,7 +32,7 @@ Stored Flowchart upstream SVG baselines have been refreshed to Mermaid 11.15, an
 parser-only KaTeX demo fixtures are now active `*_katex` semantic/layout/SVG baselines. Both stored
 Flowchart gates pass.
 
-## Active Task
+## Historical Closeout Task
 
 - Task ID: F115-090
 - Owner: planner
@@ -37,7 +40,7 @@ Flowchart gates pass.
   `docs/workstreams/mermaid-11-15-complete-adaptation`
 - Validation: review/verify the Flowchart lane, update umbrella evidence, and either close this
   child lane or leave only explicit follow-on work such as ELK layout support.
-- Status: READY
+- Status: DONE
 - Review: Do not reopen Flowchart DOM work unless a fresh or stored Flowchart gate regresses.
 - Evidence: `docs/workstreams/flowchart-11-15-svg-convergence/EVIDENCE_AND_GATES.md`
 
@@ -79,10 +82,10 @@ Flowchart gates pass.
 - No current blocker for the supported Flowchart matrix. ELK layout parity remains a follow-on
   layout lane, not part of this DOM convergence lane.
 
-## Next Recommended Action
+## Archive Guidance
 
-Run F115-090 closeout for the Flowchart child lane, then continue the umbrella Mermaid 11.15
-campaign with the remaining ER/Class failures. Preserve these Flowchart gates:
+Do not resume the Mermaid 11.15 campaign from this archive. Preserve these historical Flowchart
+gate commands only when reproducing the old evidence:
 
 ```bash
 cargo run -p xtask -- compare-svg-xml --check --diagram flowchart --upstream-root target/upstream-svgs-11-15-flowchart --dom-mode parity --dom-decimals 3

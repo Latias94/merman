@@ -1,22 +1,27 @@
 # Publish Order
 
-Status: draft for next workspace release.
-Last updated: 2026-07-09
+Status: maintained workspace publish order.
+Last updated: 2026-07-26
 
 ## Version Decision
 
-Next release target: `0.8.0-alpha.3`.
+Published workspace prerelease baseline: `0.8.0-alpha.3`.
+
+Prepared workspace release candidate: `0.8.0-alpha.4`. This is a local prepare-state decision; it
+does not authorize a tag, workflow dispatch, registry publication, or GitHub Release mutation.
 
 Rationale:
 
 - crates.io versions are immutable and `0.8.0-alpha.1` has already started the 0.8 release line.
 - The workspace has added 0.8-line Typst/package-size feature work and Mermaid parity fixes that
   should be tested behind a prerelease before the next stable cut.
-- The platform packages should stay aligned with the workspace release so downstream editor, web,
-  FFI, and documentation integrations test one coherent version graph.
+- Workspace-coupled platform packages should stay aligned so downstream Web, FFI, and documentation
+  integrations test one coherent version graph. The unpublished VS Code extension follows its own
+  `0.1.x` version track and records the bundled workspace runtime separately.
 
-Manifests are aligned to `0.8.0-alpha.3` for this release. Python package metadata uses the PEP 440
-spelling `0.8.0a3`.
+Workspace-coupled manifests are aligned to the prepared `0.8.0-alpha.4` candidate. Python package
+metadata uses the PEP 440 spelling `0.8.0a4`. The independently versioned VS Code extension, Typst
+wrapper, and `roughr-merman` remain on their own release axes.
 
 ## Publish Order
 
@@ -33,15 +38,16 @@ Publish crates in dependency order:
 9. `merman-layout-elk`
 10. `merman-editor-core`
 11. `merman-render`
-12. `merman`
-13. `merman-lsp`
-14. `merman-bindings-core`
-15. `merman-cli`
-16. `merman-rustdoc`
-17. `merman-ffi`
-18. `merman-typst-plugin`
-19. `merman-uniffi`
-20. `merman-wasm`
+12. `merman-export`
+13. `merman`
+14. `merman-lsp`
+15. `merman-bindings-core`
+16. `merman-cli`
+17. `merman-rustdoc`
+18. `merman-ffi`
+19. `merman-typst-plugin`
+20. `merman-uniffi`
+21. `merman-wasm`
 
 This list is intentionally identical to `.github/workflows/release-crates.yml`,
 `tools/publish.py`, `docs/releasing/CRATES_IO.md`, and `docs/releasing/PUBLISHING.md`.
@@ -63,6 +69,7 @@ merman-analysis
   -> merman-lsp
 
 merman-render
+  -> merman-export
   -> merman
   -> merman-bindings-core
   -> merman-ffi
@@ -71,9 +78,18 @@ merman-render
 ```
 
 This is why `merman-ffi` cannot fully package-verify until `merman-bindings-core` is published, and
-`merman-bindings-core` cannot fully package-verify until a newer `merman-render` with `ratex-math`
+`merman-bindings-core` cannot fully package-verify until a newer `merman-render` with `math`
 is available on crates.io. `merman-wasm` comes last because it combines the browser wasm-bindgen
-transport with the released binding core, renderer, ASCII, and editor-language crates.
+transport with the released binding core, renderer, ASCII, and editor-capable crates.
+
+## Browser Package Group
+
+The npm browser SDK is not a single Cargo publication and is intentionally outside the crates.io
+topological order. After the selected source revision has passed release preflight, run
+`release-web.yml` for the admitted package group: `@mermanjs/web`, `@mermanjs/web-analysis`,
+`@mermanjs/web-editor`, `@mermanjs/web-ascii`, and `@mermanjs/web-render`. The workflow publishes
+missing exact versions to a staging tag, verifies every member, then promotes the requested public
+tag as a recoverable group operation.
 
 ## Pre-Publish Gates
 
@@ -93,6 +109,7 @@ real publish, so it also covers `merman-bindings-core`, `merman-ffi`, and `merma
 
 ```bash
 cargo publish -p merman-render --locked --dry-run --registry crates-io
+cargo publish -p merman-export --locked --dry-run --registry crates-io
 cargo publish -p merman-bindings-core --locked --dry-run --registry crates-io
 cargo publish -p merman-ffi --locked --dry-run --registry crates-io
 cargo publish -p merman-uniffi --locked --dry-run --registry crates-io
@@ -101,9 +118,10 @@ cargo publish -p merman-uniffi --locked --dry-run --registry crates-io
 Before upstream crates for the same release are visible in crates.io, keep using `cargo package
 --list` only as a file-list check. It does not replace publish dry-run verification.
 
-## Current Package Matrix
+## Pre-Alpha.3 Package Evidence Snapshot
 
-As of 2026-07-03:
+The table below is historical pre-publication evidence captured on 2026-07-03. Query crates.io or
+the owning artifact release directly for current availability; do not infer it from this snapshot.
 
 | Crate | Gate | Current result |
 | --- | --- | --- |
@@ -118,7 +136,8 @@ As of 2026-07-03:
 | `merman-layout-elk` | crates.io lookup | Published |
 | `merman-editor-core` | release workflow dry-run before publish | Pending after `merman-analysis` is published |
 | `merman-render` | `cargo publish -p merman-render --locked --dry-run --allow-dirty --registry crates-io` | Pass locally after release-source fix; not yet published |
-| `merman` | release workflow dry-run before publish | Pending after `merman-render` is published |
+| `merman-export` | release workflow dry-run before publish | Pending after `merman-render` is published |
+| `merman` | release workflow dry-run before publish | Pending after `merman-export` is published |
 | `merman-lsp` | release workflow dry-run before publish | Pending after `merman-editor-core` and `merman` are published |
 | `merman-bindings-core` | release workflow dry-run before publish | Pending after `merman` is published |
 | `merman-cli` | release workflow dry-run before publish | Pending after `merman` is published |

@@ -1,31 +1,20 @@
 # merman-rustdoc
 
-[![Crates.io](https://img.shields.io/crates/v/merman-rustdoc.svg)](https://crates.io/crates/merman-rustdoc)
-[![Documentation](https://docs.rs/merman-rustdoc/badge.svg)](https://docs.rs/merman-rustdoc)
+[![Crates.io](https://img.shields.io/crates/v/merman-rustdoc.svg)](https://crates.io/crates/merman-rustdoc) [![Documentation](https://docs.rs/merman-rustdoc/badge.svg)](https://docs.rs/merman-rustdoc) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render Mermaid diagrams in rustdoc as inline SVG.
+Render Mermaid diagrams as inline SVG while `cargo doc` runs. Generated rustdoc pages need no Mermaid JavaScript, browser-side rendering, CDN, or network access.
 
-`merman-rustdoc` is a small proc-macro integration for crates that want diagrams in API docs
-without loading Mermaid JavaScript in the browser. It reads Mermaid code fences and `include_mmd!`
-lines from doc comments, renders them with Merman during `cargo doc`, and writes the resulting SVG
-back into the generated rustdoc page.
+`merman-rustdoc` rewrites Mermaid fences and `include_mmd!` lines in item documentation. Diagram failures can fail CI before documentation is published, and the resulting SVG remains part of the generated HTML.
 
-Choose `merman-rustdoc` when you want Mermaid diagrams to be part of the generated rustdoc HTML
-itself: no browser Mermaid runtime, no CDN dependency, offline-friendly docs, and CI-visible diagram
-failures. If you only need the smallest possible macro and are comfortable with browser-side
-Mermaid rendering, a JavaScript-based rustdoc integration may be a lighter fit.
+> Installation snippets use the repository's default branch. Use the crates.io package page to select a published version for a released integration.
 
-## Dependency weight
+## Quick Start
 
-`merman-rustdoc` renders diagrams during rustdoc macro expansion. To do that, it depends on Merman's
-renderer stack with `core-full`, `core-host`, and `render` enabled. That is the right tradeoff for
-build-time SVG output, but many crates do not want that stack compiled during every normal build.
-
-For libraries and applications, prefer an optional documentation feature:
+Keep the renderer out of ordinary builds by making it an optional documentation dependency:
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.3", optional = true }
+merman-rustdoc = { git = "https://github.com/Latias94/merman", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -34,46 +23,11 @@ doc-diagrams = ["dep:merman-rustdoc"]
 features = ["doc-diagrams"]
 ```
 
-Then gate the attribute with the same feature:
+Annotate an item whose docs contain a Mermaid fence:
 
 ````rust
 #[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
-/// ```mermaid
-/// flowchart TD
-///   Source --> Rustdoc
-/// ```
-pub fn documented() {}
-````
-
-With this setup, ordinary `cargo build` and `cargo test` do not compile `merman-rustdoc` or the
-Merman renderer stack. Documentation builds opt in explicitly:
-
-```sh
-cargo doc --features doc-diagrams
-```
-
-docs.rs also enables `doc-diagrams` because of the `package.metadata.docs.rs` section.
-
-## Install
-
-If you are fine compiling the rustdoc integration in ordinary builds, use a normal dependency:
-
-```toml
-[dependencies]
-merman-rustdoc = "=0.8.0-alpha.3"
-```
-
-This works for local `cargo doc` and docs.rs with the simple `cfg_attr(doc, ...)` examples below.
-
-## Quickstart
-
-Put `#[cfg_attr(doc, merman_rustdoc::merman)]` on any item whose docs contain a Mermaid fence.
-If you use the optional `doc-diagrams` setup above, use
-`#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]` instead.
-
-````rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// Documentation prose stays before the diagram.
+/// The diagram is replaced with inline SVG during `cargo doc`.
 ///
 /// ```mermaid
 /// flowchart TD
@@ -81,116 +35,43 @@ If you use the optional `doc-diagrams` setup above, use
 ///   Macro --> Svg[Inline SVG]
 ///   Svg --> Docs[Rustdoc page]
 /// ```
-///
-/// Documentation prose stays after the diagram too.
-pub fn example() {}
+pub fn documented() {}
 ````
 
-When you run `cargo doc`, the Mermaid fence is replaced with an inline `<svg>` in the generated
-HTML, preserving the prose around it. The source view still shows your original Rust source. If you
-use the optional dependency setup above, run `cargo doc --features doc-diagrams` instead.
+Build the documentation:
 
-Rendered output:
+```sh
+cargo doc --features doc-diagrams
+```
+
+The source code still contains the original Mermaid fence. Only the rustdoc output is rewritten.
 
 ![Rendered Mermaid diagram in rustdoc light theme](resources/rustdoc-light.png)
 
-A full rustdoc page keeps the item heading, signature, prose, and generated SVG together:
+## Choose The Renderer Closure
 
-![Rendered Mermaid diagram in a rustdoc function page](resources/rustdoc-realworld.png)
+The default feature is `complete-svg`: deterministic SVG rendering with Cytoscape layout, ELK layout, and math. It does not enable host clock, time-zone, random, or timing adapters.
 
-The default `theme = "rustdoc"` mode embeds light and dark SVG variants in the generated rustdoc
-page and lets rustdoc's current theme choose which one is visible.
+Use a smaller closure when the documented diagrams need only the base SVG renderer:
 
-## Common Patterns
+```toml
+[dependencies]
+merman-rustdoc = { git = "https://github.com/Latias94/merman", default-features = false, features = ["svg"], optional = true }
+```
 
-### Functions
+| Feature | Adds |
+| --- | --- |
+| `complete-svg` | `svg`, Cytoscape layout, ELK layout, and math |
+| `svg` | Base deterministic SVG renderer |
+| `layout-cytoscape` | Architecture and other Cytoscape-backed layouts; implies `svg` |
+| `layout-elk` | ELK-backed layouts; implies `svg` |
+| `math` | RaTeX math rendering; implies `svg` |
 
-````rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// Parse, layout, and render a diagram.
-///
-/// ```mermaid
-/// flowchart LR
-///   Parse --> Layout --> Svg[SVG]
-/// ```
-pub fn render_svg(input: &str) -> String {
-    todo!()
-}
-````
-
-### Modules
-
-````rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// Rendering pipeline.
-///
-/// ```mermaid
-/// flowchart TD
-///   Core[merman-core] --> Render[merman-render]
-///   Render --> Rustdoc[merman-rustdoc]
-/// ```
-pub mod render {}
-````
-
-### Structs
-
-````rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// A renderer configured for rustdoc output.
-///
-/// ```mermaid
-/// flowchart TD
-///   Config --> Renderer
-///   Renderer --> InlineSvg[Inline SVG]
-/// ```
-pub struct RustdocRenderer;
-````
-
-### Traits
-
-````rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// Something that can render a diagram.
-///
-/// ```mermaid
-/// sequenceDiagram
-///   participant Caller
-///   participant Renderer
-///   Caller->>Renderer: render(source)
-///   Renderer-->>Caller: svg
-/// ```
-pub trait RenderDiagram {
-    fn render(&self, source: &str) -> String;
-}
-````
-
-### Impl Blocks
-
-````rust
-pub struct Client;
-
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// High-level client workflow.
-///
-/// ```mermaid
-/// flowchart TD
-///   New[new()] --> Render[render()]
-///   Render --> Done[SVG]
-/// ```
-impl Client {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn render(&self, _source: &str) -> String {
-        todo!()
-    }
-}
-````
+If build weight matters, start with `svg` and add only the capabilities required by the diagrams in your docs.
 
 ## Include Mermaid Files
 
-Large diagrams are easier to maintain in separate `.mmd` files.
+Large diagrams can live in separate `.mmd` files:
 
 ```text
 my-crate/
@@ -199,69 +80,25 @@ my-crate/
 └── docs/architecture.mmd
 ```
 
-`docs/architecture.mmd`:
-
-```text
-flowchart TD
-  Api[Public API] --> Core[Core Model]
-  Core --> Render[Renderer]
-  Render --> Docs[Rustdoc SVG]
-```
-
-`src/lib.rs`:
+Reference the file from an annotated item's docs:
 
 ```rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
+#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
 /// Crate architecture.
 ///
 /// include_mmd!("docs/architecture.mmd")
 pub fn architecture() {}
 ```
 
-Include paths are resolved relative to the consuming crate's `CARGO_MANIFEST_DIR`, not relative to
-the source file.
+Paths are resolved relative to the consuming crate's `CARGO_MANIFEST_DIR`. `include_mmd!` must appear outside other Markdown code fences.
 
-## Multiple Diagrams
+## Configure Rendering
 
-You can put more than one diagram on the same item. SVG ids are scoped per diagram so inline SVG
-definitions do not collide.
+All attribute options use string literals:
 
 ````rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// Input flow:
-///
-/// ```mermaid
-/// flowchart LR
-///   Source --> Parse --> Model
-/// ```
-///
-/// Output flow:
-///
-/// ```mermaid
-/// flowchart LR
-///   Model --> Layout --> Svg[SVG]
-/// ```
-pub fn pipeline() {}
-````
-
-Backtick and tilde fences are both supported:
-
-````rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// ~~~ mermaid
-/// flowchart TD
-///   A --> B
-/// ~~~
-pub fn tilde_fence() {}
-````
-
-## Options
-
-The attribute accepts string options:
-
-```rust
 #[cfg_attr(
-    doc,
+    all(doc, feature = "doc-diagrams"),
     merman_rustdoc::merman(
         scope = "item",
         pipeline = "readable",
@@ -276,393 +113,82 @@ The attribute accepts string options:
 ///   A --> B
 /// ```
 pub fn configured() {}
-```
+````
 
 | Option | Values | Default | Meaning |
 | --- | --- | --- | --- |
-| `scope` | `item`, `tree` | `item` | Controls whether only the annotated item or the inline item tree is rewritten. |
-| `pipeline` | `readable`, `parity`, `resvg-safe` | `readable` | Selects the SVG output pipeline. |
-| `fail` | `error`, `keep-source` | `error` | Controls what happens when rendering or file includes fail. |
-| `source` | `hide`, `details` | `hide` | Adds a collapsed Mermaid source block under the SVG when set to `details`. |
-| `sanitize` | `strict`, `off` | `strict` | Checks rendered SVG for script elements, event attributes, and unsafe resource references. |
-| `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme name | `rustdoc` | Controls whether diagrams follow rustdoc light/dark themes, use Mermaid source config, or use a fixed Mermaid theme. |
+| `scope` | `item`, `tree` | `item` | Rewrite only the annotated item or recurse through an inline item tree. |
+| `pipeline` | `readable`, `parity`, `resvg-safe` | `readable` | Select the SVG output pipeline. |
+| `fail` | `error`, `keep-source` | `error` | Fail documentation or preserve the Mermaid source after an error. |
+| `source` | `hide`, `details` | `hide` | Optionally add the source in a collapsed details block. |
+| `sanitize` | `strict`, `off` | `strict` | Reject scripts, event attributes, unsafe URLs, and remote resources before insertion. |
+| `theme` | `rustdoc`, `mermaid`, or a supported Mermaid theme | `rustdoc` | Follow rustdoc, source-level Mermaid config, or one fixed theme. |
 
-### `scope = "tree"`
+`theme = "rustdoc"` renders light and dark SVG variants and switches between them with rustdoc's existing page theme state. No Mermaid runtime is loaded in the browser. `theme = "mermaid"` emits one SVG controlled by Mermaid source config, while a value such as `theme = "dark"` selects one fixed Merman theme. Source-level Mermaid config still takes precedence.
 
-Use `scope = "tree"` when one attribute should process docs inside an inline item tree. This is most
-useful for modules, but it also handles docs on impl methods, trait methods, fields, and enum
-variants that are visible in the annotated item.
+Use `scope = "tree"` when one attribute should process children inside an inline module, trait, impl block, struct, or enum:
 
 ````rust
 #[cfg_attr(
-    doc,
+    all(doc, feature = "doc-diagrams"),
     merman_rustdoc::merman(scope = "tree")
 )]
 pub mod api {
-    /// Nested function diagram.
-    ///
     /// ```mermaid
     /// flowchart TD
     ///   Request --> Handler --> Response
     /// ```
     pub fn handler() {}
-
-    pub struct Client;
-
-    impl Client {
-        /// Nested method diagram.
-        ///
-        /// ```mermaid
-        /// sequenceDiagram
-        ///   User->>Client: call()
-        ///   Client-->>User: result
-        /// ```
-        pub fn call(&self) {}
-    }
 }
 ````
 
-`scope = "tree"` requires inline Rust syntax. It does not inspect external module files:
+An external `mod api;` cannot be traversed by a proc macro. Annotate items in that module directly instead.
 
-```rust
-#[cfg_attr(doc, merman_rustdoc::merman(scope = "tree"))]
-pub mod external;
-```
+## Supported Inputs
 
-That form fails with a clear error because a proc macro cannot safely recurse into `external.rs`.
+- Backtick or tilde Mermaid fences.
+- Multiple diagrams on one item, with isolated SVG IDs.
+- `include_mmd!("path/to/file.mmd")`.
+- Item docs on functions, modules, structs, traits, impl blocks, fields, and variants visible to the annotated syntax tree.
+- Recursive inline items with `scope = "tree"`.
+- Re-exported docs when the upstream item was rendered first.
+- Normal Markdown, prose, and footnotes around diagrams.
 
-### `source = "details"`
+The macro deliberately does not:
 
-Use this when readers should be able to inspect the Mermaid source from the generated docs.
+- rewrite crate-level inner docs written with `//!`;
+- evaluate Markdown from `#[doc = include_str!("...")]`;
+- traverse external `mod name;` files;
+- resolve rustdoc symbol links inside SVG text;
+- fetch Mermaid source or assets from remote URLs;
+- inject Mermaid JavaScript into generated pages.
 
-````rust
-#[cfg_attr(
-    doc,
-    merman_rustdoc::merman(source = "details")
-)]
-/// ```mermaid
-/// flowchart TD
-///   User --> Api --> Database
-/// ```
-pub fn visible_source() {}
-````
+For a crate-level architecture diagram, place the docs on a public module or another public item.
 
-The generated page will show the SVG first, then a collapsed "Mermaid source" block.
+## Failure And Security Policy
 
-### `fail = "keep-source"`
+The default `fail = "error"` stops `cargo doc` when source loading, parsing, rendering, or sanitization fails. This is the recommended CI behavior. Use `fail = "keep-source"` when documentation should remain buildable while preserving the unresolved Mermaid fence.
 
-Use this for documentation builds where a broken diagram should not fail the whole crate. The
-original Mermaid fence or `include_mmd!` line is left in place when rendering fails.
-
-````rust
-#[cfg_attr(
-    doc,
-    merman_rustdoc::merman(fail = "keep-source")
-)]
-/// ```mermaid
-/// flowchart TD
-///   A --> B
-/// ```
-pub fn tolerant_docs() {}
-````
-
-The default is `fail = "error"`, which is better for CI and release builds because diagram problems
-are caught early.
-
-### `pipeline`
-
-Choose the SVG pipeline that fits the target:
-
-- `readable`: default. Produces stable, readable SVG for rustdoc.
-- `parity`: closer to Merman's Mermaid-parity SVG path.
-- `resvg-safe`: post-processes SVG for raster-oriented consumers.
-
-```rust
-#[cfg_attr(
-    doc,
-    merman_rustdoc::merman(pipeline = "resvg-safe")
-)]
-/// ```mermaid
-/// flowchart TD
-///   A --> B
-/// ```
-pub fn resvg_safe_docs() {}
-```
-
-### `sanitize = "strict"`
-
-`sanitize = "strict"` is the default. It validates rendered SVG before inserting it into rustdoc and
-fails the documentation build if it finds script elements, event attributes, `javascript:` URLs, or
-remote resource references such as `<image href="https://...">`.
-
-```rust
-#[cfg_attr(
-    doc,
-    merman_rustdoc::merman(sanitize = "strict")
-)]
-/// ```mermaid
-/// flowchart TD
-///   A --> B
-/// ```
-pub fn checked_svg() {}
-```
-
-Use `sanitize = "off"` only when you are deliberately inspecting raw renderer output:
-
-```rust
-#[cfg_attr(
-    doc,
-    merman_rustdoc::merman(sanitize = "off")
-)]
-/// ```mermaid
-/// flowchart TD
-///   A --> B
-/// ```
-pub fn raw_svg() {}
-```
-
-### `theme`
-
-`theme = "rustdoc"` is the default. It renders light and dark SVG variants during `cargo doc`, then
-uses rustdoc's page theme state to show the matching variant. Readers can switch rustdoc light,
-dark, or ayu themes without loading Mermaid JavaScript in the browser.
-
-The switch is CSS-only: both SVG variants are embedded in the rustdoc HTML, and a small inline style
-uses rustdoc's `:root[data-theme]` attribute to show the light or dark variant. The browser never
-loads a Mermaid runtime to render or recolor diagrams.
-
-Use `theme = "mermaid"` when you want a single SVG and want Mermaid source-level config, such as
-front matter or an `%%init%%` directive, to decide the theme:
-
-````rust
-#[cfg_attr(
-    doc,
-    merman_rustdoc::merman(theme = "mermaid")
-)]
-/// ```mermaid
-/// %%{init: {"theme": "base"}}%%
-/// flowchart TD
-///   A --> B
-/// ```
-pub fn mermaid_configured_diagram() {}
-````
-
-Use a fixed Mermaid theme when you want one static SVG regardless of the reader's rustdoc theme:
-
-````rust
-#[cfg_attr(
-    doc,
-    merman_rustdoc::merman(theme = "dark")
-)]
-/// ```mermaid
-/// flowchart TD
-///   A --> B
-/// ```
-pub fn dark_diagram() {}
-````
-
-Supported fixed theme names follow Merman's Mermaid theme surface: `default`, `base`, `dark`,
-`forest`, `neutral`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, and
-`redux-dark-color`.
-
-Rustdoc theme mode and fixed themes are passed as Mermaid site config. Source-level config still
-wins, so a diagram can override them with front matter or an `%%init%%` directive:
-
-```text
-%%{init: {"theme": "base"}}%%
-flowchart TD
-  A --> B
-```
-
-When source-level config sets an explicit Mermaid theme, both rustdoc variants may render with that
-source-selected theme. Use source-level theme directives only when a diagram should intentionally
-opt out of rustdoc theme adaptation.
-
-## Re-exports
-
-Inline SVG is stored in the expanded rustdoc attributes. That makes re-exported pages work when the
-upstream item was documented with `merman-rustdoc`.
-
-```rust
-// upstream crate
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// ```mermaid
-/// flowchart TD
-///   Upstream --> Reexport
-/// ```
-pub struct DiagrammedType;
-```
-
-```rust
-// downstream crate
-#[doc(inline)]
-pub use upstream::DiagrammedType;
-```
-
-If the upstream crate uses the optional documentation feature setup, that feature still has to be
-enabled when its docs are built. A downstream re-export cannot render diagrams that were never
-expanded upstream.
-
-## What Gets Rendered
-
-Supported today:
-
-- Mermaid fences using backticks or tildes.
-- `include_mmd!("path/to/file.mmd")` lines outside other Markdown code fences.
-- Item docs on functions, modules, structs, traits, and impl blocks.
-- Recursive inline item docs with `scope = "tree"`.
-- Multiple diagrams on the same item.
-- Footnotes and normal Markdown around diagrams.
-- Re-exported item docs when the upstream item was rendered first.
-
-Not supported today:
-
-- Crate-level inner docs using `//!`.
-- Recursive processing for external `mod name;` files.
-- Running Mermaid JavaScript in the browser.
-- Fetching Mermaid source or assets from remote URLs.
-- Copying external SVG files into the rustdoc output directory.
+The default `sanitize = "strict"` validates every rendered SVG before inserting it into rustdoc. Disable it only for deliberate renderer debugging; `sanitize = "off"` trusts the generated SVG as raw HTML.
 
 ## Troubleshooting
 
-### The generated docs still show a Mermaid code block
-
-Make sure the item has the attribute:
-
-```rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-```
-
-If you use the optional dependency setup, also make sure the documentation feature is enabled:
+**The page still shows a Mermaid fence.** Confirm the item has the attribute, the dependency feature is enabled, and the `cfg_attr` uses the same `doc-diagrams` gate:
 
 ```sh
 cargo doc --features doc-diagrams
 ```
 
-Also gate the attribute with the same feature:
+**`include_mmd!` cannot find a file.** Resolve the path from the crate containing `Cargo.toml`, not from the Rust source file.
 
-```rust
-#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
-```
+**docs.rs does not render diagrams.** When the dependency is optional, include `features = ["doc-diagrams"]` under `[package.metadata.docs.rs]`.
 
-### `include_mmd!` cannot find a file
+**A slim build reports a missing capability.** Add `layout-cytoscape`, `layout-elk`, or `math` to the dependency as required, or use the default `complete-svg` profile.
 
-Paths are relative to `CARGO_MANIFEST_DIR`.
+**A re-export has no rendered diagram.** The upstream item's macro must expand while the upstream docs are built; a downstream re-export cannot render source that was never expanded.
 
-```rust
-/// include_mmd!("docs/architecture.mmd")
-```
+## License
 
-For a crate at `my-crate/Cargo.toml`, that resolves to:
+Licensed under either Apache-2.0 or MIT at your option.
 
-```text
-my-crate/docs/architecture.mmd
-```
-
-### docs.rs does not render diagrams
-
-The normal dependency setup does not need docs.rs metadata. If `merman-rustdoc` is optional behind a
-documentation feature, add the docs.rs feature configuration:
-
-```toml
-[package.metadata.docs.rs]
-features = ["doc-diagrams"]
-```
-
-### A diagram failure blocks `cargo doc`
-
-That is the default behavior. Use `fail = "keep-source"` if you prefer documentation builds to keep
-going while preserving the original Mermaid source.
-
-### `scope = "tree"` fails on `mod name;`
-
-Use an inline module when you want recursive processing:
-
-```rust
-#[cfg_attr(doc, merman_rustdoc::merman(scope = "tree"))]
-pub mod api {
-    // child docs are visible to the proc macro here
-}
-```
-
-External module files are not traversed by the proc macro.
-
-### Can I use this on crate-level `//!` docs?
-
-No. `merman-rustdoc` rewrites item-level outer docs. It does not rewrite crate-level inner docs
-written with `//!`.
-
-Put crate-level diagrams on a public module or item instead:
-
-````rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// Crate architecture.
-///
-/// ```mermaid
-/// flowchart TD
-///   Crate --> Module
-/// ```
-pub mod architecture {}
-````
-
-### Does this rewrite `#[doc = include_str!(...)]`?
-
-No. `merman-rustdoc` rewrites literal rustdoc lines that come from item doc comments and
-`include_mmd!("path.mmd")` lines. It does not evaluate or rewrite Markdown loaded through
-`#[doc = include_str!("...")]`.
-
-Use `include_mmd!` for Mermaid files:
-
-```rust
-#[cfg_attr(doc, merman_rustdoc::merman)]
-/// include_mmd!("docs/architecture.mmd")
-pub fn architecture() {}
-```
-
-### Do rustdoc symbol links work inside Mermaid diagrams?
-
-No. Mermaid source is rendered to SVG before rustdoc resolves intra-doc links. Text inside the SVG
-does not participate in rustdoc link resolution, so labels such as `[Type](crate::Type)` are treated
-as Mermaid text or Mermaid links, not rustdoc symbol links.
-
-Normal Mermaid links follow whatever Merman renders, subject to `sanitize = "strict"`.
-
-### What about themes?
-
-By default, `merman-rustdoc` follows rustdoc's light/dark theme setting. It renders light and dark
-SVG variants during `cargo doc` and uses rustdoc's `data-theme` state to show the matching variant.
-The switch is CSS-only: both variants are embedded in the generated HTML, and the browser does not
-load Mermaid JavaScript to render or recolor diagrams.
-
-Use `theme = "mermaid"` for a single SVG controlled by Mermaid source config. Use `theme = "dark"`
-or another supported Mermaid theme to choose one fixed build-time theme. If your Mermaid source uses
-Mermaid's own source-level config, such as an `%%init%%` directive, it is passed to Merman with the
-rest of the diagram and overrides the rustdoc-level theme default:
-
-```text
-%%{init: {"theme": "base"}}%%
-flowchart TD
-  A --> B
-```
-
-Whether a specific Mermaid theme directive works depends on Merman's renderer support for that
-diagram and config. `merman-rustdoc` does not add a separate SVG recoloring layer on top.
-
-## Why Build-Time SVG
-
-Many rustdoc Mermaid integrations inject Mermaid JavaScript into the generated page. That works, but
-it makes rendering depend on browser execution, script loading, and sometimes remote assets.
-
-`merman-rustdoc` renders before the page is opened:
-
-- no Mermaid JavaScript is injected;
-- no CDN is required;
-- docs work offline after they are generated;
-- SVG is present in the HTML that rustdoc writes;
-- broken diagrams can fail CI before release.
-
-## Acknowledgements
-
-Thanks to [`aquamarine`](https://github.com/mersinvald/aquamarine) for proving that Mermaid diagrams
-inside rustdoc comments are useful and ergonomic. `merman-rustdoc` follows the same user-facing idea,
-but renders SVG with Merman during documentation builds instead of loading Mermaid in the browser.
+The user-facing attribute pattern is inspired by [`aquamarine`](https://github.com/mersinvald/aquamarine). Merman differs by rendering SVG during documentation builds instead of loading Mermaid in the browser.

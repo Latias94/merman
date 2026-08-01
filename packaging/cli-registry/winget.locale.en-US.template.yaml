@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
+
+PackageIdentifier: Latias94.MermanCLI
+PackageVersion: ${VERSION}
+PackageLocale: en-US
+Publisher: Latias94
+PublisherUrl: ${REPOSITORY_URL}
+PublisherSupportUrl: ${ISSUES_URL}
+PackageName: Merman CLI
+PackageUrl: ${REPOSITORY_URL}
+License: MIT OR Apache-2.0
+ShortDescription: Render Mermaid diagrams without a browser or Node.js runtime
+Description: Merman CLI parses, lays out, analyzes, and renders Mermaid diagrams in a headless native process.
+Moniker: merman-cli
+Tags:
+  - cli
+  - diagram
+  - headless
+  - mermaid
+  - renderer
+ReleaseNotesUrl: ${RELEASE_URL}
+ManifestType: defaultLocale
+ManifestVersion: 1.12.0

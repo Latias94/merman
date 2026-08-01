@@ -1,11 +1,29 @@
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive, strip_line_ending};
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
-    ParseMetadata, Result, SourceSpan,
+    EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result,
+    SourceSpan, editor::EditorLexemeJournal,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    static KANBAN_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_kanban_syntax_construction_count() {
+    KANBAN_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn kanban_syntax_construction_count() -> usize {
+    KANBAN_SYNTAX_CONSTRUCTION_COUNT.get()
+}
 
 const NODE_TYPE_DEFAULT: i32 = 0;
 const NODE_TYPE_ROUNDED_RECT: i32 = 1;
@@ -40,7 +58,7 @@ pub struct KanbanDiagramRenderModel {
     pub nodes: Vec<KanbanRenderNode>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct KanbanRenderNode {
     pub id: String,
@@ -57,6 +75,32 @@ pub struct KanbanRenderNode {
     pub assigned: Option<String>,
     #[serde(default)]
     pub icon: Option<String>,
+    #[serde(skip)]
+    compatibility: KanbanRenderNodeCompatibility,
+}
+
+#[derive(Debug, Clone, Default)]
+struct KanbanRenderNodeCompatibility {
+    level: usize,
+    width: i64,
+    padding: i64,
+    ticket: Option<String>,
+    priority: Option<String>,
+    assigned: Option<String>,
+    icon: Option<String>,
+    css_classes: Option<String>,
+    shape: Option<String>,
+}
+
+impl KanbanRenderNode {
+    /// Creates a render node with no parent or optional card metadata.
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -66,11 +110,86 @@ struct KanbanDb {
     next_auto_id: i64,
 }
 
+struct KanbanSemanticSource {
+    db: KanbanDb,
+    editor_facts: EditorSemanticFacts,
+}
+
+struct KanbanParseFailure {
+    error: Box<Error>,
+    editor_facts: Box<EditorSemanticFacts>,
+    span: SourceSpan,
+}
+
+impl KanbanParseFailure {
+    fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
+        let mut facts = *self.editor_facts;
+        facts.mark_recovered_from_parse_error(
+            format!("kanban parser recovered after parse error: {}", self.error),
+            Some(self.span),
+        );
+        (*self.error, facts)
+    }
+}
+
 #[derive(Debug, Clone)]
 struct SpannedText {
     text: String,
     span: SourceSpan,
-    kind: EditorSemanticKind,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct KanbanLexeme {
+    kind: EditorLexemeKind,
+    modifiers: EditorLexemeModifiers,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Default)]
+struct KanbanLexemeTrace {
+    lexemes: Vec<KanbanLexeme>,
+}
+
+impl KanbanLexemeTrace {
+    fn push(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
+        self.push_with_modifiers(kind, EditorLexemeModifiers::NONE, span);
+    }
+
+    fn push_with_modifier(
+        &mut self,
+        kind: EditorLexemeKind,
+        modifier: EditorLexemeModifier,
+        span: SourceSpan,
+    ) {
+        self.push_with_modifiers(kind, EditorLexemeModifiers::from_modifier(modifier), span);
+    }
+
+    fn push_with_modifiers(
+        &mut self,
+        kind: EditorLexemeKind,
+        modifiers: EditorLexemeModifiers,
+        span: SourceSpan,
+    ) {
+        if span.start < span.end {
+            self.lexemes.push(KanbanLexeme {
+                kind,
+                modifiers,
+                span,
+            });
+        }
+    }
+
+    fn extend(&mut self, other: Self) {
+        self.lexemes.extend(other.lexemes);
+    }
+
+    fn attach(self, source: &str, facts: &mut EditorSemanticFacts) {
+        let mut journal = EditorLexemeJournal::family_parser(source);
+        for lexeme in self.lexemes {
+            journal.push(lexeme.kind, lexeme.modifiers, lexeme.span);
+        }
+        facts.replace_family_lexemes(journal.finish());
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -81,9 +200,25 @@ struct KanbanNodeSpec {
 }
 
 #[derive(Debug, Clone)]
+struct ParsedKanbanNode {
+    spec: KanbanNodeSpec,
+    entity: SpannedText,
+    label: Option<SpannedText>,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+struct KanbanMetadataField {
+    key: SpannedText,
+    value: Option<SpannedText>,
+    value_kind: Option<EditorLexemeKind>,
+}
+
+#[derive(Debug, Clone)]
 struct KanbanShapeData {
     text: String,
     span: SourceSpan,
+    fields: Vec<KanbanMetadataField>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -129,10 +264,6 @@ impl<'a> KanbanLineCursor<'a> {
 }
 
 impl KanbanDb {
-    fn clear(&mut self) {
-        *self = Self::default();
-    }
-
     fn get_section_index(&self, level: usize) -> Result<Option<usize>> {
         if self.nodes.is_empty() {
             return Ok(None);
@@ -188,7 +319,7 @@ impl KanbanDb {
         level: usize,
         spec: KanbanNodeSpec,
         span: SourceSpan,
-        shape_data: Option<KanbanShapeData>,
+        shape_data: Option<(KanbanShapeData, Value)>,
         config: &MermaidConfig,
     ) -> Result<()> {
         let mut padding = get_i64(config, "mindmap.padding").unwrap_or(10);
@@ -222,8 +353,8 @@ impl KanbanDb {
             shape: None,
         };
 
-        if let Some(shape_data) = shape_data {
-            apply_shape_data(&mut node, &shape_data)?;
+        if let Some((shape_data, document)) = shape_data {
+            apply_shape_data(&mut node, &document, shape_data.span)?;
         }
 
         if let Some(section_idx) = self.get_section_index(level)? {
@@ -233,85 +364,6 @@ impl KanbanDb {
         }
         self.nodes.push(node);
         Ok(())
-    }
-
-    fn sections_json(&self) -> Value {
-        let mut out = Vec::new();
-        for &idx in &self.section_indices {
-            let Some(n) = self.nodes.get(idx) else {
-                continue;
-            };
-            let mut obj = Map::new();
-            obj.insert("id".to_string(), json!(n.id));
-            obj.insert("label".to_string(), json!(n.label));
-            obj.insert("level".to_string(), json!(n.level));
-            obj.insert("width".to_string(), json!(n.width));
-            obj.insert("padding".to_string(), json!(n.padding));
-            obj.insert("isGroup".to_string(), json!(false));
-            if let Some(v) = &n.ticket {
-                obj.insert("ticket".to_string(), json!(v));
-            }
-            if let Some(v) = &n.priority {
-                obj.insert("priority".to_string(), json!(v));
-            }
-            if let Some(v) = &n.assigned {
-                obj.insert("assigned".to_string(), json!(v));
-            }
-            if let Some(v) = &n.icon {
-                obj.insert("icon".to_string(), json!(v));
-            }
-            if let Some(v) = &n.css_classes {
-                obj.insert("cssClasses".to_string(), json!(v));
-            }
-            if let Some(v) = &n.shape {
-                obj.insert("shape".to_string(), json!(v));
-            }
-            out.push(Value::Object(obj));
-        }
-        Value::Array(out)
-    }
-
-    fn data_nodes_json(&self, config: &MermaidConfig) -> Vec<Value> {
-        let look = config.get_str("look").unwrap_or("classic").to_string();
-
-        let mut out = Vec::new();
-        for &section_idx in &self.section_indices {
-            let Some(section) = self.nodes.get(section_idx) else {
-                continue;
-            };
-            out.push(json!({
-                "id": section.id,
-                "label": sanitize_text(&section.label, config),
-                "isGroup": true,
-                "ticket": section.ticket,
-                "shape": "kanbanSection",
-                "level": section.level,
-                "look": look,
-            }));
-
-            for item in self
-                .nodes
-                .iter()
-                .filter(|n| n.parent_id.as_deref() == Some(&section.id))
-            {
-                out.push(json!({
-                    "id": item.id,
-                    "parentId": section.id,
-                    "label": sanitize_text(&item.label, config),
-                    "isGroup": false,
-                    "ticket": item.ticket,
-                    "priority": item.priority,
-                    "assigned": item.assigned,
-                    "icon": item.icon,
-                    "shape": "kanbanItem",
-                    "level": item.level,
-                    "rx": 5,
-                    "ry": 5,
-                    "cssStyles": ["text-align: left"],
-                }));
-            }
-        }
-        out
     }
 
     fn data_nodes_for_render(&self, config: &MermaidConfig) -> Vec<KanbanRenderNode> {
@@ -329,6 +381,17 @@ impl KanbanDb {
                 priority: None,
                 assigned: None,
                 icon: None,
+                compatibility: KanbanRenderNodeCompatibility {
+                    level: section.level,
+                    width: section.width,
+                    padding: section.padding,
+                    ticket: section.ticket.clone(),
+                    priority: section.priority.clone(),
+                    assigned: section.assigned.clone(),
+                    icon: section.icon.clone(),
+                    css_classes: section.css_classes.clone(),
+                    shape: section.shape.clone(),
+                },
             });
 
             for item in self
@@ -345,6 +408,17 @@ impl KanbanDb {
                     priority: item.priority.clone(),
                     assigned: item.assigned.clone(),
                     icon: item.icon.clone(),
+                    compatibility: KanbanRenderNodeCompatibility {
+                        level: item.level,
+                        width: item.width,
+                        padding: item.padding,
+                        ticket: item.ticket.clone(),
+                        priority: item.priority.clone(),
+                        assigned: item.assigned.clone(),
+                        icon: item.icon.clone(),
+                        css_classes: item.css_classes.clone(),
+                        shape: item.shape.clone(),
+                    },
                 });
             }
         }
@@ -352,10 +426,8 @@ impl KanbanDb {
     }
 }
 
-fn apply_shape_data(node: &mut KanbanNode, shape_data: &KanbanShapeData) -> Result<()> {
-    let doc = crate::inline_config::parse_mermaid_inline_object(&shape_data.text)
-        .map_err(|e| Error::diagram_parse_exact("kanban", e, shape_data.span))?;
-    let Some(obj) = doc.as_object() else {
+fn apply_shape_data(node: &mut KanbanNode, document: &Value, span: SourceSpan) -> Result<()> {
+    let Some(obj) = document.as_object() else {
         return Ok(());
     };
 
@@ -364,7 +436,7 @@ fn apply_shape_data(node: &mut KanbanNode, shape_data: &KanbanShapeData) -> Resu
             return Err(Error::diagram_parse_exact(
                 "kanban",
                 format!("No such shape: {shape}. Shape names should be lowercase."),
-                shape_data.span,
+                span,
             ));
         }
         if shape == "kanbanItem" {
@@ -440,137 +512,212 @@ fn strip_inline_comment(line: &str) -> &str {
     line
 }
 
-fn kanban_suffix_start(line: &str, line_start: usize, suffix: &str) -> usize {
-    debug_assert!(line.len() >= suffix.len());
-    line_start + line.len().saturating_sub(suffix.len())
-}
-
-fn kanban_insertion_at_suffix(
-    message: impl Into<String>,
-    line: &str,
-    line_start: usize,
-    suffix: &str,
-) -> Error {
-    let suffix = suffix.trim_start();
-    Error::diagram_parse_insertion_point(
-        "kanban",
-        message,
-        kanban_suffix_start(line, line_start, suffix),
-    )
-}
-
-fn kanban_exact_suffix(
-    message: impl Into<String>,
-    line: &str,
-    line_start: usize,
-    suffix: &str,
-) -> Error {
-    let suffix = suffix.trim_start();
-    let start = kanban_suffix_start(line, line_start, suffix);
-    let end = start + suffix.trim_end().len();
-    Error::diagram_parse_exact("kanban", message, SourceSpan::new(start, end))
-}
-
-fn kanban_delimited_suffix_error(
-    message: String,
-    line: &str,
-    line_start: usize,
-    suffix: &str,
-) -> Error {
-    let suffix = suffix.trim_start();
-    let start = kanban_suffix_start(line, line_start, suffix);
-    if message == "unterminated node delimiter" {
-        return Error::diagram_parse_insertion_point("kanban", message, start + suffix.len());
-    }
-
-    Error::diagram_parse_insertion_point("kanban", message, start)
-}
-
 fn parse_node_spec_for_render(
     input: &str,
-    line: &str,
-    line_start: usize,
-) -> Result<(KanbanNodeSpec, SourceSpan)> {
+    input_start: usize,
+    lexemes: &mut KanbanLexemeTrace,
+) -> Result<ParsedKanbanNode> {
     let input = input.trim_end();
     if input.is_empty() {
-        return Err(kanban_insertion_at_suffix(
+        return Err(Error::diagram_parse_insertion_point(
+            "kanban",
             "expected node",
-            line,
-            line_start,
-            input,
+            input_start,
         ));
     }
 
     if let Some((start, end)) = node_delimiter_pair_at_start(input) {
-        let (inner, tail) = extract_delimited(input, start, end)
-            .map_err(|message| kanban_delimited_suffix_error(message, line, line_start, input))?;
+        let inner_start = input_start + start.len();
+        lexemes.push(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(input_start, inner_start),
+        );
+        let (inner, tail) = match extract_delimited(input, start, end) {
+            Ok(parts) => parts,
+            Err(message) => {
+                parse_kanban_label(&input[start.len()..], inner_start, true, lexemes);
+                return Err(Error::diagram_parse_insertion_point(
+                    "kanban",
+                    message,
+                    input_start + input.len(),
+                ));
+            }
+        };
+        let label = parse_kanban_label(inner, inner_start, true, lexemes);
+        let closing_start = inner_start + inner.len();
+        lexemes.push(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(closing_start, closing_start + end.len()),
+        );
         if !tail.trim().is_empty() {
-            return Err(kanban_exact_suffix(
+            let tail_start = input_start + input.len() - tail.len();
+            let leading = tail.len() - tail.trim_start().len();
+            let trailing = tail.trim_end().len();
+            let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
+            lexemes.push(EditorLexemeKind::Literal, span);
+            return Err(Error::diagram_parse_exact(
+                "kanban",
                 "unexpected trailing input",
-                line,
-                line_start,
-                tail,
+                span,
             ));
         }
-        let descr = unquote_node_descr(inner);
         let ty = node_type_for(start, end);
-        let rel = kanban_suffix_start(line, line_start, input) + start.len();
-        return Ok((
-            KanbanNodeSpec {
-                id_raw: descr.clone(),
-                descr_raw: descr,
+        return Ok(ParsedKanbanNode {
+            spec: KanbanNodeSpec {
+                id_raw: label.text.clone(),
+                descr_raw: label.text.clone(),
                 ty,
             },
-            SourceSpan::new(rel, rel + inner.len()),
-        ));
+            entity: label,
+            label: None,
+            span: SourceSpan::new(input_start, closing_start + end.len()),
+        });
     }
 
     let (id_raw, rest) = split_node_id(input);
-    let id_start = kanban_suffix_start(line, line_start, input);
+    let id = SpannedText {
+        text: id_raw.to_string(),
+        span: SourceSpan::new(input_start, input_start + id_raw.len()),
+    };
+    lexemes.push_with_modifier(
+        EditorLexemeKind::Identifier,
+        EditorLexemeModifier::Definition,
+        id.span,
+    );
     let rest = rest.trim_end();
     if rest.is_empty() {
-        return Ok((
-            KanbanNodeSpec {
+        return Ok(ParsedKanbanNode {
+            spec: KanbanNodeSpec {
                 id_raw: id_raw.to_string(),
                 descr_raw: id_raw.to_string(),
                 ty: NODE_TYPE_DEFAULT,
             },
-            SourceSpan::new(id_start, id_start + id_raw.len()),
-        ));
+            entity: id,
+            label: None,
+            span: SourceSpan::new(input_start, input_start + input.len()),
+        });
     }
 
     let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
-        return Err(kanban_insertion_at_suffix(
+        return Err(Error::diagram_parse_insertion_point(
+            "kanban",
             "expected node delimiter",
-            line,
-            line_start,
-            rest,
+            input_start + id_raw.len(),
         ));
     };
 
-    let (inner, tail) = extract_delimited(rest, start, end)
-        .map_err(|message| kanban_delimited_suffix_error(message, line, line_start, rest))?;
+    let rest_start = input_start + id_raw.len();
+    let inner_start = rest_start + start.len();
+    lexemes.push(
+        EditorLexemeKind::Delimiter,
+        SourceSpan::new(rest_start, inner_start),
+    );
+    let (inner, tail) = match extract_delimited(rest, start, end) {
+        Ok(parts) => parts,
+        Err(message) => {
+            parse_kanban_label(&rest[start.len()..], inner_start, false, lexemes);
+            return Err(Error::diagram_parse_insertion_point(
+                "kanban",
+                message,
+                rest_start + rest.len(),
+            ));
+        }
+    };
+    let label = parse_kanban_label(inner, inner_start, false, lexemes);
+    let closing_start = inner_start + inner.len();
+    lexemes.push(
+        EditorLexemeKind::Delimiter,
+        SourceSpan::new(closing_start, closing_start + end.len()),
+    );
     if !tail.trim().is_empty() {
-        return Err(kanban_exact_suffix(
+        let tail_start = rest_start + rest.len() - tail.len();
+        let leading = tail.len() - tail.trim_start().len();
+        let trailing = tail.trim_end().len();
+        let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
+        lexemes.push(EditorLexemeKind::Literal, span);
+        return Err(Error::diagram_parse_exact(
+            "kanban",
             "unexpected trailing input",
-            line,
-            line_start,
-            tail,
+            span,
         ));
     }
-
-    let descr = unquote_node_descr(inner);
     let ty = node_type_for(start, end);
-    let rest_start = kanban_suffix_start(line, line_start, rest);
-    let inner_start = rest_start + start.len();
-    Ok((
-        KanbanNodeSpec {
+    Ok(ParsedKanbanNode {
+        spec: KanbanNodeSpec {
             id_raw: id_raw.to_string(),
-            descr_raw: descr,
+            descr_raw: label.text.clone(),
             ty,
         },
-        SourceSpan::new(inner_start, inner_start + inner.len()),
-    ))
+        entity: id,
+        label: Some(label),
+        span: SourceSpan::new(input_start, closing_start + end.len()),
+    })
+}
+
+fn parse_kanban_label(
+    raw: &str,
+    raw_start: usize,
+    is_entity: bool,
+    lexemes: &mut KanbanLexemeTrace,
+) -> SpannedText {
+    let (text, span) = if let Some(raw) = raw.strip_prefix("\"`") {
+        lexemes.push(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(raw_start, raw_start + 2),
+        );
+        if let Some(raw) = raw.strip_suffix("`\"") {
+            let closing_start = raw_start + 2 + raw.len();
+            lexemes.push(
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(closing_start, closing_start + 2),
+            );
+            (
+                raw.to_string(),
+                SourceSpan::new(raw_start + 2, closing_start),
+            )
+        } else {
+            (
+                raw.to_string(),
+                SourceSpan::new(raw_start + 2, raw_start + 2 + raw.len()),
+            )
+        }
+    } else if let Some(raw) = raw.strip_prefix('"') {
+        lexemes.push(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(raw_start, raw_start + 1),
+        );
+        if let Some(raw) = raw.strip_suffix('"') {
+            let closing_start = raw_start + 1 + raw.len();
+            lexemes.push(
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(closing_start, closing_start + 1),
+            );
+            (
+                raw.to_string(),
+                SourceSpan::new(raw_start + 1, closing_start),
+            )
+        } else {
+            (
+                raw.to_string(),
+                SourceSpan::new(raw_start + 1, raw_start + 1 + raw.len()),
+            )
+        }
+    } else {
+        (
+            raw.to_string(),
+            SourceSpan::new(raw_start, raw_start + raw.len()),
+        )
+    };
+    if is_entity {
+        lexemes.push_with_modifier(
+            EditorLexemeKind::String,
+            EditorLexemeModifier::Definition,
+            span,
+        );
+    } else {
+        lexemes.push(EditorLexemeKind::String, span);
+    }
+    SpannedText { text, span }
 }
 
 fn split_node_id(input: &str) -> (&str, &str) {
@@ -655,16 +802,6 @@ fn extract_delimited<'a>(
     Err("unterminated node delimiter".to_string())
 }
 
-fn unquote_node_descr(raw: &str) -> String {
-    if let Some(inner) = raw.strip_prefix("\"`").and_then(|s| s.strip_suffix("`\"")) {
-        return inner.to_string();
-    }
-    if let Some(inner) = raw.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-        return inner.to_string();
-    }
-    raw.to_string()
-}
-
 fn node_type_for(start: &str, end: &str) -> i32 {
     match start {
         "[" => NODE_TYPE_RECT,
@@ -691,15 +828,310 @@ fn get_i64(cfg: &MermaidConfig, dotted_path: &str) -> Option<i64> {
     cur.as_i64().or_else(|| cur.as_f64().map(|f| f as i64))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KanbanMetadataMode {
+    Key,
+    AfterKey,
+    Value,
+    AfterValue,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct KanbanMetadataQuote {
+    delimiter: char,
+    content_start: usize,
+    is_key: bool,
+}
+
+struct KanbanMetadataCursor<'a> {
+    source: &'a str,
+    mode: KanbanMetadataMode,
+    token_start: Option<usize>,
+    current_key: Option<SpannedText>,
+    quote: Option<KanbanMetadataQuote>,
+    fields: Vec<KanbanMetadataField>,
+    lexemes: KanbanLexemeTrace,
+}
+
+impl<'a> KanbanMetadataCursor<'a> {
+    fn new(source: &'a str, opening: SourceSpan) -> Self {
+        let mut lexemes = KanbanLexemeTrace::default();
+        lexemes.push(EditorLexemeKind::Delimiter, opening);
+        Self {
+            source,
+            mode: KanbanMetadataMode::Key,
+            token_start: None,
+            current_key: None,
+            quote: None,
+            fields: Vec::new(),
+            lexemes,
+        }
+    }
+
+    fn consume(&mut self, offset: usize, ch: char) {
+        if let Some(quote) = self.quote {
+            if ch == quote.delimiter {
+                let span = SourceSpan::new(quote.content_start, offset);
+                if quote.is_key {
+                    self.lexemes.push(EditorLexemeKind::Identifier, span);
+                    self.current_key = Some(SpannedText {
+                        text: self.source[span.start..span.end].to_string(),
+                        span,
+                    });
+                    self.mode = KanbanMetadataMode::AfterKey;
+                } else {
+                    self.lexemes.push(EditorLexemeKind::String, span);
+                    self.finish_field(Some(span), Some(EditorLexemeKind::String));
+                    self.mode = KanbanMetadataMode::AfterValue;
+                }
+                self.lexemes.push(
+                    EditorLexemeKind::Delimiter,
+                    SourceSpan::new(offset, offset + ch.len_utf8()),
+                );
+                self.quote = None;
+            }
+            return;
+        }
+
+        match self.mode {
+            KanbanMetadataMode::Key => match ch {
+                ':' => {
+                    self.finish_key(offset);
+                    self.lexemes.push(
+                        EditorLexemeKind::Delimiter,
+                        SourceSpan::new(offset, offset + 1),
+                    );
+                    self.mode = KanbanMetadataMode::Value;
+                }
+                ',' => {
+                    self.finish_invalid_token(offset);
+                    self.lexemes.push(
+                        EditorLexemeKind::Delimiter,
+                        SourceSpan::new(offset, offset + 1),
+                    );
+                }
+                '"' | '\'' if self.token_start.is_none() => {
+                    self.lexemes.push(
+                        EditorLexemeKind::Delimiter,
+                        SourceSpan::new(offset, offset + ch.len_utf8()),
+                    );
+                    self.quote = Some(KanbanMetadataQuote {
+                        delimiter: ch,
+                        content_start: offset + ch.len_utf8(),
+                        is_key: true,
+                    });
+                }
+                _ if ch.is_whitespace() && self.token_start.is_none() => {}
+                _ => {
+                    self.token_start.get_or_insert(offset);
+                }
+            },
+            KanbanMetadataMode::AfterKey => match ch {
+                ':' => {
+                    self.lexemes.push(
+                        EditorLexemeKind::Delimiter,
+                        SourceSpan::new(offset, offset + 1),
+                    );
+                    self.mode = KanbanMetadataMode::Value;
+                }
+                _ if ch.is_whitespace() => {}
+                _ => {
+                    self.token_start = Some(offset);
+                    self.mode = KanbanMetadataMode::Key;
+                }
+            },
+            KanbanMetadataMode::Value => match ch {
+                ',' => {
+                    self.finish_bare_value(offset);
+                    self.lexemes.push(
+                        EditorLexemeKind::Delimiter,
+                        SourceSpan::new(offset, offset + 1),
+                    );
+                    self.mode = KanbanMetadataMode::Key;
+                }
+                '"' | '\'' if self.token_start.is_none() => {
+                    self.lexemes.push(
+                        EditorLexemeKind::Delimiter,
+                        SourceSpan::new(offset, offset + ch.len_utf8()),
+                    );
+                    self.quote = Some(KanbanMetadataQuote {
+                        delimiter: ch,
+                        content_start: offset + ch.len_utf8(),
+                        is_key: false,
+                    });
+                }
+                _ if ch.is_whitespace() && self.token_start.is_none() => {}
+                _ => {
+                    self.token_start.get_or_insert(offset);
+                }
+            },
+            KanbanMetadataMode::AfterValue => match ch {
+                ',' => {
+                    self.lexemes.push(
+                        EditorLexemeKind::Delimiter,
+                        SourceSpan::new(offset, offset + 1),
+                    );
+                    self.mode = KanbanMetadataMode::Key;
+                }
+                _ if ch.is_whitespace() => {}
+                _ => {
+                    self.token_start = Some(offset);
+                    self.mode = KanbanMetadataMode::Key;
+                }
+            },
+        }
+    }
+
+    fn line_break(&mut self, offset: usize) {
+        if self.quote.is_some() {
+            return;
+        }
+        match self.mode {
+            KanbanMetadataMode::Value => self.finish_bare_value(offset),
+            KanbanMetadataMode::Key => self.finish_invalid_token(offset),
+            KanbanMetadataMode::AfterKey | KanbanMetadataMode::AfterValue => {}
+        }
+        if self.mode != KanbanMetadataMode::AfterKey {
+            self.mode = KanbanMetadataMode::Key;
+        }
+    }
+
+    fn close(&mut self, offset: usize) {
+        if let Some(quote) = self.quote.take() {
+            let span = SourceSpan::new(quote.content_start, offset);
+            self.lexemes.push(
+                if quote.is_key {
+                    EditorLexemeKind::Identifier
+                } else {
+                    EditorLexemeKind::String
+                },
+                span,
+            );
+            if !quote.is_key {
+                self.finish_field(Some(span), Some(EditorLexemeKind::String));
+            }
+        } else {
+            match self.mode {
+                KanbanMetadataMode::Value => self.finish_bare_value(offset),
+                KanbanMetadataMode::Key => self.finish_invalid_token(offset),
+                KanbanMetadataMode::AfterKey | KanbanMetadataMode::AfterValue => {}
+            }
+        }
+        self.lexemes.push(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(offset, offset + 1),
+        );
+    }
+
+    fn finish_at_eof(&mut self, offset: usize) {
+        if let Some(quote) = self.quote.take() {
+            let span = SourceSpan::new(quote.content_start, offset);
+            self.lexemes.push(
+                if quote.is_key {
+                    EditorLexemeKind::Identifier
+                } else {
+                    EditorLexemeKind::String
+                },
+                span,
+            );
+            if !quote.is_key {
+                self.finish_field(Some(span), Some(EditorLexemeKind::String));
+            }
+            return;
+        }
+        match self.mode {
+            KanbanMetadataMode::Value => self.finish_bare_value(offset),
+            KanbanMetadataMode::Key => self.finish_invalid_token(offset),
+            KanbanMetadataMode::AfterKey | KanbanMetadataMode::AfterValue => {}
+        }
+    }
+
+    fn finish_key(&mut self, end: usize) {
+        let Some(span) = self.trimmed_token_span(end) else {
+            return;
+        };
+        self.lexemes.push(EditorLexemeKind::Identifier, span);
+        self.current_key = Some(SpannedText {
+            text: self.source[span.start..span.end].to_string(),
+            span,
+        });
+    }
+
+    fn finish_bare_value(&mut self, end: usize) {
+        let span = self.trimmed_token_span(end);
+        let kind = span.map(|span| {
+            let raw = &self.source[span.start..span.end];
+            let kind = match raw {
+                "true" | "false" => EditorLexemeKind::Boolean,
+                "null" => EditorLexemeKind::Literal,
+                _ if is_kanban_inline_number(raw) => EditorLexemeKind::Number,
+                _ => EditorLexemeKind::String,
+            };
+            self.lexemes.push(kind, span);
+            kind
+        });
+        self.finish_field(span, kind);
+    }
+
+    fn finish_invalid_token(&mut self, end: usize) {
+        if let Some(span) = self.trimmed_token_span(end) {
+            self.lexemes.push(EditorLexemeKind::Literal, span);
+        }
+    }
+
+    fn finish_field(
+        &mut self,
+        value_span: Option<SourceSpan>,
+        value_kind: Option<EditorLexemeKind>,
+    ) {
+        let Some(key) = self.current_key.take() else {
+            return;
+        };
+        let value = value_span.map(|span| SpannedText {
+            text: self.source[span.start..span.end].to_string(),
+            span,
+        });
+        self.fields.push(KanbanMetadataField {
+            key,
+            value,
+            value_kind,
+        });
+    }
+
+    fn trimmed_token_span(&mut self, end: usize) -> Option<SourceSpan> {
+        let start = self.token_start.take()?;
+        let raw = &self.source[start..end];
+        let leading = raw.len().saturating_sub(raw.trim_start().len());
+        let trailing = raw.trim_end().len();
+        (leading < trailing).then(|| SourceSpan::new(start + leading, start + trailing))
+    }
+
+    fn into_parts(self) -> (Vec<KanbanMetadataField>, KanbanLexemeTrace) {
+        (self.fields, self.lexemes)
+    }
+}
+
+fn is_kanban_inline_number(raw: &str) -> bool {
+    raw.as_bytes()
+        .first()
+        .is_some_and(|byte| byte.is_ascii_digit() || *byte == b'-')
+        && matches!(
+            serde_json::from_str::<Value>(raw),
+            Ok(Value::Number(number)) if number.as_f64().is_some_and(f64::is_finite)
+        )
+}
+
 fn consume_shape_data(
     lines: &mut KanbanLineCursor<'_>,
     first: &str,
     first_start: usize,
+    lexemes: &mut KanbanLexemeTrace,
 ) -> Result<KanbanShapeData> {
     let Some(mut rest) = first.strip_prefix("@{") else {
         return Ok(KanbanShapeData {
             text: String::new(),
             span: SourceSpan::new(first_start, first_start),
+            fields: Vec::new(),
         });
     };
 
@@ -708,10 +1140,40 @@ fn consume_shape_data(
     let mut quoted = String::new();
     let block_start = first_start;
     let mut current_scan_start = first_start + "@{".len();
+    let mut metadata = KanbanMetadataCursor::new(
+        lines.source,
+        SourceSpan::new(block_start, current_scan_start),
+    );
 
     loop {
         let it = rest.char_indices().peekable();
         for (idx, ch) in it {
+            let source_offset = current_scan_start + idx;
+            if !in_quote && ch == '}' {
+                metadata.close(source_offset);
+                let (fields, metadata_lexemes) = metadata.into_parts();
+                lexemes.extend(metadata_lexemes);
+                let after_close = &rest[idx + ch.len_utf8()..];
+                let visible_tail = strip_inline_comment(after_close);
+                if !visible_tail.trim().is_empty() {
+                    let leading = visible_tail.len() - visible_tail.trim_start().len();
+                    let trailing = visible_tail.trim_end().len();
+                    let tail_start = source_offset + ch.len_utf8();
+                    let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
+                    lexemes.push(EditorLexemeKind::Literal, span);
+                    return Err(Error::diagram_parse_exact(
+                        "kanban",
+                        "unexpected trailing input",
+                        span,
+                    ));
+                }
+                return Ok(KanbanShapeData {
+                    text: out,
+                    span: SourceSpan::new(block_start, source_offset + ch.len_utf8()),
+                    fields,
+                });
+            }
+            metadata.consume(source_offset, ch);
             if in_quote {
                 if ch == '"' {
                     out.push_str(&replace_newline_whitespace_with_br(&quoted));
@@ -730,17 +1192,15 @@ fn consume_shape_data(
                 continue;
             }
 
-            if ch == '}' {
-                return Ok(KanbanShapeData {
-                    text: out,
-                    span: SourceSpan::new(block_start, current_scan_start + idx + ch.len_utf8()),
-                });
-            }
-
             out.push(ch);
         }
 
+        metadata.line_break(current_scan_start + rest.len());
+
         let Some(next_line) = lines.next() else {
+            metadata.finish_at_eof(lines.offset());
+            let (_, metadata_lexemes) = metadata.into_parts();
+            lexemes.extend(metadata_lexemes);
             return Err(Error::diagram_parse_insertion_point(
                 "kanban",
                 "unterminated @{ ... } metadata block",
@@ -777,6 +1237,7 @@ fn split_node_and_shape_data(
     lines: &mut KanbanLineCursor<'_>,
     rest: &str,
     rest_start: usize,
+    lexemes: &mut KanbanLexemeTrace,
 ) -> Result<(String, Option<KanbanShapeData>)> {
     let mut in_quote = false;
     let mut in_backtick_quote = false;
@@ -809,7 +1270,7 @@ fn split_node_and_shape_data(
 
         if rest[idx..].starts_with("@{") {
             let node_part = rest[..idx].trim_end().to_string();
-            let shape_data = consume_shape_data(lines, &rest[idx..], rest_start + idx)?;
+            let shape_data = consume_shape_data(lines, &rest[idx..], rest_start + idx, lexemes)?;
             return Ok((node_part, Some(shape_data)));
         }
     }
@@ -817,122 +1278,441 @@ fn split_node_and_shape_data(
     Ok((rest.trim_end().to_string(), None))
 }
 
-fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
-    let mut db = KanbanDb::default();
-    db.clear();
-
-    let mut lines = KanbanLineCursor::new(code);
-    let mut found_header = false;
-    let mut header_tail: Option<(String, usize)> = None;
-    while let Some(line) = lines.next() {
-        let t = strip_inline_comment(line.text);
-        let trimmed = t.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if trimmed.eq_ignore_ascii_case("kanban") {
-            found_header = true;
-            break;
-        }
-        if starts_with_case_insensitive(trimmed, "kanban")
-            && trimmed.len() > "kanban".len()
-            && trimmed["kanban".len()..]
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_whitespace())
-        {
-            found_header = true;
-            let after_keyword = &trimmed["kanban".len()..];
-            let rest = after_keyword.trim_start();
-            if !rest.is_empty() {
-                let after_keyword_start = line.start + t.find(after_keyword).unwrap_or(0);
-                header_tail = Some((after_keyword.to_string(), after_keyword_start));
-            }
-            break;
-        }
-        break;
-    }
-
-    if !found_header {
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            "expected kanban header".to_string(),
-        ));
-    }
-
-    if let Some((tail, tail_start)) = &header_tail {
-        let tail = strip_inline_comment(tail);
-        let tail = tail.trim_end();
-        if !tail.trim().is_empty() {
-            let (indent, rest) = split_indent(tail);
-            let rest = rest.trim_end();
-            let rest_start = tail_start + tail.find(rest).unwrap_or(0);
-            if starts_with_case_insensitive(rest, "::icon(") {
-                let after = &rest["::icon(".len()..];
-                if let Some(end) = after.find(')') {
-                    db.decorate_last(None, Some(after[..end].to_string()), &meta.effective_config);
-                }
-            } else if let Some(after) = rest.strip_prefix(":::") {
-                db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
-            } else {
-                let (node_part, shape_data) =
-                    split_node_and_shape_data(&mut lines, rest, rest_start)?;
-                if !node_part.trim().is_empty() {
-                    let (spec, span) = parse_node_spec_for_render(&node_part, tail, *tail_start)?;
-                    db.add_node(indent, spec, span, shape_data, &meta.effective_config)?;
-                }
-            }
-        }
-    }
-
-    while let Some(source_line) = lines.next() {
-        let line = strip_inline_comment(source_line.text);
-        let line = line.trim_end();
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let (indent, rest) = split_indent(line);
-        let rest = rest.trim_end();
-        let rest_start = source_line.start + line.find(rest).unwrap_or(0);
-        if rest.is_empty() {
-            continue;
-        }
-
-        if starts_with_case_insensitive(rest, "::icon(") {
-            let after = &rest["::icon(".len()..];
-            if let Some(end) = after.find(')') {
-                db.decorate_last(None, Some(after[..end].to_string()), &meta.effective_config);
-            }
-            continue;
-        }
-
-        if let Some(after) = rest.strip_prefix(":::") {
-            db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
-            continue;
-        }
-
-        let (node_part, shape_data) = split_node_and_shape_data(&mut lines, rest, rest_start)?;
-        if node_part.trim().is_empty() {
-            continue;
-        }
-
-        let (spec, span) = parse_node_spec_for_render(&node_part, line, source_line.start)?;
-
-        db.add_node(indent, spec, span, shape_data, &meta.effective_config)?;
-    }
-
-    Ok(db)
+fn construct_kanban_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<KanbanSemanticSource, KanbanParseFailure> {
+    construct_kanban_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
-pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let db = parse_kanban_db(code, meta)?;
+fn construct_kanban_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<std::result::Result<KanbanSemanticSource, KanbanParseFailure>> {
+    control.checkpoint()?;
+    #[cfg(test)]
+    KANBAN_SYNTAX_CONSTRUCTION_COUNT.set(KANBAN_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
+    let mut db = KanbanDb::default();
+    let mut editor_facts = EditorSemanticFacts::new();
+    let mut lexemes = KanbanLexemeTrace::default();
+    let mut first_failure = None;
+
+    let mut lines = KanbanLineCursor::new(code);
+    let header_tail = loop {
+        control.checkpoint()?;
+        let Some(line) = lines.next() else {
+            let span = SourceSpan::new(lines.offset(), lines.offset());
+            lexemes.attach(code, &mut editor_facts);
+            return Ok(Err(KanbanParseFailure {
+                error: Box::new(Error::diagram_parse_insertion_point(
+                    meta.diagram_type.clone(),
+                    "expected kanban header",
+                    span.start,
+                )),
+                editor_facts: Box::new(editor_facts),
+                span,
+            }));
+        };
+        let visible = strip_inline_comment(line.text);
+        let visible_start = visible.len() - visible.trim_start().len();
+        let visible_end = visible.trim_end().len();
+        if visible_start >= visible_end {
+            continue;
+        }
+        let trimmed = &visible[visible_start..visible_end];
+        let trimmed_start = line.start + visible_start;
+        let after_keyword = trimmed
+            .get("kanban".len()..)
+            .filter(|_| starts_with_case_insensitive(trimmed, "kanban"))
+            .filter(|after| {
+                after.is_empty() || after.chars().next().is_some_and(char::is_whitespace)
+            });
+        if let Some(after_keyword) = after_keyword {
+            let keyword_end = trimmed_start + "kanban".len();
+            lexemes.push(
+                EditorLexemeKind::Keyword,
+                SourceSpan::new(trimmed_start, keyword_end),
+            );
+            if !after_keyword.trim().is_empty() {
+                break Some((after_keyword.to_string(), keyword_end));
+            }
+            break None;
+        }
+        let span = SourceSpan::new(trimmed_start, trimmed_start + trimmed.len());
+        lexemes.push(EditorLexemeKind::Literal, span);
+        lexemes.attach(code, &mut editor_facts);
+        return Ok(Err(KanbanParseFailure {
+            error: Box::new(Error::diagram_parse_exact(
+                meta.diagram_type.clone(),
+                "expected kanban header",
+                span,
+            )),
+            editor_facts: Box::new(editor_facts),
+            span,
+        }));
+    };
+
+    control.checkpoint()?;
+    if let Some((tail, tail_start)) = &header_tail
+        && let Err(error) = parse_kanban_statement(
+            &mut lines,
+            KanbanStatementContext {
+                db: &mut db,
+                facts: &mut editor_facts,
+                lexemes: &mut lexemes,
+                meta,
+                control,
+            },
+            tail,
+            *tail_start,
+        )?
+    {
+        let fallback = SourceSpan::new(*tail_start, *tail_start + tail.len());
+        record_kanban_failure(&mut first_failure, error, fallback);
+    }
+    control.checkpoint()?;
+
+    while let Some(source_line) = lines.next() {
+        control.checkpoint()?;
+        if let Err(error) = parse_kanban_statement(
+            &mut lines,
+            KanbanStatementContext {
+                db: &mut db,
+                facts: &mut editor_facts,
+                lexemes: &mut lexemes,
+                meta,
+                control,
+            },
+            source_line.text,
+            source_line.start,
+        )? {
+            let fallback = SourceSpan::new(
+                source_line.start,
+                source_line.start + source_line.text.len(),
+            );
+            record_kanban_failure(&mut first_failure, error, fallback);
+        }
+    }
+
+    lexemes.attach(code, &mut editor_facts);
+    if let Some((error, span)) = first_failure {
+        Ok(Err(KanbanParseFailure {
+            error: Box::new(error),
+            editor_facts: Box::new(editor_facts),
+            span,
+        }))
+    } else {
+        control.checkpoint()?;
+        Ok(Ok(KanbanSemanticSource { db, editor_facts }))
+    }
+}
+
+fn record_kanban_failure(
+    first_failure: &mut Option<(Error, SourceSpan)>,
+    error: Error,
+    fallback: SourceSpan,
+) {
+    if first_failure.is_none() {
+        let span = kanban_error_span(&error, fallback);
+        *first_failure = Some((error, span));
+    }
+}
+
+struct KanbanStatementContext<'a> {
+    db: &'a mut KanbanDb,
+    facts: &'a mut EditorSemanticFacts,
+    lexemes: &'a mut KanbanLexemeTrace,
+    meta: &'a ParseMetadata,
+    control: &'a crate::ParseControl,
+}
+
+fn parse_kanban_statement(
+    lines: &mut KanbanLineCursor<'_>,
+    context: KanbanStatementContext<'_>,
+    source: &str,
+    source_start: usize,
+) -> crate::ParseControlResult<Result<()>> {
+    let KanbanStatementContext {
+        db,
+        facts,
+        lexemes,
+        meta,
+        control,
+    } = context;
+    control.checkpoint()?;
+    let line = strip_inline_comment(source).trim_end();
+    if line.trim().is_empty() {
+        return Ok(Ok(()));
+    }
+    let (indent, rest) = split_indent(line);
+    let rest = rest.trim_end();
+    if rest.is_empty() {
+        return Ok(Ok(()));
+    }
+    let rest_start = source_start + line.len() - rest.len();
+
+    if starts_with_case_insensitive(rest, "::icon(") {
+        let keyword_end = rest_start + "::icon".len();
+        lexemes.push(
+            EditorLexemeKind::Keyword,
+            SourceSpan::new(rest_start, keyword_end),
+        );
+        lexemes.push(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(keyword_end, keyword_end + 1),
+        );
+        let value_start = "::icon(".len();
+        let suffix = &rest[value_start..];
+        let close = suffix
+            .char_indices()
+            .find_map(|(offset, ch)| (ch == ')').then_some(offset));
+        let raw_value = close.map_or(suffix, |end| &suffix[..end]);
+        let leading = raw_value.len() - raw_value.trim_start().len();
+        let trailing = raw_value.trim_end().len();
+        let icon = SpannedText {
+            text: raw_value[leading.min(trailing)..trailing].to_string(),
+            span: SourceSpan::new(
+                rest_start + value_start + leading.min(trailing),
+                rest_start + value_start + trailing,
+            ),
+        };
+        let Some(close) = close else {
+            return Ok(Err(Error::diagram_parse_insertion_point(
+                "kanban",
+                "unterminated icon decoration",
+                rest_start + rest.len(),
+            )));
+        };
+        let close_start = rest_start + value_start + close;
+        lexemes.push(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(close_start, close_start + 1),
+        );
+        let after_close = &suffix[close + 1..];
+        let visible_tail = strip_inline_comment(after_close);
+        if !visible_tail.trim().is_empty() {
+            let leading = visible_tail.len() - visible_tail.trim_start().len();
+            let trailing = visible_tail.trim_end().len();
+            let tail_start = close_start + 1;
+            let span = SourceSpan::new(tail_start + leading, tail_start + trailing);
+            lexemes.push(EditorLexemeKind::Literal, span);
+            return Ok(Err(Error::diagram_parse_exact(
+                "kanban",
+                "unexpected trailing input",
+                span,
+            )));
+        }
+        facts.push_directive_prefix("icon");
+        if icon.text.is_empty() {
+            return Ok(Ok(()));
+        }
+        lexemes.push(EditorLexemeKind::String, icon.span);
+        db.decorate_last(None, Some(icon.text.clone()), &meta.effective_config);
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            icon.text,
+            Some("kanban icon".to_string()),
+            EditorSemanticKind::String,
+            icon.span,
+            icon.span,
+        ));
+        return Ok(Ok(()));
+    }
+
+    if let Some(after) = rest.strip_prefix(":::") {
+        let class_raw = after.trim();
+        let leading = after.len() - after.trim_start().len();
+        let class_name = SpannedText {
+            text: class_raw.to_string(),
+            span: SourceSpan::new(
+                rest_start + 3 + leading,
+                rest_start + 3 + leading + class_raw.len(),
+            ),
+        };
+        lexemes.push(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(rest_start, rest_start + 3),
+        );
+        lexemes.push_with_modifier(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifier::Reference,
+            class_name.span,
+        );
+        db.decorate_last(Some(class_name.text.clone()), None, &meta.effective_config);
+        if !class_name.text.is_empty() {
+            facts.push_directive_prefix(":::");
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                class_name.text,
+                Some("kanban class".to_string()),
+                EditorSemanticKind::Class,
+                class_name.span,
+                class_name.span,
+            ));
+        }
+        return Ok(Ok(()));
+    }
+
+    let (node_part, shape_data) = match split_node_and_shape_data(lines, rest, rest_start, lexemes)
+    {
+        Ok(parsed) => parsed,
+        Err(error) => return Ok(Err(error)),
+    };
+    if node_part.trim().is_empty() {
+        return Ok(Ok(()));
+    }
+    let parsed = match parse_node_spec_for_render(&node_part, rest_start, lexemes) {
+        Ok(parsed) => parsed,
+        Err(error) => return Ok(Err(error)),
+    };
+    let fact_kind = kanban_node_editor_kind(parsed.spec.ty);
+    if let Some(shape_data) = &shape_data {
+        push_kanban_metadata_facts(facts, &shape_data.fields);
+    }
+    let shape_data = match shape_data {
+        Some(shape_data) => {
+            let document = match crate::inline_config::parse_mermaid_inline_object_controlled(
+                &shape_data.text,
+                control,
+            )? {
+                Ok(document) => document,
+                Err(error) => {
+                    return Ok(Err(Error::diagram_parse_exact(
+                        "kanban",
+                        error,
+                        shape_data.span,
+                    )));
+                }
+            };
+            Some((shape_data, document))
+        }
+        None => None,
+    };
+    if let Err(error) = db.add_node(
+        indent,
+        parsed.spec,
+        parsed.span,
+        shape_data,
+        &meta.effective_config,
+    ) {
+        return Ok(Err(error));
+    }
+    let is_section = db.nodes.last().is_some_and(|node| node.parent_id.is_none());
+    if is_section {
+        facts.push_symbol(EditorSemanticSymbol::outline(
+            parsed.entity.text.clone(),
+            Some("kanban section".to_string()),
+            EditorSemanticKind::Namespace,
+            parsed.entity.span,
+            parsed.entity.span,
+        ));
+    } else {
+        facts.push_symbol(EditorSemanticSymbol::new(
+            parsed.entity.text.clone(),
+            Some("kanban item".to_string()),
+            fact_kind,
+            parsed.entity.span,
+            parsed.entity.span,
+        ));
+    }
+    if let Some(label) = parsed.label {
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            label.text,
+            Some("kanban label".to_string()),
+            EditorSemanticKind::String,
+            label.span,
+            label.span,
+        ));
+    }
+    control.checkpoint()?;
+    Ok(Ok(()))
+}
+
+fn push_kanban_metadata_facts(facts: &mut EditorSemanticFacts, fields: &[KanbanMetadataField]) {
+    for field in fields {
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            field.key.text.clone(),
+            Some("kanban metadata key".to_string()),
+            EditorSemanticKind::Property,
+            field.key.span,
+            field.key.span,
+        ));
+        if field.value_kind == Some(EditorLexemeKind::String)
+            && let Some(value) = &field.value
+        {
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                value.text.clone(),
+                Some(format!("kanban metadata {}", field.key.text)),
+                EditorSemanticKind::String,
+                value.span,
+                value.span,
+            ));
+        }
+    }
+}
+
+fn kanban_node_editor_kind(ty: i32) -> EditorSemanticKind {
+    if matches!(
+        ty,
+        NODE_TYPE_CIRCLE | NODE_TYPE_CLOUD | NODE_TYPE_BANG | NODE_TYPE_HEXAGON
+    ) {
+        EditorSemanticKind::Object
+    } else {
+        EditorSemanticKind::Variable
+    }
+}
+
+fn kanban_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
+    match error {
+        Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(fallback),
+        _ => fallback,
+    }
+}
+
+pub(crate) fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
+    let model = kanban_db_into_render_model(&source.db, meta);
+    render_model_to_compat_json(&model, meta)
+}
+
+pub(crate) fn parse_kanban_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    control.checkpoint()?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construct_kanban_semantic_source_controlled(code, meta, control)?,
+        |source| {
+            let model = kanban_db_into_render_model(&source.db, meta);
+            (
+                render_model_to_compat_json(&model, meta),
+                source.editor_facts,
+            )
+        },
+        KanbanParseFailure::into_error_and_editor_facts,
+    );
+    control.checkpoint()?;
+    Ok(parsed)
+}
+
+fn kanban_db_into_render_model(db: &KanbanDb, meta: &ParseMetadata) -> KanbanDiagramRenderModel {
+    KanbanDiagramRenderModel {
+        nodes: db.data_nodes_for_render(&meta.effective_config),
+    }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &KanbanDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
     let mut out = Map::with_capacity(6);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("sections".to_string(), db.sections_json());
+    out.insert("sections".to_string(), kanban_sections_to_json(model));
     out.insert(
         "nodes".to_string(),
-        Value::Array(db.data_nodes_json(&meta.effective_config)),
+        Value::Array(kanban_nodes_to_json(model, &meta.effective_config)),
     );
     out.insert("edges".to_string(), Value::Array(Vec::new()));
     out.insert("other".to_string(), Value::Object(Map::new()));
@@ -943,295 +1723,90 @@ pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
     Ok(Value::Object(out))
 }
 
-pub fn parse_kanban_model_for_render(
+fn kanban_sections_to_json(model: &KanbanDiagramRenderModel) -> Value {
+    let sections = model
+        .nodes
+        .iter()
+        .filter(|node| node.is_group)
+        .map(|node| {
+            let compat = &node.compatibility;
+            let mut out = Map::new();
+            out.insert("id".to_string(), json!(&node.id));
+            out.insert("label".to_string(), json!(&node.label));
+            out.insert("level".to_string(), json!(compat.level));
+            out.insert("width".to_string(), json!(compat.width));
+            out.insert("padding".to_string(), json!(compat.padding));
+            out.insert("isGroup".to_string(), json!(false));
+            for (key, value) in [
+                ("ticket", &compat.ticket),
+                ("priority", &compat.priority),
+                ("assigned", &compat.assigned),
+                ("icon", &compat.icon),
+                ("cssClasses", &compat.css_classes),
+                ("shape", &compat.shape),
+            ] {
+                if let Some(value) = value {
+                    out.insert(key.to_string(), json!(value));
+                }
+            }
+            Value::Object(out)
+        })
+        .collect();
+    Value::Array(sections)
+}
+
+fn kanban_nodes_to_json(model: &KanbanDiagramRenderModel, config: &MermaidConfig) -> Vec<Value> {
+    let look = config.get_str("look").unwrap_or("classic");
+    model
+        .nodes
+        .iter()
+        .map(|node| {
+            if node.is_group {
+                json!({
+                    "id": node.id,
+                    "label": node.label,
+                    "isGroup": true,
+                    "ticket": node.ticket,
+                    "shape": "kanbanSection",
+                    "level": node.compatibility.level,
+                    "look": look,
+                })
+            } else {
+                json!({
+                    "id": node.id,
+                    "parentId": node.parent_id,
+                    "label": node.label,
+                    "isGroup": false,
+                    "ticket": node.ticket,
+                    "priority": node.priority,
+                    "assigned": node.assigned,
+                    "icon": node.icon,
+                    "shape": "kanbanItem",
+                    "level": node.compatibility.level,
+                    "rx": 5,
+                    "ry": 5,
+                    "cssStyles": ["text-align: left"],
+                })
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn parse_kanban_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<KanbanDiagramRenderModel> {
-    let db = parse_kanban_db(code, meta)?;
-    Ok(KanbanDiagramRenderModel {
-        nodes: db.data_nodes_for_render(&meta.effective_config),
-    })
-}
-
-fn parse_node_spec_spanned(
-    trimmed: &str,
-    line: &str,
-    line_start: usize,
-) -> std::result::Result<Option<SpannedText>, String> {
-    if let Some((id, descr, ty, span)) = parse_node_spec_spanned_inner(trimmed, line, line_start)? {
-        let text = if id.is_empty() { descr } else { id };
-        return Ok(Some(SpannedText {
-            text,
-            span,
-            kind: if ty == NODE_TYPE_CIRCLE
-                || ty == NODE_TYPE_CLOUD
-                || ty == NODE_TYPE_BANG
-                || ty == NODE_TYPE_HEXAGON
-            {
-                EditorSemanticKind::Object
-            } else {
-                EditorSemanticKind::Variable
-            },
-        }));
-    }
-    Ok(None)
-}
-
-fn parse_node_spec_spanned_inner(
-    input: &str,
-    line: &str,
-    line_start: usize,
-) -> std::result::Result<Option<(String, String, i32, SourceSpan)>, String> {
-    let input = input.trim_end();
-    if input.is_empty() {
-        return Ok(None);
-    }
-
-    if let Some((start, end)) = node_delimiter_pair_at_start(input) {
-        let (inner, tail) = extract_delimited(input, start, end)?;
-        if !tail.trim().is_empty() {
-            return Err("unexpected trailing input".to_string());
-        }
-        let descr = unquote_node_descr(inner);
-        let ty = node_type_for(start, end);
-        let rel = line.find(inner).unwrap_or(0);
-        return Ok(Some((
-            descr.clone(),
-            descr,
-            ty,
-            SourceSpan::new(line_start + rel, line_start + rel + inner.len()),
-        )));
-    }
-
-    let (id_raw, rest) = split_node_id(input);
-    let id_raw = id_raw.to_string();
-    let rest = rest.trim_end();
-    let id_span = line.find(id_raw.as_str()).unwrap_or(0);
-    if rest.is_empty() {
-        let span_end = line_start + id_span + id_raw.len();
-        return Ok(Some((
-            id_raw.clone(),
-            id_raw,
-            NODE_TYPE_DEFAULT,
-            SourceSpan::new(line_start + id_span, span_end),
-        )));
-    }
-
-    let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
-        return Err("expected node delimiter".to_string());
-    };
-
-    let (inner, tail) = extract_delimited(rest, start, end)?;
-    if !tail.trim().is_empty() {
-        return Err("unexpected trailing input".to_string());
-    }
-
-    let descr = unquote_node_descr(inner);
-    let ty = node_type_for(start, end);
-    let rel = line.find(inner).unwrap_or(id_span);
-    Ok(Some((
-        id_raw,
-        descr,
-        ty,
-        SourceSpan::new(line_start + rel, line_start + rel + inner.len()),
-    )))
-}
-
-fn parse_icon_spanned(line: &str, line_start: usize) -> Option<SpannedText> {
-    let t = line.trim_start();
-    let prefix = "::icon(";
-    if !t.starts_with(prefix) {
-        return None;
-    }
-    let rest = &t[prefix.len()..];
-    let end = rest.find(')')?;
-    let value = rest[..end].trim();
-    let rel = line.find(value).unwrap_or(0);
-    Some(SpannedText {
-        text: value.to_string(),
-        span: SourceSpan::new(line_start + rel, line_start + rel + value.len()),
-        kind: EditorSemanticKind::String,
-    })
-}
-
-fn parse_css_class_spanned(line: &str, line_start: usize) -> Option<SpannedText> {
-    let t = line.trim_start();
-    if !t.starts_with(":::") {
-        return None;
-    }
-    let value = t.trim_start_matches(":::").trim();
-    if value.is_empty() {
-        return None;
-    }
-    let rel = line.find(value).unwrap_or(0);
-    Some(SpannedText {
-        text: value.to_string(),
-        span: SourceSpan::new(line_start + rel, line_start + rel + value.len()),
-        kind: EditorSemanticKind::String,
-    })
-}
-
-pub fn parse_kanban_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let mut offset = 0usize;
-    let mut header_seen = false;
-    let mut section_level: Option<usize> = None;
-
-    for segment in code.split_inclusive('\n') {
-        let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
-        let stripped = strip_inline_comment(line);
-        let trimmed = stripped.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if !header_seen {
-            if !starts_with_case_insensitive(trimmed, "kanban") {
-                return facts;
-            }
-            header_seen = true;
-            if trimmed.len() > "kanban".len() {
-                let after_keyword = &trimmed["kanban".len()..];
-                let rest = after_keyword.trim_start();
-                if !rest.is_empty() {
-                    let indent = after_keyword
-                        .chars()
-                        .take_while(|c| c.is_whitespace())
-                        .count();
-                    section_level.get_or_insert(indent);
-                    let rel = line.find(rest).unwrap_or(0);
-                    if let Some(icon) = parse_icon_spanned(rest, line_start + rel) {
-                        facts.push_directive_prefix("icon");
-                        facts.push_symbol(EditorSemanticSymbol::payload(
-                            icon.text,
-                            Some("kanban icon".to_string()),
-                            EditorSemanticKind::String,
-                            icon.span,
-                            icon.span,
-                        ));
-                    } else if let Some(class_name) = parse_css_class_spanned(rest, line_start + rel)
-                    {
-                        facts.push_directive_prefix(":::");
-                        facts.push_symbol(EditorSemanticSymbol::payload(
-                            class_name.text,
-                            Some("kanban class".to_string()),
-                            EditorSemanticKind::String,
-                            class_name.span,
-                            class_name.span,
-                        ));
-                    } else {
-                        match parse_node_spec_spanned(rest, line, line_start)
-                            .ok()
-                            .flatten()
-                        {
-                            Some(value) => {
-                                facts.push_symbol(EditorSemanticSymbol::outline(
-                                    value.text,
-                                    Some("kanban section".to_string()),
-                                    EditorSemanticKind::Namespace,
-                                    value.span,
-                                    value.span,
-                                ));
-                            }
-                            None => {
-                                facts.mark_recovered_with_diagnostic(
-                                    "Unable to recover kanban node semantics from the header line",
-                                    Some(SourceSpan::new(
-                                        line_start + rel,
-                                        line_start + rel + rest.len(),
-                                    )),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            continue;
-        }
-
-        let (indent, rest) = split_indent(stripped);
-        let rest = rest.trim_end();
-        let rest_offset = line_start + line.find(rest).unwrap_or(0);
-
-        if let Some(icon) = parse_icon_spanned(rest, rest_offset) {
-            facts.push_directive_prefix("icon");
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                icon.text,
-                Some("kanban icon".to_string()),
-                EditorSemanticKind::String,
-                icon.span,
-                icon.span,
-            ));
-            continue;
-        }
-
-        if let Some(class_name) = parse_css_class_spanned(rest, rest_offset) {
-            facts.push_directive_prefix(":::");
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                class_name.text,
-                Some("kanban class".to_string()),
-                EditorSemanticKind::String,
-                class_name.span,
-                class_name.span,
-            ));
-            continue;
-        }
-
-        if let Some(value) = parse_node_spec_spanned(rest, line, line_start)
-            .ok()
-            .flatten()
-        {
-            let is_section = match section_level {
-                Some(level) => indent == level,
-                None => {
-                    section_level = Some(indent);
-                    true
-                }
-            };
-
-            if is_section {
-                facts.push_symbol(EditorSemanticSymbol::outline(
-                    value.text,
-                    Some("kanban section".to_string()),
-                    EditorSemanticKind::Namespace,
-                    value.span,
-                    value.span,
-                ));
-            } else {
-                facts.push_symbol(EditorSemanticSymbol::new(
-                    value.text,
-                    Some("kanban item".to_string()),
-                    value.kind,
-                    value.span,
-                    value.span,
-                ));
-            }
-            continue;
-        } else if rest.contains('[')
-            || rest.contains('(')
-            || rest.contains('{')
-            || rest.contains(')')
-            || rest.contains(']')
-        {
-            facts.mark_recovered_with_diagnostic(
-                "Unable to fully recover kanban node semantics",
-                Some(SourceSpan::new(
-                    line_start + line.find(rest).unwrap_or(0),
-                    line_start + line.find(rest).unwrap_or(0) + rest.len(),
-                )),
-            );
-        }
-    }
-
-    facts
+    let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
+    Ok(kanban_db_into_render_model(&source.db, meta))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
+    use crate::{
+        EditorLexeme, EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, MermaidConfig,
+        ParseDiagnosticSpanKind, ParseMetadata, ParseOptions,
+    };
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -1250,6 +1825,242 @@ mod tests {
         }
     }
 
+    fn meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "kanban".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn combined_parse_constructs_once_and_preserves_all_projections() {
+        let text = concat!(
+            "kanban\r\n",
+            "  backlog\r\n",
+            "    task1@{ ticket: MC-1 }\r\n",
+            "    ::icon(star)\r\n",
+            "    :::highlight\r\n",
+        );
+        let mut meta = meta();
+        meta.effective_config = MermaidConfig::from_value(serde_json::json!({
+            "look": "handDrawn",
+            "theme": "forest"
+        }));
+        let expected_json = parse_kanban(text, &meta).unwrap();
+        let expected_model = parse_kanban_model_for_render(text, &meta).unwrap();
+
+        reset_kanban_syntax_construction_count();
+        let (json, facts) = crate::family::test_support::into_result(
+            parse_kanban_json_and_editor_facts(text, &meta, &crate::ParseControl::new()),
+        )
+        .unwrap();
+
+        assert_eq!(kanban_syntax_construction_count(), 1);
+        assert_eq!(json, expected_json);
+        assert!(!facts.symbols.is_empty());
+        assert_eq!(
+            render_model_to_compat_json(&expected_model, &meta).unwrap(),
+            json
+        );
+        assert_eq!(json["type"], "kanban");
+        assert_eq!(json["config"], meta.effective_config.as_value().clone());
+        assert_eq!(json["nodes"][0]["look"], "handDrawn");
+        assert!(json["nodes"][0]["ticket"].is_null());
+
+        for name in ["backlog", "task1", "star", "highlight"] {
+            let start = text.find(name).unwrap();
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == name
+                        && symbol.selection == SourceSpan::new(start, start + name.len())
+                }),
+                "missing exact Kanban fact for {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_editor_input_recovers_from_one_construction() {
+        let text = "kanban\n  backlog[Backlog]\n    broken[Open\n";
+        reset_kanban_syntax_construction_count();
+        let facts = crate::family::test_support::editor_facts(
+            parse_kanban_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+
+        assert_eq!(kanban_syntax_construction_count(), 1);
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "backlog"));
+        assert_eq!(facts.diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn kanban_parser_lexemes_preserve_exact_spans_modifiers_and_provenance() {
+        let text = concat!(
+            "KaNbAn\r\n",
+            "%% global comment 🤓\r\n",
+            "  todo[\"重复\"]@{\r\n",
+            "    ticket: 2038\r\n",
+            "    assigned: \"重复\"\r\n",
+            "    priority: 'High'\r\n",
+            "    active: true\r\n",
+            "  }\r\n",
+            "    task((\"🤓 后续\"))\r\n",
+            "    ::ICON(star)\r\n",
+            "    :::urgent\r\n",
+        );
+        let engine = Engine::new();
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("kanban", text)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert_eq!(facts.lexeme_failure(), None);
+        assert_kanban_lexemes_non_overlapping(&facts);
+
+        let header = exact_kanban_lexeme(&facts, text, "KaNbAn", 0, EditorLexemeKind::Keyword);
+        assert_eq!(
+            header.producer().kind(),
+            EditorLexemeProducerKind::FamilyParser
+        );
+        assert!(header.producer().family().is_some());
+
+        let comment_text = "%% global comment 🤓";
+        let comment_start = text.find(comment_text).unwrap();
+        let comment = facts
+            .lexemes()
+            .iter()
+            .find(|lexeme| {
+                lexeme.kind() == EditorLexemeKind::Comment
+                    && lexeme.span().start == comment_start
+                    && lexeme.span().end >= comment_start + comment_text.len()
+            })
+            .expect("global comment lexeme");
+        assert_eq!(
+            comment.producer().kind(),
+            EditorLexemeProducerKind::GlobalPreprocess
+        );
+        assert_eq!(comment.producer().family(), None);
+        assert_eq!(
+            facts
+                .lexemes()
+                .iter()
+                .filter(|lexeme| lexeme.kind() == EditorLexemeKind::Comment)
+                .count(),
+            1
+        );
+
+        for occurrence in 0..2 {
+            exact_kanban_lexeme(&facts, text, "重复", occurrence, EditorLexemeKind::String);
+        }
+        for (needle, occurrence, kind) in [
+            ("ticket", 0, EditorLexemeKind::Identifier),
+            ("2038", 0, EditorLexemeKind::Number),
+            ("assigned", 0, EditorLexemeKind::Identifier),
+            ("priority", 0, EditorLexemeKind::Identifier),
+            ("High", 0, EditorLexemeKind::String),
+            ("active", 0, EditorLexemeKind::Identifier),
+            ("true", 0, EditorLexemeKind::Boolean),
+            ("::ICON", 0, EditorLexemeKind::Keyword),
+            ("star", 0, EditorLexemeKind::String),
+        ] {
+            exact_kanban_lexeme(&facts, text, needle, occurrence, kind);
+        }
+
+        let todo = exact_kanban_lexeme(&facts, text, "todo", 0, EditorLexemeKind::Identifier);
+        assert!(todo.modifiers().contains(EditorLexemeModifier::Definition));
+        let urgent = exact_kanban_lexeme(&facts, text, "urgent", 0, EditorLexemeKind::Identifier);
+        assert!(urgent.modifiers().contains(EditorLexemeModifier::Reference));
+    }
+
+    #[test]
+    fn kanban_recovery_keeps_first_error_prefix_and_later_safe_statements() {
+        let text = concat!(
+            "kanban\r\n",
+            "  todo[\"之前\"]\r\n",
+            "    broken[\"Open 🤓\r\n",
+            "    invalid[Valid] trailing\r\n",
+            "    later[\"后来\"]@{ ticket: 42, active: false }\r\n",
+        );
+        let strict_diagnostic = parse_err(text);
+        let broken_end = text.find("\r\n    invalid").unwrap();
+        assert_eq!(
+            strict_diagnostic.span(),
+            Some(SourceSpan::new(broken_end, broken_end))
+        );
+
+        reset_kanban_syntax_construction_count();
+        let facts = crate::family::test_support::editor_facts(
+            parse_kanban_json_and_editor_facts,
+            text,
+            &meta(),
+        );
+        assert_eq!(kanban_syntax_construction_count(), 1);
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert_eq!(facts.lexeme_failure(), None);
+        assert_eq!(facts.diagnostics.len(), 1);
+        assert_eq!(facts.diagnostics[0].span, strict_diagnostic.span());
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "todo"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "later"));
+        assert!(!facts.symbols.iter().any(|symbol| symbol.name == "invalid"));
+        assert_kanban_lexemes_non_overlapping(&facts);
+
+        let broken = exact_kanban_lexeme(&facts, text, "broken", 0, EditorLexemeKind::Identifier);
+        assert!(
+            broken
+                .modifiers()
+                .contains(EditorLexemeModifier::Definition)
+        );
+        exact_kanban_lexeme(&facts, text, "Open 🤓", 0, EditorLexemeKind::String);
+        exact_kanban_lexeme(&facts, text, "trailing", 0, EditorLexemeKind::Literal);
+        exact_kanban_lexeme(&facts, text, "42", 0, EditorLexemeKind::Number);
+        exact_kanban_lexeme(&facts, text, "false", 0, EditorLexemeKind::Boolean);
+
+        let later = exact_kanban_lexeme(&facts, text, "later", 0, EditorLexemeKind::Identifier);
+        assert!(later.modifiers().contains(EditorLexemeModifier::Definition));
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
+        }));
+    }
+
+    fn exact_kanban_lexeme<'a>(
+        facts: &'a EditorSemanticFacts,
+        source: &str,
+        needle: &str,
+        occurrence: usize,
+        kind: EditorLexemeKind,
+    ) -> &'a EditorLexeme {
+        let start = source
+            .match_indices(needle)
+            .nth(occurrence)
+            .map(|(start, _)| start)
+            .unwrap_or_else(|| panic!("missing occurrence {occurrence} of {needle:?}"));
+        let span = SourceSpan::new(start, start + needle.len());
+        facts
+            .lexemes()
+            .iter()
+            .find(|lexeme| lexeme.kind() == kind && lexeme.span() == span)
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing {kind:?} lexeme for {needle:?} occurrence {occurrence}: {:?}",
+                    facts.lexemes()
+                )
+            })
+    }
+
+    fn assert_kanban_lexemes_non_overlapping(facts: &EditorSemanticFacts) {
+        for pair in facts.lexemes().windows(2) {
+            assert!(
+                pair[0].span().end <= pair[1].span().start,
+                "overlapping Kanban lexemes: {pair:?}"
+            );
+        }
+    }
+
     fn sections(model: &Value) -> Vec<Value> {
         model["sections"].as_array().cloned().unwrap_or_default()
     }
@@ -1263,7 +2074,7 @@ mod tests {
         let engine = Engine::new();
         let text = "kanban\n    root\n      child1\n    :::highlight\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("kanban", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("kanban", text)
             .unwrap()
             .unwrap();
 
@@ -1282,13 +2093,15 @@ mod tests {
         let engine = Engine::new();
         let text = "kanban\n  broken[Open\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("kanban", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("kanban", text)
             .unwrap()
             .unwrap();
 
-        assert!(facts.diagnostics.iter().any(
-            |diagnostic| diagnostic.message == "Unable to fully recover kanban node semantics"
-        ));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .starts_with("kanban parser recovered after parse error:")
+        }));
         assert!(facts.diagnostics.iter().all(|diagnostic| {
             !diagnostic
                 .message
@@ -1471,6 +2284,27 @@ mod tests {
         assert_eq!(sections[0]["id"].as_str().unwrap(), "root");
         assert_eq!(sections[0]["label"].as_str().unwrap(), "The root");
         assert_eq!(sections[0]["icon"].as_str().unwrap(), "bomb");
+    }
+
+    #[test]
+    fn empty_icon_decoration_is_an_upstream_compatible_noop() {
+        let text = "kanban\n    root[The root]\n    ::icon()\n";
+        let model = parse(text);
+        let sections = sections(&model);
+        assert!(sections[0].get("icon").is_none());
+
+        let (_, facts) = crate::family::test_support::into_result(
+            parse_kanban_json_and_editor_facts(text, &meta(), &crate::ParseControl::new()),
+        )
+        .unwrap();
+        assert!(facts.directive_prefixes.iter().any(|value| value == "icon"));
+        assert!(facts.symbols.iter().all(|symbol| symbol.name != "icon"));
+        assert!(
+            facts
+                .lexemes()
+                .iter()
+                .all(|lexeme| lexeme.span().start < lexeme.span().end)
+        );
     }
 
     #[test]

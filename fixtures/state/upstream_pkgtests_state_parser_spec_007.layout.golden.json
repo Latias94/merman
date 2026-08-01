@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "bigState1",
-          "x": 93.961,
+          "x": 93.96,
           "y": 123.0,
-          "width": 171.922,
+          "width": 171.92,
           "height": 230.0,
           "is_cluster": true
         },
         {
           "id": "inner1",
-          "x": 93.961,
+          "x": 93.96,
           "y": 65.5,
-          "width": 101.922,
+          "width": 101.92,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "inner2",
-          "x": 93.961,
+          "x": 93.96,
           "y": 180.5,
-          "width": 101.922,
+          "width": 101.92,
           "height": 40.0,
           "is_cluster": false
         }
@@ -37,15 +37,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 94.461,
+              "x": 94.46,
               "y": 86.0
             },
             {
-              "x": 93.961,
+              "x": 93.96,
               "y": 123.0
             },
             {
-              "x": 94.461,
+              "x": 94.46,
               "y": 161.0
             }
           ],
@@ -62,17 +62,17 @@
       "clusters": [
         {
           "id": "bigState1",
-          "x": 93.961,
+          "x": 93.96,
           "y": 123.0,
-          "width": 171.922,
+          "width": 171.92,
           "height": 230.0,
           "diff": -8.0,
           "offset_y": 20.0,
           "title": "Big State 1",
           "title_label": {
-            "x": 93.961,
+            "x": 93.96,
             "y": 21.0,
-            "width": 77.594,
+            "width": 77.6,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -85,7 +85,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 179.922,
+        "max_x": 179.92,
         "max_y": 238.0
       }
     }

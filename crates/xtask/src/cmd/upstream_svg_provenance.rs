@@ -26,10 +26,13 @@ pub(crate) use snapshot::{
 };
 
 use crate::XtaskError;
+use crate::cmd::{
+    MERMAID_SOURCE_COMMIT, MERMAID_SOURCE_TAG, PINNED_MERMAID_CLI_VERSION, PINNED_MERMAID_VERSION,
+};
+use crate::util::sha256_hex;
 use family_lock::acquire_upstream_svg_family_locks_with_timeout;
 use regex::Regex;
 use schema::*;
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -39,21 +42,8 @@ use transaction::{write_manifest, write_manifest_batch_with_installer};
 use transaction::{write_manifest_batch, write_manifest_with_post_install_validator};
 
 const MANIFEST_FILE_NAME: &str = "_baseline-manifest.json";
-const MANIFEST_SCHEMA_VERSION: u32 = 2;
-const PINNED_MERMAID_VERSION: &str = "11.16.0";
-const PINNED_MERMAID_CLI_VERSION: &str = "11.16.0";
-const MERMAID_SOURCE_TAG: &str = "mermaid@11.16.0";
-const MERMAID_SOURCE_COMMIT: &str = "7c0cafcf42e76bfaf79d0cbbd12edb986612f014";
-const RENDERER_REVISION: &str = "xtask-upstream-svg-v2";
-const PACKAGE_JSON_SHA256: &str =
-    "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7";
-const PACKAGE_LOCK_SHA256: &str =
-    "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e";
-const MERMAID_CONFIG_SHA256: &str =
-    "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc";
-const PARSER_ONLY_EXCLUSION_REASON: &str =
-    "parser-only fixture is intentionally excluded from upstream SVG baselines";
-
+const MANIFEST_SCHEMA_VERSION: u32 = 3;
+const RENDERER_REVISION: &str = "xtask-upstream-svg-v3";
 #[derive(Debug)]
 struct CompleteCorpus {
     fixtures: BTreeMap<String, PathBuf>,
@@ -85,9 +75,6 @@ pub(crate) fn upstream_svg_fixture_exclusion_reason(
     let stem = fixture_stem(fixture_path)?;
     if let Some(reason) = crate::cmd::upstream_svg_baseline_skip_reason(diagram, stem) {
         return Ok(Some(reason.to_string()));
-    }
-    if crate::cmd::is_parser_only_fixture(fixture_path) {
-        return Ok(Some(PARSER_ONLY_EXCLUSION_REASON.to_string()));
     }
     Ok(None)
 }
@@ -266,7 +253,81 @@ pub(crate) fn upstream_svg_id(stem: &str) -> String {
     }
 }
 
-fn validate_mermaid_1116_svg(stem: &str, svg_path: &Path) -> Result<(), XtaskError> {
+fn has_svg_class(node: roxmltree::Node<'_, '_>, expected: &str) -> bool {
+    node.attribute("class")
+        .is_some_and(|classes| classes.split_whitespace().any(|class| class == expected))
+}
+
+fn validate_wardley_1116_svg(
+    stem: &str,
+    svg_path: &Path,
+    root: roxmltree::Node<'_, '_>,
+    expected_id: &str,
+) -> Result<(), XtaskError> {
+    let children: Vec<_> = root
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+    let map_index = children
+        .iter()
+        .position(|node| node.tag_name().name() == "g" && has_svg_class(*node, "wardley-map"));
+    let defs_index = children
+        .iter()
+        .position(|node| node.tag_name().name() == "defs");
+    let (Some(map_index), Some(defs_index)) = (map_index, defs_index) else {
+        return Err(XtaskError::UpstreamSvgFailed(format!(
+            "upstream SVG for {stem} is missing the Mermaid 11.16 Wardley map/defs structure: {}",
+            svg_path.display()
+        )));
+    };
+    if map_index >= defs_index {
+        return Err(XtaskError::UpstreamSvgFailed(format!(
+            "upstream SVG for {stem} has invalid Mermaid 11.16 Wardley layer order: {}",
+            svg_path.display()
+        )));
+    }
+
+    let map = children[map_index];
+    for (tag, class) in [
+        ("rect", "wardley-background"),
+        ("g", "wardley-axes"),
+        ("g", "wardley-stages"),
+        ("g", "wardley-links"),
+        ("g", "wardley-trends"),
+        ("g", "wardley-nodes"),
+    ] {
+        if !map.children().any(|node| {
+            node.is_element() && node.tag_name().name() == tag && has_svg_class(node, class)
+        }) {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "upstream SVG for {stem} is missing Mermaid 11.16 Wardley layer `{class}`: {}",
+                svg_path.display()
+            )));
+        }
+    }
+
+    let defs = children[defs_index];
+    for marker_id in [
+        format!("arrow-{expected_id}"),
+        format!("link-arrow-end-{expected_id}"),
+        format!("link-arrow-start-{expected_id}"),
+    ] {
+        if !defs.descendants().any(|node| {
+            node.is_element()
+                && node.tag_name().name() == "marker"
+                && node.attribute("id") == Some(marker_id.as_str())
+        }) {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "upstream SVG for {stem} is missing Mermaid 11.16 Wardley marker `{marker_id}`: {}",
+                svg_path.display()
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_mermaid_1116_svg(diagram: &str, stem: &str, svg_path: &Path) -> Result<(), XtaskError> {
     let svg = fs::read_to_string(svg_path).map_err(|source| XtaskError::ReadFile {
         path: svg_path.display().to_string(),
         source,
@@ -298,6 +359,13 @@ fn validate_mermaid_1116_svg(stem: &str, svg_path: &Path) -> Result<(), XtaskErr
         return Err(XtaskError::UpstreamSvgFailed(format!(
             "upstream SVG root id mismatch for {stem}: actual={actual_id:?}, expected={expected_id:?}"
         )));
+    }
+
+    // Wardley 11.16 emits family-owned inline presentation attributes and deliberately has no
+    // global Mermaid `<style>` node. Validate its exact renderer structure instead of weakening
+    // the global marker requirement for every other family.
+    if diagram == "wardley" {
+        return validate_wardley_1116_svg(stem, svg_path, root, &expected_id);
     }
 
     let marker_pattern = format!(
@@ -343,7 +411,7 @@ fn build_complete_manifest_with_source(
         let svg_path = svgs
             .get(&stem)
             .expect("complete corpus contains every renderable SVG");
-        validate_mermaid_1116_svg(&stem, svg_path)?;
+        validate_mermaid_1116_svg(diagram, &stem, svg_path)?;
         manifest.fixtures.insert(
             stem,
             UpstreamSvgFixtureProvenance {
@@ -444,7 +512,7 @@ fn build_complete_generated_manifest_with_source(
         let svg_path = svgs
             .get(&stem)
             .expect("complete corpus contains every renderable SVG");
-        validate_mermaid_1116_svg(&stem, svg_path)?;
+        validate_mermaid_1116_svg(diagram, &stem, svg_path)?;
         manifest.fixtures.insert(
             stem,
             UpstreamSvgFixtureProvenance {
@@ -542,7 +610,7 @@ impl UpstreamSvgProvenanceValidator {
                 self.diagram, stem, entry.renderer_profile
             ));
         }
-        validate_mermaid_1116_svg(stem, svg_path).map_err(|err| err.to_string())?;
+        validate_mermaid_1116_svg(&self.diagram, stem, svg_path).map_err(|err| err.to_string())?;
         validate_hash(
             fixture_path,
             &entry.input_sha256,
@@ -628,8 +696,9 @@ fn load_upstream_svg_provenance_with_source(
     let manifest_path = upstream_dir.join(MANIFEST_FILE_NAME);
     let manifest = read_manifest(&manifest_path)?.ok_or_else(|| {
         XtaskError::SvgCompareFailed(format!(
-            "missing upstream SVG provenance manifest {}; regenerate the {diagram} baseline with pinned Mermaid 11.16.0",
-            manifest_path.display()
+            "missing upstream SVG provenance manifest {}; regenerate the {diagram} baseline with pinned Mermaid {}",
+            manifest_path.display(),
+            crate::cmd::PINNED_MERMAID_VERSION,
         ))
     })?;
     if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
@@ -752,7 +821,7 @@ where
         fixture.validate_captured_hashes()?;
         let stem = fixture.stem().to_string();
         let svg_path = out_dir.join(format!("{stem}.svg"));
-        validate_mermaid_1116_svg(&stem, &svg_path)?;
+        validate_mermaid_1116_svg(diagram, &stem, &svg_path)?;
         manifest.fixtures.insert(
             stem.clone(),
             UpstreamSvgFixtureProvenance {
@@ -1116,17 +1185,17 @@ fn current_source() -> Result<UpstreamSvgSource, XtaskError> {
         (
             "package.json",
             package_json_sha256.as_str(),
-            PACKAGE_JSON_SHA256,
+            crate::cmd::REFERENCE_CLI_PACKAGE_JSON_SHA256,
         ),
         (
             "package-lock.json",
             package_lock_sha256.as_str(),
-            PACKAGE_LOCK_SHA256,
+            crate::cmd::REFERENCE_CLI_PACKAGE_LOCK_SHA256,
         ),
         (
             "mermaid-config.json",
             mermaid_config_sha256.as_str(),
-            MERMAID_CONFIG_SHA256,
+            crate::cmd::REFERENCE_CLI_CONFIG_SHA256,
         ),
     ] {
         if actual != expected {
@@ -1149,12 +1218,12 @@ fn current_source() -> Result<UpstreamSvgSource, XtaskError> {
 }
 
 fn renderer_profile(diagram: &str) -> &'static str {
-    if matches!(diagram, "architecture" | "gitgraph") {
-        "seeded-puppeteer-seed-1"
-    } else if diagram == "gantt" {
-        "mmdc-default-width-1200"
-    } else {
-        "mmdc-default"
+    match diagram {
+        "sequence" => "seeded-puppeteer-seed-1-date-now-1704067200000-sequence-math-settled-v1",
+        "architecture" | "gitgraph" => "seeded-puppeteer-seed-1-date-now-1704067200000",
+        "error" => "seeded-puppeteer-seed-1-date-now-1704067200000-error-fallback-v1",
+        "gantt" => "mmdc-default-width-1200",
+        _ => "mmdc-default",
     }
 }
 
@@ -1226,11 +1295,7 @@ fn hash_file(path: &Path) -> Result<String, XtaskError> {
         path: path.display().to_string(),
         source,
     })?;
-    Ok(hash_bytes(&bytes))
-}
-
-fn hash_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    Ok(sha256_hex(&bytes))
 }
 
 fn validate_hash(

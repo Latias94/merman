@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Many stacked events per period",
     "accTitle": null,
     "accDescr": null,

@@ -90,11 +90,17 @@ struct BezierToSpec<F> {
 /// options and random number seed you use
 ///
 /// ```rust
-/// use roughr::core::{OpSetType, OptionsBuilder};
+/// use roughr::core::{OpSetType, OptionsBuilder, RoughJsSeed, RoughMathRandom, RoughRandomness};
 /// use roughr::renderer::line;
 ///
 /// // Use a non-zero seed for reproducible output.
-/// let mut o = OptionsBuilder::default().seed(1_u64).build().unwrap();
+/// let mut o = OptionsBuilder::default()
+///     .randomness(RoughRandomness::new(
+///         RoughJsSeed::new(1.0),
+///         RoughMathRandom::new(2),
+///     ))
+///     .build()
+///     .unwrap();
 /// let result = line(0.0, 0.0, 1.0, 0.0, &mut o);
 /// assert_eq!(result.op_set_type, OpSetType::Path);
 /// assert_eq!(result.size, None);
@@ -132,11 +138,17 @@ pub fn line<F: Float + Trig + FromPrimitive>(
 ///
 ///```rust
 /// use euclid::point2;
-/// use roughr::core::{OpSetType, OptionsBuilder};
+/// use roughr::core::{OpSetType, OptionsBuilder, RoughJsSeed, RoughMathRandom, RoughRandomness};
 /// use roughr::renderer::linear_path;
 ///
 /// // Use a non-zero seed for reproducible output.
-/// let mut o = OptionsBuilder::default().seed(1_u64).build().unwrap();
+/// let mut o = OptionsBuilder::default()
+///     .randomness(RoughRandomness::new(
+///         RoughJsSeed::new(1.0),
+///         RoughMathRandom::new(2),
+///     ))
+///     .build()
+///     .unwrap();
 /// let result = linear_path(
 ///     &[point2(0.0f32, 0.0), point2(0.0, 0.1), point2(1.0, 1.0)],
 ///     false,
@@ -536,14 +548,11 @@ fn clone_options_alter_seed(ops: &mut Options) -> Options {
     // Match Rough.js `cloneOptionsAlterSeed` from `bin/renderer.js`:
     // - clones the options object
     // - clears `randomizer` so the clone creates its own PRNG stream
-    // - if `seed` is truthy (non-zero), increments it by 1
+    // - applies JavaScript `seed + 1` before any `Math.imul` coercion
+    // - retains the caller-provided shared `Math.random()` stream
     let mut result: Options = ops.clone();
     result.randomizer = None;
-    if let Some(seed) = ops.seed {
-        if seed != 0 {
-            result.seed = Some(seed + 1);
-        }
-    }
+    result.randomness = ops.randomness.for_second_stroke();
     result
 }
 
@@ -1249,14 +1258,49 @@ where
 mod test {
     use euclid::point2;
 
-    use super::{_compute_ellipse_points, _curve, EllipseParams, EllipsePointsSpec};
-    use crate::core::{Op, OpSet, OpSetType, OpType, Options, OptionsBuilder};
+    use super::{
+        _compute_ellipse_points, _curve, clone_options_alter_seed, EllipseParams, EllipsePointsSpec,
+    };
+    use crate::core::{
+        Op, OpSet, OpSetType, OpType, Options, OptionsBuilder, RoughJsSeed, RoughMathRandom,
+        RoughRandomness,
+    };
+
+    fn options_with_seed(number: f64) -> Options {
+        options_with_seed_and_math_random(number, RoughMathRandom::new(7))
+    }
+
+    fn options_with_seed_and_math_random(number: f64, math_random: RoughMathRandom) -> Options {
+        OptionsBuilder::default()
+            .randomness(RoughRandomness::new(RoughJsSeed::new(number), math_random))
+            .build()
+            .expect("failed to build options")
+    }
 
     fn get_default_options() -> Options {
-        OptionsBuilder::default()
-            .seed(345_u64)
-            .build()
-            .expect("failed to build default options")
+        options_with_seed(345.0)
+    }
+
+    #[test]
+    fn cloned_stroke_adds_before_coercion_and_shares_the_math_random_stream() {
+        let shared = RoughMathRandom::new(7);
+        let mut minus_one = options_with_seed_and_math_random(-1.0, shared.clone());
+        let mut max_u32 = options_with_seed(4_294_967_295.0);
+        assert_eq!(minus_one.random(), max_u32.random());
+
+        let mut minus_one_clone = clone_options_alter_seed(&mut minus_one);
+        let mut max_u32_clone = clone_options_alter_seed(&mut max_u32);
+        let mut next_shape = options_with_seed_and_math_random(0.0, shared);
+        let consumed_across_shapes = [minus_one_clone.random(), next_shape.random()];
+
+        let mut expected = options_with_seed(0.0);
+        assert_eq!(
+            consumed_across_shapes,
+            [expected.random(), expected.random()]
+        );
+
+        assert_eq!(max_u32_clone.random(), 0.0);
+        assert_eq!(max_u32_clone.random(), options_with_seed(0.0).random());
     }
 
     #[test]

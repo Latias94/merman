@@ -1,147 +1,339 @@
-# Feature Surfaces
+# Choosing Merman capabilities
 
-Merman uses Cargo features for four separate concerns:
+This page documents the current repository source. The published `0.8.0-alpha.3` packages predate
+this capability vocabulary; their release-specific feature names remain documented on that tag.
+The Rust snippets below therefore use workspace path dependencies and cannot be mistaken for
+features already available from crates.io.
 
-- core profile features, such as `full` and `host`;
-- output capability features, such as `render`, `ascii`, `raster`, and `ratex-math`;
-- analysis capability features, such as `analysis` and `editor-language`;
-- host capability features, such as `host-clock`, `host-random`, and `host-timing`.
+Choose Merman by the operation you need, not by Mermaid diagram family or implementation
+dependency. Every parser-capable build uses the same Mermaid 11.16 language model, detector,
+configuration, sanitizer, source spans, and family vocabulary. Cargo features only add
+user-visible capabilities, output backends, or host adapters.
 
-Keep these concerns separate. Output features decide what Merman can produce. Host capability
-features decide whether core parsing may call the ambient host for time, randomness, browser APIs,
-or similar capabilities.
+There are three separate decisions:
 
-## Core Features
+1. **Compiled capabilities** decide which APIs and output backends exist.
+2. **Runtime policy** decides whether an operation uses deterministic values or explicitly selected
+   system adapters.
+3. **Resource policy** bounds work performed by an available capability.
 
-| Crate | Feature | Default | Meaning |
-| --- | --- | ---: | --- |
-| `merman-core` | `full` | yes | Compatibility profile for full Mermaid behavior. Enables `full-registry`, `full-config`, and `full-sanitization`. |
-| `merman-core` | `full-registry` | via `full` | Enables the full detector and parser registry, including Architecture, Mindmap, and `flowchart-elk`. |
-| `merman-core` | `full-config` | via `full` | Enables full YAML frontmatter parsing and JSON5 directive parsing through `serde_yaml` and `json5`. |
-| `merman-core` | `full-sanitization` | via `full` | Enables DOMPurify-like HTML sanitization and URL canonicalization through `lol_html` and `url`. |
-| `merman-core` | `host` | yes | Host capability profile. Enables `host-clock`, `host-random`, and `host-timing`. |
-| `merman-core` | `host-clock` | yes | Enables `chrono/clock` and system local-time behavior. Disable for pure-WASM and Typst-style hosts. |
-| `merman-core` | `host-random` | yes | Enables UUID v4 generated IDs. Disable for pure-WASM and Typst-style hosts; generated IDs become deterministic. |
-| `merman-core` | `host-timing` | yes | Enables parse timing instrumentation through `web-time`. Disable for pure-WASM and Typst-style hosts. |
+The canonical vocabulary is
+[`capabilities/feature-surface-v1.json`](../capabilities/feature-surface-v1.json). Reproducible
+release recipes are maintained separately in
+[`capabilities/artifact-profiles-v1.json`](../capabilities/artifact-profiles-v1.json).
+Artifact profiles are not Cargo features and are not part of an application dependency declaration.
 
-`merman-core --no-default-features` is the current starting point for pure-WASM and Typst work. It
-is intentionally smaller and more deterministic than the default full profile. In this profile,
-implicit local time falls back to UTC, generated IDs are deterministic, and parse timing
-instrumentation is disabled.
+## The short version
 
-The no-default registry is the current tiny profile. It does not register Architecture, Mindmap,
-or `flowchart-elk`, and capability metadata reports those families as unavailable. This is a
-runtime registry split, not compile-time family pruning: diagram modules and generated parser code
-may still be compiled until the family manifest can drive module-level feature gates.
+The public capability leaves are:
 
-Without `full-config`, closed YAML frontmatter is stripped before diagram detection, but title/config
-fields from that frontmatter are not applied. Common Mermaid inline metadata remains supported by a
-small built-in parser, including flowchart `@{ shape: rounded }`, sequence participant metadata,
-kanban item metadata, and common JSON-like directive objects. Directives use that same built-in
-parser and do not claim full JSON5 compatibility.
-
-Without `full-sanitization`, core still filters dangerous URL protocols and conservatively escapes
-HTML while preserving Mermaid line break tags such as `<br/>`. It does not claim DOMPurify parity,
-does not apply caller-provided `dompurifyConfig`, and does not canonicalize URLs through the `url`
-crate.
-
-## Public Facade Features
-
-| Crate | Feature | Meaning |
+| Capability | Meaning | Global semantic implication |
 | --- | --- | --- |
-| `merman` | `render` | Enables layout and SVG rendering through `merman-render`. |
-| `merman` | `ascii` | Enables terminal-oriented ASCII/Unicode rendering through `merman-ascii`. |
-| `merman` | `raster` | Enables PNG/JPG/PDF conversion support. |
-| `merman` | `ratex-math` | Enables the pure-Rust RaTeX math backend for supported labels. |
-| `merman` | `cytoscape-layout` | Enables the Cytoscape-style Architecture and Mindmap layout seam through `merman-render`. Enabled by `core-full`. |
-| `merman` | `elk-layout` | Enables the optional ELK layout engine integration through `merman-layout-elk`; not implied by `render`. |
-| `merman` | `core-full` | Forwards to `merman-core/full`; enabled by default. |
-| `merman` | `core-host` | Forwards to `merman-core/host`; enabled by default. |
-| `merman-ascii` | `core-full` | Forwards to `merman-core/full`; enabled by default for direct `merman-ascii` users. |
-| `merman-ascii` | `core-host` | Forwards to `merman-core/host`; enabled by default for direct `merman-ascii` users. |
-| `merman-bindings-core` | `analysis` | Enables diagnostics analysis, validation projection, document facts, and lint rule catalog helpers; enabled by default for native binding users. |
-| `merman-bindings-core` | `render` / `ascii` | Enables shared binding SVG/layout/parse helpers or ASCII/Unicode helpers. |
-| `merman-bindings-core` | `core-full` / `core-host` | Forward the native full and host core profiles; enabled by default for compatibility. |
-| `merman-bindings-core` | `cytoscape-layout` / `elk-layout` | Forward optional layout integrations to the public Rust facade. `elk-layout` is the feature that pulls the ELK integration. |
-| `merman-bindings-core` | `ratex-math` / `raster` | Forward optional math rendering and raster conversion support for binding crates. |
-| `merman-ffi` | `analysis` | Enables C ABI diagnostics, validation, document facts, and lint rule catalog entry points; enabled by default, with exported functions returning unsupported when disabled. |
-| `merman-ffi` | `render` | Enables C ABI SVG render, parse, layout, host theme preset, and host text-measurement entry points; enabled by default. |
-| `merman-ffi` | `ascii` | Enables C ABI ASCII/Unicode rendering and capability metadata; enabled by default. |
-| `merman-ffi` | `core-full` / `core-host` | Forward the native full and host core profiles; enabled by default for compatibility. |
-| `merman-ffi` | `elk-layout` | Enables ELK-backed layouts for native C ABI artifacts that opt into the EPL-backed integration. |
-| `merman-ffi` | `ratex-math` / `raster` | Enables optional math rendering or raster conversion support for C ABI artifacts. |
-| `merman-uniffi` | `analysis` / `render` / `ascii` | Mirrors the native binding capability split above for generated UniFFI consumers; enabled by default for compatibility. |
-| `merman-uniffi` | `core-full` / `core-host` | Forward the native full and host core profiles; enabled by default for compatibility. |
-| `merman-uniffi` | `ratex-math` / `raster` | Enables optional math rendering or raster conversion support for generated UniFFI consumers. |
-| `merman-wasm` | `analysis` | Browser wasm-bindgen diagnostics, validation, document facts, and lint rule catalog surface for `@mermanjs/web/core` and render/full presets. |
-| `merman-wasm` | `render` | Browser wasm-bindgen rendering surface for `@mermanjs/web`. |
-| `merman-wasm` | `ascii` | Browser wasm-bindgen ASCII/Unicode surface for `@mermanjs/web`; pair with `core-full`/`core-host` only when the artifact needs those core profiles. |
-| `merman-wasm` | `core-full` | Browser package full core profile; enabled by default. |
-| `merman-wasm` | `core-host` | Browser package host capability profile; enabled by default. |
-| `merman-wasm` | `cytoscape-layout` | Browser opt-in for Architecture and Mindmap Cytoscape-style layout when building non-full presets. Enabled by `core-full`. |
-| `merman-wasm` | `elk-layout` | Browser opt-in for ELK-backed layouts; enabled by default for the published full artifact. |
-| `merman-wasm` | `editor-language` | Browser editor-language APIs; implies `analysis` and adds `merman-editor-core`. |
-| `merman-wasm` | `ratex-math` | Browser package RaTeX math rendering support; implies `render`. |
-| `merman-typst-plugin` | `render` | Typst wasm-minimal-protocol SVG render surface; enabled by default. |
-| `merman-typst-plugin` | `analysis` | Typst validation surface; enabled by default so the package `validate-mermaid` API keeps existing behavior. |
-| `merman-typst-plugin` | `core-full` | Typst no-host artifact with full config and sanitization support. |
-| `merman-typst-plugin` | `core-host` | Opt-in host capability profile; do not enable for Typst package builds. |
-| `merman-typst-plugin` | `cytoscape-layout` | Typst opt-in for Architecture and Mindmap Cytoscape-style layout. Enabled by `core-full`. |
-| `merman-typst-plugin` | `elk-layout` | Typst opt-in for ELK-backed layouts; enabled by default for the package artifact. |
-| `merman-typst-plugin` | `ratex-math` | Typst plugin artifact plus RaTeX math rendering support; implies `render`. |
+| `svg` | SVG rendering | None |
+| `analysis` | Diagnostics, validation, and semantic analysis | None |
+| `editor` | Parser-backed editor intelligence | None |
+| `ascii` | Terminal text output | None |
+| `png`, `jpeg`, `pdf` | Independent binary exports | None |
+| `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
+| `math` | Math-label rendering | Implies `svg` |
+| `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | None; compiled separately and selected explicitly at runtime |
+| `icons`, `markdown`, `network-icons`, `parallel-markdown`, `shell-completions` | Compiled CLI tool commands | None; the CLI Cargo manifest owns their workflow forwarding |
 
-The current `merman-wasm` crate is a browser/JavaScript WebAssembly package. It is not the
-pure-WASM or Typst plugin surface. The Typst surface is `merman-typst-plugin`, which uses
-wasm-minimal-protocol and must keep browser/wasm-bindgen imports out of package builds.
+This column describes only the repository-wide semantic contract recorded in the canonical
+descriptor. A Cargo package or product surface may forward additional features to assemble an
+operational workflow. Today the `merman` facade forwards `editor` to `analysis`, and forwards each
+binary export to `svg`; the corresponding Web and CLI products make the same combinations where
+their public workflow requires them. Those owner-specific compile combinations do not turn into
+global capability implications.
 
-Bindings expose the selected registry profile and per-family parser/render capability metadata so
-hosts can inspect the actual full/tiny diagram surface in slim artifacts instead of inferring it
-from package names.
+There is one public convenience aggregate name: `complete-svg`, exposed by the `merman` facade and
+the `merman-rustdoc` integration crate. It means `svg + layout-cytoscape + layout-elk + math`. It
+does not include system adapters, analysis, ASCII, or binary exports.
 
-The public `merman` facade disables `merman-ascii` default features internally and forwards
-`core-full`/`core-host` with weak optional dependency features. This keeps direct `merman-ascii`
-usage backwards-compatible while allowing `merman --no-default-features --features ascii` and
-browser ASCII presets to stay on the slim core profile.
+There is deliberately no global `preset-*` feature lattice. Cargo features are additive and
+cannot express “everything except X”; a large preset table would mix application workflows,
+runtime policy, transport packages, and release recipes. Product packages and artifact profiles
+select their own direct leaf set instead.
 
-The binding crates keep `analysis` separate from `render` and `ascii`. Defaults preserve the
-diagnostics and validation surface for existing native, browser, and Typst users, while slim builds
-such as `merman-wasm --no-default-features --features ascii` can omit `merman-analysis`, JSON5/YAML
-lint support, and editor-language dependencies.
-For browser package users, `@mermanjs/web/render` keeps analysis for compatibility and
-`@mermanjs/web/render-only` is the render/parse/layout artifact that omits analysis.
+## Pick a workflow
 
-## Analysis And Language Tooling Features
-
-| Crate | Feature | Default | Meaning |
-| --- | --- | ---: | --- |
-| `merman-analysis` | `core-full` | yes | Compatibility alias forwarding `merman-core/full`. |
-| `merman-analysis` | `core-full-registry` / `core-full-config` / `core-full-sanitization` | via `core-full` | Forward one full-profile concern without enabling the other two. |
-| `merman-analysis` | `core-host` | yes | Forwards `merman-core/host`. |
-| `merman-editor-core` | `core-full` / `core-host` | yes | Compatibility aliases forwarding the full and host profiles through analysis and core. |
-| `merman-editor-core` | `core-full-registry` / `core-full-config` / `core-full-sanitization` | via `core-full` | Forward one full-profile concern through both editor dependencies. |
-| `merman-lsp` | `stdio` | yes | Builds the `merman-lsp` stdio binary. The protocol-neutral library remains available without it. |
-| `merman-lsp` | `core-full` / `core-host` | yes | Compatibility aliases forwarding the full and host profiles through all language-tooling layers. |
-| `merman-lsp` | `core-full-registry` / `core-full-config` / `core-full-sanitization` | via `core-full` | Forward one full-profile concern through LSP, editor, analysis, and core. |
-
-`merman-lsp --no-default-features` builds the protocol-neutral library against the tiny core
-registry and without the stdio executable. Add `stdio` when a no-default build still needs the
-binary. The server publishes its selected registry profile and per-family availability through
-capability metadata so clients do not need to infer support from the package name.
-
-## Host Profiles
-
-| Profile | Intended host | Feature posture |
+| Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
-| Full/native | Rust applications, CLI, native bindings | Keep defaults unless the caller explicitly wants deterministic host behavior. |
-| Browser WASM | `@mermanjs/web` and wasm-bindgen consumers | Browser APIs are allowed and must be documented as browser-only. |
-| Pure WASM | `wasm32-unknown-unknown` without JS/WASI imports | Start from `merman-core --no-default-features` or `merman --no-default-features`; no `full`, no `host`. |
-| Typst WASM | Typst plugin / `wasmi` host | Same as pure WASM, plus only the wasm-minimal-protocol imports are allowed. |
+| Deterministic SVG in Rust | `merman` | Default `complete-svg`, or `default-features = false, features = ["svg"]` for basic SVG |
+| Full SVG semantics in Rust | `merman` | `default-features = false, features = ["complete-svg"]` |
+| Lint and diagnostics | `merman-analysis` | No feature; the crate is default-empty |
+| Editor library | `merman-editor-core` or `merman` | `merman` with `analysis, editor` |
+| Standalone LSP server | `merman-lsp` | `--no-default-features --features stdio` |
+| Complete CLI | `merman-cli` | Its default direct leaf set, or the exact `cli-release` recipe |
+| Lean CLI lint | `merman-cli` | `--no-default-features --features analysis` |
+| Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
+| Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
+| C/C++ embedding | `merman-ffi` | Build the source-only ABI 3 crate with its reproducible artifact recipe; no generic binary SDK is published |
+| Flutter/Dart embedding | `merman` on pub.dev | Use the Flutter package, which consumes ABI 3 internally |
+| Android/Kotlin embedding | `merman-android-<tag>.aar` | Use the direct JNI AAR from the matching GitHub Release; no remote Maven coordinate is published |
+| Apple/Swift embedding | `Merman.xcframework` | Use the UniFFI XCFramework release asset or local SwiftPM package |
+| Python embedding | `merman` on PyPI | Use the generated UniFFI wheel for the selected platform |
 
-## Rules For New Features
+Node/SSG transport remains a private admission candidate, so there is no public
+`@mermanjs/node` package to select yet. Browser WASM is not a supported Node transport.
 
-- Document every public Cargo feature here and near the defining `[features]` table.
-- Do not hide host access behind parser or render features; name it as a host capability.
-- Pure-WASM and Typst profiles must not depend on `wasm-bindgen`, `js-sys`, browser randomness,
-  JavaScript date/time, WASI, browser panic hooks, full YAML/JSON5 parsing, DOMPurify-like HTML
-  rewriting, or URL canonicalization dependencies.
-- Use `xtask profile-budget` gates when changing dependencies or host capability features.
+## Rust examples
+
+### Complete SVG
+
+```toml
+[dependencies]
+merman = { path = "crates/merman", default-features = false, features = ["complete-svg"] }
+```
+
+```rust
+use merman::svg::HeadlessRenderer;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let renderer = HeadlessRenderer::new().with_diagram_id("example");
+    let svg = renderer
+        .render_svg_sync("flowchart TD\n  A[Start] --> B[Done]")?
+        .expect("diagram detected");
+    println!("{svg}");
+    Ok(())
+}
+```
+
+The ordinary `merman = { path = "crates/merman" }` dependency uses the same `complete-svg`
+aggregate.
+The default operation remains deterministic; it does not read ambient time, time zone, randomness,
+or timing state.
+
+### Basic SVG without optional engines
+
+```toml
+[dependencies]
+merman = { path = "crates/merman", default-features = false, features = ["svg"] }
+```
+
+If an input requires a compiled-out layout engine or math renderer, the operation returns a typed
+`missing-capability` error. It does not silently substitute a different semantic result.
+
+### Analysis and editor support
+
+```toml
+[dependencies]
+merman-analysis = { path = "crates/merman-analysis", default-features = false }
+merman = {
+    path = "crates/merman",
+    default-features = false,
+    features = ["analysis", "editor"],
+}
+```
+
+On the `merman` facade, enabling the `editor` Cargo feature also enables `analysis`. The canonical
+`editor` capability has no global implication, so another package must declare the pair explicitly
+when its workflow exposes both. Neither capability adds or removes a Mermaid diagram family.
+
+### Explicit system adapters
+
+Compile only the adapters required by the host:
+
+```toml
+[dependencies]
+merman = {
+    path = "crates/merman",
+    default-features = false,
+    features = [
+        "complete-svg",
+        "system-clock",
+        "system-timezone",
+        "system-random",
+    ],
+}
+```
+
+Compilation makes an adapter available; it does not select it. Use
+`RenderEnvironment::try_native()` or the binding option
+`{"runtime_policy":"native"}` explicitly. If the required adapter is absent, the request returns
+`missing-capability`.
+
+### Independent exports
+
+Binary output is opt-in and additive:
+
+```toml
+[dependencies]
+merman = {
+    path = "crates/merman",
+    default-features = false,
+    features = ["svg", "png", "pdf"],
+}
+```
+
+`png`, `jpeg`, and `pdf` are separate capabilities. They are not silently included in the
+complete SVG aggregate and should not be added to every native SDK without a product reason.
+
+## CLI
+
+`merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes SVG,
+analysis, ASCII, PNG, JPEG, PDF, both optional layout engines, math, local Iconify loading,
+Markdown conversion, native adapters, network icons, parallel Markdown, and shell completions.
+Compiled native adapters never change the default runtime policy:
+
+```sh
+cargo install merman-cli --version '^0.8.0-alpha.3' --locked
+printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
+
+merman-cli render --runtime deterministic diagram.mmd
+merman-cli render --runtime native diagram.mmd
+merman-cli parse --system-timing diagram.mmd
+```
+
+`--runtime` defaults to `deterministic`. Native mode explicitly requests system clock, complete
+time-zone rules, and randomness; `--system-timing` is a separate opt-in. A missing requested
+adapter returns the CLI's invalid-configuration exit status instead of falling back.
+
+For a lean lint executable:
+
+```sh
+cargo run -p merman-cli --no-default-features --features analysis -- lint diagram.mmd
+```
+
+For a complete release build, use the repository's `cli-release` artifact profile. Do not use a
+bare `cargo build -p merman-cli` as a release proof: Cargo feature unification can change the
+effective closure.
+
+`icons` enables local Iconify JSON, `node_modules`, and `file://` sources. `network-icons` adds
+the HTTP client and `--allow-network`; network access remains an explicit runtime permission.
+Likewise, `markdown` enables serial document conversion without analysis commands.
+`parallel-markdown` implies `markdown` and adds only the Rayon worker pool and `--jobs` to
+`batch` and Markdown-mode `mmdc`. Disabling it does not remove Markdown support or change chart
+numbering, source order, diagnostics ordering, resource admission, or transaction semantics.
+Use `--no-default-features --features markdown` for the smallest sequential Markdown CLI and
+`--no-default-features --features parallel-markdown` when measured throughput justifies Rayon.
+
+## Browser, Typst, and native packages
+
+Browser package names are the user-facing selection mechanism:
+
+| Package | Compiled workflow | Status |
+| --- | --- | --- |
+| `@mermanjs/web` | SVG, analysis, editor, ASCII, Cytoscape, ELK, and math | Complete browser package |
+| `@mermanjs/web-render` | SVG, Cytoscape, ELK, and math | Complete SVG-only package |
+| `@mermanjs/web-analysis` | Analysis | Slim package |
+| `@mermanjs/web-editor` | Analysis and editor | Slim package |
+| `@mermanjs/web-ascii` | ASCII | Slim package |
+
+Browser packages require a browser realm or worker. They are not Node or SSR transports.
+
+Install the complete browser package and render after initializing its single WASM artifact:
+
+```sh
+npm install @mermanjs/web@alpha
+```
+
+```ts
+import { initMerman, renderSvg } from "@mermanjs/web";
+
+await initMerman();
+const svg = renderSvg("flowchart TD\n  A --> B");
+```
+
+For a native registry install, Python provides the shortest complete SDK path:
+
+```sh
+python -m pip install --pre merman
+```
+
+```python
+import merman
+
+engine = merman.MermanEngine()
+svg = engine.render_svg("flowchart TD\n  A --> B", None)
+```
+
+Flutter uses `flutter pub add 'merman:^0.8.0-alpha.3'` and `Merman.open()`. Android consumes the
+matching release AAR through `implementation(files(...))`; Apple consumes the matching
+XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
+artifact profile. The [Flutter](../platforms/flutter/README.md),
+[Android](../platforms/android/README.md), [Apple](../platforms/apple/README.md), and
+[C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
+and lifecycle rules; there is no interchangeable generic native binary SDK.
+
+Typst users install one package:
+
+```typst
+#import "@preview/merman:0.2.0": mermaid
+
+#mermaid(```mermaid
+flowchart TD
+  Source --> Document
+```)
+```
+
+The published Typst profile has SVG, analysis, Cytoscape, and ELK. Math is not advertised until
+its pure-WASM font, license, import, and parity admission is complete. Typst always enforces its
+constrained resource policy; caller options may tighten it but cannot replace it with an
+unbounded profile.
+
+Native bindings expose the same flat runtime catalog. The catalog contains stable
+`capability_ids`, `operation_ids`, and `output_ids`. Do not infer capabilities from exported
+symbols, a Cargo feature name, or a package name.
+
+## Runtime and resource policy
+
+Runtime policy is independent from compiled capabilities:
+
+- deterministic clock, UTC time zone, and fixed randomness are the default;
+- native policy is an explicit operation choice;
+- `system-timing` is an independent diagnostic adapter;
+- text measurement is selected by the operation environment, not by a diagram feature.
+
+Resource profiles bound source bytes, model cardinality, nesting, layout work, SVG size, and
+embedded media:
+
+| Profile | Intended use |
+| --- | --- |
+| `interactive` | General applications and public binding defaults |
+| `constrained` | Public or untrusted submissions |
+| `trusted-native` | Controlled local CLI or batch work |
+| `unbounded-for-trusted-input` | Explicitly trusted input with outer isolation |
+
+These profiles are policy starting points, not Mermaid semantic limits. Hosts handling hostile
+input must also enforce process memory, timeout, and concurrency boundaries. Query the loaded
+runtime catalog for the exact limits.
+
+## Artifact profiles and measurements
+
+An artifact profile records an exact Cargo package, target, direct feature set, default-feature
+setting, and expected semantic IDs. Product owners separately define runtime policy, resource
+policy, package contents, evidence receipts, and distribution gates. Exclusion claims require both
+the exact artifact recipe and its owner-specific dependency or size evidence.
+
+For a `target-set` recipe, dependency evidence is checked independently for every declared target.
+For a `host` recipe, the build still uses the executing host, while the frozen normal-dependency
+closure is only the `x86_64-unknown-linux-gnu` reference closure and excludes build and proc-macro
+edges. The exact fingerprint is enforced only when the verifier itself runs on that reference
+host; other hosts retain required/forbidden semantic checks but report their host-profile
+fingerprints as non-enforced observations. It is not a full clean-build cost metric and does not
+prove dependency absence on macOS or Windows.
+
+When comparing builds, record the target, compiler, lockfile, direct feature set, uncompressed and
+compressed sizes, dependency closure, licenses, and advisory results. A feature name alone is not a
+size guarantee because Cargo unifies features across the dependency graph.
+
+## Removed feature names
+
+The old names are intentionally not aliases. Update manifests once rather than carrying two
+vocabularies:
+
+| Removed name | Replacement |
+| --- | --- |
+| `full`, `core-full`, `tiny`, registry profiles | Low-level crates are default-empty; choose observable leaves |
+| `render` | `svg` |
+| `raster` | One or more of `png`, `jpeg`, `pdf` |
+| `cytoscape-layout` | `layout-cytoscape` |
+| `elk-layout` | `layout-elk` |
+| `ratex-math` | `math` |
+| `host-*`, `core-host` | `system-clock`, `system-timezone`, `system-random`, `system-timing` |
+| `preset-*`, `*-no-elk` | Direct positive leaf features; use an artifact profile for exact recipes |
+
+Do not add one feature per diagram. A diagram family belongs to the shared language contract; a
+public feature is justified only by a user-visible API, output, reusable engine, host adapter,
+or compiled CLI tool with a meaningful closure boundary.

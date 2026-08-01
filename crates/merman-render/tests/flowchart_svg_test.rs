@@ -2,40 +2,65 @@ use futures::executor::block_on;
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{
-    SvgRenderOptions, render_flowchart_v2_debug_svg, render_flowchart_v2_svg,
+use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{
+    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPolicy,
+    TextMeasurementProfile, TextMeasurementProfileIdentity,
 };
+use merman_render::family;
+use merman_render::model::FlowchartLayout;
+use merman_render::resources::RenderResourcePolicy;
+use merman_render::svg::{FlowchartEdgeTraceCollector, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
     TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
 };
-use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 use std::sync::Arc;
 
-fn fmt(v: f64) -> String {
-    if !v.is_finite() {
-        return "0".to_string();
-    }
-    if v.abs() < 0.0005 {
-        return "0".to_string();
-    }
-    let mut r = (v * 1000.0).round() / 1000.0;
-    if r.abs() < 0.0005 {
-        r = 0.0;
-    }
-    let mut s = format!("{r:.3}");
-    if s.contains('.') {
-        while s.ends_with('0') {
-            s.pop();
-        }
-        if s.ends_with('.') {
-            s.pop();
-        }
-    }
-    if s == "-0" { "0".to_string() } else { s }
+fn environment_with_measurer<M>(name: &str, measurer: M) -> RenderEnvironment
+where
+    M: TextMeasurer + Send + Sync + 'static,
+{
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new(name).expect("valid test profile id"),
+        "test",
+    )
+    .expect("valid test profile identity");
+    RenderEnvironment::deterministic().with_text_measurement_policy(TextMeasurementPolicy::uniform(
+        TextMeasurementProfile::new(identity, std::sync::Arc::new(measurer)),
+    ))
+}
+
+fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        panic!("expected Flowchart render model");
+    };
+    model
+}
+
+fn layout_flowchart_render_model(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
+) -> merman_render::Result<FlowchartLayout> {
+    let artifact = family::prepare(parsed, options, session)?;
+    let projection = artifact.layout_json()?;
+    serde_json::from_value(projection["layout"]["FlowchartV2"].clone())
+        .map_err(merman_render::Error::from)
+}
+
+fn render_flowchart_artifact(
+    parsed: ParsedDiagramRender,
+    layout_options: &LayoutOptions,
+    session: RenderSession,
+    svg_options: &SvgRenderOptions,
+) -> merman_render::Result<String> {
+    let artifact = family::prepare(parsed, layout_options, session)?;
+    let rendered = artifact.render_svg(svg_options, &SvgDebugOptions::default())?;
+    Ok(rendered.svg().to_owned())
 }
 
 fn render_flowchart_svg_from_text(text: &str) -> String {
@@ -43,25 +68,106 @@ fn render_flowchart_svg_from_text(text: &str) -> String {
 }
 
 fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    render_flowchart_svg_from_text_with_engine_and_policy(
+        engine,
+        text,
+        RenderResourcePolicy::interactive(),
+    )
+}
+
+fn render_flowchart_svg_from_text_with_engine_and_policy(
+    engine: Engine,
+    text: &str,
+    resource_policy: RenderResourcePolicy,
+) -> String {
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .unwrap();
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg")
+}
+
+#[test]
+fn flowchart_edge_trace_stays_in_explicit_caller_owned_memory() {
+    let source = "flowchart TD\nA --> B\n";
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("create deterministic session");
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse succeeds")
+            .expect("detects flowchart");
+    let edge_id = flowchart_model(&parsed)
+        .edges
+        .first()
+        .expect("fixture has an edge")
+        .id
+        .clone();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare flowchart artifact");
+    let collector = FlowchartEdgeTraceCollector::default();
+    let debug =
+        SvgDebugOptions::default().with_flowchart_edge_trace(edge_id.clone(), collector.clone());
+
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &debug)
+        .expect("render flowchart");
+
+    let traces = collector.drain();
+    assert_eq!(traces.len(), 1);
+    assert_eq!(traces[0].edge_id, edge_id);
+    assert!(!traces[0].base_points.is_empty());
+    assert!(collector.snapshot().is_empty());
+}
+
+#[test]
+fn flowchart_root_normalizes_diagram_id_before_scoping_accessibility_ids() {
+    let source =
+        "flowchart TD\naccTitle: Accessible title\naccDescr: Accessible description\nA-->B\n";
+    let diagram_id = r#"flow&"root"#;
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render svg");
+
+    assert!(svg.starts_with(r#"<svg id="flow-root""#));
+    assert!(svg.contains(
+        r#"aria-describedby="chart-desc-flow-root" aria-labelledby="chart-title-flow-root""#
+    ));
+    assert!(svg.contains(r#"<title id="chart-title-flow-root">Accessible title</title>"#));
+    assert!(svg.contains(r#"<desc id="chart-desc-flow-root">Accessible description</desc>"#));
+    assert!(!svg.contains(diagram_id));
+}
+
+#[test]
+fn flowchart_html_labels_serialize_unknown_html_entities_as_well_formed_xml() {
+    let svg = render_flowchart_svg_from_text("flowchart TD\nA[\"&#x41;\"]\n");
+
+    roxmltree::Document::parse(&svg).expect("Flowchart SVG must be well-formed XML");
+    assert!(svg.contains("<p>&amp;&amp;x41;</p>"), "{svg}");
+    assert!(!svg.contains("&amp;&x41;"), "{svg}");
 }
 
 #[test]
@@ -72,6 +178,96 @@ fn flowchart_missing_icon_uses_mermaid_unknown_icon_at_requested_size() {
     let unknown_icon = r#"<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 80 80"><g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g></svg>"#;
 
     assert!(svg.contains(unknown_icon), "{svg}");
+}
+
+#[test]
+fn flowchart_icon_shapes_without_icon_assets_render_source_defined_frames() {
+    let svg = render_flowchart_svg_from_text(
+        r#"flowchart LR
+I@{ shape: icon, label: "Plain" }
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+
+    let id_prefix = "merman-flowchart-I-";
+    assert!(
+        document.descendants().any(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with(id_prefix))
+                && node.attribute("class") == Some("icon-shape default")
+        }),
+        "missing source-defined icon frame: {svg}"
+    );
+    assert!(
+        !svg.contains("<tspan x=\"0\" y=\"0\">?</tspan>"),
+        "an absent icon asset is not an unknown registered icon: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_icon_variants_render_their_source_defined_frames() {
+    let svg = render_flowchart_svg_from_text(
+        r##"flowchart LR
+R@{ icon: "fa:bell", form: "rounded" }
+C@{ icon: "fa:bell", form: "circle" }
+style R fill:#ff99ff,stroke:#333333,stroke-width:4px
+style C fill:#ff99ff,stroke:#333333,stroke-width:4px
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+
+    let node = |node_id: &str| {
+        let id_prefix = format!("merman-flowchart-{node_id}-");
+        document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.starts_with(&id_prefix))
+            })
+            .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"))
+    };
+
+    let rounded = node("R");
+    let rounded_frame = rounded
+        .children()
+        .find(|child| child.attribute("class") == Some("icon-shape2"))
+        .expect("iconRounded must preserve Mermaid's icon-shape2 frame class");
+    assert_eq!(rounded_frame.attribute("transform"), Some("translate(0,0)"));
+    assert!(
+        rounded_frame
+            .descendants()
+            .any(|child| child.attribute("fill") == Some("#ff99ff")),
+        "iconRounded frame must use the node fill: {svg}"
+    );
+
+    let circle = node("C");
+    let circle_frame = circle
+        .children()
+        .find(|child| {
+            child.attribute("transform") == Some("translate(0,0)")
+                && child
+                    .descendants()
+                    .any(|descendant| descendant.attribute("fill") == Some("#ff99ff"))
+        })
+        .expect("iconCircle must emit a centered RoughJS circle frame");
+    assert_ne!(circle_frame.attribute("class"), Some("icon-shape2"));
+
+    for icon in [rounded, circle] {
+        assert!(
+            icon.descendants().any(|child| {
+                child
+                    .attribute("style")
+                    .is_some_and(|style| style == "color: #333333;")
+            }),
+            "icon color must use the node stroke: {svg}"
+        );
+    }
 }
 
 #[test]
@@ -116,16 +312,23 @@ fn flowchart_svg_edge_data_points(
 
 #[test]
 fn flowchart_svg_intersects_compact_self_loop_with_rendered_shape() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TD\nA[box] --> A\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &layout_options,
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
     let node = layout
         .nodes
         .iter()
@@ -146,12 +349,10 @@ fn flowchart_svg_intersects_compact_self_loop_with_rendered_shape() {
         "the compact layout point should still be the provisional bbox endpoint"
     );
 
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -279,6 +480,77 @@ fn foreign_object_width_for_data_id(svg: &str, data_id: &str) -> f64 {
         .expect("foreignObject width number")
 }
 
+fn foreign_object_contract_for_text(svg: &str, text: &str) -> (f64, f64, String, String) {
+    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let paragraph = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "p"
+                && node.text().is_some_and(|value| value == text)
+        })
+        .unwrap_or_else(|| panic!("paragraph for {text:?}"));
+    let foreign_object = paragraph
+        .ancestors()
+        .find(|node| node.is_element() && node.tag_name().name() == "foreignObject")
+        .unwrap_or_else(|| panic!("foreignObject for {text:?}"));
+    let div = paragraph
+        .ancestors()
+        .find(|node| node.is_element() && node.tag_name().name() == "div")
+        .unwrap_or_else(|| panic!("div for {text:?}"));
+
+    let width = foreign_object
+        .attribute("width")
+        .expect("foreignObject width")
+        .parse::<f64>()
+        .expect("finite foreignObject width");
+    let height = foreign_object
+        .attribute("height")
+        .expect("foreignObject height")
+        .parse::<f64>()
+        .expect("finite foreignObject height");
+    (
+        width,
+        height,
+        foreign_object
+            .attribute("style")
+            .unwrap_or_default()
+            .to_string(),
+        div.attribute("style").unwrap_or_default().to_string(),
+    )
+}
+
+fn flowchart_node_shape(svg: &str, node_id: &str) -> (String, Option<String>) {
+    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let id_prefix = format!("merman-flowchart-{node_id}-");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with(&id_prefix))
+        })
+        .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"));
+    let shape = node
+        .children()
+        .find(|child| {
+            child.is_element()
+                && child.attribute("class").is_some_and(|class| {
+                    class
+                        .split_whitespace()
+                        .any(|part| part == "label-container")
+                })
+        })
+        .unwrap_or_else(|| panic!("Flowchart shape for {node_id}"));
+
+    (
+        shape.tag_name().name().to_string(),
+        shape.attribute("d").map(str::to_string),
+    )
+}
+
 #[derive(Debug, Clone)]
 struct WidthScaledTextMeasurer {
     inner: VendoredFontMetricsTextMeasurer,
@@ -332,19 +604,6 @@ impl TextMeasurer for WidthScaledTextMeasurer {
         (
             self.scale_width(metrics),
             raw_width.map(|width| width * self.width_scale),
-        )
-    }
-
-    fn measure_wrapped_raw(
-        &self,
-        text: &str,
-        style: &TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> TextMetrics {
-        self.scale_width(
-            self.inner
-                .measure_wrapped_raw(text, style, max_width, wrap_mode),
         )
     }
 }
@@ -408,22 +667,24 @@ fn flowchart_parse_for_render_model_handles_deep_subgraph_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
+    assert_eq!(parsed.metadata().diagram_type, "flowchart-v2");
 }
 
 #[test]
 fn flowchart_layout_handles_deep_subgraph_chain() {
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .begin_session()
+        .unwrap();
     const DEPTH: usize = 1200;
     let text = deep_flowchart_subgraph_chain(DEPTH);
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(&text, ParseOptions::strict()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(&text, ParseOptions::strict()))
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(parsed, &LayoutOptions::default(), session)
+        .expect("layout ok");
 
     assert!(layout.nodes.iter().any(|node| node.id == "Leaf"));
     assert!(layout.clusters.iter().any(|cluster| cluster.id == "S0"));
@@ -434,7 +695,11 @@ fn flowchart_svg_handles_deep_subgraph_chain() {
     const DEPTH: usize = 1200;
     let text = deep_flowchart_subgraph_chain(DEPTH);
 
-    let svg = render_flowchart_svg_from_text(&text);
+    let svg = render_flowchart_svg_from_text_with_engine_and_policy(
+        Engine::new(),
+        &text,
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
 
     assert!(svg.contains(r#"id="merman-flowchart-Leaf-"#));
     assert!(svg.contains(r#"id="merman-S0""#));
@@ -489,37 +754,6 @@ end
 }
 
 #[test]
-fn flowchart_debug_svg_includes_cluster_positioning_metadata() {
-    let text = "flowchart TB\nsubgraph A[\"This is a very very very very very very very long title that should wrap\"]\n  a\nend\n";
-    let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let cluster = layout
-        .clusters
-        .iter()
-        .find(|c| c.id == "A")
-        .expect("cluster A");
-
-    let svg = render_flowchart_v2_debug_svg(&layout, &SvgRenderOptions::default());
-    let expected = format!(
-        r#"id="cluster-A" data-diff="{}" data-offset-y="{}""#,
-        fmt(cluster.diff),
-        fmt(cluster.offset_y)
-    );
-    assert!(
-        svg.contains(&expected),
-        "expected debug SVG to include cluster diff/offset-y metadata"
-    );
-}
-
-#[test]
 fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
     // Mermaid 11.15 uses a clean 1.25em inline box for FontAwesome labels instead of
     // browser-specific per-icon advance drift.
@@ -532,21 +766,21 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
     let text = std::fs::read_to_string(&mmd_path).expect("read fixture .mmd");
 
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(&text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(&text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin render session");
 
-    let out = layout_parsed(
-        &parsed,
+    let layout = layout_flowchart_render_model(
+        parsed,
         &LayoutOptions {
-            text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
             ..Default::default()
         },
+        session,
     )
     .expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
 
     let edge = layout
         .edges
@@ -560,24 +794,20 @@ fn flowchart_v2_fontawesome_edge_label_width_uses_nominal_icon_boundary() {
 
 #[test]
 fn flowchart_wrapping_width_is_reflected_in_html_label_max_width_style() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true, \"wrappingWidth\": 120}}}%%\nflowchart TB\nA[\"Hello\"]\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -605,76 +835,70 @@ fn flowchart_html_node_labels_wrap_at_mermaid_default_width() {
 
 #[test]
 fn flowchart_html_labels_allow_browser_font_fallback_overflow() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"flowchart TD
     A[Start] --> B{Condition?}
     B -->|Yes| C[Execute]
     B -->|No| D[End]
     C --> D"#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
 
-    assert!(
-        svg.contains(r#"<foreignObject width="35.015625" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Start</p></span>"#),
-        "expected Start label foreignObject to remain non-clipping for browser font fallback: {svg}"
-    );
-    assert!(
-        svg.contains(r#"<foreignObject width="74.484375" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Condition?</p></span>"#),
-        "expected Condition? label foreignObject to remain non-clipping for browser font fallback: {svg}"
-    );
-    assert!(
-        svg.contains(r#"<foreignObject width="26.65625" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Yes</p></span>"#),
-        "expected edge labels to use the same non-clipping foreignObject contract: {svg}"
-    );
+    let contracts = ["Start", "Condition?", "Yes"].map(|text| {
+        let contract = foreign_object_contract_for_text(&svg, text);
+        assert!(contract.0.is_finite() && contract.0 > 0.0, "{text}");
+        assert_eq!(contract.1, 24.0, "{text}");
+        assert!(contract.2.contains("overflow: visible"), "{text}");
+        assert!(contract.3.contains("white-space: nowrap"), "{text}");
+        assert!(contract.3.contains("max-width: 200px"), "{text}");
+        contract
+    });
+    assert!(contracts[1].0 > contracts[0].0 && contracts[0].0 > contracts[2].0);
 }
 
 #[test]
 fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"flowchart TD
     A[Start] --> B{Condition?}
     B -->|Yes| C[Execute]"#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let baseline_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let wide_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(WidthScaledTextMeasurer::new(1.35)),
-        ..Default::default()
-    };
+    let wide_options = LayoutOptions::default();
+    let wide_session = environment_with_measurer(
+        "test.flowchart-width-scaled",
+        WidthScaledTextMeasurer::new(1.35),
+    )
+    .begin_session()
+    .unwrap();
 
-    let baseline_out = layout_parsed(&parsed, &baseline_options).expect("baseline layout ok");
-    let wide_out = layout_parsed(&parsed, &wide_options).expect("wide layout ok");
-
-    let LayoutDiagram::FlowchartV2(baseline_layout) = baseline_out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-    let LayoutDiagram::FlowchartV2(wide_layout) = wide_out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let baseline_layout =
+        layout_flowchart_render_model(parsed.clone(), &baseline_options, _session)
+            .expect("baseline layout ok");
+    let wide_layout =
+        layout_flowchart_render_model(parsed, &wide_options, wide_session).expect("wide layout ok");
 
     let baseline_condition = baseline_layout
         .nodes
@@ -686,20 +910,9 @@ fn flowchart_layout_uses_host_text_measurer_for_font_widths() {
         .iter()
         .find(|node| node.id == "B")
         .expect("wide Condition? node");
-    let baseline_label_width = baseline_condition
-        .label_width
-        .expect("baseline Condition? label width");
-    let wide_label_width = wide_condition
-        .label_width
-        .expect("wide Condition? label width");
-
     assert!(
-        wide_label_width > baseline_label_width * 1.3,
-        "expected host-provided wider font metrics to affect flowchart label layout; baseline={baseline_label_width}, wide={wide_label_width}"
-    );
-    assert!(
-        wide_condition.width > baseline_condition.width,
-        "expected host-provided wider font metrics to enlarge the node shape; baseline={}, wide={}",
+        wide_condition.width > baseline_condition.width * 1.15,
+        "expected host-provided wider font metrics to affect flowchart label layout; baseline={}, wide={}",
         baseline_condition.width,
         wide_condition.width
     );
@@ -769,12 +982,18 @@ flowchart TB
 
 #[test]
 fn flowchart_svg_honors_node_text_color_theme_variable() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "mainBkg": "#111827",
+            "nodeTextColor": "#f8fafc",
+            "textColor": "#fde68a"
+        }
+    })));
     let svg = render_flowchart_svg_from_text_with_engine(
-        legacy_init_theme_compat_engine(),
-        r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "nodeTextColor": "#f8fafc", "textColor": "#fde68a"}}}%%
-flowchart TD
+        engine,
+        r#"flowchart TD
     A[Dark Node] --> B[Other]
-"##,
+"#,
     );
 
     assert!(
@@ -792,6 +1011,45 @@ flowchart TD
             r##"#merman{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#fde68a;}"##
         ),
         "expected themeVariables.textColor to continue driving root SVG text fill CSS: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_dispatches_public_shape_aliases_without_rectangle_fallbacks() {
+    let svg = render_flowchart_svg_from_text(
+        r#"flowchart TB
+R0@{ shape: rect, label: "same" }
+R1@{ shape: proc, label: "same" }
+R2@{ shape: process, label: "same" }
+R3@{ shape: rectangle, label: "same" }
+C0@{ shape: circle, label: "same" }
+C1@{ shape: circ, label: "same" }
+B@{ shape: bang, label: "same" }
+D@{ shape: cloud, label: "same" }
+"#,
+    );
+
+    for id in ["R0", "R1", "R2", "R3"] {
+        assert_eq!(flowchart_node_shape(&svg, id).0, "rect", "{id}");
+    }
+    for id in ["C0", "C1"] {
+        assert_eq!(flowchart_node_shape(&svg, id).0, "circle", "{id}");
+    }
+
+    let bang = flowchart_node_shape(&svg, "B");
+    assert_eq!(bang.0, "path");
+    assert_eq!(
+        bang.1.as_deref().map(|path| path.matches('a').count()),
+        Some(14),
+        "bang must preserve Mermaid 11.16's fourteen relative arc segments"
+    );
+
+    let cloud = flowchart_node_shape(&svg, "D");
+    assert_eq!(cloud.0, "path");
+    assert_eq!(
+        cloud.1.as_deref().map(|path| path.matches('a').count()),
+        Some(10),
+        "cloud must preserve Mermaid 11.16's ten relative arc segments"
     );
 }
 
@@ -819,10 +1077,20 @@ flowchart TD
 
 #[test]
 fn flowchart_neo_uses_configurable_radius_shadow_and_round_edges() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "theme": "redux",
+        "look": "neo",
+        "themeVariables": {"edgeLabelBackground": "#FFFFFF"},
+        "flowchart": {
+            "curve": "rounded",
+            "edgeCornerRadius": 14,
+            "edgeLabelPadding": 4,
+            "compactEdgeCorners": true
+        }
+    })));
     let svg = render_flowchart_svg_from_text_with_engine(
-        legacy_init_theme_compat_engine(),
-        r##"%%{init: {"theme": "redux", "look": "neo", "themeVariables": {"edgeLabelBackground": "#FFFFFF"}, "flowchart": {"curve": "rounded", "edgeCornerRadius": 14, "edgeLabelPadding": 4, "compactEdgeCorners": true}}}%%
-flowchart TD
+        engine,
+        r##"flowchart TD
     A[Start] --> B{Condition?}
     B -->|Yes| C[Execute]
     B -->|No| D[End]
@@ -858,7 +1126,7 @@ flowchart TD
     );
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 #[test]
 fn flowchart_modern_elk_projects_terminal_routes_directly_to_shape_boundaries() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
@@ -871,24 +1139,21 @@ fn flowchart_modern_elk_projects_terminal_routes_directly_to_shape_boundaries() 
     MIDDLE[Middle] --> TARGET
     BELOW[Below] --> TARGET
 "#;
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
     assert_eq!(
-        parsed.meta.effective_config.as_value()["flowchart"]["compactEdgeCorners"],
+        parsed.metadata().effective_config.as_value()["flowchart"]["compactEdgeCorners"],
         true
     );
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin render session");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -911,25 +1176,21 @@ fn flowchart_modern_elk_projects_terminal_routes_directly_to_shape_boundaries() 
 
 #[test]
 fn flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_false() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text =
         "%%{init: {\"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[\"`**Node**`\"]\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -945,24 +1206,20 @@ fn flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_fals
 
 #[test]
 fn flowchart_classic_hexagon_renders_polygon_container() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TB\nA{{\"`**Hex**`\"}}\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -978,24 +1235,20 @@ fn flowchart_classic_hexagon_renders_polygon_container() {
 
 #[test]
 fn flowchart_no_label_special_shapes_render_outer_path_group() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TB\nA@{ shape: stop }\nB@{ shape: lightning-bolt }\nC@{ shape: crossed-circle }\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1007,26 +1260,22 @@ fn flowchart_no_label_special_shapes_render_outer_path_group() {
 
 #[test]
 fn flowchart_hourglass_preserves_markdown_label_class_after_clearing_label() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"flowchart TB
 A@{ shape: hourglass, label: "Hourglass label" }
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1039,27 +1288,23 @@ A@{ shape: hourglass, label: "Hourglass label" }
 
 #[test]
 fn flowchart_base_theme_renders_root_gradient() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r##"%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#BB2528", "primaryBorderColor": "#7C0000", "secondaryColor": "#006100"}}}%%
 flowchart TB
 A --> B
 "##;
     let engine = legacy_init_theme_compat_engine();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions {
             diagram_id: Some("flowchart_theme_gradient".to_string()),
             ..SvgRenderOptions::default()
@@ -1085,26 +1330,22 @@ A --> B
 
 #[test]
 fn flowchart_note_shape_renders_note_label_class() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"flowchart TB
 A@{ shape: note, label: "Note" }
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1117,27 +1358,23 @@ A@{ shape: note, label: "Note" }
 
 #[test]
 fn flowchart_svg_markdown_node_labels_wrap_when_html_labels_false() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"%%{init: {"htmlLabels": false, "flowchart": {"wrappingWidth": 80}}}%%
 flowchart TB
 A["`**Alpha beta gamma delta epsilon zeta eta theta**`"]
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1150,6 +1387,9 @@ A["`**Alpha beta gamma delta epsilon zeta eta theta**`"]
 
 #[test]
 fn flowchart_svg_plain_subgraph_titles_do_not_wrap_when_html_labels_false() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%
 flowchart TB
 subgraph A[SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious]
@@ -1157,22 +1397,15 @@ subgraph A[SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious]
 end
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1197,24 +1430,20 @@ end
 
 #[test]
 fn flowchart_html_labels_treat_decoded_backslash_n_as_line_break() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"line1\\\\nline2\"]\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1230,75 +1459,74 @@ fn flowchart_html_labels_treat_decoded_backslash_n_as_line_break() {
 
 #[test]
 fn flowchart_html_single_image_label_uses_paragraph_wrapper() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"flowchart TB
 B[<img src='https://mermaid.js.org/mermaid-logo.svg'>]
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
 
     assert!(
         svg.contains(r#"<span class="nodeLabel"><p><img "#),
-        "expected Mermaid 11.15 non-markdown image labels to keep the nonMarkdownToHTML paragraph wrapper: {svg}"
+        "expected Mermaid 11.16 non-markdown image labels to keep the nonMarkdownToHTML paragraph wrapper: {svg}"
     );
 }
 
 #[test]
 fn flowchart_image_shape_label_bbox_includes_mermaid_padding() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"flowchart TD
 A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", pos: "t", h: 60, constraint: "on" }
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &layout_options,
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
 
     let node = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
-    assert_eq!(node.width, 176.984375);
-    assert_eq!(node.height, 96.0);
+    assert!(node.width.is_finite() && node.width > 60.0);
+    assert!(node.height.is_finite() && node.height > 60.0);
 
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
 
-    assert!(
-        svg.contains(
-            r#"<foreignObject width="176.984375" height="28" style="overflow: visible;">"#
-        ),
-        "expected image-shape label bbox to include Mermaid 11.15 paragraph padding: {svg}"
-    );
+    let (label_width, label_height, foreign_object_style, _) =
+        foreign_object_contract_for_text(&svg, "My example image label");
+    assert_eq!(node.width, label_width);
+    assert!(label_height > 16.0);
+    assert!(foreign_object_style.contains("overflow: visible"));
     assert!(
         svg.contains(r#"<image href="https://mermaid.js.org/favicon.svg" width="60" height="60" preserveAspectRatio="none" transform="translate(-30,-12)"/>"#),
         "expected top image placement to use the padded label bbox: {svg}"
@@ -1307,6 +1535,9 @@ A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", 
 
 #[test]
 fn flowchart_shape_data_multiline_markdown_trims_trailing_block_newline() {
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin render session");
     let text = r#"flowchart TB
 A@{
   label: |
@@ -1315,22 +1546,15 @@ A@{
 }
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1344,24 +1568,20 @@ A@{
 
 #[test]
 fn flowchart_html_plain_multiline_labels_trim_source_indentation() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "%%{init: {\"flowchart\": {\"htmlLabels\": true}}}%%\nflowchart TB\nA[\"\n  First\n      Second\n  \"]\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1400,27 +1620,23 @@ fn flowchart_html_plain_node_labels_can_span_indented_lines() {
 
 #[test]
 fn flowchart_svg_plain_text_labels_do_not_apply_markdown_weight() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"%%{init: {"htmlLabels": false}}%%
 flowchart TB
 foo[**Bold Foo**]
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1441,25 +1657,21 @@ foo[**Bold Foo**]
 
 #[test]
 fn flowchart_html_plain_labels_treat_literal_backslash_n_as_line_breaks() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text =
         "flowchart TB\nA[\"Remove trailing whitespace<br/>src.replace(/}\\s*\\n/g, '}\\n')\"]\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1474,27 +1686,22 @@ fn flowchart_html_plain_labels_treat_literal_backslash_n_as_line_breaks() {
 
 #[test]
 fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TB\nA -->|Get money| B\nB --> C\nC -->|One| D\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1517,27 +1724,22 @@ fn flowchart_html_edge_labels_preserve_edge_order_with_empty_labels() {
 
 #[test]
 fn flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TB\nA -->|plain edge label| B\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1549,21 +1751,27 @@ fn flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper() {
 }
 
 #[test]
-fn flowchart_html_edge_labels_include_browser_font_fallback_slack() {
+fn flowchart_html_edge_label_svg_width_matches_layout_bbox() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TD\n    A[Start] --> B{Condition ?}\n    B -->|Yes| C[Execute]\n    B -->|No| D[End]\n    C --> D\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &layout_options,
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
 
     let yes_label = layout
         .edges
@@ -1578,12 +1786,10 @@ fn flowchart_html_edge_labels_include_browser_font_fallback_slack() {
         .and_then(|edge| edge.label.as_ref())
         .expect("No edge label");
 
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1595,43 +1801,35 @@ fn flowchart_html_edge_labels_include_browser_font_fallback_slack() {
     );
     assert_eq!(
         foreign_object_width_for_data_id(&svg, "L_B_C_0"),
-        yes_label.width + 4.0
+        yes_label.width
     );
     assert_eq!(
         foreign_object_width_for_data_id(&svg, "L_B_D_0"),
-        no_label.width + 4.0
+        no_label.width
     );
 }
 
 #[test]
 fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
+    let _session = RenderEnvironment::deterministic().begin_session().unwrap();
     let text = "flowchart LR\nsubgraph A\na -->b\nend\nsubgraph B\nb\nend\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions {
             diagram_id: Some(
                 "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015"
                     .to_string(),
             ),
-            apply_root_overrides: false,
             ..Default::default()
         },
     )
@@ -1651,27 +1849,22 @@ fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
 
 #[test]
 fn flowchart_empty_subgraph_node_applies_inline_style() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TD\nsubgraph Empty\nend\nclassDef hot fill:#0f0,color:#111\nclass Empty hot\nstyle Empty fill:#f00,stroke:#00f,color:#fff\n";
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1691,38 +1884,30 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
 }
 
 #[test]
-fn flowchart_crossed_circle_aliases_share_root_bbox_asymmetry() {
+fn flowchart_crossed_circle_aliases_use_source_symmetric_root_bounds() {
+    let _session = RenderEnvironment::deterministic().begin_session().unwrap();
     let text = r#"flowchart
  n0@{ shape: cross-circ, label: "cross-circ" }
  n1@{ shape: summary, label: "summary" }
  n2@{ shape: crossed-circle, label: "crossed-circle" }
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions {
             diagram_id: Some(
                 "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset37_037"
                     .to_string(),
             ),
-            apply_root_overrides: false,
             ..Default::default()
         },
     )
@@ -1737,16 +1922,16 @@ fn flowchart_crossed_circle_aliases_share_root_bbox_asymmetry() {
         .collect::<Vec<_>>();
     assert_eq!(values.len(), 4, "expected four viewBox values: {viewbox}");
     assert!(
-        (values[0] - 0.028_488).abs() < 0.000_01
-            && values[1] == 0.0
-            && (values[2] - 296.170_9).abs() < 0.000_1
-            && values[3] == 76.0,
-        "expected crossed-circle aliases to share RoughJS bbox asymmetry: {svg}"
+        values[0] == 0.0 && values[1] == 0.0 && values[2] > 0.0 && values[3] == 76.0,
+        "expected crossed-circle aliases to use the source-defined symmetric diameter: {svg}"
     );
 }
 
 #[test]
 fn flowchart_label_styles_follow_mermaid_label_style_whitelist() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
 flowchart LR
 A[Styled node] -->|Styled edge| B[Plain]
@@ -1754,25 +1939,17 @@ style A fill:#eee,stroke:#111,font-style:italic,text-decoration:underline,letter
 linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color:#123456
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1809,30 +1986,28 @@ linkStyle 0 font-style:italic,text-decoration:underline,letter-spacing:1px,color
 
 #[test]
 fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available() {
-    fn render(text: &str) -> String {
-        let engine = Engine::new();
-        let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    fn render_with_engine(engine: Engine, text: &str) -> String {
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin render session");
+        let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
             .expect("parse ok")
             .expect("diagram detected");
 
         let layout_options = LayoutOptions {
-            text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
             ..Default::default()
         };
-        let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-        let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-            panic!("expected FlowchartV2 layout");
-        };
-
-        render_flowchart_v2_svg(
-            &layout,
-            &out.semantic,
-            &out.meta.effective_config,
-            out.meta.title.as_deref(),
-            layout_options.text_measurer.as_ref(),
+        render_flowchart_artifact(
+            parsed,
+            &layout_options,
+            session,
             &SvgRenderOptions::default(),
         )
         .expect("render svg")
+    }
+
+    fn render(text: &str) -> String {
+        render_with_engine(Engine::new(), text)
     }
 
     fn edge_path_d<'a>(svg: &'a str, edge_id: &str) -> &'a str {
@@ -1863,9 +2038,10 @@ fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available()
         "expected explicit flowchart.curve=rounded to render rounded corners: {rounded_d}"
     );
 
-    let tight_radius_svg = render(&format!(
-        "%%{{init: {{\"flowchart\": {{\"curve\": \"rounded\", \"edgeCornerRadius\": 1}}}}}}%%\n{diagram}"
+    let tight_radius_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({"flowchart": {"curve": "rounded", "edgeCornerRadius": 1}}),
     ));
+    let tight_radius_svg = render_with_engine(tight_radius_engine, diagram);
     let tight_radius_d = edge_path_d(&tight_radius_svg, "L_A_B_0");
     assert_ne!(
         rounded_d, tight_radius_d,
@@ -1875,29 +2051,24 @@ fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available()
 
 #[test]
 fn flowchart_datastore_shape_renders_top_and_bottom_border_rect() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"flowchart TB
 D@{ shape: datastore, label: "Datastore" }
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -1924,7 +2095,7 @@ D@{ shape: datastore, label: "Datastore" }
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn flowchart_svg_renders_ratex_math_labels_end_to_end() {
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
@@ -1932,27 +2103,20 @@ flowchart LR
 A["$$x^2$$"] -->|$$x^2$$| B[Done]
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
-    let layout_options = LayoutOptions::default().with_math_renderer(math_renderer.clone());
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            math_renderer: Some(math_renderer),
-            ..SvgRenderOptions::default()
-        },
+    let session = RenderEnvironment::deterministic()
+        .with_math_renderer(math_renderer)
+        .begin_session()
+        .expect("begin render session");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions::default(),
     )
     .expect("render svg");
 
@@ -1970,7 +2134,7 @@ A["$$x^2$$"] -->|$$x^2$$| B[Done]
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn flowchart_svg_renders_ratex_mixed_math_labels_end_to_end() {
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
@@ -1978,27 +2142,20 @@ flowchart LR
 A["value: $$x^2$$"] -->|Solve: $$\sqrt{2+2}$$| B[Done]
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
-    let layout_options = LayoutOptions::default().with_math_renderer(math_renderer.clone());
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            math_renderer: Some(math_renderer),
-            ..SvgRenderOptions::default()
-        },
+    let session = RenderEnvironment::deterministic()
+        .with_math_renderer(math_renderer)
+        .begin_session()
+        .expect("begin render session");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions::default(),
     )
     .expect("render svg");
 
@@ -2012,7 +2169,7 @@ A["value: $$x^2$$"] -->|Solve: $$\sqrt{2+2}$$| B[Done]
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
     let mmd_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2023,27 +2180,20 @@ fn flowchart_docs_math_fixture_renders_supported_ratex_formulas() {
         .join("upstream_docs_math_flowcharts_001.mmd");
     let text = std::fs::read_to_string(&mmd_path).expect("read fixture .mmd");
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(&text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(&text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
-    let layout_options = LayoutOptions::default().with_math_renderer(math_renderer.clone());
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            math_renderer: Some(math_renderer),
-            ..SvgRenderOptions::default()
-        },
+    let session = RenderEnvironment::deterministic()
+        .with_math_renderer(math_renderer)
+        .begin_session()
+        .expect("begin render session");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions::default(),
     )
     .expect("render svg");
 

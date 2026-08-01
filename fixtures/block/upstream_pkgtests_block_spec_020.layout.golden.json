@@ -5,18 +5,36 @@
       "nodes": [
         {
           "id": "middle",
-          "x": 163.648,
+          "x": 147.44,
           "y": 0.0,
-          "width": 103.766,
+          "width": 92.96,
           "height": 32.0,
           "is_cluster": false
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "middle",
+          "allocated": {
+            "x": 147.44,
+            "y": 0.0,
+            "width": 92.96,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 92.96,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,
-        "max_x": 327.297,
+        "max_x": 294.88,
         "max_y": 16.0
       }
     }

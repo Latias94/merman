@@ -1,6 +1,6 @@
 mod support;
 
-use merman::render::{HeadlessRenderer, HostThemeProfile, HostThemeRoles};
+use merman::svg::{HeadlessRenderer, HostThemeProfile, HostThemeRoles};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = support::read_mermaid_or_default(
@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..HostThemeRoles::default()
         })
         .series_palette(["#60a5fa", "#34d399", "#f59e0b"])
-        .output(merman::render::HostThemeOutput::resvg_safe_editor())
+        .output(merman::svg::HostThemeOutput::resvg_safe_editor())
         .build();
 
     let renderer = HeadlessRenderer::new()

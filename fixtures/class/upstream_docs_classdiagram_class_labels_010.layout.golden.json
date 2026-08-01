@@ -1,21 +1,21 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Animal Class!",
-          "x": 60.875,
+          "x": 59.203,
           "y": 42.0,
-          "width": 121.75,
+          "width": 118.406,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Car Class",
-          "x": 60.875,
+          "x": 59.203,
           "y": 176.0,
-          "width": 89.469,
+          "width": 87.359,
           "height": 84.0,
           "is_cluster": false
         }
@@ -29,15 +29,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 60.875,
+              "x": 59.203,
               "y": 84.0
             },
             {
-              "x": 60.875,
+              "x": 59.203,
               "y": 109.0
             },
             {
-              "x": 60.875,
+              "x": 59.203,
               "y": 134.0
             }
           ],
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 121.75,
+        "max_x": 118.406,
         "max_y": 218.0
       }
     }

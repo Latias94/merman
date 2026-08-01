@@ -1,48 +1,130 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "source": {
     "mermaid_version": "11.16.0",
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.0",
     "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
-    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
+    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v2"
+    "renderer_revision": "xtask-upstream-svg-v3"
   },
   "attestation": {
-    "mode": "adopted-existing"
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "locale": "en-US",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
   },
   "complete": true,
   "fixtures": {
+    "upstream_cypress_treeview_spec_should_hide_default_icons_with_icon_none_and_icon_012": {
+      "input_sha256": "feff117a5ca378e804430dc48101d22609f297e15fb5c5301f97764ee9b8c965",
+      "svg_sha256": "da8b40306b68bd8d5bedc14ed8a3e8e12b253a16963ed0f259540decca95d36b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_pick_file_icons_from_the_filenameicons_and_extensionicons_009": {
+      "input_sha256": "b8fae3896a6b74de0d85e4e20df5d9ae0e773025c9bbc0b39161bf9fc1352b2d",
+      "svg_sha256": "c3465edcd34f5f0b7752c4f9eb52aee080da63228a647143019e74e12127e125",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_preserve_consecutive_spaces_and_unicode_in_labels_013": {
+      "input_sha256": "c797fe29db1add0a3dacfcf91aa122e5dba81a976b8eb91348107c4e74e3c30f",
+      "svg_sha256": "7f197111cf4de24cefd209d00fd72a3d0e0c458622c92571e487bba8213c6f8f",
+      "renderer_profile": "mmdc-default"
+    },
     "upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002": {
-      "input_sha256": "a38d3ba62d10c850189fd241cc4f4bffda35b7c32d0492e587ea25a8813c64e3",
-      "svg_sha256": "8e315317b0c2686e349c1118a7c07af541983ac29831d480ecdc5b234a6e1e87",
+      "input_sha256": "3a0d32b4d86acc4119c8d83e0cfa8ef0aa7a836bfad868e242298539c149a171",
+      "svg_sha256": "5b67f2b5fd2cf8eabfccb1cede15a2c160d748571b83596e8c8c76a34531a0c8",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003": {
-      "input_sha256": "cb74cbb3fd4d5f2213389c88ad8ee48798d06fb69684df5ab31decb1aebadb17",
-      "svg_sha256": "1ac10b440514e4e9bfbb72967e9d8a2ed8f7120d86523c6eaffb91853195760f",
+      "input_sha256": "07481aa184959417c2c2d17f76c997ec18d065ed884b1d617e37dec5fc2f9bea",
+      "svg_sha256": "2a10282a04f45499b947283a7fdd06cc9aadb05d78bb01af5ac77fec431b4dbd",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001": {
-      "input_sha256": "e3eca43634d7f863673982fd132e036c4c4526001c08ebe28b184d81af660050",
-      "svg_sha256": "e2f70470e564871159c17ce9d326a4ff149981ec3c154d3ee4c869e451392c0d",
+      "input_sha256": "59e3f0bea6dc3a20dc81819f5f8d16fe42dd0dc1b6b0429da866f9884df9d541",
+      "svg_sha256": "0109dc0296f9d0247893767b47d2a8cb8e2c90d576b295dfbec18e999d648d10",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004": {
-      "input_sha256": "1b2f98d6f3eba98efcab26cfb69539758bd01659fbb9d75edc15d84ce5fa0f54",
-      "svg_sha256": "2b6c62715f16534a5a1a81f0ebf0d148f355c157701b53a2c0be28c3df26f5cb",
+      "input_sha256": "a7285d4c781ecde8be92c540861baa59e22bc7275082380a4cb1b94ecb49b032",
+      "svg_sha256": "403fcc4945b9a59c0b4ff3f01280168ecf1d8b88c1a5600978220b9851c0ead8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_bare_unquoted_labels_with_icons_005": {
+      "input_sha256": "cb8e9d268b7560764b46412764fe7068dd9dedd46556f4fe8e3d64ce66437c04",
+      "svg_sha256": "6ba9fb6c447b7d2597273db5862810829a498307da567687b0f3e9f3079e91d9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_class_annotations_for_highlighting_006": {
+      "input_sha256": "54c57a8d0d12d57898b5f25a88b6db4777c95baff7166f7bbecb4d8470dae211",
+      "svg_sha256": "5e0648906c21d010b9aeb7d51682f48b221c91152936708acf96338608d0eefb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_combined_annotations_015": {
+      "input_sha256": "47bced291beeb6dc7a7ea34f254128b296580ecc6867a91faa1865a9c54d2c25",
+      "svg_sha256": "b9445db8d3d3da0c948adbf71db365f83b2ad9f5c50dad44765fefb2841bce1f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_descriptions_007": {
+      "input_sha256": "4995e58cabeabc8ab008e1af255395fc04bf061f465ac977424312df17e2ed54",
+      "svg_sha256": "bac54ff935a3090c8f9d5f53fcbbd6a4f6d777df851e72bf4b2e2db95731cf18",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_emoji_as_icons_with_the_default_icons_hidden_014": {
+      "input_sha256": "efa756e8687d22ce5a4e8034d8cc7e8431a1f99031ab1e80fce94c307c1599a5",
+      "svg_sha256": "7de9ba1dd3fb4ffdf75c28255e7e0c86f35a40b7277808701714b978e4e4b1b0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_icon_overrides_from_registered_iconify_packs_008": {
+      "input_sha256": "5553f6f943e0c3e154fcfb1ee824da3e75b0a1b1728cfbabe3ddb3d9d1868397",
+      "svg_sha256": "f993f613461812d26d186ed05c8d813becc3f2467b3bd11af0ca61105e47d573",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_the_unknown_icon_fallback_for_unregistered_icons_011": {
+      "input_sha256": "752a03f8b989e4ef04514d1ecdd1b6af7b9c1d1915acb07c50dc8215fd7a1f1c",
+      "svg_sha256": "8691124d9a4313d9fd409e50ac291e47d4a1d38e3c9c4e74f2473041bdcbbf24",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_resolve_unprefixed_icon_overrides_via_defaulticonpack_010": {
+      "input_sha256": "109e75bf3b11d60f70f14a0db3127c8d89ab150290a53c4b604479c145e40a42",
+      "svg_sha256": "a9789da4d7ecd0ddeb6b0b192621ca688f210ae9130d899d47dcfc3fc14b92c0",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_treeview_basic": {
       "input_sha256": "47b72aedb6fc36c74e7a3aa8c0f17e473766a97cf0a67f66b2523ddb24e2fae1",
-      "svg_sha256": "c9017c97605a21456890986fd1acdd8d2609f5e8614bf66c51db923f88e6632f",
+      "svg_sha256": "d0bd738da0e2c31b7cad4c22c013c5ac5f559a625f98db439084d9f817ae0968",
       "renderer_profile": "mmdc-default"
     },
     "upstream_parser_treeview_title_accessibility_spec": {
       "input_sha256": "8fb64bfd2beec5a048f5e4a0acd0897ebbcce6f180f783340d604b1a22ecea55",
-      "svg_sha256": "59a57f98c439161b8164e90be3474905d3c8d2e5262fac6cd1658300a227d108",
+      "svg_sha256": "b8a6a8f941edc41bbfdfed190b5d9b3fc89555c30ec388828bb9d28bf6e936b5",
       "renderer_profile": "mmdc-default"
     }
   },

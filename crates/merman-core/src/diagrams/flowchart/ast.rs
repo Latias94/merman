@@ -1,4 +1,4 @@
-use super::{Edge, Node, SubgraphHeader};
+use super::{Edge, FlowchartLexemeComponent, Node, SubgraphHeader};
 use crate::SourceSpan;
 
 #[derive(Debug, Clone)]
@@ -8,6 +8,7 @@ pub(crate) struct StyleStmt {
     pub styles: Vec<String>,
     pub styles_text: Option<String>,
     pub styles_span: Option<SourceSpan>,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone)]
@@ -17,6 +18,7 @@ pub(crate) struct ClassDefStmt {
     pub styles: Vec<String>,
     pub styles_text: Option<String>,
     pub styles_span: Option<SourceSpan>,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +27,7 @@ pub(crate) struct ClassAssignStmt {
     pub target_spans: Vec<SourceSpan>,
     pub class_name: String,
     pub class_name_span: Option<SourceSpan>,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +44,7 @@ pub(crate) struct ClickStmt {
     pub ids: Vec<String>,
     pub tooltip: Option<String>,
     pub action: ClickAction,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +58,7 @@ pub(crate) struct LinkStyleStmt {
     pub positions: Vec<LinkStylePos>,
     pub interpolate: Option<String>,
     pub styles: Vec<String>,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone)]

@@ -134,6 +134,17 @@ struct DayjsParsedParts {
     unix_ms: Option<i64>,
 }
 
+// Clamps `byte_idx` down to the nearest valid char boundary before splitting,
+// so this never panics on multi-byte input; callers already reject a
+// shorter-than-requested `head` via their existing length/digit checks.
+fn split_at_char_boundary(s: &str, byte_idx: usize) -> (&str, &str) {
+    let mut idx = byte_idx.min(s.len());
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    s.split_at(idx)
+}
+
 pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> {
     let fmt = date_format.trim();
     if fmt.is_empty() {
@@ -162,15 +173,15 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Date
             return None;
         }
         let v: i64 = input[start_digits..i].parse().ok()?;
-        Some((sign.saturating_mul(v), &input[i..]))
+        Some((sign.checked_mul(v)?, &input[i..]))
     }
 
     fn parse_int_exact(s: &str, digits: usize) -> Option<(u32, &str)> {
         if s.len() < digits {
             return None;
         }
-        let (head, tail) = s.split_at(digits);
-        if !head.chars().all(|c| c.is_ascii_digit()) {
+        let (head, tail) = split_at_char_boundary(s, digits);
+        if head.len() != digits || !head.chars().all(|c| c.is_ascii_digit()) {
             return None;
         }
         let v = head.parse().ok()?;
@@ -530,7 +541,7 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Date
                 DayjsToken::UnixSec => {
                     let (sec, rest) = parse_signed_i64_prefix(input)?;
                     let mut next = parts.clone();
-                    next.unix_ms = Some(sec.saturating_mul(1000));
+                    next.unix_ms = Some(sec.checked_mul(1000)?);
                     parse_items(&items[1..], rest, &next)
                 }
                 DayjsToken::WeekdayLong | DayjsToken::WeekdayShort => {
@@ -594,7 +605,7 @@ pub(super) fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<Date
         let offset = FixedOffset::east_opt(mins * 60)?;
         offset.from_local_datetime(&naive).single()
     } else {
-        Some(local_from_naive(naive))
+        local_from_naive(naive)
     }
 }
 
@@ -629,7 +640,9 @@ pub(super) fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
         let midnight = d.and_hms_opt(0, 0, 0).ok_or_else(|| {
             Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
         })?;
-        return Ok(local_from_naive(midnight));
+        return local_from_naive(midnight).ok_or_else(|| {
+            Error::diagram_parse_fallback("gantt".to_string(), format!("Invalid date:{s}"))
+        });
     }
 
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
@@ -675,14 +688,14 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
             return None;
         };
 
-        let (hh_str, rest) = rest.split_at(2.min(rest.len()));
+        let (hh_str, rest) = split_at_char_boundary(rest, 2);
         let hh = parse_u32(hh_str)? as i32;
 
         let (mm, rest) = if let Some(rest) = rest.strip_prefix(':') {
-            let (mm_str, rest) = rest.split_at(2.min(rest.len()));
+            let (mm_str, rest) = split_at_char_boundary(rest, 2);
             (parse_u32(mm_str)? as i32, rest)
         } else {
-            let (mm_str, rest) = rest.split_at(2.min(rest.len()));
+            let (mm_str, rest) = split_at_char_boundary(rest, 2);
             (parse_u32(mm_str)? as i32, rest)
         };
 
@@ -742,7 +755,7 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
                 chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc);
             return Some(dt_utc.with_timezone(&crate::time::utc_fixed_offset()));
         }
-        return Some(local_from_naive(naive));
+        return local_from_naive(naive);
     }
 
     if let Some(r) = rest.strip_prefix('T') {
@@ -753,14 +766,14 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
     let (hh_str, rest2) = split_once(rest, ':')?;
     let hour = parse_u32(hh_str)?;
     let (mm_str, mut rest3) = {
-        let (mm_str, rest) = rest2.split_at(2.min(rest2.len()));
+        let (mm_str, rest) = split_at_char_boundary(rest2, 2);
         (mm_str, rest)
     };
     let minute = parse_u32(mm_str)?;
 
     if let Some(r) = rest3.strip_prefix(':') {
         let (ss_str, mut rest4) = {
-            let (ss_str, rest) = r.split_at(2.min(r.len()));
+            let (ss_str, rest) = split_at_char_boundary(r, 2);
             (ss_str, rest)
         };
         second = parse_u32(ss_str)?;
@@ -807,7 +820,7 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
         return offset.from_local_datetime(&naive).single();
     }
 
-    Some(local_from_naive(naive))
+    local_from_naive(naive)
 }
 
 fn parse_js_like_mdy_hm_datetime(s: &str) -> Option<DateTimeFixed> {
@@ -888,7 +901,7 @@ fn parse_js_like_mdy_hm_datetime(s: &str) -> Option<DateTimeFixed> {
 
     let date = NaiveDate::from_ymd_opt(year, month, day)?;
     let naive = date.and_hms_milli_opt(hour, minute, second, millis)?;
-    Some(local_from_naive(naive))
+    local_from_naive(naive)
 }
 
 fn is_ascii_digits(s: &str) -> bool {
@@ -985,7 +998,7 @@ pub(super) fn get_start_date(
         }
         return Ok(match latest {
             Some(end) => end,
-            None => Some(today_midnight_local()),
+            None => today_midnight_local(),
         });
     }
 
@@ -1048,39 +1061,60 @@ pub(super) fn parse_duration(str_: &str) -> (f64, String) {
     (value.parse().unwrap_or(f64::NAN), unit.to_string())
 }
 
+fn trunc_f64_to_i64(value: f64) -> Option<i64> {
+    const I64_MIN_AS_F64: f64 = -9_223_372_036_854_775_808.0;
+    const I64_MAX_EXCLUSIVE_AS_F64: f64 = 9_223_372_036_854_775_808.0;
+
+    if !value.is_finite() {
+        return None;
+    }
+    let truncated = value.trunc();
+    if !(I64_MIN_AS_F64..I64_MAX_EXCLUSIVE_AS_F64).contains(&truncated) {
+        return None;
+    }
+    Some(truncated as i64)
+}
+
+fn add_milliseconds(dt: DateTimeFixed, value: f64, scale: f64) -> Option<DateTimeFixed> {
+    let milliseconds = trunc_f64_to_i64(value * scale)?;
+    let duration = Duration::try_milliseconds(milliseconds)?;
+    dt.checked_add_signed(duration)
+}
+
 fn add_duration(dt: DateTimeFixed, value: f64, unit: &str) -> Option<DateTimeFixed> {
     if !value.is_finite() {
         return None;
     }
     match unit {
-        "ms" => Some(dt + Duration::milliseconds(value.trunc() as i64)),
-        "s" => Some(dt + Duration::milliseconds((value * 1_000.0).trunc() as i64)),
-        "m" => Some(dt + Duration::milliseconds((value * 60_000.0).trunc() as i64)),
-        "h" => Some(dt + Duration::milliseconds((value * 3_600_000.0).trunc() as i64)),
+        "ms" => add_milliseconds(dt, value, 1.0),
+        "s" => add_milliseconds(dt, value, 1_000.0),
+        "m" => add_milliseconds(dt, value, 60_000.0),
+        "h" => add_milliseconds(dt, value, 3_600_000.0),
         "d" => {
             if value.fract() == 0.0 {
-                add_days_local(dt, value as i64)
+                add_days_local(dt, trunc_f64_to_i64(value)?)
             } else {
-                Some(dt + Duration::milliseconds((value * 86_400_000.0).trunc() as i64))
+                add_milliseconds(dt, value, 86_400_000.0)
             }
         }
         "w" => {
             if value.fract() == 0.0 {
-                add_days_local(dt, (value as i64).saturating_mul(7))
+                let days = trunc_f64_to_i64(value)?.checked_mul(7)?;
+                add_days_local(dt, days)
             } else {
-                Some(dt + Duration::milliseconds((value * 604_800_000.0).trunc() as i64))
+                add_milliseconds(dt, value, 604_800_000.0)
             }
         }
         "M" => {
             if value.fract() == 0.0 {
-                add_months_local(dt, value as i64)
+                add_months_local(dt, trunc_f64_to_i64(value)?)
             } else {
                 None
             }
         }
         "y" => {
             if value.fract() == 0.0 {
-                add_years_local(dt, value as i64)
+                add_years_local(dt, trunc_f64_to_i64(value)?)
             } else {
                 None
             }
@@ -1124,7 +1158,7 @@ pub(super) fn get_end_date(
         }
         return Ok(match earliest {
             Some(start) => start,
-            None => Some(today_midnight_local()),
+            None => today_midnight_local(),
         });
     }
 

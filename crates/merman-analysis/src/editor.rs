@@ -1,9 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::mem::size_of;
+use std::sync::Arc;
 
+use crate::retained_weight::{
+    ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
+};
 use serde::{Deserialize, Serialize};
 
 mod core_facts;
-mod text_scan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ByteSpan {
@@ -58,7 +62,55 @@ pub enum FenceSemanticRole {
     Payload,
 }
 
-pub use merman_core::EditorRenameDomain as FenceRenameDomain;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FenceLexemeKind {
+    Keyword,
+    Comment,
+    Operator,
+    Delimiter,
+    Identifier,
+    Number,
+    Date,
+    Duration,
+    Boolean,
+    String,
+    Style,
+    Color,
+    Literal,
+    Frontmatter,
+    Directive,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FenceLexemeModifier {
+    Declaration,
+    Definition,
+    Reference,
+    Readonly,
+    Documentation,
+    DefaultLibrary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FenceLexeme {
+    pub kind: FenceLexemeKind,
+    pub modifiers: Vec<FenceLexemeModifier>,
+    pub span: ByteSpan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FenceLexemeFailure {
+    InvalidSpan { span: ByteSpan },
+    Overlap { left: ByteSpan, right: ByteSpan },
+    InvalidProvenance,
+    UnknownModifierBits { bits: u8 },
+    DuplicateModifiers { bits: u8 },
+}
+
+pub use merman_core::EditorRenamePolicy as FenceRenamePolicy;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -67,8 +119,7 @@ pub struct FenceSemanticItem {
     pub detail: Option<String>,
     pub kind: EditorSymbolKind,
     pub role: FenceSemanticRole,
-    #[serde(default)]
-    pub rename_domain: FenceRenameDomain,
+    pub rename_policy: FenceRenamePolicy,
     pub span: ByteSpan,
     pub selection: ByteSpan,
 }
@@ -87,14 +138,18 @@ impl FenceSemanticItem {
             detail,
             kind,
             role,
-            rename_domain: FenceRenameDomain::default(),
+            rename_policy: if role == FenceSemanticRole::Entity {
+                FenceRenamePolicy::Identifier
+            } else {
+                FenceRenamePolicy::None
+            },
             span,
             selection,
         }
     }
 
-    pub fn with_rename_domain(mut self, rename_domain: FenceRenameDomain) -> Self {
-        self.rename_domain = rename_domain;
+    pub fn with_rename_policy(mut self, rename_policy: FenceRenamePolicy) -> Self {
+        self.rename_policy = rename_policy;
         self
     }
 
@@ -114,8 +169,6 @@ impl FenceSemanticItem {
 pub struct FenceReferenceGroup {
     pub name: String,
     pub kind: EditorSymbolKind,
-    #[serde(default)]
-    pub rename_domain: FenceRenameDomain,
 }
 
 impl FenceReferenceGroup {
@@ -123,7 +176,6 @@ impl FenceReferenceGroup {
         Self {
             name: name.into(),
             kind,
-            rename_domain: FenceRenameDomain::default(),
         }
     }
 
@@ -131,65 +183,37 @@ impl FenceReferenceGroup {
         Self {
             name: item.name.clone(),
             kind: item.kind,
-            rename_domain: item.rename_domain,
         }
-    }
-
-    pub fn with_rename_domain(mut self, rename_domain: FenceRenameDomain) -> Self {
-        self.rename_domain = rename_domain;
-        self
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FenceTextIndexSource {
-    /// Legacy text scan used only when parser facts are unavailable.
+    /// No parser-backed body facts are available.
     #[default]
-    TextScan,
+    Unavailable,
     /// Parser-backed facts from a complete family parse.
     ParserComplete,
-    /// Parser-backed complete facts whose spans remain in parser-input coordinates.
-    ParserCompleteDegradedSpans,
     /// Parser-backed facts from a recoverable partial parse.
     ParserRecovered,
-    /// Parser-backed recovered facts whose spans remain in parser-input coordinates.
-    ParserRecoveredDegradedSpans,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ShapeObjectValuePrefix {
-    pub value_start: usize,
-    pub has_separator_space: bool,
 }
 
 impl FenceTextIndexSource {
     pub fn is_parser_backed(self) -> bool {
-        matches!(
-            self,
-            Self::ParserComplete
-                | Self::ParserCompleteDegradedSpans
-                | Self::ParserRecovered
-                | Self::ParserRecoveredDegradedSpans
-        )
+        matches!(self, Self::ParserComplete | Self::ParserRecovered)
     }
 
-    pub fn is_text_scan(self) -> bool {
-        matches!(self, Self::TextScan)
+    pub fn is_unavailable(self) -> bool {
+        matches!(self, Self::Unavailable)
     }
 
     pub fn is_recovered(self) -> bool {
-        matches!(
-            self,
-            Self::ParserRecovered | Self::ParserRecoveredDegradedSpans
-        )
+        matches!(self, Self::ParserRecovered)
     }
 
     pub fn has_source_mapped_spans(self) -> bool {
-        !matches!(
-            self,
-            Self::ParserCompleteDegradedSpans | Self::ParserRecoveredDegradedSpans
-        )
+        self.is_parser_backed()
     }
 }
 
@@ -208,6 +232,7 @@ pub enum FenceCursorCompletionKind {
 pub enum FenceExpectedSyntaxKind {
     IdList,
     NodeIdentifier,
+    Operator,
     Shape,
     ShapeTrigger,
     Direction,
@@ -286,99 +311,280 @@ impl FenceCursorContext {
 
 #[derive(Debug, Clone, Default)]
 pub struct FenceTextIndex {
-    node_ids: BTreeSet<String>,
-    class_names: BTreeSet<String>,
-    directive_prefixes: BTreeSet<String>,
-    references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
-    outline_items: Vec<FenceLineItem>,
-    semantic_items: Vec<FenceSemanticItem>,
-    expected_syntax: Vec<FenceExpectedSyntax>,
-    completion_dialect: merman_core::EditorCompletionDialect,
-    source: FenceTextIndexSource,
+    data: Arc<FenceTextIndexData>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct ReferenceIntervalId {
+    group_ordinal: usize,
+    span_ordinal: usize,
+    semantic_item_id: usize,
+}
+
+#[derive(Debug)]
+struct PointIntervalEntry<T> {
+    span: ByteSpan,
+    value: T,
+    subtree_max_end: usize,
+}
+
+#[derive(Debug)]
+struct PointIntervalIndex<T> {
+    entries: Vec<PointIntervalEntry<T>>,
+}
+
+impl<T> Default for PointIntervalIndex<T> {
+    fn default() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+}
+
+impl<T: Copy> PointIntervalIndex<T> {
+    fn from_start_ordered(intervals: Vec<(ByteSpan, T)>) -> Self {
+        debug_assert!(
+            intervals
+                .windows(2)
+                .all(|pair| pair[0].0.start <= pair[1].0.start)
+        );
+        let mut entries = intervals
+            .into_iter()
+            .map(|(span, value)| PointIntervalEntry {
+                span,
+                value,
+                subtree_max_end: span.end,
+            })
+            .collect::<Vec<_>>();
+        populate_subtree_max_ends(&mut entries);
+        Self { entries }
+    }
+
+    fn for_each_at(&self, offset: usize, mut visit: impl FnMut(T, ByteSpan)) -> usize {
+        fn visit_subtree<T: Copy>(
+            entries: &[PointIntervalEntry<T>],
+            offset: usize,
+            visited: &mut usize,
+            visit: &mut impl FnMut(T, ByteSpan),
+        ) {
+            if entries.is_empty() {
+                return;
+            }
+
+            let middle = entries.len() / 2;
+            let (left, rest) = entries.split_at(middle);
+            let (node, right) = rest
+                .split_first()
+                .expect("a non-empty interval subtree has a root");
+            *visited += 1;
+            if node.subtree_max_end < offset {
+                return;
+            }
+
+            visit_subtree(left, offset, visited, visit);
+            if node.span.start > offset {
+                return;
+            }
+            if node.span.contains(offset) {
+                visit(node.value, node.span);
+            }
+            visit_subtree(right, offset, visited, visit);
+        }
+
+        let mut visited = 0;
+        visit_subtree(&self.entries, offset, &mut visited, &mut visit);
+        visited
+    }
+}
+
+fn populate_subtree_max_ends<T>(entries: &mut [PointIntervalEntry<T>]) -> Option<usize> {
+    if entries.is_empty() {
+        return None;
+    }
+
+    let middle = entries.len() / 2;
+    let (left, rest) = entries.split_at_mut(middle);
+    let (node, right) = rest
+        .split_first_mut()
+        .expect("a non-empty interval subtree has a root");
+    let left_max = populate_subtree_max_ends(left);
+    let right_max = populate_subtree_max_ends(right);
+    node.subtree_max_end = left_max
+        .into_iter()
+        .chain(right_max)
+        .fold(node.span.end, usize::max);
+    Some(node.subtree_max_end)
+}
+
+#[derive(Debug, Default)]
+pub(super) struct FenceTextIndexData {
+    pub(super) node_ids: BTreeSet<String>,
+    pub(super) class_names: BTreeSet<String>,
+    pub(super) directive_prefixes: BTreeSet<String>,
+    pub(super) references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
+    pub(super) outline_items: Vec<FenceLineItem>,
+    pub(super) semantic_items: Vec<FenceSemanticItem>,
+    pub(super) lexemes: Vec<FenceLexeme>,
+    pub(super) lexeme_failure: Option<FenceLexemeFailure>,
+    pub(super) expected_syntax: Vec<FenceExpectedSyntax>,
+    pub(super) completion_vocabulary: merman_core::EditorCompletionVocabulary,
+    pub(super) source: FenceTextIndexSource,
+    semantic_point_index: PointIntervalIndex<usize>,
+    reference_point_index: PointIntervalIndex<ReferenceIntervalId>,
+}
+
+impl FenceTextIndexData {
+    pub(super) fn build_point_indexes(
+        &mut self,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<(), crate::AnalysisCancelled> {
+        let mut semantic_intervals = Vec::with_capacity(self.semantic_items.len());
+        let mut reference_item_ids = BTreeMap::new();
+        for (semantic_item_id, item) in self.semantic_items.iter().enumerate() {
+            if semantic_item_id.is_multiple_of(128) {
+                cancellation.checkpoint()?;
+            }
+            semantic_intervals.push((item.span, semantic_item_id));
+            if item.role == FenceSemanticRole::Entity {
+                let group = FenceReferenceGroup::from_semantic_item(item);
+                if self.references.contains_key(&group) {
+                    reference_item_ids.entry(group).or_insert(semantic_item_id);
+                }
+            }
+        }
+
+        let reference_count = self.references.values().map(Vec::len).sum();
+        let mut reference_intervals = Vec::with_capacity(reference_count);
+        let mut reference_index = 0usize;
+        for (group_ordinal, (group, spans)) in self.references.iter().enumerate() {
+            let semantic_item_id = *reference_item_ids
+                .get(group)
+                .expect("reference groups are derived from canonical semantic items");
+            for (span_ordinal, span) in spans.iter().copied().enumerate() {
+                if reference_index.is_multiple_of(128) {
+                    cancellation.checkpoint()?;
+                }
+                reference_intervals.push((
+                    span,
+                    ReferenceIntervalId {
+                        group_ordinal,
+                        span_ordinal,
+                        semantic_item_id,
+                    },
+                ));
+                reference_index += 1;
+            }
+        }
+        reference_intervals.sort_by(|(left_span, left_id), (right_span, right_id)| {
+            (left_span.start, left_span.end, left_id).cmp(&(
+                right_span.start,
+                right_span.end,
+                right_id,
+            ))
+        });
+        cancellation.checkpoint()?;
+
+        self.semantic_point_index = PointIntervalIndex::from_start_ordered(semantic_intervals);
+        self.reference_point_index = PointIntervalIndex::from_start_ordered(reference_intervals);
+        Ok(())
+    }
+
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::new(
+            ARC_ALLOCATION_OVERHEAD.saturating_add(size_of::<FenceTextIndexData>()),
+        );
+        for values in [&self.node_ids, &self.class_names, &self.directive_prefixes] {
+            weight.add(
+                values
+                    .len()
+                    .saturating_mul(conservative_btree_entry_bytes::<String, ()>()),
+            );
+            for value in values {
+                weight.add_string(value);
+            }
+        }
+        weight.add(
+            self.references
+                .len()
+                .saturating_mul(conservative_btree_entry_bytes::<
+                    FenceReferenceGroup,
+                    Vec<ByteSpan>,
+                >()),
+        );
+        for (group, spans) in &self.references {
+            weight.add_string(&group.name);
+            weight.add_array::<ByteSpan>(spans.capacity());
+        }
+        weight.add_array::<FenceLineItem>(self.outline_items.capacity());
+        for item in &self.outline_items {
+            weight.add_string(&item.name);
+            weight.add_optional_string(&item.detail);
+        }
+        weight.add_array::<FenceSemanticItem>(self.semantic_items.capacity());
+        for item in &self.semantic_items {
+            weight.add_string(&item.name);
+            weight.add_optional_string(&item.detail);
+        }
+        weight.add_array::<FenceLexeme>(self.lexemes.capacity());
+        for lexeme in &self.lexemes {
+            weight.add_array::<FenceLexemeModifier>(lexeme.modifiers.capacity());
+        }
+        weight.add_array::<FenceExpectedSyntax>(self.expected_syntax.capacity());
+        weight.add_array::<PointIntervalEntry<usize>>(self.semantic_point_index.entries.capacity());
+        weight.add_array::<PointIntervalEntry<ReferenceIntervalId>>(
+            self.reference_point_index.entries.capacity(),
+        );
+        weight.finish()
+    }
 }
 
 impl FenceTextIndex {
-    pub fn from_text(text: &str, diagram_type: Option<&str>) -> Self {
-        let mut index = Self::default();
-        let mut relative_start = 0usize;
-
-        for line in text.split_inclusive('\n') {
-            let line_end = relative_start + line.len();
-            let line_no_newline = line.strip_suffix('\n').unwrap_or(line);
-            let trimmed = line_no_newline.trim_start();
-            let leading = line_no_newline.len().saturating_sub(trimmed.len());
-            let abs_start = relative_start + leading;
-            let abs_end = line_end;
-
-            index.record_line(diagram_type, line_no_newline, trimmed, abs_start, abs_end);
-            relative_start = line_end;
+    pub(super) fn from_data(data: FenceTextIndexData) -> Self {
+        Self {
+            data: Arc::new(data),
         }
-
-        if !text.ends_with('\n') && relative_start < text.len() {
-            let line_no_newline = &text[relative_start..];
-            let trimmed = line_no_newline.trim_start();
-            let leading = line_no_newline.len().saturating_sub(trimmed.len());
-            index.record_line(
-                diagram_type,
-                line_no_newline,
-                trimmed,
-                relative_start + leading,
-                text.len(),
-            );
-        }
-
-        index.outline_items.sort_by(|left, right| {
-            (
-                left.span.start,
-                left.span.end,
-                left.name.as_str(),
-                left.selection.start,
-                left.selection.end,
-            )
-                .cmp(&(
-                    right.span.start,
-                    right.span.end,
-                    right.name.as_str(),
-                    right.selection.start,
-                    right.selection.end,
-                ))
-        });
-        index.outline_items.dedup_by(|left, right| {
-            left.span.start == right.span.start
-                && left.span.end == right.span.end
-                && left.name == right.name
-        });
-
-        index
     }
 
-    pub fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> Self {
+    pub(crate) fn estimated_owned_heap_bytes(&self) -> usize {
+        self.data.estimated_owned_heap_bytes()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.data, &other.data)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> Self {
         core_facts::from_core_facts(facts)
     }
 
-    pub fn merge_text_scan_node_ids(&mut self, text: &str, diagram_type: Option<&str>) {
-        let text_index = Self::from_text(text, diagram_type);
-        self.node_ids.extend(text_index.node_ids);
+    pub(crate) fn from_core_facts_cancellable(
+        facts: &merman_core::EditorSemanticFacts,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        core_facts::from_core_facts_cancellable(facts, cancellation)
     }
 
     pub fn node_ids(&self) -> impl Iterator<Item = &String> {
-        self.node_ids.iter()
+        self.data.node_ids.iter()
     }
 
     pub fn class_names(&self) -> impl Iterator<Item = &String> {
-        self.class_names.iter()
+        self.data.class_names.iter()
     }
 
     pub fn directive_prefixes(&self) -> impl Iterator<Item = &String> {
-        self.directive_prefixes.iter()
+        self.data.directive_prefixes.iter()
     }
 
     pub fn has_directive_prefix(&self, prefix: &str) -> bool {
-        self.directive_prefixes.contains(prefix)
+        self.data.directive_prefixes.contains(prefix)
     }
 
     pub fn first_reference_span(&self, name: &str) -> Option<ByteSpan> {
-        self.references
+        self.data
+            .references
             .iter()
             .find(|(group, _)| group.name == name)
             .map(|(_, spans)| spans)
@@ -386,7 +592,8 @@ impl FenceTextIndex {
     }
 
     pub fn reference_spans(&self, name: &str) -> &[ByteSpan] {
-        self.references
+        self.data
+            .references
             .iter()
             .find(|(group, _)| group.name == name)
             .map(|(_, spans)| spans.as_slice())
@@ -402,51 +609,37 @@ impl FenceTextIndex {
     }
 
     pub fn first_reference_span_in_group(&self, group: &FenceReferenceGroup) -> Option<ByteSpan> {
-        self.references
+        self.data
+            .references
             .get(group)
             .and_then(|spans| spans.first().copied())
     }
 
     pub fn reference_spans_in_group(&self, group: &FenceReferenceGroup) -> &[ByteSpan] {
-        self.references.get(group).map(Vec::as_slice).unwrap_or(&[])
+        self.data
+            .references
+            .get(group)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     pub fn references(&self) -> impl Iterator<Item = (&FenceReferenceGroup, &[ByteSpan])> {
-        self.references
+        self.data
+            .references
             .iter()
             .map(|(group, spans)| (group, spans.as_slice()))
     }
 
     pub fn symbol_at_offset(&self, offset: usize) -> Option<(String, ByteSpan)> {
-        self.references.iter().find_map(|(group, spans)| {
-            spans
-                .iter()
-                .copied()
-                .find(|span| span.contains(offset))
-                .map(|span| (group.name.clone(), span))
-        })
+        let (reference, _) = self.reference_at_offset_indexed(offset);
+        let (reference, span) = reference?;
+        let item = self.data.semantic_items.get(reference.semantic_item_id)?;
+        Some((item.name.clone(), span))
     }
 
     pub fn semantic_item_at_offset(&self, offset: usize) -> Option<&FenceSemanticItem> {
-        self.semantic_items
-            .iter()
-            .filter(|item| item.span.contains(offset))
-            .min_by(|left, right| {
-                let left_len = left.span.end.saturating_sub(left.span.start);
-                let right_len = right.span.end.saturating_sub(right.span.start);
-                (
-                    left_len,
-                    left.selection.start,
-                    left.selection.end,
-                    left.name.as_str(),
-                )
-                    .cmp(&(
-                        right_len,
-                        right.selection.start,
-                        right.selection.end,
-                        right.name.as_str(),
-                    ))
-            })
+        let (item_id, _) = self.semantic_item_id_at_offset_indexed(offset);
+        self.data.semantic_items.get(item_id?)
     }
 
     pub fn entity_item_at_offset(&self, offset: usize) -> Option<&FenceSemanticItem> {
@@ -455,19 +648,31 @@ impl FenceTextIndex {
     }
 
     pub fn outline_items(&self) -> &[FenceLineItem] {
-        &self.outline_items
+        &self.data.outline_items
     }
 
     pub fn semantic_items(&self) -> &[FenceSemanticItem] {
-        &self.semantic_items
+        &self.data.semantic_items
+    }
+
+    pub fn lexemes(&self) -> &[FenceLexeme] {
+        &self.data.lexemes
+    }
+
+    pub fn lexeme_failure(&self) -> Option<FenceLexemeFailure> {
+        self.data.lexeme_failure
     }
 
     pub fn expected_syntax(&self) -> &[FenceExpectedSyntax] {
-        &self.expected_syntax
+        &self.data.expected_syntax
+    }
+
+    pub fn completion_vocabulary(&self) -> merman_core::EditorCompletionVocabulary {
+        self.data.completion_vocabulary
     }
 
     pub fn source(&self) -> FenceTextIndexSource {
-        self.source
+        self.data.source
     }
 
     pub fn cursor_context(&self, text: &str, cursor_offset: usize) -> FenceCursorContext {
@@ -489,20 +694,10 @@ impl FenceTextIndex {
                 completion_kinds.push(FenceCursorCompletionKind::DiagramHeader);
             }
 
-            if self.source.is_parser_backed() && offer_directive_items(&prefix, directive_prefix) {
+            if self.data.source.is_parser_backed()
+                && offer_directive_items(&prefix, directive_prefix)
+            {
                 completion_kinds.push(FenceCursorCompletionKind::Directive);
-            }
-
-            if self.completion_dialect == merman_core::EditorCompletionDialect::Flowchart {
-                if offer_operator_items(&prefix) {
-                    completion_kinds.push(FenceCursorCompletionKind::Operator);
-                }
-                if offer_direction_items(&prefix) {
-                    completion_kinds.push(FenceCursorCompletionKind::Direction);
-                }
-                if offer_shape_items(&prefix) {
-                    completion_kinds.push(FenceCursorCompletionKind::Shape);
-                }
             }
         }
 
@@ -510,7 +705,7 @@ impl FenceTextIndex {
             prefix,
             prefix_start,
             cursor,
-            source: self.source,
+            source: self.data.source,
             source_start,
             directive_prefix,
             comment_or_directive_line,
@@ -521,7 +716,8 @@ impl FenceTextIndex {
     }
 
     fn expected_syntax_at_offset(&self, offset: usize) -> Option<&FenceExpectedSyntax> {
-        self.expected_syntax
+        self.data
+            .expected_syntax
             .iter()
             .filter(|expected| expected.span.contains_inclusive_end(offset))
             .min_by(|left, right| {
@@ -535,37 +731,113 @@ impl FenceTextIndex {
             })
     }
 
-    fn record_line(
-        &mut self,
-        diagram_type: Option<&str>,
-        line_no_newline: &str,
-        trimmed: &str,
-        abs_start: usize,
-        abs_end: usize,
-    ) {
-        let directive_prefix = directive_prefix(line_no_newline);
-        if let Some(prefix) = directive_prefix {
-            self.directive_prefixes.insert(prefix.to_string());
-            if is_payload_only_text_scan_prefix(prefix) {
-                return;
-            }
-        }
+    fn semantic_item_id_at_offset_indexed(&self, offset: usize) -> (Option<usize>, usize) {
+        let mut best = None;
+        let visited = self
+            .data
+            .semantic_point_index
+            .for_each_at(offset, |item_id, _| {
+                if best
+                    .is_none_or(|current| self.compare_semantic_item_ids(item_id, current).is_lt())
+                {
+                    best = Some(item_id);
+                }
+            });
+        (best, visited)
+    }
 
-        if directive_prefix.is_none_or(|prefix| !is_classify_only_text_scan_prefix(prefix)) {
-            text_scan::collect_node_ids(diagram_type, line_no_newline, &mut self.node_ids);
-        }
+    fn compare_semantic_item_ids(&self, left_id: usize, right_id: usize) -> std::cmp::Ordering {
+        let left = &self.data.semantic_items[left_id];
+        let right = &self.data.semantic_items[right_id];
+        let left_len = left.span.end.saturating_sub(left.span.start);
+        let right_len = right.span.end.saturating_sub(right.span.start);
+        (
+            left_len,
+            left.selection.start,
+            left.selection.end,
+            left.name.as_str(),
+            left_id,
+        )
+            .cmp(&(
+                right_len,
+                right.selection.start,
+                right.selection.end,
+                right.name.as_str(),
+                right_id,
+            ))
+    }
 
-        if let Some(item) = text_scan::classify_line_item(diagram_type, trimmed, abs_start, abs_end)
-        {
-            if is_class_definition_detail(item.detail.as_deref()) {
-                self.class_names.insert(item.name.clone());
-            }
-            self.references
-                .entry(FenceReferenceGroup::new(item.name.clone(), item.kind))
-                .or_default()
-                .push(item.selection);
-            self.outline_items.push(item);
-        }
+    fn reference_at_offset_indexed(
+        &self,
+        offset: usize,
+    ) -> (Option<(ReferenceIntervalId, ByteSpan)>, usize) {
+        let mut best = None;
+        let visited = self
+            .data
+            .reference_point_index
+            .for_each_at(offset, |reference, span| {
+                if best
+                    .as_ref()
+                    .is_none_or(|(current, _)| reference < *current)
+                {
+                    best = Some((reference, span));
+                }
+            });
+        (best, visited)
+    }
+
+    #[cfg(test)]
+    fn semantic_item_id_at_offset_linear(&self, offset: usize) -> Option<usize> {
+        (0..self.data.semantic_items.len())
+            .filter(|item_id| self.data.semantic_items[*item_id].span.contains(offset))
+            .min_by(|left_id, right_id| {
+                let left = &self.data.semantic_items[*left_id];
+                let right = &self.data.semantic_items[*right_id];
+                let left_len = left.span.end.saturating_sub(left.span.start);
+                let right_len = right.span.end.saturating_sub(right.span.start);
+                (
+                    left_len,
+                    left.selection.start,
+                    left.selection.end,
+                    left.name.as_str(),
+                )
+                    .cmp(&(
+                        right_len,
+                        right.selection.start,
+                        right.selection.end,
+                        right.name.as_str(),
+                    ))
+            })
+    }
+
+    #[cfg(test)]
+    fn reference_at_offset_linear(&self, offset: usize) -> Option<(ReferenceIntervalId, ByteSpan)> {
+        self.data
+            .references
+            .iter()
+            .enumerate()
+            .find_map(|(group_ordinal, (group, spans))| {
+                let semantic_item_id = self.data.semantic_items.iter().position(|item| {
+                    item.role == FenceSemanticRole::Entity
+                        && item.name == group.name
+                        && item.kind == group.kind
+                })?;
+                spans
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .find(|(_, span)| span.contains(offset))
+                    .map(|(span_ordinal, span)| {
+                        (
+                            ReferenceIntervalId {
+                                group_ordinal,
+                                span_ordinal,
+                                semantic_item_id,
+                            },
+                            span,
+                        )
+                    })
+            })
     }
 }
 
@@ -579,7 +851,12 @@ fn clamp_to_char_boundary(text: &str, offset: usize) -> usize {
 
 fn current_line_prefix(text: &str, cursor: usize) -> (usize, String) {
     let before = &text[..cursor];
-    let line_start = before.rfind('\n').map(|index| index + 1).unwrap_or(0);
+    let line_start = before
+        .as_bytes()
+        .iter()
+        .rposition(|byte| matches!(byte, b'\n' | b'\r'))
+        .map(|index| index + 1)
+        .unwrap_or(0);
     let raw_prefix = &before[line_start..];
     let trimmed = raw_prefix.trim_start();
     let prefix_start = line_start + raw_prefix.len().saturating_sub(trimmed.len());
@@ -632,42 +909,6 @@ const DIRECTIVE_HELPER_PREFIXES: &[&str] = &[
     ":::",
 ];
 
-const DIRECTIVE_CLASSIFY_ONLY_PREFIXES: &[&str] = &[
-    "classDef",
-    "class",
-    "style",
-    "linkStyle",
-    "click",
-    "section",
-];
-
-const PAYLOAD_ONLY_TEXT_SCAN_PREFIXES: &[&str] = &[
-    "init",
-    "initialize",
-    "wrap",
-    "cssClass",
-    "link",
-    "callback",
-    "links",
-    "properties",
-    "details",
-    "dateFormat",
-    "inclusiveEndDates",
-    "topAxis",
-    "axisFormat",
-    "tickInterval",
-    "includes",
-    "excludes",
-    "todayMarker",
-    "weekday",
-    "weekend",
-    "accTitle",
-    "accDescr",
-    "accDescription",
-    "title",
-    ":::",
-];
-
 fn offer_diagram_headers(source_start: bool, prefix: &str) -> bool {
     if !source_start {
         return false;
@@ -677,96 +918,11 @@ fn offer_diagram_headers(source_start: bool, prefix: &str) -> bool {
     prefix.is_empty() || diagram_header_prefix_matches(prefix)
 }
 
-fn offer_operator_items(prefix: &str) -> bool {
-    let prefix = prefix.trim_end();
-
-    prefix.ends_with("--") || prefix.ends_with("->")
-}
-
 fn offer_directive_items(prefix: &str, directive_prefix: Option<&str>) -> bool {
     let prefix = prefix.trim_end();
 
     prefix.trim_start().starts_with("%%")
         || directive_prefix.is_some_and(|prefix| DIRECTIVE_HELPER_PREFIXES.contains(&prefix))
-}
-
-fn offer_direction_items(prefix: &str) -> bool {
-    prefix.trim_end() == "direction"
-}
-
-fn offer_shape_items(prefix: &str) -> bool {
-    let prefix = prefix.trim_end();
-
-    shape_object_value_prefix(prefix).is_some()
-        || prefix.ends_with("((")
-        || prefix.ends_with("{{")
-        || prefix.ends_with('[')
-        || prefix.ends_with("[/")
-        || prefix.ends_with("[\\")
-        || prefix.ends_with('>')
-}
-
-pub fn shape_object_value_prefix(prefix: &str) -> Option<ShapeObjectValuePrefix> {
-    let mut search_end = prefix.len();
-    while let Some(marker) = prefix[..search_end].rfind("@{") {
-        let next_search_end = marker;
-        let mut offset = marker + "@{".len();
-        offset += leading_whitespace_len(&prefix[offset..]);
-
-        let tail = &prefix[offset..];
-        if !tail.starts_with("shape") {
-            search_end = next_search_end;
-            continue;
-        }
-        let after_shape = offset + "shape".len();
-        if prefix[after_shape..]
-            .chars()
-            .next()
-            .is_some_and(is_shape_key_continue)
-        {
-            search_end = next_search_end;
-            continue;
-        }
-
-        offset = after_shape;
-        offset += leading_whitespace_len(&prefix[offset..]);
-        if !prefix[offset..].starts_with(':') {
-            search_end = next_search_end;
-            continue;
-        }
-
-        offset += ':'.len_utf8();
-        let whitespace = leading_whitespace_len(&prefix[offset..]);
-        let value_start = offset + whitespace;
-        if !shape_object_prefix_is_inside_shape_value(prefix, value_start) {
-            search_end = next_search_end;
-            continue;
-        }
-        return Some(ShapeObjectValuePrefix {
-            value_start,
-            has_separator_space: whitespace > 0,
-        });
-    }
-
-    None
-}
-
-fn shape_object_prefix_is_inside_shape_value(prefix: &str, value_start: usize) -> bool {
-    prefix[value_start..]
-        .chars()
-        .all(|ch| !matches!(ch, ',' | '}' | '\n' | '\r'))
-}
-
-fn leading_whitespace_len(input: &str) -> usize {
-    input
-        .chars()
-        .take_while(|ch| ch.is_whitespace())
-        .map(char::len_utf8)
-        .sum()
-}
-
-fn is_shape_key_continue(ch: char) -> bool {
-    ch == '_' || ch == '-' || ch.is_ascii_alphanumeric()
 }
 
 fn diagram_header_prefix_matches(prefix: &str) -> bool {
@@ -775,17 +931,9 @@ fn diagram_header_prefix_matches(prefix: &str) -> bool {
         return false;
     }
 
-    text_scan::diagram_header_facts()
+    merman_core::diagram_header_facts()
         .iter()
         .any(|fact| fact.label.starts_with(prefix))
-}
-
-fn is_payload_only_text_scan_prefix(prefix: &str) -> bool {
-    PAYLOAD_ONLY_TEXT_SCAN_PREFIXES.contains(&prefix)
-}
-
-fn is_classify_only_text_scan_prefix(prefix: &str) -> bool {
-    DIRECTIVE_CLASSIFY_ONLY_PREFIXES.contains(&prefix)
 }
 
 fn is_class_definition_detail(detail: Option<&str>) -> bool {
@@ -804,6 +952,10 @@ fn apply_expected_syntax_to_completion(
         FenceExpectedSyntaxKind::NodeIdentifier => {
             completion_kinds.clear();
             completion_kinds.push(FenceCursorCompletionKind::NodeIdentifier);
+        }
+        FenceExpectedSyntaxKind::Operator => {
+            completion_kinds.clear();
+            completion_kinds.push(FenceCursorCompletionKind::Operator);
         }
         FenceExpectedSyntaxKind::Shape => {
             completion_kinds.clear();
@@ -842,13 +994,10 @@ fn directive_prefix(line: &str) -> Option<&'static str> {
         return Some(":::");
     }
 
-    for &prefix in DIRECTIVE_PREFIXES {
-        if has_word_boundary(trimmed, prefix) {
-            return Some(prefix);
-        }
-    }
-
-    None
+    DIRECTIVE_PREFIXES
+        .iter()
+        .find(|&&prefix| has_word_boundary(trimmed, prefix))
+        .copied()
 }
 
 fn has_word_boundary(text: &str, prefix: &str) -> bool {

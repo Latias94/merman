@@ -1,15 +1,6 @@
 use std::fmt::Write as _;
-use std::ops::Range;
 
-use super::super::{escape_xml_display, fmt, root_svg};
-
-pub(super) const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
-pub(super) const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
-
-pub(super) struct ArchitectureRootOpen {
-    pub(super) viewbox_placeholder_range: Range<usize>,
-    pub(super) max_width_placeholder_range: Option<Range<usize>>,
-}
+use super::super::{escape_xml_display, root_svg};
 
 pub(super) struct ArchitectureA11y {
     pub(super) aria_labelledby: Option<String>,
@@ -22,15 +13,14 @@ pub(super) fn architecture_a11y_nodes(
     acc_title: Option<&str>,
     acc_descr: Option<&str>,
 ) -> ArchitectureA11y {
-    let diagram_id_esc = super::super::escape_xml(diagram_id);
     let aria_labelledby = acc_title
         .map(str::trim)
         .filter(|t| !t.is_empty())
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr
         .map(str::trim)
         .filter(|t| !t.is_empty())
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
+        .map(|_| format!("chart-desc-{diagram_id}"));
 
     let mut nodes = String::new();
     if let Some(t) = acc_title.map(str::trim).filter(|t| !t.is_empty()) {
@@ -57,116 +47,26 @@ pub(super) fn architecture_a11y_nodes(
     }
 }
 
-pub(super) struct ArchitectureRootOpenContext<'a> {
-    pub(super) out: &'a mut String,
-    pub(super) diagram_id: &'a str,
-    pub(super) css: &'a str,
-    pub(super) a11y: &'a ArchitectureA11y,
-    pub(super) is_empty: bool,
-    pub(super) use_max_width: bool,
-    pub(super) half_icon: f64,
-    pub(super) icon_size_px: f64,
-}
-
-pub(super) fn push_architecture_root_open(
-    ctx: ArchitectureRootOpenContext<'_>,
-) -> Option<ArchitectureRootOpen> {
-    let ArchitectureRootOpenContext {
+pub(super) fn begin_architecture_document(
+    out: &mut String,
+    root_viewport: &root_svg::RootViewportContext<'_>,
+    diagram_id: &str,
+    css: &str,
+    a11y: &ArchitectureA11y,
+    use_max_width: bool,
+) -> crate::Result<root_svg::RootDocument> {
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "architecture");
+    root_chrome.aria_labelledby = a11y.aria_labelledby.as_deref();
+    root_chrome.aria_describedby = a11y.aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    let document = root_viewport.begin_document(
         out,
-        diagram_id,
-        css,
-        a11y,
-        is_empty,
-        use_max_width,
-        half_icon,
-        icon_size_px,
-    } = ctx;
-
-    if is_empty {
-        // Preserve Mermaid's "empty diagram" fallback sizing behavior (no getBBox-derived padding).
-        let vb_min_x = -half_icon;
-        let vb_min_y = -half_icon;
-        let vb_w = icon_size_px.max(1.0);
-        let vb_h = icon_size_px.max(1.0);
-        // Mermaid Architecture sets `max-width` directly from the computed `viewBox` width.
-        let max_width_style = fmt(vb_w);
-        let style_attr = if use_max_width {
-            format!("max-width: {max_width_style}px; background-color: white;")
-        } else {
-            "background-color: white;".to_string()
-        };
-        let viewbox_attr = format!(
-            "{} {} {} {}",
-            fmt(vb_min_x),
-            fmt(vb_min_y),
-            fmt(vb_w),
-            fmt(vb_h)
-        );
-        let width = if use_max_width {
-            root_svg::SvgRootWidth::Percent100
-        } else {
-            root_svg::SvgRootWidth::None
-        };
-        root_svg::push_svg_root_open(
-            out,
-            root_svg::SvgRootAttrs {
-                width,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                aria_labelledby: a11y.aria_labelledby.as_deref(),
-                aria_describedby: a11y.aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "architecture")
-            },
-        );
-    } else {
-        let style_attr = if use_max_width {
-            format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;")
-        } else {
-            "background-color: white;".to_string()
-        };
-        let width = if use_max_width {
-            root_svg::SvgRootWidth::Percent100
-        } else {
-            root_svg::SvgRootWidth::None
-        };
-        root_svg::push_svg_root_open(
-            out,
-            root_svg::SvgRootAttrs {
-                width,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(VIEWBOX_PLACEHOLDER),
-                aria_labelledby: a11y.aria_labelledby.as_deref(),
-                aria_describedby: a11y.aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "architecture")
-            },
-        );
-    }
+        root_svg::DeferredRootSpec::mermaid_or_intrinsic(use_max_width),
+        root_chrome,
+    )?;
 
     out.push_str(a11y.nodes.as_str());
     let _ = write!(out, "<style>{}</style>", css);
     out.push_str("<g/><g class=\"architecture-edges\">");
-
-    if is_empty {
-        return None;
-    }
-
-    let viewbox_pos = out
-        .find(VIEWBOX_PLACEHOLDER)
-        .expect("architecture svg root missing viewBox placeholder");
-    let viewbox_placeholder_range = viewbox_pos..(viewbox_pos + VIEWBOX_PLACEHOLDER.len());
-    let max_width_placeholder_range = if use_max_width {
-        let max_width_pos = out
-            .find(MAX_WIDTH_PLACEHOLDER)
-            .expect("architecture svg root missing max-width placeholder");
-        Some(max_width_pos..(max_width_pos + MAX_WIDTH_PLACEHOLDER.len()))
-    } else {
-        None
-    };
-
-    Some(ArchitectureRootOpen {
-        viewbox_placeholder_range,
-        max_width_placeholder_range,
-    })
+    Ok(document)
 }

@@ -9,9 +9,10 @@ mod code_actions;
 mod completion;
 mod context;
 mod diagnostics;
-mod semantic_tokens;
+mod generated;
 mod snapshot;
 mod structure;
+mod token_planner;
 mod types;
 mod workspace;
 
@@ -28,19 +29,29 @@ pub use diagnostics::{
     DiagnosticCodeActionData, EditorDiagnostic, EditorDiagnosticRelated,
     analysis_diagnostic_to_editor, analysis_payload_to_diagnostics,
 };
-pub use merman_analysis::FenceTextIndexSource;
-pub use semantic_tokens::{
-    SemanticToken, SemanticTokenKind, SemanticTokenLegend, SemanticTokenModifier,
-    semantic_token_legend, semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
-    token_modifier_index, token_type_index,
+pub use generated::{
+    PlannedTokenKind, PlannedTokenModifier, SEMANTIC_TOKEN_DESCRIPTOR,
+    SEMANTIC_TOKEN_DESCRIPTOR_DIGEST, SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN,
+    SEMANTIC_TOKEN_VALID_MODIFIER_MASK, SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX,
+    SemanticTokenDescriptor, SemanticTokenKindDescriptor, SemanticTokenModifierDescriptor,
+    SemanticTokenPackedDescriptor, TokenOverlayKind, semantic_token_descriptor,
 };
-pub use snapshot::{DocumentSnapshot, FenceSnapshot};
+pub use merman_analysis::FenceTextIndexSource;
+pub use snapshot::{
+    DiagramDetectionValidity, DocumentSnapshot, DocumentSnapshotError, EditorDiagramDetection,
+    FenceSnapshot,
+};
 pub use structure::{
     EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover, EditorLocation,
     EditorMarkupContent, EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation,
     EditorTextEdit, EditorWorkspaceEdit, RenameError, document_symbols, folding_ranges,
-    goto_definition, hover, prepare_rename, references, rename, selection_range, selection_ranges,
-    workspace_symbols, workspace_symbols_for_snapshots,
+    goto_definition, hover, prepare_rename, references, rename, search_document_symbols,
+    selection_range, selection_ranges,
 };
+pub use token_planner::{
+    PlannedToken, SemanticTokenPlan, TokenPlanError, plan_semantic_tokens_for_snapshot,
+    plan_semantic_tokens_for_snapshot_range,
+};
+
 pub use types::{DocumentKind, DocumentUri, Position, Range};
-pub use workspace::{DocumentAnalysisContext, DocumentWorkspace};
+pub use workspace::{DocumentAnalysisContext, DocumentAnalysisOutcome, DocumentWorkspace};

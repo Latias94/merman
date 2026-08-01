@@ -1,0 +1,2534 @@
+{
+  "oracle_version": 1,
+  "baseline_commit": "0be1a409286f044f40954aec686bd316ff78cb16",
+  "cases": [
+    {
+      "name": "recommended_flowchart_fix",
+      "source": "flowchart\nA[Hello] --> B[World]\n",
+      "diagnostics": {
+        "version": 1,
+        "valid": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "hints": 1
+        },
+        "source": {
+          "kind": "diagram",
+          "path": null,
+          "diagram_index": null,
+          "language": "mermaid"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.authoring.flowchart.explicit_direction",
+            "severity": "hint",
+            "category": "semantic",
+            "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+            "code": null,
+            "code_name": null,
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 0,
+              "byte_end": 9,
+              "line": 1,
+              "column": 1,
+              "end_line": 1,
+              "end_column": 10,
+              "lsp_range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 0,
+                  "character": 9
+                }
+              }
+            },
+            "related": [],
+            "help": null,
+            "fixes": [
+              {
+                "title": "Insert `TB` into the flowchart header",
+                "edits": [
+                  {
+                    "span": {
+                      "byte_start": 9,
+                      "byte_end": 9,
+                      "line": 1,
+                      "column": 10,
+                      "end_line": 1,
+                      "end_column": 10,
+                      "lsp_range": {
+                        "start": {
+                          "line": 0,
+                          "character": 9
+                        },
+                        "end": {
+                          "line": 0,
+                          "character": 9
+                        }
+                      }
+                    },
+                    "replacement": " TB"
+                  }
+                ],
+                "is_preferred": true
+              }
+            ]
+          }
+        ]
+      },
+      "facts": {
+        "version": 1,
+        "valid": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "hints": 1
+        },
+        "source": {
+          "kind": "diagram",
+          "path": null,
+          "diagram_index": null,
+          "language": "mermaid"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.authoring.flowchart.explicit_direction",
+            "severity": "hint",
+            "category": "semantic",
+            "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+            "code": null,
+            "code_name": null,
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 0,
+              "byte_end": 9,
+              "line": 1,
+              "column": 1,
+              "end_line": 1,
+              "end_column": 10,
+              "lsp_range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 0,
+                  "character": 9
+                }
+              }
+            },
+            "related": [],
+            "help": null,
+            "fixes": [
+              {
+                "title": "Insert `TB` into the flowchart header",
+                "edits": [
+                  {
+                    "span": {
+                      "byte_start": 9,
+                      "byte_end": 9,
+                      "line": 1,
+                      "column": 10,
+                      "end_line": 1,
+                      "end_column": 10,
+                      "lsp_range": {
+                        "start": {
+                          "line": 0,
+                          "character": 9
+                        },
+                        "end": {
+                          "line": 0,
+                          "character": 9
+                        }
+                      }
+                    },
+                    "replacement": " TB"
+                  }
+                ],
+                "is_preferred": true
+              }
+            ]
+          }
+        ],
+        "diagrams": [
+          {
+            "source_id": "document",
+            "index": 0,
+            "kind": "whole_document",
+            "source": {
+              "kind": "diagram",
+              "path": null,
+              "diagram_index": null,
+              "language": "mermaid"
+            },
+            "span": {
+              "byte_start": 0,
+              "byte_end": 32,
+              "line": 1,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "body_span": {
+              "byte_start": 0,
+              "byte_end": 32,
+              "line": 1,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "text_len": 32,
+            "fence_delimiter": null,
+            "parse_disposition": "parsed",
+            "syntax": {
+              "diagram_type": "flowchart-v2",
+              "effective_layout": "dagre",
+              "fact_source": "parser_complete",
+              "parser_backed": true,
+              "recovered": false,
+              "source_mapped_spans": true,
+              "flowchart": {
+                "direction": null,
+                "classDefs": {},
+                "edgeDefaults": {
+                  "interpolate": null,
+                  "style": []
+                },
+                "vertexCalls": [
+                  "A",
+                  "B"
+                ],
+                "nodes": [
+                  {
+                    "id": "A",
+                    "label": "Hello",
+                    "labelType": "text",
+                    "layoutShape": "squareRect",
+                    "icon": null,
+                    "form": null,
+                    "pos": null,
+                    "img": null,
+                    "constraint": null,
+                    "assetWidth": null,
+                    "assetHeight": null,
+                    "classes": [],
+                    "styles": [],
+                    "link": null,
+                    "linkTarget": null,
+                    "haveCallback": false
+                  },
+                  {
+                    "id": "B",
+                    "label": "World",
+                    "labelType": "text",
+                    "layoutShape": "squareRect",
+                    "icon": null,
+                    "form": null,
+                    "pos": null,
+                    "img": null,
+                    "constraint": null,
+                    "assetWidth": null,
+                    "assetHeight": null,
+                    "classes": [],
+                    "styles": [],
+                    "link": null,
+                    "linkTarget": null,
+                    "haveCallback": false
+                  }
+                ],
+                "edges": [
+                  {
+                    "id": "L_A_B_0",
+                    "from": "A",
+                    "to": "B",
+                    "label": null,
+                    "labelType": "text",
+                    "type": "arrow_point",
+                    "stroke": "normal",
+                    "interpolate": null,
+                    "classes": [],
+                    "style": [],
+                    "animate": null,
+                    "animation": null,
+                    "length": 1
+                  }
+                ],
+                "subgraphs": [],
+                "tooltips": {}
+              },
+              "node_ids": [
+                "A",
+                "B"
+              ],
+              "class_names": [],
+              "directive_prefixes": [],
+              "references": [
+                {
+                  "name": "A",
+                  "kind": "module",
+                  "spans": [
+                    {
+                      "local": {
+                        "start": 10,
+                        "end": 11
+                      },
+                      "document": {
+                        "byte_start": 10,
+                        "byte_end": 11,
+                        "line": 2,
+                        "column": 1,
+                        "end_line": 2,
+                        "end_column": 2,
+                        "lsp_range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 1
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "B",
+                  "kind": "module",
+                  "spans": [
+                    {
+                      "local": {
+                        "start": 23,
+                        "end": 24
+                      },
+                      "document": {
+                        "byte_start": 23,
+                        "byte_end": 24,
+                        "line": 2,
+                        "column": 14,
+                        "end_line": 2,
+                        "end_column": 15,
+                        "lsp_range": {
+                          "start": {
+                            "line": 1,
+                            "character": 13
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 14
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "outline_items": [
+                {
+                  "name": "A",
+                  "detail": "flowchart node",
+                  "kind": "module",
+                  "span": {
+                    "local": {
+                      "start": 10,
+                      "end": 11
+                    },
+                    "document": {
+                      "byte_start": 10,
+                      "byte_end": 11,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 10,
+                      "end": 11
+                    },
+                    "document": {
+                      "byte_start": 10,
+                      "byte_end": 11,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "B",
+                  "detail": "flowchart node",
+                  "kind": "module",
+                  "span": {
+                    "local": {
+                      "start": 23,
+                      "end": 24
+                    },
+                    "document": {
+                      "byte_start": 23,
+                      "byte_end": 24,
+                      "line": 2,
+                      "column": 14,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 13
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 23,
+                      "end": 24
+                    },
+                    "document": {
+                      "byte_start": 23,
+                      "byte_end": 24,
+                      "line": 2,
+                      "column": 14,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 13
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "semantic_items": [
+                {
+                  "name": "A",
+                  "detail": "flowchart node",
+                  "kind": "module",
+                  "role": "entity",
+                  "rename_policy": "flowchart_node_id",
+                  "span": {
+                    "local": {
+                      "start": 10,
+                      "end": 11
+                    },
+                    "document": {
+                      "byte_start": 10,
+                      "byte_end": 11,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 10,
+                      "end": 11
+                    },
+                    "document": {
+                      "byte_start": 10,
+                      "byte_end": 11,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "Hello",
+                  "detail": "flowchart node label",
+                  "kind": "string",
+                  "role": "payload",
+                  "rename_policy": "none",
+                  "span": {
+                    "local": {
+                      "start": 11,
+                      "end": 18
+                    },
+                    "document": {
+                      "byte_start": 11,
+                      "byte_end": 18,
+                      "line": 2,
+                      "column": 2,
+                      "end_line": 2,
+                      "end_column": 9,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 1
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 8
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 12,
+                      "end": 17
+                    },
+                    "document": {
+                      "byte_start": 12,
+                      "byte_end": 17,
+                      "line": 2,
+                      "column": 3,
+                      "end_line": 2,
+                      "end_column": 8,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 7
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "B",
+                  "detail": "flowchart node",
+                  "kind": "module",
+                  "role": "entity",
+                  "rename_policy": "flowchart_node_id",
+                  "span": {
+                    "local": {
+                      "start": 23,
+                      "end": 24
+                    },
+                    "document": {
+                      "byte_start": 23,
+                      "byte_end": 24,
+                      "line": 2,
+                      "column": 14,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 13
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 23,
+                      "end": 24
+                    },
+                    "document": {
+                      "byte_start": 23,
+                      "byte_end": 24,
+                      "line": 2,
+                      "column": 14,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 13
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "World",
+                  "detail": "flowchart node label",
+                  "kind": "string",
+                  "role": "payload",
+                  "rename_policy": "none",
+                  "span": {
+                    "local": {
+                      "start": 24,
+                      "end": 31
+                    },
+                    "document": {
+                      "byte_start": 24,
+                      "byte_end": 31,
+                      "line": 2,
+                      "column": 15,
+                      "end_line": 2,
+                      "end_column": 22,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 14
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 21
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 25,
+                      "end": 30
+                    },
+                    "document": {
+                      "byte_start": 25,
+                      "byte_end": 30,
+                      "line": 2,
+                      "column": 16,
+                      "end_line": 2,
+                      "end_column": 21,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 15
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 20
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "expected_syntax": [
+                {
+                  "kind": "payload",
+                  "span": {
+                    "local": {
+                      "start": 12,
+                      "end": 17
+                    },
+                    "document": {
+                      "byte_start": 12,
+                      "byte_end": 17,
+                      "line": 2,
+                      "column": 3,
+                      "end_line": 2,
+                      "end_column": 8,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 7
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "payload",
+                  "span": {
+                    "local": {
+                      "start": 25,
+                      "end": 30
+                    },
+                    "document": {
+                      "byte_start": 25,
+                      "byte_end": 30,
+                      "line": 2,
+                      "column": 16,
+                      "end_line": 2,
+                      "end_column": 21,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 15
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 20
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "recovered_flowchart_default",
+      "source": "flowchart TD\nA[unterminated\n",
+      "diagnostics": {
+        "version": 1,
+        "valid": false,
+        "summary": {
+          "errors": 1,
+          "warnings": 1,
+          "infos": 0,
+          "hints": 0
+        },
+        "source": {
+          "kind": "diagram",
+          "path": null,
+          "diagram_index": null,
+          "language": "mermaid"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.parse.diagram_parse",
+            "severity": "error",
+            "category": "parse",
+            "message": "Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 14,
+              "byte_end": 27,
+              "line": 2,
+              "column": 2,
+              "end_line": 2,
+              "end_column": 15,
+              "lsp_range": {
+                "start": {
+                  "line": 1,
+                  "character": 1
+                },
+                "end": {
+                  "line": 1,
+                  "character": 14
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          },
+          {
+            "id": "merman.parse.recovered_editor_facts",
+            "severity": "warning",
+            "category": "parse",
+            "message": "flowchart parser recovered after parse error: Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 28,
+              "byte_end": 28,
+              "line": 3,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          }
+        ]
+      },
+      "facts": {
+        "version": 1,
+        "valid": false,
+        "summary": {
+          "errors": 1,
+          "warnings": 1,
+          "infos": 0,
+          "hints": 0
+        },
+        "source": {
+          "kind": "diagram",
+          "path": null,
+          "diagram_index": null,
+          "language": "mermaid"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.parse.diagram_parse",
+            "severity": "error",
+            "category": "parse",
+            "message": "Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 14,
+              "byte_end": 27,
+              "line": 2,
+              "column": 2,
+              "end_line": 2,
+              "end_column": 15,
+              "lsp_range": {
+                "start": {
+                  "line": 1,
+                  "character": 1
+                },
+                "end": {
+                  "line": 1,
+                  "character": 14
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          },
+          {
+            "id": "merman.parse.recovered_editor_facts",
+            "severity": "warning",
+            "category": "parse",
+            "message": "flowchart parser recovered after parse error: Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 28,
+              "byte_end": 28,
+              "line": 3,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          }
+        ],
+        "diagrams": [
+          {
+            "source_id": "document",
+            "index": 0,
+            "kind": "whole_document",
+            "source": {
+              "kind": "diagram",
+              "path": null,
+              "diagram_index": null,
+              "language": "mermaid"
+            },
+            "span": {
+              "byte_start": 0,
+              "byte_end": 28,
+              "line": 1,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "body_span": {
+              "byte_start": 0,
+              "byte_end": 28,
+              "line": 1,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "text_len": 28,
+            "fence_delimiter": null,
+            "parse_disposition": "recovered",
+            "syntax": {
+              "diagram_type": "flowchart-v2",
+              "effective_layout": "dagre",
+              "fact_source": "parser_recovered",
+              "parser_backed": true,
+              "recovered": true,
+              "source_mapped_spans": true,
+              "node_ids": [
+                "A"
+              ],
+              "class_names": [],
+              "directive_prefixes": [],
+              "references": [
+                {
+                  "name": "A",
+                  "kind": "module",
+                  "spans": [
+                    {
+                      "local": {
+                        "start": 13,
+                        "end": 14
+                      },
+                      "document": {
+                        "byte_start": 13,
+                        "byte_end": 14,
+                        "line": 2,
+                        "column": 1,
+                        "end_line": 2,
+                        "end_column": 2,
+                        "lsp_range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 1
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "outline_items": [
+                {
+                  "name": "A",
+                  "detail": "flowchart node",
+                  "kind": "module",
+                  "span": {
+                    "local": {
+                      "start": 13,
+                      "end": 14
+                    },
+                    "document": {
+                      "byte_start": 13,
+                      "byte_end": 14,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 13,
+                      "end": 14
+                    },
+                    "document": {
+                      "byte_start": 13,
+                      "byte_end": 14,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "semantic_items": [
+                {
+                  "name": "A",
+                  "detail": "flowchart node",
+                  "kind": "module",
+                  "role": "entity",
+                  "rename_policy": "flowchart_node_id",
+                  "span": {
+                    "local": {
+                      "start": 13,
+                      "end": 14
+                    },
+                    "document": {
+                      "byte_start": 13,
+                      "byte_end": 14,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 13,
+                      "end": 14
+                    },
+                    "document": {
+                      "byte_start": 13,
+                      "byte_end": 14,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "unterminated",
+                  "detail": "flowchart node label",
+                  "kind": "string",
+                  "role": "payload",
+                  "rename_policy": "none",
+                  "span": {
+                    "local": {
+                      "start": 14,
+                      "end": 27
+                    },
+                    "document": {
+                      "byte_start": 14,
+                      "byte_end": 27,
+                      "line": 2,
+                      "column": 2,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 1
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 15,
+                      "end": 27
+                    },
+                    "document": {
+                      "byte_start": 15,
+                      "byte_end": 27,
+                      "line": 2,
+                      "column": 3,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "expected_syntax": [
+                {
+                  "kind": "shape_trigger",
+                  "span": {
+                    "local": {
+                      "start": 14,
+                      "end": 15
+                    },
+                    "document": {
+                      "byte_start": 14,
+                      "byte_end": 15,
+                      "line": 2,
+                      "column": 2,
+                      "end_line": 2,
+                      "end_column": 3,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 1
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 2
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "payload",
+                  "span": {
+                    "local": {
+                      "start": 15,
+                      "end": 27
+                    },
+                    "document": {
+                      "byte_start": 15,
+                      "byte_end": 27,
+                      "line": 2,
+                      "column": 3,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "recovered_flowchart_warning_override",
+      "source": "flowchart TD\nA[unterminated\n",
+      "diagnostics": {
+        "version": 1,
+        "valid": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 2,
+          "infos": 0,
+          "hints": 0
+        },
+        "source": {
+          "kind": "diagram",
+          "path": null,
+          "diagram_index": null,
+          "language": "mermaid"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.parse.diagram_parse",
+            "severity": "warning",
+            "category": "parse",
+            "message": "Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 14,
+              "byte_end": 27,
+              "line": 2,
+              "column": 2,
+              "end_line": 2,
+              "end_column": 15,
+              "lsp_range": {
+                "start": {
+                  "line": 1,
+                  "character": 1
+                },
+                "end": {
+                  "line": 1,
+                  "character": 14
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          },
+          {
+            "id": "merman.parse.recovered_editor_facts",
+            "severity": "warning",
+            "category": "parse",
+            "message": "flowchart parser recovered after parse error: Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 28,
+              "byte_end": 28,
+              "line": 3,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          }
+        ]
+      },
+      "facts": {
+        "version": 1,
+        "valid": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 2,
+          "infos": 0,
+          "hints": 0
+        },
+        "source": {
+          "kind": "diagram",
+          "path": null,
+          "diagram_index": null,
+          "language": "mermaid"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.parse.diagram_parse",
+            "severity": "warning",
+            "category": "parse",
+            "message": "Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 14,
+              "byte_end": 27,
+              "line": 2,
+              "column": 2,
+              "end_line": 2,
+              "end_column": 15,
+              "lsp_range": {
+                "start": {
+                  "line": 1,
+                  "character": 1
+                },
+                "end": {
+                  "line": 1,
+                  "character": 14
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          },
+          {
+            "id": "merman.parse.recovered_editor_facts",
+            "severity": "warning",
+            "category": "parse",
+            "message": "flowchart parser recovered after parse error: Unterminated node label (missing `]`)",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "flowchart-v2",
+            "span": {
+              "byte_start": 28,
+              "byte_end": 28,
+              "line": 3,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "related": [],
+            "help": null
+          }
+        ],
+        "diagrams": [
+          {
+            "source_id": "document",
+            "index": 0,
+            "kind": "whole_document",
+            "source": {
+              "kind": "diagram",
+              "path": null,
+              "diagram_index": null,
+              "language": "mermaid"
+            },
+            "span": {
+              "byte_start": 0,
+              "byte_end": 28,
+              "line": 1,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "body_span": {
+              "byte_start": 0,
+              "byte_end": 28,
+              "line": 1,
+              "column": 1,
+              "end_line": 3,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 0
+                }
+              }
+            },
+            "text_len": 28,
+            "fence_delimiter": null,
+            "parse_disposition": "recovered",
+            "syntax": {
+              "diagram_type": "flowchart-v2",
+              "effective_layout": "dagre",
+              "fact_source": "parser_recovered",
+              "parser_backed": true,
+              "recovered": true,
+              "source_mapped_spans": true,
+              "node_ids": [
+                "A"
+              ],
+              "class_names": [],
+              "directive_prefixes": [],
+              "references": [
+                {
+                  "name": "A",
+                  "kind": "module",
+                  "spans": [
+                    {
+                      "local": {
+                        "start": 13,
+                        "end": 14
+                      },
+                      "document": {
+                        "byte_start": 13,
+                        "byte_end": 14,
+                        "line": 2,
+                        "column": 1,
+                        "end_line": 2,
+                        "end_column": 2,
+                        "lsp_range": {
+                          "start": {
+                            "line": 1,
+                            "character": 0
+                          },
+                          "end": {
+                            "line": 1,
+                            "character": 1
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              ],
+              "outline_items": [
+                {
+                  "name": "A",
+                  "detail": "flowchart node",
+                  "kind": "module",
+                  "span": {
+                    "local": {
+                      "start": 13,
+                      "end": 14
+                    },
+                    "document": {
+                      "byte_start": 13,
+                      "byte_end": 14,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 13,
+                      "end": 14
+                    },
+                    "document": {
+                      "byte_start": 13,
+                      "byte_end": 14,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "semantic_items": [
+                {
+                  "name": "A",
+                  "detail": "flowchart node",
+                  "kind": "module",
+                  "role": "entity",
+                  "rename_policy": "flowchart_node_id",
+                  "span": {
+                    "local": {
+                      "start": 13,
+                      "end": 14
+                    },
+                    "document": {
+                      "byte_start": 13,
+                      "byte_end": 14,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 13,
+                      "end": 14
+                    },
+                    "document": {
+                      "byte_start": 13,
+                      "byte_end": 14,
+                      "line": 2,
+                      "column": 1,
+                      "end_line": 2,
+                      "end_column": 2,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 0
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 1
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "unterminated",
+                  "detail": "flowchart node label",
+                  "kind": "string",
+                  "role": "payload",
+                  "rename_policy": "none",
+                  "span": {
+                    "local": {
+                      "start": 14,
+                      "end": 27
+                    },
+                    "document": {
+                      "byte_start": 14,
+                      "byte_end": 27,
+                      "line": 2,
+                      "column": 2,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 1
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 15,
+                      "end": 27
+                    },
+                    "document": {
+                      "byte_start": 15,
+                      "byte_end": 27,
+                      "line": 2,
+                      "column": 3,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "expected_syntax": [
+                {
+                  "kind": "shape_trigger",
+                  "span": {
+                    "local": {
+                      "start": 14,
+                      "end": 15
+                    },
+                    "document": {
+                      "byte_start": 14,
+                      "byte_end": 15,
+                      "line": 2,
+                      "column": 2,
+                      "end_line": 2,
+                      "end_column": 3,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 1
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 2
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "payload",
+                  "span": {
+                    "local": {
+                      "start": 15,
+                      "end": 27
+                    },
+                    "document": {
+                      "byte_start": 15,
+                      "byte_end": 27,
+                      "line": 2,
+                      "column": 3,
+                      "end_line": 2,
+                      "end_column": 15,
+                      "lsp_range": {
+                        "start": {
+                          "line": 1,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "markdown_recovered_editor_facts",
+      "source": "before\n```mermaid\ncynefin-beta\n  complex\n  complicated\n  complicated --> complicated : \"Self-loop\"\n```\nafter\n",
+      "diagnostics": {
+        "version": 1,
+        "valid": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 1,
+          "infos": 0,
+          "hints": 0
+        },
+        "source": {
+          "kind": "markdown",
+          "path": "compatibility-oracle.md",
+          "diagram_index": null,
+          "language": "markdown"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.parse.recovered_editor_facts",
+            "severity": "warning",
+            "category": "parse",
+            "message": "cynefin self-loop transition on domain \"complicated\" is skipped",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "cynefin",
+            "span": {
+              "byte_start": 57,
+              "byte_end": 68,
+              "line": 6,
+              "column": 3,
+              "end_line": 6,
+              "end_column": 14,
+              "lsp_range": {
+                "start": {
+                  "line": 5,
+                  "character": 2
+                },
+                "end": {
+                  "line": 5,
+                  "character": 13
+                }
+              }
+            },
+            "related": [
+              {
+                "message": "Mermaid fence 1",
+                "span": {
+                  "byte_start": 7,
+                  "byte_end": 103,
+                  "line": 2,
+                  "column": 1,
+                  "end_line": 8,
+                  "end_column": 1,
+                  "lsp_range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 0
+                    }
+                  }
+                }
+              }
+            ],
+            "help": null
+          }
+        ]
+      },
+      "facts": {
+        "version": 1,
+        "valid": true,
+        "summary": {
+          "errors": 0,
+          "warnings": 1,
+          "infos": 0,
+          "hints": 0
+        },
+        "source": {
+          "kind": "markdown",
+          "path": "compatibility-oracle.md",
+          "diagram_index": null,
+          "language": "markdown"
+        },
+        "diagnostics": [
+          {
+            "id": "merman.parse.recovered_editor_facts",
+            "severity": "warning",
+            "category": "parse",
+            "message": "cynefin self-loop transition on domain \"complicated\" is skipped",
+            "code": 5,
+            "code_name": "MERMAN_PARSE_ERROR",
+            "diagram_type": "cynefin",
+            "span": {
+              "byte_start": 57,
+              "byte_end": 68,
+              "line": 6,
+              "column": 3,
+              "end_line": 6,
+              "end_column": 14,
+              "lsp_range": {
+                "start": {
+                  "line": 5,
+                  "character": 2
+                },
+                "end": {
+                  "line": 5,
+                  "character": 13
+                }
+              }
+            },
+            "related": [
+              {
+                "message": "Mermaid fence 1",
+                "span": {
+                  "byte_start": 7,
+                  "byte_end": 103,
+                  "line": 2,
+                  "column": 1,
+                  "end_line": 8,
+                  "end_column": 1,
+                  "lsp_range": {
+                    "start": {
+                      "line": 1,
+                      "character": 0
+                    },
+                    "end": {
+                      "line": 7,
+                      "character": 0
+                    }
+                  }
+                }
+              }
+            ],
+            "help": null
+          }
+        ],
+        "diagrams": [
+          {
+            "source_id": "mermaid-fence-1",
+            "index": 0,
+            "kind": "mermaid_fence",
+            "source": {
+              "kind": "markdown",
+              "path": "compatibility-oracle.md",
+              "diagram_index": 0,
+              "language": "mermaid"
+            },
+            "span": {
+              "byte_start": 7,
+              "byte_end": 103,
+              "line": 2,
+              "column": 1,
+              "end_line": 8,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 1,
+                  "character": 0
+                },
+                "end": {
+                  "line": 7,
+                  "character": 0
+                }
+              }
+            },
+            "body_span": {
+              "byte_start": 18,
+              "byte_end": 99,
+              "line": 3,
+              "column": 1,
+              "end_line": 7,
+              "end_column": 1,
+              "lsp_range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 6,
+                  "character": 0
+                }
+              }
+            },
+            "text_len": 81,
+            "fence_delimiter": {
+              "marker": "backtick",
+              "len": 3
+            },
+            "parse_disposition": "parsed",
+            "syntax": {
+              "diagram_type": "cynefin",
+              "effective_layout": "dagre",
+              "fact_source": "parser_complete",
+              "parser_backed": true,
+              "recovered": false,
+              "source_mapped_spans": true,
+              "node_ids": [],
+              "class_names": [],
+              "directive_prefixes": [],
+              "references": [],
+              "outline_items": [
+                {
+                  "name": "complex",
+                  "detail": "cynefin domain",
+                  "kind": "namespace",
+                  "span": {
+                    "local": {
+                      "start": 15,
+                      "end": 22
+                    },
+                    "document": {
+                      "byte_start": 33,
+                      "byte_end": 40,
+                      "line": 4,
+                      "column": 3,
+                      "end_line": 4,
+                      "end_column": 10,
+                      "lsp_range": {
+                        "start": {
+                          "line": 3,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 3,
+                          "character": 9
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 15,
+                      "end": 22
+                    },
+                    "document": {
+                      "byte_start": 33,
+                      "byte_end": 40,
+                      "line": 4,
+                      "column": 3,
+                      "end_line": 4,
+                      "end_column": 10,
+                      "lsp_range": {
+                        "start": {
+                          "line": 3,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 3,
+                          "character": 9
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "complicated",
+                  "detail": "cynefin domain",
+                  "kind": "namespace",
+                  "span": {
+                    "local": {
+                      "start": 25,
+                      "end": 36
+                    },
+                    "document": {
+                      "byte_start": 43,
+                      "byte_end": 54,
+                      "line": 5,
+                      "column": 3,
+                      "end_line": 5,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 4,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 13
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 25,
+                      "end": 36
+                    },
+                    "document": {
+                      "byte_start": 43,
+                      "byte_end": 54,
+                      "line": 5,
+                      "column": 3,
+                      "end_line": 5,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 4,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 13
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "complicated",
+                  "detail": "cynefin transition source",
+                  "kind": "namespace",
+                  "span": {
+                    "local": {
+                      "start": 39,
+                      "end": 50
+                    },
+                    "document": {
+                      "byte_start": 57,
+                      "byte_end": 68,
+                      "line": 6,
+                      "column": 3,
+                      "end_line": 6,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 13
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 39,
+                      "end": 50
+                    },
+                    "document": {
+                      "byte_start": 57,
+                      "byte_end": 68,
+                      "line": 6,
+                      "column": 3,
+                      "end_line": 6,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 13
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "complicated",
+                  "detail": "cynefin transition target",
+                  "kind": "namespace",
+                  "span": {
+                    "local": {
+                      "start": 55,
+                      "end": 66
+                    },
+                    "document": {
+                      "byte_start": 73,
+                      "byte_end": 84,
+                      "line": 6,
+                      "column": 19,
+                      "end_line": 6,
+                      "end_column": 30,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 18
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 29
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 55,
+                      "end": 66
+                    },
+                    "document": {
+                      "byte_start": 73,
+                      "byte_end": 84,
+                      "line": 6,
+                      "column": 19,
+                      "end_line": 6,
+                      "end_column": 30,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 18
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 29
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "semantic_items": [
+                {
+                  "name": "complex",
+                  "detail": "cynefin domain",
+                  "kind": "namespace",
+                  "role": "outline",
+                  "rename_policy": "none",
+                  "span": {
+                    "local": {
+                      "start": 15,
+                      "end": 22
+                    },
+                    "document": {
+                      "byte_start": 33,
+                      "byte_end": 40,
+                      "line": 4,
+                      "column": 3,
+                      "end_line": 4,
+                      "end_column": 10,
+                      "lsp_range": {
+                        "start": {
+                          "line": 3,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 3,
+                          "character": 9
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 15,
+                      "end": 22
+                    },
+                    "document": {
+                      "byte_start": 33,
+                      "byte_end": 40,
+                      "line": 4,
+                      "column": 3,
+                      "end_line": 4,
+                      "end_column": 10,
+                      "lsp_range": {
+                        "start": {
+                          "line": 3,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 3,
+                          "character": 9
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "complicated",
+                  "detail": "cynefin domain",
+                  "kind": "namespace",
+                  "role": "outline",
+                  "rename_policy": "none",
+                  "span": {
+                    "local": {
+                      "start": 25,
+                      "end": 36
+                    },
+                    "document": {
+                      "byte_start": 43,
+                      "byte_end": 54,
+                      "line": 5,
+                      "column": 3,
+                      "end_line": 5,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 4,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 13
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 25,
+                      "end": 36
+                    },
+                    "document": {
+                      "byte_start": 43,
+                      "byte_end": 54,
+                      "line": 5,
+                      "column": 3,
+                      "end_line": 5,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 4,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 13
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "complicated",
+                  "detail": "cynefin transition source",
+                  "kind": "namespace",
+                  "role": "outline",
+                  "rename_policy": "none",
+                  "span": {
+                    "local": {
+                      "start": 39,
+                      "end": 50
+                    },
+                    "document": {
+                      "byte_start": 57,
+                      "byte_end": 68,
+                      "line": 6,
+                      "column": 3,
+                      "end_line": 6,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 13
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 39,
+                      "end": 50
+                    },
+                    "document": {
+                      "byte_start": 57,
+                      "byte_end": 68,
+                      "line": 6,
+                      "column": 3,
+                      "end_line": 6,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 13
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "complicated",
+                  "detail": "cynefin transition target",
+                  "kind": "namespace",
+                  "role": "outline",
+                  "rename_policy": "none",
+                  "span": {
+                    "local": {
+                      "start": 55,
+                      "end": 66
+                    },
+                    "document": {
+                      "byte_start": 73,
+                      "byte_end": 84,
+                      "line": 6,
+                      "column": 19,
+                      "end_line": 6,
+                      "end_column": 30,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 18
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 29
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 55,
+                      "end": 66
+                    },
+                    "document": {
+                      "byte_start": 73,
+                      "byte_end": 84,
+                      "line": 6,
+                      "column": 19,
+                      "end_line": 6,
+                      "end_column": 30,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 18
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 29
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "Self-loop",
+                  "detail": "cynefin transition label",
+                  "kind": "string",
+                  "role": "payload",
+                  "rename_policy": "none",
+                  "span": {
+                    "local": {
+                      "start": 69,
+                      "end": 80
+                    },
+                    "document": {
+                      "byte_start": 87,
+                      "byte_end": 98,
+                      "line": 6,
+                      "column": 33,
+                      "end_line": 6,
+                      "end_column": 44,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 32
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 43
+                        }
+                      }
+                    }
+                  },
+                  "selection": {
+                    "local": {
+                      "start": 70,
+                      "end": 79
+                    },
+                    "document": {
+                      "byte_start": 88,
+                      "byte_end": 97,
+                      "line": 6,
+                      "column": 34,
+                      "end_line": 6,
+                      "end_column": 43,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 33
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 42
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "expected_syntax": [
+                {
+                  "kind": "node_identifier",
+                  "span": {
+                    "local": {
+                      "start": 15,
+                      "end": 22
+                    },
+                    "document": {
+                      "byte_start": 33,
+                      "byte_end": 40,
+                      "line": 4,
+                      "column": 3,
+                      "end_line": 4,
+                      "end_column": 10,
+                      "lsp_range": {
+                        "start": {
+                          "line": 3,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 3,
+                          "character": 9
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "node_identifier",
+                  "span": {
+                    "local": {
+                      "start": 25,
+                      "end": 36
+                    },
+                    "document": {
+                      "byte_start": 43,
+                      "byte_end": 54,
+                      "line": 5,
+                      "column": 3,
+                      "end_line": 5,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 4,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 4,
+                          "character": 13
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "node_identifier",
+                  "span": {
+                    "local": {
+                      "start": 39,
+                      "end": 50
+                    },
+                    "document": {
+                      "byte_start": 57,
+                      "byte_end": 68,
+                      "line": 6,
+                      "column": 3,
+                      "end_line": 6,
+                      "end_column": 14,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 13
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "node_identifier",
+                  "span": {
+                    "local": {
+                      "start": 55,
+                      "end": 66
+                    },
+                    "document": {
+                      "byte_start": 73,
+                      "byte_end": 84,
+                      "line": 6,
+                      "column": 19,
+                      "end_line": 6,
+                      "end_column": 30,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 18
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 29
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "kind": "payload",
+                  "span": {
+                    "local": {
+                      "start": 70,
+                      "end": 79
+                    },
+                    "document": {
+                      "byte_start": 88,
+                      "byte_end": 97,
+                      "line": 6,
+                      "column": 34,
+                      "end_line": 6,
+                      "end_column": 43,
+                      "lsp_range": {
+                        "start": {
+                          "line": 5,
+                          "character": 33
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 42
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

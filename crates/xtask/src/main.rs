@@ -1,4 +1,5 @@
 mod cmd;
+mod generated;
 mod state_svgdump;
 mod svgdom;
 mod util;
@@ -31,14 +32,26 @@ enum XtaskError {
     ParseYaml(#[from] serde_saphyr::Error),
     #[error("failed to process JSON: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("invalid $ref: {0}")]
-    InvalidRef(String),
-    #[error("unresolved $ref: {0}")]
-    UnresolvedRef(String),
     #[error("failed to parse dompurify dist file: {0}")]
     ParseDompurify(String),
-    #[error("failed to apply default config override: {0}")]
-    DefaultConfigOverride(String),
+    #[error("failed to project Mermaid default config: {0}")]
+    DefaultConfigProjection(String),
+    #[error("failed to project Mermaid theme behavior: {0}")]
+    ThemeSnapshotProjection(String),
+    #[error("text-measurement protocol descriptor is invalid: {0}")]
+    TextMeasurementProtocol(String),
+    #[error("native ABI descriptor is invalid: {0}")]
+    NativeAbi(String),
+    #[error("capability surface descriptor is invalid: {0}")]
+    CapabilitySurface(String),
+    #[error("artifact profile descriptor is invalid: {0}")]
+    ArtifactProfiles(String),
+    #[error("feature matrix is invalid: {0}")]
+    FeatureMatrix(String),
+    #[error("LALRPOP parser generation is invalid: {0}")]
+    LalrpopParsers(String),
+    #[error("Mermaid reference bundle is invalid:\n{0}")]
+    MermaidReference(String),
     #[error("missing reference checkout: {0}")]
     MissingReference(String),
     #[error("verification failed:\n{0}")]
@@ -47,6 +60,8 @@ enum XtaskError {
     ProfileBudgetFailed(String),
     #[error("WASM size matrix failed:\n{0}")]
     WasmSizeMatrixFailed(String),
+    #[error("workspace WASM build lock failed: {0}")]
+    WasmBuildLockFailed(String),
     #[error("Typst package build failed:\n{0}")]
     TypstPackageFailed(String),
     #[error("Typst package smoke failed:\n{0}")]
@@ -84,6 +99,17 @@ fn print_help(topic: Option<&str>) {
     println!("  verify");
     println!("  verify-default-config");
     println!("  verify-dompurify-defaults");
+    println!("  verify-theme-snapshot");
+    println!("  verify-editor-token-descriptor");
+    println!("  verify-capability-surface");
+    println!("  verify-artifact-profiles");
+    println!("  verify-feature-matrix");
+    println!("  verify-typst-profile-constants");
+    println!("  verify-playground-example-catalog");
+    println!("  verify-mermaid-reference");
+    println!("  verify-web-diagram-catalog");
+    println!("  verify-resource-contract");
+    println!("  verify-lalrpop-parsers");
     println!("  check-alignment");
     println!("  profile-budget");
     println!("  wasm-size-matrix");
@@ -99,9 +125,11 @@ fn print_help(topic: Option<&str>) {
     println!("  update-snapshots");
     println!("  update-layout-snapshots   (alias: gen-layout-goldens)");
     println!("  gen-upstream-svgs");
+    println!("  sync-upstream-mmd-corpus");
     println!("  adopt-upstream-svg-provenance");
     println!("  check-upstream-svgs");
     println!("  compare-all-svgs");
+    println!("  accept-root-residual-candidate");
     println!("  compare-svg-xml");
     println!("  canon-svg-xml");
     println!("  debug-svg-bbox");
@@ -113,46 +141,28 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-dagre-layout");
     println!("  analyze-state-fixture");
     println!("  debug-mindmap-svg-positions");
-    println!("  report-overrides");
-    println!("  gen-c4-text-overrides");
-    println!("  audit-root-overrides");
-    println!("  triage-flowchart-root-pins");
+    println!("  gen-font-metrics");
+    println!("  measure-text");
+    println!("  gen-theme-snapshot");
+    println!("  gen-editor-token-descriptor");
+    println!("  gen-capability-surface");
+    println!("  gen-typst-profile-constants");
+    println!("  gen-lalrpop-parsers");
+    println!("  gen-text-measurement-protocol");
+    println!("  gen-native-abi");
+    println!("  gen-resource-contract");
+    println!("  verify-text-measurement-protocol");
+    println!("  verify-native-abi");
+    println!("  gen-playground-example-catalog");
+    println!("  gen-mermaid-reference");
+    println!("  gen-web-diagram-catalog");
     println!();
     println!("Per-diagram SVG compare commands:");
-    println!("  compare-er-svgs");
-    println!("  compare-flowchart-svgs");
-    println!("  check-flowchart-elk-source-backed-probes");
-    println!("  audit-flowchart-elk-source-backed-coverage");
-    println!("  compare-sequence-svgs");
-    println!("  compare-class-svgs");
-    println!("  compare-state-svgs");
-    println!("  compare-info-svgs");
-    println!("  compare-pie-svgs");
-    println!("  compare-sankey-svgs");
-    println!("  compare-packet-svgs");
-    println!("  compare-timeline-svgs");
-    println!("  compare-journey-svgs");
-    println!("  compare-kanban-svgs");
-    println!("  compare-gitgraph-svgs");
-    println!("  compare-gantt-svgs");
-    println!("  compare-c4-svgs");
-    println!("  compare-block-svgs");
-    println!("  compare-radar-svgs");
-    println!("  compare-requirement-svgs");
-    println!("  compare-mindmap-svgs");
-    println!("  compare-architecture-svgs");
-    println!("  compare-quadrantchart-svgs");
-    println!("  compare-treemap-svgs");
-    println!("  compare-xychart-svgs");
-    println!("  compare-tree-view-svgs");
-    println!("  compare-ishikawa-svgs");
-    println!("  compare-eventmodeling-svgs");
-    println!("  compare-venn-svgs");
-    println!("  compare-cynefin-svgs");
-    println!("  compare-railroad-svgs");
-    println!("  compare-railroad-ebnf-svgs");
-    println!("  compare-railroad-abnf-svgs");
-    println!("  compare-railroad-peg-svgs");
+    for fact in cmd::DIAGRAM_VERIFICATION_FACTS {
+        println!("  {}", fact.command);
+    }
+    println!("  check-flowchart-elk-parity");
+    println!("  audit-flowchart-elk-parity-coverage");
     println!();
     println!("Tips:");
     println!("  - `cargo run -p xtask -- verify`");
@@ -186,12 +196,44 @@ fn main() -> Result<(), XtaskError> {
         return Ok(());
     }
 
+    if let Some(fact) = cmd::diagram_verification_fact_for_command(&cmd_name).copied() {
+        return cmd::compare_diagram_command(fact, args.collect());
+    }
+
     match cmd_name.as_str() {
         "gen-default-config" => cmd::gen_default_config(args.collect()),
         "gen-dompurify-defaults" => cmd::gen_dompurify_defaults(args.collect()),
+        "gen-theme-snapshot" => cmd::gen_theme_snapshot(args.collect()),
+        "gen-editor-token-descriptor" => cmd::gen_editor_token_descriptor(args.collect()),
+        "gen-capability-surface" => cmd::gen_capability_surface(args.collect()),
+        "gen-typst-profile-constants" => cmd::gen_typst_profile_constants(args.collect()),
+        "gen-lalrpop-parsers" => cmd::gen_lalrpop_parsers(args.collect()),
+        "gen-playground-example-catalog" => cmd::gen_playground_example_catalog(args.collect()),
+        "gen-mermaid-reference" => cmd::gen_mermaid_reference(args.collect()),
+        "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
+        "gen-text-measurement-protocol" => cmd::gen_text_measurement_protocol(args.collect()),
+        "gen-native-abi" => cmd::gen_native_abi(args.collect()),
+        "gen-resource-contract" => cmd::gen_resource_contract(args.collect()),
         "verify" => cmd::verify(args.collect()),
         "verify-default-config" => cmd::verify_default_config(args.collect()),
         "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
+        "verify-theme-snapshot" => cmd::verify_theme_snapshot(args.collect()),
+        "verify-editor-token-descriptor" => cmd::verify_editor_token_descriptor(args.collect()),
+        "verify-capability-surface" => cmd::verify_capability_surface(args.collect()),
+        "verify-artifact-profiles" => {
+            cmd::verify_artifact_profiles(args.collect()).map_err(XtaskError::ArtifactProfiles)
+        }
+        "verify-feature-matrix" => cmd::verify_feature_matrix(args.collect()),
+        "verify-typst-profile-constants" => cmd::verify_typst_profile_constants(args.collect()),
+        "verify-playground-example-catalog" => {
+            cmd::verify_playground_example_catalog(args.collect())
+        }
+        "verify-mermaid-reference" => cmd::verify_mermaid_reference(args.collect()),
+        "verify-web-diagram-catalog" => cmd::verify_web_diagram_catalog(args.collect()),
+        "verify-text-measurement-protocol" => cmd::verify_text_measurement_protocol(args.collect()),
+        "verify-native-abi" => cmd::verify_native_abi(args.collect()),
+        "verify-resource-contract" => cmd::verify_resource_contract(args.collect()),
+        "verify-lalrpop-parsers" => cmd::verify_lalrpop_parsers(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "profile-budget" => cmd::profile_budget(args.collect()),
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),
@@ -216,19 +258,14 @@ fn main() -> Result<(), XtaskError> {
         "gen-class-svgs" => cmd::gen_class_svgs(args.collect()),
         "gen-c4-svgs" => cmd::gen_c4_svgs(args.collect()),
         "gen-font-metrics" => cmd::gen_font_metrics(args.collect()),
-        "gen-c4-text-overrides" => cmd::gen_c4_text_overrides(args.collect()),
-        "gen-svg-overrides" => cmd::gen_svg_overrides(args.collect()),
         "measure-text" => cmd::measure_text(args.collect()),
         "gen-upstream-svgs" => cmd::gen_upstream_svgs(args.collect()),
+        "sync-upstream-mmd-corpus" => cmd::sync_upstream_mmd_corpus(args.collect()),
         "adopt-upstream-svg-provenance" => cmd::adopt_upstream_svg_provenance(args.collect()),
         "check-upstream-svgs" => cmd::check_upstream_svgs(args.collect()),
-        "compare-er-svgs" => cmd::compare_er_svgs(args.collect()),
-        "compare-flowchart-svgs" => cmd::compare_flowchart_svgs(args.collect()),
-        "check-flowchart-elk-source-backed-probes" => {
-            cmd::check_flowchart_elk_source_backed_probes(args.collect())
-        }
-        "audit-flowchart-elk-source-backed-coverage" => {
-            cmd::audit_flowchart_elk_source_backed_coverage(args.collect())
+        "check-flowchart-elk-parity" => cmd::check_flowchart_elk_parity(args.collect()),
+        "audit-flowchart-elk-parity-coverage" => {
+            cmd::audit_flowchart_elk_parity_coverage(args.collect())
         }
         "debug-flowchart-layout" => cmd::debug_flowchart_layout(args.collect()),
         "debug-flowchart-elk-source-phase" => cmd::debug_flowchart_elk_source_phase(args.collect()),
@@ -248,42 +285,10 @@ fn main() -> Result<(), XtaskError> {
         "summarize-architecture-deltas" => cmd::summarize_architecture_deltas(args.collect()),
         "compare-dagre-layout" => cmd::compare_dagre_layout(args.collect()),
         "analyze-state-fixture" => state_svgdump::analyze_state_fixture(args.collect()),
-        "compare-sequence-svgs" => cmd::compare_sequence_svgs(args.collect()),
-        "compare-class-svgs" => cmd::compare_class_svgs(args.collect()),
-        "compare-state-svgs" => cmd::compare_state_svgs(args.collect()),
-        "compare-info-svgs" => cmd::compare_info_svgs(args.collect()),
-        "compare-pie-svgs" => cmd::compare_pie_svgs(args.collect()),
-        "compare-sankey-svgs" => cmd::compare_sankey_svgs(args.collect()),
-        "compare-packet-svgs" => cmd::compare_packet_svgs(args.collect()),
-        "compare-timeline-svgs" => cmd::compare_timeline_svgs(args.collect()),
-        "compare-journey-svgs" => cmd::compare_journey_svgs(args.collect()),
-        "compare-kanban-svgs" => cmd::compare_kanban_svgs(args.collect()),
-        "compare-gitgraph-svgs" => cmd::compare_gitgraph_svgs(args.collect()),
-        "compare-gantt-svgs" => cmd::compare_gantt_svgs(args.collect()),
-        "compare-c4-svgs" => cmd::compare_c4_svgs(args.collect()),
-        "compare-block-svgs" => cmd::compare_block_svgs(args.collect()),
-        "compare-radar-svgs" => cmd::compare_radar_svgs(args.collect()),
-        "compare-requirement-svgs" => cmd::compare_requirement_svgs(args.collect()),
-        "compare-mindmap-svgs" => cmd::compare_mindmap_svgs(args.collect()),
-        "compare-architecture-svgs" => cmd::compare_architecture_svgs(args.collect()),
-        "compare-quadrantchart-svgs" => cmd::compare_quadrantchart_svgs(args.collect()),
-        "compare-treemap-svgs" => cmd::compare_treemap_svgs(args.collect()),
-        "compare-xychart-svgs" => cmd::compare_xychart_svgs(args.collect()),
-        "compare-tree-view-svgs" => cmd::compare_tree_view_svgs(args.collect()),
-        "compare-ishikawa-svgs" => cmd::compare_ishikawa_svgs(args.collect()),
-        "compare-eventmodeling-svgs" => cmd::compare_eventmodeling_svgs(args.collect()),
-        "compare-venn-svgs" => cmd::compare_venn_svgs(args.collect()),
-        "compare-cynefin-svgs" => cmd::compare_cynefin_svgs(args.collect()),
-        "compare-railroad-svgs" => cmd::compare_railroad_svgs(args.collect()),
-        "compare-railroad-ebnf-svgs" => cmd::compare_railroad_ebnf_svgs(args.collect()),
-        "compare-railroad-abnf-svgs" => cmd::compare_railroad_abnf_svgs(args.collect()),
-        "compare-railroad-peg-svgs" => cmd::compare_railroad_peg_svgs(args.collect()),
         "compare-all-svgs" => cmd::compare_all_svgs(args.collect()),
+        "accept-root-residual-candidate" => cmd::accept_root_residual_candidate(args.collect()),
         "compare-svg-xml" => cmd::compare_svg_xml(args.collect()),
         "canon-svg-xml" => cmd::canon_svg_xml(args.collect()),
-        "report-overrides" => cmd::report_overrides(args.collect()),
-        "audit-root-overrides" => cmd::audit_root_overrides(args.collect()),
-        "triage-flowchart-root-pins" => cmd::triage_flowchart_root_pins(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
 }

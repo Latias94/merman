@@ -3,12 +3,16 @@
 //! This module ports the layout/geometry path used by `@upsetjs/venn.js@2.0.0` and the minimal
 //! `fmin@0.0.4` optimizer helpers it depends on. The diagram adapter is intentionally thin: it
 //! projects the core render model into the same helper layout surface that Mermaid consumes before
-//! SVG emission.
+//! SVG emission. Geometry uses pure Rust transcendental functions because the iterative optimizer
+//! amplifies host math-library differences into visible layout drift.
 
 use crate::model::{
     Bounds as LayoutBounds, VennAreaLayout, VennCircleLayout, VennDiagramLayout,
     VennTextAreaLayout, VennTextDebugCellLayout, VennTextNodeLayout,
 };
+use crate::resources::RenderResourcePolicy;
+#[cfg(test)]
+use crate::resources::ResourceLimitId;
 use crate::{Error, Result};
 use indexmap::IndexMap;
 use merman_core::diagrams::venn::VennDiagramRenderModel;
@@ -23,19 +27,11 @@ mod config;
 
 use config::VennConfigView;
 
-pub fn layout_venn_diagram(
-    semantic: &serde_json::Value,
-    diagram_title: Option<&str>,
-    effective_config: &serde_json::Value,
-) -> Result<VennDiagramLayout> {
-    let model: VennDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_venn_diagram_typed(&model, diagram_title, effective_config)
-}
-
-pub fn layout_venn_diagram_typed(
+pub(crate) fn layout_venn_diagram_typed(
     model: &VennDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
+    resource_limits: RenderResourcePolicy,
 ) -> Result<VennDiagramLayout> {
     let cfg = VennConfigView::new(effective_config).layout_settings();
     let title = model
@@ -63,20 +59,19 @@ pub fn layout_venn_diagram_typed(
                 label: subset.label.clone(),
             })
             .collect::<Vec<_>>(),
-    );
+        resource_limits,
+    )?;
     let layout_areas = if areas.is_empty() {
         Vec::new()
     } else {
-        compute_venn_layout(
-            &areas,
-            &VennLayoutOptions {
-                width: cfg.width,
-                height: diagram_height,
-                padding: cfg.padding,
-                ..Default::default()
-            },
-        )
-        .map_err(|err| Error::InvalidModel {
+        let layout_options = VennLayoutOptions {
+            width: cfg.width,
+            height: diagram_height,
+            padding: cfg.padding,
+            ..Default::default()
+        };
+        resource_limits.check_layout_work_units(venn_layout_work_units(&areas, &layout_options))?;
+        compute_venn_layout(&areas, &layout_options).map_err(|err| Error::InvalidModel {
             message: err.to_string(),
         })?
     };
@@ -101,7 +96,6 @@ pub fn layout_venn_diagram_typed(
                 })
                 .collect(),
             path: area.path.clone(),
-            distinct_path: area.distinct_path.clone(),
         })
         .collect::<Vec<_>>();
     let layout_by_key = layout_areas
@@ -170,8 +164,9 @@ fn layout_text_nodes(
             .circles
             .iter()
             .map(|circle| {
-                circle.radius
-                    - ((center_x - circle.x).powi(2) + (center_y - circle.y).powi(2)).sqrt()
+                let dx = center_x - circle.x;
+                let dy = center_y - circle.y;
+                circle.radius - libm::sqrt(dx * dx + dy * dy)
             })
             .fold(f64::INFINITY, f64::min);
         let mut inner_radius = if inner_radius_raw.is_finite() {
@@ -198,7 +193,7 @@ fn layout_text_nodes(
         let label_offset = label_offset_base + if nodes.len() <= 2 { 30.0 * scale } else { 0.0 };
         let start_x = center_x - inner_width / 2.0;
         let start_y = center_y - inner_height / 2.0 + label_offset;
-        let cols = (nodes.len() as f64).sqrt().ceil().max(1.0) as usize;
+        let cols = libm::sqrt(nodes.len() as f64).ceil().max(1.0) as usize;
         let rows = nodes.len().div_ceil(cols).max(1);
         let cell_width = inner_width / cols as f64;
         let cell_height = inner_height / rows as f64;
@@ -250,14 +245,15 @@ fn stable_sets_key(sets: &[String]) -> String {
     sets.join("|")
 }
 
-fn ensure_pairwise_subsets_for_layout(mut areas: Vec<VennArea>) -> Vec<VennArea> {
-    let mut existing_keys = areas
+fn ensure_pairwise_subsets_for_layout(
+    mut areas: Vec<VennArea>,
+    resource_limits: RenderResourcePolicy,
+) -> Result<Vec<VennArea>> {
+    resource_limits.check_layout_work_units(areas.len())?;
+    let mut existing_pairs = areas
         .iter()
-        .map(|area| {
-            let mut sets = area.sets.clone();
-            sets.sort();
-            sets.join("|")
-        })
+        .filter(|area| area.sets.len() == 2)
+        .map(|area| canonical_pair(&area.sets[0], &area.sets[1]))
         .collect::<HashSet<_>>();
     let singleton_sizes = areas
         .iter()
@@ -269,14 +265,39 @@ fn ensure_pairwise_subsets_for_layout(mut areas: Vec<VennArea>) -> Vec<VennArea>
     for area in areas.iter().filter(|area| area.sets.len() >= 3) {
         let mut members = area.sets.clone();
         members.sort();
-        for left_index in 0..members.len() - 1 {
-            for right_index in left_index + 1..members.len() {
-                let left = &members[left_index];
-                let right = &members[right_index];
-                let key = format!("{left}|{right}");
-                if !existing_keys.insert(key) {
+        let mut counted_members = Vec::<(String, usize)>::new();
+        for member in members {
+            if let Some((previous, count)) = counted_members.last_mut()
+                && previous == &member
+            {
+                *count = count.saturating_add(1);
+            } else {
+                counted_members.push((member, 1));
+            }
+        }
+        if counted_members.is_empty() {
+            continue;
+        }
+        for left_index in 0..counted_members.len() {
+            let right_start = if counted_members[left_index].1 >= 2 {
+                left_index
+            } else {
+                left_index + 1
+            };
+            for right_index in right_start..counted_members.len() {
+                let left = &counted_members[left_index].0;
+                let right = &counted_members[right_index].0;
+                let pair = canonical_pair(left, right);
+                if existing_pairs.contains(&pair) {
                     continue;
                 }
+                resource_limits.check_layout_work_units(
+                    areas
+                        .len()
+                        .saturating_add(synthetic.len())
+                        .saturating_add(1),
+                )?;
+                existing_pairs.insert(pair);
 
                 let size = singleton_sizes
                     .get(left)
@@ -295,7 +316,88 @@ fn ensure_pairwise_subsets_for_layout(mut areas: Vec<VennArea>) -> Vec<VennArea>
     }
 
     areas.extend(synthetic);
-    areas
+
+    // `venn.js` also creates zero-sized pairwise areas for every pair of singleton sets inside
+    // its layout kernel. Prove that expansion fits before entering the ported algorithm, without
+    // allocating those private helper areas here or changing the public/rendered area list.
+    let mut singleton_ids = singleton_sizes.keys().collect::<Vec<_>>();
+    singleton_ids.sort();
+    let mut expanded_area_count = areas.len();
+    for left_index in 0..singleton_ids.len() {
+        for right_index in left_index + 1..singleton_ids.len() {
+            if existing_pairs.contains(&canonical_pair(
+                singleton_ids[left_index],
+                singleton_ids[right_index],
+            )) {
+                continue;
+            }
+            expanded_area_count = expanded_area_count.saturating_add(1);
+            resource_limits.check_layout_work_units(expanded_area_count)?;
+        }
+    }
+
+    Ok(areas)
+}
+
+/// Estimates the typed adapter's Venn optimizer and geometry work before entering the
+/// source-backed layout kernel.
+///
+/// `venn.js` runs constrained MDS for eight or more sets. Both its gradient and the final
+/// Nelder-Mead objective inspect every set pair/area repeatedly, so charging only the number of
+/// expanded areas allows a small model to consume an unbounded amount of CPU. The estimate is
+/// intentionally saturating and conservative; it does not change the public raw kernel, which
+/// remains available to trusted callers without a render policy.
+fn venn_layout_work_units(areas: &[VennArea], options: &VennLayoutOptions) -> usize {
+    let singleton_ids = areas
+        .iter()
+        .filter(|area| area.sets.len() == 1)
+        .map(|area| area.sets[0].as_str())
+        .collect::<HashSet<_>>();
+    let set_count = singleton_ids.len();
+    let pair_count = set_count.saturating_mul(set_count.saturating_sub(1)) / 2;
+
+    // `add_missing_areas` may append every missing singleton pair. This is an upper bound, but
+    // avoids allocating a second expanded vector solely for the preflight estimate.
+    let area_count = areas.len().saturating_add(pair_count);
+
+    // Constrained MDS evaluates every unordered set pair once per gradient iteration and restart.
+    let mds_work = pair_count
+        .saturating_mul(options.max_iterations)
+        .saturating_mul(options.restarts);
+
+    // Nelder-Mead evaluates the loss several times per iteration and once for the initial
+    // simplex. The factor four covers the reflected/expanded/contracted/reduced branches while
+    // the simplex term covers the 2N+1 initial points.
+    let simplex_evaluations = set_count.saturating_mul(2).saturating_add(1);
+    let objective_evaluations = options
+        .max_iterations
+        .saturating_mul(4)
+        .saturating_add(simplex_evaluations);
+    let optimizer_loss_work = area_count.saturating_mul(objective_evaluations);
+
+    // Geometry and intersection-area construction run once after optimization. A set area with
+    // many members can inspect all member pairs, so include the sum of squared area arities and
+    // the pairwise cluster pass.
+    let intersection_work = areas.iter().fold(0usize, |total, area| {
+        total.saturating_add(area.sets.len().saturating_mul(area.sets.len()))
+    });
+    let geometry_work = intersection_work
+        .saturating_add(pair_count.saturating_mul(4))
+        .saturating_add(set_count.saturating_mul(set_count));
+
+    area_count
+        .saturating_add(pair_count)
+        .saturating_add(mds_work)
+        .saturating_add(optimizer_loss_work)
+        .saturating_add(geometry_work)
+}
+
+fn canonical_pair(left: &str, right: &str) -> (String, String) {
+    if left <= right {
+        (left.to_owned(), right.to_owned())
+    } else {
+        (right.to_owned(), left.to_owned())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -355,7 +457,6 @@ pub struct VennLayoutArea {
     pub circles: Vec<VennCircle>,
     pub arcs: Vec<VennArc>,
     pub path: String,
-    pub distinct_path: String,
 }
 
 #[derive(Debug, Clone)]
@@ -512,25 +613,7 @@ pub fn compute_venn_layout(
             circles: area_circles,
             arcs,
             path,
-            distinct_path: String::new(),
         });
-    }
-
-    for i in 0..helpers.len() {
-        let mut distinct_path = helpers[i].path.clone();
-        for j in 0..helpers.len() {
-            if helpers[j].data.sets.len() > helpers[i].data.sets.len()
-                && helpers[i]
-                    .data
-                    .sets
-                    .iter()
-                    .all(|set| helpers[j].data.sets.contains(set))
-            {
-                distinct_path.push(' ');
-                distinct_path.push_str(&helpers[j].path);
-            }
-        }
-        helpers[i].distinct_path = distinct_path;
     }
 
     Ok(helpers)
@@ -620,6 +703,7 @@ fn add_missing_areas(areas: &[VennArea], distinct: bool) -> Vec<VennArea> {
     }
 
     ids.sort();
+    ids.dedup();
     for i in 0..ids.len() {
         for j in i + 1..ids.len() {
             let a = &ids[i];
@@ -633,7 +717,8 @@ fn add_missing_areas(areas: &[VennArea], distinct: bool) -> Vec<VennArea> {
 }
 
 pub fn distance_from_intersect_area(r1: f64, r2: f64, overlap: f64) -> f64 {
-    if r1.min(r2).powi(2) * PI <= overlap + SMALL {
+    let min_radius = r1.min(r2);
+    if min_radius * min_radius * PI <= overlap + SMALL {
         return (r1 - r2).abs();
     }
     bisect(
@@ -671,7 +756,7 @@ pub fn greedy_layout(areas: &[VennArea]) -> VennLayoutResult<VennSolution> {
                     set: set.clone(),
                     x: 1e10,
                     y: 1e10,
-                    radius: (area.size / PI).sqrt(),
+                    radius: libm::sqrt(area.size / PI),
                 },
             );
             set_overlaps.insert(set, Vec::new());
@@ -886,7 +971,7 @@ fn constrained_mds_layout(areas: &[VennArea], options: &VennLayoutOptions) -> Ve
                 set: setid,
                 x: positions[2 * i] * norm,
                 y: positions[2 * i + 1] * norm,
-                radius: (set.size / PI).sqrt(),
+                radius: libm::sqrt(set.size / PI),
             },
         );
     }
@@ -908,8 +993,8 @@ fn get_distance_matrices(
         let Some(&right) = setids.get(&current.sets[1]) else {
             continue;
         };
-        let r1 = (sets[left].size / PI).sqrt();
-        let r2 = (sets[right].size / PI).sqrt();
+        let r1 = libm::sqrt(sets[left].size / PI);
+        let r2 = libm::sqrt(sets[right].size / PI);
         let distance = distance_from_intersect_area(r1, r2, current.size);
         distances[left][right] = distance;
         distances[right][left] = distance;
@@ -943,8 +1028,10 @@ fn constrained_mds_gradient(
             let yj = x[2 * j + 1];
             let dij = distances[i][j];
             let constraint = constraints[i][j];
-            let squared_distance = (xj - xi).powi(2) + (yj - yi).powi(2);
-            let distance = squared_distance.sqrt();
+            let dx = xj - xi;
+            let dy = yj - yi;
+            let squared_distance = dx * dx + dy * dy;
+            let distance = libm::sqrt(squared_distance);
             let delta = squared_distance - dij * dij;
 
             if (constraint > 0 && distance <= dij) || (constraint < 0 && distance >= dij) {
@@ -1119,9 +1206,9 @@ fn orientate_circles(circles: &mut [VennCircle], orientation: f64) {
     }
 
     if circles.len() > 1 {
-        let rotation = circles[1].x.atan2(circles[1].y) - orientation;
-        let c = rotation.cos();
-        let s = rotation.sin();
+        let rotation = libm::atan2(circles[1].x, circles[1].y) - orientation;
+        let c = libm::cos(rotation);
+        let s = libm::sin(rotation);
         for circle in circles.iter_mut() {
             let x = circle.x;
             let y = circle.y;
@@ -1131,7 +1218,7 @@ fn orientate_circles(circles: &mut [VennCircle], orientation: f64) {
     }
 
     if circles.len() > 2 {
-        let mut angle = circles[2].x.atan2(circles[2].y) - orientation;
+        let mut angle = libm::atan2(circles[2].x, circles[2].y) - orientation;
         while angle < 0.0 {
             angle += TAU;
         }
@@ -1201,7 +1288,7 @@ pub fn scale_solution(
     }
 
     let (x_scaling, y_scaling) = if let Some(scale_to_fit) = scale_to_fit {
-        let to_scale_diameter = (scale_to_fit / PI).sqrt() * 2.0;
+        let to_scale_diameter = libm::sqrt(scale_to_fit / PI) * 2.0;
         (width / to_scale_diameter, height / to_scale_diameter)
     } else {
         (
@@ -1275,7 +1362,7 @@ fn intersection_area_stats(circles: &[VennCircle]) -> AreaStats {
     if inner_points.len() > 1 {
         let center = get_center(inner_points.iter().map(|p| p.point));
         for point in &mut inner_points {
-            point.angle = (point.point.x - center.x).atan2(point.point.y - center.y);
+            point.angle = libm::atan2(point.point.x - center.x, point.point.y - center.y);
         }
         inner_points.sort_by(|a, b| b.angle.total_cmp(&a.angle));
 
@@ -1293,8 +1380,8 @@ fn intersection_area_stats(circles: &[VennCircle]) -> AreaStats {
                     continue;
                 }
                 let circle = &circles[parent];
-                let a1 = (p1.point.x - circle.x).atan2(p1.point.y - circle.y);
-                let a2 = (p2.point.x - circle.x).atan2(p2.point.y - circle.y);
+                let a1 = libm::atan2(p1.point.x - circle.x, p1.point.y - circle.y);
+                let a2 = libm::atan2(p2.point.x - circle.x, p2.point.y - circle.y);
                 let mut angle_diff = a2 - a1;
                 if angle_diff < 0.0 {
                     angle_diff += TAU;
@@ -1303,8 +1390,8 @@ fn intersection_area_stats(circles: &[VennCircle]) -> AreaStats {
                 let mut width = distance_points(
                     mid_point,
                     VennPoint {
-                        x: circle.x + circle.radius * a.sin(),
-                        y: circle.y + circle.radius * a.cos(),
+                        x: circle.x + circle.radius * libm::sin(a),
+                        y: circle.y + circle.radius * libm::cos(a),
                     },
                 );
                 if width > circle.radius * 2.0 {
@@ -1396,7 +1483,7 @@ fn get_intersection_points(circles: &[VennCircle]) -> Vec<IntersectionPoint> {
 }
 
 pub fn circle_area(r: f64, width: f64) -> f64 {
-    r * r * (1.0 - width / r).acos() - (r - width) * (width * (2.0 * r - width)).sqrt()
+    r * r * libm::acos(1.0 - width / r) - (r - width) * libm::sqrt(width * (2.0 * r - width))
 }
 
 pub fn distance(p1: &VennCircle, p2: &VennCircle) -> f64 {
@@ -1417,7 +1504,9 @@ fn distance_point_circle(point: VennPoint, circle: &VennCircle) -> f64 {
 }
 
 fn distance_points(p1: VennPoint, p2: VennPoint) -> f64 {
-    ((p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sqrt()
+    let dx = p1.x - p2.x;
+    let dy = p1.y - p2.y;
+    libm::sqrt(dx * dx + dy * dy)
 }
 
 pub fn circle_overlap(r1: f64, r2: f64, d: f64) -> f64 {
@@ -1441,7 +1530,7 @@ pub fn circle_circle_intersection(p1: &VennCircle, p2: &VennCircle) -> Vec<VennP
     }
 
     let a = (r1 * r1 - r2 * r2 + d * d) / (2.0 * d);
-    let h = (r1 * r1 - a * a).sqrt();
+    let h = libm::sqrt(r1 * r1 - a * a);
     let x0 = p1.x + (a * (p2.x - p1.x)) / d;
     let y0 = p1.y + (a * (p2.y - p1.y)) / d;
     let rx = -(p2.y - p1.y) * (h / d);
@@ -2029,7 +2118,7 @@ fn dot(a: &[f64], b: &[f64]) -> f64 {
 }
 
 fn norm2(a: &[f64]) -> f64 {
-    dot(a, a).sqrt()
+    libm::sqrt(dot(a, a))
 }
 
 fn scale(ret: &mut [f64], value: &[f64], c: f64) {
@@ -2312,6 +2401,41 @@ mod tests {
     }
 
     #[test]
+    fn three_set_layout_matches_v8_rounding_and_floor_reference() {
+        let areas = vec![
+            area(&["Frontend"], 10.0),
+            area(&["Backend"], 10.0),
+            area(&["DevOps"], 10.0),
+            area(&["Backend", "Frontend"], 2.5),
+            area(&["Backend", "DevOps"], 2.5),
+            area(&["DevOps", "Frontend"], 2.5),
+            area(&["Backend", "DevOps", "Frontend"], 1.111_111_111_111_111_2),
+        ];
+        let layout = compute_venn_layout(
+            &areas,
+            &VennLayoutOptions {
+                width: 800.0,
+                height: 426.0,
+                padding: 8.0,
+                ..Default::default()
+            },
+        )
+        .expect("three-set layout");
+
+        let frontend = layout
+            .iter()
+            .find(|area| area.data.sets == ["Frontend"])
+            .expect("Frontend area");
+        assert_eq!(round_path_value(frontend.circles[0].x, Some(3)), 316.303);
+
+        let backend_frontend = layout
+            .iter()
+            .find(|area| area.data.sets == ["Backend", "Frontend"])
+            .expect("Backend and Frontend area");
+        assert_eq!(backend_frontend.text.x.floor(), 399.0);
+    }
+
+    #[test]
     fn typed_layout_adds_render_only_pairwise_subsets_for_three_set_union() {
         let model = VennDiagramRenderModel {
             subsets: vec![
@@ -2323,8 +2447,13 @@ mod tests {
         };
         let original_model = model.clone();
 
-        let layout = layout_venn_diagram_typed(&model, None, &serde_json::json!({}))
-            .expect("three-set union layout");
+        let layout = layout_venn_diagram_typed(
+            &model,
+            None,
+            &serde_json::json!({}),
+            RenderResourcePolicy::interactive(),
+        )
+        .expect("three-set union layout");
         let pairwise = layout
             .areas
             .iter()
@@ -2341,5 +2470,119 @@ mod tests {
             ]
         );
         assert_eq!(model, original_model);
+    }
+
+    #[test]
+    fn typed_layout_rejects_mds_optimizer_work_before_matrix_allocation() {
+        let model = VennDiagramRenderModel {
+            subsets: (0..700)
+                .map(|index| VennSubsetRenderModel {
+                    sets: vec![format!("S{index}")],
+                    size: 1.0,
+                    label: None,
+                })
+                .collect(),
+            ..Default::default()
+        };
+
+        let error = layout_venn_diagram_typed(
+            &model,
+            None,
+            &serde_json::json!({}),
+            RenderResourcePolicy::interactive(),
+        )
+        .expect_err("large Venn optimizer must be rejected by layout work budget");
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected Venn layout resource limit");
+        };
+
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert!(error.actual > error.max);
+    }
+
+    #[test]
+    fn pairwise_expansion_is_rejected_before_it_can_exceed_the_area_budget() {
+        let members = (0..1_000).map(|index| format!("S{index}")).collect();
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 32)
+            .unwrap();
+        let error = ensure_pairwise_subsets_for_layout(
+            vec![VennArea {
+                sets: members,
+                size: 1.0,
+                weight: None,
+                label: None,
+            }],
+            limits,
+        )
+        .unwrap_err();
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected Venn area resource limit");
+        };
+
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, 33);
+        assert_eq!(error.max, 32);
+    }
+
+    #[test]
+    fn private_singleton_pair_expansion_is_included_in_the_area_budget() {
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 6)
+            .unwrap();
+        let areas = ["A", "B", "C", "D"]
+            .into_iter()
+            .map(|set| VennArea::new([set], 10.0))
+            .collect();
+        let error = ensure_pairwise_subsets_for_layout(areas, limits).unwrap_err();
+        let Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected Venn area resource limit");
+        };
+
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, 7);
+        assert_eq!(error.max, 6);
+    }
+
+    #[test]
+    fn private_singleton_pair_expansion_accepts_the_exact_area_budget() {
+        let areas = ["A", "B", "C", "D"]
+            .into_iter()
+            .map(|set| VennArea::new([set], 10.0))
+            .collect::<Vec<_>>();
+        let limits = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 10)
+            .unwrap();
+
+        let checked = ensure_pairwise_subsets_for_layout(areas.clone(), limits)
+            .expect("four source areas plus six private pairs fit exactly");
+        assert_eq!(checked, areas);
+    }
+
+    #[test]
+    fn duplicate_union_members_preserve_upstream_self_pairs_without_multiplying_work() {
+        let duplicate_singletons = (0..1_000)
+            .map(|_| VennArea::new(["A"], 10.0))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            add_missing_areas(&duplicate_singletons, false).len(),
+            duplicate_singletons.len()
+        );
+
+        let expanded = ensure_pairwise_subsets_for_layout(
+            vec![VennArea::new(["A", "A", "B", "B", "C"], 1.0)],
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 6)
+                .unwrap(),
+        )
+        .expect("five upstream pair constraints plus the source area fit exactly");
+        assert_eq!(
+            expanded
+                .iter()
+                .filter(|area| area.sets.len() == 2)
+                .map(|area| stable_sets_key(&area.sets))
+                .collect::<Vec<_>>(),
+            ["A|A", "A|B", "A|C", "B|B", "B|C"]
+        );
     }
 }

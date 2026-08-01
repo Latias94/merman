@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "contract_id": "binding-request-overlay-low-latency-v2",
+  "extends": "binding-request-overlay-low-latency-v1",
+  "status": "prospective-confirmation",
+  "supersedes_for_future_sampling": "binding-request-overlay-low-latency-v1",
+  "prior_calibration": {
+    "status": "inconclusive",
+    "reason": "The simultaneous A/A order-effect interval excluded zero and the absolute noise endpoint exceeded its 1000 ns limit.",
+    "report": "target/bench/u6-node-public/napi-calibration.json",
+    "report_is_confirmation_input": false
+  },
+  "sampling_override": {
+    "untimed_settling_calls_before_each_observation": 4096,
+    "settling_result_is_evidence_only": true,
+    "timed_logical_calls_per_observation": 4096,
+    "base_aa_pairs": 8,
+    "head_aa_pairs": 8,
+    "minimum_confirmation_pairs": 8,
+    "maximum_confirmation_pairs": 64,
+    "confirmation_reuses_prior_calibration": false
+  },
+  "inherited_fields_are_unchanged": [
+    "revisions",
+    "public_operation",
+    "required_rows",
+    "low_latency_gate",
+    "required_controls",
+    "complexity_gate",
+    "memory_gate",
+    "decision_states"
+  ]
+}

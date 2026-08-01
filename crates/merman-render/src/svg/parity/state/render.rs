@@ -1,45 +1,20 @@
 use super::*;
 
-pub(super) fn render_state_diagram_v2_svg_impl(
-    layout: &StateDiagramV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: StateSvgModel = crate::json::from_value_ref(semantic)?;
-    render_state_diagram_v2_svg_model_impl(
-        layout,
-        &model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-pub(super) fn render_state_diagram_v2_svg_model_impl(
-    layout: &StateDiagramV2Layout,
+pub(in crate::svg::parity) fn render_state_diagram_svg_model(
+    layout: &StateDiagramLayout,
     model: &StateSvgModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let timing_enabled = super::timing::render_timing_enabled();
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let timing = options.timing();
     let mut timings = super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-    fn section<'a>(
-        enabled: bool,
-        dst: &'a mut web_time::Duration,
-    ) -> Option<super::timing::TimingGuard<'a>> {
-        enabled.then(|| super::timing::TimingGuard::new(dst))
-    }
+    let total_timer = timing.start();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
-    let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
+    let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
     let mut hidden_prefixes: Vec<String> = Vec::new();
     for (id, st) in &model.states {
@@ -71,6 +46,10 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     let state_render_settings =
         crate::state::StateConfigView::new(effective_config).render_settings();
     let title_top_margin = state_render_settings.title_top_margin;
+    let hand_drawn_seed = options.rough_randomness(
+        state_render_settings.hand_drawn_seed,
+        "render.state.roughjs",
+    );
 
     let has_acc_title = model
         .acc_title
@@ -123,7 +102,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     let mut ctx = StateRenderCtx {
         diagram_id: diagram_id.to_string(),
         diagram_look: state_render_settings.diagram_look,
-        hand_drawn_seed: state_render_settings.hand_drawn_seed,
+        hand_drawn_seed,
         html_labels: state_render_settings.html_labels,
         html_label_wrapping_width: state_render_settings.html_label_wrapping_width,
         state_padding: state_render_settings.state_padding,
@@ -139,8 +118,8 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         links: &model.links,
         states: &model.states,
         edges: &model.edges,
-        include_edges: options.include_edges,
-        include_nodes: options.include_nodes,
+        include_edges: options.debug.include_edges,
+        include_nodes: options.debug.include_nodes,
         measurer,
         text_style,
         theme_defaults: StateThemeDefaults::from_config(effective_config),
@@ -288,200 +267,11 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 
     drop(_g_build_ctx);
 
-    let fast_viewport = matches!(
-        std::env::var("MERMAN_STATE_VIEWPORT").as_deref(),
-        Ok("layout") | Ok("fast") | Ok("1") | Ok("true")
-    );
-    if fast_viewport {
-        // In fast mode we can compute the root viewport purely from layout geometry, so we do not
-        // need placeholder replacement.
-        let css = state_css(diagram_id, model, effective_config);
-
-        let viewbox_svg_scan = web_time::Duration::ZERO;
-        let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
-        let mut content_bounds = state_viewport_bounds_from_layout(layout).unwrap_or(Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 100.0,
-            max_y: 100.0,
-        });
-
-        let mut title_svg = String::new();
-        if let Some(title) = diagram_title.as_deref() {
-            // Mermaid centers the title using the pre-title content bbox:
-            // `x = bbox.x + bbox.width/2`, `y = -titleTopMargin`.
-            let title_x = (content_bounds.min_x + content_bounds.max_x) / 2.0;
-            let title_y = -title_top_margin;
-
-            let mut title_style = crate::state::state_text_style(effective_config);
-            title_style.font_size = 18.0;
-            let (title_left, title_right) =
-                crate::generated::state_text_overrides_11_12_2::lookup_state_diagram_title_bbox_x_px(
-                    title_style.font_size,
-                    title,
-                )
-                .unwrap_or_else(|| measurer.measure_svg_title_bbox_x(title, &title_style));
-
-            let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
-
-            content_bounds.min_x = content_bounds.min_x.min(title_x - title_left);
-            content_bounds.max_x = content_bounds.max_x.max(title_x + title_right);
-            content_bounds.min_y = content_bounds.min_y.min(title_y - ascent);
-            content_bounds.max_y = content_bounds.max_y.max(title_y + descent);
-
-            title_svg = String::with_capacity(title.len() + 128);
-            let _ = write!(
-                &mut title_svg,
-                r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText">{}</text>"#,
-                fmt(title_x),
-                fmt(title_y),
-                escape_xml_display(title)
-            );
-        }
-
-        let vb_min_x = content_bounds.min_x - viewport_padding;
-        let vb_min_y = content_bounds.min_y - viewport_padding;
-        let vb_w =
-            ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
-        let vb_h =
-            ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
-        // Mermaid's root viewBox widths/heights often land on a single-precision lattice.
-        let vb_w = (vb_w as f32) as f64;
-        let vb_h = (vb_h as f32) as f64;
-
-        let mut max_w_attr = String::new();
-        super::util::fmt_max_width_px_into(&mut max_w_attr, vb_w.max(1.0));
-        let mut view_box_attr = String::with_capacity(64);
-        let _ = write!(
-            &mut view_box_attr,
-            "{} {} {} {}",
-            fmt(vb_min_x),
-            fmt(vb_min_y),
-            fmt(vb_w),
-            fmt(vb_h)
-        );
-        let mut width_attr = fmt_string(vb_w);
-        let mut height_attr = fmt_string(vb_h);
-        apply_root_viewport_override(
-            diagram_id,
-            &mut view_box_attr,
-            &mut width_attr,
-            &mut height_attr,
-            &mut max_w_attr,
-            crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override,
-        );
-
-        drop(_g_viewbox);
-
-        let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
-        let estimated_svg_bytes = 2048usize
-            + css.len()
-            + title_svg.len()
-            + max_w_attr.len()
-            + view_box_attr.len()
-            + layout.nodes.len().saturating_mul(512)
-            + layout.edges.len().saturating_mul(384)
-            + layout.clusters.len().saturating_mul(256);
-        let mut out = String::with_capacity(estimated_svg_bytes);
-        let diagram_id_esc = escape_xml_display(diagram_id);
-        let aria_labelledby_attr = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
-        let aria_describedby_attr = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
-        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                class: Some("statediagram"),
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(view_box_attr.as_str()),
-                aria_labelledby: aria_labelledby_attr.as_deref(),
-                aria_describedby: aria_describedby_attr.as_deref(),
-                trailing_newline: false,
-                aria_attr_order: root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "stateDiagram")
-            },
-        );
-
-        if has_acc_title {
-            let _ = write!(
-                &mut out,
-                r#"<title id="chart-title-{}">{}"#,
-                escape_xml_display(diagram_id),
-                escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
-            );
-            out.push_str("</title>");
-        }
-        if has_acc_descr {
-            let _ = write!(
-                &mut out,
-                r#"<desc id="chart-desc-{}">{}"#,
-                escape_xml_display(diagram_id),
-                escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
-            );
-            out.push_str("</desc>");
-        }
-
-        let _ = write!(&mut out, "<style>{}</style>", css);
-
-        // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
-        out.push_str("<g>");
-        state_markers(&mut out, diagram_id, effective_config);
-
-        let mut detail = StateRenderDetails::default();
-        render_state_root(
-            &mut out,
-            &ctx,
-            None,
-            origin_x,
-            origin_y,
-            timing_enabled,
-            &mut detail,
-        );
-
-        out.push_str("</g>");
-        state_root_defs(&mut out, diagram_id, effective_config);
-        out.push_str(&title_svg);
-        out.push_str("</svg>\n");
-        drop(_g_render_svg);
-
-        timings.total = total_start.elapsed();
-        if timing_enabled {
-            eprintln!(
-                "[render-timing] diagram=stateDiagram total={:?} deserialize={:?} build_ctx={:?} render_svg={:?} viewbox={:?} viewbox_svg_scan={:?} finalize={:?} fast_viewport={} root_calls={} clusters={:?} edge_paths={:?} edge_labels={:?} leaf_nodes={:?} leaf_style_parse={:?} leaf_roughjs={:?} leaf_roughjs_calls={} leaf_roughjs_unique={} leaf_measure={:?} leaf_label_html={:?} leaf_emit={:?} nested_roots={:?} self_loop_placeholders={:?}",
-                timings.total,
-                timings.deserialize_model,
-                timings.build_ctx,
-                timings.render_svg,
-                timings.viewbox,
-                viewbox_svg_scan,
-                timings.finalize_svg,
-                fast_viewport,
-                detail.root_calls,
-                detail.clusters,
-                detail.edge_paths,
-                detail.edge_labels,
-                detail.leaf_nodes,
-                detail.leaf_nodes_style_parse,
-                detail.leaf_nodes_roughjs,
-                detail.leaf_roughjs_calls,
-                detail.leaf_roughjs_unique.len(),
-                detail.leaf_nodes_measure,
-                detail.leaf_nodes_label_html,
-                detail.leaf_nodes_emit,
-                detail.nested_roots,
-                detail.self_loop_placeholders,
-            );
-        }
-        return Ok(out);
-    }
-
-    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+    let _g_render_svg = timing.section(&mut timings.render_svg);
 
     // Mermaid derives the final root viewport via `svg.getBBox()` (after rendering). We don't
     // have a browser DOM, so approximate that by parsing the SVG we just emitted and unioning
     // bboxes for the SVG elements we generate (`rect`/`path`/`circle`/`foreignObject`, etc).
-    const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
-    const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
     const TITLE_PLACEHOLDER_COMMENT: &str = "<!--__MERMAID_TITLE__-->";
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
@@ -493,24 +283,24 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         + layout.edges.len().saturating_mul(384)
         + layout.clusters.len().saturating_mul(256);
     let mut out = String::with_capacity(estimated_svg_bytes);
-    let diagram_id_esc = escape_xml_display(diagram_id);
-    let aria_labelledby_attr = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby_attr = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
-    let style_attr = format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;");
-    root_svg::push_svg_root_open(
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
+    let root_context =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::State, diagram_id);
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "stateDiagram");
+    root_chrome.class = Some("statediagram");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom = root_svg::RootDomProfile {
+        aria_attr_order: root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    let root_document = root_context.begin_document(
         &mut out,
-        root_svg::SvgRootAttrs {
-            class: Some("statediagram"),
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(VIEWBOX_PLACEHOLDER),
-            aria_labelledby: aria_labelledby_attr.as_deref(),
-            aria_describedby: aria_describedby_attr.as_deref(),
-            trailing_newline: false,
-            aria_attr_order: root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "stateDiagram")
-        },
-    );
+        root_svg::DeferredRootSpec::responsive(),
+        root_chrome,
+    )?;
 
     if has_acc_title {
         let _ = write!(
@@ -548,7 +338,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         None,
         origin_x,
         origin_y,
-        timing_enabled,
+        timing,
         &mut detail,
     );
     let bounds_scan_end = out.len();
@@ -560,29 +350,18 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 
     drop(_g_render_svg);
 
-    let mut viewbox_svg_scan = web_time::Duration::ZERO;
-    let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
-    let fast_viewport = matches!(
-        std::env::var("MERMAN_STATE_VIEWPORT").as_deref(),
-        Ok("layout") | Ok("fast") | Ok("1") | Ok("true")
-    );
-    let mut content_bounds = if fast_viewport {
-        state_viewport_bounds_from_layout(layout)
-    } else {
-        let _g_scan = section(timing_enabled, &mut viewbox_svg_scan);
-        svg_emitted_bounds_from_svg(&out[bounds_scan_start..bounds_scan_end])
-            .or_else(|| state_viewport_bounds_from_layout(layout))
-    }
-    .unwrap_or(Bounds {
-        min_x: 0.0,
-        min_y: 0.0,
-        max_x: 100.0,
-        max_y: 100.0,
-    });
-    // Note: Chromium `getBBox()` values are not always exact `f32`-lattice outputs. Some Mermaid
-    // state diagram fixtures show sub-ulp deltas in `x/y` that survive into the serialized root
-    // `viewBox`. Avoid forcing `f32` quantization here; we keep `max-width` stable via the
-    // Mermaid-like significant-digit formatter (`fmt_max_width_px`).
+    let mut viewbox_svg_scan = std::time::Duration::ZERO;
+    let _g_viewbox = timing.section(&mut timings.viewbox);
+    let _g_scan = timing.section(&mut viewbox_svg_scan);
+    let mut content_bounds = svg_emitted_bounds_from_svg(&out[bounds_scan_start..bounds_scan_end])
+        .or_else(|| state_viewport_bounds_from_layout(layout))
+        .unwrap_or(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 100.0,
+            max_y: 100.0,
+        });
+    drop(_g_scan);
 
     let mut title_svg = String::new();
     if let Some(title) = diagram_title.as_deref() {
@@ -593,12 +372,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
 
         let mut title_style = crate::state::state_text_style(effective_config);
         title_style.font_size = 18.0;
-        let (title_left, title_right) =
-            crate::generated::state_text_overrides_11_12_2::lookup_state_diagram_title_bbox_x_px(
-                title_style.font_size,
-                title,
-            )
-            .unwrap_or_else(|| measurer.measure_svg_title_bbox_x(title, &title_style));
+        let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
 
         let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
 
@@ -617,53 +391,33 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         );
     }
 
-    let vb_min_x = content_bounds.min_x - viewport_padding;
-    let vb_min_y = content_bounds.min_y - viewport_padding;
-    let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
-    let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
-    // Mermaid's root viewBox widths/heights often land on a single-precision lattice.
-    let vb_w = (vb_w as f32) as f64;
-    let vb_h = (vb_h as f32) as f64;
+    let root_bounds = root_svg::DiagramBounds::from_extents(
+        content_bounds.min_x,
+        content_bounds.min_y,
+        content_bounds.max_x,
+        content_bounds.max_y,
+        viewport_padding,
+    );
 
-    let mut max_w_attr = String::new();
-    super::util::fmt_max_width_px_into(&mut max_w_attr, vb_w.max(1.0));
-    let mut view_box_attr = String::with_capacity(64);
-    let _ = write!(
-        &mut view_box_attr,
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    let mut width_attr = fmt_string(vb_w);
-    let mut height_attr = fmt_string(vb_h);
-    apply_root_viewport_override(
-        diagram_id,
-        &mut view_box_attr,
-        &mut width_attr,
-        &mut height_attr,
-        &mut max_w_attr,
-        crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override,
-    );
+    let root_document = root_context.finish_document(
+        &mut out,
+        root_document,
+        root_svg::RootViewportSpec::responsive(root_bounds)
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
+    )?;
 
     drop(_g_viewbox);
-    let _g_finalize = section(timing_enabled, &mut timings.finalize_svg);
+    let _g_finalize = timing.section(&mut timings.finalize_svg);
 
-    out = super::util::replace_placeholders_once(
-        &out,
-        &[
-            (MAX_WIDTH_PLACEHOLDER, max_w_attr.as_str()),
-            (VIEWBOX_PLACEHOLDER, view_box_attr.as_str()),
-            (TITLE_PLACEHOLDER_COMMENT, title_svg.as_str()),
-        ],
-    );
+    out = out.replacen(TITLE_PLACEHOLDER_COMMENT, title_svg.as_str(), 1);
 
     drop(_g_finalize);
-    timings.total = total_start.elapsed();
-    if timing_enabled {
+    timings.total = total_timer
+        .map(merman_core::runtime::OperationTimer::elapsed)
+        .unwrap_or_default();
+    if timing.is_enabled() {
         eprintln!(
-            "[render-timing] diagram=stateDiagram total={:?} deserialize={:?} build_ctx={:?} render_svg={:?} viewbox={:?} viewbox_svg_scan={:?} finalize={:?} fast_viewport={} root_calls={} clusters={:?} edge_paths={:?} edge_labels={:?} leaf_nodes={:?} leaf_style_parse={:?} leaf_roughjs={:?} leaf_roughjs_calls={} leaf_roughjs_unique={} leaf_measure={:?} leaf_label_html={:?} leaf_emit={:?} nested_roots={:?} self_loop_placeholders={:?}",
+            "[render-timing] diagram=stateDiagram total={:?} deserialize={:?} build_ctx={:?} render_svg={:?} viewbox={:?} viewbox_svg_scan={:?} finalize={:?} root_calls={} clusters={:?} edge_paths={:?} edge_labels={:?} leaf_nodes={:?} leaf_style_parse={:?} leaf_roughjs={:?} leaf_roughjs_calls={} leaf_roughjs_unique={} leaf_measure={:?} leaf_label_html={:?} leaf_emit={:?} nested_roots={:?} self_loop_placeholders={:?}",
             timings.total,
             timings.deserialize_model,
             timings.build_ctx,
@@ -671,7 +425,6 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
             timings.viewbox,
             viewbox_svg_scan,
             timings.finalize_svg,
-            fast_viewport,
             detail.root_calls,
             detail.clusters,
             detail.edge_paths,
@@ -688,7 +441,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
             detail.self_loop_placeholders,
         );
     }
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn render_state_root(
@@ -697,7 +450,7 @@ fn render_state_root(
     root: Option<&str>,
     parent_origin_x: f64,
     parent_origin_y: f64,
-    timing_enabled: bool,
+    timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
 ) {
     details.root_calls += 1;
@@ -738,7 +491,7 @@ fn render_state_root(
     let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
 
     // clusters
-    let _g_clusters = detail_guard(timing_enabled, &mut details.clusters);
+    let _g_clusters = detail_guard(timing, &mut details.clusters);
     out.push_str(r#"<g class="clusters">"#);
     if let Some(root_id) = root {
         render_state_cluster(out, ctx, root_id, origin_x, origin_y);
@@ -823,7 +576,7 @@ fn render_state_root(
     drop(_g_clusters);
 
     // edge paths
-    let _g_edge_paths = detail_guard(timing_enabled, &mut details.edge_paths);
+    let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
     out.push_str(r#"<g class="edgePaths">"#);
     if ctx.include_edges {
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
@@ -846,7 +599,7 @@ fn render_state_root(
     drop(_g_edge_paths);
 
     // edge labels
-    let _g_edge_labels = detail_guard(timing_enabled, &mut details.edge_labels);
+    let _g_edge_labels = detail_guard(timing, &mut details.edge_labels);
     out.push_str(r#"<g class="edgeLabels">"#);
     if ctx.include_edges {
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
@@ -888,7 +641,7 @@ fn render_state_root(
     }
 
     if ctx.include_nodes {
-        let leaf_start = timing_enabled.then(web_time::Instant::now);
+        let leaf_start = timing.start();
         for &id in &ctx.node_order {
             let Some(n) = ctx.layout_nodes_by_id.get(id).copied() else {
                 continue;
@@ -902,7 +655,7 @@ fn render_state_root(
             if state_leaf_context(ctx, id) != root {
                 continue;
             }
-            render_state_node_svg(out, ctx, id, origin_x, origin_y, timing_enabled, details);
+            render_state_node_svg(out, ctx, id, origin_x, origin_y, timing, details);
         }
         if let Some(s) = leaf_start {
             details.leaf_nodes += s.elapsed();
@@ -910,14 +663,14 @@ fn render_state_root(
     }
 
     for child_root in nested {
-        let nested_start = timing_enabled.then(web_time::Instant::now);
+        let nested_start = timing.start();
         render_state_root(
             out,
             ctx,
             Some(child_root),
             origin_x,
             origin_y,
-            timing_enabled,
+            timing,
             details,
         );
         if let Some(s) = nested_start {
@@ -927,7 +680,7 @@ fn render_state_root(
 
     // Mermaid adds extra edgeLabel placeholders for self-loop transitions inside `nodes`.
     if ctx.include_edges {
-        let _g_placeholders = detail_guard(timing_enabled, &mut details.self_loop_placeholders);
+        let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);
         for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
                 || state_is_hidden(ctx, edge.end.as_str())
@@ -955,14 +708,7 @@ fn render_state_root(
                     .get(id.as_str())
                     .map(|n| {
                         let x = (n.x - n.width / 2.0) - origin_x;
-                        let mut y = (n.y - n.height / 2.0) - origin_y;
-                        // Mermaid's self-loop helper nodes are rendered as tiny `labelRect`
-                        // placeholders (`0.1x0.1`). In upstream browser snapshots, their
-                        // effective SVG bbox y-origin lands 0.05px lower than the geometric
-                        // top-left computed from Dagre center/size.
-                        if n.width <= 0.1 + 1e-9 && n.height <= 0.1 + 1e-9 {
-                            y += 0.05;
-                        }
+                        let y = (n.y - n.height / 2.0) - origin_y;
                         (x, y)
                     })
                     .unwrap_or((0.0, 0.0));

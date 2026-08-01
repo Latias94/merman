@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Many sections (color wrap at 12+)",
     "accTitle": null,
     "accDescr": null,

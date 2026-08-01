@@ -8,7 +8,7 @@ pub(crate) fn estimate_line_width_px(line: &str, font_size: f64) -> f64 {
     em * font_size
 }
 
-pub(crate) fn estimate_char_width_em(ch: char) -> f64 {
+fn estimate_char_width_em(ch: char) -> f64 {
     if ch == ' ' {
         return 0.33;
     }

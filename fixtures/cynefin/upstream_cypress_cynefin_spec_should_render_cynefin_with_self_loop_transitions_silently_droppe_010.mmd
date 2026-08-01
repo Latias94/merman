@@ -1,0 +1,24 @@
+---
+config:
+  fontFamily: courier
+  fontSize: 16px
+  sequence:
+    actorFontFamily: courier
+    noteFontFamily: courier
+    messageFontFamily: courier
+  handDrawnSeed: 1
+  architecture:
+    seed: 1
+  cynefin:
+    seed: 1
+---
+cynefin-beta
+        title Self-loop Handling
+
+        complex
+          "Emergent work"
+        complicated
+          "Expert work"
+
+        complex --> complicated : "Pattern found"
+        complex --> complex : "Self-loop (dropped)"

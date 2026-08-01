@@ -1,6 +1,6 @@
-#![cfg(feature = "render")]
+#![cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {

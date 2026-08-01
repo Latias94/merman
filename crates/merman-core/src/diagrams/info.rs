@@ -1,7 +1,10 @@
-use crate::diagrams::scan::strip_line_ending;
+use crate::diagrams::langium_common::{
+    LangiumCommonParse, LangiumLexemeTrace, parse_langium_common, push_langium_common_editor_fact,
+    push_langium_common_recovery,
+};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
 };
 use serde_json::{Value, json};
 
@@ -9,159 +12,328 @@ use serde_json::{Value, json};
 pub struct InfoDiagramRenderModel {
     #[serde(rename = "showInfo")]
     pub show_info: bool,
+    #[serde(skip)]
+    compat_output: InfoCompatOutput,
+}
+
+#[derive(Debug, Clone, Default)]
+enum InfoCompatOutput {
+    Empty,
+    ExpectedInfoError,
+    #[default]
+    Model,
 }
 
 enum InfoParseOutput {
     Empty,
-    Error(Value),
+    ExpectedInfoError,
     Model(InfoDiagramRenderModel),
 }
 
-pub fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    match parse_info_model(code, meta)? {
-        InfoParseOutput::Empty => Ok(json!({})),
-        InfoParseOutput::Error(v) => Ok(v),
-        InfoParseOutput::Model(model) => Ok(json!({
-            "type": meta.diagram_type,
-            "showInfo": model.show_info,
-        })),
+struct InfoSemanticSource {
+    output: InfoParseOutput,
+    editor_facts: EditorSemanticFacts,
+}
+
+pub(crate) fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let model = info_output_into_render_model(parse_info_semantic_source(code, meta)?.output);
+    render_model_to_compat_json(&model, meta)
+}
+
+pub(crate) fn parse_info_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    let construction = construct_info_semantic_source_controlled(code, meta, control)?;
+    let parsed = family::CombinedSemanticParse::from_construction(
+        construction,
+        |source| {
+            let model = info_output_into_render_model(source.output);
+            (
+                render_model_to_compat_json(&model, meta),
+                source.editor_facts,
+            )
+        },
+        family::CombinedSemanticFailure::into_parts,
+    );
+    control.checkpoint()?;
+    Ok(parsed)
+}
+
+fn info_output_into_render_model(output: InfoParseOutput) -> InfoDiagramRenderModel {
+    match output {
+        InfoParseOutput::Empty => InfoDiagramRenderModel {
+            show_info: false,
+            compat_output: InfoCompatOutput::Empty,
+        },
+        InfoParseOutput::ExpectedInfoError => InfoDiagramRenderModel {
+            show_info: false,
+            compat_output: InfoCompatOutput::ExpectedInfoError,
+        },
+        InfoParseOutput::Model(model) => model,
     }
 }
 
-pub fn parse_info_model_for_render(
+pub(crate) fn render_model_to_compat_json(
+    model: &InfoDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    Ok(match &model.compat_output {
+        InfoCompatOutput::Empty => json!({}),
+        InfoCompatOutput::ExpectedInfoError => json!({ "error": "expected info" }),
+        InfoCompatOutput::Model => json!({
+            "type": meta.diagram_type,
+            "showInfo": model.show_info,
+        }),
+    })
+}
+
+pub(crate) fn parse_info_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<InfoDiagramRenderModel> {
-    match parse_info_model(code, meta)? {
-        InfoParseOutput::Empty | InfoParseOutput::Error(_) => Ok(InfoDiagramRenderModel::default()),
-        InfoParseOutput::Model(model) => Ok(model),
-    }
-}
-
-pub fn parse_info_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let mut header_seen = false;
-    let mut offset = 0usize;
-
-    for segment in code.split_inclusive('\n') {
-        let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
-        let trimmed = strip_inline_comment(line).trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if !header_seen {
-            if !trimmed.starts_with("info") {
-                return facts;
-            }
-            header_seen = true;
-            let rest = trimmed["info".len()..].trim();
-            if rest.is_empty() {
-                continue;
-            }
-            if rest == "showInfo" {
-                facts.push_directive_prefix("showInfo");
-                let rel = line.find("showInfo").unwrap_or(0);
-                let span = SourceSpan::new(line_start + rel, line_start + rel + "showInfo".len());
-                facts.push_expected_syntax(EditorExpectedSyntax::new(
-                    EditorExpectedSyntaxKind::Payload,
-                    span,
-                ));
-                facts.push_symbol(EditorSemanticSymbol::payload(
-                    "showInfo".to_string(),
-                    Some("info showInfo".to_string()),
-                    EditorSemanticKind::String,
-                    span,
-                    span,
-                ));
-            }
-            continue;
-        }
-    }
-
-    facts
-}
-
-fn parse_info_model(code: &str, meta: &ParseMetadata) -> Result<InfoParseOutput> {
-    let mut header: Option<String> = None;
-    let mut rest_lines = Vec::new();
-
-    for line in code.lines() {
-        let t = strip_inline_comment(line).trim();
-        if t.is_empty() {
-            continue;
-        }
-        if header.is_none() {
-            header = Some(t.to_string());
-        } else {
-            rest_lines.push(t.to_string());
-        }
-    }
-
-    let Some(header) = header else {
-        return Ok(InfoParseOutput::Empty);
-    };
-
-    let mut tokens = header.split_whitespace();
-    let Some(first) = tokens.next() else {
-        return Ok(InfoParseOutput::Empty);
-    };
-
-    if first != "info" {
-        return Ok(InfoParseOutput::Error(json!({ "error": "expected info" })));
-    }
-
-    let mut show_info = false;
-    let mut unsupported: Option<String> = None;
-    for tok in tokens {
-        if tok == "showInfo" {
-            show_info = true;
-            continue;
-        }
-        unsupported = Some(tok.to_string());
-        break;
-    }
-
-    // Upstream Mermaid accepts both:
-    // - `info showInfo`
-    // - `info\nshowInfo`
-    //
-    // The Langium grammar (`packages/parser/src/language/info/info.langium`) allows an optional
-    // `showInfo` token after the initial `info` keyword, separated by newlines.
-    if unsupported.is_none() && !rest_lines.is_empty() {
-        for line in &rest_lines {
-            let it = line.split_whitespace();
-            for tok in it {
-                if tok == "showInfo" {
-                    show_info = true;
-                    continue;
-                }
-                unsupported = Some(tok.to_string());
-                break;
-            }
-            if unsupported.is_some() {
-                break;
-            }
-        }
-    }
-
-    if unsupported.is_none() {
-        return Ok(InfoParseOutput::Model(InfoDiagramRenderModel { show_info }));
-    }
-
-    let bad = unsupported.unwrap_or_else(|| rest_lines.first().cloned().unwrap_or_default());
-    let ch = bad.chars().next().unwrap_or('?');
-    let skipped = bad.chars().count();
-    let offset = code.find(&bad).unwrap_or(5);
-
-    Err(Error::diagram_parse_fallback(
-        meta.diagram_type.clone(),
-        format!(
-            "Parsing failed: unexpected character: ->{ch}<- at offset: {offset}, skipped {skipped} characters."
-        ),
+    Ok(info_output_into_render_model(
+        parse_info_semantic_source(code, meta)?.output,
     ))
+}
+
+fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSemanticSource> {
+    construct_info_semantic_source(code, meta).map_err(family::CombinedSemanticFailure::into_error)
+}
+
+fn construct_info_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure> {
+    construct_info_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_info_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<
+    std::result::Result<InfoSemanticSource, family::CombinedSemanticFailure>,
+> {
+    control.checkpoint()?;
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("info");
+
+    let body = match info_body_start_controlled(code, control)? {
+        InfoHeader::Empty => {
+            return Ok(Ok(InfoSemanticSource {
+                output: InfoParseOutput::Empty,
+                editor_facts: EditorSemanticFacts::new(),
+            }));
+        }
+        InfoHeader::ExpectedInfo => {
+            return Ok(Ok(InfoSemanticSource {
+                output: InfoParseOutput::ExpectedInfoError,
+                editor_facts: EditorSemanticFacts::new(),
+            }));
+        }
+        InfoHeader::Body(body) => body,
+    };
+    let mut offset = body.offset;
+    let mut lexemes = LangiumLexemeTrace::default();
+    lexemes.keyword(body.header_span);
+    let mut editor_facts = EditorSemanticFacts::new();
+    let mut show_info = false;
+    let mut common_seen = false;
+    let mut first_error = None;
+
+    while offset < code.len() {
+        control.checkpoint()?;
+        match parse_info_statement(code, offset, !show_info && !common_seen) {
+            InfoStatement::Common(parsed) => {
+                if let Some(diagnostic) = &parsed.diagnostic {
+                    push_langium_common_recovery(&mut editor_facts, diagnostic);
+                    first_error.get_or_insert_with(|| {
+                        Error::diagram_parse_insertion_point(
+                            meta.diagram_type.clone(),
+                            diagnostic.message.clone(),
+                            diagnostic.span.start,
+                        )
+                    });
+                }
+                lexemes.extend(parsed.lexemes.clone());
+                push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "info");
+                common_seen = true;
+                offset += parsed.consumed;
+            }
+            InfoStatement::ShowInfo { span, consumed } => {
+                show_info = true;
+                lexemes.keyword(span);
+                push_show_info_editor_fact(&mut editor_facts, span);
+                offset += consumed;
+            }
+            InfoStatement::Empty { next_offset } => offset = next_offset,
+            InfoStatement::Unexpected {
+                ch,
+                skipped,
+                bad_offset,
+                span,
+                next_offset,
+            } => {
+                editor_facts
+                    .mark_recovered_from_parse_error("unexpected info statement", Some(span));
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!(
+                            "Parsing failed: unexpected character: ->{ch}<- at offset: {bad_offset}, skipped {skipped} characters."
+                        ),
+                    )
+                });
+                offset = next_offset;
+            }
+        }
+    }
+
+    lexemes.attach(code, &mut editor_facts);
+
+    if let Some(error) = first_error {
+        return Ok(Err(family::CombinedSemanticFailure::new(
+            error,
+            editor_facts,
+        )));
+    }
+
+    control.checkpoint()?;
+    Ok(Ok(InfoSemanticSource {
+        output: InfoParseOutput::Model(InfoDiagramRenderModel {
+            show_info,
+            compat_output: InfoCompatOutput::Model,
+        }),
+        editor_facts,
+    }))
+}
+
+enum InfoStatement {
+    Common(LangiumCommonParse),
+    ShowInfo {
+        span: SourceSpan,
+        consumed: usize,
+    },
+    Empty {
+        next_offset: usize,
+    },
+    Unexpected {
+        ch: char,
+        skipped: usize,
+        bad_offset: usize,
+        span: SourceSpan,
+        next_offset: usize,
+    },
+}
+
+fn parse_info_statement(code: &str, offset: usize, allow_show_info: bool) -> InfoStatement {
+    if let Some(parsed) = parse_langium_common(code, offset) {
+        return InfoStatement::Common(parsed);
+    }
+
+    let (line, next_offset) = physical_line(code, offset);
+    let visible = strip_inline_comment(line);
+    let trimmed = visible.trim();
+    if trimmed.is_empty() {
+        return InfoStatement::Empty { next_offset };
+    }
+
+    let leading = visible.len() - visible.trim_start().len();
+    if allow_show_info && let Some(token_len) = keyword_token_len(visible.trim_start(), "showInfo")
+    {
+        let start = offset + leading;
+        return InfoStatement::ShowInfo {
+            span: SourceSpan::new(start, start + token_len),
+            consumed: leading + token_len,
+        };
+    }
+
+    let bad_offset = offset + visible.find(trimmed).unwrap_or_default();
+    InfoStatement::Unexpected {
+        ch: trimmed.chars().next().unwrap_or('?'),
+        skipped: trimmed.chars().count(),
+        bad_offset,
+        span: SourceSpan::new(bad_offset, bad_offset + trimmed.len()),
+        next_offset,
+    }
+}
+
+fn push_show_info_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan) {
+    facts.push_directive_prefix("showInfo");
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        "showInfo".to_string(),
+        Some("info showInfo".to_string()),
+        EditorSemanticKind::String,
+        span,
+        span,
+    ));
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InfoHeader {
+    Empty,
+    ExpectedInfo,
+    Body(InfoBodyStart),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct InfoBodyStart {
+    offset: usize,
+    header_span: SourceSpan,
+}
+
+fn info_body_start_controlled(
+    code: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<InfoHeader> {
+    let mut offset = 0usize;
+    while offset < code.len() {
+        control.checkpoint()?;
+        let (line, next_offset) = physical_line(code, offset);
+        let visible = strip_inline_comment(line);
+        let trimmed = visible.trim_start();
+        if trimmed.trim().is_empty() {
+            offset = next_offset;
+            continue;
+        }
+        let Some(header_len) = keyword_token_len(trimmed, "info") else {
+            return Ok(InfoHeader::ExpectedInfo);
+        };
+        let leading = visible.len() - trimmed.len();
+        let header_start = offset + leading;
+        return Ok(InfoHeader::Body(InfoBodyStart {
+            offset: header_start + header_len,
+            header_span: SourceSpan::new(header_start, header_start + header_len),
+        }));
+    }
+    Ok(InfoHeader::Empty)
+}
+
+fn keyword_token_len(input: &str, keyword: &str) -> Option<usize> {
+    let rest = input.strip_prefix(keyword)?;
+    (rest.is_empty()
+        || rest.starts_with("%%")
+        || rest.chars().next().is_some_and(char::is_whitespace))
+    .then_some(keyword.len())
+}
+
+fn physical_line(source: &str, offset: usize) -> (&str, usize) {
+    let rest = &source[offset..];
+    if let Some(newline) = rest.find('\n') {
+        let line = rest[..newline]
+            .strip_suffix('\r')
+            .unwrap_or(&rest[..newline]);
+        (line, offset + newline + 1)
+    } else {
+        (rest, source.len())
+    }
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -174,14 +346,38 @@ fn strip_inline_comment(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{EditorSemanticCompleteness, Engine, MermaidConfig};
+
+    fn test_meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "info".to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn controlled_parse_can_cancel_after_the_info_header() {
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            construct_info_semantic_source_controlled(
+                "info\nshowInfo\ntitle Version\n",
+                &test_meta(),
+                &control,
+            ),
+            Err(crate::ParseCancelled)
+        ));
+    }
 
     #[test]
     fn parse_info_editor_facts_expose_parser_backed_spans() {
         let engine = Engine::new();
         let text = "info showInfo\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("info", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("info", text)
             .unwrap()
             .unwrap();
 
@@ -194,5 +390,99 @@ mod tests {
                 && expected.span
                     == SourceSpan::new(show_info_start, show_info_start + "showInfo".len())
         }));
+    }
+
+    #[test]
+    fn info_accepts_show_info_before_common_fields_like_pinned_grammar() {
+        let source = "info\nshowInfo\ntitle Version\naccDescr: Build metadata\n";
+        let model = parse_info(source, &test_meta()).unwrap();
+        assert_eq!(model["showInfo"], true);
+
+        let facts = crate::family::test_support::editor_facts(
+            parse_info_json_and_editor_facts,
+            source,
+            &test_meta(),
+        );
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(
+            facts
+                .directive_prefixes
+                .iter()
+                .any(|prefix| prefix == "showInfo")
+        );
+        assert!(
+            facts
+                .directive_prefixes
+                .iter()
+                .any(|prefix| prefix == "title")
+        );
+        assert!(
+            facts
+                .directive_prefixes
+                .iter()
+                .any(|prefix| prefix == "accDescr")
+        );
+    }
+
+    #[test]
+    fn info_rejects_show_info_after_common_fields_like_pinned_grammar() {
+        let source = "info\ntitle Version\nshowInfo\n";
+        assert!(parse_info(source, &test_meta()).is_err());
+
+        let facts = crate::family::test_support::editor_facts(
+            parse_info_json_and_editor_facts,
+            source,
+            &test_meta(),
+        );
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(
+            facts
+                .directive_prefixes
+                .iter()
+                .any(|prefix| prefix == "title")
+        );
+        assert!(
+            !facts
+                .directive_prefixes
+                .iter()
+                .any(|prefix| prefix == "showInfo")
+        );
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.message.contains("unexpected info statement")
+                && diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span
+                    == Some(SourceSpan::new(
+                        source.find("showInfo").unwrap(),
+                        source.find("showInfo").unwrap() + "showInfo".len(),
+                    ))
+        }));
+    }
+
+    #[test]
+    fn info_typed_projection_preserves_empty_error_and_model_outputs() {
+        let meta = test_meta();
+        for source in ["", "flowchart A", "info\n", "info showInfo\n"] {
+            let compat = parse_info(source, &meta).unwrap();
+            let typed = parse_info_model_for_render(source, &meta).unwrap();
+            assert_eq!(
+                render_model_to_compat_json(&typed, &meta).unwrap(),
+                compat,
+                "Info projection drifted for {source:?}"
+            );
+        }
+
+        assert_eq!(parse_info("", &meta).unwrap(), json!({}));
+        assert_eq!(
+            parse_info("flowchart A", &meta).unwrap(),
+            json!({ "error": "expected info" })
+        );
+        assert_eq!(
+            parse_info("info\n", &meta).unwrap(),
+            json!({ "type": "info", "showInfo": false })
+        );
+        assert_eq!(
+            render_model_to_compat_json(&InfoDiagramRenderModel::default(), &meta).unwrap(),
+            json!({ "type": "info", "showInfo": false })
+        );
     }
 }

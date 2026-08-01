@@ -107,8 +107,11 @@ export function getAnalysisSettings(): AnalysisSettings {
     fixedToday: analysisConfig.get<unknown>("fixed_today", ""),
     fixedLocalOffsetMinutes: analysisConfig.get<unknown>("fixed_local_offset_minutes", null),
     siteConfig: analysisConfig.get<unknown>("site_config", {}),
-    suppressErrors: analysisConfig.get<boolean>("parse.suppress_errors", false),
-    maxSourceBytes: analysisConfig.get<unknown>("resources.max_source_bytes", 0),
+    maxSourceBytes: analysisConfig.get<unknown>("resources.limits.max_source_bytes", 0),
+    maxDocumentDiagrams: analysisConfig.get<unknown>(
+      "resources.limits.max_document_diagrams",
+      0,
+    ),
     lintProfile: analysisConfig.get<string>("lint.profile", "core"),
     enableRules: analysisConfig.get<unknown[]>("lint.enable_rules", []),
     disableRules: analysisConfig.get<unknown[]>("lint.disable_rules", []),

@@ -1,5 +1,19 @@
 use super::super::*;
 
+pub(super) fn class_math_html_label(
+    text: &str,
+    mermaid_config: Option<&merman_core::MermaidConfig>,
+    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+) -> Option<String> {
+    if !crate::math::contains_delimited_math(text) {
+        return None;
+    }
+    let (Some(config), Some(renderer)) = (mermaid_config, math_renderer) else {
+        return None;
+    };
+    crate::math::render_math_html_label(text, config, Some(renderer))
+}
+
 pub(super) struct ClassInlineStyles<'a> {
     pub style_attr: String,
     pub fill: Option<&'a str>,
@@ -8,38 +22,30 @@ pub(super) struct ClassInlineStyles<'a> {
     pub stroke_dasharray: Option<&'a str>,
 }
 
-pub(super) fn render_class_html_label(
-    out: &mut String,
-    span_class: &str,
-    text: &str,
-    include_p: bool,
-    extra_span_class: Option<&str>,
-    span_style: Option<&str>,
-) {
-    fn is_simple_plain_label(text: &str) -> bool {
-        // Fast-path for the common case: no Markdown tokens and no hard/soft line breaks.
-        // This avoids pulldown-cmark overhead while producing the same XHTML fragment Mermaid
-        // would emit for plain text labels.
-        if text.to_ascii_lowercase().contains("<br") {
-            return false;
-        }
-        let bytes = text.as_bytes();
-        !bytes.iter().any(|&b| {
-            matches!(
-                b,
-                b'\n' | b'\r' | b'*' | b'_' | b'`' | b'~' | b'|' | b'[' | b']'
-            )
-        })
-    }
+pub(super) struct ClassHtmlLabelSpec<'a> {
+    pub span_class: &'a str,
+    pub text: &'a str,
+    pub include_p: bool,
+    pub extra_span_class: Option<&'a str>,
+    pub span_style: Option<&'a str>,
+    pub prepared_xhtml: Option<&'a str>,
+    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+}
 
+pub(super) fn render_class_html_label(out: &mut String, spec: &ClassHtmlLabelSpec<'_>) {
     out.push_str(r#"<span class=""#);
-    escape_xml_into(out, span_class);
-    if let Some(extra) = extra_span_class.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    escape_xml_into(out, spec.span_class);
+    if let Some(extra) = spec
+        .extra_span_class
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         out.push(' ');
         escape_xml_into(out, extra);
     }
-    let span_style = span_style.map(str::trim).unwrap_or("");
-    if span_class == "nodeLabel" || !span_style.is_empty() {
+    let span_style = spec.span_style.map(str::trim).unwrap_or("");
+    if spec.span_class == "nodeLabel" || !span_style.is_empty() {
         out.push_str(r#"" style=""#);
         super::super::util::escape_attr_into(out, span_style);
         out.push_str(r#"">"#);
@@ -47,37 +53,35 @@ pub(super) fn render_class_html_label(
         out.push_str(r#"">"#);
     }
 
-    if is_simple_plain_label(text) {
-        if include_p {
-            out.push_str("<p>");
-            escape_xml_into(out, text);
-            out.push_str("</p>");
-        } else {
-            escape_xml_into(out, text);
-        }
-        out.push_str("</span>");
-        return;
-    }
-
-    let html = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-    if include_p {
+    let html = spec
+        .prepared_xhtml
+        .map(std::borrow::Cow::Borrowed)
+        .unwrap_or_else(|| {
+            std::borrow::Cow::Owned(
+                class_math_html_label(spec.text, spec.mermaid_config, spec.math_renderer)
+                    .unwrap_or_else(|| {
+                        crate::text::mermaid_markdown_to_xhtml_label_fragment(spec.text, true)
+                    }),
+            )
+        });
+    if spec.include_p {
         out.push_str(&html);
     } else {
         let inner = html
             .strip_prefix("<p>")
             .and_then(|s| s.strip_suffix("</p>"))
-            .unwrap_or(html.as_str());
+            .unwrap_or(html.as_ref());
         out.push_str(inner);
     }
     out.push_str("</span>");
 }
 
 pub(super) fn write_class_svg_text_markdown(out: &mut String, markdown: &str, include_style: bool) {
-    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(out, markdown, include_style);
+    crate::svg::parity::label::write_svg_text_markdown(out, markdown, include_style);
 }
 
 pub(super) fn write_class_svg_edge_text(out: &mut String, text: &str, include_style: bool) {
-    crate::svg::parity::flowchart::write_flowchart_svg_text_centered(out, text, include_style);
+    crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
 }
 
 pub(super) fn write_class_svg_edge_text_markdown(
@@ -85,11 +89,7 @@ pub(super) fn write_class_svg_edge_text_markdown(
     markdown: &str,
     include_style: bool,
 ) {
-    crate::svg::parity::flowchart::write_flowchart_svg_text_markdown_centered(
-        out,
-        markdown,
-        include_style,
-    );
+    crate::svg::parity::label::write_svg_text_markdown_centered(out, markdown, include_style);
 }
 
 pub(super) fn class_html_div_style(width: f64, max_width_px: i64) -> String {
@@ -118,10 +118,6 @@ pub(super) fn class_note_html_div_style(width: f64, max_width_px: i64) -> String
     }
 }
 
-pub(super) fn class_html_label_max_width_px(width: f64, is_bold: bool) -> i64 {
-    width.max(0.0).ceil() as i64 + if is_bold { 51 } else { 50 }
-}
-
 pub(super) fn class_html_label_metrics(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
@@ -129,19 +125,7 @@ pub(super) fn class_html_label_metrics(
     max_width_px: i64,
     css_style: &str,
 ) -> crate::text::TextMetrics {
-    let mut metrics = crate::class::class_html_measure_label_metrics(
-        measurer,
-        style,
-        text,
-        max_width_px,
-        css_style,
-    );
-    if let Some(width) =
-        crate::class::class_html_known_rendered_width_override_px(text, style, false)
-    {
-        metrics.width = width;
-    }
-    metrics
+    crate::class::class_html_measure_label_metrics(measurer, style, text, max_width_px, css_style)
 }
 
 pub(super) fn class_html_title_metrics(
@@ -155,7 +139,7 @@ pub(super) fn class_html_title_metrics(
         .map(|line| format!("**{line}**"))
         .collect::<Vec<_>>()
         .join("\n");
-    crate::text::measure_markdown_with_flowchart_bold_deltas(
+    crate::text::measure_markdown_with_inline_styles(
         measurer,
         markdown.as_str(),
         style,
@@ -194,16 +178,6 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
         return text.to_string();
     };
 
-    // Vendored font metrics do not line up with Chromium's SVG `getComputedTextLength()` exactly.
-    // Most default-font SVG labels need a small inflation. Explicit large theme font sizes already
-    // reproduce Mermaid's two-font-size wrapping path without additional slack: the available
-    // width is measured with the root font size while the emitted tspans inherit the theme size.
-    let computed_len_fudge = if bold || style.font_size >= 20.0 {
-        1.0
-    } else {
-        1.02
-    };
-
     let mut lines: Vec<String> = Vec::new();
     for line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
         let mut tokens = std::collections::VecDeque::from(
@@ -218,8 +192,7 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
 
             let candidate = format!("{cur}{tok}");
             let candidate_w =
-                class_svg_text_computed_length_px(measurer, candidate.trim_end(), style, bold)
-                    * computed_len_fudge;
+                class_svg_text_computed_length_px(measurer, candidate.trim_end(), style, bold);
             if candidate_w <= wrap_width_px {
                 cur = candidate;
                 continue;
@@ -241,8 +214,7 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
             while cut < chars.len() {
                 let head: String = chars[..cut].iter().collect();
                 let head_w =
-                    class_svg_text_computed_length_px(measurer, head.as_str(), style, bold)
-                        * computed_len_fudge;
+                    class_svg_text_computed_length_px(measurer, head.as_str(), style, bold);
                 if head_w > wrap_width_px {
                     break;
                 }
@@ -269,36 +241,6 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
     }
 }
 
-pub(super) fn round_to_1_1024_px_ties_to_even(v: f64) -> f64 {
-    if !(v.is_finite() && v >= 0.0) {
-        return 0.0;
-    }
-    let x = v * 1024.0;
-    let f = x.floor();
-    let frac = x - f;
-    let i = if frac < 0.5 {
-        f
-    } else if frac > 0.5 {
-        f + 1.0
-    } else {
-        let fi = f as i64;
-        if fi % 2 == 0 { f } else { f + 1.0 }
-    };
-    let out = i / 1024.0;
-    if out == -0.0 { 0.0 } else { out }
-}
-
-pub(super) fn bolder_delta_scale_for_svg(font_size: f64) -> f64 {
-    let fs = font_size.max(1.0);
-    if fs <= 16.0 {
-        1.0
-    } else if fs >= 24.0 {
-        0.6
-    } else {
-        1.0 - (fs - 16.0) * (0.4 / 8.0)
-    }
-}
-
 fn mermaid_class_svg_create_text_width_px(
     measurer: &dyn TextMeasurer,
     text: &str,
@@ -308,7 +250,7 @@ fn mermaid_class_svg_create_text_width_px(
     let wrap_probe_font_size = wrap_probe_font_size.max(1.0);
     // Mermaid `calculateTextWidth(...)` selects between `sans-serif` and the configured font
     // family using `calculateTextDimensions(...)` (it does *not* always take the max width).
-    // Replicate that selection logic so SVG-label wrapping matches upstream fixtures.
+    // Replicate that selection logic so SVG-label wrapping matches Mermaid's utility contract.
     #[derive(Clone, Copy)]
     struct Dim {
         width: f64,
@@ -339,11 +281,13 @@ fn mermaid_class_svg_create_text_width_px(
             .or_else(|| Some("Arial".to_string())),
         font_size: wrap_probe_font_size,
         font_weight: None,
+        font_style: None,
     };
     let sans_probe_style = TextStyle {
         font_family: Some("sans-serif".to_string()),
         font_size: wrap_probe_font_size,
         font_weight: None,
+        font_style: None,
     };
     let dims = [
         dim_for(measurer, text, &sans_probe_style),
@@ -374,6 +318,7 @@ fn class_svg_text_computed_length_px(
             font_family: style.font_family.clone(),
             font_size: style.font_size,
             font_weight: Some("bolder".to_string()),
+            font_style: None,
         };
         measurer.measure_svg_text_computed_length_px(text, &bold_style)
     } else {
@@ -425,5 +370,47 @@ pub(super) fn class_apply_inline_styles<'a>(
         stroke,
         stroke_width,
         stroke_dasharray,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ClassHtmlLabelSpec, render_class_html_label};
+
+    #[test]
+    fn class_html_label_serializes_raw_html_and_escaped_generics_structurally() {
+        let mut rich = String::new();
+        render_class_html_label(
+            &mut rich,
+            &ClassHtmlLabelSpec {
+                span_class: "nodeLabel",
+                text: "<a href='https://example.com'><code>Entity</code></a>",
+                include_p: true,
+                extra_span_class: Some("markdown-node-label"),
+                span_style: None,
+                prepared_xhtml: None,
+                mermaid_config: None,
+                math_renderer: None,
+            },
+        );
+        assert!(rich.contains(r#"<a href='https://example.com'><code>Entity</code></a>"#));
+        assert!(!rich.contains("&lt;code&gt;"));
+
+        let mut generic = String::new();
+        render_class_html_label(
+            &mut generic,
+            &ClassHtmlLabelSpec {
+                span_class: "nodeLabel",
+                text: "Generic&lt;T&gt; driver_license",
+                include_p: true,
+                extra_span_class: Some("markdown-node-label"),
+                span_style: None,
+                prepared_xhtml: None,
+                mermaid_config: None,
+                math_renderer: None,
+            },
+        );
+        assert!(generic.contains("<p>Generic&lt;T&gt; driver_license</p>"));
+        assert!(!generic.contains("&amp;lt;"));
     }
 }

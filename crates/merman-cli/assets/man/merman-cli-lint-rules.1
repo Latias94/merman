@@ -1,0 +1,37 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH MERMAN-CLI-LINT-RULES 1 2026-07-29 "Merman 0.8.0-alpha.4" "Merman CLI Manual"
+.SH NAME
+merman\-cli\-lint\-rules \- List lint rule metadata
+.SH SYNOPSIS
+\fBmerman\-cli lint\-rules\fR [\fB\-\-format\fR] [\fB\-\-pretty\fR] [\fB\-\-configurable\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
+.SH DESCRIPTION
+List lint rule metadata
+.SH OPTIONS
+.TP
+\fB\-\-pretty\fR
+Pretty\-print JSON output
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH OUTPUT
+.TP
+\fB\-\-format\fR \fI<FORMAT>\fR [default: json]
+Output format for rule metadata
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+json
+.IP \(bu 2
+text
+.RE
+.SH "RULE FILTERS"
+.TP
+\fB\-\-configurable\fR
+Only list rules that public lint configuration can reference
+.SH VERSION
+v0.8.0\-alpha.4

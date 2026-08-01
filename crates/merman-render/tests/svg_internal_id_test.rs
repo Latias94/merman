@@ -1,6 +1,8 @@
-use merman_core::{Engine, ParseOptions};
-use merman_render::svg::{IconRegistry, IconSvg, SvgRenderOptions, render_layouted_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::svg::{IconRegistry, IconSvg, SvgDebugOptions, SvgRenderOptions};
 use std::sync::Arc;
 
 fn render_svg_from_text(text: &str, diagram_id: &str) -> String {
@@ -14,14 +16,37 @@ fn render_svg_from_text(text: &str, diagram_id: &str) -> String {
 }
 
 fn render_svg_from_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    render_svg_from_text_with_environment(text, options, &RenderEnvironment::deterministic())
+}
+
+fn render_svg_from_text_with_environment(
+    text: &str,
+    options: &SvgRenderOptions,
+    environment: &RenderEnvironment,
+) -> String {
+    render_svg_from_text_with_engine_and_environment(text, options, &Engine::new(), environment)
+}
+
+fn render_svg_from_text_with_engine_and_environment(
+    text: &str,
+    options: &SvgRenderOptions,
+    engine: &Engine,
+    environment: &RenderEnvironment,
+) -> String {
+    let session = environment.begin_session().unwrap();
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    render_layouted_svg(&out, layout_options.text_measurer.as_ref(), options).expect("render svg")
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    artifact
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 fn assert_scoped_marker(svg: &str, diagram_id: &str, local_id: &str) {
@@ -101,6 +126,32 @@ section Phase
     );
 
     assert_scoped_marker(&svg, "m15-timeline", "arrowhead");
+}
+
+#[test]
+fn vertical_timeline_preserves_upstream_marker_contract() {
+    let svg = render_svg_from_text(
+        r#"timeline TD
+title Release
+section Phase
+  Alpha : Build
+  Beta : Test"#,
+        "m15-timeline-vertical",
+    );
+
+    assert!(
+        svg.contains(r#"id="undefined-arrowhead""#),
+        "expected Mermaid's vertical Timeline marker id:\n{svg}"
+    );
+    assert!(
+        svg.contains(r#"marker-end="url(#arrowhead)""#),
+        "expected Mermaid's vertical Timeline marker reference:\n{svg}"
+    );
+    assert!(
+        !svg.contains(r#"id="m15-timeline-vertical-arrowhead""#)
+            && !svg.contains(r#"url(#m15-timeline-vertical-arrowhead)"#),
+        "vertical Timeline must not use the horizontal renderer's scoped marker contract:\n{svg}"
+    );
 }
 
 #[test]
@@ -193,16 +244,17 @@ fn flowchart_iconify_internal_ids_are_scoped_per_node() {
         ),
     );
 
-    let svg = render_svg_from_text_with_options(
+    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
+    let svg = render_svg_from_text_with_environment(
         r#"flowchart TD
 A@{ icon: "test:clip", label: "A" }
 B@{ icon: "test:clip", label: "B" }
 A --> B"#,
         &SvgRenderOptions {
             diagram_id: Some("m15-flowchart-icons".to_string()),
-            icon_registry: Some(Arc::new(registry)),
             ..SvgRenderOptions::default()
         },
+        &environment,
     );
 
     assert!(!svg.contains(r#"id="clip""#), "{svg}");
@@ -224,15 +276,28 @@ fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
     registry.insert("foo:bar-baz", IconSvg::new(icon_body, 16.0, 16.0));
     registry.insert("foo-bar:baz", IconSvg::new(icon_body, 16.0, 16.0));
     registry.insert("foo:bar-baz-2", IconSvg::new(icon_body, 16.0, 16.0));
+    let environment = RenderEnvironment::deterministic().with_icon_registry(Arc::new(registry));
     let options = SvgRenderOptions {
         diagram_id: Some("m15-tree-view-icons".to_string()),
-        icon_registry: Some(Arc::new(registry)),
         ..SvgRenderOptions::default()
     };
     let input = "treeView-beta\nRoot\n    One icon(foo:bar-baz)\n    Two icon(foo-bar:baz)\n    Three icon(foo:bar-baz-2)\n";
+    let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({ "securityLevel": "loose" }),
+    ));
 
-    let svg = render_svg_from_text_with_options(input, &options);
-    let repeated_svg = render_svg_from_text_with_options(input, &options);
+    let svg = render_svg_from_text_with_engine_and_environment(
+        input,
+        &options,
+        &loose_engine,
+        &environment,
+    );
+    let repeated_svg = render_svg_from_text_with_engine_and_environment(
+        input,
+        &options,
+        &loose_engine,
+        &environment,
+    );
 
     assert_eq!(svg, repeated_svg);
     assert!(!svg.contains(r#"id="none""#), "{svg}");
@@ -318,6 +383,7 @@ fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
     }
 }
 
+#[cfg(feature = "layout-cytoscape")]
 #[test]
 fn architecture_builtin_icon_internal_ids_are_scoped_per_node() {
     let svg = render_svg_from_text(
@@ -339,6 +405,7 @@ fn architecture_builtin_icon_internal_ids_are_scoped_per_node() {
     assert_eq!(unique.len(), ids.len(), "{svg}");
 }
 
+#[cfg(feature = "layout-cytoscape")]
 #[test]
 fn architecture_builtin_icons_without_internal_ids_skip_iconify_id_scoping() {
     let svg = render_svg_from_text(

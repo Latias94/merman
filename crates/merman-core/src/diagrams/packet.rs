@@ -1,11 +1,36 @@
-use crate::diagrams::scan::{starts_with_case_insensitive, strip_line_ending};
+use crate::common_db::LangiumCommonDbFields;
+use crate::diagrams::langium_common::{
+    LangiumCommonFacts, LangiumLexemeTrace, parse_langium_common, parse_langium_string,
+    push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
+};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
+    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
+    family,
 };
 use serde_json::{Map, Value, json};
 
 const MAX_PACKET_SIZE: usize = 10_000;
+pub const DEFAULT_PACKET_BITS_PER_ROW: i64 = 32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("packet.bitsPerRow must be an integer greater than or equal to 1; received {value}")]
+pub struct PacketBitsPerRowError {
+    pub value: i64,
+}
+
+/// Validates the shared Packet row-width configuration before either semantic construction or
+/// layout consumes it. Mermaid's configuration schema declares a minimum of one.
+pub fn validate_packet_bits_per_row(
+    value: Option<i64>,
+) -> std::result::Result<i64, PacketBitsPerRowError> {
+    let value = value.unwrap_or(DEFAULT_PACKET_BITS_PER_ROW);
+    if value < 1 {
+        return Err(PacketBitsPerRowError { value });
+    }
+    Ok(value)
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct PacketDiagramRenderModel {
@@ -15,14 +40,50 @@ pub struct PacketDiagramRenderModel {
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
     pub packet: Vec<Vec<PacketRenderBlock>>,
+    #[serde(skip)]
+    compatibility_output: CompatibilityOutputState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum CompatibilityOutputState {
+    Empty,
+    #[default]
+    Model,
 }
 
 impl PacketDiagramRenderModel {
+    fn empty_compatibility_output() -> Self {
+        Self {
+            compatibility_output: CompatibilityOutputState::Empty,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
     }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &PacketDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    if model.compatibility_output == CompatibilityOutputState::Empty {
+        return Ok(json!({}));
+    }
+    let mut out = Map::with_capacity(6);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("title".to_string(), json!(&model.title));
+    out.insert("accTitle".to_string(), json!(&model.acc_title));
+    out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert("packet".to_string(), json!(&model.packet));
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Ok(Value::Object(out))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -39,6 +100,7 @@ struct PacketBlock {
     end: Option<i64>,
     bits: Option<i64>,
     label: String,
+    numeric_span: SourceSpan,
 }
 
 enum PacketParseOutput {
@@ -46,229 +108,312 @@ enum PacketParseOutput {
     Model(PacketDiagramRenderModel),
 }
 
+struct PacketSemanticSource {
+    output: PacketParseOutput,
+    editor_facts: EditorSemanticFacts,
+}
+
 type PacketWord = Vec<PacketRenderBlock>;
 
-pub fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    match parse_packet_model(code, meta)? {
+pub(crate) fn parse_packet(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    packet_output_into_json(parse_packet_semantic_source(code, meta)?.output, meta)
+}
+
+pub(crate) fn parse_packet_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    control.checkpoint()?;
+    let parsed = family::CombinedSemanticParse::from_construction(
+        construct_packet_semantic_source_controlled(code, meta, control)?,
+        |source| {
+            (
+                packet_output_into_json(source.output, meta),
+                source.editor_facts,
+            )
+        },
+        family::CombinedSemanticFailure::into_parts,
+    );
+    control.checkpoint()?;
+    Ok(parsed)
+}
+
+fn packet_output_into_json(output: PacketParseOutput, meta: &ParseMetadata) -> Result<Value> {
+    match output {
         PacketParseOutput::Empty => Ok(json!({})),
-        PacketParseOutput::Model(model) => {
-            let mut out = Map::with_capacity(6);
-            out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-            out.insert("title".to_string(), json!(model.title));
-            out.insert("accTitle".to_string(), json!(model.acc_title));
-            out.insert("accDescr".to_string(), json!(model.acc_descr));
-            out.insert("packet".to_string(), json!(model.packet));
-            out.insert(
-                "config".to_string(),
-                crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
-            );
-            Ok(Value::Object(out))
-        }
+        PacketParseOutput::Model(model) => render_model_to_compat_json(&model, meta),
     }
 }
 
-pub fn parse_packet_model_for_render(
+pub(crate) fn parse_packet_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<PacketDiagramRenderModel> {
-    match parse_packet_model(code, meta)? {
-        PacketParseOutput::Empty => Ok(PacketDiagramRenderModel::default()),
+    match parse_packet_semantic_source(code, meta)?.output {
+        PacketParseOutput::Empty => Ok(PacketDiagramRenderModel::empty_compatibility_output()),
         PacketParseOutput::Model(model) => Ok(model),
     }
 }
 
-pub fn parse_packet_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
-    let mut offset = 0usize;
-    let mut header_seen = false;
-
-    while let Some(segment) = lines.next() {
-        let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
-        let stripped = strip_inline_comment(line);
-        let trimmed = stripped.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if !header_seen {
-            if is_packet_header(trimmed) {
-                header_seen = true;
-            }
-            continue;
-        }
-
-        if let Some(value) = parse_title_spanned(line, line_start) {
-            facts.push_directive_prefix("title");
-            push_packet_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "packet title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_key_value_spanned(line, line_start, "accTitle") {
-            facts.push_directive_prefix("accTitle");
-            push_packet_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "packet accessibility title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_acc_descr_inline_spanned(line, line_start) {
-            facts.push_directive_prefix("accDescr");
-            push_packet_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "packet accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_acc_descr_block_spanned(&mut lines, line, line_start) {
-            facts.push_directive_prefix("accDescr");
-            push_packet_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "packet accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(block) = parse_packet_block_spanned(line, line_start) {
-            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Payload,
-                block.numeric_span,
-            ));
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                block.label.text.to_string(),
-                Some("packet block".to_string()),
-                EditorSemanticKind::String,
-                SourceSpan::new(block.label.start, block.label.end),
-                SourceSpan::new(block.label.start, block.label.end),
-            ));
-            continue;
-        }
-    }
-
-    facts
+fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PacketSemanticSource> {
+    construct_packet_semantic_source(code, meta)
+        .map_err(family::CombinedSemanticFailure::into_error)
 }
 
-fn parse_packet_model(code: &str, meta: &ParseMetadata) -> Result<PacketParseOutput> {
-    let mut lines = code.lines();
+fn construct_packet_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<PacketSemanticSource, family::CombinedSemanticFailure> {
+    construct_packet_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
 
-    let mut header = None;
-    for line in &mut lines {
-        let t = strip_inline_comment(line).trim();
-        if !t.is_empty() {
-            header = Some(t.to_string());
-            break;
+fn construct_packet_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<
+    std::result::Result<PacketSemanticSource, family::CombinedSemanticFailure>,
+> {
+    control.checkpoint()?;
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("packet");
+
+    let body = match packet_body_start_controlled(code, control)? {
+        Ok(Some(body)) => body,
+        Ok(None) => {
+            return Ok(Ok(PacketSemanticSource {
+                output: PacketParseOutput::Empty,
+                editor_facts: EditorSemanticFacts::new(),
+            }));
         }
-    }
-
-    let Some(header) = header else {
-        return Ok(PacketParseOutput::Empty);
+        Err(error) => {
+            return Ok(Err(packet_parse_failure(
+                error,
+                EditorSemanticFacts::new(),
+                code,
+            )));
+        }
     };
-
-    if !is_packet_header(&header) {
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            "expected packet".to_string(),
-        ));
-    }
-
-    let mut title: Option<String> = None;
-    let mut acc_title: Option<String> = None;
-    let mut acc_descr: Option<String> = None;
+    let mut offset = body.offset;
+    let mut common = LangiumCommonFacts::default();
     let mut blocks: Vec<PacketBlock> = Vec::new();
+    let mut editor_facts = EditorSemanticFacts::new();
+    let mut lexemes = LangiumLexemeTrace::default();
+    lexemes.keyword(body.header_span);
+    let mut first_error = None;
 
-    for line in lines {
-        let t = strip_inline_comment(line).trim();
+    while offset < code.len() {
+        control.checkpoint()?;
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            if let Some(diagnostic) = &parsed.diagnostic {
+                push_langium_common_recovery(&mut editor_facts, diagnostic);
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_insertion_point(
+                        meta.diagram_type.clone(),
+                        diagnostic.message.clone(),
+                        diagnostic.span.start,
+                    )
+                });
+            }
+            lexemes.extend(parsed.lexemes.clone());
+            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "packet");
+            common.push(parsed.fact);
+            offset += parsed.consumed;
+            continue;
+        }
+
+        let line_start = offset;
+        let (line, next_offset) = physical_line(code, offset);
+        offset = next_offset;
+        let visible = strip_inline_comment(line);
+        let t = visible.trim();
         if t.is_empty() {
             continue;
         }
 
-        if let Some(v) = parse_title(t) {
-            title = Some(v);
-            continue;
-        }
-        if let Some(v) = parse_key_value(t, "accTitle") {
-            acc_title = Some(v);
-            continue;
-        }
-        if let Some(v) = parse_acc_descr(t) {
-            acc_descr = Some(v);
+        if let Some(block) = parse_packet_block_spanned(line, line_start) {
+            lexemes.extend(block.lexemes.clone());
+            push_packet_block_editor_fact(&mut editor_facts, &block);
+            blocks.push(block.semantic);
             continue;
         }
 
-        if let Some(block) = parse_packet_block(t) {
-            blocks.push(block);
-            continue;
-        }
-
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            format!("unexpected packet statement: {t}"),
-        ));
+        let diagnostic = if line_start < body.header_line_end {
+            "expected packet".to_string()
+        } else {
+            format!("unexpected packet statement: {t}")
+        };
+        let start = line_start + visible.find(t).unwrap_or_default();
+        editor_facts.mark_recovered_from_parse_error(
+            diagnostic.clone(),
+            Some(SourceSpan::new(start, start + t.len())),
+        );
+        first_error.get_or_insert_with(|| {
+            Error::diagram_parse_fallback(meta.diagram_type.clone(), diagnostic)
+        });
     }
 
-    let bits_per_row = config_i64(&meta.effective_config, "packet.bitsPerRow").unwrap_or(32);
-    let packet = populate_packet(blocks, bits_per_row)?;
+    let packet_result =
+        match validate_packet_bits_per_row(config_i64(&meta.effective_config, "packet.bitsPerRow"))
+        {
+            Ok(bits_per_row) => populate_packet_controlled(blocks, bits_per_row, control)?,
+            Err(error) => Err(Error::diagram_parse_fallback(
+                meta.diagram_type.clone(),
+                error.to_string(),
+            )),
+        };
+    let packet = match packet_result {
+        Ok(packet) => packet,
+        Err(error) => {
+            editor_facts = ensure_editor_recovery_from_error(
+                editor_facts,
+                &error,
+                editor_recovery_fallback_span(code),
+            );
+            if first_error.is_none() {
+                first_error = Some(error);
+            }
+            Vec::new()
+        }
+    };
+    let common = LangiumCommonDbFields::from_facts(&common);
+    lexemes.attach(code, &mut editor_facts);
 
-    Ok(PacketParseOutput::Model(PacketDiagramRenderModel {
-        title,
-        acc_title,
-        acc_descr,
-        packet,
+    if let Some(error) = first_error {
+        return Ok(Err(family::CombinedSemanticFailure::new(
+            error,
+            editor_facts,
+        )));
+    }
+
+    control.checkpoint()?;
+    Ok(Ok(PacketSemanticSource {
+        output: PacketParseOutput::Model(PacketDiagramRenderModel {
+            title: common.title,
+            acc_title: common.acc_title,
+            acc_descr: common.acc_descr,
+            packet,
+            compatibility_output: CompatibilityOutputState::Model,
+        }),
+        editor_facts,
     }))
 }
 
-fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<PacketWord>> {
+fn packet_parse_failure(
+    error: Error,
+    editor_facts: EditorSemanticFacts,
+    code: &str,
+) -> family::CombinedSemanticFailure {
+    let editor_facts = ensure_editor_recovery_from_error(
+        editor_facts,
+        &error,
+        editor_recovery_fallback_span(code),
+    );
+    family::CombinedSemanticFailure::new(error, editor_facts)
+}
+
+fn push_packet_block_editor_fact(facts: &mut EditorSemanticFacts, block: &PacketBlockSpanned) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        block.semantic.numeric_span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        block.label.text.to_string(),
+        Some("packet block".to_string()),
+        EditorSemanticKind::String,
+        block.label.span,
+        block.label.span,
+    ));
+}
+
+fn populate_packet_controlled(
+    blocks: Vec<PacketBlock>,
+    bits_per_row: i64,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<Result<Vec<PacketWord>>> {
     let mut packet: Vec<PacketWord> = Vec::new();
     let mut last_bit: i64 = -1;
     let mut word: PacketWord = Vec::new();
-    let mut row: i64 = 1;
+    let mut row: i128 = 1;
 
-    for mut block in blocks {
+    for (block_index, mut block) in blocks.into_iter().enumerate() {
+        if block_index % 128 == 0 {
+            control.checkpoint()?;
+        }
         if let (Some(start), Some(end)) = (block.start, block.end)
             && end < start
         {
-            return Err(Error::diagram_parse_fallback(
+            return Ok(Err(Error::diagram_parse_exact(
                 "packet".to_string(),
                 format!("Packet block {start} - {end} is invalid. End must be greater than start."),
-            ));
+                block.numeric_span,
+            )));
         }
 
-        let start = block.start.unwrap_or(last_bit + 1);
+        let expected_start = match last_bit.checked_add(1) {
+            Some(start) => start,
+            None => {
+                return Ok(Err(Error::diagram_parse_exact(
+                    "packet".to_string(),
+                    "Packet bit range exceeds the supported integer range.".to_string(),
+                    block.numeric_span,
+                )));
+            }
+        };
+        let start = block.start.unwrap_or(expected_start);
         let end_for_msg = block.end.unwrap_or(start);
-        if start != last_bit + 1 {
-            return Err(Error::diagram_parse_fallback(
+        if start != expected_start {
+            return Ok(Err(Error::diagram_parse_exact(
                 "packet".to_string(),
                 format!(
                     "Packet block {start} - {end_for_msg} is not contiguous. It should start from {}.",
-                    last_bit + 1
+                    expected_start
                 ),
-            ));
+                block.numeric_span,
+            )));
         }
 
         if block.bits == Some(0) {
-            return Err(Error::diagram_parse_fallback(
+            return Ok(Err(Error::diagram_parse_exact(
                 "packet".to_string(),
                 format!("Packet block {start} is invalid. Cannot have a zero bit field."),
-            ));
+                block.numeric_span,
+            )));
         }
 
-        let end = block.end.unwrap_or(start + block.bits.unwrap_or(1) - 1);
-        let bits = block.bits.unwrap_or(end - start + 1);
+        let end = match block.end {
+            Some(end) => end,
+            None => {
+                let bits = block.bits.unwrap_or(1);
+                let Some(width) = bits.checked_sub(1) else {
+                    return Ok(Err(Error::diagram_parse_exact(
+                        "packet".to_string(),
+                        "Packet block width must be positive.".to_string(),
+                        block.numeric_span,
+                    )));
+                };
+                let Some(end) = start.checked_add(width) else {
+                    return Ok(Err(Error::diagram_parse_exact(
+                        "packet".to_string(),
+                        "Packet bit range exceeds the supported integer range.".to_string(),
+                        block.numeric_span,
+                    )));
+                };
+                end
+            }
+        };
+        let Some(bits) = end
+            .checked_sub(start)
+            .and_then(|value| value.checked_add(1))
+        else {
+            return Ok(Err(Error::diagram_parse_exact(
+                "packet".to_string(),
+                "Packet bit range arithmetic overflowed.".to_string(),
+                block.numeric_span,
+            )));
+        };
         last_bit = end;
 
         let mut cur = PacketRenderBlock {
@@ -278,15 +423,44 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
             label: std::mem::take(&mut block.label),
         };
 
-        while word.len() <= (bits_per_row + 1) as usize && packet.len() < MAX_PACKET_SIZE {
-            let (fitting, next) = get_next_fitting_block(cur, row, bits_per_row)?;
-            let reached_row_end = fitting.end + 1 == row * bits_per_row;
+        let mut split_count = 0usize;
+        loop {
+            if split_count.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            split_count = split_count.saturating_add(1);
+            let (fitting, next) = match get_next_fitting_block(cur, row, bits_per_row) {
+                Ok(next) => next,
+                Err(error) => return Ok(Err(error)),
+            };
+            let Some(row_boundary) = row.checked_mul(i128::from(bits_per_row)) else {
+                return Ok(Err(Error::diagram_parse_exact(
+                    "packet".to_string(),
+                    "Packet row arithmetic exceeds the supported integer range.".to_string(),
+                    block.numeric_span,
+                )));
+            };
+            let reached_row_end = i128::from(fitting.end) + 1 == row_boundary;
             word.push(fitting);
             if reached_row_end {
                 if !word.is_empty() {
+                    if packet.len() >= MAX_PACKET_SIZE {
+                        return Ok(Err(Error::diagram_parse_exact(
+                            "packet".to_string(),
+                            format!("Packet exceeds the {MAX_PACKET_SIZE}-row safety limit."),
+                            block.numeric_span,
+                        )));
+                    }
                     packet.push(std::mem::take(&mut word));
                 }
-                row += 1;
+                let Some(next_row) = row.checked_add(1) else {
+                    return Ok(Err(Error::diagram_parse_exact(
+                        "packet".to_string(),
+                        "Packet row arithmetic exceeds the supported integer range.".to_string(),
+                        block.numeric_span,
+                    )));
+                };
+                row = next_row;
             }
             let Some(next) = next else {
                 break;
@@ -299,12 +473,13 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
         packet.push(word);
     }
 
-    Ok(packet)
+    control.checkpoint()?;
+    Ok(Ok(packet))
 }
 
 fn get_next_fitting_block(
     block: PacketRenderBlock,
-    row: i64,
+    row: i128,
     bits_per_row: i64,
 ) -> Result<(PacketRenderBlock, Option<PacketRenderBlock>)> {
     if block.start > block.end {
@@ -317,145 +492,68 @@ fn get_next_fitting_block(
         ));
     }
 
-    if block.end < row * bits_per_row {
+    let row_start = row.checked_mul(i128::from(bits_per_row)).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet row arithmetic exceeds the supported integer range.".to_string(),
+        )
+    })?;
+
+    if i128::from(block.end) < row_start {
         return Ok((block, None));
     }
 
-    let row_end = row * bits_per_row - 1;
-    let row_start = row * bits_per_row;
+    let row_end = row_start.checked_sub(1).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet row arithmetic underflowed.".to_string(),
+        )
+    })?;
+    let row_end = i64::try_from(row_end).map_err(|_| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet row boundary exceeds the supported integer range.".to_string(),
+        )
+    })?;
+    let row_start = i64::try_from(row_start).map_err(|_| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet row boundary exceeds the supported integer range.".to_string(),
+        )
+    })?;
+    let first_bits = row_end.checked_sub(block.start).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet block width arithmetic overflowed.".to_string(),
+        )
+    })?;
+    let second_bits = block.end.checked_sub(row_start).ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            "packet".to_string(),
+            "Packet block width arithmetic overflowed.".to_string(),
+        )
+    })?;
     Ok((
         PacketRenderBlock {
             start: block.start,
             end: row_end,
             label: block.label.clone(),
-            bits: row_end - block.start,
+            bits: first_bits,
         },
         Some(PacketRenderBlock {
             start: row_start,
             end: block.end,
             label: block.label,
-            bits: block.end - row_start,
+            bits: second_bits,
         }),
     ))
 }
 
 fn strip_inline_comment(line: &str) -> &str {
-    match line.find("%%") {
-        Some(idx) => &line[..idx],
-        None => line,
-    }
+    strip_langium_inline_comment(line)
 }
 
-fn parse_title_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !starts_with_case_insensitive(t, "title") {
-        return None;
-    }
-    let rest = t.strip_prefix("title")?;
-    let ws = rest.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let value = rest.trim_start();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_key_value_spanned<'a>(
-    line: &'a str,
-    line_start: usize,
-    key: &str,
-) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !starts_with_case_insensitive(t, key) {
-        return None;
-    }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_acc_descr_inline_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !starts_with_case_insensitive(t, "accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_acc_descr_block_spanned<'a>(
-    lines: &mut std::iter::Peekable<std::str::SplitInclusive<'a, char>>,
-    first_line: &'a str,
-    line_start: usize,
-) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(first_line).trim_start();
-    if !starts_with_case_insensitive(t, "accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    let rest = rest.strip_prefix('{')?;
-    if let Some(end) = rest.find('}') {
-        let value = rest[..end].trim();
-        let value_rel = first_line.find(value)?;
-        return Some(SpannedText {
-            text: value,
-            start: line_start + value_rel,
-            end: line_start + value_rel + value.len(),
-        });
-    }
-    let value = rest.trim();
-    if value.is_empty() {
-        for next_line in lines.by_ref() {
-            if next_line.contains('}') {
-                break;
-            }
-        }
-        return None;
-    }
-    let value_rel = first_line.find(value)?;
-    for next_line in lines.by_ref() {
-        if next_line.contains('}') {
-            break;
-        }
-    }
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_packet_block_spanned<'a>(
-    line: &'a str,
-    line_start: usize,
-) -> Option<PacketBlockSpanned<'a>> {
+fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlockSpanned> {
     let stripped = strip_inline_comment(line);
     let trimmed = stripped.trim_start();
     if trimmed.is_empty() {
@@ -465,9 +563,14 @@ fn parse_packet_block_spanned<'a>(
     let base = line_start + leading;
     let bytes = trimmed.as_bytes();
     let mut idx = 0usize;
+    let mut lexemes = LangiumLexemeTrace::default();
 
-    let numeric_span = if bytes.first() == Some(&b'+') {
+    let (start, end, bits, numeric_span) = if bytes.first() == Some(&b'+') {
+        lexemes.operator(SourceSpan::new(base, base + 1));
         idx = 1;
+        while idx < bytes.len() && matches!(bytes[idx], b' ' | b'\t') {
+            idx += 1;
+        }
         let digits_start = idx;
         while idx < bytes.len() && bytes[idx].is_ascii_digit() {
             idx += 1;
@@ -475,7 +578,10 @@ fn parse_packet_block_spanned<'a>(
         if idx == digits_start {
             return None;
         }
-        SourceSpan::new(base + digits_start, base + idx)
+        let bits = parse_packet_integer(&trimmed[digits_start..idx])?;
+        let bits_span = SourceSpan::new(base + digits_start, base + idx);
+        lexemes.number(bits_span);
+        (None, None, Some(bits), bits_span)
     } else {
         let digits_start = idx;
         while idx < bytes.len() && bytes[idx].is_ascii_digit() {
@@ -484,9 +590,22 @@ fn parse_packet_block_spanned<'a>(
         if idx == digits_start {
             return None;
         }
+        let start = parse_packet_integer(&trimmed[digits_start..idx])?;
         let start_span = SourceSpan::new(base + digits_start, base + idx);
-        if idx < bytes.len() && bytes[idx] == b'-' {
+        lexemes.number(start_span);
+        while idx < bytes.len() && matches!(bytes[idx], b' ' | b'\t') {
             idx += 1;
+        }
+        if idx < bytes.len() && bytes[idx] == b'-' {
+            let operator_start = idx;
+            idx += 1;
+            lexemes.operator(SourceSpan::new(
+                base + operator_start,
+                base + operator_start + 1,
+            ));
+            while idx < bytes.len() && matches!(bytes[idx], b' ' | b'\t') {
+                idx += 1;
+            }
             let end_digits_start = idx;
             while idx < bytes.len() && bytes[idx].is_ascii_digit() {
                 idx += 1;
@@ -494,9 +613,16 @@ fn parse_packet_block_spanned<'a>(
             if idx == end_digits_start {
                 return None;
             }
-            SourceSpan::new(start_span.start, base + idx)
+            let end = parse_packet_integer(&trimmed[end_digits_start..idx])?;
+            lexemes.number(SourceSpan::new(base + end_digits_start, base + idx));
+            (
+                Some(start),
+                Some(end),
+                None,
+                SourceSpan::new(start_span.start, base + idx),
+            )
         } else {
-            start_span
+            (Some(start), None, None, start_span)
         }
     };
 
@@ -507,193 +633,126 @@ fn parse_packet_block_spanned<'a>(
     if !rest.starts_with(':') {
         return None;
     }
+    let colon_start = base + idx + ws1;
+    lexemes.delimiter(SourceSpan::new(colon_start, colon_start + 1));
     let after_colon_base = base + idx + ws1 + 1;
     rest = &rest[1..];
     let rest_trimmed = rest.trim_start();
     let ws2 = rest.len() - rest_trimmed.len();
     rest = rest_trimmed;
     let label_base = after_colon_base + ws2;
-    let (label, tail) = parse_quoted_string_spanned(rest, label_base)?;
+    let (label, decoded_label, tail) = parse_quoted_string_spanned(rest, label_base)?;
     if !tail.trim().is_empty() {
         return None;
     }
+    lexemes.string(label.raw_span);
 
     Some(PacketBlockSpanned {
-        numeric_span,
+        semantic: PacketBlock {
+            start,
+            end,
+            bits,
+            label: decoded_label,
+            numeric_span,
+        },
         label,
+        lexemes,
     })
 }
 
-fn parse_quoted_string_spanned<'a>(
-    input: &'a str,
-    base_offset: usize,
-) -> Option<(SpannedText<'a>, &'a str)> {
-    let mut chars = input.char_indices();
-    let (_, quote) = chars.next()?;
-    if quote != '"' && quote != '\'' {
-        return None;
-    }
-    let mut escaped = false;
-    for (idx, c) in chars {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if c == '\\' {
-            escaped = true;
-            continue;
-        }
-        if c == quote {
-            let text = &input[1..idx];
-            let text = text.trim();
-            return Some((
-                SpannedText {
-                    text,
-                    start: base_offset + 1,
-                    end: base_offset + idx,
-                },
-                &input[idx + c.len_utf8()..],
-            ));
-        }
-    }
-    None
-}
-
-fn packet_header_token_len(line: &str) -> Option<usize> {
-    if starts_with_case_insensitive(line, "packet-beta") {
-        let rest = &line["packet-beta".len()..];
-        if rest.is_empty() {
-            return Some("packet-beta".len());
-        }
-    }
-    if starts_with_case_insensitive(line, "packet") {
-        let rest = &line["packet".len()..];
-        if rest.is_empty() {
-            return Some("packet".len());
-        }
-    }
-    None
-}
-
-fn is_packet_header(line: &str) -> bool {
-    packet_header_token_len(line.trim_start()).is_some()
-}
-
-fn parse_title(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("title") {
-        return None;
-    }
-    let rest = t.strip_prefix("title")?.trim_start();
-    Some(rest.to_string())
-}
-
-fn parse_key_value(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with(key) {
-        return None;
-    }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-    Some(rest.to_string())
-}
-
-fn parse_acc_descr(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    if let Some(rest) = rest.strip_prefix(':') {
-        return Some(rest.trim_start().to_string());
-    }
-    if let Some(rest) = rest.strip_prefix('{') {
-        let end = rest.find('}')?;
-        return Some(rest[..end].to_string());
-    }
-    None
-}
-
-fn parse_packet_block(line: &str) -> Option<PacketBlock> {
-    let mut rest = line.trim_start();
-
-    let (start, end, bits) = if let Some(after_plus) = rest.strip_prefix('+') {
-        let (bits, tail) = parse_int_token(after_plus.trim_start())?;
-        rest = tail;
-        (None, None, Some(bits))
-    } else {
-        let (start, tail) = parse_int_token(rest)?;
-        rest = tail.trim_start();
-        let mut end = None;
-        if let Some(after_dash) = rest.strip_prefix('-') {
-            let (e, tail) = parse_int_token(after_dash.trim_start())?;
-            end = Some(e);
-            rest = tail;
-        }
-        (Some(start), end, None)
-    };
-
-    let rest2 = rest.trim_start();
-    let rest2 = rest2.strip_prefix(':')?.trim_start();
-    let (label, tail) = parse_quoted_string(rest2)?;
-    if !tail.trim().is_empty() {
-        return None;
-    }
-
-    Some(PacketBlock {
-        start,
-        end,
-        bits,
-        label,
-    })
-}
-
-fn parse_int_token(input: &str) -> Option<(i64, &str)> {
-    let mut idx = 0usize;
-    for c in input.chars() {
-        if c.is_ascii_digit() {
-            idx += c.len_utf8();
-        } else {
-            break;
-        }
-    }
-    if idx == 0 {
-        return None;
-    }
-    let token = &input[..idx];
+fn parse_packet_integer(token: &str) -> Option<i64> {
     if token.len() > 1 && token.starts_with('0') {
         return None;
     }
-    let value: i64 = token.parse().ok()?;
-    Some((value, &input[idx..]))
+    token.parse().ok()
 }
 
-fn parse_quoted_string(input: &str) -> Option<(String, &str)> {
-    let mut chars = input.chars();
-    let quote = chars.next()?;
-    if quote != '"' && quote != '\'' {
-        return None;
+fn parse_quoted_string_spanned(
+    input: &str,
+    base_offset: usize,
+) -> Option<(SpannedText, String, &str)> {
+    let parsed = parse_langium_string(input, base_offset)?;
+    let tail = &input[parsed.consumed..];
+    Some((
+        SpannedText {
+            text: parsed.value.clone(),
+            span: parsed.value_span,
+            raw_span: parsed.raw_span,
+        },
+        parsed.value,
+        tail,
+    ))
+}
+
+fn packet_header_token_len(line: &str) -> Option<usize> {
+    if let Some(rest) = line.strip_prefix("packet-beta")
+        && keyword_boundary(rest)
+    {
+        return Some("packet-beta".len());
     }
-    let mut out = String::new();
-    let mut escaped = false;
-    let mut idx = 1;
-    for c in chars {
-        idx += c.len_utf8();
-        if escaped {
-            out.push(c);
-            escaped = false;
-            continue;
-        }
-        if c == '\\' {
-            escaped = true;
-            continue;
-        }
-        if c == quote {
-            return Some((out, &input[idx..]));
-        }
-        out.push(c);
+    if let Some(rest) = line.strip_prefix("packet")
+        && keyword_boundary(rest)
+    {
+        return Some("packet".len());
     }
     None
+}
+
+fn keyword_boundary(rest: &str) -> bool {
+    rest.is_empty()
+        || rest.starts_with("%%")
+        || rest.chars().next().is_some_and(char::is_whitespace)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PacketBodyStart {
+    offset: usize,
+    header_line_end: usize,
+    header_span: SourceSpan,
+}
+
+fn packet_body_start_controlled(
+    code: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<Result<Option<PacketBodyStart>>> {
+    let mut offset = 0usize;
+    while offset < code.len() {
+        control.checkpoint()?;
+        let (line, next_offset) = physical_line(code, offset);
+        let visible = strip_inline_comment(line);
+        let trimmed = visible.trim_start();
+        if trimmed.trim().is_empty() {
+            offset = next_offset;
+            continue;
+        }
+
+        let leading = visible.len() - trimmed.len();
+        let Some(header_len) = packet_header_token_len(trimmed) else {
+            return Ok(Err(Error::diagram_parse_fallback(
+                "packet".to_string(),
+                "expected packet".to_string(),
+            )));
+        };
+        let body_start = offset + leading + header_len;
+        return Ok(Ok(Some(PacketBodyStart {
+            offset: body_start,
+            header_line_end: next_offset,
+            header_span: SourceSpan::new(offset + leading, body_start),
+        })));
+    }
+    Ok(Ok(None))
+}
+
+fn physical_line(source: &str, offset: usize) -> (&str, usize) {
+    let rest = &source[offset..];
+    if let Some(newline) = rest.find('\n') {
+        let line = rest[..newline]
+            .strip_suffix('\r')
+            .unwrap_or(&rest[..newline]);
+        (line, offset + newline + 1)
+    } else {
+        (rest, source.len())
+    }
 }
 
 fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
@@ -702,43 +761,25 @@ fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
         cur = cur.as_object()?.get(segment)?;
     }
     match cur {
-        Value::Number(n) => n.as_i64().or_else(|| n.as_u64().map(|v| v as i64)),
+        Value::Number(n) => n
+            .as_i64()
+            .or_else(|| n.as_u64().and_then(|v| i64::try_from(v).ok())),
         _ => None,
     }
 }
 
-fn push_packet_payload_fact(
-    facts: &mut EditorSemanticFacts,
-    text: &str,
-    start: usize,
-    detail: &'static str,
-    kind: EditorSemanticKind,
-) {
-    let end = start + text.len();
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        SourceSpan::new(start, end),
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        text.to_string(),
-        Some(detail.to_string()),
-        kind,
-        SourceSpan::new(start, end),
-        SourceSpan::new(start, end),
-    ));
+#[derive(Debug, Clone)]
+struct SpannedText {
+    text: String,
+    span: SourceSpan,
+    raw_span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct SpannedText<'a> {
-    text: &'a str,
-    start: usize,
-    end: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct PacketBlockSpanned<'a> {
-    numeric_span: SourceSpan,
-    label: SpannedText<'a>,
+#[derive(Debug, Clone)]
+struct PacketBlockSpanned {
+    semantic: PacketBlock,
+    label: SpannedText,
+    lexemes: LangiumLexemeTrace,
 }
 
 #[cfg(test)]
@@ -765,6 +806,68 @@ mod tests {
     }
 
     #[test]
+    fn packet_parser_can_cancel_between_blocks() {
+        let mut text = String::from("packet\n");
+        for index in 0..512 {
+            text.push_str(&format!("{index}: \"bit-{index}\"\n"));
+        }
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(4);
+        let meta = ParseMetadata {
+            diagram_type: "packet".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+
+        assert!(matches!(
+            construct_packet_semantic_source_controlled(&text, &meta, &control),
+            Err(crate::ParseCancelled)
+        ));
+    }
+
+    #[test]
+    fn packet_typed_projection_matches_complete_compatibility_json() {
+        let text = "packet\ntitle Header\n0-7: \"byte\"\n";
+        let effective_config = MermaidConfig::from_value(json!({
+            "packet": { "bitsPerRow": 16 },
+            "theme": "forest"
+        }));
+        let meta = ParseMetadata {
+            diagram_type: "packet".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config,
+            title: None,
+        };
+        let compat = parse_packet(text, &meta).unwrap();
+        let typed = parse_packet_model_for_render(text, &meta).unwrap();
+
+        assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), compat);
+        assert_eq!(compat["config"]["packet"]["bitsPerRow"], 16);
+        assert!(compat["accTitle"].is_null());
+    }
+
+    #[test]
+    fn packet_typed_projection_preserves_empty_and_header_only_output_states() {
+        let meta = ParseMetadata {
+            diagram_type: "packet".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        for source in ["", "packet"] {
+            let compat = parse_packet(source, &meta).unwrap();
+            let typed = parse_packet_model_for_render(source, &meta).unwrap();
+
+            assert_eq!(
+                render_model_to_compat_json(&typed, &meta).unwrap(),
+                compat,
+                "projection drift for {source:?}"
+            );
+        }
+    }
+
+    #[test]
     fn packet_beta_header_is_accepted() {
         let model = parse("packet-beta");
         assert_eq!(model["packet"], json!([]));
@@ -774,6 +877,36 @@ mod tests {
     fn packet_header_is_accepted() {
         let model = parse("packet");
         assert_eq!(model["packet"], json!([]));
+    }
+
+    #[test]
+    fn packet_rejects_a_nonpositive_bits_per_row_before_expanding_rows() {
+        let error = parse_err(
+            r#"---
+config:
+  packet:
+    bitsPerRow: 0
+---
+packet
+0-7: "byte"
+"#,
+        );
+
+        assert_eq!(
+            error,
+            "packet.bitsPerRow must be an integer greater than or equal to 1; received 0"
+        );
+    }
+
+    #[test]
+    fn packet_rejects_extreme_ranges_without_integer_overflow() {
+        let error = parse_err(
+            r#"packet
+0-9223372036854775807: "too wide"
+"#,
+        );
+
+        assert_eq!(error, "Packet bit range arithmetic overflowed.");
     }
 
     #[test]
@@ -810,6 +943,16 @@ accDescr: Packet accDescription
     }
 
     #[test]
+    fn packet_multiline_accessibility_description_matches_common_langium() {
+        let model = parse(
+            "packet\r\naccDescr {\r\n  First   line\r\n\r\n\tSecond line  \r\n}\r\n0-7: \"byte\"\r\n",
+        );
+
+        assert_eq!(model["accDescr"], json!("First line\nSecond line"));
+        assert_eq!(model["packet"][0][0]["label"], json!("byte"));
+    }
+
+    #[test]
     fn packet_single_bits_are_supported() {
         let model = parse(
             r#"packet
@@ -836,6 +979,29 @@ accDescr: Packet accDescription
               ]
             ])
         );
+    }
+
+    #[test]
+    fn packet_uses_langium_string_escapes_and_quote_aware_inline_comments() {
+        let source = r#"packet-beta
+0-7: "A\n100%% complete" %% outside comment
+8-15: 'B\tlabel'
+"#;
+        let model = parse(source);
+
+        assert_eq!(model["packet"][0][0]["label"], "An100%% complete");
+        assert_eq!(model["packet"][0][1]["label"], "Btlabel");
+
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("packet", source)
+            .unwrap()
+            .unwrap();
+        let escaped = "A\\n100%% complete";
+        let escaped_start = source.find(escaped).unwrap();
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "An100%% complete"
+                && symbol.selection == SourceSpan::new(escaped_start, escaped_start + escaped.len())
+        }));
     }
 
     #[test]
@@ -878,11 +1044,7 @@ accDescr: Packet accDescription
 11: "single"
 "#;
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync(
-                "packet",
-                text,
-                crate::ParseOptions::strict(),
-            )
+            .parse_editor_semantic_facts_with_type_sync("packet", text)
             .unwrap()
             .unwrap();
 
@@ -911,6 +1073,78 @@ accDescr: Packet accDescription
         assert!(facts.expected_syntax.iter().any(|expected| {
             expected.kind == EditorExpectedSyntaxKind::Payload
                 && expected.span == SourceSpan::new(single_start, single_start + "11".len())
+        }));
+    }
+
+    #[test]
+    fn packet_editor_recovery_reports_invalid_statement_with_exact_span() {
+        let engine = crate::Engine::new();
+        let text = concat!(
+            "packet\n",
+            "0-7: \"valid\"\n",
+            "  invalid packet statement  %% hidden\n",
+            "8-15: \"next\"\n",
+        );
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("packet", text)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "valid"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "next"));
+
+        let invalid = "invalid packet statement";
+        let start = text.find(invalid).unwrap();
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.message == format!("unexpected packet statement: {invalid}")
+                && diagnostic.span == Some(SourceSpan::new(start, start + invalid.len()))
+                && diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+        }));
+    }
+
+    #[test]
+    fn packet_editor_recovery_reports_post_parse_validation_errors() {
+        let text = concat!(
+            "packet\r\n",
+            "0-7: \"valid\"\r\n",
+            "  9-15: \"not contiguous\"  \r\n",
+        );
+        let invalid = "9-15";
+        let start = text.find(invalid).unwrap();
+        let expected_span = SourceSpan::new(start, start + invalid.len());
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect_err("a non-contiguous packet block must fail strict parsing");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected packet parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), Some(expected_span));
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("packet", text)
+            .unwrap()
+            .expect("packet editor recovery facts");
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "valid"));
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "not contiguous")
+        );
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(expected_span)
+                && diagnostic.message.contains("is not contiguous")
         }));
     }
 

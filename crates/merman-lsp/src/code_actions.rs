@@ -1,85 +1,264 @@
 use crate::client_profile::ClientProtocolProfile;
-use crate::protocol::{VersionedDiagnosticCodeActionData, WorkspaceEditEncoding};
+use crate::protocol::{DiagnosticIdentityData, WorkspaceEditEncoding, range_to_lsp};
+use crate::snapshot::DocumentSnapshot;
+use merman_analysis::DiagnosticFix;
 use merman_editor_core::{
-    EditorCodeActionEdit, Position as EditorPosition, code_actions_from_fixes,
+    EditorCodeActionEdit, EditorDiagnostic, Position as EditorPosition, code_action_from_fix,
 };
-use tower_lsp::lsp_types::{
+#[cfg(test)]
+use std::cell::Cell;
+use std::collections::HashMap;
+use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
     Diagnostic, DocumentChanges, OneOf, OptionalVersionedTextDocumentIdentifier, TextDocumentEdit,
-    TextEdit, Url, WorkspaceEdit,
+    TextEdit, Uri, WorkspaceEdit,
 };
 
-#[cfg(test)]
-pub fn code_actions_for_params(
+/// Builds quick fixes from server-owned diagnostics paired with the checked snapshot.
+pub(crate) fn code_actions_for_snapshot_diagnostics_with_profile(
+    snapshot: &DocumentSnapshot,
+    diagnostics: &[EditorDiagnostic],
     params: &CodeActionParams,
-    current_document_version: Option<i32>,
+    profile: &ClientProtocolProfile,
 ) -> Option<CodeActionResponse> {
-    code_actions_for_params_with_encoding(
+    let projection = profile.code_actions.as_ref()?;
+    code_actions_for_snapshot_with_encoding_and_preferred_support(
+        snapshot,
+        diagnostics,
         params,
-        current_document_version,
-        WorkspaceEditEncoding::DocumentChanges,
+        profile.workspace_edit_encoding,
+        projection.is_preferred,
     )
 }
 
-#[cfg(test)]
-pub fn code_actions_for_params_with_encoding(
+fn code_actions_for_snapshot_with_encoding_and_preferred_support(
+    snapshot: &DocumentSnapshot,
+    diagnostics: &[EditorDiagnostic],
     params: &CodeActionParams,
-    current_document_version: Option<i32>,
-    workspace_edit_encoding: WorkspaceEditEncoding,
-) -> Option<CodeActionResponse> {
-    code_actions_for_params_with_encoding_and_preferred_support(
-        params,
-        current_document_version,
-        workspace_edit_encoding,
-        true,
-    )
-}
-
-pub fn code_actions_for_params_with_encoding_and_preferred_support(
-    params: &CodeActionParams,
-    current_document_version: Option<i32>,
     workspace_edit_encoding: WorkspaceEditEncoding,
     is_preferred_support: bool,
 ) -> Option<CodeActionResponse> {
     if !allows_quickfix(&params.context) {
         return None;
     }
-    let current_document_version = current_document_version?;
 
-    let actions = params
-        .context
-        .diagnostics
-        .iter()
-        .flat_map(|diagnostic| {
-            code_actions_for_diagnostic(
-                diagnostic,
+    let diagnostic_index = SnapshotDiagnosticIndex::new(diagnostics);
+    let mut actions = Vec::new();
+    let mut materialized_fixes = HashMap::<SharedFixIdentity, usize>::new();
+    for lsp_diagnostic in &params.context.diagnostics {
+        let Some(editor_diagnostic) =
+            matching_snapshot_diagnostic(snapshot, &diagnostic_index, lsp_diagnostic)
+        else {
+            continue;
+        };
+        let Some(data) = editor_diagnostic.data.as_ref() else {
+            continue;
+        };
+        for fix in &data.fixes {
+            let identity = SharedFixIdentity::new(fix);
+            if let Some(index) = materialized_fixes.get(&identity).copied() {
+                append_action_diagnostic(&mut actions[index], lsp_diagnostic);
+                continue;
+            }
+            let action = code_action_for_fix(
+                fix,
+                lsp_diagnostic,
                 &params.text_document.uri,
-                current_document_version,
+                snapshot.version(),
                 workspace_edit_encoding,
                 is_preferred_support,
-            )
-        })
-        .collect::<Vec<_>>();
+            );
+            if let Some(action) = action {
+                materialized_fixes.insert(identity, actions.len());
+                actions.push(action);
+            }
+        }
+    }
 
-    if actions.is_empty() {
-        None
-    } else {
-        Some(actions)
+    (!actions.is_empty()).then_some(actions)
+}
+
+fn append_action_diagnostic(action: &mut CodeActionOrCommand, diagnostic: &Diagnostic) {
+    let CodeActionOrCommand::CodeAction(action) = action else {
+        return;
+    };
+    action
+        .diagnostics
+        .get_or_insert_default()
+        .push(diagnostic.clone());
+}
+
+#[cfg(test)]
+fn code_actions_for_snapshot_with_encoding(
+    snapshot: &DocumentSnapshot,
+    diagnostics: &[EditorDiagnostic],
+    params: &CodeActionParams,
+    workspace_edit_encoding: WorkspaceEditEncoding,
+) -> Option<CodeActionResponse> {
+    code_actions_for_snapshot_with_encoding_and_preferred_support(
+        snapshot,
+        diagnostics,
+        params,
+        workspace_edit_encoding,
+        true,
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct DiagnosticLookupKey {
+    id: String,
+    code: String,
+    message: String,
+    start_line: u32,
+    start_character: u32,
+    end_line: u32,
+    end_character: u32,
+}
+
+impl DiagnosticLookupKey {
+    fn from_editor(diagnostic: &EditorDiagnostic) -> Option<Self> {
+        let data = diagnostic.data.as_ref()?;
+        let range = range_to_lsp(diagnostic.range);
+        Some(Self {
+            id: data.id.clone(),
+            code: diagnostic.code.clone(),
+            message: diagnostic.message.clone(),
+            start_line: range.start.line,
+            start_character: range.start.character,
+            end_line: range.end.line,
+            end_character: range.end.character,
+        })
+    }
+
+    fn from_lsp(diagnostic: &Diagnostic, identity: DiagnosticIdentityData) -> Option<Self> {
+        let tower_lsp_server::ls_types::NumberOrString::String(code) = diagnostic.code.as_ref()?
+        else {
+            return None;
+        };
+        Some(Self {
+            id: identity.id,
+            code: code.clone(),
+            message: diagnostic.message.clone(),
+            start_line: diagnostic.range.start.line,
+            start_character: diagnostic.range.start.character,
+            end_line: diagnostic.range.end.line,
+            end_character: diagnostic.range.end.character,
+        })
     }
 }
 
-pub(crate) fn code_actions_for_params_with_profile(
-    params: &CodeActionParams,
-    current_document_version: Option<i32>,
-    profile: &ClientProtocolProfile,
-) -> Option<CodeActionResponse> {
-    let projection = profile.code_actions.as_ref()?;
-    code_actions_for_params_with_encoding_and_preferred_support(
-        params,
+struct SnapshotDiagnosticIndex<'a> {
+    by_identity: HashMap<DiagnosticLookupKey, &'a EditorDiagnostic>,
+}
+
+#[cfg(test)]
+thread_local! {
+    static SNAPSHOT_DIAGNOSTIC_INDEX_PROBE: Cell<(usize, usize)> =
+        const { Cell::new((0, 0)) };
+}
+
+#[cfg(test)]
+fn reset_snapshot_diagnostic_index_probe() {
+    SNAPSHOT_DIAGNOSTIC_INDEX_PROBE.set((0, 0));
+}
+
+#[cfg(test)]
+fn snapshot_diagnostic_index_probe() -> (usize, usize) {
+    SNAPSHOT_DIAGNOSTIC_INDEX_PROBE.get()
+}
+
+impl<'a> SnapshotDiagnosticIndex<'a> {
+    fn new(diagnostics: &'a [EditorDiagnostic]) -> Self {
+        #[cfg(test)]
+        SNAPSHOT_DIAGNOSTIC_INDEX_PROBE.with(|probe| {
+            let (builds, lookups) = probe.get();
+            probe.set((builds.saturating_add(1), lookups));
+        });
+
+        let mut by_identity = HashMap::with_capacity(diagnostics.len());
+        for diagnostic in diagnostics {
+            let Some(key) = DiagnosticLookupKey::from_editor(diagnostic) else {
+                continue;
+            };
+            by_identity.entry(key).or_insert(diagnostic);
+        }
+        Self { by_identity }
+    }
+
+    fn get(&self, key: &DiagnosticLookupKey) -> Option<&'a EditorDiagnostic> {
+        #[cfg(test)]
+        SNAPSHOT_DIAGNOSTIC_INDEX_PROBE.with(|probe| {
+            let (builds, lookups) = probe.get();
+            probe.set((builds, lookups.saturating_add(1)));
+        });
+
+        self.by_identity.get(key).copied()
+    }
+}
+
+fn matching_snapshot_diagnostic<'a>(
+    snapshot: &DocumentSnapshot,
+    diagnostics: &SnapshotDiagnosticIndex<'a>,
+    diagnostic: &Diagnostic,
+) -> Option<&'a EditorDiagnostic> {
+    if diagnostic.source.as_deref() != Some("merman") {
+        return None;
+    }
+    let identity =
+        serde_json::from_value::<DiagnosticIdentityData>(diagnostic.data.as_ref()?.clone()).ok()?;
+    if identity.document_version != Some(snapshot.version()) {
+        return None;
+    }
+
+    diagnostics.get(&DiagnosticLookupKey::from_lsp(diagnostic, identity)?)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SharedFixIdentity {
+    edits_ptr: usize,
+    edits_len: usize,
+    title: String,
+    is_preferred: bool,
+}
+
+impl SharedFixIdentity {
+    fn new(fix: &DiagnosticFix) -> Self {
+        Self {
+            edits_ptr: fix.edits.as_ptr() as usize,
+            edits_len: fix.edits.len(),
+            title: fix.title.clone(),
+            is_preferred: fix.is_preferred,
+        }
+    }
+}
+
+fn code_action_for_fix(
+    fix: &DiagnosticFix,
+    lsp_diagnostic: &Diagnostic,
+    uri: &Uri,
+    current_document_version: i32,
+    workspace_edit_encoding: WorkspaceEditEncoding,
+    is_preferred_support: bool,
+) -> Option<CodeActionOrCommand> {
+    let action = code_action_from_fix(fix)?;
+    let edit = workspace_edit_for_edits(
+        &action.edits,
+        uri,
         current_document_version,
-        profile.workspace_edit_encoding,
-        projection.is_preferred,
-    )
+        workspace_edit_encoding,
+    )?;
+    Some(CodeActionOrCommand::CodeAction(
+        tower_lsp_server::ls_types::CodeAction {
+            title: action.title,
+            kind: Some(CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![lsp_diagnostic.clone()]),
+            edit: Some(edit),
+            command: None,
+            is_preferred: (is_preferred_support && action.is_preferred).then_some(true),
+            disabled: None,
+            data: None,
+        },
+    ))
 }
 
 fn allows_quickfix(context: &CodeActionContext) -> bool {
@@ -89,60 +268,16 @@ fn allows_quickfix(context: &CodeActionContext) -> bool {
         .is_none_or(|only| only.iter().any(|kind| kind == &CodeActionKind::QUICKFIX))
 }
 
-fn code_actions_for_diagnostic(
-    diagnostic: &Diagnostic,
-    uri: &Url,
-    current_document_version: i32,
-    workspace_edit_encoding: WorkspaceEditEncoding,
-    is_preferred_support: bool,
-) -> Vec<CodeActionOrCommand> {
-    if diagnostic.source.as_deref() != Some("merman") {
-        return Vec::new();
-    }
-    let Some(data) = diagnostic.data.as_ref() else {
-        return Vec::new();
-    };
-    let Ok(data) = serde_json::from_value::<VersionedDiagnosticCodeActionData>(data.clone()) else {
-        return Vec::new();
-    };
-    if data.document_version != current_document_version {
-        return Vec::new();
-    }
-
-    code_actions_from_fixes(&data.inner.fixes)
-        .into_iter()
-        .filter_map(|action| {
-            let edit = workspace_edit_for_edits(
-                &action.edits,
-                uri,
-                current_document_version,
-                workspace_edit_encoding,
-            )?;
-            Some(tower_lsp::lsp_types::CodeAction {
-                title: action.title,
-                kind: Some(CodeActionKind::QUICKFIX),
-                diagnostics: Some(vec![diagnostic.clone()]),
-                edit: Some(edit),
-                command: None,
-                is_preferred: (is_preferred_support && action.is_preferred).then_some(true),
-                disabled: None,
-                data: None,
-            })
-        })
-        .map(tower_lsp::lsp_types::CodeActionOrCommand::CodeAction)
-        .collect::<Vec<_>>()
-}
-
 fn workspace_edit_for_edits(
     planned_edits: &[EditorCodeActionEdit],
-    uri: &Url,
+    uri: &Uri,
     current_document_version: i32,
     workspace_edit_encoding: WorkspaceEditEncoding,
 ) -> Option<WorkspaceEdit> {
     let text_edits = planned_edits
         .iter()
         .map(|edit| {
-            let range = tower_lsp::lsp_types::Range::new(
+            let range = tower_lsp_server::ls_types::Range::new(
                 editor_position_to_lsp(edit.range.start),
                 editor_position_to_lsp(edit.range.end),
             );
@@ -173,541 +308,169 @@ fn workspace_edit_for_edits(
     }
 }
 
-fn editor_position_to_lsp(position: EditorPosition) -> tower_lsp::lsp_types::Position {
-    tower_lsp::lsp_types::Position::new(position.line as u32, position.character as u32)
+fn editor_position_to_lsp(position: EditorPosition) -> tower_lsp_server::ls_types::Position {
+    tower_lsp_server::ls_types::Position::new(position.line as u32, position.character as u32)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{code_actions_for_params, code_actions_for_params_with_encoding};
-    use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
+    use super::{
+        code_actions_for_snapshot_with_encoding, reset_snapshot_diagnostic_index_probe,
+        snapshot_diagnostic_index_probe,
+    };
+    use crate::diagnostics::editor_diagnostics_to_versioned_diagnostics;
     use crate::protocol::WorkspaceEditEncoding;
-    use merman_analysis::{
-        AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticCategory,
-        DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, SourceMap, Utf16Position,
-        document::analyze_document,
-    };
-    use merman_editor_core::DiagnosticCodeActionData;
-    use serde_json::{Value, json};
-    use tower_lsp::lsp_types::{
+    use crate::snapshot::snapshot_for_test;
+    use merman_analysis::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer};
+    use merman_editor_core::{EditorDiagnostic, analysis_payload_to_diagnostics};
+    use serde_json::json;
+    use std::str::FromStr;
+    use tower_lsp_server::ls_types::{
         CodeAction, CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-        Diagnostic, DiagnosticSeverity, DocumentChanges, NumberOrString, OneOf, Position, Range,
-        TextDocumentIdentifier, TextEdit, Url,
+        DocumentChanges, OneOf, Position, Range, TextDocumentIdentifier, TextEdit, Uri,
     };
 
-    const DOC_VERSION: i32 = 1;
-
-    fn diagnostic_with_fix() -> Diagnostic {
-        diagnostic_with_fix_for_version(Some(DOC_VERSION))
-    }
-
-    fn unversioned_diagnostic_with_fix() -> Diagnostic {
-        diagnostic_with_fix_for_version(None)
-    }
-
-    fn diagnostic_with_fix_for_version(document_version: Option<i32>) -> Diagnostic {
-        Diagnostic {
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 5),
-            },
-            severity: Some(DiagnosticSeverity::ERROR),
-            code: Some(NumberOrString::String("merman.test".to_string())),
-            code_description: None,
-            source: Some("merman".to_string()),
-            message: "test".to_string(),
-            related_information: None,
-            tags: None,
-            data: Some(diagnostic_data_value(
-                DiagnosticCodeActionData {
-                    id: "merman.test".to_string(),
-                    code: None,
-                    code_name: None,
-                    category: DiagnosticCategory::Semantic,
-                    diagram_type: None,
-                    help: None,
-                    fixes: vec![DiagnosticFix {
-                        title: "Replace text".to_string(),
-                        edits: vec![DiagnosticFixEdit::new(
-                            DiagnosticSpan::new(
-                                0,
-                                5,
-                                1,
-                                1,
-                                1,
-                                6,
-                                Utf16Position {
-                                    line: 0,
-                                    character: 0,
-                                },
-                                Utf16Position {
-                                    line: 0,
-                                    character: 5,
-                                },
-                            ),
-                            "fixed",
-                        )],
-                        is_preferred: true,
-                    }],
-                },
-                document_version,
-            )),
-        }
-    }
-
-    fn diagnostic_data_value(
-        data: DiagnosticCodeActionData,
-        document_version: Option<i32>,
-    ) -> Value {
-        let mut value = serde_json::to_value(data).unwrap();
-        if let Some(document_version) = document_version {
-            value
-                .as_object_mut()
-                .unwrap()
-                .insert("documentVersion".to_string(), json!(document_version));
-        }
-        value
-    }
+    const DOCUMENT_VERSION: i32 = 7;
 
     #[test]
-    fn quickfixes_from_diagnostic_data_are_projected() {
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::parse("file:///tmp/example.mmd").unwrap(),
-            },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 5),
-            },
-            context: CodeActionContext {
-                diagnostics: vec![diagnostic_with_fix()],
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
+    fn quickfixes_are_owned_by_the_current_snapshot() {
+        let (snapshot, diagnostics, params, uri) = snapshot_with_direction_fix();
 
-        let actions =
-            code_actions_for_params(&params, Some(DOC_VERSION)).expect("expected quickfix actions");
-        assert_eq!(actions.len(), 1);
-        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
-            panic!("expected code action")
-        };
-        assert_eq!(action.title, "Replace text");
-        assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
-        assert_eq!(action.is_preferred, Some(true));
-        let edits = text_edits_for_action(
-            action,
-            &Url::parse("file:///tmp/example.mmd").unwrap(),
-            DOC_VERSION,
-        );
-        assert_eq!(edits.len(), 1);
-        assert_eq!(edits[0].new_text, "fixed");
-    }
-
-    #[test]
-    fn quickfixes_can_fall_back_to_workspace_edit_changes() {
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 5),
-            },
-            context: CodeActionContext {
-                diagnostics: vec![diagnostic_with_fix()],
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        let actions = code_actions_for_params_with_encoding(
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot,
+            &diagnostics,
             &params,
-            Some(DOC_VERSION),
-            WorkspaceEditEncoding::Changes,
+            WorkspaceEditEncoding::DocumentChanges,
         )
-        .expect("expected quickfix actions");
-        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
-            panic!("expected code action")
-        };
-        let edit = action.edit.as_ref().expect("workspace edit");
+        .expect("snapshot-owned quick fix");
+        let action = only_code_action(&actions);
 
-        assert!(edit.document_changes.is_none());
-        let changes = edit.changes.as_ref().expect("plain changes");
-        assert_eq!(changes[&uri].len(), 1);
-        assert_eq!(changes[&uri][0].new_text, "fixed");
-    }
-
-    #[test]
-    fn diagnostics_without_fix_metadata_do_not_create_actions() {
-        let diagnostic = Diagnostic {
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 5),
-            },
-            severity: Some(DiagnosticSeverity::ERROR),
-            code: Some(NumberOrString::String("merman.test".to_string())),
-            code_description: None,
-            source: Some("merman".to_string()),
-            message: "test".to_string(),
-            related_information: None,
-            tags: None,
-            data: None,
-        };
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::parse("file:///tmp/example.mmd").unwrap(),
-            },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 5),
-            },
-            context: CodeActionContext {
-                diagnostics: vec![diagnostic],
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
-    }
-
-    #[test]
-    fn quickfixes_without_document_version_are_rejected() {
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::parse("file:///tmp/example.mmd").unwrap(),
-            },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 5),
-            },
-            context: CodeActionContext {
-                diagnostics: vec![unversioned_diagnostic_with_fix()],
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
-    }
-
-    #[test]
-    fn overlapping_fix_edits_do_not_create_actions() {
-        let mut diagnostic = diagnostic_with_fix();
-        let data = DiagnosticCodeActionData {
-            id: "merman.test".to_string(),
-            code: None,
-            code_name: None,
-            category: DiagnosticCategory::Semantic,
-            diagram_type: None,
-            help: None,
-            fixes: vec![DiagnosticFix {
-                title: "Overlapping replacement".to_string(),
-                edits: vec![
-                    DiagnosticFixEdit::new(
-                        DiagnosticSpan::new(
-                            0,
-                            4,
-                            1,
-                            1,
-                            1,
-                            5,
-                            Utf16Position {
-                                line: 0,
-                                character: 0,
-                            },
-                            Utf16Position {
-                                line: 0,
-                                character: 4,
-                            },
-                        ),
-                        "left",
-                    ),
-                    DiagnosticFixEdit::new(
-                        DiagnosticSpan::new(
-                            2,
-                            5,
-                            1,
-                            3,
-                            1,
-                            6,
-                            Utf16Position {
-                                line: 0,
-                                character: 2,
-                            },
-                            Utf16Position {
-                                line: 0,
-                                character: 5,
-                            },
-                        ),
-                        "right",
-                    ),
-                ],
-                is_preferred: true,
-            }],
-        };
-        diagnostic.data = Some(diagnostic_data_value(data, Some(DOC_VERSION)));
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::parse("file:///tmp/example.mmd").unwrap(),
-            },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 5),
-            },
-            context: CodeActionContext {
-                diagnostics: vec![diagnostic],
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
-    }
-
-    #[test]
-    fn non_overlapping_fix_edits_are_sorted() {
-        let mut diagnostic = diagnostic_with_fix();
-        let map = SourceMap::new("0123456789");
-        let data = DiagnosticCodeActionData {
-            id: "merman.test".to_string(),
-            code: None,
-            code_name: None,
-            category: DiagnosticCategory::Semantic,
-            diagram_type: None,
-            help: None,
-            fixes: vec![DiagnosticFix::new(
-                "Sorted replacement",
-                vec![
-                    DiagnosticFixEdit::new(map.span(5, 6).unwrap(), "late"),
-                    DiagnosticFixEdit::new(map.span(1, 2).unwrap(), "early"),
-                ],
-            )],
-        };
-        diagnostic.data = Some(diagnostic_data_value(data, Some(DOC_VERSION)));
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 9),
-            },
-            context: CodeActionContext {
-                diagnostics: vec![diagnostic],
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        let actions =
-            code_actions_for_params(&params, Some(DOC_VERSION)).expect("expected quickfix action");
-        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
-            panic!("expected code action")
-        };
-        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
-        assert_eq!(edits[0].range.start, Position::new(0, 1));
-        assert_eq!(edits[0].new_text, "early");
-        assert_eq!(edits[1].range.start, Position::new(0, 5));
-        assert_eq!(edits[1].new_text, "late");
-    }
-
-    #[test]
-    fn non_quickfix_requests_do_not_return_quickfix_actions() {
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier {
-                uri: Url::parse("file:///tmp/example.mmd").unwrap(),
-            },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 5),
-            },
-            context: CodeActionContext {
-                diagnostics: vec![diagnostic_with_fix()],
-                only: Some(vec![CodeActionKind::REFACTOR]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
-    }
-
-    #[test]
-    fn analyzer_fix_metadata_produces_quickfix_action() {
-        let source = "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
-        let analyzer = alias_analyzer();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let payload = analyzer.analyze(source);
-        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
-
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 12),
-            },
-            context: CodeActionContext {
-                diagnostics,
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
-            .expect("expected analyzer quickfix");
-        assert_eq!(actions.len(), 1);
-        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
-            panic!("expected code action")
-        };
-        assert_eq!(action.title, "Replace `initialize` with `init`");
-        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
-        assert_eq!(edits.len(), 1);
-        assert_eq!(edits[0].new_text, "init");
-        assert_eq!(edits[0].range.start, Position::new(0, 4));
-        assert_eq!(edits[0].range.end, Position::new(0, 14));
-    }
-
-    #[test]
-    fn frontmatter_config_migration_fix_produces_quickfix_action() {
-        let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
-        let analyzer = authoring_analyzer();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let payload = analyzer.analyze(source);
-        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
-
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 8),
-            },
-            context: CodeActionContext {
-                diagnostics,
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
-            .expect("expected frontmatter quickfix");
-        assert_eq!(actions.len(), 1);
-        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
-            panic!("expected code action")
-        };
-        assert_eq!(action.title, "Move init directive config into frontmatter");
-        assert_eq!(action.is_preferred, Some(true));
-        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
-        assert_eq!(edits.len(), 1);
-        assert!(edits[0].new_text.starts_with("---\nconfig:\n"));
-        assert!(edits[0].new_text.contains("theme: dark\n"));
-        assert_eq!(edits[0].range.start, Position::new(0, 0));
-        assert_eq!(edits[0].range.end, Position::new(1, 0));
-    }
-
-    #[test]
-    fn deprecated_flowchart_html_labels_diagnostic_has_no_quickfix_action() {
-        let source = "%%{init: { \"flowchart\": { \"htmlLabels\": false, \"curve\": \"linear\" } }}%%\nflowchart TD\nA-->B\n";
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let payload = Analyzer::new().analyze(source);
-        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
-
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 80),
-            },
-            context: CodeActionContext {
-                diagnostics,
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
-    }
-
-    #[test]
-    fn flowchart_missing_direction_fix_produces_quickfix_action() {
-        let source = "flowchart\nA-->B\n";
-        let analyzer = authoring_analyzer();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let payload = analyzer.analyze(source);
-        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
-
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(0, 0),
-                end: Position::new(0, 9),
-            },
-            context: CodeActionContext {
-                diagnostics,
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
-            .expect("expected flowchart quickfix");
-        let action = actions
-            .iter()
-            .filter_map(|action| match action {
-                CodeActionOrCommand::CodeAction(action) => Some(action),
-                CodeActionOrCommand::Command(_) => None,
-            })
-            .find(|action| action.title == "Insert `TB` into the flowchart header")
-            .expect("missing flowchart direction quickfix");
-
+        assert_eq!(action.title, "Insert `TB` into the flowchart header");
         assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
         assert_eq!(action.is_preferred, Some(true));
-        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
+        let edits = versioned_edits(action, &uri);
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].new_text, " TB");
         assert_eq!(edits[0].range.start, Position::new(0, 9));
-        assert_eq!(edits[0].range.end, Position::new(0, 9));
     }
 
     #[test]
-    fn markdown_analyzer_fix_metadata_uses_host_document_ranges() {
-        let source = "before\n```mermaid\n%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter\n";
-        let analyzer = alias_analyzer();
-        let uri = Url::parse("file:///tmp/example.md").unwrap();
-        let payload = analyze_document(
-            source,
-            &analyzer,
-            merman_analysis::source_descriptor_for_uri(uri.as_str()),
+    fn client_fix_payload_is_never_trusted() {
+        let (snapshot, diagnostics, mut params, _) = snapshot_with_direction_fix();
+        params.context.diagnostics[0]
+            .data
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("diagnostic identity")
+            .insert(
+                "fixes".to_string(),
+                json!([{
+                    "title": "Replace the entire document",
+                    "edits": [{
+                        "span": { "lspRange": { "start": { "line": 0, "character": 0 }, "end": { "line": 1, "character": 0 } } },
+                        "replacement": "forged"
+                    }]
+                }]),
+            );
+
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot,
+            &diagnostics,
+            &params,
+            WorkspaceEditEncoding::DocumentChanges,
+        )
+        .expect("snapshot-owned quick fix");
+        let action = only_code_action(&actions);
+        assert_eq!(action.title, "Insert `TB` into the flowchart header");
+        assert_eq!(versioned_edits(action, snapshot.uri())[0].new_text, " TB");
+    }
+
+    #[test]
+    fn stale_or_non_quickfix_requests_are_rejected() {
+        let (snapshot, diagnostics, mut params, _) = snapshot_with_direction_fix();
+        params.context.diagnostics[0]
+            .data
+            .as_mut()
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("diagnostic identity")
+            .insert("documentVersion".to_string(), json!(DOCUMENT_VERSION - 1));
+        assert!(
+            code_actions_for_snapshot_with_encoding(
+                &snapshot,
+                &diagnostics,
+                &params,
+                WorkspaceEditEncoding::DocumentChanges,
+            )
+            .is_none()
         );
-        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
+
+        let (_, diagnostics, mut params, _) = snapshot_with_direction_fix();
+        params.context.only = Some(vec![CodeActionKind::REFACTOR]);
+        assert!(
+            code_actions_for_snapshot_with_encoding(
+                &snapshot,
+                &diagnostics,
+                &params,
+                WorkspaceEditEncoding::DocumentChanges,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn snapshot_actions_support_plain_workspace_changes() {
+        let (snapshot, diagnostics, params, uri) = snapshot_with_direction_fix();
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot,
+            &diagnostics,
+            &params,
+            WorkspaceEditEncoding::Changes,
+        )
+        .expect("snapshot-owned quick fix");
+        let action = only_code_action(&actions);
+        let edit = action.edit.as_ref().expect("workspace edit");
+
+        assert!(edit.document_changes.is_none());
+        assert_eq!(
+            edit.changes.as_ref().expect("plain changes")[&uri][0].new_text,
+            " TB"
+        );
+    }
+
+    #[test]
+    fn later_init_directive_retains_the_document_migration_quickfix() {
+        let uri = Uri::from_str("file:///tmp/multiple-init.mmd").unwrap();
+        let source = concat!(
+            "%%{ init: {\"theme\":\"dark\"} }%%\n",
+            "%%{ init: {\"flowchart\":{\"curve\":\"linear\"}} }%%\n",
+            "flowchart TD\nA-->B\n",
+        )
+        .to_string();
+        let options = AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        );
+        let snapshot = snapshot_for_test(uri.clone(), DOCUMENT_VERSION, source.clone());
+        let diagnostics =
+            analysis_payload_to_diagnostics(&Analyzer::with_options(options).analyze(&source));
+        let requested =
+            editor_diagnostics_to_versioned_diagnostics(&diagnostics, &uri, DOCUMENT_VERSION)
+                .into_iter()
+                .find(|diagnostic| {
+                    diagnostic.range.start.line == 1
+                        && diagnostic.code.as_ref().is_some_and(|code| {
+                            code == &tower_lsp_server::ls_types::NumberOrString::String(
+                                "merman.authoring.config.prefer_frontmatter_config".to_string(),
+                            )
+                        })
+                })
+                .expect(
+                    "the second init directive must retain its server-owned diagnostic identity",
+                );
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(2, 0),
-                end: Position::new(2, 20),
-            },
+            range: requested.range,
             context: CodeActionContext {
-                diagnostics,
+                diagnostics: vec![requested],
                 only: Some(vec![CodeActionKind::QUICKFIX]),
                 trigger_kind: None,
             },
@@ -715,78 +478,51 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
-            .expect("expected markdown quickfix");
-        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
-            panic!("expected code action")
-        };
-        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
-
-        assert_eq!(edits[0].new_text, "init");
-        assert_eq!(edits[0].range.start, Position::new(2, 4));
-        assert_eq!(edits[0].range.end, Position::new(2, 14));
-    }
-
-    #[test]
-    fn markdown_frontmatter_config_migration_fix_uses_host_document_ranges() {
-        let source = "before\n```mermaid\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n```\nafter\n";
-        let analyzer = authoring_analyzer();
-        let uri = Url::parse("file:///tmp/example.md").unwrap();
-        let payload = analyze_document(
-            source,
-            &analyzer,
-            merman_analysis::source_descriptor_for_uri(uri.as_str()),
-        );
-        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
-        let params = CodeActionParams {
-            text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(2, 0),
-                end: Position::new(2, 8),
-            },
-            context: CodeActionContext {
-                diagnostics,
-                only: Some(vec![CodeActionKind::QUICKFIX]),
-                trigger_kind: None,
-            },
-            work_done_progress_params: Default::default(),
-            partial_result_params: Default::default(),
-        };
-
-        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
-            .expect("expected markdown quickfix");
-        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
-            panic!("expected code action")
-        };
-        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot,
+            &diagnostics,
+            &params,
+            WorkspaceEditEncoding::DocumentChanges,
+        )
+        .expect("the second init directive must expose the document migration quick fix");
+        let action = only_code_action(&actions);
 
         assert_eq!(action.title, "Move init directive config into frontmatter");
-        assert_eq!(edits.len(), 1);
-        assert!(edits[0].new_text.starts_with("---\nconfig:\n"));
-        assert_eq!(edits[0].range.start, Position::new(2, 0));
-        assert_eq!(edits[0].range.end, Position::new(3, 0));
+        assert!(versioned_edits(action, &uri).len() >= 2);
     }
 
     #[test]
-    fn markdown_flowchart_missing_direction_fix_uses_host_document_ranges() {
-        let source = "before\n```mermaid\nflowchart\nA-->B\n```\nafter\n";
-        let analyzer = authoring_analyzer();
-        let uri = Url::parse("file:///tmp/example.md").unwrap();
-        let payload = analyze_document(
-            source,
-            &analyzer,
-            merman_analysis::source_descriptor_for_uri(uri.as_str()),
+    fn requested_init_diagnostics_materialize_one_shared_migration_action() {
+        let uri = Uri::from_str("file:///tmp/shared-init-fix.mmd").unwrap();
+        let source = concat!(
+            "%%{ init: {\"theme\":\"dark\"} }%%\n",
+            "%%{ init: {\"flowchart\":{\"curve\":\"linear\"}} }%%\n",
+            "flowchart TD\nA-->B\n",
+        )
+        .to_string();
+        let options = AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
         );
-        let diagnostics = analysis_payload_to_versioned_diagnostics(&payload, &uri, DOC_VERSION);
-
+        let snapshot = snapshot_for_test(uri.clone(), DOCUMENT_VERSION, source.clone());
+        let diagnostics =
+            analysis_payload_to_diagnostics(&Analyzer::with_options(options).analyze(&source));
+        let requested =
+            editor_diagnostics_to_versioned_diagnostics(&diagnostics, &uri, DOCUMENT_VERSION)
+                .into_iter()
+                .filter(|diagnostic| {
+                    diagnostic.code.as_ref().is_some_and(|code| {
+                        code == &tower_lsp_server::ls_types::NumberOrString::String(
+                            "merman.authoring.config.prefer_frontmatter_config".to_string(),
+                        )
+                    })
+                })
+                .collect::<Vec<_>>();
+        assert_eq!(requested.len(), 2);
         let params = CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
-            range: Range {
-                start: Position::new(2, 0),
-                end: Position::new(2, 9),
-            },
+            range: Range::new(Position::new(0, 0), Position::new(1, 0)),
             context: CodeActionContext {
-                diagnostics,
+                diagnostics: requested,
                 only: Some(vec![CodeActionKind::QUICKFIX]),
                 trigger_kind: None,
             },
@@ -794,29 +530,111 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
-            .expect("expected markdown quickfix");
-        let action = actions
-            .iter()
-            .filter_map(|action| match action {
-                CodeActionOrCommand::CodeAction(action) => Some(action),
-                CodeActionOrCommand::Command(_) => None,
-            })
-            .find(|action| action.title == "Insert `TB` into the flowchart header")
-            .expect("missing flowchart direction quickfix");
-        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot,
+            &diagnostics,
+            &params,
+            WorkspaceEditEncoding::DocumentChanges,
+        )
+        .expect("shared migration quick fix");
+        let action = only_code_action(&actions);
 
-        assert_eq!(edits.len(), 1);
-        assert_eq!(edits[0].new_text, " TB");
-        assert_eq!(edits[0].range.start, Position::new(2, 9));
-        assert_eq!(edits[0].range.end, Position::new(2, 9));
+        assert_eq!(action.title, "Move init directive config into frontmatter");
+        assert_eq!(versioned_edits(action, &uri).len(), 2);
+        assert_eq!(
+            action.diagnostics.as_deref(),
+            Some(params.context.diagnostics.as_slice()),
+            "the shared action must retain every requested diagnostic owner in request order"
+        );
     }
 
-    fn text_edits_for_action(
-        action: &CodeAction,
-        uri: &Url,
-        document_version: i32,
-    ) -> Vec<TextEdit> {
+    #[test]
+    fn snapshot_code_action_entry_indexes_many_identities_and_materializes_shared_fix_once() {
+        let (snapshot, diagnostics, mut params, _) = snapshot_with_direction_fix();
+        let prototype = diagnostics
+            .into_iter()
+            .find(|diagnostic| diagnostic.data.is_some())
+            .expect("diagnostic identity");
+        let diagnostics = (0..4_096)
+            .map(|index| {
+                let mut diagnostic = prototype.clone();
+                diagnostic.code = format!("code-{index}");
+                diagnostic.message = format!("message-{index}");
+                diagnostic.data.as_mut().expect("diagnostic data").id = format!("identity-{index}");
+                diagnostic
+            })
+            .collect::<Vec<_>>();
+        params.context.diagnostics = editor_diagnostics_to_versioned_diagnostics(
+            &diagnostics,
+            snapshot.uri(),
+            snapshot.version(),
+        );
+
+        reset_snapshot_diagnostic_index_probe();
+        let actions = code_actions_for_snapshot_with_encoding(
+            &snapshot,
+            &diagnostics,
+            &params,
+            WorkspaceEditEncoding::DocumentChanges,
+        )
+        .expect("snapshot-owned quick fixes");
+
+        assert_eq!(actions.len(), 1);
+        assert_eq!(
+            snapshot_diagnostic_index_probe(),
+            (1, diagnostics.len()),
+            "the production entry must build one index and perform one lookup per requested diagnostic"
+        );
+    }
+
+    fn snapshot_with_direction_fix() -> (
+        std::sync::Arc<crate::snapshot::DocumentSnapshot>,
+        Vec<EditorDiagnostic>,
+        CodeActionParams,
+        Uri,
+    ) {
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let options = AnalysisOptions::default().with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        );
+        let source = "flowchart\nA-->B\n".to_string();
+        let snapshot = snapshot_for_test(uri.clone(), DOCUMENT_VERSION, source.clone());
+        let diagnostics =
+            analysis_payload_to_diagnostics(&Analyzer::with_options(options).analyze(&source));
+        let diagnostic =
+            editor_diagnostics_to_versioned_diagnostics(&diagnostics, &uri, DOCUMENT_VERSION)
+                .into_iter()
+                .find(|diagnostic| {
+                    diagnostic.code.as_ref().is_some_and(|code| {
+                        code == &tower_lsp_server::ls_types::NumberOrString::String(
+                            "merman.authoring.flowchart.explicit_direction".to_string(),
+                        )
+                    })
+                })
+                .expect("flowchart direction diagnostic");
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: Range::new(Position::new(0, 0), Position::new(0, 9)),
+            context: CodeActionContext {
+                diagnostics: vec![diagnostic],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+        (snapshot, diagnostics, params, uri)
+    }
+
+    fn only_code_action(actions: &[CodeActionOrCommand]) -> &CodeAction {
+        assert_eq!(actions.len(), 1);
+        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+            panic!("expected code action");
+        };
+        action
+    }
+
+    fn versioned_edits(action: &CodeAction, uri: &Uri) -> Vec<TextEdit> {
         let Some(DocumentChanges::Edits(document_edits)) =
             action.edit.as_ref().unwrap().document_changes.as_ref()
         else {
@@ -826,7 +644,7 @@ mod tests {
         assert_eq!(document_edits[0].text_document.uri, *uri);
         assert_eq!(
             document_edits[0].text_document.version,
-            Some(document_version)
+            Some(DOCUMENT_VERSION)
         );
         document_edits[0]
             .edits
@@ -836,21 +654,5 @@ mod tests {
                 OneOf::Right(_) => panic!("expected plain text edit"),
             })
             .collect()
-    }
-
-    fn authoring_analyzer() -> Analyzer {
-        Analyzer::with_options(AnalysisOptions::default().with_rule_config(
-            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
-        ))
-    }
-
-    fn alias_analyzer() -> Analyzer {
-        Analyzer::with_options(
-            AnalysisOptions::default().with_rule_config(
-                AnalysisRuleConfig::default()
-                    .with_profile(AnalysisRuleProfile::Recommended)
-                    .with_rule_disabled("merman.authoring.config.prefer_frontmatter_config"),
-            ),
-        )
     }
 }

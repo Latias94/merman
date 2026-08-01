@@ -1,14 +1,19 @@
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 mod config;
 
 use config::{BlockConfigView, BlockLayoutSettings};
 
-pub(crate) type BlockDiagramModel = merman_core::diagrams::block::BlockDiagramRenderModel;
+mod geometry;
+
+pub use geometry::{
+    BlockAllocatedBounds, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
+};
+
 pub(crate) type BlockNode = merman_core::diagrams::block::BlockNodeRenderModel;
 
 #[derive(Debug, Clone)]
@@ -43,12 +48,7 @@ fn block_html_label_metrics_px(
     style: &TextStyle,
 ) -> (f64, f64) {
     let html_metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
-    let width =
-        crate::generated::block_text_overrides_11_12_2::lookup_html_width_px(style.font_size, text)
-            .unwrap_or(html_metrics.width)
-            .max(0.0);
-    let height = html_metrics.height.max(0.0);
-    (width, height)
+    (html_metrics.width.max(0.0), html_metrics.height.max(0.0))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -57,11 +57,11 @@ pub(crate) struct BlockArrowPoint {
     pub(crate) y: f64,
 }
 
-pub(crate) fn block_arrow_points(
+pub(crate) fn block_arrow_points_for_width(
     directions: &[String],
-    bbox_w: f64,
     bbox_h: f64,
     node_padding: f64,
+    width: f64,
 ) -> Vec<BlockArrowPoint> {
     fn expand_and_dedup(directions: &[String]) -> std::collections::BTreeSet<String> {
         let mut out = std::collections::BTreeSet::new();
@@ -87,7 +87,6 @@ pub(crate) fn block_arrow_points(
     let dirs = expand_and_dedup(directions);
     let height = bbox_h + 2.0 * node_padding;
     let midpoint = height / 2.0;
-    let width = bbox_w + 2.0 * midpoint + node_padding;
     let pad = node_padding / 2.0;
 
     let has = |name: &str| dirs.contains(name);
@@ -480,25 +479,6 @@ pub(crate) fn block_arrow_points(
     vec![BlockArrowPoint { x: 0.0, y: 0.0 }]
 }
 
-fn polygon_bounds(points: &[BlockArrowPoint]) -> (f64, f64) {
-    if points.is_empty() {
-        return (0.0, 0.0);
-    }
-
-    let mut min_x = points[0].x;
-    let mut max_x = points[0].x;
-    let mut min_y = points[0].y;
-    let mut max_y = points[0].y;
-    for point in &points[1..] {
-        min_x = min_x.min(point.x);
-        max_x = max_x.max(point.x);
-        min_y = min_y.min(point.y);
-        max_y = max_y.max(point.y);
-    }
-
-    ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
-}
-
 fn block_shape_size(
     block_type: &str,
     directions: &[String],
@@ -507,47 +487,14 @@ fn block_shape_size(
     padding: f64,
     has_label: bool,
 ) -> Option<(f64, f64)> {
-    let rect_w = (label_width + padding).max(1.0);
-    let rect_h = (label_height + padding).max(1.0);
-
-    match block_type {
-        "composite" => has_label.then(|| (label_width.max(1.0), (label_height + padding).max(1.0))),
-        "group" => has_label.then_some((rect_w, rect_h)),
-        "space" => None,
-        "circle" => Some((rect_w, rect_w)),
-        "doublecircle" => {
-            let outer_diameter = rect_w + 10.0;
-            Some((outer_diameter, outer_diameter))
-        }
-        "stadium" => Some(((label_width + rect_h / 4.0 + padding).max(1.0), rect_h)),
-        "cylinder" => {
-            let rx = rect_w / 2.0;
-            let ry = rx / (2.5 + rect_w / 50.0);
-            let body_h = (label_height + ry + padding).max(1.0);
-            Some((rect_w, body_h + 2.0 * ry))
-        }
-        "diamond" => {
-            let side = (rect_w + rect_h).max(1.0);
-            Some((side, side))
-        }
-        "hexagon" => {
-            let shoulder = rect_h / 4.0;
-            Some(((label_width + 2.0 * shoulder + padding).max(1.0), rect_h))
-        }
-        "rect_left_inv_arrow" => Some((rect_w + rect_h / 2.0, rect_h)),
-        "subroutine" => Some((rect_w + 16.0, rect_h)),
-        "lean_right" | "trapezoid" | "inv_trapezoid" => {
-            Some((rect_w + (2.0 * rect_h) / 3.0, rect_h))
-        }
-        "lean_left" => Some((rect_w + rect_h / 3.0, rect_h)),
-        "block_arrow" => Some(polygon_bounds(&block_arrow_points(
-            directions,
-            label_width,
-            label_height,
-            padding,
-        ))),
-        _ => Some((rect_w, rect_h)),
-    }
+    geometry::natural_shape_size(
+        block_type,
+        directions,
+        label_width,
+        label_height,
+        padding,
+        has_label,
+    )
 }
 
 fn to_sized_block_shallow(
@@ -831,17 +778,39 @@ fn set_block_sizes(block: &mut SizedBlock, padding: f64) {
     }
 }
 
-fn calculate_block_position(columns: i64, position: i64) -> (i64, i64) {
-    if columns < 0 {
-        return (position, 0);
+fn invalid_block_columns_error() -> Error {
+    Error::InvalidModel {
+        // Match Mermaid's layout invariant while returning a typed render failure instead of
+        // letting a malformed semantic model reach integer division.
+        message: "Columns must be an integer !== 0.".to_string(),
     }
-    if columns == 1 {
-        return (0, position);
-    }
-    (position % columns, position / columns)
 }
 
-fn layout_blocks(block: &mut SizedBlock, padding: f64) {
+fn validate_block_columns(root: &BlockNode) -> Result<()> {
+    let mut stack = vec![root];
+    while let Some(block) = stack.pop() {
+        if block.columns == Some(0) {
+            return Err(invalid_block_columns_error());
+        }
+        stack.extend(block.children.iter());
+    }
+    Ok(())
+}
+
+fn calculate_block_position(columns: i64, position: i64) -> Result<(i64, i64)> {
+    if columns == 0 {
+        return Err(invalid_block_columns_error());
+    }
+    if columns < 0 {
+        return Ok((position, 0));
+    }
+    if columns == 1 {
+        return Ok((0, position));
+    }
+    Ok((position % columns, position / columns))
+}
+
+fn layout_blocks(block: &mut SizedBlock, padding: f64) -> Result<()> {
     let mut stack: Vec<Vec<usize>> = vec![Vec::new()];
     while let Some(path) = stack.pop() {
         let child_count = {
@@ -853,7 +822,7 @@ fn layout_blocks(block: &mut SizedBlock, padding: f64) {
                 let mut row_heights = BTreeMap::<i64, f64>::new();
                 let mut height_column_pos = 0i64;
                 for child in &block.children {
-                    let (_, row) = calculate_block_position(columns, height_column_pos);
+                    let (_, row) = calculate_block_position(columns, height_column_pos)?;
                     row_heights
                         .entry(row)
                         .and_modify(|height| *height = height.max(child.height))
@@ -885,7 +854,7 @@ fn layout_blocks(block: &mut SizedBlock, padding: f64) {
                 let mut row_pos = 0i64;
 
                 for child in &mut block.children {
-                    let (px, py) = calculate_block_position(columns, column_pos);
+                    let (px, py) = calculate_block_position(columns, column_pos)?;
 
                     if py != row_pos {
                         row_pos = py;
@@ -924,6 +893,7 @@ fn layout_blocks(block: &mut SizedBlock, padding: f64) {
             stack.push(child_path);
         }
     }
+    Ok(())
 }
 
 fn find_bounds(block: &SizedBlock, b: &mut Bounds) {
@@ -962,162 +932,39 @@ fn collect_nodes(block: &SizedBlock, out: &mut Vec<LayoutNode>) {
     }
 }
 
-fn invalid_block_model(message: impl Into<String>) -> Error {
-    Error::InvalidModel {
-        message: message.into(),
-    }
+#[derive(Debug, Clone)]
+struct BlockShapeSource {
+    block_type: String,
+    directions: Vec<String>,
+    width_in_columns: i64,
 }
 
-fn required_string_field(obj: &Map<String, Value>, key: &str) -> Result<String> {
-    match obj.get(key) {
-        Some(Value::String(value)) => Ok(value.clone()),
-        Some(other) => Err(invalid_block_model(format!(
-            "block node field `{key}` must be a string, got {other:?}"
-        ))),
-        None => Err(invalid_block_model(format!(
-            "block node missing required field `{key}`"
-        ))),
-    }
-}
-
-fn optional_string_field(obj: &Map<String, Value>, key: &str) -> Result<String> {
-    match obj.get(key) {
-        Some(Value::String(value)) => Ok(value.clone()),
-        Some(other) => Err(invalid_block_model(format!(
-            "block node field `{key}` must be a string, got {other:?}"
-        ))),
-        None => Ok(String::new()),
-    }
-}
-
-fn optional_i64_field(obj: &Map<String, Value>, key: &str) -> Result<Option<i64>> {
-    match obj.get(key) {
-        Some(Value::Number(value)) => value.as_i64().map(Some).ok_or_else(|| {
-            invalid_block_model(format!("block node field `{key}` must be an integer"))
-        }),
-        Some(Value::Null) | None => Ok(None),
-        Some(other) => Err(invalid_block_model(format!(
-            "block node field `{key}` must be an integer, got {other:?}"
-        ))),
-    }
-}
-
-fn string_array_field(obj: &Map<String, Value>, key: &str) -> Result<Vec<String>> {
-    let Some(value) = obj.get(key) else {
-        return Ok(Vec::new());
-    };
-    let Value::Array(items) = value else {
-        return Err(invalid_block_model(format!(
-            "block node field `{key}` must be an array"
-        )));
-    };
-
-    items
-        .iter()
-        .map(|item| match item {
-            Value::String(value) => Ok(value.clone()),
-            other => Err(invalid_block_model(format!(
-                "block node field `{key}` must contain strings, got {other:?}"
-            ))),
-        })
-        .collect()
-}
-
-fn block_children_values(value: &Value) -> Result<&[Value]> {
-    let obj = value
-        .as_object()
-        .ok_or_else(|| invalid_block_model("block node must be an object"))?;
-    match obj.get("children") {
-        Some(Value::Array(children)) => Ok(children),
-        Some(other) => Err(invalid_block_model(format!(
-            "block node field `children` must be an array, got {other:?}"
-        ))),
-        None => Ok(&[]),
-    }
-}
-
-fn block_node_from_value_nonrecursive(value: &Value) -> Result<BlockNode> {
-    let mut stack = vec![(value, false)];
-    let mut completed: HashMap<*const Value, BlockNode> = HashMap::new();
-
-    while let Some((current, visited)) = stack.pop() {
-        if visited {
-            let obj = current
-                .as_object()
-                .ok_or_else(|| invalid_block_model("block node must be an object"))?;
-            let children = block_children_values(current)?
-                .iter()
-                .map(|child| {
-                    completed.remove(&std::ptr::from_ref(child)).ok_or_else(|| {
-                        invalid_block_model("block child node was not completed before parent")
-                    })
-                })
-                .collect::<Result<Vec<_>>>()?;
-
-            completed.insert(
-                std::ptr::from_ref(current),
-                BlockNode {
-                    id: required_string_field(obj, "id")?,
-                    label: optional_string_field(obj, "label")?,
-                    block_type: optional_string_field(obj, "type")?,
-                    children,
-                    columns: optional_i64_field(obj, "columns")?,
-                    width_in_columns: optional_i64_field(obj, "widthInColumns")?,
-                    width: optional_i64_field(obj, "width")?,
-                    classes: string_array_field(obj, "classes")?,
-                    styles: string_array_field(obj, "styles")?,
-                    directions: string_array_field(obj, "directions")?,
-                },
-            );
-        } else {
-            stack.push((current, true));
-            for child in block_children_values(current)?.iter().rev() {
-                stack.push((child, false));
-            }
+fn collect_shape_sources(root: &BlockNode, out: &mut HashMap<String, BlockShapeSource>) {
+    let mut stack = vec![root];
+    while let Some(block) = stack.pop() {
+        let source = out
+            .entry(block.id.clone())
+            .or_insert_with(|| BlockShapeSource {
+                block_type: block.block_type.clone(),
+                directions: block.directions.clone(),
+                width_in_columns: block.width_in_columns.unwrap_or(1).max(1),
+            });
+        if !block.block_type.is_empty() && block.block_type != "na" {
+            source.block_type = block.block_type.clone();
+        }
+        if !block.directions.is_empty() {
+            source.directions = block.directions.clone();
+        }
+        if let Some(width_in_columns) = block.width_in_columns {
+            source.width_in_columns = width_in_columns.max(1);
+        }
+        for child in block.children.iter().rev() {
+            stack.push(child);
         }
     }
-
-    completed
-        .remove(&std::ptr::from_ref(value))
-        .ok_or_else(|| invalid_block_model("block root node was not completed"))
 }
 
-pub(crate) fn block_model_from_semantic(semantic: &Value) -> Result<BlockDiagramModel> {
-    let blocks_flat = match semantic.get("blocksFlat") {
-        Some(Value::Array(items)) => items
-            .iter()
-            .map(block_node_from_value_nonrecursive)
-            .collect::<Result<Vec<_>>>()?,
-        Some(other) => {
-            return Err(invalid_block_model(format!(
-                "block semantic field `blocksFlat` must be an array, got {other:?}"
-            )));
-        }
-        None => Vec::new(),
-    };
-    let edges = semantic
-        .get("edges")
-        .map(crate::json::from_value_ref)
-        .transpose()?
-        .unwrap_or_default();
-
-    Ok(BlockDiagramModel {
-        blocks_flat,
-        edges,
-        warning_facts: Vec::new(),
-    })
-}
-
-pub fn layout_block_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<BlockDiagramLayout> {
-    let model = block_model_from_semantic(semantic)?;
-    layout_block_diagram_typed(&model, effective_config, measurer)
-}
-
-pub fn layout_block_diagram_typed(
+pub(crate) fn layout_block_diagram_typed(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
@@ -1135,12 +982,38 @@ pub fn layout_block_diagram_typed(
             message: "missing block root composite".to_string(),
         })?;
 
+    validate_block_columns(root)?;
+
     let mut root = to_sized_block(root, padding, measurer, &text_style);
     set_block_sizes(&mut root, padding);
-    layout_blocks(&mut root, padding);
+    layout_blocks(&mut root, padding)?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     collect_nodes(&root, &mut nodes);
+
+    let mut shape_sources = HashMap::new();
+    for block in &model.blocks_flat {
+        collect_shape_sources(block, &mut shape_sources);
+    }
+    let mut shape_geometries = Vec::with_capacity(nodes.len());
+    for node in &nodes {
+        let source = shape_sources
+            .get(&node.id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing Block shape source for node `{}`", node.id),
+            })?;
+        let geometry = BlockShapeGeometry::from_layout_node(
+            node,
+            &source.block_type,
+            &source.directions,
+            padding,
+            source.width_in_columns,
+        )
+        .ok_or_else(|| Error::InvalidModel {
+            message: format!("missing Block geometry for visible node `{}`", node.id),
+        })?;
+        shape_geometries.push(geometry);
+    }
 
     let mut bounds = Bounds {
         min_x: 0.0,
@@ -1208,13 +1081,14 @@ pub fn layout_block_diagram_typed(
     Ok(BlockDiagramLayout {
         nodes,
         edges,
+        shape_geometries,
         bounds,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
+    use crate::text::{TextMeasurer, TextMetrics, TextStyle};
 
     use super::SizedBlock;
 
@@ -1223,6 +1097,7 @@ mod tests {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size,
             font_weight: None,
+            font_style: None,
         }
     }
 
@@ -1285,7 +1160,7 @@ mod tests {
             sized_block("group2", 223.0, 48.0, 3),
         ];
 
-        super::layout_blocks(&mut root, 8.0);
+        super::layout_blocks(&mut root, 8.0).expect("valid block layout");
 
         assert_eq!(root.children[0].y, -96.0);
         assert_eq!(root.children[1].y, 0.0);
@@ -1294,17 +1169,38 @@ mod tests {
     }
 
     #[test]
-    fn block_label_metrics_use_block_owned_width_and_height_overrides() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+    fn block_label_metrics_use_the_selected_html_measurer() {
+        struct SelectedMeasurer;
+
+        impl TextMeasurer for SelectedMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                TextMetrics {
+                    width: 321.25,
+                    height: 45.5,
+                    line_count: 1,
+                }
+            }
+        }
+
         let style = default_style(24.0);
 
         let (width, height) = super::block_html_label_metrics_px(
             "Font size precedence should widen this block",
-            &measurer,
+            &SelectedMeasurer,
             &style,
         );
 
-        assert_eq!(width, 487.890625);
-        assert_eq!(height, 36.0);
+        assert_eq!(width, 321.25);
+        assert_eq!(height, 45.5);
+    }
+
+    #[test]
+    fn zero_columns_are_a_typed_layout_error_not_a_division_by_zero() {
+        let error = super::calculate_block_position(0, 0).expect_err("zero columns must fail");
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            error.to_string(),
+            "invalid semantic model: Columns must be an integer !== 0."
+        );
     }
 }

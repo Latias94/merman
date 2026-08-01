@@ -1,0 +1,458 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import {
+  monitorBrowserErrors,
+  openPlayground,
+  replaceEditorSource,
+  waitForPreviewSvg,
+} from "./helpers/playground";
+
+const UPSTREAM_C_SCALE_0 = {
+  default: "hsl(240, 100%, 76.2745098039%)",
+  dark: "#1f2020",
+  forest: "hsl(78.1578947368, 58.4615384615%, 64.5098039216%)",
+  neutral: "#555",
+  base: "hsl(40.5882352941, 100%, 68.3333333333%)",
+} as const;
+
+// Mindmap's root `section--1` fill is overridden by the later `section-root` rule. The first
+// visible child is `section-0`, which Mermaid's generated styles bind to cScale1.
+const UPSTREAM_MINDMAP_SECTION_0 = {
+  default: "hsl(60, 100%, 73.5294117647%)",
+  dark: "#0b0000",
+  forest: "hsl(98.961038961, 100%, 74.9019607843%)",
+  neutral: "#F4F4F4",
+  base: "hsl(-79.4117647059, 100%, 68.3333333333%)",
+} as const;
+
+const UPSTREAM_KANBAN_SECTION_1 = {
+  default: "hsl(80, 100%, 86.2745098039%)",
+  dark: "hsl(321.6393442623, 65.5913978495%, 28.2352941176%)",
+  forest: "hsl(78.1578947368, 58.4615384615%, 84.5098039216%)",
+  neutral: "hsl(0, 0%, 43.3333333333%)",
+  base: "hsl(220.5882352941, 100%, 83.3333333333%)",
+} as const;
+
+type ThemeName = keyof typeof UPSTREAM_C_SCALE_0;
+
+test("Compare keeps Mermaid JS failures owned by the Mermaid pane", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(page, "flowchart TD\n  Alpha --> Beta");
+  if (isMobile) {
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
+  }
+  await waitForPreviewSvg(page);
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
+  await expect(mermaidPane).toBeVisible();
+  await expect
+    .poll(() =>
+      mermaidPane
+        .locator(".preview-container > div")
+        .evaluate((host) => Boolean(host.shadowRoot?.querySelector("svg"))),
+    )
+    .toBe(true);
+
+  if (isMobile) {
+    await page.getByRole("tab", { name: "Editor", exact: true }).click();
+  }
+  await replaceEditorSource(page, "flowchart TD\n  Alpha -->");
+  if (isMobile) {
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
+  }
+
+  const mermaidError = mermaidPane.locator('[data-merman-render-error="true"]');
+  await expect(mermaidError).toBeVisible();
+  await expect(mermaidError).toHaveAttribute(
+    "data-merman-error-engine",
+    "Mermaid JS",
+  );
+  await expect(mermaidError).toHaveAttribute(
+    "data-merman-error-stage",
+    /.+/,
+  );
+  await expect(mermaidError).toContainText("Mermaid JS · Render Error");
+  await mermaidError.locator("details").evaluate((element) => {
+    (element as HTMLDetailsElement).open = true;
+  });
+  await expect(mermaidError.locator("pre")).toContainText(/hash|token|expected/i);
+  await expect(mermaidError).not.toContainText("MERMAN_PARSE_ERROR");
+  errors.assertNone();
+});
+
+test("font-only theme config preserves the computed shared palette", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+
+  const cases = [
+    [
+      "radar",
+      [
+        "radar-beta",
+        "  title Frontend Framework Comparison",
+        '  axis perf["Performance"], dx["Dev Experience"], eco["Ecosystem"]',
+        '  curve react["React"]{4, 4, 5}',
+        "  max 5",
+        "  min 0",
+      ].join("\n"),
+      UPSTREAM_C_SCALE_0,
+      ".radarCurve-0",
+    ],
+    [
+      "kanban",
+      "kanban\n  todo[Todo]\n    docs[Create documentation]",
+      UPSTREAM_KANBAN_SECTION_1,
+      ".sections > .section-1 > rect",
+    ],
+    [
+      "mindmap",
+      "mindmap\n  root((Root))\n    child(Child)",
+      UPSTREAM_MINDMAP_SECTION_0,
+      ".mindmap-node.section-0 > .basic.label-container",
+    ],
+    [
+      "timeline",
+      "timeline\n  section Release\n    Plan : Build",
+      UPSTREAM_C_SCALE_0,
+      ".timeline-node.section--1 .node-bkg",
+    ],
+  ] as const;
+
+  for (const theme of Object.keys(UPSTREAM_C_SCALE_0) as ThemeName[]) {
+    for (const [family, source, palette, selector] of cases) {
+      const expected = await browserComputedFill(page, palette[theme]);
+      await renderSource(page, isMobile, `${fontOnlyConfig(theme)}\n${source}`);
+      await expect
+        .poll(() => computedFill(page, selector), {
+          message: `${family} ${theme} computed palette`,
+        })
+        .toBe(expected);
+    }
+  }
+
+  errors.assertNone();
+});
+
+test("Quadrant keeps raw parity color while inheriting Mermaid's root fill", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await renderSource(
+    page,
+    isMobile,
+    [
+      "quadrantChart",
+      "  title Reach and engagement of campaigns",
+      "  x-axis Low Reach --> High Reach",
+      "  y-axis Low Engagement --> High Engagement",
+      "  quadrant-1 We should expand",
+      "  Campaign A: [0.3, 0.6]",
+    ].join("\n")
+  );
+
+  await expect.poll(() => quadrantPointPresentation(page)).toEqual({
+    rawFill: "hsl(240, 100%, NaN%)",
+    computedFill: "rgb(51, 51, 51)",
+  });
+  errors.assertNone();
+});
+
+test("Block circle edges contact the browser-visible shape boundary", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await renderSource(
+    page,
+    isMobile,
+    [
+      "block-beta",
+      "  columns 3",
+      '  user(("User")):3',
+      "  space:3",
+      '  ui["Web UI"] api["API Server"] db[("Database")]',
+      "",
+      "  user --> ui",
+      "  ui --> api",
+      "  api --> db",
+    ].join("\n")
+  );
+
+  await expect.poll(() => blockCircleEndpointError(page)).toBeLessThanOrEqual(0.01);
+  errors.assertNone();
+});
+
+test("Merman Gantt presents non-overlapping date ticks", async ({ page, isMobile }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await renderSource(
+    page,
+    isMobile,
+    [
+      "gantt",
+      "  title A Gantt Diagram",
+      "  dateFormat  YYYY-MM-DD",
+      "  section A",
+      "  Task1 :a1, 2024-01-01, 1d",
+    ].join("\n")
+  );
+
+  await expect.poll(() => ganttTickOverlapCount(page)).toBe(0);
+  errors.assertNone();
+});
+
+test("a 100-million-unit SVG stays bounded in preview and exports a planned PNG", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await renderSource(
+    page,
+    isMobile,
+    [
+      "---",
+      "config:",
+      "  xyChart:",
+      "    width: 100000000",
+      "    height: 1000000",
+      "---",
+      "xychart-beta",
+      "  x-axis [a, b]",
+      "  y-axis 0 --> 10",
+      "  line [1, 9]",
+    ].join("\n")
+  );
+
+  await expect.poll(() => largeSvgPreviewMetrics(page)).toMatchObject({
+    rootWidth: "100%",
+    rootHeight: "100%",
+    viewBoxWidth: 100_000_000,
+    viewBoxHeight: 1_000_000,
+  });
+
+  const metrics = await largeSvgPreviewMetrics(page);
+  expect(metrics).not.toBeNull();
+  const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+  expect(metrics!.hostLayoutWidth).toBeLessThanOrEqual(viewport.width + 1);
+  expect(metrics!.hostLayoutHeight).toBeLessThanOrEqual(viewport.height + 1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    viewport.width + 1
+  );
+
+  const fittedWidth = await previewSvgWidth(page);
+  expect(fittedWidth).toBeGreaterThan(0);
+  expect(fittedWidth).toBeLessThanOrEqual(viewport.width + 1);
+  await expect(page.locator("span.tabular-nums").first()).not.toHaveText("0%");
+
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect.poll(() => previewSvgWidth(page)).toBeGreaterThan(fittedWidth * 1.1);
+  await page.getByRole("button", { name: "Fit to view", exact: true }).click();
+  await expect.poll(() => previewSvgWidth(page)).toBeLessThanOrEqual(fittedWidth + 1);
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const svgDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: /Export SVG/u }).click();
+  const svgDownload = await svgDownloadPromise;
+  expect(await downloadText(svgDownload)).toContain(
+    'viewBox="0 0 100000000 1000000"'
+  );
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: /Export PNG/u }).click();
+  const download = await downloadPromise;
+  expect(await pngDownloadDimensions(download)).toEqual({
+    width: 8192,
+    height: 82,
+  });
+  await expect(page.getByText("PNG exported (8192 × 82)")).toBeVisible();
+
+  errors.assertNone();
+});
+
+function fontOnlyConfig(theme: string): string {
+  return [
+    "---",
+    "config:",
+    `  theme: ${theme}`,
+    "  themeVariables:",
+    "    fontFamily: Inter, sans-serif",
+    "---",
+  ].join("\n");
+}
+
+async function renderSource(page: Page, isMobile: boolean, source: string): Promise<void> {
+  if (isMobile) {
+    await page.getByRole("tab", { name: "Editor", exact: true }).click();
+  }
+  await replaceEditorSource(page, source);
+  if (isMobile) {
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
+  }
+  await waitForPreviewSvg(page);
+}
+
+function previewHost(page: Page) {
+  return page.locator(".preview-container > div").first();
+}
+
+async function computedFill(page: Page, selector: string): Promise<string | null> {
+  return previewHost(page).evaluate((host, targetSelector) => {
+    const element = host.shadowRoot?.querySelector<SVGGraphicsElement>(targetSelector);
+    if (!element || element.getBoundingClientRect().width <= 0) return null;
+    return getComputedStyle(element).fill;
+  }, selector);
+}
+
+async function browserComputedFill(page: Page, fill: string): Promise<string> {
+  return page.evaluate((value) => {
+    const namespace = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(namespace, "svg");
+    const rect = document.createElementNS(namespace, "rect");
+    rect.setAttribute("fill", value);
+    svg.append(rect);
+    document.body.append(svg);
+    const computed = getComputedStyle(rect).fill;
+    svg.remove();
+    return computed;
+  }, fill);
+}
+
+async function quadrantPointPresentation(
+  page: Page
+): Promise<{ rawFill: string | null; computedFill: string } | null> {
+  return previewHost(page).evaluate((host) => {
+    const point = host.shadowRoot?.querySelector<SVGCircleElement>(".data-point circle");
+    if (!point) return null;
+    return {
+      rawFill: point.getAttribute("fill"),
+      computedFill: getComputedStyle(point).fill,
+    };
+  });
+}
+
+async function blockCircleEndpointError(page: Page): Promise<number> {
+  return previewHost(page).evaluate((host) => {
+    const svg = host.shadowRoot?.querySelector("svg");
+    if (!svg) return Number.POSITIVE_INFINITY;
+    const user = svg.querySelector<SVGGElement>('g.node[id$="-user"]');
+    const circle = user?.querySelector<SVGCircleElement>("circle");
+    const edge = [...svg.querySelectorAll<SVGPathElement>("path.flowchart-link")].find(
+      (path) =>
+        path.id.includes("user-ui") ||
+        [...path.classList].some((className) => className === "LS-user")
+    );
+    const edgeMatrix = edge?.getCTM();
+    const circleMatrix = circle?.getCTM();
+    if (!circle || !edge || !edgeMatrix || !circleMatrix) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    const edgeStart = edge.getPointAtLength(0).matrixTransform(edgeMatrix);
+    const localStart = edgeStart.matrixTransform(circleMatrix.inverse());
+    const centerX = circle.cx.baseVal.value;
+    const centerY = circle.cy.baseVal.value;
+    const radius = circle.r.baseVal.value;
+    return Math.abs(Math.hypot(localStart.x - centerX, localStart.y - centerY) - radius);
+  });
+}
+
+async function ganttTickOverlapCount(page: Page): Promise<number | null> {
+  return previewHost(page).evaluate((host) => {
+    const ticks = [
+      ...(host.shadowRoot?.querySelectorAll<SVGTextElement>(".tick text") ?? []),
+    ]
+      .map((tick) => tick.getBoundingClientRect())
+      .filter((rect) => rect.width > 0)
+      .sort((left, right) => left.top - right.top || left.left - right.left);
+    if (ticks.length < 2) return null;
+
+    return ticks.slice(1).filter((current, index) => {
+      const previous = ticks[index];
+      return Math.abs(previous.top - current.top) < 2 && previous.right > current.left;
+    }).length;
+  });
+}
+
+async function largeSvgPreviewMetrics(page: Page): Promise<{
+  rootWidth: string | null;
+  rootHeight: string | null;
+  viewBoxWidth: number;
+  viewBoxHeight: number;
+  renderedWidth: number;
+  renderedHeight: number;
+  hostLayoutWidth: number;
+  hostLayoutHeight: number;
+} | null> {
+  return previewHost(page).evaluate((host) => {
+    const svg = host.shadowRoot?.querySelector<SVGSVGElement>("svg");
+    if (!svg) return null;
+    const rendered = svg.getBoundingClientRect();
+    return {
+      rootWidth: svg.getAttribute("width"),
+      rootHeight: svg.getAttribute("height"),
+      viewBoxWidth: svg.viewBox.baseVal.width,
+      viewBoxHeight: svg.viewBox.baseVal.height,
+      renderedWidth: rendered.width,
+      renderedHeight: rendered.height,
+      hostLayoutWidth: host.clientWidth,
+      hostLayoutHeight: host.clientHeight,
+    };
+  });
+}
+
+async function previewSvgWidth(page: Page): Promise<number> {
+  return (await largeSvgPreviewMetrics(page))?.renderedWidth ?? 0;
+}
+
+async function pngDownloadDimensions(
+  download: import("@playwright/test").Download
+): Promise<{ width: number; height: number }> {
+  const stream = await download.createReadStream();
+  if (!stream) throw new Error("PNG download stream is unavailable");
+
+  const chunks: Buffer[] = [];
+  let length = 0;
+  for await (const chunk of stream) {
+    const buffer = Buffer.from(chunk);
+    chunks.push(buffer);
+    length += buffer.length;
+    if (length >= 24) break;
+  }
+  stream.destroy();
+  const header = Buffer.concat(chunks, length);
+  if (
+    header.length < 24 ||
+    header.subarray(1, 4).toString("ascii") !== "PNG"
+  ) {
+    throw new Error("Downloaded artifact is not a PNG");
+  }
+  return {
+    width: header.readUInt32BE(16),
+    height: header.readUInt32BE(20),
+  };
+}
+
+async function downloadText(
+  download: import("@playwright/test").Download
+): Promise<string> {
+  const stream = await download.createReadStream();
+  if (!stream) throw new Error("Download stream is unavailable");
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}

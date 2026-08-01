@@ -5,14 +5,14 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 826.0,
-        "max_y": 419.0
+        "max_x": 814.0,
+        "max_y": 418.0
       },
-      "width": 876.0,
-      "height": 429.0,
+      "width": 864.0,
+      "height": 428.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Container",
       "title": "C4Container sprite (positional) on ContainerQueue_Ext",
       "boundaries": [
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 676.0,
-          "height": 303.0,
+          "width": 664.0,
+          "height": 302.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -52,8 +52,8 @@
           "type_c4_shape": "container",
           "x": 150.0,
           "y": 166.0,
-          "width": 259.0,
-          "height": 105.0,
+          "width": 248.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -70,23 +70,23 @@
           "label": {
             "text": "Web App",
             "y": 38.0,
-            "width": 70.0,
-            "height": 17.0,
+            "width": 56.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[React]",
-            "y": 60.0,
+            "y": 61.0,
             "width": 36.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Provides Internet banking functionality.",
             "y": 94.0,
-            "width": 239.0,
-            "height": 16.0,
+            "width": 228.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -94,10 +94,10 @@
           "alias": "q",
           "parent_boundary": "global",
           "type_c4_shape": "external_container_queue",
-          "x": 509.0,
+          "x": 498.0,
           "y": 166.0,
-          "width": 217.0,
-          "height": 153.0,
+          "width": 216.0,
+          "height": 152.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -114,23 +114,23 @@
           "label": {
             "text": "External Container Queue",
             "y": 86.0,
-            "width": 197.0,
-            "height": 17.0,
+            "width": 165.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[RabbitMQ]",
-            "y": 108.0,
+            "y": 109.0,
             "width": 54.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "External queue container.",
             "y": 142.0,
-            "width": 159.0,
-            "height": 16.0,
+            "width": 144.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         }
@@ -141,27 +141,27 @@
           "to": "q",
           "rel_type": "rel",
           "start_point": {
-            "x": 409.0,
-            "y": 239.691
+            "x": 398.0,
+            "y": 238.667
           },
           "end_point": {
-            "x": 509.0,
-            "y": 267.32
+            "x": 498.0,
+            "y": 267.071
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Publishes",
             "y": 0.0,
-            "width": 52.0,
-            "height": 14.0,
+            "width": 45.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": {
             "text": "AMQP",
             "y": 0.0,
             "width": 29.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": null

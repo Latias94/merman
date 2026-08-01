@@ -1,0 +1,562 @@
+{
+  "diagramType": "wardley",
+  "model": {
+    "type": "wardley",
+    "title": "GPT Tokeniser",
+    "accTitle": null,
+    "accDescr": null,
+    "nodes": [
+      {
+        "id": "GPT Tokeniser",
+        "label": "GPT Tokeniser",
+        "x": 57.99999999999999,
+        "y": 90.0,
+        "className": "anchor"
+      },
+      {
+        "id": "tokeniser",
+        "label": "tokeniser",
+        "x": 57.99999999999999,
+        "y": 81.0,
+        "className": "component",
+        "isPipelineParent": true,
+        "inertia": false
+      },
+      {
+        "id": "encoder",
+        "label": "encoder",
+        "x": 32.0,
+        "y": 60.0,
+        "className": "component",
+        "labelOffsetX": 1,
+        "labelOffsetY": -9,
+        "inertia": false
+      },
+      {
+        "id": "decoder",
+        "label": "decoder",
+        "x": 72.0,
+        "y": 60.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "methodology",
+        "label": "methodology",
+        "x": 53.0,
+        "y": 72.0,
+        "className": "component",
+        "isPipelineParent": true,
+        "inertia": false
+      },
+      {
+        "id": "training code",
+        "label": "training code",
+        "x": 26.0,
+        "y": 68.0,
+        "className": "component",
+        "labelOffsetX": -90,
+        "labelOffsetY": 2,
+        "inertia": false
+      },
+      {
+        "id": "inference code",
+        "label": "inference code",
+        "x": 37.0,
+        "y": 65.0,
+        "className": "component",
+        "labelOffsetX": -50,
+        "labelOffsetY": -12,
+        "inertia": false
+      },
+      {
+        "id": "algo",
+        "label": "algo",
+        "x": 50.0,
+        "y": 53.0,
+        "className": "component",
+        "labelOffsetX": -15,
+        "labelOffsetY": -17,
+        "isPipelineParent": true,
+        "inertia": false
+      },
+      {
+        "id": "GPT2",
+        "label": "GPT2",
+        "x": 65.0,
+        "y": 81.0,
+        "className": "component",
+        "labelOffsetX": -14,
+        "labelOffsetY": 27,
+        "inertia": false
+      },
+      {
+        "id": "GPT3",
+        "label": "GPT3",
+        "x": 73.0,
+        "y": 81.0,
+        "className": "component",
+        "labelOffsetX": -15,
+        "labelOffsetY": 27,
+        "inertia": false
+      },
+      {
+        "id": "GPT4",
+        "label": "GPT4",
+        "x": 77.0,
+        "y": 81.0,
+        "className": "component",
+        "labelOffsetX": -14,
+        "labelOffsetY": 28,
+        "inertia": false
+      },
+      {
+        "id": "GPT5",
+        "label": "GPT5",
+        "x": 37.0,
+        "y": 81.0,
+        "className": "component",
+        "labelOffsetX": -10,
+        "labelOffsetY": 28,
+        "inertia": false
+      },
+      {
+        "id": "GPT6",
+        "label": "GPT6",
+        "x": 17.0,
+        "y": 81.0,
+        "className": "component",
+        "labelOffsetX": -20,
+        "labelOffsetY": 28,
+        "inertia": false
+      },
+      {
+        "id": "GPT7",
+        "label": "GPT7",
+        "x": 13.0,
+        "y": 81.0,
+        "className": "component",
+        "labelOffsetX": -13,
+        "labelOffsetY": 27,
+        "inertia": false
+      },
+      {
+        "id": "tokeniser training data",
+        "label": "tokeniser training data",
+        "x": 34.0,
+        "y": 28.999999999999996,
+        "className": "component",
+        "labelOffsetX": -74,
+        "labelOffsetY": -32,
+        "inertia": false
+      },
+      {
+        "id": "special tokens",
+        "label": "special tokens",
+        "x": 26.0,
+        "y": 59.0,
+        "className": "component",
+        "labelOffsetX": -61,
+        "labelOffsetY": 15,
+        "inertia": false
+      },
+      {
+        "id": "UTF8",
+        "label": "UTF8",
+        "x": 74.0,
+        "y": 17.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "token vocabulary",
+        "label": "token vocabulary",
+        "x": 56.00000000000001,
+        "y": 41.0,
+        "className": "component",
+        "labelOffsetX": -25,
+        "labelOffsetY": 16,
+        "inertia": false
+      },
+      {
+        "id": "byte pair encoding (BPE)",
+        "label": "byte pair encoding (BPE)",
+        "x": 76.0,
+        "y": 53.0,
+        "className": "component",
+        "labelOffsetX": -27,
+        "labelOffsetY": 19,
+        "inertia": false
+      },
+      {
+        "id": "english text data",
+        "label": "english text data",
+        "x": 37.0,
+        "y": 15.0,
+        "className": "component",
+        "labelOffsetX": 0,
+        "labelOffsetY": 10,
+        "inertia": false
+      },
+      {
+        "id": "code data",
+        "label": "code data",
+        "x": 30.0,
+        "y": 15.0,
+        "className": "component",
+        "labelOffsetX": -31,
+        "labelOffsetY": 23,
+        "inertia": false
+      },
+      {
+        "id": "foreign text data",
+        "label": "foreign text data",
+        "x": 23.0,
+        "y": 15.0,
+        "className": "component",
+        "labelOffsetX": -51,
+        "labelOffsetY": 18,
+        "inertia": false
+      },
+      {
+        "id": "python",
+        "label": "python",
+        "x": 84.0,
+        "y": 35.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "sentencepiece",
+        "label": "sentencepiece",
+        "x": 80.0,
+        "y": 25.0,
+        "className": "component",
+        "labelOffsetX": -49,
+        "labelOffsetY": 19,
+        "inertia": false
+      },
+      {
+        "id": "IDE",
+        "label": "IDE",
+        "x": 86.0,
+        "y": 27.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "MEGABYTE",
+        "label": "MEGABYTE",
+        "x": 18.0,
+        "y": 53.0,
+        "className": "component",
+        "labelOffsetX": -28,
+        "labelOffsetY": 28,
+        "inertia": false
+      },
+      {
+        "id": "text merging rules",
+        "label": "text merging rules",
+        "x": 21.0,
+        "y": 60.0,
+        "className": "component",
+        "labelOffsetX": -64,
+        "labelOffsetY": -10,
+        "inertia": false
+      },
+      {
+        "id": "security framework",
+        "label": "security framework",
+        "x": 57.99999999999999,
+        "y": 67.0,
+        "className": "component",
+        "labelOffsetX": -27,
+        "labelOffsetY": 10,
+        "inertia": false
+      },
+      {
+        "id": "Unicode Consortium",
+        "label": "Unicode Consortium",
+        "x": 55.00000000000001,
+        "y": 6.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Unicode License v3",
+        "label": "Unicode License v3",
+        "x": 72.0,
+        "y": 13.0,
+        "className": "component",
+        "labelOffsetX": -29,
+        "labelOffsetY": 11,
+        "inertia": false
+      },
+      {
+        "id": "tokeniser_tokeniser v1",
+        "label": "tokeniser v1",
+        "x": 11.0,
+        "y": 81.0,
+        "className": "pipeline-component",
+        "inPipeline": true
+      },
+      {
+        "id": "tokeniser_tokeniser v2",
+        "label": "tokeniser v2",
+        "x": 80.0,
+        "y": 81.0,
+        "className": "pipeline-component",
+        "inPipeline": true
+      },
+      {
+        "id": "methodology_methodology v1",
+        "label": "methodology v1",
+        "x": 20.0,
+        "y": 72.0,
+        "className": "pipeline-component",
+        "inPipeline": true
+      },
+      {
+        "id": "methodology_methodology v2",
+        "label": "methodology v2",
+        "x": 80.0,
+        "y": 72.0,
+        "className": "pipeline-component",
+        "inPipeline": true
+      },
+      {
+        "id": "algo_algo v1",
+        "label": "algo v1",
+        "x": 14.000000000000002,
+        "y": 53.0,
+        "className": "pipeline-component",
+        "inPipeline": true
+      },
+      {
+        "id": "algo_algo v2",
+        "label": "algo v2",
+        "x": 80.0,
+        "y": 53.0,
+        "className": "pipeline-component",
+        "inPipeline": true
+      }
+    ],
+    "links": [
+      {
+        "source": "GPT Tokeniser",
+        "target": "tokeniser",
+        "dashed": false
+      },
+      {
+        "source": "tokeniser",
+        "target": "methodology",
+        "dashed": false
+      },
+      {
+        "source": "methodology",
+        "target": "training code",
+        "dashed": false
+      },
+      {
+        "source": "methodology",
+        "target": "inference code",
+        "dashed": false
+      },
+      {
+        "source": "methodology",
+        "target": "security framework",
+        "dashed": false
+      },
+      {
+        "source": "training code",
+        "target": "special tokens",
+        "dashed": false
+      },
+      {
+        "source": "training code",
+        "target": "python",
+        "dashed": false
+      },
+      {
+        "source": "algo",
+        "target": "tokeniser training data",
+        "dashed": false
+      },
+      {
+        "source": "training code",
+        "target": "text merging rules",
+        "dashed": false
+      },
+      {
+        "source": "training code",
+        "target": "encoder",
+        "dashed": false
+      },
+      {
+        "source": "inference code",
+        "target": "decoder",
+        "dashed": false
+      },
+      {
+        "source": "encoder",
+        "target": "algo",
+        "dashed": false
+      },
+      {
+        "source": "decoder",
+        "target": "algo",
+        "dashed": false
+      },
+      {
+        "source": "algo",
+        "target": "token vocabulary",
+        "dashed": false
+      },
+      {
+        "source": "byte pair encoding (BPE)",
+        "target": "UTF8",
+        "dashed": false
+      },
+      {
+        "source": "MEGABYTE",
+        "target": "UTF8",
+        "dashed": false
+      },
+      {
+        "source": "UTF8",
+        "target": "Unicode License v3",
+        "dashed": false
+      },
+      {
+        "source": "Unicode License v3",
+        "target": "Unicode Consortium",
+        "dashed": false
+      },
+      {
+        "source": "tokeniser training data",
+        "target": "english text data",
+        "dashed": false
+      },
+      {
+        "source": "tokeniser training data",
+        "target": "code data",
+        "dashed": false
+      },
+      {
+        "source": "tokeniser training data",
+        "target": "foreign text data",
+        "dashed": false
+      },
+      {
+        "source": "python",
+        "target": "IDE",
+        "dashed": false
+      },
+      {
+        "source": "python",
+        "target": "sentencepiece",
+        "dashed": false
+      }
+    ],
+    "trends": [],
+    "pipelines": [
+      {
+        "nodeId": "tokeniser",
+        "componentIds": [
+          "tokeniser_tokeniser v1",
+          "tokeniser_tokeniser v2"
+        ]
+      },
+      {
+        "nodeId": "methodology",
+        "componentIds": [
+          "methodology_methodology v1",
+          "methodology_methodology v2"
+        ]
+      },
+      {
+        "nodeId": "algo",
+        "componentIds": [
+          "algo_algo v1",
+          "algo_algo v2"
+        ]
+      }
+    ],
+    "annotations": [
+      {
+        "number": 1,
+        "coordinates": [
+          {
+            "x": 16.0,
+            "y": 56.99999999999999
+          }
+        ],
+        "text": "Alternative algos in research"
+      },
+      {
+        "number": 2,
+        "coordinates": [
+          {
+            "x": 76.0,
+            "y": 56.99999999999999
+          }
+        ],
+        "text": "Most popular, but not the most efficient"
+      },
+      {
+        "number": 3,
+        "coordinates": [
+          {
+            "x": 30.0,
+            "y": 20.0
+          }
+        ],
+        "text": "Ensure balanced token vocabulary"
+      },
+      {
+        "number": 4,
+        "coordinates": [
+          {
+            "x": 28.000000000000004,
+            "y": 60.0
+          }
+        ],
+        "text": "Required for delimiters"
+      },
+      {
+        "number": 5,
+        "coordinates": [
+          {
+            "x": 50.0,
+            "y": 70.0
+          }
+        ],
+        "text": "A structured approach for achieving a goal"
+      }
+    ],
+    "notes": [
+      {
+        "text": "Voting members: Adobe, Amazon, Apple, Google, Meta, Microsoft, Netflix, Salesforce",
+        "x": 35.0,
+        "y": 4.0
+      }
+    ],
+    "accelerators": [],
+    "deaccelerators": [
+      {
+        "name": "License Play",
+        "x": 78.0,
+        "y": 13.0
+      }
+    ],
+    "annotationsBox": {
+      "x": 0.0,
+      "y": 100.0
+    },
+    "axes": {},
+    "size": {
+      "width": 1100.0,
+      "height": 800.0
+    }
+  }
+}

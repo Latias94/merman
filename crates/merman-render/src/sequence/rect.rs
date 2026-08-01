@@ -90,31 +90,18 @@ pub(super) fn sequence_rect_stack_x_bounds(
     let nodes_by_id: HashMap<&str, &LayoutNode> =
         nodes.iter().map(|n| (n.id.as_str(), n)).collect();
 
-    let mut stack: Vec<StackItem> = Vec::new();
+    let mut stack: Vec<StackFrame> = Vec::new();
     let mut rect_bounds: HashMap<String, (f64, f64)> = HashMap::new();
 
     for msg in &model.messages {
         match msg.message_type {
-            10 | 12 | 15 | 19 | 27 | 30 | 32 => stack.push(StackItem::Control),
+            10 | 12 | 15 | 19 | 27 | 30 | 32 => stack.push(StackFrame::control()),
             11 | 14 | 16 | 21 | 29 | 31 => {
-                let _ = stack.pop();
+                close_stack_frame(&mut stack, box_margin, false, &mut rect_bounds);
             }
-            22 => stack.push(StackItem::Rect {
-                start_id: msg.id.clone(),
-                min_x: f64::INFINITY,
-                max_x: f64::NEG_INFINITY,
-            }),
+            22 => stack.push(StackFrame::rect(msg.id.clone())),
             23 => {
-                if let Some(StackItem::Rect {
-                    start_id,
-                    min_x,
-                    max_x,
-                }) = stack.pop()
-                    && min_x.is_finite()
-                    && max_x.is_finite()
-                {
-                    rect_bounds.insert(start_id, (min_x, max_x));
-                }
+                close_stack_frame(&mut stack, box_margin, true, &mut rect_bounds);
             }
             _ => {
                 if stack.is_empty() {
@@ -127,8 +114,9 @@ pub(super) fn sequence_rect_stack_x_bounds(
                     &edges_by_id,
                     &nodes_by_id,
                     actor_width_min,
-                ) {
-                    update_stack(&mut stack, x1, x2, box_margin);
+                ) && let Some(frame) = stack.last_mut()
+                {
+                    frame.bounds.include(x1 - box_margin, x2 + box_margin);
                 }
             }
         }
@@ -138,23 +126,81 @@ pub(super) fn sequence_rect_stack_x_bounds(
 }
 
 #[derive(Debug, Clone)]
-enum StackItem {
-    Rect {
-        start_id: String,
-        min_x: f64,
-        max_x: f64,
-    },
+enum StackFrameKind {
+    Rect { start_id: String },
     Control,
 }
 
-fn update_stack(stack: &mut [StackItem], x1: f64, x2: f64, box_margin: f64) {
-    let len = stack.len();
-    for (idx, item) in stack.iter_mut().enumerate() {
-        let n = (len - idx) as f64;
-        if let StackItem::Rect { min_x, max_x, .. } = item {
-            *min_x = min_x.min(x1 - n * box_margin);
-            *max_x = max_x.max(x2 + n * box_margin);
+#[derive(Debug, Clone, Copy)]
+struct StackFrameBounds {
+    min_x: f64,
+    max_x: f64,
+}
+
+impl StackFrameBounds {
+    fn empty() -> Self {
+        Self {
+            min_x: f64::INFINITY,
+            max_x: f64::NEG_INFINITY,
         }
+    }
+
+    fn include(&mut self, min_x: f64, max_x: f64) {
+        self.min_x = self.min_x.min(min_x);
+        self.max_x = self.max_x.max(max_x);
+    }
+
+    fn is_finite(self) -> bool {
+        self.min_x.is_finite() && self.max_x.is_finite()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct StackFrame {
+    kind: StackFrameKind,
+    bounds: StackFrameBounds,
+}
+
+impl StackFrame {
+    fn control() -> Self {
+        Self {
+            kind: StackFrameKind::Control,
+            bounds: StackFrameBounds::empty(),
+        }
+    }
+
+    fn rect(start_id: String) -> Self {
+        Self {
+            kind: StackFrameKind::Rect { start_id },
+            bounds: StackFrameBounds::empty(),
+        }
+    }
+}
+
+fn close_stack_frame(
+    stack: &mut Vec<StackFrame>,
+    box_margin: f64,
+    record_rect: bool,
+    rect_bounds: &mut HashMap<String, (f64, f64)>,
+) {
+    let Some(frame) = stack.pop() else {
+        return;
+    };
+
+    if record_rect
+        && frame.bounds.is_finite()
+        && let StackFrameKind::Rect { start_id } = &frame.kind
+    {
+        rect_bounds.insert(start_id.clone(), (frame.bounds.min_x, frame.bounds.max_x));
+    }
+
+    if frame.bounds.is_finite()
+        && let Some(parent) = stack.last_mut()
+    {
+        parent.bounds.include(
+            frame.bounds.min_x - box_margin,
+            frame.bounds.max_x + box_margin,
+        );
     }
 }
 
@@ -199,4 +245,32 @@ fn message_x_range(
         return None;
     }
     Some((min_x, max_x))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StackFrame, close_stack_frame};
+    use std::collections::HashMap;
+
+    #[test]
+    fn nested_stack_frames_propagate_horizontal_margins_on_close() {
+        let mut stack = vec![
+            StackFrame::rect("outer".to_string()),
+            StackFrame::control(),
+            StackFrame::rect("inner".to_string()),
+        ];
+        stack
+            .last_mut()
+            .expect("inner frame")
+            .bounds
+            .include(90.0, 210.0);
+        let mut rect_bounds = HashMap::new();
+
+        close_stack_frame(&mut stack, 10.0, true, &mut rect_bounds);
+        close_stack_frame(&mut stack, 10.0, false, &mut rect_bounds);
+        close_stack_frame(&mut stack, 10.0, true, &mut rect_bounds);
+
+        assert_eq!(rect_bounds["inner"], (90.0, 210.0));
+        assert_eq!(rect_bounds["outer"], (70.0, 230.0));
+    }
 }

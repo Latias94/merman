@@ -129,9 +129,9 @@
         {
           "x": 54.0,
           "y": 299.0,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "point1",

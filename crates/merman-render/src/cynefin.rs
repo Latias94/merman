@@ -36,7 +36,7 @@ pub(crate) struct CynefinLayoutSettings {
     pub padding: f64,
     pub show_domain_descriptions: bool,
     pub boundary_amplitude: f64,
-    pub seed: Option<i32>,
+    pub seed: Option<f64>,
     pub use_max_width: bool,
 }
 
@@ -63,9 +63,14 @@ pub(crate) struct CynefinTheme {
 pub(crate) fn cynefin_layout_settings(
     effective_config: &serde_json::Value,
 ) -> CynefinLayoutSettings {
-    let seed = config_f64(effective_config, &["cynefin", "seed"])
-        .filter(|value| value.is_finite() && *value != 0.0)
-        .map(|value| value as i32);
+    // Mermaid only accepts a JavaScript `number` here. Do not reuse the general
+    // config-number helper: it intentionally accepts YAML string numbers, while
+    // upstream `resolveSeed` ignores strings based on `typeof configuredSeed`.
+    let seed = effective_config
+        .get("cynefin")
+        .and_then(|config| config.get("seed"))
+        .and_then(serde_json::Value::as_f64)
+        .filter(|value| value.is_finite() && *value != 0.0);
     CynefinLayoutSettings {
         width: config_f64(effective_config, &["cynefin", "width"])
             .unwrap_or(800.0)
@@ -141,16 +146,7 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
     }
 }
 
-pub fn layout_cynefin_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<CynefinDiagramLayout> {
-    let model: CynefinDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_cynefin_diagram_typed(&model, effective_config, measurer)
-}
-
-pub fn layout_cynefin_diagram_typed(
+pub(crate) fn layout_cynefin_diagram_typed(
     model: &CynefinDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
@@ -228,14 +224,14 @@ pub(crate) fn domain_fill<'a>(theme: &'a CynefinTheme, name: &str) -> &'a str {
     }
 }
 
-pub(crate) fn resolve_seed(configured_seed: Option<i32>, id: &str) -> i32 {
-    configured_seed.unwrap_or_else(|| hash_string(id))
+pub(crate) fn resolve_seed(configured_seed: Option<f64>, id: &str) -> f64 {
+    configured_seed.unwrap_or_else(|| f64::from(hash_string(id)))
 }
 
 pub(crate) fn generate_fold_path(
     width: f64,
     height: f64,
-    seed: i32,
+    seed: f64,
     amplitude_override: Option<f64>,
 ) -> String {
     let cx = width / 2.0;
@@ -244,9 +240,7 @@ pub(crate) fn generate_fold_path(
     let seg_height = height / segments as f64;
     let mut points = Vec::with_capacity(segments + 1);
     for i in 0..=segments {
-        let jitter =
-            seeded_random(seed.wrapping_add((i as i32).wrapping_mul(17))) * amplitude * 2.0
-                - amplitude;
+        let jitter = seeded_random(seed + i as f64 * 17.0) * amplitude * 2.0 - amplitude;
         points.push((cx + jitter, i as f64 * seg_height));
     }
     let mut d = format!("M{},{}", fmt_number(points[0].0), fmt_number(points[0].1));
@@ -255,10 +249,7 @@ pub(crate) fn generate_fold_path(
         let p1 = points[i + 1];
         let mid_y = (p0.1 + p1.1) / 2.0;
         let dir = if i % 2 == 0 { 1.0 } else { -1.0 };
-        let offset = amplitude
-            * 1.5
-            * dir
-            * seeded_random(seed.wrapping_add((i as i32).wrapping_mul(31).wrapping_add(7)));
+        let offset = amplitude * 1.5 * dir * seeded_random(seed + i as f64 * 31.0 + 7.0);
         d.push_str(&format!(
             " C{},{} {},{} {},{}",
             fmt_number(p0.0 + offset),
@@ -275,7 +266,7 @@ pub(crate) fn generate_fold_path(
 pub(crate) fn generate_horizontal_boundary(
     width: f64,
     height: f64,
-    seed: i32,
+    seed: f64,
     amplitude_override: Option<f64>,
 ) -> String {
     let cy = height / 2.0;
@@ -284,9 +275,7 @@ pub(crate) fn generate_horizontal_boundary(
     let seg_width = width / segments as f64;
     let mut points = Vec::with_capacity(segments + 1);
     for i in 0..=segments {
-        let jitter =
-            seeded_random(seed.wrapping_add((i as i32).wrapping_mul(23))) * amplitude * 2.0
-                - amplitude;
+        let jitter = seeded_random(seed + i as f64 * 23.0) * amplitude * 2.0 - amplitude;
         points.push((i as f64 * seg_width, cy + jitter));
     }
     let mut d = format!("M{},{}", fmt_number(points[0].0), fmt_number(points[0].1));
@@ -295,10 +284,7 @@ pub(crate) fn generate_horizontal_boundary(
         let p1 = points[i + 1];
         let mid_x = (p0.0 + p1.0) / 2.0;
         let dir = if i % 2 == 0 { 1.0 } else { -1.0 };
-        let offset = amplitude
-            * 1.5
-            * dir
-            * seeded_random(seed.wrapping_add((i as i32).wrapping_mul(37).wrapping_add(11)));
+        let offset = amplitude * 1.5 * dir * seeded_random(seed + i as f64 * 37.0 + 11.0);
         d.push_str(&format!(
             " C{},{} {},{} {},{}",
             fmt_number(mid_x),
@@ -498,10 +484,14 @@ fn push_item_layout(
     measurer: &dyn TextMeasurer,
     overflow: bool,
 ) {
-    let measured_width = measurer
-        .measure(label, style)
-        .width
-        .max(label.chars().count() as f64 * 7.0);
+    let bbox_width = measurer.measure(label, style).width;
+    let measured_width = if bbox_width > 0.0 {
+        bbox_width
+    } else {
+        // Mermaid uses JavaScript `String.length`, so preserve UTF-16 code-unit semantics in the
+        // browser-only fallback instead of replacing a valid bbox with a character estimate.
+        label.encode_utf16().count() as f64 * 7.0
+    };
     let width = measured_width + ITEM_PADDING_X * 2.0;
     let x = domain_layout.cx - width / 2.0;
     let y = start_y + idx as f64 * (ITEM_HEIGHT + ITEM_GAP);
@@ -565,11 +555,18 @@ fn layout_transitions(
     out
 }
 
-fn seeded_random(seed: i32) -> f64 {
-    let mut t = (seed as u32).wrapping_add(0x6d2b_79f5);
+fn seeded_random(seed: f64) -> f64 {
+    let mut t = javascript_to_uint32(seed + f64::from(0x6d2b_79f5_u32));
     t = (t ^ (t >> 15)).wrapping_mul(t | 1);
     t ^= t.wrapping_add((t ^ (t >> 7)).wrapping_mul(t | 61));
     ((t ^ (t >> 14)) as f64) / 4_294_967_296.0
+}
+
+fn javascript_to_uint32(value: f64) -> u32 {
+    if !value.is_finite() || value == 0.0 {
+        return 0;
+    }
+    value.trunc().rem_euclid(4_294_967_296.0) as u32
 }
 
 fn hash_string(value: &str) -> i32 {
@@ -604,13 +601,55 @@ fn fmt_number(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::DeterministicTextMeasurer;
+    use crate::text::{DeterministicTextMeasurer, TextMetrics};
+
+    struct FixedWidthMeasurer(f64);
+
+    impl TextMeasurer for FixedWidthMeasurer {
+        fn measure(&self, _text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: self.0,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
 
     #[test]
     fn cynefin_boundary_seed_is_stable() {
-        assert_eq!(seeded_random(42), seeded_random(42));
+        assert_eq!(seeded_random(42.0), seeded_random(42.0));
         assert_ne!(hash_string("cynefin-1"), hash_string("cynefin-2"));
-        assert_eq!(resolve_seed(Some(7), "a"), resolve_seed(Some(7), "b"));
+        assert_eq!(resolve_seed(Some(7.0), "a"), resolve_seed(Some(7.0), "b"));
+    }
+
+    #[test]
+    fn cynefin_seed_uses_ecmascript_to_uint32_semantics() {
+        assert_eq!(seeded_random(4_294_967_297.0), seeded_random(1.0));
+        assert_eq!(javascript_to_uint32(-1.0), u32::MAX);
+        assert_eq!(javascript_to_uint32(-1.5), u32::MAX);
+        assert_eq!(javascript_to_uint32(f64::INFINITY), 0);
+    }
+
+    #[test]
+    fn cynefin_seed_requires_a_json_number_like_mermaid() {
+        let string_seed = cynefin_layout_settings(&serde_json::json!({
+            "cynefin": {"seed": "4294967297"}
+        }));
+        assert_eq!(string_seed.seed, None);
+        assert_eq!(
+            resolve_seed(string_seed.seed, "cynefin-string-seed"),
+            f64::from(hash_string("cynefin-string-seed")),
+            "a string seed must fall back to Mermaid's diagram-id hash"
+        );
+
+        let numeric_seed = cynefin_layout_settings(&serde_json::json!({
+            "cynefin": {"seed": 4294967297_u64}
+        }));
+        assert_eq!(numeric_seed.seed, Some(4_294_967_297.0));
+        assert_eq!(
+            seeded_random(numeric_seed.seed.unwrap()),
+            seeded_random(1.0)
+        );
     }
 
     #[test]
@@ -637,5 +676,45 @@ mod tests {
         assert_eq!(layout.items.len(), 4);
         assert!(layout.items.last().unwrap().overflow);
         assert_eq!(layout.items.last().unwrap().label, "+1 more");
+    }
+
+    #[test]
+    fn cynefin_item_width_prefers_a_positive_bbox_over_the_character_fallback() {
+        let model = CynefinDiagramRenderModel {
+            domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
+                name: DOMAIN_COMPLEX.to_string(),
+                items: vec![merman_core::diagrams::cynefin::CynefinItemModel {
+                    label: "a deliberately long label".into(),
+                }],
+            }],
+            ..Default::default()
+        };
+        let layout =
+            layout_cynefin_diagram_typed(&model, &serde_json::json!({}), &FixedWidthMeasurer(3.5))
+                .unwrap();
+
+        assert_eq!(layout.items[0].width, 3.5 + ITEM_PADDING_X * 2.0);
+    }
+
+    #[test]
+    fn cynefin_item_width_uses_the_utf16_character_fallback_for_a_zero_bbox() {
+        let label = "A\u{1f642}";
+        let model = CynefinDiagramRenderModel {
+            domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
+                name: DOMAIN_COMPLEX.to_string(),
+                items: vec![merman_core::diagrams::cynefin::CynefinItemModel {
+                    label: label.into(),
+                }],
+            }],
+            ..Default::default()
+        };
+        let layout =
+            layout_cynefin_diagram_typed(&model, &serde_json::json!({}), &FixedWidthMeasurer(0.0))
+                .unwrap();
+
+        assert_eq!(
+            layout.items[0].width,
+            label.encode_utf16().count() as f64 * 7.0 + ITEM_PADDING_X * 2.0
+        );
     }
 }

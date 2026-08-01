@@ -26,6 +26,12 @@ checks in one shot and aggregates failures.
   - When `--dom-mode` is omitted, per-diagram compare tasks use their default report paths
     (typically `target/compare/<diagram>_report.md`).
 
+Every report labels its evidence as raw/source SVG bytes or raw/source SVG-DOM. It also records that
+browser-visible and resvg-safe evidence were not collected. In particular, a passing Theme, Block,
+or Gantt structure/parity comparison is not evidence about computed colors, edge contact, or tick
+overlap in a browser. Those claims belong to browser tests with their build-freshness and viewport
+preconditions; resvg-safe claims belong to output-pipeline and `usvg` / `resvg` gates.
+
 ## Flowchart-specific options
 
 `compare-all-svgs` forwards these only to the Flowchart compare task:
@@ -42,11 +48,9 @@ Example:
 - `parity-root` depends on the headless `getBBox()`-like bounds approximation in `merman-render`.
   It treats `<a>` as a transform container (so link-wrapped nodes contribute correctly), and it
   ignores non-rendered containers like `<defs>`/`<marker>` when deriving the root viewport.
-- State diagrams support switching the root viewport strategy via `MERMAN_STATE_VIEWPORT`:
-  - `MERMAN_STATE_VIEWPORT=svg` (default): derive `viewBox`/`max-width` by scanning the emitted SVG
-    (closest to browser `getBBox()` semantics; best parity).
-  - `MERMAN_STATE_VIEWPORT=layout`: derive `viewBox`/`max-width` from layout geometry (faster, but
-    more likely to drift in `parity-root`).
+- State diagrams derive `viewBox`/`max-width` from emitted SVG bounds and fall back to layout
+  geometry only when emitted bounds are unavailable. This policy is operation-owned and has no
+  process-global switch.
 
 ## Precision
 
@@ -54,7 +58,8 @@ Example:
 - `--dom-decimals 6` is a useful stress test for root viewport parity (`viewBox` + `max-width`),
   but it is expected to surface small residual numeric drift as we continue to tighten the
   headless bbox + viewport pipeline.
-  - Some of this drift is inherent to browser float/serialization behavior. For known upstream
-    fixture deltas, we keep exact `parity-root` by applying fixture-derived root viewport overrides
-    keyed by `diagram_id` (fixture stem) under `crates/merman-render/src/generated/*_root_overrides_11_12_2.rs`.
-  - To review the current override footprint, run `cargo run -p xtask -- report-overrides`.
+  - Some drift is inherent to browser font and float behavior. Production output is never adjusted
+    by fixture id; bounded browser-only residuals stay visible in parity reports and accepted
+    residual policy.
+  - New or changed residuals still fail the gate. Fix source-backed semantics, layout, emitted
+    geometry, or measurement rather than adding a root pin.

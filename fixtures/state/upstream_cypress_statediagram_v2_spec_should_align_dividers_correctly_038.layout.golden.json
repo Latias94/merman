@@ -5,57 +5,57 @@
       "nodes": [
         {
           "id": "55",
-          "x": 398.648,
+          "x": 398.64,
           "y": 115.5,
-          "width": 33.922,
+          "width": 33.92,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "divider-id-1",
-          "x": 93.922,
+          "x": 93.92,
           "y": 115.5,
-          "width": 101.844,
+          "width": 101.84,
           "height": 140.0,
           "is_cluster": true
         },
         {
           "id": "divider-id-2",
-          "x": 245.766,
+          "x": 245.76,
           "y": 115.5,
-          "width": 101.844,
+          "width": 101.84,
           "height": 140.0,
           "is_cluster": true
         },
         {
           "id": "id-38dvt516gkfs-1",
-          "x": 398.648,
+          "x": 398.64,
           "y": 115.5,
-          "width": 133.766,
+          "width": 133.76,
           "height": 140.0,
           "is_cluster": true
         },
         {
           "id": "s2",
-          "x": 246.805,
+          "x": 246.8,
           "y": 115.5,
-          "width": 477.609,
+          "width": 477.6,
           "height": 215.0,
           "is_cluster": true
         },
         {
           "id": "s3",
-          "x": 93.922,
+          "x": 93.92,
           "y": 115.5,
-          "width": 31.844,
+          "width": 31.84,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "s4",
-          "x": 245.766,
+          "x": 245.76,
           "y": 115.5,
-          "width": 31.844,
+          "width": 31.84,
           "height": 40.0,
           "is_cluster": false
         }
@@ -64,17 +64,17 @@
       "clusters": [
         {
           "id": "divider-id-1",
-          "x": 93.922,
+          "x": 93.92,
           "y": 115.5,
-          "width": 101.844,
+          "width": 101.84,
           "height": 140.0,
           "diff": -8.0,
           "offset_y": 0.0,
           "title": "divider-id-1",
           "title_label": {
-            "x": 93.922,
+            "x": 93.92,
             "y": 58.5,
-            "width": 74.234,
+            "width": 74.24,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -85,17 +85,17 @@
         },
         {
           "id": "divider-id-2",
-          "x": 245.766,
+          "x": 245.76,
           "y": 115.5,
-          "width": 101.844,
+          "width": 101.84,
           "height": 140.0,
           "diff": -8.0,
           "offset_y": 0.0,
           "title": "divider-id-2",
           "title_label": {
-            "x": 245.766,
+            "x": 245.76,
             "y": 58.5,
-            "width": 74.234,
+            "width": 74.24,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -106,17 +106,17 @@
         },
         {
           "id": "id-38dvt516gkfs-1",
-          "x": 398.648,
+          "x": 398.64,
           "y": 115.5,
-          "width": 133.766,
+          "width": 133.76,
           "height": 140.0,
           "diff": -8.0,
           "offset_y": 0.0,
           "title": "id-38dvt516gkfs-1",
           "title_label": {
-            "x": 398.648,
+            "x": 398.64,
             "y": 58.5,
-            "width": 125.766,
+            "width": 125.76,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -127,17 +127,17 @@
         },
         {
           "id": "s2",
-          "x": 246.805,
+          "x": 246.8,
           "y": 115.5,
-          "width": 477.609,
+          "width": 477.6,
           "height": 215.0,
           "diff": -8.0,
           "offset_y": 20.0,
           "title": "s2",
           "title_label": {
-            "x": 246.805,
+            "x": 246.8,
             "y": 21.0,
-            "width": 15.844,
+            "width": 15.84,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -150,7 +150,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 485.609,
+        "max_x": 485.6,
         "max_y": 223.0
       }
     }

@@ -5,42 +5,108 @@
       "nodes": [
         {
           "id": "a",
-          "x": 32.047,
+          "x": 30.32,
           "y": -56.0,
-          "width": 64.094,
+          "width": 60.64,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "e",
-          "x": 32.047,
+          "x": 30.32,
           "y": 0.0,
-          "width": 64.094,
+          "width": 60.64,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "f",
-          "x": 32.047,
+          "x": 30.32,
           "y": 0.0,
-          "width": 48.094,
+          "width": 44.64,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "g",
-          "x": 8.016,
+          "x": 7.44,
           "y": 56.0,
-          "width": 16.031,
+          "width": 14.88,
           "height": 48.0,
           "is_cluster": false
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "a",
+          "allocated": {
+            "x": 30.32,
+            "y": -56.0,
+            "width": 60.64,
+            "height": 48.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 60.64,
+            "height": 48.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "e",
+          "allocated": {
+            "x": 30.32,
+            "y": 0.0,
+            "width": 60.64,
+            "height": 48.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 60.64,
+            "height": 48.0,
+            "radius": 0.0,
+            "kind": "composite"
+          }
+        },
+        {
+          "id": "f",
+          "allocated": {
+            "x": 30.32,
+            "y": 0.0,
+            "width": 44.64,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 44.64,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "g",
+          "allocated": {
+            "x": 7.44,
+            "y": 56.0,
+            "width": 14.88,
+            "height": 48.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 14.88,
+            "height": 48.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -80.0,
-        "max_x": 64.094,
+        "max_x": 60.64,
         "max_y": 80.0
       }
     }

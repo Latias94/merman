@@ -113,6 +113,33 @@ fn include_mindmap_node_rect_bounds(bounds: &mut Option<Bounds>, n: &LayoutNode)
     );
 }
 
+fn single_image_paragraph_inner(fragment: &str) -> Option<&str> {
+    let fragment = fragment.trim();
+    let inner = fragment.strip_prefix("<p>")?.strip_suffix("</p>")?.trim();
+    let prefix = inner.get(..4)?;
+    if !prefix.eq_ignore_ascii_case("<img") {
+        return None;
+    }
+    if inner
+        .as_bytes()
+        .get(4)
+        .is_some_and(|byte| !byte.is_ascii_whitespace() && !matches!(byte, b'/' | b'>'))
+    {
+        return None;
+    }
+
+    let mut quote = None;
+    for (index, ch) in inner.char_indices().skip(4) {
+        match (quote, ch) {
+            (Some(active), candidate) if active == candidate => quote = None,
+            (None, '\'' | '"') => quote = Some(ch),
+            (None, '>') => return inner[index + 1..].trim().is_empty().then_some(inner),
+            _ => {}
+        }
+    }
+    None
+}
+
 fn include_mindmap_path_bounds(
     bounds: &mut Option<Bounds>,
     d: &str,
@@ -365,10 +392,10 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         .filter(|v| *v > 0)
         .unwrap_or(DEFAULT_FILLS.len() as i64)
         .clamp(1, 64) as usize;
-    let root_fill = theme_color(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
-    let root_label = theme_color(effective_config, "gitBranchLabel0", "#ffffff");
-    let node_border = theme_color(effective_config, "nodeBorder", root_label.as_str());
-    let main_bkg = theme_color(effective_config, "mainBkg", root_fill.as_str());
+    let root_fill = theme_token(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
+    let root_label = theme_token(effective_config, "gitBranchLabel0", "#ffffff");
+    let node_border = theme_token(effective_config, "nodeBorder", root_label.as_str());
+    let main_bkg = theme_token(effective_config, "mainBkg", root_fill.as_str());
     let stroke_width = crate::config::config_css_number_or_string(
         effective_config,
         &["themeVariables", "strokeWidth"],
@@ -386,17 +413,17 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
 
     for i in 0..theme_color_limit {
         let section = i as i64 - 1;
-        let c_scale = theme_color(
+        let c_scale = theme_token(
             effective_config,
             &format!("cScale{}", i),
             default_mindmap_fill(i),
         );
-        let c_scale_inv = theme_color(
+        let c_scale_inv = theme_token(
             effective_config,
             &format!("cScaleInv{}", i),
             default_mindmap_inv_fill(i),
         );
-        let c_scale_label = theme_color(
+        let c_scale_label = theme_token(
             effective_config,
             &format!("cScaleLabel{}", i),
             default_mindmap_label(i),
@@ -425,7 +452,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
         let neo_text_label = if theme == "redux" || theme == "redux-dark" {
             node_border.clone()
         } else {
-            theme_color(
+            theme_token(
                 effective_config,
                 &format!("cScaleLabel{}", neo_text_label_index),
                 default_mindmap_label(neo_text_label_index),
@@ -544,7 +571,7 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     let neo_root_text = if theme.contains("redux") {
         node_border
     } else {
-        theme_color(
+        theme_token(
             effective_config,
             &format!("cScaleLabel{}", neo_root_text_label_index),
             default_mindmap_label(neo_root_text_label_index),
@@ -580,53 +607,15 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     out
 }
 
-pub(crate) fn render_mindmap_diagram_svg(
-    layout: &MindmapDiagramLayout,
-    semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: merman_core::diagrams::mindmap::MindmapDiagramRenderModel =
-        crate::json::from_value_ref(semantic)?;
-    render_mindmap_diagram_svg_model(layout, &model, _effective_config, options)
-}
-
-pub(crate) fn render_mindmap_diagram_svg_with_config(
-    layout: &MindmapDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: merman_core::diagrams::mindmap::MindmapDiagramRenderModel =
-        { crate::json::from_value_ref(semantic)? };
-    render_mindmap_diagram_svg_model_with_config(layout, &model, effective_config, options)
-}
-
-pub(crate) fn render_mindmap_diagram_svg_model(
-    layout: &MindmapDiagramLayout,
-    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
-    _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let config = merman_core::MermaidConfig::from_value(_effective_config.clone());
-    render_mindmap_diagram_svg_model_with_config(layout, model, &config, options)
-}
-
 pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     layout: &MindmapDiagramLayout,
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
     config: &merman_core::MermaidConfig,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let timing = options.timing();
     let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-    fn section<'a>(
-        enabled: bool,
-        dst: &'a mut web_time::Duration,
-    ) -> Option<super::super::timing::TimingGuard<'a>> {
-        enabled.then(|| super::super::timing::TimingGuard::new(dst))
-    }
+    let total_timer = timing.start();
 
     #[derive(Debug, Clone, serde::Serialize)]
     struct Pt {
@@ -638,7 +627,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     struct MindmapLabelSpec<'a> {
         text: &'a str,
-        label_type: &'a str,
         label_bkg: bool,
         width: f64,
         height: f64,
@@ -647,10 +635,14 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         max_node_width_px: f64,
     }
 
-    fn mk_label(out: &mut String, spec: MindmapLabelSpec<'_>, config: &merman_core::MermaidConfig) {
+    fn mk_label(
+        out: &mut String,
+        spec: MindmapLabelSpec<'_>,
+        config: &merman_core::MermaidConfig,
+        math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+    ) -> Result<()> {
         let MindmapLabelSpec {
             text,
-            label_type,
             label_bkg,
             width,
             height,
@@ -658,87 +650,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             ty,
             max_node_width_px,
         } = spec;
-
-        fn is_simple_markdown(text: &str) -> bool {
-            // Conservative: only fast-path labels that would render as a plain `<p>text</p>`.
-            if text.contains('\n') || text.contains('\r') {
-                return false;
-            }
-            let trimmed = text.trim_start();
-            let bytes = trimmed.as_bytes();
-            // Line-leading markdown constructs that can change the HTML shape even without newlines.
-            if bytes.first().is_some_and(|b| matches!(b, b'#' | b'>')) {
-                return false;
-            }
-            if bytes.starts_with(b"- ") || bytes.starts_with(b"+ ") || bytes.starts_with(b"---") {
-                return false;
-            }
-            // Ordered list: `1. item` / `1) item`
-            let mut i = 0usize;
-            while i < bytes.len() && bytes[i].is_ascii_digit() {
-                i += 1;
-            }
-            if i > 0
-                && i + 1 < bytes.len()
-                && (bytes[i] == b'.' || bytes[i] == b')')
-                && bytes[i + 1] == b' '
-            {
-                return false;
-            }
-            // Block/inline markdown triggers we don't want to replicate here.
-            if text.contains('*')
-                || text.contains('_')
-                || text.contains('`')
-                || text.contains('~')
-                || text.contains('[')
-                || text.contains(']')
-                || text.contains('!')
-                || text.contains('\\')
-            {
-                return false;
-            }
-            // HTML passthrough / entity patterns: keep the full pulldown + sanitize path.
-            if text.contains('<') || text.contains('>') || text.contains('&') {
-                return false;
-            }
-            true
-        }
-
-        fn push_br_normalized_text_into(out: &mut String, text: &str) {
-            // Mirror the existing `replace("<br>", "<br />").replace("<br/>", "<br />")` behavior,
-            // but avoid allocating intermediate strings for the common case (no `<br>` tokens).
-            let bytes = text.as_bytes();
-            let mut i = 0usize;
-            let mut start = 0usize;
-            while i + 3 < bytes.len() {
-                if bytes[i] == b'<' && bytes[i + 1] == b'b' && bytes[i + 2] == b'r' {
-                    // "<br>"
-                    if bytes[i + 3] == b'>' {
-                        if start < i {
-                            out.push_str(&text[start..i]);
-                        }
-                        out.push_str("<br />");
-                        i += 4;
-                        start = i;
-                        continue;
-                    }
-                    // "<br/>"
-                    if i + 4 < bytes.len() && bytes[i + 3] == b'/' && bytes[i + 4] == b'>' {
-                        if start < i {
-                            out.push_str(&text[start..i]);
-                        }
-                        out.push_str("<br />");
-                        i += 5;
-                        start = i;
-                        continue;
-                    }
-                }
-                i += 1;
-            }
-            if start < text.len() {
-                out.push_str(&text[start..]);
-            }
-        }
 
         let div_class = if label_bkg {
             r#" class="labelBkg""#
@@ -785,170 +696,39 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
             let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
-            html_out
+            let html_out = html_out
                 .replace("<br>", "<br />")
                 .replace("<br/>", "<br />")
                 .trim()
-                .to_string()
-        }
-
-        fn is_single_img_fragment(html: &str) -> bool {
-            // Mermaid does not wrap a single <img> label inside a <p> node for mindmap labels.
-            let t = html.trim();
-            let lower = t.to_ascii_lowercase();
-            if lower.starts_with("<p>") && lower.ends_with("</p>") {
-                let inner = t.strip_prefix("<p>").unwrap_or(t);
-                let inner = inner.strip_suffix("</p>").unwrap_or(inner);
-                return is_single_img_fragment(inner);
-            }
-            if !lower.starts_with("<img") {
-                return false;
-            }
-            let Some(end) = t.find('>') else {
-                return false;
-            };
-            t[end + 1..].trim().is_empty()
-        }
-
-        fn unwrap_single_img_p(html: &str) -> String {
-            let t = html.trim();
-            if !t.to_ascii_lowercase().starts_with("<p>")
-                || !t.to_ascii_lowercase().ends_with("</p>")
-            {
-                return t.to_string();
-            }
-            let inner = t.strip_prefix("<p>").unwrap_or(t);
-            let inner = inner.strip_suffix("</p>").unwrap_or(inner);
-            inner.trim().to_string()
+                .to_string();
+            single_image_paragraph_inner(&html_out)
+                .map(str::to_string)
+                .unwrap_or(html_out)
         }
 
         fn escape_amp_preserving_entities(raw: &str) -> String {
-            fn is_valid_entity(entity: &str) -> bool {
-                if entity.is_empty() {
-                    return false;
-                }
-                if let Some(hex) = entity
-                    .strip_prefix("#x")
-                    .or_else(|| entity.strip_prefix("#X"))
-                {
-                    return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
-                }
-                if let Some(dec) = entity.strip_prefix('#') {
-                    return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
-                }
-                let mut it = entity.chars();
-                let Some(first) = it.next() else {
-                    return false;
-                };
-                if !first.is_ascii_alphabetic() {
-                    return false;
-                }
-                it.all(|c| c.is_ascii_alphanumeric())
-            }
-
-            let mut out = String::with_capacity(raw.len());
-            let mut i = 0usize;
-            while let Some(rel) = raw[i..].find('&') {
-                let amp = i + rel;
-                out.push_str(&raw[i..amp]);
-                let tail = &raw[amp + 1..];
-                if let Some(semi_rel) = tail.find(';') {
-                    let semi = amp + 1 + semi_rel;
-                    let entity = &raw[amp + 1..semi];
-                    if is_valid_entity(entity) {
-                        out.push_str(&raw[amp..=semi]);
-                        i = semi + 1;
-                        continue;
-                    }
-                }
-                out.push_str("&amp;");
-                i = amp + 1;
-            }
-            out.push_str(&raw[i..]);
-            out
+            crate::xml::normalize_html_entities_for_xml(raw).into_owned()
         }
 
-        if label_type == "markdown" {
-            if is_simple_markdown(text) {
-                let mut html_out = String::with_capacity(text.len() + 7);
-                html_out.push_str("<p>");
-                html_out.push_str(text);
-                html_out.push_str("</p>");
-                let html_out = crate::text::replace_fontawesome_icons(&html_out);
-                let html_out = decode_mermaid_entities_for_render_text(&html_out);
-                out.push_str(&escape_amp_preserving_entities(html_out.as_ref()));
-            } else {
-                let html = markdown_to_sanitized_xhtml(text, config);
-                let html = decode_mermaid_entities_for_render_text(&html);
-                out.push_str(&escape_amp_preserving_entities(html.as_ref()));
-            }
-        } else if text.contains('\n') || text.contains('\r') {
-            // Mermaid's Cypress mindmap fixtures include multi-line labels inside node delimiters
-            // (e.g. `root((\n  The root\n))`). Upstream preserves the raw whitespace/newlines as
-            // a text node (no `<p>...</p>` wrapper) unless the label intentionally includes a
-            // backtick snippet (which upstream keeps inside a `<p>` node).
-            if text.contains('`') {
-                let mut normalized;
-                let normalized = if text.contains("<br>") || text.contains("<br/>") {
-                    normalized = String::with_capacity(text.len() + 8);
-                    push_br_normalized_text_into(&mut normalized, text);
-                    normalized.as_str()
-                } else {
-                    text
-                };
-                out.push_str("<p>");
-                out.push_str(&escape_xml(normalized));
-                out.push_str("</p>");
-            } else {
-                out.push_str(&escape_xml(text));
-            }
+        if crate::math::contains_delimited_math(text) {
+            let html = math_renderer
+                .and_then(|renderer| renderer.render_html_label(text, config))
+                .ok_or_else(|| Error::MissingCapability {
+                    capability: crate::RenderCapability::Math,
+                    diagram_type: "mindmap".to_string(),
+                })?;
+            let html = merman_core::sanitize::sanitize_text(&html, config)
+                .replace("<br>", "<br />")
+                .replace("<br/>", "<br />");
+            out.push_str(&escape_amp_preserving_entities(&html));
         } else {
-            // Mermaid applies Markdown parsing semantics even for regular, single-line mindmap
-            // labels. This matters for emphasis markers like `__proto__` (renders as `<strong>`).
-            // Keep output XHTML-compatible and sanitizer-aligned.
-            let mut normalized;
-            let text = if text.contains("<br>") || text.contains("<br/>") {
-                normalized = String::with_capacity(text.len() + 8);
-                push_br_normalized_text_into(&mut normalized, text);
-                normalized.as_str()
-            } else {
-                text
-            };
-            // Mindmap fixtures use *wrapping* backticks to denote "verbatim" labels. Mermaid keeps
-            // those backticks as literal text (no Markdown evaluation) in that mode.
-            //
-            // Do not treat the presence of any backtick as verbatim. Upstream Mermaid's
-            // `encodeEntities(...)` pass can introduce `&`-prefixed backticks (e.g. `&#96;` ->
-            // `&ﬂ°°96¶ß` -> `&\``), and those should still participate in Markdown parsing.
-            let trimmed = text.trim();
-            let is_verbatim =
-                trimmed.len() >= 2 && trimmed.starts_with('`') && trimmed.ends_with('`');
-            if is_verbatim {
-                out.push_str("<p>");
-                out.push_str(&escape_xml(text));
-                out.push_str("</p>");
-            } else if is_simple_markdown(text) {
-                let mut html_out = String::with_capacity(text.len() + 7);
-                html_out.push_str("<p>");
-                html_out.push_str(text);
-                html_out.push_str("</p>");
-                let html_out = crate::text::replace_fontawesome_icons(&html_out);
-                let html_out = decode_mermaid_entities_for_render_text(&html_out);
-                out.push_str(&escape_amp_preserving_entities(html_out.as_ref()));
-            } else {
-                let html = markdown_to_sanitized_xhtml(text, config);
-                if is_single_img_fragment(&html) {
-                    let html = unwrap_single_img_p(&html);
-                    let html = decode_mermaid_entities_for_render_text(&html);
-                    out.push_str(&escape_amp_preserving_entities(html.as_ref()));
-                } else {
-                    let html = decode_mermaid_entities_for_render_text(&html);
-                    out.push_str(&escape_amp_preserving_entities(html.as_ref()));
-                }
-            }
+            let html = markdown_to_sanitized_xhtml(text, config);
+            let html = decode_mermaid_entities_for_render_text(&html);
+            out.push_str(&escape_amp_preserving_entities(html.as_ref()));
         }
 
         out.push_str("</span></div></foreignObject></g>");
+        Ok(())
     }
 
     fn mk_edge_label(out: &mut String, edge_id: &str) {
@@ -959,10 +739,11 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         );
     }
 
-    let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
+    let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
     let diagram_id_esc = escape_xml(diagram_id);
+    let math_renderer = options.math_renderer();
 
     let mut node_by_id: std::collections::BTreeMap<String, &crate::model::LayoutNode> =
         std::collections::BTreeMap::new();
@@ -972,7 +753,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     drop(_g_build_ctx);
 
-    let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
+    let _g_viewbox = timing.section(&mut timings.viewbox);
 
     let padding = 10.0;
     let viewport_bounds =
@@ -991,36 +772,30 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         })
         .unwrap_or((0.0, 0.0, 100.0, 100.0));
 
-    let mut view_box_attr = format!("{} {} {} {}", fmt(vx), fmt(vy), fmt(vw), fmt(vh));
-    let mut max_w_attr = fmt_max_width_px(vw);
-    let mut w_attr = fmt_string(vw);
-    let mut h_attr = fmt_string(vh);
-    apply_root_viewport_override(
-        diagram_id,
-        &mut view_box_attr,
-        &mut w_attr,
-        &mut h_attr,
-        &mut max_w_attr,
-        crate::generated::mindmap_root_overrides_11_12_2::lookup_mindmap_root_viewport_override,
-    );
+    let root_spec = root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
+        vx, vy, vw, vh,
+    ))
+    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vw));
 
     drop(_g_viewbox);
 
-    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+    let _g_render_svg = timing.section(&mut timings.render_svg);
 
     let mut out = String::new();
-    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            class: Some("mindmapDiagram"),
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(view_box_attr.as_str()),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "mindmap")
-        },
-    );
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Mindmap, diagram_id)
+            .write_open(
+                &mut out,
+                root_spec,
+                root_svg::RootChrome {
+                    class: Some("mindmapDiagram"),
+                    dom: root_svg::RootDomProfile {
+                        trailing_newline: false,
+                        ..Default::default()
+                    },
+                    ..root_svg::RootChrome::new(diagram_id, "mindmap")
+                },
+            )?;
     let css = mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str(&mindmap_gradient_defs(diagram_id, config.as_value()));
@@ -1196,7 +971,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
-                        label_type: &n.label_type,
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1205,7 +979,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "rect" => {
                 // `rect` mindmap nodes use: w = bbox_w + 2*padding, h = bbox_h + padding.
@@ -1223,7 +998,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
-                        label_type: &n.label_type,
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1232,7 +1006,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "rounded" => {
                 let w = w.max(1.0);
@@ -1252,7 +1027,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
-                        label_type: &n.label_type,
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1261,7 +1035,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "mindmapCircle" => {
                 let r = (w.max(h) / 2.0).max(1.0);
@@ -1278,7 +1053,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
-                        label_type: &n.label_type,
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1287,7 +1061,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "cloud" => {
                 let bbox_w = label_w.unwrap_or_else(|| (w - 2.0 * half_padding).max(1.0));
@@ -1308,7 +1083,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
-                        label_type: &n.label_type,
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1317,7 +1091,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "hexagon" => {
                 let w = w.max(1.0);
@@ -1348,7 +1123,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
-                        label_type: &n.label_type,
                         label_bkg: n.icon.is_some(),
                         width: label_width,
                         height: label_height,
@@ -1357,7 +1131,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             "bang" => {
                 let bbox_w = label_w.unwrap_or_else(|| (w - 10.0 * half_padding).max(1.0));
@@ -1385,7 +1160,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
-                        label_type: &n.label_type,
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1394,7 +1168,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
             _ => {
                 let _ = write!(
@@ -1409,7 +1184,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
-                        label_type: &n.label_type,
                         label_bkg: n.icon.is_some(),
                         width: w.max(1.0),
                         height: h.max(1.0),
@@ -1418,7 +1192,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                );
+                    math_renderer,
+                )?;
             }
         }
 
@@ -1432,8 +1207,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     drop(_g_render_svg);
 
-    timings.total = total_start.elapsed();
-    if timing_enabled {
+    timings.total = total_timer
+        .map(merman_core::runtime::OperationTimer::elapsed)
+        .unwrap_or_default();
+    if timing.is_enabled() {
         eprintln!(
             "[render-timing] diagram=mindmap total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?} nodes={} edges={}",
             timings.total,
@@ -1447,12 +1224,25 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         );
     }
 
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn single_image_paragraph_is_unwrapped_from_the_final_xhtml_shape() {
+        assert_eq!(
+            single_image_paragraph_inner(r#"<p><img src="a>b" /></p>"#),
+            Some(r#"<img src="a>b" />"#)
+        );
+        assert_eq!(single_image_paragraph_inner("<p>text</p>"), None);
+        assert_eq!(
+            single_image_paragraph_inner("<p><img src=x><span>extra</span></p>"),
+            None
+        );
+    }
 
     #[test]
     fn mindmap_css_honors_mermaid_11_15_theme_sections() {
@@ -1535,11 +1325,12 @@ mod tests {
             edges: Vec::new(),
         };
 
+        let layout_bounds = layout.bounds.as_ref().expect("layout bounds");
         let bounds = mindmap_viewport_bounds_from_layout(&layout, &model).expect("bounds");
 
-        assert!(bounds.min_x < 15.0);
-        assert!(bounds.min_y < 15.0);
-        assert!(bounds.max_x > 112.90625);
-        assert!(bounds.max_y > 49.0);
+        assert!(bounds.min_x < layout_bounds.min_x);
+        assert!(bounds.min_y < layout_bounds.min_y);
+        assert!(bounds.max_x > layout_bounds.max_x);
+        assert!(bounds.max_y > layout_bounds.max_y);
     }
 }

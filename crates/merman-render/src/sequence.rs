@@ -1,7 +1,7 @@
-use crate::Result;
 use crate::math::MathRenderer;
 use crate::model::{LayoutCluster, SequenceDiagramLayout};
 use crate::text::TextMeasurer;
+use crate::{RenderResourcePolicy, Result};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceDiagramRenderModel;
 use rustc_hash::FxHashMap;
@@ -10,7 +10,6 @@ use std::collections::HashMap;
 
 mod activation;
 mod actors;
-mod block_bounds;
 mod block_steps;
 pub(crate) mod config;
 mod constants;
@@ -27,16 +26,23 @@ pub(crate) use constants::{
     SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX, sequence_actor_popup_panel_height,
     sequence_text_dimensions_height_px, sequence_text_line_step_px,
 };
-pub(crate) use metrics::{SequenceMathHeightMode, measure_sequence_math_label};
+pub(crate) use metrics::{
+    SequenceMathHeightMode, measure_sequence_math_label, wrap_sequence_label_like_mermaid_lines,
+};
 pub(crate) use notes::sequence_note_final_wrapped_lines;
 
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
-use block_bounds::sequence_block_bounds;
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
 use config::SequenceLayoutSettings;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
 use rect::sequence_rect_stack_x_bounds;
 use root_bounds::{SequenceRootBoundsContext, sequence_root_bounds};
+
+fn sequence_layout_work_units(model: &SequenceDiagramRenderModel) -> usize {
+    // All frame accumulators are propagated from a closing child to its parent once. Nesting no
+    // longer multiplies per-message layout or SVG collection work.
+    model.messages.len()
+}
 
 pub(crate) fn bracketize_sequence_block_label(value: &str) -> String {
     let trimmed = value.trim();
@@ -105,48 +111,18 @@ pub(crate) fn sequence_block_widths_for_render(
     .collect()
 }
 
-pub fn layout_sequence_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<SequenceDiagramLayout> {
-    layout_sequence_diagram_with_title(semantic, None, effective_config, measurer, math_renderer)
-}
-
-pub fn layout_sequence_diagram_with_title(
-    semantic: &Value,
-    diagram_title: Option<&str>,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<SequenceDiagramLayout> {
-    let model: SequenceDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_sequence_diagram_typed_with_title(
-        &model,
-        diagram_title,
-        effective_config,
-        measurer,
-        math_renderer,
-    )
-}
-
-pub fn layout_sequence_diagram_typed(
-    model: &SequenceDiagramRenderModel,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<SequenceDiagramLayout> {
-    layout_sequence_diagram_typed_with_title(model, None, effective_config, measurer, math_renderer)
-}
-
-pub fn layout_sequence_diagram_typed_with_title(
+/// Lays out a Sequence model under the resource policy owned by the render operation.
+pub(crate) fn layout_sequence_diagram_typed_with_title_and_resource_policy(
     model: &SequenceDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    resource_limits: RenderResourcePolicy,
 ) -> Result<SequenceDiagramLayout> {
+    resource_limits.check_sequence_complexity(model)?;
+    resource_limits.check_layout_work_units(sequence_layout_work_units(model))?;
+
     let math_config = MermaidConfig::from_value(effective_config.clone());
     let settings = SequenceLayoutSettings::from_effective_config(effective_config);
 
@@ -184,7 +160,10 @@ pub fn layout_sequence_diagram_typed_with_title(
     let SequenceLayoutGraph {
         mut nodes,
         edges,
+        block_layouts_by_id,
         bottom_box_top_y,
+        bounds_start_x,
+        bounds_stop_x,
     } = build_sequence_layout_graph(SequenceLayoutGraphContext {
         model,
         actor_index: &actor_index,
@@ -213,12 +192,6 @@ pub fn layout_sequence_diagram_typed_with_title(
         math_renderer,
     });
 
-    // Mermaid's SVG `viewBox` is derived from `svg.getBBox()` plus diagram margins. Block frames
-    // (`alt`, `par`, `loop`, `opt`, `break`, `critical`) can extend beyond the node/edge graph we
-    // model in headless layout. Capture their extents so we can expand bounds before emitting the
-    // final `viewBox`.
-    let block_bounds = sequence_block_bounds(model, &nodes, &edges);
-
     let rect_x_bounds = sequence_rect_stack_x_bounds(
         model,
         &actor_index,
@@ -246,7 +219,8 @@ pub fn layout_sequence_diagram_typed_with_title(
         diagram_title,
         nodes: &nodes,
         edges: &edges,
-        block_bounds,
+        bounds_start_x,
+        bounds_stop_x,
         actor_index: &actor_index,
         actor_centers_x: &actor_centers_x,
         actor_left_x: &actor_left_x,
@@ -273,6 +247,7 @@ pub fn layout_sequence_diagram_typed_with_title(
         edges,
         clusters,
         bounds,
+        block_layouts_by_id,
     })
 }
 
@@ -286,4 +261,26 @@ pub(crate) fn sequence_render_title<'a>(
         return Some(title);
     }
     model_title
+}
+
+#[cfg(test)]
+mod resource_tests {
+    use super::sequence_layout_work_units;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+    #[test]
+    fn nested_sequence_frames_have_linear_layout_work() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nloop outer\nloop inner\nA->>B: hi\nend\nend\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Sequence(model) = parsed.model() else {
+            panic!("expected Sequence model");
+        };
+
+        assert_eq!(sequence_layout_work_units(model), model.messages.len());
+    }
 }

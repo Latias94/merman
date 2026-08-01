@@ -3,13 +3,13 @@
 Status: Active supported subset
 
 This document describes the current `merman-ascii` flowchart support boundary. The renderer consumes
-`merman-core` `FlowchartV2Model` values; it does not parse Mermaid text itself.
+`merman-core` `FlowchartModel` values; it does not parse Mermaid text itself.
 
 ## Supported
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Diagram family | Supported | `flowchart`, `graph`, and `flowchart-v2` inputs that parse into `FlowchartV2Model`. |
+| Diagram family | Supported | `flowchart`, `graph`, and `flowchart-v2` inputs that parse into `FlowchartModel`. |
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
 | Node shape | Supported subset | Rectangular shapes, rounded/circle/double-circle/stadium-like shapes, diamond/decision shapes, subroutine shapes, cylinder/database shapes, hexagon shapes, asymmetric/flag/paper-tape shapes, trapezoid shapes, lean-left/right shapes, datastore shapes, and document / stacked-document / tagged-document / lined-document variants. |
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Missing labels fall back to node ids. |
@@ -72,7 +72,7 @@ reference implementation is only an implementation aid.
 | Multiline and wrapped subgraph labels | Ported | The title text can be represented, and group layout now reserves multiple centered title rows using the shared graph label splitter and display-width wrapper. | Covered by `flowchart_parser_multiline_subgraph_title_renders_centered_rows`, `render_flowchart_renders_model_multiline_subgraph_titles`, and `flowchart_parser_long_subgraph_title_wraps_to_multiple_rows`. |
 | ANSI/HTML color roles | Ported | ADR 0067 added an opt-in color API, and flowchart now assigns semantic foreground/background roles after layout. | Covered by `flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text`, `flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text`, and `flowchart_color_truecolor_preserves_roles_after_horizontal_mirror`. |
 | `classDef`, `class`, inline node styles, and `linkStyle` colors | Ported subset | The typed model preserves class/style/linkStyle declarations. The ASCII renderer maps safe terminal semantics: node/subgraph `color` to text/title, node/subgraph `stroke` to borders, node/subgraph `fill`/`background` to ANSI/HTML backgrounds, edge `stroke` to line/arrow foreground, and edge `color` to labels. | Covered by parser-backed `flowchart_style_color_*` tests. |
-| State diagram graph rendering | Split to state adapter | `stateDiagram` uses a different typed model, not `FlowchartV2Model`; it now renders through the state-to-graph adapter rather than the flowchart adapter. | See `STATE_SUPPORT.md`. |
+| State diagram graph rendering | Split to state adapter | `stateDiagram` uses a different typed model, not `FlowchartModel`; it now renders through the state-to-graph adapter rather than the flowchart adapter. | See `STATE_SUPPORT.md`. |
 | Additional uncommon flowchart shapes | Ported subset | `beautiful-mermaid`'s circle, double-circle, stadium, asymmetric/flag/paper-tape, hexagon, trapezoid, trapezoid-alt, and document variant renderers now have terminal approximations in `merman-ascii`. Icons, images, and browser-only metadata remain deferred. | Add the remaining shape families one at a time with public `render_model` snapshots. |
 
 ## Known Limitations

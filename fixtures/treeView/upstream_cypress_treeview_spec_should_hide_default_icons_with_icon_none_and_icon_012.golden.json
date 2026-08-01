@@ -1,0 +1,82 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory",
+      "children": [
+        {
+          "id": 1,
+          "level": 12,
+          "name": "src",
+          "nodeType": "directory",
+          "children": [
+            {
+              "id": 2,
+              "level": 16,
+              "name": "index.js",
+              "nodeType": "file",
+              "icon": "none",
+              "children": []
+            },
+            {
+              "id": 3,
+              "level": 16,
+              "name": "App.tsx",
+              "nodeType": "file",
+              "icon": "none",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "level": 12,
+          "name": "package.json",
+          "nodeType": "file",
+          "children": []
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/",
+        "nodeType": "directory"
+      },
+      {
+        "id": 1,
+        "level": 12,
+        "name": "src",
+        "nodeType": "directory"
+      },
+      {
+        "id": 2,
+        "level": 16,
+        "name": "index.js",
+        "nodeType": "file",
+        "icon": "none"
+      },
+      {
+        "id": 3,
+        "level": 16,
+        "name": "App.tsx",
+        "nodeType": "file",
+        "icon": "none"
+      },
+      {
+        "id": 4,
+        "level": 12,
+        "name": "package.json",
+        "nodeType": "file"
+      }
+    ]
+  }
+}

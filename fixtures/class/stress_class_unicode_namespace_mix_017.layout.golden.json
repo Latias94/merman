@@ -1,61 +1,61 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Alpha",
-          "x": 105.422,
+          "x": 108.64,
           "y": 109.5,
-          "width": 140.844,
+          "width": 147.279,
           "height": 144.0,
           "is_cluster": false
         },
         {
           "id": "Core",
-          "x": 105.422,
+          "x": 108.64,
           "y": 109.5,
-          "width": 210.844,
+          "width": 217.279,
           "height": 219.0,
           "is_cluster": true
         },
         {
           "id": "Core.Alpha",
-          "x": 105.422,
+          "x": 108.64,
           "y": 580.0,
-          "width": 106.938,
+          "width": 93.438,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "note0",
-          "x": 105.422,
+          "x": 108.64,
           "y": 714.0,
-          "width": 83.563,
+          "width": 98.563,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "支付",
-          "x": 105.422,
+          "x": 108.64,
           "y": 378.5,
-          "width": 176.867,
+          "width": 176.882,
           "height": 219.0,
           "is_cluster": true
         },
         {
           "id": "支付.订单",
-          "x": 338.203,
+          "x": 328.237,
           "y": 647.0,
-          "width": 93.875,
+          "width": 66.875,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "订单",
-          "x": 105.422,
+          "x": 108.64,
           "y": 378.5,
-          "width": 106.867,
+          "width": 106.882,
           "height": 144.0,
           "is_cluster": false
         }
@@ -69,22 +69,22 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 158.891,
+              "x": 155.358,
               "y": 580.0
             },
             {
-              "x": 251.055,
+              "x": 256.039,
               "y": 580.0
             },
             {
-              "x": 291.266,
-              "y": 610.914
+              "x": 294.799,
+              "y": 615.97
             }
           ],
           "label": {
-            "x": 251.055,
+            "x": 256.039,
             "y": 580.0,
-            "width": 30.422,
+            "width": 27.52,
             "height": 24.0
           },
           "start_label_left": null,
@@ -103,16 +103,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 147.203,
+              "x": 157.921,
               "y": 714.0
             },
             {
-              "x": 251.055,
+              "x": 256.039,
               "y": 714.0
             },
             {
-              "x": 291.266,
-              "y": 683.086
+              "x": 294.799,
+              "y": 678.03
             }
           ],
           "label": null,
@@ -128,17 +128,17 @@
       "clusters": [
         {
           "id": "Core",
-          "x": 105.422,
+          "x": 108.64,
           "y": 109.5,
-          "width": 210.844,
+          "width": 217.279,
           "height": 219.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Core",
           "title_label": {
-            "x": 105.422,
+            "x": 108.64,
             "y": 12.0,
-            "width": 33.109,
+            "width": 30.24,
             "height": 24.0
           },
           "requested_dir": null,
@@ -149,15 +149,15 @@
         },
         {
           "id": "支付",
-          "x": 105.422,
+          "x": 108.64,
           "y": 378.5,
-          "width": 176.867,
+          "width": 176.882,
           "height": 219.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "支付",
           "title_label": {
-            "x": 105.422,
+            "x": 108.64,
             "y": 281.0,
             "width": 19.2,
             "height": 24.0
@@ -172,7 +172,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 385.141,
+        "max_x": 361.674,
         "max_y": 756.0
       }
     }

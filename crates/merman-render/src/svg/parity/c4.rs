@@ -1,3 +1,3 @@
 mod render;
 
-pub(super) use render::{render_c4_diagram_svg, render_c4_diagram_svg_typed};
+pub(super) use render::render_c4_diagram_svg_typed;

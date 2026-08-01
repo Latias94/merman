@@ -1,4 +1,4 @@
-# 0048: Viewport-Dependent Layout Width (Headless)
+# 0048: Host-Container-Dependent Layout Size (Headless)
 
 Date: 2026-01-19
 
@@ -9,28 +9,33 @@ Accepted
 ## Context
 
 Some Mermaid diagrams derive layout geometry from browser/DOM state rather than purely from the
-diagram definition and Mermaid config. A notable example is C4, where the renderer uses
-`screen.availWidth` as the root `widthLimit` for row wrapping in `c4Renderer.js`.
+diagram definition and Mermaid config. Gantt reads its SVG parent element's `offsetWidth`; C4
+uses `screen.availWidth` as the root `widthLimit` for row wrapping in `c4Renderer.js`.
 
-In `merman`, the core goal is full parity with Mermaid `@11.12.3` while remaining **headless** and
-usable by multiple UI frameworks. This requires a deterministic, explicit replacement for
-DOM/screen-derived values.
+In `merman`, the core goal is Mermaid parity while remaining **headless** and usable by multiple
+UI frameworks. This requires a deterministic, explicit replacement for DOM-derived available
+space without confusing the browser page viewport with the element that owns layout.
 
 ## Decision
 
-- `merman-render` exposes a **viewport size** in `LayoutOptions`.
-- C4 headless layout uses `LayoutOptions.viewport_width` / `LayoutOptions.viewport_height` as the
-  equivalent of Mermaid’s `screen.availWidth` / viewport, with defaults matching the Mermaid CLI:
-  - `viewport_width = 800`
-  - `viewport_height = 600`
-- Diagram-specific layout code may choose to use (or ignore) the viewport values depending on the
-  upstream renderer behavior. The default is to ignore viewport unless required for parity.
+- `merman-render` exposes the host's **available layout-container size** through
+  `LayoutOptions.container_width` / `LayoutOptions.container_height`.
+- The headless defaults are `container_width = 800` and `container_height = 600` CSS pixels.
+- Gantt uses the available container width unless `gantt.useWidth` is explicitly configured; the
+  explicit Mermaid config remains authoritative.
+- C4 uses the available container width as its deterministic headless wrapping budget.
+- A browser page viewport is not a `LayoutOptions` value. Verification adapters that render in a
+  browser must resolve their renderer-specific page geometry into a container size before invoking
+  the production operation. For example, mmdc's 1200px page and the default 8px body margins yield
+  a Gantt parent `offsetWidth` of 1184px.
+- Production defaults must not encode a verification runner's page viewport or body margins.
 
 ## Consequences
 
 - Layout snapshots become deterministic and reproducible across environments.
-- Upstream SVG baselines generated via Mermaid CLI can be compared meaningfully by using the same
-  default viewport width (or explicitly passing `-w` when needed).
-- Consumers embedding `merman` can tune the viewport to match their target container width, while
-  still producing Mermaid-compatible layouts.
-
+- Upstream SVG baselines generated via Mermaid CLI can be compared meaningfully by projecting the
+  baseline renderer's page geometry into an explicit container profile.
+- Consumers embedding `merman` can pass the actual target container size without reproducing a
+  browser viewport model.
+- The serialized request contract is intentionally breaking: the old `viewport_width` and
+  `viewport_height` keys are rejected rather than retained as compatibility aliases.

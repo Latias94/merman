@@ -5,130 +5,372 @@
       "nodes": [
         {
           "id": "a",
-          "x": 114.484,
+          "x": 111.68,
           "y": -96.0,
-          "width": 228.969,
+          "width": 223.36,
           "height": 88.0,
           "is_cluster": false
         },
         {
           "id": "group1",
-          "x": 74.99,
+          "x": 73.12,
           "y": 0.0,
-          "width": 149.979,
+          "width": 146.24,
           "height": 88.0,
           "is_cluster": false
         },
         {
           "id": "h",
-          "x": 39.495,
+          "x": 38.56,
           "y": -20.0,
-          "width": 62.99,
+          "width": 61.12,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "i",
-          "x": 110.484,
+          "x": 107.68,
           "y": -20.0,
-          "width": 62.99,
+          "width": 61.12,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "j",
-          "x": 39.495,
+          "x": 38.56,
           "y": 20.0,
-          "width": 62.99,
+          "width": 61.12,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "k",
-          "x": 110.484,
+          "x": 107.68,
           "y": 20.0,
-          "width": 62.99,
+          "width": 61.12,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "g",
-          "x": 193.474,
+          "x": 188.8,
           "y": 0.0,
-          "width": 70.99,
+          "width": 69.12,
           "height": 88.0,
           "is_cluster": false
         },
         {
           "id": "group2",
-          "x": 114.484,
+          "x": 111.68,
           "y": 76.0,
-          "width": 228.969,
+          "width": 223.36,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "l",
-          "x": 19.783,
+          "x": 19.383,
           "y": 76.0,
-          "width": 23.567,
+          "width": 22.766,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "m",
-          "x": 51.35,
+          "x": 50.149,
           "y": 76.0,
-          "width": 23.567,
+          "width": 22.766,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "n",
-          "x": 82.917,
+          "x": 80.914,
           "y": 76.0,
-          "width": 23.567,
+          "width": 22.766,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "o",
-          "x": 114.484,
+          "x": 111.68,
           "y": 76.0,
-          "width": 23.567,
+          "width": 22.766,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "p",
-          "x": 146.051,
+          "x": 142.446,
           "y": 76.0,
-          "width": 23.567,
+          "width": 22.766,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "q",
-          "x": 177.618,
+          "x": 173.211,
           "y": 76.0,
-          "width": 23.567,
+          "width": 22.766,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "r",
-          "x": 209.185,
+          "x": 203.977,
           "y": 76.0,
-          "width": 23.567,
+          "width": 22.766,
           "height": 32.0,
           "is_cluster": false
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "a",
+          "allocated": {
+            "x": 111.68,
+            "y": -96.0,
+            "width": 223.36,
+            "height": 88.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 223.36,
+            "height": 88.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "group1",
+          "allocated": {
+            "x": 73.12,
+            "y": 0.0,
+            "width": 146.24,
+            "height": 88.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 146.24,
+            "height": 88.0,
+            "radius": 0.0,
+            "kind": "composite"
+          }
+        },
+        {
+          "id": "h",
+          "allocated": {
+            "x": 38.56,
+            "y": -20.0,
+            "width": 61.12,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 61.12,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "i",
+          "allocated": {
+            "x": 107.68,
+            "y": -20.0,
+            "width": 61.12,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 61.12,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "j",
+          "allocated": {
+            "x": 38.56,
+            "y": 20.0,
+            "width": 61.12,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 61.12,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "k",
+          "allocated": {
+            "x": 107.68,
+            "y": 20.0,
+            "width": 61.12,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 61.12,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "g",
+          "allocated": {
+            "x": 188.8,
+            "y": 0.0,
+            "width": 69.12,
+            "height": 88.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 69.12,
+            "height": 88.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "group2",
+          "allocated": {
+            "x": 111.68,
+            "y": 76.0,
+            "width": 223.36,
+            "height": 48.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 223.36,
+            "height": 48.0,
+            "radius": 0.0,
+            "kind": "composite"
+          }
+        },
+        {
+          "id": "l",
+          "allocated": {
+            "x": 19.383,
+            "y": 76.0,
+            "width": 22.766,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 22.766,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "m",
+          "allocated": {
+            "x": 50.149,
+            "y": 76.0,
+            "width": 22.766,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 22.766,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "n",
+          "allocated": {
+            "x": 80.914,
+            "y": 76.0,
+            "width": 22.766,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 22.766,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "o",
+          "allocated": {
+            "x": 111.68,
+            "y": 76.0,
+            "width": 22.766,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 22.766,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "p",
+          "allocated": {
+            "x": 142.446,
+            "y": 76.0,
+            "width": 22.766,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 22.766,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "q",
+          "allocated": {
+            "x": 173.211,
+            "y": 76.0,
+            "width": 22.766,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 22.766,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "r",
+          "allocated": {
+            "x": 203.977,
+            "y": 76.0,
+            "width": 22.766,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 22.766,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -140.0,
-        "max_x": 228.969,
+        "max_x": 223.36,
         "max_y": 100.0
       }
     }

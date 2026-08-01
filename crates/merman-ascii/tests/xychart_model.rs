@@ -11,7 +11,7 @@ fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Re
         .expect("xychart should parse")
         .expect("xychart should be detected");
 
-    render_model(&parsed.model, options)
+    render_model(parsed.model(), options)
 }
 
 fn read_local_semantic_fixture(path: &str) -> String {

@@ -1,204 +1,291 @@
+import 'dart:typed_data';
+
 import 'package:merman/merman.dart';
 
-void main(List<String> args) {
-  final merman = args.isEmpty ? Merman.open() : Merman.openPath(args.single);
-  final source = 'flowchart TD\nA[Hello] --> B[World]';
-
-  final svg = merman.renderSvg(source);
-  if (!svg.contains('<svg') ||
-      !svg.contains('Hello') ||
-      !svg.contains('World')) {
-    throw StateError('SVG smoke failed');
-  }
-
-  final ascii = merman.renderAscii(source);
-  if (!ascii.contains('Hello') || !ascii.contains('World')) {
-    throw StateError('ASCII smoke failed');
-  }
-
-  final semantic = merman.parseJson(source);
-  if (semantic['type'] != 'flowchart-v2') {
-    throw StateError('parseJson smoke failed');
-  }
-
-  final layout = merman.layoutJson(source);
-  if (!layout.containsKey('meta') || !layout.containsKey('layout')) {
-    throw StateError('layoutJson smoke failed');
-  }
-
-  final validation = merman.validate(source);
-  if (!validation.valid || validation.codeName != 'MERMAN_OK') {
-    throw StateError('validate smoke failed');
-  }
-
-  final documentSource = 'Intro\n```mermaid\n$source\n```\n';
-  final document = merman.analyzeDocumentJson(
-    documentSource,
-    uri: 'file:///tmp/example.md',
-  );
-  if ((document['source'] as Map<String, Object?>?)?['kind'] != 'markdown' ||
-      document['valid'] != true) {
-    throw StateError('analyzeDocumentJson smoke failed');
-  }
-  final documentFacts = merman.analyzeDocumentFactsJson(
-    documentSource,
-    uri: 'file:///tmp/example.md',
-  );
-  final diagrams = documentFacts['diagrams'] as List<Object?>? ?? const [];
-  if (diagrams.isEmpty ||
-      (diagrams.first as Map<String, Object?>)['source_id'] !=
-          'mermaid-fence-1') {
-    throw StateError('analyzeDocumentFactsJson smoke failed');
-  }
-
-  if (!merman.supportedDiagrams().contains('flowchart')) {
-    throw StateError('supportedDiagrams smoke failed');
-  }
-  final ganttAsciiCapability = merman.asciiCapabilities().any(
-        (capability) =>
-            capability.diagramType == 'gantt' &&
-            capability.supportLevel == 'summary' &&
-            !capability.summaryFallback,
-      );
-  if (!ganttAsciiCapability) {
-    throw StateError('asciiCapabilities smoke failed');
-  }
-  final flowchartCapability = merman.diagramFamilyCapabilities().any(
-        (capability) =>
-            capability.diagramType == 'flowchart' &&
-            capability.metadataId == 'flowchart' &&
-            capability.hasSemanticParser &&
-            capability.hasRenderParser,
-      );
-  if (!flowchartCapability) {
-    throw StateError('diagramFamilyCapabilities smoke failed');
-  }
-  if (!merman.lintRuleCatalog().any((rule) =>
-      rule.id == 'merman.authoring.flowchart.explicit_direction' &&
-      rule.evidence.contains('docs/adr/0072-lint-rule-governance.md'))) {
-    throw StateError('lintRuleCatalog smoke failed');
-  }
-  if (!merman.supportedThemes().contains('default')) {
-    throw StateError('themes smoke failed');
-  }
-  if (!merman.supportedHostThemePresets().contains('one-dark')) {
-    throw StateError('host theme presets smoke failed');
-  }
-
-  final engine = merman.reusableEngine();
-  try {
-    engine.setTextMeasurer((request) {
-      if (request.text == 'Hello' &&
-          request.wrapMode == MermanTextWrapMode.htmlLike) {
-        return const MermanTextMeasureResult(
-          width: 42,
-          height: 24,
-          lineCount: 1,
-        );
-      }
-      return null;
-    });
-    final measuredSvg = engine.renderSvg(source);
-    if (!measuredSvg.contains('<svg') || !measuredSvg.contains('Hello')) {
-      throw StateError('reusable engine SVG smoke failed');
-    }
-    final reusableDocument = engine.analyzeDocumentJson(
-      documentSource,
-      uri: 'file:///tmp/example.md',
-    );
-    if ((reusableDocument['source'] as Map<String, Object?>?)?['kind'] !=
-        'markdown') {
-      throw StateError('reusable analyzeDocumentJson smoke failed');
-    }
-    final reusableDocumentFacts = engine.analyzeDocumentFactsJson(
-      documentSource,
-      uri: 'file:///tmp/example.md',
-    );
-    final reusableDiagrams =
-        reusableDocumentFacts['diagrams'] as List<Object?>? ?? const [];
-    if (reusableDiagrams.isEmpty ||
-        (reusableDiagrams.first as Map<String, Object?>)['source_id'] !=
-            'mermaid-fence-1') {
-      throw StateError('reusable analyzeDocumentFactsJson smoke failed');
-    }
-    engine.setTextMeasurer(null);
-  } finally {
-    engine.close();
-  }
-
-  final reentrantEngine = merman.reusableEngine();
-  var sawReentrantCallback = false;
-  String? reentrantFailure;
-  try {
-    reentrantEngine.setTextMeasurer((request) {
-      if (!sawReentrantCallback && request.text == 'Hello') {
-        sawReentrantCallback = true;
-        try {
-          reentrantEngine.renderSvg(source);
-          reentrantFailure = 'expected DART_ENGINE_REENTERED to be thrown';
-        } on MermanException catch (error) {
-          if (error.codeName != 'DART_ENGINE_REENTERED') {
-            reentrantFailure =
-                'expected DART_ENGINE_REENTERED, got ${error.codeName}';
-          }
-        } catch (error) {
-          reentrantFailure = 'expected DART_ENGINE_REENTERED, got $error';
-        }
-      }
-      return null;
-    });
-    final svgAfterReentry = reentrantEngine.renderSvg(source);
-    final reentrantFailureMessage = reentrantFailure;
-    if (reentrantFailureMessage != null) {
-      throw StateError(reentrantFailureMessage);
-    }
-    if (!sawReentrantCallback || !svgAfterReentry.contains('<svg')) {
-      throw StateError('reusable engine reentry smoke failed');
-    }
-  } finally {
-    reentrantEngine.close();
-  }
-
-  final closingEngine = merman.reusableEngine();
-  var sawCloseCallback = false;
-  try {
-    closingEngine.setTextMeasurer((request) {
-      if (!sawCloseCallback && request.text == 'Hello') {
-        sawCloseCallback = true;
-        closingEngine.close();
-      }
-      return null;
-    });
-    final svgAfterCallbackClose = closingEngine.renderSvg(source);
-    if (!sawCloseCallback || !svgAfterCallbackClose.contains('<svg')) {
-      throw StateError('reusable engine callback close smoke failed');
-    }
-    expectMermanException('DART_ENGINE_CLOSED', () {
-      closingEngine.renderSvg(source);
-    });
-  } finally {
-    closingEngine.close();
-  }
-
-  try {
-    merman.renderSvg(source, optionsJson: '{');
-  } on MermanException catch (error) {
-    if (error.codeName != 'MERMAN_OPTIONS_JSON_ERROR') {
-      throw StateError('unexpected error code: ${error.codeName}');
-    }
-  }
-
-  print('merman Dart FFI smoke passed (${merman.packageVersion})');
+MermanTextMeasureResult? _measure(MermanTextMeasureRequest request) {
+  return switch (request.operation) {
+    MermanTextMeasurementOperation.measure ||
+    MermanTextMeasurementOperation.wrapped ||
+    MermanTextMeasurementOperation.mermaidCalculateTextDimensions =>
+      MermanTextMeasureResult.metrics(width: 42, height: 24, lineCount: 1),
+    MermanTextMeasurementOperation.computedLength ||
+    MermanTextMeasurementOperation.simpleBBoxWidth ||
+    MermanTextMeasurementOperation.rawBBoxWidth ||
+    MermanTextMeasurementOperation.tspanBBoxWidth ||
+    MermanTextMeasurementOperation.tspanBBoxHeight ||
+    MermanTextMeasurementOperation.wrapProbeBBoxWidth ||
+    MermanTextMeasurementOperation.simpleBBoxHeight ||
+    MermanTextMeasurementOperation.boundingClientRectWidth ||
+    MermanTextMeasurementOperation.canvasMeasureTextWidth ||
+    MermanTextMeasurementOperation.rawBBoxHeight =>
+      MermanTextMeasureResult.length(length: 42),
+    MermanTextMeasurementOperation.bboxX ||
+    MermanTextMeasurementOperation.bboxXWithAsciiOverhang ||
+    MermanTextMeasurementOperation.titleBBoxX =>
+      MermanTextMeasureResult.horizontalExtents(left: 21, right: 21),
+    MermanTextMeasurementOperation.wrappedWithRawWidth =>
+      MermanTextMeasureResult.wrappedWithRawWidth(
+        width: 42,
+        height: 24,
+        lineCount: 1,
+        rawWidth: 42,
+      ),
+    MermanTextMeasurementOperation.createTextBBoxYOffset ||
+    MermanTextMeasurementOperation.createTextMiddleBBoxYOffset =>
+      MermanTextMeasureResult.length(length: -1),
+    null => null,
+  };
 }
 
-void expectMermanException(String codeName, void Function() body) {
-  try {
-    body();
-  } catch (error) {
-    if (error is MermanException && error.codeName == codeName) {
-      return;
-    }
-    throw StateError('expected $codeName, got $error');
+void _expect(bool condition, String message) {
+  if (!condition) {
+    throw StateError(message);
   }
-  throw StateError('expected $codeName to be thrown');
+}
+
+void _expectPrefix(Uint8List bytes, List<int> prefix, String label) {
+  _expect(bytes.length >= prefix.length, '$label output is too short');
+  for (var index = 0; index < prefix.length; index += 1) {
+    _expect(bytes[index] == prefix[index], '$label signature mismatch');
+  }
+}
+
+void main(List<String> args) {
+  if (args.length > 1) {
+    throw ArgumentError('expected at most one native library path');
+  }
+  final merman = args.isEmpty ? Merman.open() : Merman.openPath(args.single);
+  try {
+    const source = 'flowchart TD\nA[Hello] --> B[World]';
+    final catalog = merman.runtimeCatalog;
+    _expect(
+      merman.packageVersion == catalog.packageVersion,
+      'table and runtime catalog package versions must agree',
+    );
+    const expectedCapabilities = {
+      'analysis',
+      'ascii',
+      'jpeg',
+      'layout-cytoscape',
+      'layout-elk',
+      'math',
+      'pdf',
+      'png',
+      'svg',
+      'system-clock',
+      'system-random',
+      'system-timezone',
+    };
+    const expectedOutputs = {'ascii', 'jpeg', 'pdf', 'png', 'svg'};
+    const expectedOperations = {
+      'analysis-facts-json',
+      'analysis-json',
+      'ascii',
+      'document-analysis-facts-json',
+      'document-analysis-json',
+      'jpeg',
+      'layout-json',
+      'pdf',
+      'png',
+      'semantic-json',
+      'svg',
+      'svg-plan-json',
+      'validation-json',
+    };
+    const expectedSystemAdapters = {
+      'system-clock',
+      'system-random',
+      'system-timezone',
+    };
+    _expect(
+      catalog.capabilityIds.toSet().containsAll(expectedCapabilities) &&
+          expectedCapabilities.containsAll(catalog.capabilityIds),
+      'native SDK capability catalog drifted',
+    );
+    _expect(
+      catalog.outputIds.toSet().containsAll(expectedOutputs) &&
+          expectedOutputs.containsAll(catalog.outputIds),
+      'native SDK output catalog drifted',
+    );
+    _expect(
+      catalog.operationIds.toSet().containsAll(expectedOperations) &&
+          expectedOperations.containsAll(catalog.operationIds),
+      'native SDK operation catalog drifted',
+    );
+    _expect(
+      catalog.systemAdapterIds.toSet().containsAll(expectedSystemAdapters) &&
+          expectedSystemAdapters.containsAll(catalog.systemAdapterIds),
+      'native SDK system adapter catalog drifted',
+    );
+    _expect(catalog.supportsCapability('svg'), 'native SDK must expose SVG');
+    _expect(catalog.supportsOutput('svg'), 'native SDK must expose SVG output');
+    _expect(
+      catalog.textMeasurementProviderIds.isNotEmpty,
+      'SVG artifact must report a text measurement provider',
+    );
+
+    final supportedDiagrams = merman.supportedDiagrams();
+    final asciiCapabilities = merman.asciiCapabilities();
+    final diagramFamilies = merman.diagramFamilyCapabilities();
+    final lintRules = merman.lintRuleCatalog();
+    final supportedThemes = merman.supportedThemes();
+    final hostThemePresets = merman.supportedHostThemePresets();
+    _expect(
+      supportedDiagrams.isNotEmpty &&
+          asciiCapabilities.isNotEmpty &&
+          diagramFamilies.isNotEmpty &&
+          lintRules.isNotEmpty &&
+          supportedThemes.isNotEmpty &&
+          hostThemePresets.isNotEmpty,
+      'typed native metadata catalogs must be available',
+    );
+    _expect(
+      identical(supportedDiagrams, merman.supportedDiagrams()) &&
+          identical(asciiCapabilities, merman.asciiCapabilities()) &&
+          identical(diagramFamilies, merman.diagramFamilyCapabilities()) &&
+          identical(lintRules, merman.lintRuleCatalog()) &&
+          identical(supportedThemes, merman.supportedThemes()) &&
+          identical(hostThemePresets, merman.supportedHostThemePresets()),
+      'typed native metadata catalogs must be cached',
+    );
+
+    final svg = merman.renderSvg(source);
+    _expect(svg.contains('<svg'), 'SVG smoke failed');
+    _expect(svg.contains('Hello'), 'SVG text smoke failed');
+    final genericSvg = merman.execute(
+      MermanOperation.svg,
+      source,
+      optionsJson: '{"svg":{"diagram_id":"flutter-request"}}',
+    );
+    _expect(
+      genericSvg.metadata['runtime_policy'] == 'deterministic',
+      'request options must preserve the engine runtime policy',
+    );
+    _expect(
+      genericSvg.utf8Text.contains('id="flutter-request"'),
+      'generic request options smoke failed',
+    );
+    for (var iteration = 0; iteration < 32; iteration += 1) {
+      final semanticResult = merman.execute(
+        MermanOperation.semanticJson,
+        source,
+      );
+      _expect(
+        semanticResult.jsonObject['type'] == 'flowchart-v2',
+        'repeated generic execution failed at iteration $iteration',
+      );
+    }
+
+    if (args.isNotEmpty) {
+      final pinned = Merman.fromDynamicLibrary(
+        openMermanLibraryFromPath(args.single),
+        expectedPackageVersion: mermanPackageVersion,
+        textMeasurer: _measure,
+      );
+      try {
+        _expect(
+          pinned.renderSvg(source).contains('<svg'),
+          'exact-version constructor callback smoke failed',
+        );
+      } finally {
+        pinned.close();
+      }
+      try {
+        Merman.fromDynamicLibrary(
+          openMermanLibraryFromPath(args.single),
+          expectedPackageVersion: 'not-${merman.packageVersion}',
+        );
+        throw StateError('mismatched exact package version was accepted');
+      } on MermanException catch (error) {
+        _expect(
+          error.codeName == 'DART_NATIVE_CONTRACT_ERROR',
+          'exact package version mismatch returned the wrong error',
+        );
+      }
+    }
+
+    final configured = merman.reusableEngine(
+      optionsJson: '''
+        {
+          "version": 2,
+          "resources": {"profile": "constrained"},
+          "svg": {"diagram_id": "engine-base", "pipeline": "readable"}
+        }
+      ''',
+    );
+    try {
+      final configuredSvg = configured.renderSvg(
+        source,
+        optionsJson: '{"svg":{"diagram_id":"request-override"}}',
+      );
+      _expect(
+        configuredSvg.contains('id="request-override"') &&
+            configuredSvg.contains('data-merman-foreignobject'),
+        'request options must deeply override the engine baseline',
+      );
+    } finally {
+      configured.dispose();
+    }
+
+    final ascii = merman.renderAscii(source);
+    _expect(ascii.contains('Hello'), 'ASCII smoke failed');
+
+    _expectPrefix(merman.renderPng(source), [0x89, 0x50, 0x4e, 0x47], 'PNG');
+    _expectPrefix(merman.renderJpeg(source), [0xff, 0xd8, 0xff], 'JPEG');
+    _expectPrefix(merman.renderPdf(source), [0x25, 0x50, 0x44, 0x46], 'PDF');
+
+    final semantic = merman.parseJson(source);
+    _expect(semantic['type'] == 'flowchart-v2', 'semantic JSON smoke failed');
+    final layout = merman.layoutJson(source);
+    _expect(layout.containsKey('layout'), 'layout JSON smoke failed');
+    final validation = merman.validate(source);
+    _expect(validation.valid, 'validation smoke failed');
+
+    const documentSource = 'Intro\n```mermaid\nflowchart TD\nA --> B\n```\n';
+    final document = merman.analyzeDocumentJson(
+      documentSource,
+      uri: 'file:///tmp/example.md',
+    );
+    _expect(document['valid'] == true, 'document analysis smoke failed');
+
+    late final MermanReusableEngine measured;
+    MermanException? callbackCloseError;
+    var callbackCount = 0;
+    measured = merman.reusableEngine(
+      textMeasurer: (request) {
+        callbackCount += 1;
+        if (callbackCloseError == null) {
+          try {
+            measured.close();
+          } on MermanException catch (error) {
+            callbackCloseError = error;
+          }
+        }
+        return _measure(request);
+      },
+    );
+    try {
+      _expect(
+        measured
+            .renderSvg(
+              source,
+              optionsJson: '{"svg":{"diagram_id":"measured-request"}}',
+            )
+            .contains('id="measured-request"'),
+        'request options must preserve the host text measurement engine',
+      );
+      _expect(callbackCount > 0, 'host text measurement callback was not used');
+      _expect(
+        callbackCloseError is MermanReentrantCallException &&
+            !measured.isDisposed,
+        'reentrant close must retain the native token and callback',
+      );
+    } finally {
+      measured.close();
+      measured.close();
+    }
+    _expect(measured.isDisposed, 'successful close must clear the Dart handle');
+  } finally {
+    merman.close();
+  }
 }

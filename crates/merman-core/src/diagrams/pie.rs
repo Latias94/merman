@@ -1,7 +1,12 @@
-use crate::diagrams::scan::starts_with_case_insensitive;
+use crate::common_db::LangiumCommonDbFields;
+use crate::diagrams::langium_common::{
+    LangiumCommonFacts, LangiumCommonParse, LangiumLexemeTrace, parse_langium_common,
+    parse_langium_string, push_langium_common_editor_fact, push_langium_common_recovery,
+    strip_langium_inline_comment,
+};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan, family,
 };
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -16,9 +21,25 @@ pub struct PieDiagramRenderModel {
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
     pub sections: Vec<PieRenderSection>,
+    #[serde(skip)]
+    compatibility_output: CompatibilityOutputState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum CompatibilityOutputState {
+    Empty,
+    #[default]
+    Model,
 }
 
 impl PieDiagramRenderModel {
+    fn empty_compatibility_output() -> Self {
+        Self {
+            compatibility_output: CompatibilityOutputState::Empty,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -38,27 +59,61 @@ enum PieParseOutput {
     Model(PieDiagramRenderModel),
 }
 
-pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    match parse_pie_model(code, meta)? {
+struct PieSemanticSource {
+    output: PieParseOutput,
+    editor_facts: EditorSemanticFacts,
+}
+
+pub(crate) fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    pie_output_to_json(parse_pie_semantic_source(code, meta)?.output, meta)
+}
+
+pub(crate) fn parse_pie_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<family::CombinedSemanticParse> {
+    let construction = construct_pie_semantic_source_controlled(code, meta, control)?;
+    let parsed = family::CombinedSemanticParse::from_construction(
+        construction,
+        |source| (pie_output_to_json(source.output, meta), source.editor_facts),
+        family::CombinedSemanticFailure::into_parts,
+    );
+    control.checkpoint()?;
+    Ok(parsed)
+}
+
+fn pie_output_to_json(output: PieParseOutput, meta: &ParseMetadata) -> Result<Value> {
+    match output {
         PieParseOutput::Empty => Ok(json!({})),
         PieParseOutput::ExpectedPie => Ok(json!({ "error": "expected pie" })),
-        PieParseOutput::Model(model) => Ok(json!({
-            "type": meta.diagram_type,
-            "showData": model.show_data,
-            "title": model.title,
-            "accTitle": model.acc_title,
-            "accDescr": model.acc_descr,
-            "sections": model.sections,
-        })),
+        PieParseOutput::Model(model) => render_model_to_compat_json(&model, meta),
     }
 }
 
-pub fn parse_pie_model_for_render(
+pub(crate) fn render_model_to_compat_json(
+    model: &PieDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    if model.compatibility_output == CompatibilityOutputState::Empty {
+        return Ok(json!({}));
+    }
+    Ok(json!({
+            "type": meta.diagram_type,
+            "showData": model.show_data,
+            "title": &model.title,
+            "accTitle": &model.acc_title,
+            "accDescr": &model.acc_descr,
+            "sections": &model.sections,
+    }))
+}
+
+pub(crate) fn parse_pie_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<PieDiagramRenderModel> {
-    match parse_pie_model(code, meta)? {
-        PieParseOutput::Empty => Ok(PieDiagramRenderModel::default()),
+    match parse_pie_semantic_source(code, meta)?.output {
+        PieParseOutput::Empty => Ok(PieDiagramRenderModel::empty_compatibility_output()),
         PieParseOutput::ExpectedPie => Err(Error::diagram_parse_fallback(
             meta.diagram_type.clone(),
             "expected pie".to_string(),
@@ -67,553 +122,437 @@ pub fn parse_pie_model_for_render(
     }
 }
 
-pub fn parse_pie_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let mut raw_lines = code.split_inclusive('\n').peekable();
-    let mut offset = 0usize;
-    let mut header_seen = false;
-
-    while let Some(segment) = raw_lines.next() {
-        let line_start = offset;
-        offset += segment.len();
-        let line = segment.strip_suffix('\n').unwrap_or(segment);
-        let trimmed = strip_inline_comment(line).trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if !header_seen {
-            if starts_with_case_insensitive(trimmed, "pie") {
-                header_seen = true;
-                if let Some(rest) = trimmed.strip_prefix("pie") {
-                    let rest = rest.trim_start();
-                    if !rest.is_empty() {
-                        facts.push_directive_prefix("showData");
-                        if rest.starts_with("showData") {
-                            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                                EditorExpectedSyntaxKind::Payload,
-                                SourceSpan::new(
-                                    line_start + line.find("showData").unwrap_or(0),
-                                    line_start
-                                        + line.find("showData").unwrap_or(0)
-                                        + "showData".len(),
-                                ),
-                            ));
-                        }
-                    }
-                }
-                continue;
-            }
-            continue;
-        }
-
-        if let Some(value) = parse_title_statement_spanned(line, line_start) {
-            facts.push_directive_prefix("title");
-            push_pie_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "pie title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_key_value_spanned(line, line_start, "accTitle") {
-            facts.push_directive_prefix("accTitle");
-            push_pie_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "pie accessibility title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_acc_descr_inline_spanned(line, line_start) {
-            facts.push_directive_prefix("accDescr");
-            push_pie_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "pie accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_acc_descr_block_spanned(&mut raw_lines, line, line_start) {
-            facts.push_directive_prefix("accDescr");
-            push_pie_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "pie accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-
-        if let Some((label, value_span)) = parse_section_spanned(line, line_start) {
-            facts.push_symbol(EditorSemanticSymbol::outline(
-                label.text.to_string(),
-                Some("pie section".to_string()),
-                EditorSemanticKind::String,
-                SourceSpan::new(line_start, line_start + line.len()),
-                SourceSpan::new(label.start, label.end),
-            ));
-            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Payload,
-                SourceSpan::new(value_span.start, value_span.end),
-            ));
-            continue;
-        }
-    }
-
-    facts
+fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSemanticSource> {
+    construct_pie_semantic_source(code, meta).map_err(family::CombinedSemanticFailure::into_error)
 }
 
-fn parse_title_statement_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !t.starts_with("title") {
-        return None;
-    }
-    let rest = t.strip_prefix("title")?;
-    let ws = rest.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let value = rest.trim_start();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
+fn construct_pie_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<PieSemanticSource, family::CombinedSemanticFailure> {
+    construct_pie_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
 }
 
-fn parse_key_value_spanned<'a>(
-    line: &'a str,
-    line_start: usize,
-    key: &str,
-) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !t.starts_with(key) {
-        return None;
-    }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
+fn construct_pie_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<
+    std::result::Result<PieSemanticSource, family::CombinedSemanticFailure>,
+> {
+    control.checkpoint()?;
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("pie");
 
-fn parse_acc_descr_inline_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_acc_descr_block_spanned<'a>(
-    lines: &mut std::iter::Peekable<std::str::SplitInclusive<'a, char>>,
-    first_line: &'a str,
-    line_start: usize,
-) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(first_line).trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    let rest = rest.strip_prefix('{')?;
-    if let Some(end) = rest.find('}') {
-        let value = rest[..end].trim();
-        let value_rel = first_line.find(value)?;
-        return Some(SpannedText {
-            text: value,
-            start: line_start + value_rel,
-            end: line_start + value_rel + value.len(),
-        });
-    }
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = first_line.find(value)?;
-    let _ = lines.peek();
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_section_spanned<'a>(
-    line: &'a str,
-    line_start: usize,
-) -> Option<(SpannedText<'a>, SpannedText<'a>)> {
-    let t = strip_inline_comment(line).trim_start();
-    let (label, rest) = parse_quoted_string(t)?;
-    let rest = rest.trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-
-    let mut num = String::new();
-    for c in rest.chars() {
-        if c.is_ascii_digit() || c == '-' || c == '.' {
-            num.push(c);
-        } else {
-            break;
+    let body = match pie_body_start_controlled(code, control)? {
+        PieHeader::Empty => {
+            return Ok(Ok(PieSemanticSource {
+                output: PieParseOutput::Empty,
+                editor_facts: EditorSemanticFacts::new(),
+            }));
         }
-    }
-    if num.is_empty() {
-        return None;
-    }
-    let label_rel = line.find(&label)?;
-    let value_rel = line.find(&num)?;
-    Some((
-        SpannedText {
-            text: &line[label_rel..label_rel + label.len()],
-            start: line_start + label_rel,
-            end: line_start + label_rel + label.len(),
-        },
-        SpannedText {
-            text: &line[value_rel..value_rel + num.len()],
-            start: line_start + value_rel,
-            end: line_start + value_rel + num.len(),
-        },
-    ))
-}
-
-fn push_pie_payload_fact(
-    facts: &mut EditorSemanticFacts,
-    text: &str,
-    start: usize,
-    detail: &'static str,
-    kind: EditorSemanticKind,
-) {
-    let end = start + text.len();
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        SourceSpan::new(start, end),
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        text.to_string(),
-        Some(detail.to_string()),
-        kind,
-        SourceSpan::new(start, end),
-        SourceSpan::new(start, end),
-    ));
-}
-
-#[derive(Debug, Clone, Copy)]
-struct SpannedText<'a> {
-    text: &'a str,
-    start: usize,
-    end: usize,
-}
-
-fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {
-    let mut raw_lines = code.lines();
-
-    let mut header: Option<String> = None;
-    for line in &mut raw_lines {
-        let t = strip_inline_comment(line).trim();
-        if !t.is_empty() {
-            header = Some(t.to_string());
-            break;
+        PieHeader::ExpectedPie => {
+            return Ok(Ok(PieSemanticSource {
+                output: PieParseOutput::ExpectedPie,
+                editor_facts: EditorSemanticFacts::new(),
+            }));
         }
-    }
-
-    let Some(header) = header else {
-        return Ok(PieParseOutput::Empty);
+        PieHeader::Body(body) => body,
     };
-
-    let mut it0 = header.split_whitespace();
-    let Some(first) = it0.next() else {
-        return Ok(PieParseOutput::Empty);
-    };
-    if first != "pie" {
-        return Ok(PieParseOutput::ExpectedPie);
+    let mut offset = body.offset;
+    let mut common = LangiumCommonFacts::default();
+    let mut parsed_sections = Vec::new();
+    let mut editor_facts = EditorSemanticFacts::new();
+    let mut lexemes = LangiumLexemeTrace::default();
+    lexemes.keyword(body.header_span);
+    if let Some(span) = body.show_data_span {
+        lexemes.keyword(span);
+        push_show_data_editor_fact(&mut editor_facts, span);
     }
+    let mut first_error = None;
 
-    let mut show_data = false;
-    let mut title: Option<String> = None;
-    let mut acc_title: Option<String> = None;
-    let mut acc_descr: Option<String> = None;
-    let mut unsupported: Option<String> = None;
-
-    fn token_boundary_ok(s: &str, token_len: usize) -> bool {
-        let Some(rest) = s.get(token_len..) else {
-            return true;
-        };
-        match rest.chars().next() {
-            None => true,
-            Some(c) => c.is_whitespace(),
-        }
-    }
-
-    let header_after = header
-        .trim_start_matches(|c: char| c.is_whitespace())
-        .strip_prefix("pie")
-        .unwrap_or("");
-    let mut rest = header_after.trim_start();
-    while !rest.is_empty() {
-        if rest.starts_with("showData") && token_boundary_ok(rest, "showData".len()) {
-            show_data = true;
-            rest = rest["showData".len()..].trim_start();
-            continue;
-        }
-        if rest.starts_with("title") && token_boundary_ok(rest, "title".len()) {
-            let after = rest["title".len()..].trim_start();
-            title = Some(after.to_string());
-            rest = "";
-            continue;
-        }
-        if rest.starts_with("accTitle")
-            && let Some(v) = parse_key_value(rest, "accTitle")
-        {
-            acc_title = Some(v);
-            rest = "";
-            continue;
-        }
-        if rest.starts_with("accDescr") {
-            if let Some(v) = parse_acc_descr_inline(rest) {
-                acc_descr = Some(v);
-                rest = "";
-                continue;
-            }
-            if starts_acc_descr_block(rest) {
-                let mut parts: Vec<String> = Vec::new();
-                for next_line in raw_lines.by_ref() {
-                    let s = strip_inline_comment(next_line);
-                    if s.contains('}') {
-                        let before = s.split('}').next().unwrap_or("").trim();
-                        if !before.is_empty() {
-                            parts.push(before.to_string());
-                        }
-                        break;
-                    }
-                    let trimmed = s.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-                    parts.push(trimmed.to_string());
+    while offset < code.len() {
+        control.checkpoint()?;
+        match parse_pie_statement(code, offset) {
+            PieStatement::Common(parsed) => {
+                if let Some(diagnostic) = &parsed.diagnostic {
+                    push_langium_common_recovery(&mut editor_facts, diagnostic);
+                    first_error.get_or_insert_with(|| {
+                        Error::diagram_parse_insertion_point(
+                            meta.diagram_type.clone(),
+                            diagnostic.message.clone(),
+                            diagnostic.span.start,
+                        )
+                    });
                 }
-                acc_descr = Some(parts.join("\n"));
-                rest = "";
-                continue;
+                lexemes.extend(parsed.lexemes.clone());
+                push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "pie");
+                common.push(parsed.fact);
+                offset += parsed.consumed;
+            }
+            PieStatement::Section {
+                section,
+                next_offset,
+            } => {
+                lexemes.extend(section.lexemes.clone());
+                push_pie_section_editor_fact(&mut editor_facts, &section);
+                parsed_sections.push(section);
+                offset = next_offset;
+            }
+            PieStatement::Empty { next_offset } => offset = next_offset,
+            PieStatement::Unexpected {
+                text,
+                span,
+                next_offset,
+            } => {
+                editor_facts
+                    .mark_recovered_from_parse_error("unexpected pie statement", Some(span));
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_fallback(
+                        meta.diagram_type.clone(),
+                        format!("unexpected pie statement: {text}"),
+                    )
+                });
+                offset = next_offset;
             }
         }
-        unsupported = Some(rest.split_whitespace().next().unwrap_or(rest).to_string());
-        break;
     }
 
-    if let Some(tok) = unsupported {
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            format!("unexpected pie header token: {tok}"),
-        ));
+    let mut sections = Vec::new();
+    let mut seen = HashSet::new();
+    for (index, section) in parsed_sections.into_iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        if section.value < 0.0 {
+            let message = format!(
+                "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
+                section.label, section.value
+            );
+            editor_facts.mark_recovered_from_parse_error(message.clone(), Some(section.value_span));
+            first_error.get_or_insert_with(|| {
+                Error::diagram_parse_exact(meta.diagram_type.clone(), message, section.value_span)
+            });
+            continue;
+        }
+        if seen.insert(section.label.clone()) {
+            sections.push(PieRenderSection {
+                label: section.label,
+                value: section.value,
+            });
+        }
     }
 
-    let mut sections: Vec<PieRenderSection> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
+    let common = LangiumCommonDbFields::from_facts(&common);
+    lexemes.attach(code, &mut editor_facts);
 
-    let mut lines = raw_lines.peekable();
-    while let Some(line) = lines.next() {
-        let t = strip_inline_comment(line).trim();
-        if t.is_empty() {
-            continue;
-        }
-
-        if let Some(v) = parse_title_statement(t) {
-            title = Some(v);
-            continue;
-        }
-
-        if let Some(v) = parse_key_value(t, "accTitle") {
-            acc_title = Some(v);
-            continue;
-        }
-
-        if let Some(v) = parse_acc_descr_inline(t) {
-            acc_descr = Some(v);
-            continue;
-        }
-
-        if starts_acc_descr_block(t) {
-            let mut parts: Vec<String> = Vec::new();
-            for next_line in lines.by_ref() {
-                let s = strip_inline_comment(next_line);
-                if s.contains('}') {
-                    let before = s.split('}').next().unwrap_or("").trim();
-                    if !before.is_empty() {
-                        parts.push(before.to_string());
-                    }
-                    break;
-                }
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                parts.push(trimmed.to_string());
-            }
-            acc_descr = Some(parts.join("\n"));
-            continue;
-        }
-
-        if let Some((label, value)) = parse_section(t) {
-            if value < 0.0 {
-                return Err(Error::diagram_parse_fallback(
-                    meta.diagram_type.clone(),
-                    format!(
-                        "\"{label}\" has invalid value: {value}. Negative values are not allowed in pie charts. All slice values must be >= 0."
-                    ),
-                ));
-            }
-            if seen.insert(label.clone()) {
-                sections.push(PieRenderSection { label, value });
-            }
-            continue;
-        }
-
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            format!("unexpected pie statement: {t}"),
-        ));
+    if let Some(error) = first_error {
+        return Ok(Err(family::CombinedSemanticFailure::new(
+            error,
+            editor_facts,
+        )));
     }
 
-    Ok(PieParseOutput::Model(PieDiagramRenderModel {
-        show_data,
-        title,
-        acc_title,
-        acc_descr,
-        sections,
+    control.checkpoint()?;
+    Ok(Ok(PieSemanticSource {
+        output: PieParseOutput::Model(PieDiagramRenderModel {
+            show_data: body.show_data_span.is_some(),
+            title: common.title,
+            acc_title: common.acc_title,
+            acc_descr: common.acc_descr,
+            sections,
+            compatibility_output: CompatibilityOutputState::Model,
+        }),
+        editor_facts,
     }))
 }
 
+enum PieStatement {
+    Common(LangiumCommonParse),
+    Section {
+        section: PieParsedSection,
+        next_offset: usize,
+    },
+    Empty {
+        next_offset: usize,
+    },
+    Unexpected {
+        text: String,
+        span: SourceSpan,
+        next_offset: usize,
+    },
+}
+
+struct PieParsedSection {
+    label: String,
+    value: f64,
+    statement_span: SourceSpan,
+    label_span: SourceSpan,
+    value_span: SourceSpan,
+    lexemes: LangiumLexemeTrace,
+}
+
+fn parse_pie_statement(code: &str, offset: usize) -> PieStatement {
+    if let Some(parsed) = parse_langium_common(code, offset) {
+        return PieStatement::Common(parsed);
+    }
+
+    let (line, next_offset) = physical_line(code, offset);
+    let visible = strip_inline_comment(line);
+    let trimmed = visible.trim();
+    if trimmed.is_empty() {
+        return PieStatement::Empty { next_offset };
+    }
+
+    if let Some(section) = parse_pie_section(line, offset) {
+        return PieStatement::Section {
+            section,
+            next_offset,
+        };
+    }
+
+    PieStatement::Unexpected {
+        text: trimmed.to_string(),
+        span: SourceSpan::new(
+            offset + visible.find(trimmed).unwrap_or_default(),
+            offset + visible.find(trimmed).unwrap_or_default() + trimmed.len(),
+        ),
+        next_offset,
+    }
+}
+
+fn parse_pie_section(line: &str, line_start: usize) -> Option<PieParsedSection> {
+    let visible = strip_inline_comment(line);
+    let leading = visible.len() - visible.trim_start().len();
+    let input = &visible[leading..];
+    let parsed_label = parse_quoted_string(input, line_start + leading)?;
+
+    let (rest, rest_start) = trim_start_with_offset(parsed_label.rest, parsed_label.rest_start);
+    let rest = rest.strip_prefix(':')?;
+    let colon_span = SourceSpan::new(rest_start, rest_start + 1);
+    let (number_and_trailing, number_start) = trim_start_with_offset(rest, rest_start + 1);
+    let number = number_and_trailing.trim_end();
+    let value = parse_number_pie(number)?;
+    let value_span = SourceSpan::new(number_start, number_start + number.len());
+    let mut lexemes = LangiumLexemeTrace::default();
+    lexemes.string(parsed_label.raw_span);
+    lexemes.delimiter(colon_span);
+    lexemes.number(value_span);
+
+    Some(PieParsedSection {
+        label: parsed_label.value,
+        value,
+        statement_span: SourceSpan::new(line_start, line_start + line.len()),
+        label_span: parsed_label.value_span,
+        value_span,
+        lexemes,
+    })
+}
+
+fn parse_number_pie(input: &str) -> Option<f64> {
+    let unsigned = input.strip_prefix('-').unwrap_or(input);
+    let (integer, fraction) = match unsigned.split_once('.') {
+        Some((integer, fraction)) => (integer, Some(fraction)),
+        None => (unsigned, None),
+    };
+    if integer.is_empty() || !integer.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    match fraction {
+        Some(fraction)
+            if fraction.is_empty() || !fraction.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            return None;
+        }
+        None if integer.len() > 1 && integer.starts_with('0') => return None,
+        _ => {}
+    }
+    input.parse().ok()
+}
+
+struct ParsedQuotedString<'a> {
+    value: String,
+    raw_span: SourceSpan,
+    value_span: SourceSpan,
+    rest: &'a str,
+    rest_start: usize,
+}
+
+fn parse_quoted_string(input: &str, input_start: usize) -> Option<ParsedQuotedString<'_>> {
+    let parsed = parse_langium_string(input, input_start)?;
+    Some(ParsedQuotedString {
+        value: parsed.value,
+        raw_span: parsed.raw_span,
+        value_span: parsed.value_span,
+        rest: &input[parsed.consumed..],
+        rest_start: input_start + parsed.consumed,
+    })
+}
+
+fn trim_start_with_offset(input: &str, input_start: usize) -> (&str, usize) {
+    let trimmed = input.trim_start();
+    (trimmed, input_start + input.len() - trimmed.len())
+}
+
+fn push_show_data_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan) {
+    facts.push_directive_prefix("showData");
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        span,
+    ));
+}
+
+fn push_pie_section_editor_fact(facts: &mut EditorSemanticFacts, section: &PieParsedSection) {
+    facts.push_symbol(EditorSemanticSymbol::outline(
+        section.label.clone(),
+        Some("pie section".to_string()),
+        EditorSemanticKind::String,
+        section.statement_span,
+        section.label_span,
+    ));
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        section.value_span,
+    ));
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PieHeader {
+    Empty,
+    ExpectedPie,
+    Body(PieBodyStart),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PieBodyStart {
+    offset: usize,
+    header_span: SourceSpan,
+    show_data_span: Option<SourceSpan>,
+}
+
+fn pie_body_start_controlled(
+    code: &str,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<PieHeader> {
+    let mut offset = 0usize;
+    while offset < code.len() {
+        control.checkpoint()?;
+        let (line, next_offset) = physical_line(code, offset);
+        let visible = strip_inline_comment(line);
+        let trimmed = visible.trim_start();
+        if trimmed.trim().is_empty() {
+            offset = next_offset;
+            continue;
+        }
+        let Some(header_len) = keyword_token_len(trimmed, "pie") else {
+            return Ok(PieHeader::ExpectedPie);
+        };
+        let leading = visible.len() - trimmed.len();
+        let header_start = offset + leading;
+        let after_header = header_start + header_len;
+        let horizontal = code[after_header..]
+            .chars()
+            .take_while(|ch| matches!(ch, ' ' | '\t'))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let show_data_start = after_header + horizontal;
+        let show_data_span = keyword_token_len(&code[show_data_start..], "showData").map(|len| {
+            debug_assert_eq!(len, "showData".len());
+            SourceSpan::new(show_data_start, show_data_start + len)
+        });
+        let body_start = show_data_span.map_or(after_header, |span| span.end);
+        return Ok(PieHeader::Body(PieBodyStart {
+            offset: body_start,
+            header_span: SourceSpan::new(header_start, after_header),
+            show_data_span,
+        }));
+    }
+    Ok(PieHeader::Empty)
+}
+
+fn keyword_token_len(input: &str, keyword: &str) -> Option<usize> {
+    let rest = input.strip_prefix(keyword)?;
+    (rest.is_empty()
+        || rest.starts_with("%%")
+        || rest.chars().next().is_some_and(char::is_whitespace))
+    .then_some(keyword.len())
+}
+
+fn physical_line(source: &str, offset: usize) -> (&str, usize) {
+    let rest = &source[offset..];
+    if let Some(newline) = rest.find('\n') {
+        let line = rest[..newline]
+            .strip_suffix('\r')
+            .unwrap_or(&rest[..newline]);
+        (line, offset + newline + 1)
+    } else {
+        (rest, source.len())
+    }
+}
+
 fn strip_inline_comment(line: &str) -> &str {
-    match line.find("%%") {
-        Some(idx) => &line[..idx],
-        None => line,
-    }
-}
-
-fn parse_title_statement(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("title") {
-        return None;
-    }
-    let rest = t.strip_prefix("title")?;
-    match rest.chars().next() {
-        None => Some(String::new()),
-        Some(c) if c.is_whitespace() => Some(rest.trim_start().to_string()),
-        _ => None,
-    }
-}
-
-fn parse_key_value(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with(key) {
-        return None;
-    }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-    Some(rest.to_string())
-}
-
-fn parse_acc_descr_inline(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    if let Some(rest) = rest.strip_prefix(':') {
-        return Some(rest.trim_start().to_string());
-    }
-    None
-}
-
-fn starts_acc_descr_block(line: &str) -> bool {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return false;
-    }
-    let rest = t.trim_start_matches("accDescr").trim_start();
-    rest.starts_with('{')
-}
-
-fn parse_section(line: &str) -> Option<(String, f64)> {
-    let t = line.trim_start();
-    let (label, rest) = parse_quoted_string(t)?;
-    let rest = rest.trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-
-    let mut num = String::new();
-    for c in rest.chars() {
-        if c.is_ascii_digit() || c == '-' || c == '.' {
-            num.push(c);
-        } else {
-            break;
-        }
-    }
-    if num.is_empty() {
-        return None;
-    }
-    let value: f64 = num.parse().ok()?;
-    Some((label, value))
-}
-
-fn parse_quoted_string(input: &str) -> Option<(String, &str)> {
-    let mut chars = input.chars();
-    let quote = chars.next()?;
-    if quote != '"' && quote != '\'' {
-        return None;
-    }
-    let mut out = String::new();
-    let mut escaped = false;
-    let mut idx = 1;
-    for c in chars {
-        idx += c.len_utf8();
-        if escaped {
-            out.push(c);
-            escaped = false;
-            continue;
-        }
-        if c == '\\' {
-            escaped = true;
-            continue;
-        }
-        if c == quote {
-            return Some((out, &input[idx..]));
-        }
-        out.push(c);
-    }
-    None
+    strip_langium_inline_comment(line)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Engine, ParseOptions};
+    use super::*;
+    use crate::{
+        EditorSemanticCompleteness, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions,
+        SourceSpan,
+    };
+
+    fn metadata() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "pie".to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn controlled_parse_can_cancel_after_the_pie_header() {
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            construct_pie_semantic_source_controlled(
+                "pie\n\"A\": 1\n\"B\": 2\n",
+                &metadata(),
+                &control,
+            ),
+            Err(crate::ParseCancelled)
+        ));
+    }
+
+    #[test]
+    fn pie_typed_projection_matches_complete_compatibility_json() {
+        let text = "pie showData\n\"A\": 1\n\"B\": 2\n";
+        let meta = metadata();
+        let compat = parse_pie(text, &meta).unwrap();
+        let typed = parse_pie_model_for_render(text, &meta).unwrap();
+
+        assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), compat);
+        assert_eq!(compat["type"], "pie");
+        assert!(compat["title"].is_null());
+    }
+
+    #[test]
+    fn pie_typed_projection_preserves_empty_and_header_only_output_states() {
+        let meta = metadata();
+        for source in ["", "pie"] {
+            let compat = parse_pie(source, &meta).unwrap();
+            let typed = parse_pie_model_for_render(source, &meta).unwrap();
+
+            assert_eq!(
+                render_model_to_compat_json(&typed, &meta).unwrap(),
+                compat,
+                "projection drift for {source:?}"
+            );
+        }
+    }
 
     #[test]
     fn pie_supports_title_statement_after_header() {
@@ -638,6 +577,128 @@ pie showData
         assert_eq!(
             parsed.model.get("showData").and_then(|v| v.as_bool()),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn pie_uses_langium_string_escapes_and_quote_aware_inline_comments() {
+        let engine = Engine::new();
+        let parsed = engine
+            .parse_diagram_sync(
+                r#"pie
+"A\n100%% complete": 1 %% outside comment
+'B\tlabel': 2
+"#,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("pie parses Langium strings");
+
+        assert_eq!(parsed.model["sections"][0]["label"], "An100%% complete");
+        assert_eq!(parsed.model["sections"][1]["label"], "Btlabel");
+    }
+
+    #[test]
+    fn pie_number_terminal_matches_number_pie_exactly() {
+        let engine = Engine::new();
+        for value in [".5", "01", "1.", "1junk", "1..2"] {
+            let source = format!("pie\n\"A\": {value}\n");
+            assert!(
+                engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .is_err(),
+                "NUMBER_PIE must reject {value:?}"
+            );
+        }
+
+        let parsed = engine
+            .parse_diagram_sync(
+                "pie\n\"zero\": 0\n\"integer\": -1\n\"decimal\": 01.5\n",
+                ParseOptions::strict(),
+            )
+            .expect_err("negative values are rejected only after syntax succeeds");
+        assert!(parsed.to_string().contains("invalid value: -1"));
+    }
+
+    #[test]
+    fn pie_editor_recovery_reports_negative_value_validation_errors() {
+        let source = "pie\r\n  \"negative\": -1  \r\n\"valid\": 2\r\n";
+        let invalid = "-1";
+        let start = source.find(invalid).unwrap();
+        let expected_span = SourceSpan::new(start, start + invalid.len());
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect_err("a negative pie value must fail strict parsing");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected pie parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), Some(expected_span));
+
+        let facts = crate::family::test_support::editor_facts(
+            parse_pie_json_and_editor_facts,
+            source,
+            &metadata(),
+        );
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "negative"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "valid"));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(expected_span)
+                && diagnostic
+                    .message
+                    .contains("Negative values are not allowed")
+        }));
+    }
+
+    #[test]
+    fn pie_reports_later_syntax_errors_before_populate_errors() {
+        let engine = Engine::new();
+        let error = engine
+            .parse_diagram_sync(
+                "pie\n\"negative\": -1\n\"malformed\": 1junk\n",
+                ParseOptions::strict(),
+            )
+            .expect_err("the malformed NUMBER_PIE must fail parsing");
+        let message = error.to_string();
+
+        assert!(message.contains("unexpected pie statement"), "{message}");
+        assert!(!message.contains("invalid value: -1"), "{message}");
+    }
+
+    #[test]
+    fn pie_rejects_show_data_after_the_header_line() {
+        let source = "pie\nshowData\n\"A\": 1\n";
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect_err("showData is only valid in the pie header");
+        assert!(
+            error
+                .to_string()
+                .contains("unexpected pie statement: showData")
+        );
+
+        let facts = crate::family::test_support::editor_facts(
+            parse_pie_json_and_editor_facts,
+            source,
+            &metadata(),
+        );
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(
+            !facts
+                .directive_prefixes
+                .iter()
+                .any(|prefix| prefix == "showData")
+        );
+        assert!(
+            facts
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("unexpected pie statement"))
         );
     }
 

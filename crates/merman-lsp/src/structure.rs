@@ -5,26 +5,22 @@ use crate::protocol::{
 };
 use crate::snapshot::DocumentSnapshot;
 use merman_analysis::EditorSymbolKind;
-#[cfg(test)]
-use merman_editor_core::workspace_symbols as core_workspace_symbols;
 use merman_editor_core::{
     EditorDocumentSymbol, EditorFoldingRange, EditorFoldingRangeKind, EditorHover,
-    EditorPrepareRename, EditorSelectionRange, EditorSymbolInformation, EditorWorkspaceEdit,
-    RenameError, document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
+    EditorPrepareRename, EditorSelectionRange, EditorWorkspaceEdit, RenameError,
+    document_symbols as core_document_symbols, folding_ranges as core_folding_ranges,
     goto_definition as core_goto_definition, hover as core_hover,
     prepare_rename as core_prepare_rename, references as core_references, rename as core_rename,
     selection_ranges as core_selection_ranges,
-    workspace_symbols_for_snapshots as core_workspace_symbols_for_snapshots,
 };
 use std::collections::HashMap;
-use std::sync::Arc;
-use tower_lsp::jsonrpc::{Error, Result};
-use tower_lsp::lsp_types::{DocumentChanges, OneOf};
-use tower_lsp::lsp_types::{
+use tower_lsp_server::jsonrpc::{Error, Result};
+use tower_lsp_server::ls_types::{DocumentChanges, OneOf};
+use tower_lsp_server::ls_types::{
     DocumentSymbol, DocumentSymbolResponse, FoldingRange, FoldingRangeKind, GotoDefinitionResponse,
     Hover, HoverContents, Location, MarkedString, MarkupContent, MarkupKind,
     OptionalVersionedTextDocumentIdentifier, Position, PrepareRenameResponse, Range, RenameParams,
-    SelectionRange, SymbolInformation, SymbolKind, TextDocumentEdit, TextEdit, Url, WorkspaceEdit,
+    SelectionRange, SymbolInformation, SymbolKind, TextDocumentEdit, TextEdit, Uri, WorkspaceEdit,
 };
 
 #[allow(deprecated)]
@@ -41,43 +37,11 @@ pub fn document_symbols_with_hierarchy_support(
     let symbols = core_document_symbols(snapshot.as_editor());
     if !hierarchical_supported {
         let mut flat = Vec::new();
-        flatten_document_symbols(symbols, &snapshot.uri, None, &mut flat);
+        flatten_document_symbols(symbols, snapshot.uri(), None, &mut flat);
         return DocumentSymbolResponse::Flat(flat);
     }
 
     DocumentSymbolResponse::Nested(symbols.into_iter().map(document_symbol_to_lsp).collect())
-}
-
-#[allow(deprecated)]
-#[cfg(test)]
-pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<SymbolInformation> {
-    core_workspace_symbols(snapshot.as_editor(), query)
-        .into_iter()
-        .filter_map(|symbol| symbol_information_to_lsp(symbol, Some(&snapshot.uri)))
-        .collect()
-}
-
-pub fn workspace_symbols_for_snapshots(
-    snapshots: &[Arc<DocumentSnapshot>],
-    query: &str,
-) -> Vec<SymbolInformation> {
-    let uri_lookup = snapshots
-        .iter()
-        .map(|snapshot| (snapshot.uri.as_str().to_string(), snapshot.uri.clone()))
-        .collect::<HashMap<_, _>>();
-
-    core_workspace_symbols_for_snapshots(
-        snapshots
-            .iter()
-            .map(|snapshot| snapshot.as_ref().as_editor()),
-        query,
-    )
-    .into_iter()
-    .filter_map(|symbol| {
-        let uri = uri_lookup.get(symbol.location.uri.as_str());
-        symbol_information_to_lsp(symbol, uri)
-    })
-    .collect()
 }
 
 #[cfg(test)]
@@ -129,7 +93,7 @@ pub fn goto_definition(
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
     core_goto_definition(snapshot.as_editor(), core_position_from_lsp(position))
-        .map(|location| location_to_lsp(location, &snapshot.uri))
+        .map(|location| location_to_lsp(location, snapshot.uri()))
         .map(Into::into)
 }
 
@@ -146,7 +110,7 @@ pub fn references(
     .map(|locations| {
         locations
             .into_iter()
-            .map(|location| location_to_lsp(location, &snapshot.uri))
+            .map(|location| location_to_lsp(location, snapshot.uri()))
             .collect()
     })
 }
@@ -178,8 +142,8 @@ pub fn rename_with_workspace_edit_encoding(
         edit.and_then(|edit| {
             workspace_edit_to_lsp(
                 edit,
-                &snapshot.uri,
-                snapshot.version,
+                snapshot.uri(),
+                snapshot.version(),
                 workspace_edit_encoding,
             )
         })
@@ -268,7 +232,7 @@ fn document_symbol_to_lsp(symbol: EditorDocumentSymbol) -> DocumentSymbol {
 #[allow(deprecated)]
 fn flatten_document_symbols(
     symbols: Vec<EditorDocumentSymbol>,
-    uri: &Url,
+    uri: &Uri,
     container_name: Option<String>,
     out: &mut Vec<SymbolInformation>,
 ) {
@@ -286,22 +250,6 @@ fn flatten_document_symbols(
     }
 }
 
-#[allow(deprecated)]
-fn symbol_information_to_lsp(
-    symbol: EditorSymbolInformation,
-    fallback_uri: Option<&Url>,
-) -> Option<SymbolInformation> {
-    let location = location_to_lsp(symbol.location, fallback_uri?);
-    Some(SymbolInformation {
-        name: symbol.name,
-        kind: symbol_kind(symbol.kind),
-        tags: None,
-        deprecated: None,
-        location,
-        container_name: symbol.container_name,
-    })
-}
-
 fn prepare_to_lsp(rename: EditorPrepareRename) -> PrepareRenameResponse {
     PrepareRenameResponse::RangeWithPlaceholder {
         range: range_to_lsp(rename.range),
@@ -311,7 +259,7 @@ fn prepare_to_lsp(rename: EditorPrepareRename) -> PrepareRenameResponse {
 
 fn workspace_edit_to_lsp(
     edit: EditorWorkspaceEdit,
-    fallback_uri: &Url,
+    fallback_uri: &Uri,
     version: i32,
     workspace_edit_encoding: WorkspaceEditEncoding,
 ) -> Option<WorkspaceEdit> {
@@ -383,25 +331,21 @@ mod tests {
     use super::{
         document_symbols, document_symbols_with_hierarchy_support, folding_ranges, goto_definition,
         hover, prepare_rename, references, rename, rename_with_workspace_edit_encoding,
-        selection_ranges, workspace_symbols,
+        selection_ranges,
     };
-    use crate::document_store::DocumentStore;
     use crate::protocol::WorkspaceEditEncoding;
-    use tower_lsp::lsp_types::{
+    use crate::snapshot::snapshot_for_test;
+    use std::str::FromStr;
+    use tower_lsp_server::ls_types::{
         DocumentChanges, DocumentSymbolResponse, FoldingRangeKind, GotoDefinitionResponse,
         HoverContents, Position, PrepareRenameResponse, RenameParams, TextDocumentIdentifier,
-        TextDocumentPositionParams, Url,
+        TextDocumentPositionParams, Uri,
     };
 
     #[test]
     fn document_symbols_include_root_and_child_items() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let snapshot = snapshot_for_test(uri, 1, "flowchart TD\nsubgraph group\nA-->B\nend\n");
 
         let response = document_symbols(&snapshot);
         let nested = match response {
@@ -423,13 +367,9 @@ mod tests {
 
     #[test]
     fn document_symbols_can_fall_back_to_flat_symbol_information() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri.clone(),
-            1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let snapshot =
+            snapshot_for_test(uri.clone(), 1, "flowchart TD\nsubgraph group\nA-->B\nend\n");
 
         let response = document_symbols_with_hierarchy_support(&snapshot, false);
         let flat = match response {
@@ -450,9 +390,8 @@ mod tests {
 
     #[test]
     fn hover_reports_the_active_outline_entry() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\n".to_string());
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let snapshot = snapshot_for_test(uri, 1, "flowchart TD\nA-->B\n");
 
         let hover = hover(&snapshot, Position::new(1, 0)).unwrap();
         let text = match hover.contents {
@@ -466,13 +405,8 @@ mod tests {
 
     #[test]
     fn selection_ranges_return_nested_parser_backed_ranges() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let snapshot = snapshot_for_test(uri, 1, "flowchart TD\nsubgraph group\nA-->B\nend\n");
 
         let ranges = selection_ranges(&snapshot, &[Position::new(2, 0)]).unwrap();
 
@@ -484,12 +418,11 @@ mod tests {
 
     #[test]
     fn folding_ranges_return_lsp_regions() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.md").unwrap();
-        let snapshot = store.upsert(
+        let uri = Uri::from_str("file:///tmp/example.md").unwrap();
+        let snapshot = snapshot_for_test(
             uri,
             1,
-            "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+            "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n",
         );
 
         let ranges = folding_ranges(&snapshot);
@@ -503,9 +436,8 @@ mod tests {
 
     #[test]
     fn rename_and_references_track_simple_identifiers() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri, 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let snapshot = snapshot_for_test(uri, 1, "flowchart TD\nA-->B\nA-->C\n");
 
         let position = Position::new(1, 0);
         let prepare = prepare_rename(&snapshot, position).unwrap();
@@ -524,7 +456,7 @@ mod tests {
             RenameParams {
                 text_document_position: TextDocumentPositionParams::new(
                     TextDocumentIdentifier {
-                        uri: snapshot.uri.clone(),
+                        uri: snapshot.uri().clone(),
                     },
                     position,
                 ),
@@ -540,7 +472,7 @@ mod tests {
             other => panic!("unexpected document changes: {other:?}"),
         };
         assert_eq!(document_changes.len(), 1);
-        assert_eq!(document_changes[0].text_document.uri, snapshot.uri);
+        assert_eq!(&document_changes[0].text_document.uri, snapshot.uri());
         assert_eq!(document_changes[0].text_document.version, Some(1));
         assert_eq!(document_changes[0].edits.len(), 2);
 
@@ -550,9 +482,8 @@ mod tests {
 
     #[test]
     fn rename_can_fall_back_to_workspace_edit_changes() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let snapshot = snapshot_for_test(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n");
 
         let edit = rename_with_workspace_edit_encoding(
             &snapshot,
@@ -572,24 +503,5 @@ mod tests {
         assert!(edit.document_changes.is_none());
         let changes = edit.changes.as_ref().expect("plain changes");
         assert_eq!(changes[&uri].len(), 2);
-    }
-
-    #[test]
-    fn workspace_symbols_filter_and_include_outline_items() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
-
-        let all_symbols = workspace_symbols(&snapshot, "");
-        assert!(all_symbols.iter().any(|symbol| symbol.name == "group"));
-        assert!(all_symbols.iter().any(|symbol| symbol.name == "A"));
-
-        let group_symbols = workspace_symbols(&snapshot, "group");
-        assert_eq!(group_symbols.len(), 1);
-        assert_eq!(group_symbols[0].name, "group");
     }
 }

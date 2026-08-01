@@ -1,26 +1,54 @@
 /// Flutter and Dart FFI bindings for the `merman` headless Mermaid engine.
 ///
-/// Import this library in Flutter apps that need to render Mermaid source to
-/// SVG or ASCII text, inspect parsed diagram JSON, or query binding metadata.
+/// This public facade owns Dart-friendly lifecycle, error, resource, and text
+/// measurement APIs. Its C declarations stay private and are generated from
+/// the ABI 3 header by `ffigen`.
 library;
 
+export 'src/generated/resource_options.dart'
+    show
+        MermanResourceLimitId,
+        MermanResourceOverrideId,
+        MermanResourceOptions,
+        MermanResourceOptionsBuilder,
+        MermanResourceProfile;
+export 'src/generated/package_version.dart' show mermanPackageVersion;
+export 'src/generated/text_measurement_protocol.dart'
+    show
+        MermanTextDirection,
+        MermanTextMeasurementOperation,
+        MermanTextMeasurementPhase,
+        MermanTextMeasurementResultKind,
+        MermanTextWhiteSpace,
+        MermanTextWrapMode;
 export 'src/merman_ffi.dart'
     show
         Merman,
         MermanAsciiCapability,
         MermanAsciiCapabilityEvidence,
+        MermanBusyException,
         MermanDiagramFamilyCapability,
+        MermanErrorKind,
         MermanException,
         MermanLintRuleCatalogEntry,
+        MermanMissingCapabilityException,
+        MermanOperation,
+        MermanOperationResult,
+        MermanReentrantCallException,
+        MermanResourceErrorDetails,
+        MermanResourceLimitDescriptor,
+        MermanResourceProfileDescriptor,
         MermanReusableEngine,
-        MermanStatus,
-        MermanTextDirection,
+        MermanRuntimeEmbeddedImageContract,
+        MermanRuntimeEmbeddedImageLimits,
+        MermanRuntimeCatalog,
+        MermanRuntimeOutputContract,
+        MermanRuntimeSystemFontContract,
         MermanTextMeasureRequest,
         MermanTextMeasureResult,
         MermanTextMeasurer,
-        MermanTextWhiteSpace,
-        MermanTextWrapMode,
+        MermanUnknownOperationException,
+        MermanUnsupportedOperationException,
         MermanValidationResult,
-        mermanAbiVersion,
         openMermanLibrary,
         openMermanLibraryFromPath;

@@ -6,13 +6,13 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 666.0,
-        "max_y": 913.0
+        "max_y": 896.0
       },
       "width": 716.0,
-      "height": 923.0,
+      "height": 906.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Deployment",
       "title": "Deployment Diagram",
       "boundaries": [
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 516.0,
-          "height": 797.0,
+          "height": 780.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 800.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 800.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -50,7 +50,7 @@
           "x": 150.0,
           "y": 122.0,
           "width": 416.0,
-          "height": 691.0,
+          "height": 674.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -60,14 +60,14 @@
             "text": "Node 1",
             "y": 8.0,
             "width": 800.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[node]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 800.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -78,7 +78,7 @@
           "x": 200.0,
           "y": 510.0,
           "width": 316.0,
-          "height": 253.0,
+          "height": 236.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -88,14 +88,14 @@
             "text": "Boundary 1",
             "y": 8.0,
             "width": 800.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[system]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 800.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -109,7 +109,7 @@
           "x": 250.0,
           "y": 610.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 86.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -127,7 +127,7 @@
             "text": "",
             "y": 86.0,
             "width": 176.0,
-            "height": 17.0,
+            "height": 0.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -159,16 +159,16 @@
             "text": "P2",
             "y": 134.0,
             "width": 176.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "D2",
-            "y": 171.0,
+            "y": 172.0,
             "width": 176.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         }
@@ -179,11 +179,11 @@
           "to": "p2",
           "rel_type": "rel_b",
           "start_point": {
-            "x": 368.057,
+            "x": 366.397,
             "y": 610.0
           },
           "end_point": {
-            "x": 340.714,
+            "x": 341.36,
             "y": 404.0
           },
           "offset_x": 10.0,
@@ -192,7 +192,7 @@
             "text": "override",
             "y": 0.0,
             "width": 39.48,
-            "height": 28.0,
+            "height": 26.0,
             "line_count": 2.0
           },
           "techn": null,

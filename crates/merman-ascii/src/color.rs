@@ -3,7 +3,6 @@
 pub enum AsciiColorMode {
     #[default]
     Plain,
-    Auto,
     Ansi16,
     Ansi256,
     TrueColor,

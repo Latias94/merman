@@ -72,16 +72,6 @@ impl BinaryIndexedTree {
         }
         true
     }
-
-    pub fn clear(&mut self) {
-        self.binary_sums.fill(0);
-        self.nums_per_index.fill(0);
-        self.size = 0;
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.size == 0
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -106,6 +96,7 @@ impl CrossingsCounter {
         self.count_crossings_on_ports(graph, &ports, &mut index_tree)
     }
 
+    #[cfg(test)]
     pub fn count_all_crossings(&mut self, graph: &LGraph) -> usize {
         let current_order = graph
             .layers
@@ -568,6 +559,54 @@ mod tests {
 
         assert_eq!(crossing_order, 1);
         assert_eq!(improved_order, 0);
+    }
+
+    #[test]
+    fn crossing_counter_reuse_matches_a_fresh_counter_after_order_changes() {
+        let graph = graph(
+            vec![node("Top"), node("Bottom"), node("Left"), node("Right")],
+            vec![
+                edge("Top-Right", "Top", "Right"),
+                edge("Bottom-Left", "Bottom", "Left"),
+            ],
+        );
+        let top = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Top")
+            .unwrap();
+        let bottom = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Bottom")
+            .unwrap();
+        let left = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Left")
+            .unwrap();
+        let right = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Right")
+            .unwrap();
+        let crossing_order = vec![vec![top, bottom], vec![left, right]];
+        let non_crossing_order = vec![vec![top, bottom], vec![right, left]];
+
+        let mut reused = CrossingsCounter::new();
+        assert_eq!(
+            reused.count_all_crossings_in_order(&graph, &crossing_order),
+            1
+        );
+        assert_eq!(
+            reused.count_all_crossings_in_order(&graph, &non_crossing_order),
+            0
+        );
+
+        let reused_result = reused.count_all_crossings_in_order(&graph, &crossing_order);
+        let fresh_result =
+            CrossingsCounter::new().count_all_crossings_in_order(&graph, &crossing_order);
+        assert_eq!(reused_result, fresh_result);
     }
 
     #[test]

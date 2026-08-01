@@ -1,0 +1,34 @@
+---
+config:
+  fontFamily: courier
+  fontSize: 16px
+  sequence:
+    actorFontFamily: courier
+    noteFontFamily: courier
+    messageFontFamily: courier
+  handDrawnSeed: 1
+  architecture:
+    seed: 1
+  cynefin:
+    seed: 1
+---
+cynefin-beta
+        title Incident Response
+
+        complex
+          "Investigate root cause"
+          "Run chaos experiment"
+
+        complicated
+          "Analyze performance data"
+          "Expert review needed"
+
+        clear
+          "Restart service"
+          "Apply known fix"
+
+        chaotic
+          "Page on-call immediately"
+
+        confusion
+          "Unknown failure mode"

@@ -1,4 +1,4 @@
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, TextStyle, WrapMode, measure_mermaid_text_dimensions};
 use merman_core::diagrams::c4::C4DiagramRenderModel;
 
 mod config;
@@ -17,73 +17,6 @@ struct TextMeasure {
     line_count: usize,
 }
 
-fn js_round_pos(v: f64) -> f64 {
-    if !(v.is_finite() && v >= 0.0) {
-        0.0
-    } else {
-        (v + 0.5).floor()
-    }
-}
-
-fn c4_normalize_font_key(font_family: &str) -> String {
-    font_family
-        .chars()
-        .filter_map(|ch| {
-            if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == ';' {
-                None
-            } else {
-                Some(ch.to_ascii_lowercase())
-            }
-        })
-        .collect()
-}
-
-fn c4_font_weight_key(style: &TextStyle) -> String {
-    style
-        .font_weight
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("normal")
-        .to_ascii_lowercase()
-}
-
-fn c4_text_width_override_px(style: &TextStyle, text: &str) -> Option<f64> {
-    let font_family = style
-        .font_family
-        .as_deref()
-        .unwrap_or(C4_DEFAULT_FONT_FAMILY);
-    let font_key = c4_normalize_font_key(font_family);
-    let font_size_key = (style.font_size.max(1.0) * 1000.0).round().max(1.0) as usize;
-    let font_weight = c4_font_weight_key(style);
-
-    crate::generated::c4_text_overrides_11_12_2::lookup_c4_text_width_px(
-        &font_key,
-        font_size_key,
-        &font_weight,
-        text.trim_end(),
-    )
-}
-
-fn c4_svg_bbox_line_height_px(style: &TextStyle) -> f64 {
-    // C4 in Mermaid@11.12.2 uses `calculateTextDimensions(...).height`, which is measured via
-    // SVG `getBBox()` and rounded with `Math.round`. Upstream fixtures show stable, integer
-    // per-line heights for the default C4 fonts:
-    // - 12px -> 14px
-    // - 14px -> 16px
-    // - 16px -> 17px
-    //
-    // These do not match our generic deterministic SVG line-height approximation (`1.1em`),
-    // so C4 owns the small rule directly instead of keeping it in generated parity data.
-    let fs = js_round_pos(style.font_size.max(1.0)) as i64;
-    match fs {
-        12 => 14.0,
-        14 => 16.0,
-        16 => 17.0,
-        _ => js_round_pos(style.font_size.max(1.0) * 1.1),
-    }
-}
-
 fn measure_c4_text(
     measurer: &dyn TextMeasurer,
     text: &str,
@@ -91,72 +24,84 @@ fn measure_c4_text(
     wrap: bool,
     text_limit_width: f64,
 ) -> TextMeasure {
-    // Mermaid's `calculateTextWidth/Height` (used by C4) draws SVG `<text>` nodes, calls
-    // `getBBox()`, and then applies `Math.round(...)` per line. To keep C4 layout + viewport
-    // parity with upstream SVG baselines, we mirror that integer rounding behavior here.
+    let dimensions = measure_mermaid_text_dimensions(measurer, text, style);
     if wrap {
         let m = measurer.measure_wrapped(text, style, Some(text_limit_width), WrapMode::SvgLike);
+        let line_count = m.line_count.max(1);
         return TextMeasure {
             width: text_limit_width,
-            height: c4_svg_bbox_line_height_px(style) * m.line_count.max(1) as f64,
-            line_count: m.line_count,
+            height: dimensions.line_height.max(0) as f64 * line_count as f64,
+            line_count,
         };
     }
 
-    let mut width: f64 = 0.0;
-    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
-    for line in &lines {
-        let bbox_width = c4_text_width_override_px(style, line)
-            .unwrap_or_else(|| measurer.measure_svg_simple_text_bbox_width_px(line, style));
-        width = width.max(js_round_pos(bbox_width));
-    }
-    let height = c4_svg_bbox_line_height_px(style) * lines.len().max(1) as f64;
     TextMeasure {
-        width,
-        height,
-        line_count: lines.len().max(1),
+        width: dimensions.width.max(0) as f64,
+        height: dimensions.height.max(0) as f64,
+        line_count: crate::text::split_html_br_lines(text).len().max(1),
     }
 }
 
 mod layout;
-pub(crate) use layout::{layout_c4_diagram, layout_c4_diagram_typed};
+pub(crate) use layout::layout_c4_diagram_typed;
 
 #[cfg(test)]
 mod tests {
-    use super::{TextStyle, c4_svg_bbox_line_height_px, c4_text_width_override_px};
+    use crate::text::{TextMeasurer, TextMetrics};
 
-    #[test]
-    fn c4_svg_bbox_line_height_uses_owner_rules() {
-        fn style(font_size: f64) -> TextStyle {
-            TextStyle {
-                font_size,
-                ..Default::default()
+    use super::{TextStyle, measure_c4_text};
+
+    struct C4ProbeMeasurer;
+
+    impl TextMeasurer for C4ProbeMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 0.0,
+                height: 0.0,
+                line_count: 3,
             }
         }
 
-        assert_eq!(c4_svg_bbox_line_height_px(&style(12.0)), 14.0);
+        fn measure_svg_simple_text_bbox_width_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            if style.font_family.as_deref() == Some("sans-serif") {
+                80.0
+            } else {
+                120.0
+            }
+        }
 
-        assert_eq!(c4_svg_bbox_line_height_px(&style(14.0)), 16.0);
-
-        assert_eq!(c4_svg_bbox_line_height_px(&style(16.0)), 17.0);
-
-        assert_eq!(c4_svg_bbox_line_height_px(&style(15.0)), 17.0);
+        fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            19.0
+        }
     }
 
     #[test]
-    fn c4_text_width_override_uses_headless_shell_metric() {
-        let style = TextStyle {
-            font_family: Some(r#""Open Sans", sans-serif"#.to_string()),
-            font_size: 14.0,
-            font_weight: None,
-        };
-
-        assert_eq!(
-            c4_text_width_override_px(
-                &style,
-                "Allows customers to view information about their bank accounts, and make payments."
-            ),
-            Some(532.484375)
+    fn c4_unwrapped_text_consumes_shared_mermaid_dimensions() {
+        let measured = measure_c4_text(
+            &C4ProbeMeasurer,
+            "configured text",
+            &TextStyle::default(),
+            false,
+            500.0,
         );
+
+        assert_eq!(measured.width, 120.0);
+        assert_eq!(measured.height, 19.0);
+        assert_eq!(measured.line_count, 1);
+    }
+
+    #[test]
+    fn c4_wrapped_text_uses_shared_bbox_line_height() {
+        let measured = measure_c4_text(
+            &C4ProbeMeasurer,
+            "Allows customers to view information about their bank accounts, and make payments.",
+            &TextStyle::default(),
+            true,
+            200.0,
+        );
+
+        assert_eq!(measured.width, 200.0);
+        assert_eq!(measured.height, 57.0);
+        assert_eq!(measured.line_count, 3);
     }
 }

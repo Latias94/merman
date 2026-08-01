@@ -1,84 +1,33 @@
 mod common;
 
-use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{
-    SvgRenderOptions, render_state_diagram_v2_debug_svg, render_state_diagram_v2_svg,
-};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_state_svg_from_text(text: &str) -> String {
     render_state_svg_from_text_with_engine(Engine::new(), text)
 }
 
 fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare State artifact");
 
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::StateDiagramV2(layout) = &out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
-
-    render_state_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
-}
-
-#[test]
-fn state_svg_preserves_incomplete_self_loop_helper_segments() {
-    let text = "stateDiagram-v2\nA --> A: again\n";
-    let parsed =
-        futures::executor::block_on(Engine::new().parse_diagram(text, ParseOptions::default()))
-            .expect("parse ok")
-            .expect("diagram detected");
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::StateDiagramV2(mut layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
-
-    let logical = layout
-        .edges
-        .iter()
-        .find(|edge| edge.from == "A" && edge.to == "A")
-        .cloned()
-        .expect("logical self-loop");
-    let mut first = logical.clone();
-    first.id = "A-cyclic-special-1".to_string();
-    first.points = logical.points[0..2].to_vec();
-    first.label = None;
-    let mut middle = logical.clone();
-    middle.id = "A-cyclic-special-mid".to_string();
-    middle.points = logical.points[1..3].to_vec();
-    layout.edges.retain(|edge| edge.id != logical.id);
-    layout.edges.extend([first, middle]);
-
-    let svg = render_state_diagram_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
-
-    assert!(svg.contains(r#"data-id="A-cyclic-special-1""#), "{svg}");
-    assert!(svg.contains(r#"data-id="A-cyclic-special-mid""#), "{svg}");
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render State artifact")
+        .svg()
+        .to_string()
 }
 
 fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
-    let init = serde_json::json!({
+    let site_config = MermaidConfig::from_value(serde_json::json!({
         "look": "handDrawn",
         "handDrawnSeed": seed,
         "themeVariables": {
@@ -92,10 +41,8 @@ fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
             "noteBkgColor": "#fef3c7",
             "noteBorderColor": "#92400e"
         }
-    });
-    let source = format!(
-        r#"%%{{init: {init}}}%%
-stateDiagram-v2
+    }));
+    let source = r#"stateDiagram-v2
 [*] --> Idle
 state Decide <<choice>>
 Idle --> Decide
@@ -104,41 +51,42 @@ state Fork <<fork>>
 Fork --> Join
 state Join <<join>>
 Join --> [*]
-note right of Idle : seeded note"#
-    );
+note right of Idle : seeded note"#;
 
-    render_state_svg_from_text_with_engine(legacy_init_theme_compat_engine(), &source)
-}
-
-#[test]
-fn state_debug_svg_includes_cluster_positioning_metadata() {
-    let text = "stateDiagram-v2\n[*] --> Active\nstate Active {\n  direction TB\n  Idle --> Idle: LOG\n}\n";
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
-
-    let opts = SvgRenderOptions::default();
-    let svg = render_state_diagram_v2_debug_svg(&layout, &opts);
-
-    assert!(svg.contains(r#"id="cluster-Active""#));
-    assert!(svg.contains(r#"data-diff="#));
-    assert!(svg.contains(r#"data-offset-y="#));
+    render_state_svg_from_text_with_engine(Engine::new().with_site_config(site_config), source)
 }
 
 #[test]
 fn state_svg_honors_mermaid_11_16_theme_css_options() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "transitionColor": "#202020",
+            "lineColor": "#303030",
+            "nodeBorder": "#404040",
+            "stateLabelColor": "#505050",
+            "mainBkg": "#606060",
+            "background": "#707070",
+            "altBackground": "#808080",
+            "strokeWidth": 4,
+            "noteBorderColor": "#909090",
+            "noteBkgColor": "#a0a0a0",
+            "noteTextColor": "#b0b0b0",
+            "labelBackgroundColor": "#c0c0c0",
+            "edgeLabelBackground": "#d0d0d0",
+            "transitionLabelColor": "#e0e0e0",
+            "specialStateColor": "#f0f0f0",
+            "innerEndBackground": "#010101",
+            "compositeBackground": "#020202",
+            "stateBkg": "#030303",
+            "stateBorder": "#040404",
+            "compositeTitleBackground": "#050505"
+        }
+    })));
     let svg = render_state_svg_from_text_with_engine(
-        legacy_init_theme_compat_engine(),
-        r##"%%{init: {"themeVariables": {"transitionColor": "#202020", "lineColor": "#303030", "nodeBorder": "#404040", "stateLabelColor": "#505050", "mainBkg": "#606060", "background": "#707070", "altBackground": "#808080", "strokeWidth": 4, "noteBorderColor": "#909090", "noteBkgColor": "#a0a0a0", "noteTextColor": "#b0b0b0", "labelBackgroundColor": "#c0c0c0", "edgeLabelBackground": "#d0d0d0", "transitionLabelColor": "#e0e0e0", "specialStateColor": "#f0f0f0", "innerEndBackground": "#010101", "compositeBackground": "#020202", "stateBkg": "#030303", "stateBorder": "#040404", "compositeTitleBackground": "#050505"}}}%%
-stateDiagram-v2
+        engine,
+        r#"stateDiagram-v2
 [*] --> Active: start
-Active --> [*]: done"##,
+Active --> [*]: done"#,
     );
 
     assert!(
@@ -187,14 +135,27 @@ Active --> [*]: done"##,
 
 #[test]
 fn state_svg_neo_look_emits_neo_marker_and_cluster_theme_resources() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "neo",
+        "themeVariables": {
+            "transitionColor": "#202020",
+            "mainBkg": "#606060",
+            "stateBorder": "#040404",
+            "strokeWidth": 4,
+            "useGradient": true,
+            "gradientStart": "#112233",
+            "gradientStop": "#445566",
+            "dropShadow": "url(#drop-shadow)",
+            "radius": 3
+        }
+    })));
     let svg = render_state_svg_from_text_with_engine(
-        legacy_init_theme_compat_engine(),
-        r##"%%{init: {"look": "neo", "themeVariables": {"transitionColor": "#202020", "mainBkg": "#606060", "stateBorder": "#040404", "strokeWidth": 4, "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566", "dropShadow": "url(#drop-shadow)", "radius": 3}}}%%
-stateDiagram-v2
+        engine,
+        r#"stateDiagram-v2
 [*] --> Active: start
 state Active {
   Idle --> Busy
-}"##,
+}"#,
     );
 
     assert!(
@@ -334,6 +295,31 @@ note right of A : Note text
 }
 
 #[test]
+fn state_svg_serializes_sanitized_note_images_as_valid_xhtml() {
+    let svg = render_state_svg_from_text(
+        r#"stateDiagram-v2
+A
+note right of A
+  <a href='https://mermaid.js.org/' target='_blank'><code>note about mermaid</code></a><br/>
+  <img src=x onerror=alert(1)>
+end note
+"#,
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG XML");
+    let image = document
+        .descendants()
+        .find(|node| node.is_element() && node.tag_name().name() == "img")
+        .expect("sanitized note image");
+    assert_eq!(image.attribute("src"), Some("x"));
+    assert_eq!(
+        image.attribute("style"),
+        Some("display: flex; flex-direction: column; width: 100%;")
+    );
+    assert!(image.attribute("onerror").is_none());
+}
+
+#[test]
 fn state_svg_root_html_labels_false_uses_svg_text_for_rect_with_title() {
     let svg = render_state_svg_from_text(
         r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
@@ -440,10 +426,23 @@ click S1 href "javascript:alert(1)"
 
 #[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "stateBkg": "#101827",
+            "stateBorder": "#38bdf8",
+            "mainBkg": "#0f172a",
+            "strokeWidth": 4,
+            "specialStateColor": "#f97316",
+            "innerEndBackground": "#22c55e",
+            "background": "#020617",
+            "compositeBackground": "#111827",
+            "noteBkgColor": "#fef3c7",
+            "noteBorderColor": "#92400e"
+        }
+    })));
     let svg = render_state_svg_from_text_with_engine(
-        legacy_init_theme_compat_engine(),
-        r##"%%{init: {"themeVariables": {"stateBkg": "#101827", "stateBorder": "#38bdf8", "mainBkg": "#0f172a", "strokeWidth": 4, "specialStateColor": "#f97316", "innerEndBackground": "#22c55e", "background": "#020617", "compositeBackground": "#111827", "noteBkgColor": "#fef3c7", "noteBorderColor": "#92400e"}}}%%
-stateDiagram-v2
+        engine,
+        r#"stateDiagram-v2
 [*] --> Idle
 state Decide <<choice>>
 Idle --> Decide
@@ -452,7 +451,7 @@ state Fork <<fork>>
 Fork --> Join
 state Join <<join>>
 Join --> [*]
-note right of Idle : themed note"##,
+note right of Idle : themed note"#,
     );
 
     assert!(

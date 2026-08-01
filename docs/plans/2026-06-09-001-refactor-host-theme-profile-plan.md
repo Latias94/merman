@@ -189,7 +189,7 @@ This change affects public Rust API, shared binding options, SVG output pipeline
 
 ### U8. Run focused validation and update release-facing notes
 
-- **Goal:** Prove the refactor is safe enough for alpha users and downstream integrations.
+- **Goal:** Prove the refactor is safe for existing users and downstream integrations.
 - **Requirements:** R1, R3, R5, R6, R8
 - **Dependencies:** U1, U2, U3, U4, U5, U6, U7
 - **Files:** `crates/merman/tests/theme_profile_coverage.rs`, `crates/merman-bindings-core/src/render.rs`, `docs/rendering/diagram-theme-coverage.md`, `docs/releasing/*`

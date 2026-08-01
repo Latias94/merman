@@ -10,7 +10,7 @@ mod css;
 mod html;
 mod xml;
 
-use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
+use crate::text::{TextMeasurer, TextStyle};
 
 use attr::{is_self_closing, parse_attr_f64, parse_attr_str};
 use context::{
@@ -34,7 +34,10 @@ use xml::{escape_xml_attr, escape_xml_text};
 /// Important:
 /// - This does not aim for Mermaid DOM parity.
 /// - For parity-focused SVG output, keep the original SVG unchanged.
-pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
+pub fn foreign_object_label_fallback_svg_text(
+    svg: &str,
+    text_measurer: &dyn TextMeasurer,
+) -> String {
     if !svg.contains("<foreignObject") {
         return svg.to_string();
     }
@@ -46,8 +49,6 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
     let label_bkg_default = "rgba(232, 232, 232, 0.5)".to_string();
     let label_bkg =
         extract_css_background_color_for_class(svg, "labelBkg").unwrap_or(label_bkg_default);
-    let fallback_measurer = VendoredFontMetricsTextMeasurer::default();
-
     let mut i = 0usize;
     while let Some(lt_rel) = svg[i..].find('<') {
         let lt = i + lt_rel;
@@ -165,12 +166,13 @@ pub fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
                         font_family: Some(font_family.clone()),
                         font_size,
                         font_weight: font_weight.clone(),
+                        font_style: None,
                     };
                     let wrap_width = foreign_object_html_soft_wrap_width(tag, inner);
                     let lines = wrap_html_lines_to_width(
                         raw_lines,
                         wrap_width,
-                        &fallback_measurer,
+                        text_measurer,
                         &measure_style,
                     );
                     let line_height = font_size * 1.5;
@@ -285,7 +287,12 @@ fn is_start_switch_tag(tag: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::foreign_object_label_fallback_svg_text;
+    use super::foreign_object_label_fallback_svg_text as render_fallback;
+    use crate::text::VendoredFontMetricsTextMeasurer;
+
+    fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
+        render_fallback(svg, &VendoredFontMetricsTextMeasurer::default())
+    }
 
     #[test]
     fn foreign_object_inside_switch_with_native_text_generates_tagged_fallback() {

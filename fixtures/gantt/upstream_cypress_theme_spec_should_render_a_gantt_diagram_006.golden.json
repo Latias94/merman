@@ -2,7 +2,7 @@
   "diagramType": "gantt",
   "model": {
     "type": "gantt",
-    "title": ":Adding GANTT diagram functionality to mermaid",
+    "title": "                    :Adding GANTT diagram functionality to mermaid",
     "accTitle": "This is a title",
     "accDescr": "This is a description",
     "dateFormat": "               :YYYY-MM-DD",

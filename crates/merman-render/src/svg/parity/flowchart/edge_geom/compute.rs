@@ -148,20 +148,16 @@ pub(super) fn flowchart_compute_edge_path_geom(
     let local_points = scratch.local_points.as_slice();
 
     use super::{
-        FlowchartEdgeTraceInput, TraceEndpointIntersection, align_elk_endpoint_adapters_to_route,
+        FlowchartEdgeTraceInput, align_elk_endpoint_adapters_to_route,
         apply_flowchart_elk_endpoint_cutter, boundary_for_cluster, boundary_for_node,
         collapse_short_terminal_marker_stub, curve_path_d_and_bounds, cut_path_at_intersect_into,
         dedup_consecutive_points_into, force_intersect_for_layout_shape,
         intersect_for_layout_shape, is_rounded_intersect_shift_shape,
         line_with_offset_for_edge_type, maybe_collapse_degenerate_subgraph_edge_route,
-        maybe_fix_corners, maybe_normalize_selfedge_loop_points,
-        maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
-        maybe_snap_shallow_basis_triplet_y_to_f32, maybe_truncate_data_point,
-        normalize_cyclic_special_data_points, rounded_line_with_marker_offsets_for_edge_type,
-        write_flowchart_edge_trace,
+        maybe_fix_corners, maybe_remove_redundant_cluster_run_point, record_flowchart_edge_trace,
+        rounded_line_with_marker_offsets_for_edge_type,
     };
 
-    let is_cyclic_special = edge.id.contains("-cyclic-special-");
     let is_elk_layout = ctx.diagram_type == "flowchart-elk"
         || ctx
             .config
@@ -169,7 +165,6 @@ pub(super) fn flowchart_compute_edge_path_geom(
             .is_some_and(|layout| layout.eq_ignore_ascii_case("elk"));
     dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
     let base_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_a;
-    maybe_normalize_selfedge_loop_points(base_points);
 
     scratch.tmp_points_b.clear();
     scratch.tmp_points_b.extend_from_slice(base_points);
@@ -182,7 +177,6 @@ pub(super) fn flowchart_compute_edge_path_geom(
             edge,
             origin_x,
             origin_y,
-            is_cyclic_special,
             base_points,
             points_after_intersect,
         );
@@ -192,7 +186,6 @@ pub(super) fn flowchart_compute_edge_path_geom(
                 edge,
                 origin_x,
                 origin_y,
-                is_cyclic_special,
                 &mut elk_endpoint_adapters,
                 points_after_intersect,
             );
@@ -212,8 +205,8 @@ pub(super) fn flowchart_compute_edge_path_geom(
             .get(layout_to)
             .and_then(|n| n.layout_shape.as_deref());
         if let (Some(tail), Some(head)) = (
-            boundary_for_node(ctx, layout_from, origin_x, origin_y, is_cyclic_special),
-            boundary_for_node(ctx, layout_to, origin_x, origin_y, is_cyclic_special),
+            boundary_for_node(ctx, layout_from, origin_x, origin_y),
+            boundary_for_node(ctx, layout_to, origin_x, origin_y),
         ) {
             let interior = &base_points[1..base_points.len() - 1];
             if !interior.is_empty() {
@@ -304,35 +297,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
     // Mermaid sets `data-points` as `btoa(JSON.stringify(points))` *before* any cluster clipping
     // (`cutPathAtIntersect`). Keep that exact ordering for strict DOM parity.
     let points_after_intersect_for_trace = trace_enabled.then(|| scratch.tmp_points_b.clone());
-    let points_for_data_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
-
-    let mut trace_points_before_norm: Option<Vec<crate::model::LayoutPoint>> = None;
-    let mut trace_points_after_norm: Option<Vec<crate::model::LayoutPoint>> = None;
-    let mut trace_endpoint: Option<TraceEndpointIntersection> = None;
-    if trace_enabled {
-        trace_points_before_norm = Some(points_for_data_points.clone());
-    }
-
-    if is_cyclic_special {
-        normalize_cyclic_special_data_points(
-            ctx,
-            edge,
-            origin_x,
-            origin_y,
-            points_for_data_points,
-            &mut trace_endpoint,
-        );
-        if trace_enabled {
-            trace_points_after_norm = Some(points_for_data_points.clone());
-        }
-    }
-    for p in points_for_data_points.iter_mut() {
-        // Keep truncation scoped to y-coordinates: the observed upstream fixed-point artifacts
-        // are for vertical intersections, while x-coordinates can legitimately land on thirds for
-        // some polygon shapes (and truncating those breaks strict parity).
-        p.x = maybe_snap_data_point_to_f32(p.x);
-        p.y = maybe_snap_data_point_to_f32(maybe_truncate_data_point(p.y));
-    }
+    let points_for_data_points = &scratch.tmp_points_b;
 
     let interpolate = if is_elk_layout {
         "rounded"
@@ -368,17 +333,6 @@ pub(super) fn flowchart_compute_edge_path_geom(
         maybe_remove_redundant_cluster_run_point(points_for_render);
     }
 
-    if is_basis
-        && is_cyclic_special
-        && edge.id.contains("-cyclic-special-mid")
-        && points_for_render.len() > 3
-    {
-        let a = points_for_render[0].clone();
-        let mid = points_for_render[points_for_render.len() / 2].clone();
-        let b = points_for_render[points_for_render.len() - 1].clone();
-        points_for_render.clear();
-        points_for_render.extend([a, mid, b]);
-    }
     if points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
         points_for_render.clear();
@@ -389,13 +343,8 @@ pub(super) fn flowchart_compute_edge_path_geom(
     // Mermaid's Dagre pipeline typically provides at least one intermediate point even for
     // straight-looking edges, resulting in `C` segments in the SVG `d`. To keep our output closer
     // to Mermaid's command sequence, re-insert a midpoint when our route collapses to two points
-    // after normalization (but keep cluster-adjacent edges as-is: Mermaid uses straight segments
-    // there).
-    if is_basis
-        && points_for_render.len() == 2
-        && interpolate != "linear"
-        && (!is_cluster_edge || is_cyclic_special)
-    {
+    // after clipping (but keep cluster-adjacent edges as-is: Mermaid uses straight segments there).
+    if is_basis && points_for_render.len() == 2 && interpolate != "linear" && !is_cluster_edge {
         let a = &points_for_render[0];
         let b = &points_for_render[1];
         points_for_render.insert(
@@ -418,10 +367,6 @@ pub(super) fn flowchart_compute_edge_path_geom(
     // its own rounded-corner generator and skips this pre-processing upstream.
     if !is_rounded {
         maybe_fix_corners(&mut line_data);
-    }
-
-    if is_basis {
-        maybe_snap_shallow_basis_triplet_y_to_f32(&mut line_data, edge.edge_type.as_deref());
     }
 
     // Mermaid shortens edge paths so markers don't render on top of the line (see
@@ -469,6 +414,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
         rounded_corner_mask.as_deref(),
     );
     let pb = svg_path_bounds_from_d(&d).or(raw_pb);
+    let path_length = svg_path_length_from_d(&d);
 
     let mut label_position = None;
     if let Some(points) = points_for_label.as_deref() {
@@ -485,7 +431,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
     }
 
     if trace_enabled {
-        write_flowchart_edge_trace(FlowchartEdgeTraceInput {
+        record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
             edge,
             layout_edge: le,
@@ -494,10 +440,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
             base_points,
             points_after_intersect_for_trace: points_after_intersect_for_trace.as_deref(),
             points_for_render,
-            points_for_data_points_before_norm: trace_points_before_norm.as_deref(),
-            points_for_data_points_after_norm: trace_points_after_norm.as_deref(),
-            points_for_data_points_final: points_for_data_points,
-            endpoint_intersection: trace_endpoint,
+            points_for_data_points,
         });
     }
 
@@ -515,7 +458,11 @@ pub(super) fn flowchart_compute_edge_path_geom(
     Some(FlowchartEdgePathGeom {
         d,
         pb,
+        data_points: points_for_data_points.clone(),
         data_points_b64,
+        original_path_length: path_length,
+        path_length,
+        line_hop_applied: false,
         label_position,
         bounds_skipped_for_viewbox: skipped_bounds_for_viewbox,
     })

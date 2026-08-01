@@ -5,14 +5,14 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 603.0,
-        "max_y": 400.0
+        "max_x": 579.0,
+        "max_y": 382.0
       },
-      "width": 653.0,
-      "height": 410.0,
+      "width": 629.0,
+      "height": 392.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Context",
       "title": null,
       "boundaries": [
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 453.0,
-          "height": 284.0,
+          "width": 429.0,
+          "height": 266.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -52,8 +52,8 @@
           "type_c4_shape": "external_person",
           "x": 150.0,
           "y": 166.0,
-          "width": 353.0,
-          "height": 134.0,
+          "width": 329.0,
+          "height": 116.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -71,16 +71,16 @@
             "text": "",
             "y": 86.0,
             "width": 0.0,
-            "height": 17.0,
+            "height": 0.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank, with personal bank accounts.",
-            "y": 123.0,
-            "width": 333.0,
-            "height": 16.0,
+            "y": 106.0,
+            "width": 309.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         }

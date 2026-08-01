@@ -1,0 +1,510 @@
+{
+  "artifacts": {
+    "corpus": {
+      "bytes": 24265,
+      "path": "tools/bench/corpus.json",
+      "sha256": "12174013d7e88d3b73eb1251435d1ab35130315758dca0a6adebce257a6cce75"
+    },
+    "fixtures": [
+      {
+        "bytes": 35,
+        "name": "flowchart_tiny",
+        "path": "crates/merman/benches/fixtures/flowchart_tiny.mmd",
+        "sha256": "227f716d89bd48e9d874bfad1e34014629ee4363594702d7ef842aa35fcd523d"
+      },
+      {
+        "bytes": 216,
+        "name": "flowchart_small",
+        "path": "crates/merman/benches/fixtures/flowchart_small.mmd",
+        "sha256": "478e33d6d0184a544f28c52382b524c9c3bbd04f44f136b1dee85262a547a94c"
+      },
+      {
+        "bytes": 1474,
+        "name": "flowchart_medium",
+        "path": "crates/merman/benches/fixtures/flowchart_medium.mmd",
+        "sha256": "b65d43d4c67df71bc188829344583b977b3c2a805e5649d711d849a7a56d6572"
+      },
+      {
+        "bytes": 6419,
+        "name": "flowchart_large",
+        "path": "crates/merman/benches/fixtures/flowchart_large.mmd",
+        "sha256": "edba73dc4c0a12417e052ec3c98ada82b5d773c4346b5c735df5dfa354f5b161"
+      },
+      {
+        "bytes": 815,
+        "name": "flowchart_ports_heavy",
+        "path": "crates/merman/benches/fixtures/flowchart_ports_heavy.mmd",
+        "sha256": "ab22e6ae5085a10fc01bb9e7f8d89c26b728b95c84786d7685dc2986f3932217"
+      },
+      {
+        "bytes": 596,
+        "name": "flowchart_weave",
+        "path": "crates/merman/benches/fixtures/flowchart_weave.mmd",
+        "sha256": "54b8aecd1ce6fea7f1ca40fcd728f79ecd170989dde829caf1c0e5ceedef975f"
+      },
+      {
+        "bytes": 509,
+        "name": "flowchart_backedges_subgraphs",
+        "path": "crates/merman/benches/fixtures/flowchart_backedges_subgraphs.mmd",
+        "sha256": "03c3216b6719c96a6d178b99afb8d21154f4cbb49c1a589ea5d8c01a6a03be28"
+      },
+      {
+        "bytes": 426,
+        "name": "flowchart_sparse_components",
+        "path": "crates/merman/benches/fixtures/flowchart_sparse_components.mmd",
+        "sha256": "958e70b9857a0d2ea9978dda49628e7daeb892a5d525253dc23f86309f3e2f25"
+      },
+      {
+        "bytes": 515,
+        "name": "flowchart_lanes_crossfeed",
+        "path": "crates/merman/benches/fixtures/flowchart_lanes_crossfeed.mmd",
+        "sha256": "84a3aefef30df27412edea3871c3249ae53ddae39fe367f20b64baff74f0197f"
+      },
+      {
+        "bytes": 449,
+        "name": "flowchart_grid_feedback",
+        "path": "crates/merman/benches/fixtures/flowchart_grid_feedback.mmd",
+        "sha256": "186741d5504679d75d7bd8ae2d9b1c5094c09e71b069860dc181bcda07bf7fba"
+      },
+      {
+        "bytes": 530,
+        "name": "flowchart_fanout_returns",
+        "path": "crates/merman/benches/fixtures/flowchart_fanout_returns.mmd",
+        "sha256": "753f427ba25a447dd4a0aa5423e5b7c21af3e5c08b33f8c90375caa20d191170"
+      },
+      {
+        "bytes": 487,
+        "name": "flowchart_label_collision",
+        "path": "crates/merman/benches/fixtures/flowchart_label_collision.mmd",
+        "sha256": "cfcd47eb7ec0b482edefe331bc50a976537ee59f521d6ccd8342fa3be9e0e486"
+      },
+      {
+        "bytes": 725,
+        "name": "flowchart_nested_clusters",
+        "path": "crates/merman/benches/fixtures/flowchart_nested_clusters.mmd",
+        "sha256": "29e4a3e13446e123a77064cbc07fbe3ae6b8dbfdcc7fe842649b050909d4e2f1"
+      },
+      {
+        "bytes": 383,
+        "name": "flowchart_asymmetric_components",
+        "path": "crates/merman/benches/fixtures/flowchart_asymmetric_components.mmd",
+        "sha256": "f7d1c5e751db05264965b378dd8c9cf1637bc018df7968bba5172a60de052c4a"
+      },
+      {
+        "bytes": 364,
+        "name": "flowchart_parallel_merges",
+        "path": "crates/merman/benches/fixtures/flowchart_parallel_merges.mmd",
+        "sha256": "e167fcebb9c1382a0d0ac604f52d211848f0ecb3928b83132387c1aea5b18590"
+      },
+      {
+        "bytes": 1141,
+        "name": "flowchart_long_edge_labels",
+        "path": "crates/merman/benches/fixtures/flowchart_long_edge_labels.mmd",
+        "sha256": "d0b6e45242bacdc28667f507a3f3edecb11543929a762e18cc30f60c2c2dee39"
+      },
+      {
+        "bytes": 464,
+        "name": "flowchart_selfloop_bidi",
+        "path": "crates/merman/benches/fixtures/flowchart_selfloop_bidi.mmd",
+        "sha256": "d4bf4e7928761feded0593e94b6a270e42e2c329b4fad07ee2cab9073f43c1c7"
+      },
+      {
+        "bytes": 625,
+        "name": "flowchart_component_packing",
+        "path": "crates/merman/benches/fixtures/flowchart_component_packing.mmd",
+        "sha256": "972a97ec747666d71015039680ddee7379a8b99a02cc8ca8f2d24108fa4c7580"
+      },
+      {
+        "bytes": 659,
+        "name": "flowchart_direction_conflict",
+        "path": "crates/merman/benches/fixtures/flowchart_direction_conflict.mmd",
+        "sha256": "dcd70c6640b91e531c49155bd97206785d48557aeff86cb0e79ab8af516fa277"
+      },
+      {
+        "bytes": 652,
+        "name": "flowchart_parallel_label_stack",
+        "path": "crates/merman/benches/fixtures/flowchart_parallel_label_stack.mmd",
+        "sha256": "5fd72af298e6d392e56d088a258222fc4ecd6de994d555b6576c80d27a4fa80d"
+      },
+      {
+        "bytes": 43,
+        "name": "class_tiny",
+        "path": "crates/merman/benches/fixtures/class_tiny.mmd",
+        "sha256": "44c8fd543c36285115bd22071d20066f89ea189e6092c80228529d2718e8ff8e"
+      },
+      {
+        "bytes": 995,
+        "name": "class_medium",
+        "path": "crates/merman/benches/fixtures/class_medium.mmd",
+        "sha256": "e99fac382b50d6499b96c5793deeb833d0bb92283127bfe17fffc8bbc909b637"
+      },
+      {
+        "bytes": 519,
+        "name": "class_namespace_dense",
+        "path": "crates/merman/benches/fixtures/stress_class_dense_namespaces_generics_001.mmd",
+        "sha256": "c567079c148de9b3c5140517a8a893cfb78d90cb954e473ad642556b95c3382e"
+      },
+      {
+        "bytes": 28,
+        "name": "state_tiny",
+        "path": "crates/merman/benches/fixtures/state_tiny.mmd",
+        "sha256": "4497e04d6a2fdbb8d3ab9ac7b511246702f42c481cd1bc066966b9f353b491b9"
+      },
+      {
+        "bytes": 304,
+        "name": "state_medium",
+        "path": "crates/merman/benches/fixtures/state_medium.mmd",
+        "sha256": "f578b7b8f8a16734ce2ffa9d6a5781e5d6ad1a8cae024d966240fa5c8774e6ca"
+      },
+      {
+        "bytes": 34,
+        "name": "sequence_tiny",
+        "path": "crates/merman/benches/fixtures/sequence_tiny.mmd",
+        "sha256": "8be75c6c2d761d821d8bd3bad6878bc2ba6fc4aeb7f3a8fee69efdcace86691a"
+      },
+      {
+        "bytes": 550,
+        "name": "sequence_medium",
+        "path": "crates/merman/benches/fixtures/sequence_medium.mmd",
+        "sha256": "1e5132d50777a0f768646d4dbd06fc79b7ca05827ecee78ff8e296b57cfaebe9"
+      },
+      {
+        "bytes": 429,
+        "name": "er_medium",
+        "path": "crates/merman/benches/fixtures/er_medium.mmd",
+        "sha256": "e025a48153c9a44564235966da192e7dd1815dfd583743eae75203b1fc6c3479"
+      },
+      {
+        "bytes": 14,
+        "name": "info_medium",
+        "path": "crates/merman/benches/fixtures/info_medium.mmd",
+        "sha256": "80fbb122aac94c51df0cbefcd27981ddd9a7ec51aa2a85add699f4f5525b01d1"
+      },
+      {
+        "bytes": 155,
+        "name": "pie_medium",
+        "path": "crates/merman/benches/fixtures/pie_medium.mmd",
+        "sha256": "b9aad857f6408b08b719696c142d56b0364865af5f09f4333540321ce90e768e"
+      },
+      {
+        "bytes": 182,
+        "name": "mindmap_medium",
+        "path": "crates/merman/benches/fixtures/mindmap_medium.mmd",
+        "sha256": "a0fe4aa2a0ef2fb356ffbb627026d88c3bf86ea4c3ba17c01e6575bc8e22a8bc"
+      },
+      {
+        "bytes": 169,
+        "name": "journey_medium",
+        "path": "crates/merman/benches/fixtures/journey_medium.mmd",
+        "sha256": "af7be3b92dae3a2b600d5df5d61a6454ca68fc2a7f4235cd624f98c043a99fa3"
+      },
+      {
+        "bytes": 146,
+        "name": "timeline_medium",
+        "path": "crates/merman/benches/fixtures/timeline_medium.mmd",
+        "sha256": "40a2e8b0c74150e145b67680ed71558dce5183c5ba05535c8527334ffd42da30"
+      },
+      {
+        "bytes": 250,
+        "name": "gantt_medium",
+        "path": "crates/merman/benches/fixtures/gantt_medium.mmd",
+        "sha256": "276c8474274911fad28e9e3695137a760f89f3429a5dac0180a9a475f62222f7"
+      },
+      {
+        "bytes": 251,
+        "name": "requirement_medium",
+        "path": "crates/merman/benches/fixtures/requirement_medium.mmd",
+        "sha256": "219c5d15060bc00139be5aab4737f1203badfb8f4ac02ceb582970096ed3f0ac"
+      },
+      {
+        "bytes": 145,
+        "name": "gitgraph_medium",
+        "path": "crates/merman/benches/fixtures/gitgraph_medium.mmd",
+        "sha256": "baf89fc1fa20c64731feeec19c8aa9a541d40a67086fa9a5d42930e68e4d7c0f"
+      },
+      {
+        "bytes": 318,
+        "name": "c4_medium",
+        "path": "crates/merman/benches/fixtures/c4_medium.mmd",
+        "sha256": "27a0bf1eef1bdb6f4647715e6b817adf3373e328f62b2574bc01a0323656b4f2"
+      },
+      {
+        "bytes": 48,
+        "name": "sankey_medium",
+        "path": "crates/merman/benches/fixtures/sankey_medium.mmd",
+        "sha256": "1af836f53b49b95aa28f917e1d02de9e317a71f8434475b44fb9d38edec982f6"
+      },
+      {
+        "bytes": 279,
+        "name": "quadrant_medium",
+        "path": "crates/merman/benches/fixtures/quadrant_medium.mmd",
+        "sha256": "684ea68c285e4f362d3053430ed7036de035dd37050ab887301e8885ae7c3dd8"
+      },
+      {
+        "bytes": 116,
+        "name": "zenuml_medium",
+        "path": "crates/merman/benches/fixtures/zenuml_medium.mmd",
+        "sha256": "24b1a3be556f34e72d1421de23883f01adcaaa33da1b0a8b5e810b2a1c7de740"
+      },
+      {
+        "bytes": 31,
+        "name": "block_medium",
+        "path": "crates/merman/benches/fixtures/block_medium.mmd",
+        "sha256": "d26233e887c0b6e1d06d29cd517b5e019fd193d36ae1b24e0b188e6b8abe638c"
+      },
+      {
+        "bytes": 54,
+        "name": "packet_medium",
+        "path": "crates/merman/benches/fixtures/packet_medium.mmd",
+        "sha256": "3b1ea83dc213c42fdec8e33f64287226443369993e38a6365cf0e945a0877e31"
+      },
+      {
+        "bytes": 114,
+        "name": "kanban_medium",
+        "path": "crates/merman/benches/fixtures/kanban_medium.mmd",
+        "sha256": "43382cbc1379cf4c8ff7399915269340c350b406ff8cee53838d407392c95689"
+      },
+      {
+        "bytes": 120,
+        "name": "architecture_medium",
+        "path": "crates/merman/benches/fixtures/architecture_medium.mmd",
+        "sha256": "5b249b03683c12ec815e81e96120069bd8a5c37eac640d3c5592ce0fb1901830"
+      },
+      {
+        "bytes": 82,
+        "name": "radar_medium",
+        "path": "crates/merman/benches/fixtures/radar_medium.mmd",
+        "sha256": "d8ed19195d24a3376bef74ed96fe43ea708a253276aecfde06e982d5a3a396e7"
+      },
+      {
+        "bytes": 96,
+        "name": "treemap_medium",
+        "path": "crates/merman/benches/fixtures/treemap_medium.mmd",
+        "sha256": "de2b58e7aecf1d81c153218a77b9783e2a238f5cbb7155482099743ba9c9bbcb"
+      },
+      {
+        "bytes": 303,
+        "name": "xychart_medium",
+        "path": "crates/merman/benches/fixtures/xychart_medium.mmd",
+        "sha256": "849085d741016c9335f02dcdfc6252ec5080b9d325c8a70ac40b5299c0313d0f"
+      },
+      {
+        "bytes": 124,
+        "name": "frontmatter_basic",
+        "path": "crates/merman/benches/fixtures/frontmatter_basic.mmd",
+        "sha256": "f6c9f3d75b3e9f39152b9d550b8bcaa806bbd4778ede731c67ee83841a5ee5b4"
+      },
+      {
+        "bytes": 145,
+        "name": "frontmatter_indented",
+        "path": "crates/merman/benches/fixtures/frontmatter_indented.mmd",
+        "sha256": "0f67456d00bbaa4884f47d897f61b39bd8a3c9d98f666c47a28becfd2d4e84e3"
+      },
+      {
+        "bytes": 225,
+        "name": "frontmatter_deep_config",
+        "path": "crates/merman/benches/fixtures/frontmatter_deep_config.mmd",
+        "sha256": "e7abb7171f41816996e59ba317164e2ee582d5e50113442bc6f96be1a08aa271"
+      }
+    ],
+    "lock": {
+      "bytes": 134732,
+      "path": "Cargo.lock",
+      "sha256": "bab19ca8bf8aa905a48420eeb392af084ae5a2edeb1999ec79078dd36e91bac4"
+    },
+    "manifest": [
+      {
+        "bytes": 6825,
+        "path": "Cargo.toml",
+        "sha256": "309006da0f5c65e7dc9a86dbfcc429d30eb40d5e9dcb046ac2a207afa5427ea1"
+      },
+      {
+        "bytes": 4781,
+        "path": "crates/merman/Cargo.toml",
+        "sha256": "c2685dfd2e0c25c4cf2260160b1aa373633c00e20e5c60f14089ab2ac51f2aa5"
+      }
+    ],
+    "native_memory_executable": {
+      "bytes": 16617776,
+      "path": "/Users/frankorz/Documents/projects/rust/merman/target/release/deps/native_memory-4a2636e067159166",
+      "sha256": "94e714eda44b309a9017c2141c42f2c58c50f9060522db4f2724952b834e2cd8"
+    },
+    "native_memory_owner_contract": {
+      "bytes": 601,
+      "path": "docs/performance/contracts/flowchart-end-to-end-memory-v1.json",
+      "sha256": "e62a99ce38d3b73381c7b982d8e6692dd3bf30797873807670fec7381b0f78aa"
+    },
+    "native_memory_report": {
+      "bytes": 102042,
+      "path": "/Users/frankorz/Documents/projects/rust/merman/target/bench/u2_native_memory_06616dd71.json",
+      "sha256": "616dbee6c29614649ead3299811dfcdb36b7c28b4a1087a2a0cafb0133bc487d"
+    },
+    "source": [
+      {
+        "bytes": 15942,
+        "path": "crates/merman/benches/pipeline.rs",
+        "sha256": "198c4601cad165d4a8c40e8c838a43165435d0cb21e82a23ac14b1101400e689"
+      },
+      {
+        "bytes": 11095,
+        "path": "crates/merman/benches/native_memory.rs",
+        "sha256": "502c9477c761ceb8f165aeafe988b806ed21c506acdf2904e3eb1c5043c33240"
+      },
+      {
+        "bytes": 7611,
+        "path": "crates/merman/benches/native_memory/allocator.rs",
+        "sha256": "a04296eb40667edfba3622af5775512a62e1c80a7a53e781fc0740103a9b1248"
+      },
+      {
+        "bytes": 42917,
+        "path": "tools/bench/compare_mermaid_renderers.py",
+        "sha256": "b6c733e94864357ebc0fa4524180689321b5c51083abbec12e6236091b39db96"
+      },
+      {
+        "bytes": 91179,
+        "path": "tools/bench/compare_self.py",
+        "sha256": "e643bd1bddab8f28359c8b94f785719f4e20c05e1274579d563b6e194ce83edd"
+      },
+      {
+        "bytes": 20585,
+        "path": "tools/bench/corpus_utils.py",
+        "sha256": "9cdb21ce86f679a427bc1dee559fca461ec0458b143231e7d815935d3735bca7"
+      },
+      {
+        "bytes": 89823,
+        "path": "tools/bench/freeze_perf_baseline.py",
+        "sha256": "d9bf1d0def37f89cd962dd9e0a31f30d15b2bb19bf81cdf178ac8951f8ef4aa1"
+      },
+      {
+        "bytes": 26829,
+        "path": "tools/bench/native_memory.py",
+        "sha256": "802b7b370270ffe90913f141004507cae3d097b77abbe861d2bcb94e1e99055a"
+      },
+      {
+        "bytes": 17608,
+        "path": "tools/bench/perf_runner.py",
+        "sha256": "114d26f68518c113299b21dd252c7f5ce2e6cdb5f309183926f2a50d6cc40c56"
+      },
+      {
+        "bytes": 30582,
+        "path": "tools/bench/run_native_memory.py",
+        "sha256": "af026a2e86eaaef70f95afe18485bb8317a5092b5490ca10ea5fb0b54c7b22c6"
+      }
+    ]
+  },
+  "frozen_at": "2026-07-28T22:15:49.025211+08:00",
+  "host": {
+    "architecture": "arm64",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+    "cpu": "Apple M4 Pro",
+    "os": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "kind": "merman-performance-baseline",
+  "recipes": {
+    "latency_common_aa": {
+      "absolute_threshold_ns": 50000.0,
+      "bench": "pipeline",
+      "bootstrap_resamples": 10000,
+      "bootstrap_seed": 0,
+      "calibration_pairs": 8,
+      "confidence_level": 0.95,
+      "corpus": "tools/bench/corpus.json",
+      "default_features": true,
+      "engine_lifecycle": "reused-engine",
+      "evidence_mode": "confirmation",
+      "features": [
+        "svg"
+      ],
+      "lane_id": "render-svg",
+      "locked": true,
+      "logical_operations_per_estimate": 1,
+      "max_pairs": 32,
+      "measurement_seconds": 3,
+      "package": "merman",
+      "preset": "long",
+      "process_lifecycle": "reused-process",
+      "profile": "bench",
+      "public_operation": "render-svg",
+      "relative_threshold_percent": 10.0,
+      "sample_size": 30,
+      "selector": "end_to_end/{fixture}",
+      "start_side": "base",
+      "suite": "canary",
+      "target": null,
+      "target_dir": "target",
+      "toolchain": null,
+      "transport": "native-criterion",
+      "warm_up_seconds": 2
+    },
+    "native_memory": {
+      "bench": "native_memory",
+      "bootstrap_resamples": 10000,
+      "build_command": [
+        "cargo",
+        "bench",
+        "--locked",
+        "-p",
+        "merman",
+        "--no-default-features",
+        "--features",
+        "svg",
+        "--bench",
+        "native_memory",
+        "--target-dir",
+        "/Users/frankorz/Documents/projects/rust/merman/target",
+        "--no-run",
+        "--message-format=json-render-diagnostics"
+      ],
+      "build_environment": {
+        "CARGO_BUILD_JOBS": "1",
+        "CARGO_ENCODED_RUSTFLAGS": null,
+        "CARGO_INCREMENTAL": "0",
+        "CARGO_PROFILE_BENCH_CODEGEN_UNITS": null,
+        "CARGO_PROFILE_BENCH_DEBUG": "0",
+        "CARGO_PROFILE_BENCH_LTO": null,
+        "CARGO_PROFILE_BENCH_OPT_LEVEL": null,
+        "RUSTC_WORKSPACE_WRAPPER": null,
+        "RUSTC_WRAPPER": null,
+        "RUSTFLAGS": null,
+        "RUSTUP_TOOLCHAIN": null
+      },
+      "candidate_admission": false,
+      "default_features": false,
+      "engine_lifecycle": "reused-engine",
+      "evidence_class": "infrastructure-smoke",
+      "features": [
+        "svg"
+      ],
+      "lane_id": "flowchart-end-to-end-memory",
+      "locked": true,
+      "logical_operations_per_estimate": 1,
+      "package": "merman",
+      "pair_order": "alternating-operation-zero",
+      "process_lifecycle": "fresh-process",
+      "public_operation": "render-svg",
+      "repeats": 5,
+      "requested_toolchain": null,
+      "scales": [
+        1,
+        2,
+        4,
+        10,
+        32,
+        100
+      ],
+      "seed": 84960128876878,
+      "subprocess_isolation": "fresh-process-per-sample",
+      "target_dir": "/Users/frankorz/Documents/projects/rust/merman/target",
+      "transport": "native-system-allocator-subprocess",
+      "workload": "flowchart-modular-generator-v1"
+    }
+  },
+  "repository": {
+    "commit": "06616dd71df627f6146217e2af58b9dbdd251122",
+    "patch_stack": [],
+    "result_tree": "ec44f47266e8337d89c747dd24ae7580ee52892b",
+    "tree": "ec44f47266e8337d89c747dd24ae7580ee52892b"
+  },
+  "schema_version": 1
+}

@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "MermaidChart 2023 Timeline",
     "accTitle": null,
     "accDescr": null,

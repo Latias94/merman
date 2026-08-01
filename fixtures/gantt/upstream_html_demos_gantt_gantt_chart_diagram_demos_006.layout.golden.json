@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 124.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 124.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -34,7 +34,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -66,7 +66,7 @@
           "vert": false,
           "bar": {
             "id": "1",
-            "x": 592.0,
+            "x": 400.0,
             "y": 50.0,
             "width": 0.0,
             "height": 20.0,
@@ -79,7 +79,7 @@
             "text": "Today",
             "font_size": 11.0,
             "width": 26.84,
-            "x": 597.0,
+            "x": 405.0,
             "y": 63.5,
             "class": "taskTextOutsideRight taskTextOutside0 width-26.84"
           }
@@ -90,13 +90,13 @@
       "bottom_ticks": [
         {
           "time_ms": 1249693200000.0,
-          "x": 592.0,
+          "x": 400.0,
           "label": "08/08"
         }
       ],
       "top_ticks": [],
       "title": "Hide today marker (vertical line should not be visible)",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

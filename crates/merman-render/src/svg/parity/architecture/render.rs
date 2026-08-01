@@ -1,32 +1,20 @@
 use super::super::*;
-use crate::architecture_metrics::{
-    ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, architecture_estimate_service_bounds,
-    architecture_top_level_service_root_bounds,
-};
+use crate::architecture_metrics::architecture_estimate_service_bounds;
 use crate::model::ArchitectureCytoscapeServiceBounds;
 
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use super::labels::{svg_line_plain_text, wrap_svg_words_to_lines};
-use super::model::{ArchitectureModel, ArchitectureModelAccess, ArchitectureServiceRef};
+use super::model::{ArchitectureModelAccess, ArchitectureServiceRef};
 use super::nodes::{
     ArchitectureNodeRenderContext, push_architecture_groups,
     push_architecture_services_and_junctions,
 };
-use super::root::{
-    ArchitectureRootOpenContext, architecture_a11y_nodes, push_architecture_root_open,
-};
+use super::root::{architecture_a11y_nodes, begin_architecture_document};
 use super::settings::ArchitectureRenderSettings;
 use super::viewport::{ArchitectureRootViewportContext, finalize_architecture_root_viewport};
 
 // Architecture diagram SVG renderer implementation (split from parity.rs).
-
-fn timing_section<'a>(
-    enabled: bool,
-    dst: &'a mut web_time::Duration,
-) -> Option<super::super::timing::TimingGuard<'a>> {
-    enabled.then(|| super::super::timing::TimingGuard::new(dst))
-}
 
 fn architecture_bounds_match_icon_rect(bounds: &Bounds, x: f64, y: f64, icon_size_px: f64) -> bool {
     const EPSILON: f64 = 1e-6;
@@ -75,96 +63,38 @@ struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
     layout: &'a ArchitectureDiagramLayout,
     model: &'a M,
     effective_config: &'a serde_json::Value,
-    sanitize_config_opt: Option<&'a merman_core::MermaidConfig>,
-    options: &'a SvgRenderOptions,
+    sanitize_config: &'a merman_core::MermaidConfig,
+    options: &'a SvgExecution<'a>,
 }
 
 struct ArchitectureTimingState<'a> {
-    enabled: bool,
+    timing: super::super::timing::RenderTiming,
     timings: &'a mut super::super::timing::RenderTimings,
-    total_start: web_time::Instant,
+    total_timer: Option<merman_core::runtime::OperationTimer>,
 }
 
 pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
     model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
     effective_config: &merman_core::MermaidConfig,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let timing = options.timing();
     let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
+    let total_timer = timing.start();
 
     render_architecture_diagram_svg_with_model(
         ArchitectureRenderRequest {
             layout,
             model,
             effective_config: effective_config.as_value(),
-            sanitize_config_opt: Some(effective_config),
+            sanitize_config: effective_config,
             options,
         },
         ArchitectureTimingState {
-            enabled: timing_enabled,
+            timing,
             timings: &mut timings,
-            total_start,
-        },
-    )
-}
-
-pub(crate) fn render_architecture_diagram_svg(
-    layout: &ArchitectureDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
-    let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-    let model: ArchitectureModel = {
-        let _g = timing_section(timing_enabled, &mut timings.deserialize_model);
-        crate::json::from_value_ref(semantic)?
-    };
-    render_architecture_diagram_svg_with_model(
-        ArchitectureRenderRequest {
-            layout,
-            model: &model,
-            effective_config,
-            sanitize_config_opt: None,
-            options,
-        },
-        ArchitectureTimingState {
-            enabled: timing_enabled,
-            timings: &mut timings,
-            total_start,
-        },
-    )
-}
-
-pub(crate) fn render_architecture_diagram_svg_with_config(
-    layout: &ArchitectureDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
-    let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-    let model: ArchitectureModel = {
-        let _g = timing_section(timing_enabled, &mut timings.deserialize_model);
-        crate::json::from_value_ref(semantic)?
-    };
-    render_architecture_diagram_svg_with_model(
-        ArchitectureRenderRequest {
-            layout,
-            model: &model,
-            effective_config: effective_config.as_value(),
-            sanitize_config_opt: Some(effective_config),
-            options,
-        },
-        ArchitectureTimingState {
-            enabled: timing_enabled,
-            timings: &mut timings,
-            total_start,
+            total_timer,
         },
     )
 }
@@ -172,28 +102,21 @@ pub(crate) fn render_architecture_diagram_svg_with_config(
 fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     req: ArchitectureRenderRequest<'_, M>,
     timing: ArchitectureTimingState<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let ArchitectureRenderRequest {
         layout,
         model,
         effective_config,
-        sanitize_config_opt,
+        sanitize_config,
         options,
     } = req;
     let ArchitectureTimingState {
-        enabled: timing_enabled,
+        timing,
         timings,
-        total_start,
+        total_timer,
     } = timing;
 
-    fn section<'a>(
-        enabled: bool,
-        dst: &'a mut web_time::Duration,
-    ) -> Option<super::super::timing::TimingGuard<'a>> {
-        enabled.then(|| super::super::timing::TimingGuard::new(dst))
-    }
-
-    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+    let _g_render_svg = timing.section(&mut timings.render_svg);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
     let settings = ArchitectureRenderSettings::from_config(diagram_id, effective_config);
@@ -202,91 +125,26 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let half_icon = settings.half_icon;
     let padding_px = settings.padding_px;
     let arch_font_size_px = settings.arch_font_size_px;
-    let svg_font_size_px = settings.svg_font_size_px;
     let use_max_width = settings.use_max_width;
     let text_style = &settings.text_style;
     let compound_text_style = &settings.compound_text_style;
-    let sanitize_config_owned: merman_core::MermaidConfig;
-    let sanitize_config = match sanitize_config_opt {
-        Some(cfg) => cfg,
-        None => {
-            sanitize_config_owned =
-                merman_core::MermaidConfig::from_value(effective_config.clone());
-            &sanitize_config_owned
-        }
-    };
-
     let mut node_xy: rustc_hash::FxHashMap<&str, (f64, f64)> = rustc_hash::FxHashMap::default();
     for n in &layout.nodes {
         node_xy.insert(n.id.as_str(), (n.x, n.y));
     }
 
-    let text_measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    let text_measurer = options.text_measurer();
 
     let a11y = architecture_a11y_nodes(diagram_id, model.acc_title(), model.acc_descr());
 
     // Mermaid Architecture uses `setupGraphViewbox()` which expands the viewBox based on the
-    // SVG's `getBBox()` plus `architecture.padding`. We approximate the effective `getBBox()` by
-    // computing a conservative bounds over the elements we emit.
+    // SVG's `getBBox()` plus `architecture.padding`. Reconstruct that effective bbox from the
+    // emitted geometry, cached Cytoscape bounds, and operation-owned text measurements.
     let mut content_bounds: Option<Bounds> = None;
 
-    // Mermaid `createText()` emits SVG `<text y="-10.1">` + `<tspan y="-0.1em" dy="1.1em">...`.
-    //
-    // In Chromium, `text.getBBox()` has:
-    // - per-line height ~= 19px at 16px font size
-    // - additional lines stacked by `dy="1.1em"` (i.e. 17.6px at 16px font size)
-    //
-    // Model this geometry in a scale-stable way so `setupGraphViewbox(svg.getBBox() + padding)`
-    // aligns in `parity-root` comparisons without browser-dependent measurement.
-    // Empirical bottom extension (beyond the icon bottom) of Mermaid `createText()` output for a
-    // single-line label at 16px in Chromium, as observed in upstream Architecture baselines.
-    //
-    // This is notably larger than just `fontSize`, due to `createText()` using `<text y="-10.1">`
-    // and wrapper attributes like `dy="1em"`; Chromium's `getBBox()` includes that geometry.
-    // Cytoscape compound bounds (`node.boundingBox()`) include labels but do *not* match
-    // Chromium's `text.getBBox()` exactly. In upstream Mermaid Architecture, group rectangles
-    // sized from Cytoscape compound bounds tend to extend below the icon by roughly
-    // `(fontSize + 1px)` for single-line service labels.
-    //
-    // If we reuse the larger root `getBBox()` extension for compounds, nested/group-heavy
-    // fixtures get a systematic viewBox height inflation (~7.1875px at 16px).
-
-    // Mermaid singleton top-level `iconText` services render 18px lower than the nominal
-    // layout origin; keep the emitted transform and root bbox estimate in sync.
-    let groups_len = model.groups_len();
-    let edges_len = model.edges_len();
-    let service_count = model.services().count();
-    let junction_count = model.junctions().count();
-    let singleton_icon_text_service_id =
-        if groups_len == 0 && service_count == 1 && junction_count == 0 && edges_len == 0 {
-            model.services().next().and_then(|service| {
-                if service.in_group.is_none()
-                    && service
-                        .icon_text
-                        .map(str::trim)
-                        .is_some_and(|text: &str| !text.is_empty())
-                {
-                    Some(service.id)
-                } else {
-                    None
-                }
-            })
-        } else {
-            None
-        };
-    let singleton_icon_text_offset_y = |service_id: &str| {
-        if singleton_icon_text_service_id == Some(service_id) {
-            ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX
-        } else {
-            0.0
-        }
-    };
-
-    let mut services_with_edges: rustc_hash::FxHashSet<&str> = rustc_hash::FxHashSet::default();
-    for edge in model.edges() {
-        services_with_edges.insert(edge.lhs_id);
-        services_with_edges.insert(edge.rhs_id);
-    }
+    // Service/root text bounds use the exact tspan-height and middle-baseline operations. Compound
+    // sizing stays on the separate Cytoscape child-bbox phases cached by layout; the two DOM
+    // consumers intentionally do not share a vertical extent.
 
     let mut cached_service_bounds_by_id: rustc_hash::FxHashMap<
         &str,
@@ -300,7 +158,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let mut service_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
     for svc in model.services() {
         let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
-        let y = y + singleton_icon_text_offset_y(svc.id);
         if svc.in_group.is_some()
             && let Some(cached) = architecture_cached_service_child_bounds(
                 &cached_service_bounds_by_id,
@@ -320,9 +177,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             y,
             icon_size_px,
             arch_font_size_px,
-            svg_font_size_px,
             svc.title,
-            &text_measurer,
+            text_measurer,
             text_style,
             compound_text_style,
             wrap_svg_words_to_lines,
@@ -345,17 +201,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         // viewport bounds when the service is not inside a group.
         service_bounds.insert(svc.id, b_full.clone());
         if svc.in_group.is_none() {
-            // Connected top-level services still use the SVG root `createText()` label model.
-            // Isolated top-level services in diagrams that also have groups behave like separate
-            // Cytoscape components for root extent purposes; using the larger SVG root label phase
-            // overcounts the disconnected-islands baseline while broadening the rule regresses
-            // singleton/iconText rows.
-            let root_bounds = architecture_top_level_service_root_bounds(
-                &estimate,
-                services_with_edges.contains(svc.id),
-                groups_len > 0,
-            );
-            extend_bounds(&mut content_bounds, root_bounds);
+            extend_bounds(&mut content_bounds, estimate.svg_root_bounds);
         } else {
             extend_bounds(&mut content_bounds, estimate.emitted_icon_bounds);
         }
@@ -434,8 +280,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         }
     }
 
-    let is_empty = service_count == 0
-        && junction_count == 0
+    let is_empty = model.services().next().is_none()
+        && model.junctions().next().is_none()
         && model.groups_len() == 0
         && model.edges_len() == 0;
 
@@ -444,16 +290,18 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         settings.css.len(),
         a11y.nodes.len(),
     ));
-    let root_open = push_architecture_root_open(ArchitectureRootOpenContext {
-        out: &mut out,
+    let root_viewport = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Architecture,
+        diagram_id,
+    );
+    let root_document = begin_architecture_document(
+        &mut out,
+        &root_viewport,
         diagram_id,
         css,
-        a11y: &a11y,
-        is_empty,
+        &a11y,
         use_max_width,
-        half_icon,
-        icon_size_px,
-    });
+    )?;
     // Edge bounds and DOM emission live in `architecture/edges.rs`.
     {
         let mut edge_render_ctx = ArchitectureEdgeRenderContext {
@@ -463,7 +311,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             model,
             node_xy: &node_xy,
             settings: &settings,
-            text_measurer: &text_measurer,
+            text_measurer,
             content_bounds: &mut content_bounds,
             junction_bounds: &junction_bounds,
         };
@@ -478,11 +326,10 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             model,
             node_xy: &node_xy,
             settings: &settings,
-            text_measurer: &text_measurer,
+            text_measurer,
             sanitize_config,
-            icon_registry: options.icon_registry.as_deref(),
+            icon_registry: options.icon_registry(),
             content_bounds: &mut content_bounds,
-            singleton_icon_text_service_id,
         };
         push_architecture_services_and_junctions(&mut node_render_ctx);
         push_architecture_groups(&mut node_render_ctx, &group_rects);
@@ -490,23 +337,25 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     out.push_str("</svg>\n");
 
-    if !is_empty {
-        out = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
-            out,
-            model,
-            root_open: root_open.expect("architecture root placeholders missing"),
-            content_bounds,
-            padding_px,
-            icon_size_px,
-            use_max_width,
-            trust_content_bounds: options.icon_registry.is_none(),
-        });
-    }
+    let rooted_svg = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
+        out,
+        root_viewport: &root_viewport,
+        root_document,
+        content_bounds,
+        padding_px,
+        half_icon,
+        icon_size_px,
+        use_max_width,
+        is_empty,
+        trust_content_bounds: options.icon_registry().is_none(),
+    })?;
 
     drop(_g_render_svg);
 
-    timings.total = total_start.elapsed();
-    if timing_enabled {
+    timings.total = total_timer
+        .map(merman_core::runtime::OperationTimer::elapsed)
+        .unwrap_or_default();
+    if timing.is_enabled() {
         eprintln!(
             "[render-timing] diagram=architecture total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?}",
             timings.total,
@@ -518,5 +367,5 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         );
     }
 
-    Ok(out)
+    Ok(rooted_svg)
 }

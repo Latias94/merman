@@ -1,6 +1,6 @@
-use crate::baseline::BaselineRegistryProfile;
-use crate::{MermaidConfig, Result};
+use crate::{MermaidConfig, ParseControl, ParseControlResult, Result};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
 #[error("No diagram type detected matching given configuration for text: {text}")]
@@ -27,26 +27,20 @@ pub struct Detector {
 /// syntaxes in a fixed order.
 #[derive(Debug, Clone)]
 pub struct DetectorRegistry {
-    detectors: Vec<Detector>,
-    profile: BaselineRegistryProfile,
+    detectors: Arc<Vec<Detector>>,
 }
 
 impl DetectorRegistry {
     /// Creates an empty detector registry.
     pub fn new() -> Self {
-        Self::with_profile(BaselineRegistryProfile::Full)
-    }
-
-    fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
-            detectors: Vec::new(),
-            profile,
+            detectors: Arc::new(Vec::new()),
         }
     }
 
     /// Adds a detector entry to the end of the ordered registry.
     pub fn add(&mut self, detector: Detector) {
-        self.detectors.push(detector);
+        Arc::make_mut(&mut self.detectors).push(detector);
     }
 
     /// Adds a detector function to the end of the ordered registry.
@@ -56,26 +50,40 @@ impl DetectorRegistry {
 
     /// Detects a Mermaid diagram type after stripping front-matter, directives, and comments.
     pub fn detect_type(&self, text: &str, config: &mut MermaidConfig) -> Result<&'static str> {
+        let control = ParseControl::new();
+        self.detect_type_controlled(text, config, &control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    pub(crate) fn detect_type_controlled(
+        &self,
+        text: &str,
+        config: &mut MermaidConfig,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<&'static str>> {
+        control.checkpoint()?;
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
         let no_frontmatter = remove_frontmatter(text);
-        let no_directives = remove_directives(no_frontmatter.as_ref());
+        control.checkpoint()?;
+        let no_directives = remove_directives_controlled(no_frontmatter.as_ref(), control)?;
+        control.checkpoint()?;
         let cleaned = crate::utils::cleanup_mermaid_comments(no_directives.as_ref());
+        control.checkpoint()?;
 
-        if let Some(id) =
-            crate::family::fast_detect_by_leading_keyword(cleaned.as_ref(), self.profile)
-        {
-            return Ok(id);
-        }
-
-        for det in &self.detectors {
+        for (index, det) in self.detectors.iter().enumerate() {
+            if index % 16 == 0 {
+                control.checkpoint()?;
+            }
             if (det.detector)(cleaned.as_ref(), config) {
-                return Ok(det.id);
+                return Ok(Ok(det.id));
             }
         }
 
-        Err(DetectTypeError {
+        control.checkpoint()?;
+        Ok(Err(DetectTypeError {
             text: cleaned.into_owned(),
         }
-        .into())
+        .into()))
     }
 
     /// Detects a diagram type assuming the input is already pre-cleaned:
@@ -85,58 +93,47 @@ impl DetectorRegistry {
         text: &str,
         config: &mut MermaidConfig,
     ) -> Result<&'static str> {
-        if let Some(id) = crate::family::fast_detect_by_leading_keyword(text, self.profile) {
-            return Ok(id);
-        }
+        let control = ParseControl::new();
+        self.detect_type_precleaned_controlled(text, config, &control)
+            .expect("a private parse control cannot be cancelled")
+    }
 
-        for det in &self.detectors {
+    pub(crate) fn detect_type_precleaned_controlled(
+        &self,
+        text: &str,
+        config: &mut MermaidConfig,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<&'static str>> {
+        control.checkpoint()?;
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+        for (index, det) in self.detectors.iter().enumerate() {
+            if index % 16 == 0 {
+                control.checkpoint()?;
+            }
             if (det.detector)(text, config) {
-                return Ok(det.id);
+                return Ok(Ok(det.id));
             }
         }
 
-        Err(DetectTypeError {
+        control.checkpoint()?;
+        Ok(Err(DetectTypeError {
             text: text.to_string(),
         }
-        .into())
+        .into()))
     }
 
-    /// Builds the full detector registry for the pinned Mermaid baseline.
-    ///
-    /// This matches Mermaid's `includeLargeFeatures=true` registration profile.
-    pub fn pinned_mermaid_baseline_full() -> Self {
-        let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
-        for fact in crate::family::detector_facts(BaselineRegistryProfile::Full) {
+    /// Builds the detector registry for the pinned Mermaid baseline.
+    pub fn pinned_mermaid_baseline() -> Self {
+        let mut reg = Self::new();
+        for fact in crate::family::detector_facts() {
             reg.add_fn(fact.id, fact.detector);
+            if fact.id == "error" {
+                reg.add_fn("---", detector_frontmatter_unparsed);
+            }
         }
 
         reg
     }
-
-    /// Builds the small detector registry for the pinned Mermaid baseline.
-    ///
-    /// This matches the base Mermaid registration profile without large feature diagrams.
-    pub fn pinned_mermaid_baseline_tiny() -> Self {
-        let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
-        for fact in crate::family::detector_facts(BaselineRegistryProfile::Tiny) {
-            reg.add_fn(fact.id, fact.detector);
-        }
-
-        reg
-    }
-
-    /// Builds the detector registry selected by this crate's feature flags.
-    #[cfg(feature = "full-registry")]
-    pub fn for_pinned_mermaid_baseline() -> Self {
-        Self::pinned_mermaid_baseline_full()
-    }
-
-    /// Builds the detector registry selected by this crate's feature flags.
-    #[cfg(not(feature = "full-registry"))]
-    pub fn for_pinned_mermaid_baseline() -> Self {
-        Self::pinned_mermaid_baseline_tiny()
-    }
-
     #[cfg(test)]
     pub(crate) fn detector_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.detectors.iter().map(|detector| detector.id)
@@ -149,26 +146,35 @@ fn remove_frontmatter(text: &str) -> Cow<'_, str> {
         .unwrap_or(Cow::Borrowed(text))
 }
 
+#[cfg(test)]
 fn remove_directives(text: &str) -> Cow<'_, str> {
-    if !text.contains("%%{") {
-        return Cow::Borrowed(text);
+    let control = ParseControl::new();
+    remove_directives_controlled(text, &control)
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn remove_directives_controlled<'a>(
+    text: &'a str,
+    control: &ParseControl,
+) -> ParseControlResult<Cow<'a, str>> {
+    control.checkpoint()?;
+    let ranges = crate::preprocess::directive_removal_ranges_controlled(text, control)?;
+    if ranges.is_empty() {
+        return Ok(Cow::Borrowed(text));
     }
 
     let mut out = String::with_capacity(text.len());
     let mut pos = 0;
-    while let Some(rel) = text[pos..].find("%%{") {
-        let start = pos + rel;
-        out.push_str(&text[pos..start]);
-        let after_start = start + 3;
-        if let Some(rel_end) = text[after_start..].find("}%%") {
-            let end = after_start + rel_end + 3;
-            pos = end;
-        } else {
-            return Cow::Owned(out);
+    for (index, range) in ranges.into_iter().enumerate() {
+        if index % 32 == 0 {
+            control.checkpoint()?;
         }
+        out.push_str(&text[pos..range.start]);
+        pos = range.end;
     }
     out.push_str(&text[pos..]);
-    Cow::Owned(out)
+    control.checkpoint()?;
+    Ok(Cow::Owned(out))
 }
 
 impl Default for DetectorRegistry {
@@ -424,8 +430,23 @@ pub(crate) fn detector_zenuml(txt: &str, _config: &mut MermaidConfig) -> bool {
 
 #[cfg(test)]
 mod remove_directives_tests {
-    use super::remove_directives;
+    use super::{DetectorRegistry, remove_directives};
+    use crate::{MermaidConfig, ParseCancelled, ParseControl};
     use std::borrow::Cow;
+
+    #[test]
+    fn controlled_detection_stops_before_iterating_detectors() {
+        let control = ParseControl::new();
+        control.cancel();
+
+        let result = DetectorRegistry::pinned_mermaid_baseline().detect_type_controlled(
+            "flowchart TD",
+            &mut MermaidConfig::empty_object(),
+            &control,
+        );
+
+        assert!(matches!(result, Err(ParseCancelled)));
+    }
 
     #[test]
     fn no_directives_is_borrowed() {
@@ -442,9 +463,33 @@ mod remove_directives_tests {
     }
 
     #[test]
-    fn unterminated_directive_truncates_at_start() {
+    fn unterminated_directive_truncates_following_source_like_mermaid() {
         let s = "flowchart\n%%{init: {\"theme\": \"dark\"}}\nA-->B;";
         let out = remove_directives(s);
-        assert_eq!(out.as_ref().trim(), "flowchart");
+        assert_eq!(out.as_ref(), "flowchart\n");
+    }
+}
+
+#[cfg(test)]
+mod registry_clone_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn always_detects(_text: &str, _config: &mut MermaidConfig) -> bool {
+        true
+    }
+
+    #[test]
+    fn detector_registry_clone_uses_copy_on_write_storage() {
+        let original = DetectorRegistry::pinned_mermaid_baseline();
+        let mut cloned = original.clone();
+
+        assert!(Arc::ptr_eq(&original.detectors, &cloned.detectors));
+
+        cloned.add_fn("copy-on-write-test", always_detects);
+
+        assert!(!Arc::ptr_eq(&original.detectors, &cloned.detectors));
+        assert!(!original.detector_ids().any(|id| id == "copy-on-write-test"));
+        assert!(cloned.detector_ids().any(|id| id == "copy-on-write-test"));
     }
 }

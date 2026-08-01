@@ -2,9 +2,14 @@
 title: "refactor: Improve CLI Functional Parity and Ergonomics"
 type: "refactor"
 date: "2026-06-23"
+status: "superseded"
+superseded_by: "docs/plans/2026-07-27-001-refactor-cli-invocation-execution-contracts-plan.md"
 ---
 
 # refactor: Improve CLI Functional Parity and Ergonomics
+
+> Superseded by the explicit `render` / `batch` / versioned `mmdc` command architecture in
+> `docs/plans/2026-07-27-001-refactor-cli-invocation-execution-contracts-plan.md`.
 
 ## Summary
 

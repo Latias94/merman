@@ -12,6 +12,7 @@ export interface LanguageClientStartOptions<T extends StartableLanguageClient> {
   failedTooltip: string;
   isCurrentGeneration(generation: number): boolean;
   wireClient(client: T): void;
+  validateClient(client: T): void | Promise<void>;
   updateStatus(stateLabel: string, tooltip?: string): void;
   pushConfiguration(client: T): Promise<void>;
   assignClient(client: T): void;
@@ -27,6 +28,7 @@ export async function startLanguageClientWithCleanup<T extends StartableLanguage
   failedTooltip,
   isCurrentGeneration,
   wireClient,
+  validateClient,
   updateStatus,
   pushConfiguration,
   assignClient,
@@ -38,6 +40,12 @@ export async function startLanguageClientWithCleanup<T extends StartableLanguage
   updateStatus("Starting", startingTooltip);
   try {
     await client.start();
+    if (!isCurrentGeneration(generation)) {
+      await client.stop();
+      onStaleStartup?.();
+      return;
+    }
+    await validateClient(client);
     if (!isCurrentGeneration(generation)) {
       await client.stop();
       onStaleStartup?.();

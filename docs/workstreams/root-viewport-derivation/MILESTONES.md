@@ -1,5 +1,8 @@
 # Root Viewport Derivation Milestones
 
+> Historical snapshot. Production root/text/SVG overrides and their generator/audit commands were
+> removed on 2026-07-15 under ADR-0062. The milestones below record the retired migration path.
+
 ## Goal Statement
 
 The next root viewport cleanup stage should reduce fixture-scoped root pins by replacing them with

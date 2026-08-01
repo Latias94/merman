@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 484.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 484.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -38,7 +38,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -46,7 +46,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -54,7 +54,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -62,7 +62,7 @@
           "index": 4.0,
           "x": 0.0,
           "y": 144.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -70,7 +70,7 @@
           "index": 12.0,
           "x": 0.0,
           "y": 336.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -78,7 +78,7 @@
           "index": 5.0,
           "x": 0.0,
           "y": 168.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -86,7 +86,7 @@
           "index": 6.0,
           "x": 0.0,
           "y": 192.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section2"
         },
@@ -94,7 +94,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -102,7 +102,7 @@
           "index": 13.0,
           "x": 0.0,
           "y": 360.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -110,7 +110,7 @@
           "index": 8.0,
           "x": 0.0,
           "y": 240.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section2"
         },
@@ -118,7 +118,7 @@
           "index": 14.0,
           "x": 0.0,
           "y": 384.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -126,7 +126,7 @@
           "index": 10.0,
           "x": 0.0,
           "y": 288.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section3"
         },
@@ -134,7 +134,7 @@
           "index": 15.0,
           "x": 0.0,
           "y": 408.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -142,7 +142,7 @@
           "index": 7.0,
           "x": 0.0,
           "y": 216.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section2"
         },
@@ -150,7 +150,7 @@
           "index": 9.0,
           "x": 0.0,
           "y": 264.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section2"
         },
@@ -158,7 +158,7 @@
           "index": 11.0,
           "x": 0.0,
           "y": 312.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section3"
         }
@@ -236,7 +236,7 @@
             "id": ":ps",
             "x": 75.0,
             "y": 50.0,
-            "width": 269.0,
+            "width": 169.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -247,7 +247,7 @@
             "text": "specs ",
             "font_size": 11.0,
             "width": 23.65,
-            "x": 209.5,
+            "x": 159.5,
             "y": 63.5,
             "class": "taskText taskText0 width-23.65"
           }
@@ -265,9 +265,9 @@
           "vert": false,
           "bar": {
             "id": ":pc",
-            "x": 129.0,
+            "x": 109.0,
             "y": 122.0,
-            "width": 323.0,
+            "width": 203.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -278,7 +278,7 @@
             "text": "plasma-chamber      ",
             "font_size": 11.0,
             "width": 71.17,
-            "x": 290.5,
+            "x": 210.5,
             "y": 135.5,
             "class": "taskText taskText1 width-71.17"
           }
@@ -296,9 +296,9 @@
           "vert": false,
           "bar": {
             "id": "pc",
-            "x": 296.0,
+            "x": 214.0,
             "y": 74.0,
-            "width": 323.0,
+            "width": 203.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -309,7 +309,7 @@
             "text": "Plasma      ",
             "font_size": 11.0,
             "width": 32.45,
-            "x": 457.5,
+            "x": 315.5,
             "y": 87.5,
             "class": "taskText taskText0 width-32.45"
           }
@@ -327,9 +327,9 @@
           "vert": false,
           "bar": {
             "id": "por",
-            "x": 296.0,
+            "x": 214.0,
             "y": 146.0,
-            "width": 646.0,
+            "width": 406.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -340,7 +340,7 @@
             "text": "Plasma Implementation (Rust)      ",
             "font_size": 11.0,
             "width": 136.95,
-            "x": 619.0,
+            "x": 417.0,
             "y": 159.5,
             "class": "taskText taskText1 width-136.94999999999996"
           }
@@ -358,9 +358,9 @@
           "vert": false,
           "bar": {
             "id": "ovm",
-            "x": 414.0,
+            "x": 288.0,
             "y": 338.0,
-            "width": 647.0,
+            "width": 407.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -371,7 +371,7 @@
             "text": "OVM      ",
             "font_size": 11.0,
             "width": 19.8,
-            "x": 737.5,
+            "x": 491.5,
             "y": 351.5,
             "class": "taskText taskText0 width-19.799999999999997"
           }
@@ -389,9 +389,9 @@
           "vert": false,
           "bar": {
             "id": "pred",
-            "x": 457.0,
+            "x": 315.0,
             "y": 170.0,
-            "width": 323.0,
+            "width": 203.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -402,7 +402,7 @@
             "text": "Predicates (Atomic Swap)      ",
             "font_size": 11.0,
             "width": 119.13,
-            "x": 618.5,
+            "x": 416.5,
             "y": 183.5,
             "class": "taskText taskText1 width-119.12999999999998"
           }
@@ -420,9 +420,9 @@
           "vert": false,
           "bar": {
             "id": "hs",
-            "x": 570.0,
+            "x": 386.0,
             "y": 194.0,
-            "width": 216.0,
+            "width": 136.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -433,7 +433,7 @@
             "text": "History zkSNARK  ",
             "font_size": 11.0,
             "width": 82.06,
-            "x": 678.0,
+            "x": 454.0,
             "y": 207.5,
             "class": "taskText taskText2 width-82.05999999999999"
           }
@@ -451,9 +451,9 @@
           "vert": false,
           "bar": {
             "id": "or",
-            "x": 624.0,
+            "x": 420.0,
             "y": 98.0,
-            "width": 270.0,
+            "width": 170.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -464,7 +464,7 @@
             "text": "Rollup  ",
             "font_size": 11.0,
             "width": 26.95,
-            "x": 759.0,
+            "x": 505.0,
             "y": 111.5,
             "class": "taskText taskText0 width-26.950000000000003"
           }
@@ -482,9 +482,9 @@
           "vert": false,
           "bar": {
             "id": "pc26",
-            "x": 630.0,
+            "x": 424.0,
             "y": 362.0,
-            "width": 5.0,
+            "width": 3.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -495,7 +495,7 @@
             "text": "Plasma call 26 ",
             "font_size": 11.0,
             "width": 67.65,
-            "x": 640.0,
+            "x": 432.0,
             "y": 375.5,
             "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002"
           }
@@ -513,9 +513,9 @@
           "vert": false,
           "bar": {
             "id": "ps",
-            "x": 689.0,
+            "x": 461.0,
             "y": 242.0,
-            "width": 108.0,
+            "width": 68.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -526,7 +526,7 @@
             "text": "PredicateSpec          ",
             "font_size": 11.0,
             "width": 63.58,
-            "x": 743.0,
+            "x": 495.0,
             "y": 255.5,
             "class": "taskText taskText2 width-63.57999999999999"
           }
@@ -544,9 +544,9 @@
           "vert": false,
           "bar": {
             "id": "pc27",
-            "x": 700.0,
+            "x": 468.0,
             "y": 386.0,
-            "width": 5.0,
+            "width": 3.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -557,7 +557,7 @@
             "text": "Plasma call 27 ",
             "font_size": 11.0,
             "width": 67.65,
-            "x": 710.0,
+            "x": 476.0,
             "y": 399.5,
             "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002"
           }
@@ -575,9 +575,9 @@
           "vert": false,
           "bar": {
             "id": ":eb",
-            "x": 727.0,
+            "x": 485.0,
             "y": 290.0,
-            "width": 16.0,
+            "width": 10.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -588,7 +588,7 @@
             "text": "ETHBoston ",
             "font_size": 11.0,
             "width": 50.05,
-            "x": 748.0,
+            "x": 500.0,
             "y": 303.5,
             "class": "taskTextOutsideRight taskTextOutside3 width-50.05"
           }
@@ -606,9 +606,9 @@
           "vert": false,
           "bar": {
             "id": "pc28",
-            "x": 775.0,
+            "x": 515.0,
             "y": 410.0,
-            "width": 5.0,
+            "width": 3.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -619,7 +619,7 @@
             "text": "Plasma call 28 ",
             "font_size": 11.0,
             "width": 67.65,
-            "x": 785.0,
+            "x": 523.0,
             "y": 423.5,
             "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002"
           }
@@ -637,9 +637,9 @@
           "vert": false,
           "bar": {
             "id": "vs",
-            "x": 786.0,
+            "x": 522.0,
             "y": 218.0,
-            "width": 323.0,
+            "width": 203.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -650,7 +650,7 @@
             "text": "Exit           ",
             "font_size": 11.0,
             "width": 19.14,
-            "x": 947.5,
+            "x": 623.5,
             "y": 231.5,
             "class": "taskText taskText2 width-19.14"
           }
@@ -668,9 +668,9 @@
           "vert": false,
           "bar": {
             "id": "pi",
-            "x": 797.0,
+            "x": 529.0,
             "y": 266.0,
-            "width": 215.0,
+            "width": 135.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -681,7 +681,7 @@
             "text": "PlasmaIntegration     ",
             "font_size": 11.0,
             "width": 81.4,
-            "x": 904.5,
+            "x": 596.5,
             "y": 279.5,
             "class": "taskText taskText2 width-81.39999999999998"
           }
@@ -699,9 +699,9 @@
           "vert": false,
           "bar": {
             "id": ":dc",
-            "x": 888.0,
+            "x": 586.0,
             "y": 314.0,
-            "width": 16.0,
+            "width": 10.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -712,7 +712,7 @@
             "text": "DevCon ",
             "font_size": 11.0,
             "width": 32.12,
-            "x": 909.0,
+            "x": 601.0,
             "y": 327.5,
             "class": "taskTextOutsideRight taskTextOutside3 width-32.120000000000005"
           }
@@ -723,38 +723,38 @@
       "bottom_ticks": [
         {
           "time_ms": 1559347200000.0,
-          "x": 193.0,
+          "x": 149.0,
           "label": "2019-06-01"
         },
         {
           "time_ms": 1561939200000.0,
-          "x": 355.0,
+          "x": 251.0,
           "label": "2019-07-01"
         },
         {
           "time_ms": 1564617600000.0,
-          "x": 522.0,
+          "x": 356.0,
           "label": "2019-08-01"
         },
         {
           "time_ms": 1567296000000.0,
-          "x": 689.0,
+          "x": 461.0,
           "label": "2019-09-01"
         },
         {
           "time_ms": 1569888000000.0,
-          "x": 851.0,
+          "x": 563.0,
           "label": "2019-10-01"
         },
         {
           "time_ms": 1572566400000.0,
-          "x": 1017.0,
+          "x": 667.0,
           "label": "2019-11-01"
         }
       ],
       "top_ticks": [],
       "title": "Projects Timeline",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

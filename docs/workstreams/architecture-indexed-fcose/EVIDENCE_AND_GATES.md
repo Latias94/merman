@@ -3,6 +3,9 @@
 Status: Complete
 Last updated: 2026-05-28
 
+> Archive note: override inventory and `report-overrides` evidence below belong to this dated run.
+> Production fixture/root/text/SVG overrides and their tooling were removed under ADR-0062.
+
 ## Baseline Snapshot
 
 Architecture is the highest-value first target because the current performance docs show the largest
@@ -10,7 +13,7 @@ standard-canary gap in the layout stage:
 
 - `architecture_medium` layout ratio: about `9.44x` slower than mmdr.
 - `architecture_medium` end-to-end ratio: about `4.23x` slower than mmdr.
-- Current override inventory from `cargo run -p xtask -- report-overrides`:
+- Historical override inventory captured by `cargo run -p xtask -- report-overrides`:
   - Root viewport overrides: `286`
   - Text metric lookup overrides: `490`
   - Hand-curated helpers: `0`

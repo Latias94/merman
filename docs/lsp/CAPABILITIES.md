@@ -1,15 +1,14 @@
 # Mermaid LSP Capability Matrix
 
 This matrix records the current product readiness bar for Mermaid families and editor features.
-It is intentionally conservative: if a capability depends on text scanning instead of parser-backed
-facts, it is not considered mature.
+It is intentionally conservative: only parser-backed facts count as mature body semantics.
 
-This table is the maturity contract for first-class LSP families. The parser and render registries
-also include additional diagram types, but they are not treated as mature LSP commitments unless
-they appear here.
-
-Families outside this table can still be parser-backed in the core engine. That is useful for
-rendering and compatibility, but it is not enough to count as a mature editor contract.
+This table is the explicit maturity contract for 35 admitted public diagram types. Every public
+type in the current release is admitted, but the LSP contract remains independent from the render
+catalog: a future type returned by `merman_core::supported_diagrams()` requires its own editor-evidence
+review before joining this matrix. The lower-level family catalog also contains syntax aliases,
+layout variants, and the internal error fallback. Aliases and layout variants inherit their public
+product row instead of creating a second LSP maturity claim.
 
 ## Ownership Boundary
 
@@ -19,15 +18,30 @@ mapping, and internal projection failures. Editor-core owns protocol-neutral com
 symbols, navigation, rename, folding, and semantic-token facts. LSP owns request lifecycle,
 capability advertising, URI/range conversion, token delta encoding, and client cache state.
 
-The LSP document store keeps lazy editor snapshots, but those snapshots are built from the same
-active analyzer configuration used for diagnostics. Diagnostic-only lint rule changes refresh
-diagnostics without invalidating editor snapshots or semantic-token result state. Snapshot-affecting
-changes such as parse options, site config, fixed date/time, resource limits, or source descriptor
-changes clear snapshot-dependent state.
+Semantic-token codes, modifier bits, legend indices, and the five-word relative UTF-16 record are
+owned by `editor-language/token-descriptor-v1.json` and generated into Rust, Web, and the VS Code
+extension. LSP initialization publishes the descriptor digest and packed encoding under
+`capabilities.experimental.merman.editorLanguage`; the extension fails closed when that identity or
+the standard LSP legend differs. The same capability publishes the descriptor-owned rename-policy
+list, which the extension also validates exactly before enabling language intelligence. The same
+descriptor projects custom VS Code token declarations,
+theme supertypes, source-owned TextMate fallback scopes, and Mermaid semantic-highlighting defaults;
+standard VS Code types and modifiers are not redeclared. Editor-only theme metadata is excluded from
+the packed-protocol digest and guarded by the generated manifest drift check instead, so a scope or
+description change cannot create a false LSP/WASM incompatibility.
+`editor-language/token-equivalence-v1.json` records the exact planner output for the 35-public-type
+baseline plus malformed recovery, and LSP, Web WASM, Monaco, and VS Code gates consume that one
+generated evidence artifact without transport-local sorting or token name lookup.
 
-Request handlers capture document/configuration generations before running projection work outside
-the store lock. Semantic-token responses only commit cached token state while the captured snapshot
-is still current; stale previous result ids fall back to full tokens after snapshot-affecting
+The private `LanguageSession` keeps weighted lazy editor generations built from the same active
+analyzer environment used for diagnostics. Diagnostic-only lint rule changes reproject diagnostics
+without invalidating editor snapshots or semantic-token result state. Snapshot-affecting changes
+such as site config, fixed date/time, resource limits, or source descriptor changes clear
+snapshot-dependent state.
+
+Typed session operations capture document/configuration generations before running projection work
+outside the session mutex. Semantic-token responses only commit cached token state while the captured
+snapshot is still current; stale previous result ids fall back to full tokens after snapshot-affecting
 configuration changes. Push diagnostics re-check currentness immediately before publishing and
 suppress contexts that are already stale. Pull diagnostics use a bounded retry loop, recomputing
 from the latest context up to three times when stale analyzer output is detected. This is a bounded
@@ -39,71 +53,115 @@ Merman language intelligence does not require a host to replace VS Code built-in
 third-party preview extensions, markdownlint/remark/textlint rules, or `mermaid-lint`-style CI
 policy.
 
+## Typed Snapshot and Analysis Facts Wire Contracts
+
+LSP language behavior is projected from typed `DocumentSnapshot` / `FenceTextIndex` data built
+directly from `AnalysisGeneration`; the server does not round-trip serialized facts JSON. The separately
+exposed `AnalysisFactsPayload` version 1 is the equivalent parser-only wire contract for binding
+consumers:
+
+- `fact_source: "text_scan"` is removed;
+- `fact_source: "unavailable"` means that no body semantic facts were produced;
+- every semantic item emitted by current writers has a family-owned `rename_policy`; and
+- parser-backed and recovered provenance remain explicit; parser-backed facts always carry exact
+  original-source spans. The compatibility field `source_mapped_spans` is `true` for those facts
+  and `false` only when the body fact source is unavailable.
+
+The TextScan-capable prerelease shape is deleted rather than retained behind a decoder, executor, alias,
+or dual projection path. The final parser facts contract is schema 1 and rejects every other
+version discriminator at the boundary. The diagnostics-only `AnalysisPayload` is a separate
+contract and independently remains version 1.
+
+These schema versions do not rename Mermaid grammar ids such as `flowchart-v2`,
+`stateDiagram-v2`, or `classDiagram-v2`. They are also unrelated to LSP
+`textDocument.version` document revisions and to FFI, WASM, UniFFI, or platform ABI versions.
+
+For supported rows below, completion and refactoring still use complete or tested recovered parser
+facts. The intentional behavior change is on unavailable input: unknown, unsupported, or
+unrecoverable body text no longer receives guessed node ids, symbols, references, rename edits, or
+semantic tokens. Legal source-start header and template completion remains catalog-backed.
+
 ## Family Coverage
 
-| Family | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Flowchart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, subgraphs, directive prefixes, payload roles, and parser-backed authoring hints when enabled. |
-| Sequence | Yes | Yes | Yes | Yes | Yes | Yes | Mature for participants, actors, message endpoints, notes, boxes, directive payloads, and interaction payload prefixes. |
-| State | Yes | Yes | Yes | Yes | Yes | Yes | Mature for state ids, references, outlines, and role-aware payloads. |
-| Class | Yes | Yes | Yes | Yes | Yes | Yes | Mature for class ids, members, annotations, directives, and style payload roles. |
-| ER | Yes | Yes | Yes | Yes | Yes | Yes | Mature for entities, relationships, attributes, and directive payload roles. |
-| Mindmap | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, explicit labels, directives, and role-separated payloads. |
-| Gantt | Yes | Yes | Yes | Yes | Yes | Yes | Mature for task ids, dependency refs, click targets, section outlines, directives, and accessibility payloads. |
-| Architecture | Yes | Yes | Yes | Yes | Yes | Yes | Mature for groups, services, junctions, edges, and accessibility/title payloads. |
-| GitGraph | Yes | Yes | Yes | Yes | Yes | Yes | Mature for commits, branches, merges, cherry-picks, and accessibility/title payloads. |
-| Kanban | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, items, icons, classes, and role-separated payloads. |
-| Radar | Yes | Yes | Yes | Yes | Yes | Yes | Mature for axes, curves, options, and accessibility/title payloads. |
-| Treemap | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, leaves, class defs, values, and accessibility/title payloads. |
-| Block | Yes | Yes | Yes | Yes | Yes | Yes | Mature for block ids, nested composites, edges, class/style targets, arrow directions, and role-separated payload spans. |
-| C4 | Yes | Yes | Yes | Yes | Yes | Yes | Mature for C4 aliases, boundaries, relations, style/update targets, layout values, and role-separated title/accessibility/payload spans. |
-| ZenUML | Yes | Yes | Yes | Yes | Yes | Yes | Mature for the supported headless ZenUML subset, with source-mapped participants, messages, calls, assignments, titles, and payload spans. |
-| Journey | Yes | Yes | Yes | Yes | Yes | Yes | Mature for section outlines, task rows, scores, and actor payloads. |
-| Info | Yes | Yes | Yes | Yes | Yes | Yes | Mature for free-form metadata payloads and directive prefixes. |
-| Timeline | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, accessibility text, section outlines, and event payloads. |
-| Pie | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title and slice payloads. |
-| Packet | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title, accessibility text, and bit-field payloads. |
-| Sankey | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node and link payloads. |
-| Tree View | Yes | Yes | Yes | Yes | Yes | Yes | Mature for tree node ids, labels, and structural outline roles. |
-| Ishikawa | Yes | Yes | Yes | Yes | Yes | Yes | Mature for effect/cause ids, outline entries, and parser-backed payload spans. |
-| Event Modeling | Yes | Yes | Yes | Yes | Yes | Yes | Mature for timeline entities, time frames, and event payloads. |
-| Quadrant Chart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for quadrant labels, axes, and point payloads. |
-| Requirement | Yes | Yes | Yes | Yes | Yes | Yes | Mature for requirements, elements, relationships, and traced payloads. |
-| Venn | Yes | Yes | Yes | Yes | Yes | Yes | Mature for set ids, unions, text nodes, and styling payloads. |
-| XY Chart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, axes, and series payloads. |
+Rows follow the catalog-owned public diagram-type order. `Yes` means the feature is correctly wired
+to parser-backed facts, including returning no target when a valid position has no applicable
+entity. It does not mean that every family grammar exposes renameable entities at every position.
+
+| Family | Public diagram type | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Architecture | `architecture` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for groups, services, junctions, edges, and accessibility/title payloads. |
+| Block | `block` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for block ids, nested composites, edges, class/style targets, arrow directions, and role-separated payload spans. |
+| C4 | `c4` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for C4 aliases, boundaries, relations, style/update targets, layout values, and role-separated title/accessibility/payload spans. |
+| Class | `class` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for class ids, members, annotations, directives, and style payload roles. |
+| Cynefin | `cynefin` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for domain outlines, transitions, titles, and source-mapped payloads; the current grammar intentionally exposes no addressable rename group. |
+| ER | `er` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for entities, relationships, attributes, and directive payload roles. |
+| Event Modeling | `eventmodeling` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for timeline entities, time frames, and event payloads. |
+| Flowchart | `flowchart` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, subgraphs, directive prefixes, payload roles, and parser-backed authoring hints when enabled. |
+| Gantt | `gantt` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for task ids, dependency refs, click targets, section outlines, directives, and accessibility payloads. |
+| GitGraph | `gitgraph` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for commits, branches, merges, cherry-picks, and accessibility/title payloads. |
+| Info | `info` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for free-form metadata payloads and directive prefixes. |
+| Ishikawa | `ishikawa` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for effect/cause ids, outline entries, and parser-backed payload spans. |
+| Journey | `journey` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for section outlines, task rows, scores, and actor payloads. |
+| Kanban | `kanban` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, items, icons, classes, and role-separated payloads. |
+| Mindmap | `mindmap` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, explicit labels, directives, and role-separated payloads. |
+| Packet | `packet` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title, accessibility text, and bit-field payloads. |
+| Pie | `pie` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title and slice payloads. |
+| Quadrant Chart | `quadrantchart` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for quadrant labels, axes, and point payloads. |
+| Radar | `radar` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for axes, curves, options, and accessibility/title payloads. |
+| Railroad IR | `railroad` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for rule definitions, nonterminal references, expression constructors, titles, comments, and IR-specific rename validation. |
+| Railroad ABNF | `railroadAbnf` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for ABNF rules, references, repetitions, alternatives, comments, and ABNF-specific rename validation. |
+| Railroad EBNF | `railroadEbnf` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for EBNF rules, references, choices, optional/repeated terms, comments, and EBNF-specific rename validation. |
+| Railroad PEG | `railroadPeg` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for PEG rules, references, predicates, suffix operators, comments, and PEG-specific rename validation. |
+| Requirement | `requirement` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for requirements, elements, relationships, and traced payloads. |
+| Sankey | `sankey` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node and link payloads. |
+| Sequence | `sequence` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for participants, actors, message endpoints, notes, boxes, directive payloads, and interaction payload prefixes. |
+| State | `state` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for state ids, references, outlines, and role-aware payloads. |
+| Swimlane | `swimlane` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for lane/subgraph structure, node ids, edges, payload roles, and the independent Swimlane layout/config identity. |
+| Timeline | `timeline` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, accessibility text, section outlines, and event payloads. |
+| Tree View | `treeView` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for tree node ids, labels, and structural outline roles. |
+| Treemap | `treemap` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, leaves, class defs, values, and accessibility/title payloads. |
+| Venn | `venn` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for set ids, unions, text nodes, and styling payloads. |
+| Wardley | `wardley` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for anchors, components, pipelines, links, evolution references, notes, and source-mapped coordinates. |
+| XY Chart | `xychart` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, axes, and series payloads. |
+| ZenUML | `zenuml` | Yes | Yes | Yes | Yes | Yes | Yes | Grammar-derived family facts cover source-mapped participants, groups, messages, creation, calls, assignments, returns, references, fragments, titles, and payload spans. |
 
 ## Coverage Boundary
 
-The matrix above is intentionally narrower than the full parser/render registry. The following
-entries are still outside the first-class LSP product-family contract:
+The matrix above explicitly admits all 35 public types in the current release. Lower-level catalog
+ids such as `flowchart-v2`, `flowchart-elk`, `stateDiagram`, and `classDiagram` inherit the matching
+public product row. Source headers such as `stateDiagram-v2` and `classDiagram-v2` map to the latter
+two catalog ids; they are not separate product types. The following logical family is the only
+catalog entry outside the first-class LSP product contract:
 
 | Family | Status | Why |
 | --- | --- | --- |
 | Error | Internal only | Fallback diagram only; not a product-family commitment. |
 
-Payload-first first-class families deserve a separate note: Info, Pie, Packet, and XY Chart are
-intentionally sparse on rename/reference targets. They still belong in the first-class contract
-because completion, hover, diagnostics, and semantic indexing are wired, but the family itself
-does not expose many entity-bearing spans.
+Payload- or outline-first first-class families deserve a separate note: Cynefin, Info, Pie, Packet,
+and XY Chart are intentionally sparse on rename/reference targets. They still belong in the
+first-class contract because completion, hover, diagnostics, and semantic indexing are wired, but
+the family itself does not expose many entity-bearing spans.
 
 ## Semantic Fact Provenance
 
 Editor features are backed by `merman-editor-core` query results. Those results expose
-`FenceTextIndexSource` provenance so callers can distinguish first-class parser facts from fallback
-behavior:
+`FenceTextIndexSource` provenance so callers can distinguish parser facts from explicit
+unavailability:
 
 | Provenance | Meaning | Product status |
 | --- | --- | --- |
 | `ParserComplete` | Semantic facts came from a successful family parser/editor-facts path. | Mature when covered by the family row and editor-core tests. |
-| `ParserCompleteDegradedSpans` | Semantic facts came from a successful parser path, but at least one fact span could not be proven as an original-source coordinate after preprocessing. | Parser-backed for identity and outline behavior, but not mature for precise range edits or source-position projection unless callers check `source_mapped_spans=false` and avoid those spans. |
 | `ParserRecovered` | Semantic facts came from parser recovery after an incomplete or invalid edit buffer. | Mature for incomplete-buffer editing when tests cover the family and feature. |
-| `ParserRecoveredDegradedSpans` | Semantic facts came from parser recovery, but spans are in degraded parser-input coordinates rather than trusted original-source ranges. | Mature only for non-range-dependent recovery behavior; precise edits, rename ranges, and diagnostics must treat exposed spans as unavailable. |
-| `TextScan` | Semantic facts came from the bounded text-scan fallback. | Fallback only; not a mature family capability and must stay visible to callers. |
+| `Unavailable` | No parser-backed body facts are available. | No body completion, hover, symbols, navigation, rename, or semantic tokens are projected. |
+
+Preprocessing owns a composable edit map. Facts are mapped independently through it, so an
+unrepresentable span is omitted only for that fact and produces a recovery diagnostic; unrelated
+facts retain their exact original-source coordinates. There is no parser-input coordinate mode or
+whole-document degraded fallback.
 
 The matrix above requires parser-backed complete or recovered provenance for first-class feature
-claims. Text-scan fallback may still support source-start headers/templates and conservative
-directive prefixes, but it must not be counted as mature body completion, navigation, rename, or
-semantic-token support.
+claims. Source-start headers and templates come directly from the static Diagram Family catalog;
+they remain available without constructing or claiming body semantics.
 
 ## Parser Diagnostic Span Coverage
 
@@ -139,18 +197,21 @@ Remaining fallback ledger:
 
 ## Feature Gates
 
-- Diagnostics: shared `merman-analysis` payloads only. Core parser errors carry structured
-  metadata when the family can prove an exact token span or insertion point. Analysis owns merge
-  and fallback policy: recovered parser facts may improve the primary span, but matching recovery
-  errors must not create a duplicate user-visible diagnostic. Whole-source spans are reserved for
-  source-wide conditions such as no diagram, unsupported family, resource limits, or genuinely
-  unlocatable parser failures.
+- Diagnostics: analysis and lint diagnostics come only from shared `merman-analysis` payloads. Core
+  parser errors carry structured metadata when the family can prove an exact token span or insertion
+  point. Analysis owns merge and fallback policy: recovered parser facts may improve the primary
+  span, but matching recovery errors must not create a duplicate user-visible diagnostic.
+  Whole-source spans are reserved for source-wide conditions such as no diagram, unsupported family,
+  resource limits, or genuinely unlocatable parser failures. The sole LSP-owned exception is
+  `merman.lsp.document_sync_lost`, a protocol-integrity diagnostic emitted when an invalid
+  incremental edit or a ranged edit after source discard leaves no authoritative server text; it is
+  not an analysis rule or rule-catalog entry.
 - LSP diagnostic projection: `Diagnostic.source` is `merman`; the visible `Diagnostic.code` is the
   stable string rule id such as `merman.parse.diagram_parse`, not the numeric analysis status.
-  Numeric `code` / `codeName`, category, `diagramType`, help text, and fix metadata remain in
-  diagnostic `data` for compatibility and code actions. Editor-core and LSP do not keep a
-  number-or-string compatibility enum and do not deduplicate projected diagnostics; they preserve
-  analysis payload cardinality. Document pull diagnostics are enabled only when the client
+  When diagnostic data is negotiated, it contains only the diagnostic id and current document
+  version used to validate a code-action request; fix plans and auxiliary rule metadata stay
+  server-owned. Editor-core and LSP do not keep a number-or-string compatibility enum and do not
+  deduplicate projected diagnostics; they preserve analysis payload cardinality. Document pull diagnostics are enabled only when the client
   advertises `textDocument.diagnostic`; `workspace_diagnostics` is not advertised and
   `workspace/diagnostic` is not implemented because unopened workspace-file scanning is not
   implemented. Push diagnostics are cleared on `didClose`, and `workspace/diagnostic/refresh` is
@@ -176,7 +237,9 @@ Remaining fallback ledger:
   fields.
 - Definition / References / Rename: entity-only semantic item queries keyed by typed reference
   groups. Payload and outline-only items are excluded unless a future role explicitly allows
-  projection, and same-name entities with different semantic kinds do not collide.
+  projection, and same-name entities with different semantic kinds do not collide. Rename
+  validation uses the parser-owned policy carried by each entity, including qualified names and
+  Event Modeling frame ids; the LSP adapter does not impose a second identifier grammar.
 - Code actions: quickfix provider is wired; only diagnostics with `DiagnosticFix` metadata are
   eligible, and diagnostics without explicit safe fixes produce no action. Recommended-profile
   authoring rules include `merman.authoring.config.prefer_init_directive`,
@@ -212,11 +275,9 @@ Remaining fallback ledger:
   diagnostics without invalidating semantic-token state. Delta requests reuse cached previous token
   state only when the result id matches state from the current snapshot generation; otherwise they
   return full tokens.
-- Text-scan fallback: may support source-start headers/templates and record directive prefixes for
-  unmigrated paths, but must not assert body completion availability. It must not project
-  payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`
-  into node IDs, completion IDs, or outline entries. Parser-backed payload facts must likewise
-  remain outside completion IDs and outline entries unless their role explicitly permits it.
+- Unavailable facts: source-start headers/templates are catalog-backed, while unknown or
+  unsupported body text produces no semantic items. Parser-backed payload facts remain outside
+  completion IDs and outline entries unless their role explicitly permits it.
 - Flowchart lint: parser-backed warning facts flow through the shared analysis contract, starting
   with a recommended-profile authoring hint and preferred quickfix for flowchart headers that omit
   an explicit direction, plus a core compatibility warning for `style` targets that would

@@ -10,13 +10,13 @@ import {
 describe("renderer arguments", () => {
   it("passes preview Mermaid themes through to merman-cli", () => {
     assert.deepEqual(renderMermanArgs({ format: "svg", theme: "forest" }), [
-      "-q",
-      "-i",
+      "render",
       "-",
-      "-o",
+      "--output",
       "-",
-      "-e",
+      "--format",
       "svg",
+      "--quiet",
       "--theme",
       "forest",
     ]);
@@ -24,38 +24,55 @@ describe("renderer arguments", () => {
 
   it("omits source/default theme overrides", () => {
     assert.deepEqual(renderMermanArgs({ format: "svg", theme: "source" }), [
-      "-q",
-      "-i",
+      "render",
       "-",
-      "-o",
+      "--output",
       "-",
-      "-e",
+      "--format",
       "svg",
+      "--quiet",
     ]);
   });
 
-  it("passes text preview formats and explicit backgrounds through to merman-cli", () => {
+  it("uses the native output path and background options for graphical output", () => {
+    assert.deepEqual(
+      renderMermanArgs({
+        format: "png",
+        outputPath: "diagram.png",
+        background: "transparent",
+      }),
+      [
+        "render",
+        "-",
+        "--output",
+        "diagram.png",
+        "--format",
+        "png",
+        "--quiet",
+        "--background",
+        "transparent",
+      ],
+    );
+  });
+
+  it("does not pass graphical background options to text output", () => {
     assert.deepEqual(renderMermanArgs({ format: "ascii", background: "transparent" }), [
-      "-q",
-      "-i",
+      "render",
       "-",
-      "-o",
+      "--output",
       "-",
-      "-e",
+      "--format",
       "ascii",
-      "--background-color",
-      "transparent",
+      "--quiet",
     ]);
     assert.deepEqual(renderMermanArgs({ format: "unicode", background: "white" }), [
-      "-q",
-      "-i",
+      "render",
       "-",
-      "-o",
+      "--output",
       "-",
-      "-e",
+      "--format",
       "unicode",
-      "--background-color",
-      "white",
+      "--quiet",
     ]);
   });
 

@@ -14,15 +14,15 @@
         {
           "id": "note-0",
           "x": 175.0,
-          "y": 94.0,
+          "y": 94.5,
           "width": 150.0,
-          "height": 38.0,
+          "height": 39.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-John",
           "x": 75.0,
-          "y": 165.5,
+          "y": 166.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -42,7 +42,7 @@
             },
             {
               "x": 75.0,
-              "y": 133.0
+              "y": 134.0
             }
           ],
           "label": null,
@@ -60,7 +60,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 300.0,
-        "max_y": 209.0
+        "max_y": 210.0
       }
     }
   }

@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Title with ; semicolons; and #hashtags #not-a-comment",
     "accTitle": null,
     "accDescr": null,

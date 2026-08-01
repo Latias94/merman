@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 196.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 196.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -35,7 +35,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -43,7 +43,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -51,7 +51,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -59,7 +59,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -104,7 +104,7 @@
             "id": "a1",
             "x": 75.0,
             "y": 50.0,
-            "width": 620.0,
+            "width": 390.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -115,7 +115,7 @@
             "text": "#A task with a hashtag           ",
             "font_size": 11.0,
             "width": 106.92,
-            "x": 385.0,
+            "x": 270.0,
             "y": 63.5,
             "class": "taskText taskText0 width-106.91999999999999"
           }
@@ -133,9 +133,9 @@
           "vert": false,
           "bar": {
             "id": "task2",
-            "x": 302.0,
+            "x": 218.0,
             "y": 98.0,
-            "width": 249.0,
+            "width": 156.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -146,7 +146,7 @@
             "text": "Task in sec      ",
             "font_size": 11.0,
             "width": 51.37,
-            "x": 426.5,
+            "x": 296.0,
             "y": 111.5,
             "class": "taskText taskText1 width-51.37"
           }
@@ -164,9 +164,9 @@
           "vert": false,
           "bar": {
             "id": "task3",
-            "x": 551.0,
+            "x": 374.0,
             "y": 122.0,
-            "width": 496.0,
+            "width": 312.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -177,7 +177,7 @@
             "text": "another task      ",
             "font_size": 11.0,
             "width": 56.98,
-            "x": 799.0,
+            "x": 530.0,
             "y": 135.5,
             "class": "taskText taskText1 width-56.98"
           }
@@ -195,9 +195,9 @@
           "vert": false,
           "bar": {
             "id": "task1",
-            "x": 695.0,
+            "x": 465.0,
             "y": 74.0,
-            "width": 414.0,
+            "width": 260.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -208,7 +208,7 @@
             "text": "Another task     ",
             "font_size": 11.0,
             "width": 58.85,
-            "x": 902.0,
+            "x": 595.0,
             "y": 87.5,
             "class": "taskText taskText0 width-58.849999999999994"
           }
@@ -219,43 +219,43 @@
       "bottom_ticks": [
         {
           "time_ms": 1388880000000.0,
-          "x": 158.0,
+          "x": 127.0,
           "label": "2014-01-05"
         },
         {
           "time_ms": 1389484800000.0,
-          "x": 302.0,
+          "x": 218.0,
           "label": "2014-01-12"
         },
         {
           "time_ms": 1390089600000.0,
-          "x": 447.0,
+          "x": 309.0,
           "label": "2014-01-19"
         },
         {
           "time_ms": 1390694400000.0,
-          "x": 592.0,
+          "x": 400.0,
           "label": "2014-01-26"
         },
         {
           "time_ms": 1391299200000.0,
-          "x": 737.0,
+          "x": 491.0,
           "label": "2014-02-02"
         },
         {
           "time_ms": 1391904000000.0,
-          "x": 882.0,
+          "x": 582.0,
           "label": "2014-02-09"
         },
         {
           "time_ms": 1392508800000.0,
-          "x": 1026.0,
+          "x": 673.0,
           "label": "2014-02-16"
         }
       ],
       "top_ticks": [],
       "title": "Gantt Digram",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

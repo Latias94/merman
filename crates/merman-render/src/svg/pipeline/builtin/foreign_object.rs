@@ -1,6 +1,8 @@
 use crate::Result;
 use crate::entities::decode_entities_minimal;
+use crate::environment::TextMeasurementPhase;
 use crate::svg::foreign_object_label_fallback_svg_text;
+use crate::text::TextMeasurer;
 use std::borrow::Cow;
 use std::collections::HashSet;
 
@@ -18,12 +20,13 @@ impl SvgPostprocessor for ForeignObjectFallbackPostprocessor {
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,
-        _ctx: &SvgPostprocessContext<'_>,
+        ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
         if !svg.contains("<foreignObject") {
             return Ok(svg);
         }
-        Ok(Cow::Owned(foreign_object_fallback_svg(&svg)))
+        let measurer = ctx.text_measurer(TextMeasurementPhase::Wrap);
+        Ok(Cow::Owned(foreign_object_fallback_svg(&svg, &measurer)))
     }
 }
 
@@ -44,26 +47,6 @@ impl SvgPostprocessor for StripForeignObjectPostprocessor {
             return Ok(svg);
         }
         Ok(Cow::Owned(strip_foreign_objects(&svg)))
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct DropNativeDuplicateFallbacksPostprocessor;
-
-impl SvgPostprocessor for DropNativeDuplicateFallbacksPostprocessor {
-    fn name(&self) -> &'static str {
-        "drop-native-duplicate-fallbacks"
-    }
-
-    fn process<'a>(
-        &self,
-        svg: Cow<'a, str>,
-        _ctx: &SvgPostprocessContext<'_>,
-    ) -> Result<Cow<'a, str>> {
-        if !svg.contains(r#"data-merman-foreignobject="fallback""#) {
-            return Ok(svg);
-        }
-        Ok(Cow::Owned(drop_native_duplicate_fallbacks(&svg)))
     }
 }
 
@@ -100,8 +83,8 @@ pub(crate) fn drop_switch_native_fallbacks(svg: &str) -> String {
     out
 }
 
-pub(crate) fn foreign_object_fallback_svg(svg: &str) -> String {
-    foreign_object_label_fallback_svg_text(svg)
+pub(crate) fn foreign_object_fallback_svg(svg: &str, text_measurer: &dyn TextMeasurer) -> String {
+    foreign_object_label_fallback_svg_text(svg, text_measurer)
 }
 
 pub(crate) fn strip_foreign_objects(svg: &str) -> String {
@@ -212,7 +195,7 @@ fn find_wrapping_switch_start(svg: &str, cursor: usize, before: usize) -> Option
     None
 }
 
-pub fn drop_native_duplicate_fallbacks(svg: &str) -> String {
+pub(crate) fn drop_native_duplicate_fallbacks(svg: &str) -> String {
     let native_text = collect_native_text_contents(svg);
     if native_text.is_empty() {
         return svg.to_string();
@@ -372,6 +355,12 @@ mod tests {
     use super::*;
     use crate::svg::pipeline::SvgPipeline;
 
+    fn render_session() -> crate::environment::RenderSession {
+        crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap()
+    }
+
     #[test]
     fn drop_native_duplicate_fallbacks_removes_only_matching_fallback_groups() {
         let svg = r##"<svg>
@@ -463,7 +452,10 @@ mod tests {
     #[test]
     fn resvg_safe_pipeline_preserves_switch_text_fallback() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><switch><foreignObject x="150" y="50" width="550" height="50"><div class="journey-section" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">Go to work</div></div></foreignObject><text x="425" y="75" fill="#333"><tspan x="425" dy="0">Go to work</tspan></text></switch></svg>"##;
-        let out = SvgPipeline::resvg_safe().process_to_string(svg).unwrap();
+        let session = render_session();
+        let out = SvgPipeline::resvg_safe()
+            .process_to_string(svg, &session)
+            .unwrap();
 
         assert!(
             !out.contains("<foreignObject"),
@@ -540,9 +532,10 @@ mod tests {
 </g>
 </svg>"##;
 
+        let session = render_session();
         let out = SvgPipeline::resvg_safe()
-            .with_postprocessor(DropNativeDuplicateFallbacksPostprocessor)
-            .process_to_string(svg)
+            .with_drop_native_duplicate_fallbacks(true)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(!out.contains("<foreignObject"));

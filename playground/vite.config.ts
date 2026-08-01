@@ -2,21 +2,34 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import path from "path";
+import {
+  createOpaqueRealmCspPlugin,
+  loadOpaqueRealmCspHashes,
+} from "./scripts/opaque-realm-csp.mjs";
+
+const playgroundRoot = __dirname;
+const opaqueRealmCspHashes = loadOpaqueRealmCspHashes(playgroundRoot);
 
 export default defineConfig({
-  plugins: [react(), wasm()],
+  plugins: [createOpaqueRealmCspPlugin(opaqueRealmCspHashes), react(), wasm()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./"),
+      "@": path.resolve(playgroundRoot, "./"),
     },
   },
   // GitHub Pages 部署时使用仓库名作为 base
   // 本地开发时使用 /
   base: process.env.NODE_ENV === "production" ? "/merman/" : "/",
   build: {
+    manifest: true,
     outDir: "dist",
     target: "esnext",
     rolldownOptions: {
+      input: {
+        playground: path.resolve(playgroundRoot, "index.html"),
+        benchmarkCorpus: path.resolve(playgroundRoot, "benchmark-corpus.html"),
+        benchmarkRealm: path.resolve(playgroundRoot, "benchmark.html"),
+      },
       output: {
         codeSplitting: true,
       },

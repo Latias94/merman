@@ -1,58 +1,141 @@
 import type {
   AsciiCapability,
-  BindingCapabilities,
   BindingStatusCodeName,
   DiagramFamilyCapability,
+  DiagramType,
   HostThemePresetName,
   LintBindingOptions,
   LintRuleCatalogEntry,
   LintRuleCatalogResponse,
   LintRuleCategory,
   LintRuleSeverity,
+  RuntimeCapabilities,
 } from "./public-catalog.js";
+import type {
+  HostTextDirection,
+  HostTextMeasurementOperation,
+  HostTextMeasurementPhase,
+  HostTextWhiteSpace,
+  HostTextWrapMode,
+} from "./generated/text-measurement-abi.js";
+import type { EditorRenamePolicy } from "./generated/token-descriptor.js";
+import type { ResourceOptions } from "./generated/resource-contract.js";
+
+export type {
+  HostTextDirection,
+  HostTextMeasurementOperation,
+  HostTextMeasurementPhase,
+  HostTextMeasurementResultKind,
+  HostTextWhiteSpace,
+  HostTextWrapMode,
+} from "./generated/text-measurement-abi.js";
+export type { ResourceOptions } from "./generated/resource-contract.js";
 
 export interface ParseOptions {
   suppress_errors?: boolean;
 }
 
 export interface LayoutOptions {
-  viewport_width?: number;
-  viewport_height?: number;
-  text_measurer?: "vendored" | "deterministic";
-  math_renderer?: "none" | "ratex";
-  flowchart_elk_backend?: "source-ported" | "source_ported" | "source" | "compat";
+  container_width?: number;
+  container_height?: number;
 }
 
-export interface ResourceOptions {
-  profile?:
-    | "interactive"
-    | "typst-package"
-    | "typst_package"
-    | "typst"
-    | "trusted-native"
-    | "trusted_native"
-    | "trusted"
-    | "unbounded-for-trusted-input"
-    | "unbounded_for_trusted_input"
-    | "unbounded";
-  max_source_bytes?: number;
-  max_svg_bytes?: number;
-  max_flowchart_nodes?: number;
-  max_flowchart_edges?: number;
-  max_flowchart_subgraphs?: number;
-  max_class_nodes?: number;
-  max_class_edges?: number;
-  max_class_namespaces?: number;
-  max_label_bytes?: number;
+export interface RenderEnvironmentOptions {
+  text_measurement?: "vendored" | "parity" | "deterministic";
+  math_renderer?: "none" | "ratex";
+}
+
+/**
+ * Current capabilities and policies exposed by the loaded browser artifact.
+ *
+ * Stable ID arrays are sorted and unique. Consumers must tolerate IDs introduced by newer
+ * artifacts and should make decisions only from the relations present in this catalog.
+ */
+export interface RuntimeCatalog {
+  schema_version: number;
+  transport_api_version: number;
+  package_version: string;
+  options_schema_versions: number[];
+  payload_schemas: RuntimePayloadSchema[];
+  metadata_ids: string[];
+  capabilities: RuntimeCapabilities;
+  output_contracts: RuntimeOutputContract[];
+  registry: {
+    diagram_family_count: number;
+  };
+  resources: RuntimeResourceContract;
+}
+
+export interface RuntimePayloadSchema {
+  id: string;
+  version: number;
+}
+
+export interface RuntimeOutputContract {
+  id: string;
+  media_type: string;
+  system_fonts: RuntimeSystemFontContract | null;
+  embedded_images: RuntimeEmbeddedImageContract | null;
+}
+
+export interface RuntimeSystemFontContract {
+  source_id: string;
+  discovery: string;
+  cache_scope: string;
+  host_dependent: boolean;
+  caller_configurable: boolean;
+  resource_bounded: boolean;
+}
+
+export interface RuntimeEmbeddedImageContract {
+  source_ids: string[];
+  filesystem_access: boolean;
+  network_access: boolean;
+  caller_configurable: boolean;
+  limits: RuntimeEmbeddedImageLimits;
+}
+
+export interface RuntimeEmbeddedImageLimits {
+  max_bytes_per_image: number | null;
+  max_total_bytes: number | null;
+  max_pixels_per_image: number | null;
+  max_total_pixels: number | null;
+}
+
+export interface RuntimeResourceContract {
+  general_binding_default_profile: string;
+  cli_default_profile: string;
+  limits: RuntimeResourceLimit[];
+  profiles: RuntimeResourceProfile[];
+}
+
+export interface RuntimeResourceLimit {
+  id: string;
+  phase: string;
+  description: string;
+  overridable: boolean;
+  hard_cap: boolean;
+  minimum_value: number;
+  operation_ids: string[];
+}
+
+export interface RuntimeResourceProfile {
+  id: string;
+  purpose: string;
+  trust_assumption: string;
+  recommended_binding_default: boolean;
+  limits: Record<string, number | null>;
 }
 
 export interface SvgOptions {
   diagram_id?: string;
-  pipeline?: "parity" | "readable" | "resvg-safe" | "resvg_safe";
+  pipeline?: "parity" | "readable" | "resvg-safe";
   scoped_css?: string;
-  css_override_policy?: "preserve" | "strip-existing-important" | "strip_existing_important";
+  css_override_policy?: "preserve" | "strip-existing-important";
   root_background_color?: string;
   drop_native_duplicate_fallbacks?: boolean;
+  viewbox_padding?: number;
+  viewBoxPadding?: number;
 }
 
 export type HostThemeAppearance = "light" | "dark";
@@ -83,8 +166,8 @@ export interface HostThemeRolesOptions {
 }
 
 export interface HostThemeOutputOptions {
-  pipeline?: "parity" | "readable" | "resvg-safe" | "resvg_safe";
-  css_override_policy?: "preserve" | "strip-existing-important" | "strip_existing_important";
+  pipeline?: "parity" | "readable" | "resvg-safe";
+  css_override_policy?: "preserve" | "strip-existing-important";
   root_background?: "none" | "canvas" | string;
   drop_native_duplicate_fallbacks?: boolean;
   scoped_css?: string;
@@ -98,7 +181,6 @@ export interface HostThemeOptions {
   roles?: HostThemeRolesOptions;
   series_palette?: string[];
   output?: HostThemeOutputOptions;
-  themeVariables?: Record<string, unknown>;
   theme_variables?: Record<string, unknown>;
   site_config?: MermaidSiteConfig;
 }
@@ -109,13 +191,13 @@ export interface AnalysisBindingOptions {
   fixed_today?: string;
   fixed_local_offset_minutes?: number;
   site_config?: MermaidSiteConfig;
-  parse?: ParseOptions;
   resources?: ResourceOptions;
   lint?: LintBindingOptions;
 }
 
 export interface CommonBindingOptions extends AnalysisBindingOptions {
-  version?: number;
+  version?: 2;
+  parse?: ParseOptions;
   analysis?: AnalysisBindingOptions;
   merman?: AnalysisBindingOptions;
 }
@@ -134,7 +216,6 @@ export type AsciiDirectionOption =
 export type AsciiColorModeOption =
   | "plain"
   | "none"
-  | "auto"
   | "ansi16"
   | "ansi-16"
   | "ansi_16"
@@ -167,14 +248,24 @@ export interface AsciiRenderOptions {
   theme?: AsciiThemeOptions;
   sequence_mirror_actors?: boolean;
   sequenceMirrorActors?: boolean;
+  box_border_padding?: number;
+  boxBorderPadding?: number;
+  graph_padding_x?: number;
+  graphPaddingX?: number;
+  graph_padding_y?: number;
+  graphPaddingY?: number;
+  sequence_participant_spacing?: number;
+  sequenceParticipantSpacing?: number;
+  sequence_message_spacing?: number;
+  sequenceMessageSpacing?: number;
+  sequence_self_message_width?: number;
+  sequenceSelfMessageWidth?: number;
   xychart_vertical_plot_height?: number;
   xychartVerticalPlotHeight?: number;
   xychart_category_band_width?: number;
   xychartCategoryBandWidth?: number;
   xychart_horizontal_plot_width?: number;
   xychartHorizontalPlotWidth?: number;
-  max_grid_cells?: number;
-  maxGridCells?: number;
   relation_summary_diagnostics?: boolean;
   relationSummaryDiagnostics?: boolean;
 }
@@ -185,24 +276,16 @@ export interface AsciiBindingOptions extends CommonBindingOptions {
 
 export interface SvgBindingOptions extends CommonBindingOptions {
   host_theme?: HostThemeOptions;
+  environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;
 }
 
 export type BindingOptions = SvgBindingOptions;
 
-export type HostTextWrapMode =
-  | "svg-like"
-  | "svg-like-single-run"
-  | "html-like";
-
-export type HostTextWhiteSpace =
-  | "normal"
-  | "nowrap"
-  | "break-spaces"
-  | "pre-wrap";
-
 export interface HostTextMeasureRequest {
+  operation: HostTextMeasurementOperation;
+  phase: HostTextMeasurementPhase;
   text: string;
   font_family?: string | null;
   font_size: number;
@@ -214,20 +297,59 @@ export interface HostTextMeasureRequest {
   letter_spacing: number;
   word_spacing: number;
   wrap_mode: HostTextWrapMode;
-  direction: "auto" | "ltr" | "rtl";
+  direction: HostTextDirection;
   white_space: HostTextWhiteSpace;
 }
 
-export interface HostTextMeasureResult {
-  handled?: boolean;
+export interface HostTextMetricsResult {
+  handled?: true;
+  kind: "metrics";
   width: number;
   height: number;
-  line_count?: number;
+  line_count: number;
 }
+
+export interface HostTextLengthResult {
+  handled?: true;
+  kind: "length";
+  length: number;
+}
+
+export interface HostTextHorizontalExtentsResult {
+  handled?: true;
+  kind: "horizontal-extents";
+  bbox_left: number;
+  bbox_right: number;
+}
+
+export interface HostTextWrappedWithRawWidthResult {
+  handled?: true;
+  kind: "wrapped-with-raw-width";
+  width: number;
+  height: number;
+  line_count: number;
+  raw_width?: number | null;
+}
+
+export interface HostTextUnhandledResult {
+  handled: false;
+}
+
+export type HostTextMeasureResult =
+  | HostTextMetricsResult
+  | HostTextLengthResult
+  | HostTextHorizontalExtentsResult
+  | HostTextWrappedWithRawWidthResult
+  | HostTextUnhandledResult;
 
 export type HostTextMeasurer = (
   request: HostTextMeasureRequest
 ) => HostTextMeasureResult | null | undefined;
+
+export interface BrowserTextMeasurementSession {
+  readonly measure: HostTextMeasurer;
+  dispose(): void;
+}
 
 
 export interface ValidationResult {
@@ -303,12 +425,15 @@ export interface AnalysisDiagnostic {
   fixes?: AnalysisDiagnosticFix[];
 }
 
-export interface AnalysisResult {
-  version: number;
+interface AnalysisPayloadFields {
   valid: boolean;
   summary: AnalysisSummary;
   source: AnalysisSource;
   diagnostics: AnalysisDiagnostic[];
+}
+
+export interface AnalysisResult extends AnalysisPayloadFields {
+  version: 1;
 }
 
 export interface AnalysisByteSpan {
@@ -346,6 +471,8 @@ export type AnalysisEditorSymbolKind =
 
 export type AnalysisSemanticRole = "entity" | "outline" | "payload" | string;
 
+export type AnalysisRenamePolicy = EditorRenamePolicy;
+
 export type AnalysisExpectedSyntaxKind =
   | "id_list"
   | "node_identifier"
@@ -371,6 +498,7 @@ export interface AnalysisLineItemFacts {
 
 export interface AnalysisSemanticItemFacts extends AnalysisLineItemFacts {
   role: AnalysisSemanticRole;
+  rename_policy: AnalysisRenamePolicy;
 }
 
 export interface AnalysisExpectedSyntaxFacts {
@@ -441,6 +569,7 @@ export interface AnalysisFlowchartFacts {
 
 export interface AnalysisDiagramSyntaxFacts {
   diagram_type?: string | null;
+  effective_layout?: string | null;
   fact_source: EditorSemanticFactSource;
   parser_backed: boolean;
   recovered: boolean;
@@ -455,6 +584,8 @@ export interface AnalysisDiagramSyntaxFacts {
   expected_syntax: AnalysisExpectedSyntaxFacts[];
 }
 
+export type DiagramParseDisposition = "parsed" | "recovered" | "unavailable";
+
 export interface AnalysisDiagramFacts {
   source_id: string;
   index: number;
@@ -464,12 +595,49 @@ export interface AnalysisDiagramFacts {
   body_span?: AnalysisSpan | null;
   text_len: number;
   fence_delimiter?: AnalysisFenceDelimiterFacts | null;
+  parse_disposition: DiagramParseDisposition;
   syntax: AnalysisDiagramSyntaxFacts;
 }
 
-export interface AnalysisFactsResult extends AnalysisResult {
+export interface AnalysisFactsResult extends AnalysisPayloadFields {
+  version: 1;
   diagrams: AnalysisDiagramFacts[];
 }
+
+/**
+ * Capability plan for one SVG render request.
+ *
+ * The plan is emitted by the compiled SVG owner before drawing. `ready` is
+ * false when the selected artifact lacks one or more required capabilities.
+ */
+export interface SvgPlanResult {
+  schema_version: 1;
+  planned_operation_id: "svg";
+  diagram_type: string;
+  required_capability_ids: string[];
+  missing_capability_ids: string[];
+  ready: boolean;
+}
+
+export interface AvailableDiagramDetectionFacts {
+  readonly status: "available";
+  readonly validity: "valid" | "recoverable-invalid";
+  readonly diagramType: DiagramType;
+  readonly syntaxId: string;
+  readonly effectiveLayoutId: string;
+}
+
+export interface UnavailableDiagramDetectionFacts {
+  readonly status: "unavailable";
+  readonly validity: "unknown";
+  readonly diagramType: null;
+  readonly syntaxId: null;
+  readonly effectiveLayoutId: null;
+}
+
+export type DiagramDetectionFacts =
+  | AvailableDiagramDetectionFacts
+  | UnavailableDiagramDetectionFacts;
 
 export interface EditorPosition {
   line: number;
@@ -488,11 +656,9 @@ export interface EditorTextEdit {
 }
 
 export type EditorSemanticFactSource =
-  | "text_scan"
+  | "unavailable"
   | "parser_complete"
-  | "parser_complete_degraded_spans"
-  | "parser_recovered"
-  | "parser_recovered_degraded_spans";
+  | "parser_recovered";
 
 export type EditorCompletionItemKind = "keyword" | "variable" | "class" | "snippet";
 
@@ -644,20 +810,111 @@ export interface EditorSemanticTokenLegend {
   tokenModifiers: string[];
 }
 
-export interface EditorSemanticToken {
-  line: number;
-  start: number;
-  length: number;
-  tokenType: string;
-  tokenModifier: string;
-  factSource: EditorSemanticFactSource;
+export type EditorSemanticTokenDescriptor =
+  typeof import("./generated/token-descriptor.js").SEMANTIC_TOKEN_DESCRIPTOR;
+
+export interface BrowserEditorSession {
+  readonly version: number;
+  readonly uri: string;
+  update(source: string, version: number): void;
+  diagnostics(): EditorDiagnosticsResult;
+  diagramDetection(): DiagramDetectionFacts;
+  codeActions(): EditorCodeAction[];
+  completions(position: EditorPosition): EditorCompletionList;
+  hover(position: EditorPosition): EditorHover | null;
+  documentSymbols(): EditorDocumentSymbol[];
+  searchDocumentSymbols(query: string): EditorSymbolInformation[];
+  definition(position: EditorPosition): EditorLocation | null;
+  references(position: EditorPosition, includeDeclaration?: boolean): EditorLocation[];
+  prepareRename(position: EditorPosition): EditorPrepareRename | null;
+  rename(position: EditorPosition, newName: string): EditorWorkspaceEdit | null;
+  semanticTokens(): Uint32Array;
+  dispose(): void;
 }
 
-export interface MermanWasmModule {
-  default: (input?: unknown) => Promise<unknown>;
-  abiVersion: () => number;
+export interface WasmEditorSessionBinding {
+  readonly version: number;
+  readonly uri: string;
+  update(source: string, version: number): void;
+  diagnostics(): EditorDiagnosticsResult;
+  diagramDetection(): DiagramDetectionFacts;
+  codeActions(): EditorCodeAction[];
+  completions(line: number, character: number): EditorCompletionList;
+  hover(line: number, character: number): EditorHover | null;
+  documentSymbols(): EditorDocumentSymbol[];
+  searchDocumentSymbols(query: string): EditorSymbolInformation[];
+  definition(line: number, character: number): EditorLocation | null;
+  references(
+    line: number,
+    character: number,
+    includeDeclaration: boolean
+  ): EditorLocation[];
+  prepareRename(line: number, character: number): EditorPrepareRename | null;
+  rename(
+    line: number,
+    character: number,
+    newName: string
+  ): EditorWorkspaceEdit | null;
+  semanticTokens(): Uint32Array;
+  free(): void;
+}
+
+export interface WasmEditorSessionConstructor {
+  new (
+    source: string,
+    version: number,
+    uri?: string | null,
+    optionsJson?: string | null
+  ): WasmEditorSessionBinding;
+}
+
+export interface WasmSemanticTokenDescriptor {
+  schemaVersion: number;
+  digest: string;
+  tokenTypes: Array<{
+    id: string;
+    code: number;
+    lspName: string;
+    lspIndex: number;
+  }>;
+  modifiers: Array<{
+    id: string;
+    index: number;
+    bit: number;
+    lspName: string;
+    lspIndex: number;
+  }>;
+  packed: {
+    encoding: string;
+    wordWidthBits: number;
+    recordWidth: number;
+    fieldOrder: string[];
+  };
+  validTypeCodeMax: number;
+  validModifierMask: number;
+}
+
+export type MermanWasmSource =
+  | RequestInfo
+  | URL
+  | Response
+  | BufferSource
+  | WebAssembly.Module;
+
+interface WasmBindgenInitEnvelope {
+  module_or_path: MermanWasmSource | Promise<MermanWasmSource>;
+}
+
+export interface MermanWasmModuleBase {
+  default: (input?: WasmBindgenInitEnvelope) => Promise<unknown>;
+}
+
+export interface MermanWasmModule extends MermanWasmModuleBase {
+  EditorSession?: WasmEditorSessionConstructor;
+  transportApiVersion: () => number;
   packageVersion: () => string;
   renderSvg: (source: string, optionsJson?: string | null) => string;
+  svgPlanJson: (source: string, optionsJson?: string | null) => SvgPlanResult;
   renderSvgWithTextMeasurer?: (
     source: string,
     optionsJson: string | null | undefined,
@@ -690,6 +947,11 @@ export interface MermanWasmModule {
     optionsJson?: string | null,
     uri?: string | null
   ) => EditorDiagnosticsResult;
+  editorDiagramDetection?: (
+    source: string,
+    optionsJson?: string | null,
+    uri?: string | null
+  ) => DiagramDetectionFacts;
   editorCodeActions?: (
     source: string,
     optionsJson?: string | null,
@@ -714,7 +976,7 @@ export interface MermanWasmModule {
     uri?: string | null,
     optionsJson?: string | null
   ) => EditorDocumentSymbol[];
-  editorWorkspaceSymbols?: (
+  editorSearchDocumentSymbols?: (
     source: string,
     query: string,
     uri?: string | null,
@@ -750,16 +1012,15 @@ export interface MermanWasmModule {
     uri?: string | null,
     optionsJson?: string | null
   ) => EditorWorkspaceEdit | null;
-  editorSemanticTokenLegend?: () => EditorSemanticTokenLegend;
+  editorSemanticTokenDescriptor?: () => WasmSemanticTokenDescriptor;
   editorSemanticTokens?: (
     source: string,
     uri?: string | null,
     optionsJson?: string | null
-  ) => EditorSemanticToken[];
+  ) => Uint32Array;
   asciiSupportedDiagrams: () => string[];
   asciiCapabilities: () => AsciiCapability[];
-  bindingCapabilities: () => BindingCapabilities;
-  selectedRegistryProfile: () => string;
+  runtimeCatalog: () => RuntimeCatalog;
   diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];
@@ -767,11 +1028,16 @@ export interface MermanWasmModule {
   supportedThemes: () => string[];
 }
 
-export type MermanWasmLoader = () => Promise<MermanWasmModule>;
+export type MermanWasmLoader<Module extends MermanWasmModuleBase = MermanWasmModule> =
+  () => Promise<Module>;
 
-export interface MermanInitOptions {
-  loader?: MermanWasmLoader;
-  wasm?: unknown;
+export interface MermanInitOptions<
+  Module extends MermanWasmModuleBase = MermanWasmModule,
+> {
+  loader?: MermanWasmLoader<Module>;
+  wasm?: MermanWasmSource | Promise<MermanWasmSource>;
 }
 
-export type MermanInitInput = MermanWasmLoader | MermanInitOptions;
+export type MermanInitInput<Module extends MermanWasmModuleBase = MermanWasmModule> =
+  | MermanWasmLoader<Module>
+  | MermanInitOptions<Module>;

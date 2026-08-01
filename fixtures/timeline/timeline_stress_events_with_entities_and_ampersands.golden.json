@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Entities & ampersands in event labels",
     "accTitle": null,
     "accDescr": null,

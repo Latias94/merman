@@ -1,0 +1,158 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory",
+      "children": [
+        {
+          "id": 1,
+          "level": 12,
+          "name": "my-project",
+          "nodeType": "directory",
+          "children": [
+            {
+              "id": 2,
+              "level": 16,
+              "name": "src",
+              "nodeType": "directory",
+              "children": [
+                {
+                  "id": 3,
+                  "level": 20,
+                  "name": "components",
+                  "nodeType": "directory",
+                  "children": [
+                    {
+                      "id": 4,
+                      "level": 24,
+                      "name": "Button.tsx",
+                      "nodeType": "file",
+                      "children": []
+                    },
+                    {
+                      "id": 5,
+                      "level": 24,
+                      "name": "Header.tsx",
+                      "nodeType": "file",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "id": 6,
+                  "level": 20,
+                  "name": "App.tsx",
+                  "nodeType": "file",
+                  "children": []
+                },
+                {
+                  "id": 7,
+                  "level": 20,
+                  "name": "index.js",
+                  "nodeType": "file",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": 8,
+              "level": 16,
+              "name": ".gitignore",
+              "nodeType": "file",
+              "children": []
+            },
+            {
+              "id": 9,
+              "level": 16,
+              "name": "package.json",
+              "nodeType": "file",
+              "children": []
+            },
+            {
+              "id": 10,
+              "level": 16,
+              "name": "README.md",
+              "nodeType": "file",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/",
+        "nodeType": "directory"
+      },
+      {
+        "id": 1,
+        "level": 12,
+        "name": "my-project",
+        "nodeType": "directory"
+      },
+      {
+        "id": 2,
+        "level": 16,
+        "name": "src",
+        "nodeType": "directory"
+      },
+      {
+        "id": 3,
+        "level": 20,
+        "name": "components",
+        "nodeType": "directory"
+      },
+      {
+        "id": 4,
+        "level": 24,
+        "name": "Button.tsx",
+        "nodeType": "file"
+      },
+      {
+        "id": 5,
+        "level": 24,
+        "name": "Header.tsx",
+        "nodeType": "file"
+      },
+      {
+        "id": 6,
+        "level": 20,
+        "name": "App.tsx",
+        "nodeType": "file"
+      },
+      {
+        "id": 7,
+        "level": 20,
+        "name": "index.js",
+        "nodeType": "file"
+      },
+      {
+        "id": 8,
+        "level": 16,
+        "name": ".gitignore",
+        "nodeType": "file"
+      },
+      {
+        "id": 9,
+        "level": 16,
+        "name": "package.json",
+        "nodeType": "file"
+      },
+      {
+        "id": 10,
+        "level": 16,
+        "name": "README.md",
+        "nodeType": "file"
+      }
+    ]
+  }
+}

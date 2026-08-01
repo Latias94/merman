@@ -1,11 +1,14 @@
 use super::{Node, TitleKind};
 use serde_json::Value;
 
-pub(super) fn parse_shape_data(input: &str) -> std::result::Result<Value, String> {
-    crate::inline_config::parse_mermaid_inline_object(input)
+pub(super) fn apply_shape_data_value_to_node(
+    node: &mut Node,
+    value: &Value,
+) -> std::result::Result<(), String> {
+    apply_shape_data_document_to_node(node, value)
 }
 
-const MERMAID_SHAPES_11_12_2: &[&str] = &[
+const PINNED_MERMAID_SHAPES: &[&str] = &[
     "anchor",
     "bang",
     "bolt",
@@ -169,12 +172,12 @@ const MERMAID_SHAPES_11_12_2: &[&str] = &[
     "window-pane",
 ];
 
-fn is_valid_shape_11_12_2(shape: &str) -> bool {
-    MERMAID_SHAPES_11_12_2.binary_search(&shape).is_ok()
+fn is_valid_pinned_shape(shape: &str) -> bool {
+    PINNED_MERMAID_SHAPES.binary_search(&shape).is_ok()
 }
 
-pub(super) fn public_shape_names_11_12_2() -> impl Iterator<Item = &'static str> {
-    MERMAID_SHAPES_11_12_2
+pub(super) fn public_pinned_shape_names() -> impl Iterator<Item = &'static str> {
+    PINNED_MERMAID_SHAPES
         .iter()
         .copied()
         .filter(|shape| is_public_shape_name(shape))
@@ -205,13 +208,11 @@ fn sanitize_shape_label_type(label_type: Option<&str>) -> TitleKind {
     }
 }
 
-pub(super) fn apply_shape_data_to_node(
+fn apply_shape_data_document_to_node(
     node: &mut Node,
-    yaml_body: &str,
+    document: &Value,
 ) -> std::result::Result<(), String> {
-    // If shapeData is attached to a node reference, Mermaid has already decided this is a node.
-    let v = parse_shape_data(yaml_body)?;
-    let map = match v.as_object() {
+    let map = match document.as_object() {
         Some(m) => m,
         None => return Ok(()),
     };
@@ -228,7 +229,7 @@ pub(super) fn apply_shape_data_to_node(
                         "No such shape: {shape}. Shape names should be lowercase."
                     ));
                 }
-                if !is_valid_shape_11_12_2(shape) {
+                if !is_valid_pinned_shape(shape) {
                     return Err(format!("No such shape: {shape}."));
                 }
                 node.shape = Some(shape.to_string());

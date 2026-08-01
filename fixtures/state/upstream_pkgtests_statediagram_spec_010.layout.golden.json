@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "assemblies",
-          "x": 54.383,
+          "x": 50.8,
           "y": 28.0,
-          "width": 92.766,
+          "width": 85.6,
           "height": 40.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 100.766,
+        "max_x": 93.6,
         "max_y": 48.0
       }
     }

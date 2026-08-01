@@ -1,7 +1,11 @@
 # Headless Parity Deepening - Evidence And Gates
 
-Status: Active
+Status: Completed; historical snapshot
 Last updated: 2026-06-07
+
+> Archive note: fixture/root/text/SVG table inventories and `report-overrides` commands below
+> describe retired production mechanisms removed under ADR-0062. Mermaid configuration, theme, and
+> CSS "override" terminology elsewhere in this file is a separate, still-valid domain concept.
 
 ## HPD-090 - Baseline Preparation, Info Refresh, And Inventory
 
@@ -5381,6 +5385,11 @@ Residual note:
 
 - This is an intentional renderability-over-byte-parity correction for an invalid upstream CSS
   token. It should not be generalized into broad color normalization or cosmetic palette changes.
+
+Superseded 2026-07-18 by the Mermaid 11.16 source-backed admission contract: canonical raw parity
+now emits the pinned `hsl(...NaN%)` attribute, the Quadrant-specific comparator normalization and
+fixture whitelist were deleted, and renderability cleanup is available only through the explicit
+`resvg-safe` pipeline. The section above is retained as historical evidence, not current policy.
 
 Twenty-second slice outcome:
 

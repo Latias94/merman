@@ -1,6 +1,8 @@
 use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
-use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode, round_to_1_64_px};
+#[cfg(test)]
+use crate::text::TextMetrics;
+use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::MermaidConfig;
 
 pub(crate) struct FlowchartLabelMetricsRequest<'a> {
@@ -12,96 +14,6 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
     pub(crate) wrap_mode: WrapMode,
     pub(crate) config: &'a MermaidConfig,
     pub(crate) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    pub(crate) preserve_string_whitespace_height: bool,
-    pub(crate) whole_label_font_style: Option<&'a str>,
-}
-
-fn measure_flowchart_text_fragment(
-    measurer: &dyn TextMeasurer,
-    text: &str,
-    style: &TextStyle,
-) -> TextMetrics {
-    measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike)
-}
-
-fn measure_flowchart_mixed_math_line(
-    measurer: &dyn TextMeasurer,
-    line: &str,
-    style: &TextStyle,
-    config: &MermaidConfig,
-    math_renderer: &(dyn MathRenderer + Send + Sync),
-) -> Option<(f64, f64)> {
-    let start = line.find("$$")?;
-    let content_start = start + 2;
-    let end_start = line[content_start..].rfind("$$")? + content_start;
-    if end_start < content_start {
-        return None;
-    }
-    let formula = &line[content_start..end_start];
-    if formula.contains("$$") {
-        return None;
-    }
-
-    let mut width = 0.0_f64;
-    let mut height = 0.0_f64;
-    for text in [&line[..start], &line[end_start + 2..]] {
-        if text.is_empty() {
-            continue;
-        }
-        let metrics = measure_flowchart_text_fragment(measurer, text, style);
-        width += metrics.width.max(0.0);
-        height = height.max(metrics.height.max(0.0));
-    }
-
-    let chunk = &line[start..end_start + 2];
-    let math_metrics = math_renderer.measure_html_label(
-        chunk,
-        config,
-        style,
-        Some(10_000.0),
-        WrapMode::HtmlLike,
-    )?;
-    width += math_metrics.width.max(0.0);
-    height = height.max(math_metrics.height.max(0.0));
-
-    Some((width, height.max(1.0)))
-}
-
-fn flowchart_mixed_math_label_metrics(
-    measurer: &dyn TextMeasurer,
-    raw_label: &str,
-    style: &TextStyle,
-    max_width_px: Option<f64>,
-    config: &MermaidConfig,
-    math_renderer: &(dyn MathRenderer + Send + Sync),
-) -> Option<TextMetrics> {
-    if !raw_label.contains("$$") {
-        return None;
-    }
-    math_renderer.render_html_label(raw_label, config)?;
-
-    let mut saw_math = false;
-    let mut width = 0.0_f64;
-    let mut height = 0.0_f64;
-    let mut line_count = 0usize;
-    for line in crate::text::split_html_br_lines(raw_label) {
-        line_count += 1;
-        let (line_width, line_height) = if line.contains("$$") {
-            saw_math = true;
-            measure_flowchart_mixed_math_line(measurer, line, style, config, math_renderer)?
-        } else {
-            let metrics = measurer.measure_wrapped(line, style, max_width_px, WrapMode::HtmlLike);
-            (metrics.width.max(0.0), metrics.height.max(0.0))
-        };
-        width = width.max(line_width);
-        height += line_height;
-    }
-
-    saw_math.then_some(TextMetrics {
-        width: round_to_1_64_px(width),
-        height: round_to_1_64_px(height.max(1.0)),
-        line_count: line_count.max(1),
-    })
 }
 
 pub(crate) fn flowchart_label_metrics_for_layout(
@@ -116,37 +28,26 @@ pub(crate) fn flowchart_label_metrics_for_layout(
         wrap_mode,
         config,
         math_renderer,
-        preserve_string_whitespace_height,
-        whole_label_font_style,
     } = req;
 
-    let math_metrics = if wrap_mode == WrapMode::HtmlLike && raw_label.contains("$$") {
-        // Upstream Mermaid measures KaTeX-rendered HTML labels via DOM. Keep pure-Rust as the
-        // default behavior, but allow an optional backend to override label metrics.
-        math_renderer.and_then(|r| {
-            r.measure_html_label(raw_label, config, style, max_width_px, wrap_mode)
-                .or_else(|| {
-                    flowchart_mixed_math_label_metrics(
-                        measurer,
-                        raw_label,
-                        style,
-                        max_width_px,
-                        config,
-                        r,
-                    )
-                })
-        })
-    } else {
-        None
-    };
+    let math_metrics =
+        crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
+            measurer,
+            raw_label,
+            style,
+            max_width_px,
+            wrap_mode,
+            config,
+            math_renderer,
+        });
 
-    let mut metrics = if let Some(m) = math_metrics {
+    if let Some(m) = math_metrics {
         m
     } else if label_type == "markdown" {
         if wrap_mode != WrapMode::HtmlLike {
             // Mermaid 11.15 wraps SVG markdown node labels before reading the browser bbox.
             // Use the same wrapped word rows that the Flowchart SVG writer emits.
-            crate::text::measure_wrapped_markdown_with_flowchart_bold_deltas(
+            crate::text::measure_wrapped_markdown_with_inline_styles(
                 measurer,
                 raw_label,
                 style,
@@ -173,7 +74,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                     || html.contains("<img")
                     || html.contains("<i ");
                 if has_inline_html || has_inline_markup {
-                    crate::text::measure_html_with_flowchart_bold_deltas(
+                    crate::text::measure_html_with_inline_styles(
                         measurer,
                         &html,
                         style,
@@ -184,7 +85,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                     measurer.measure_wrapped(&plain, style, max_width_px, wrap_mode)
                 }
             } else {
-                crate::text::measure_markdown_with_flowchart_bold_deltas(
+                crate::text::measure_markdown_with_inline_styles(
                     measurer,
                     raw_label,
                     style,
@@ -408,7 +309,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
             if lower.contains("<img") {
                 measure_flowchart_html_images(measurer, &html, style, max_width_px)
             } else if has_inline_style || html.contains("<i ") {
-                crate::text::measure_html_with_flowchart_bold_deltas(
+                crate::text::measure_html_with_inline_styles(
                     measurer,
                     &html,
                     style,
@@ -425,198 +326,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                 flowchart_label_plain_text_for_layout(raw_label, label_type, html_labels);
             measurer.measure_wrapped(&label_for_metrics, style, max_width_px, wrap_mode)
         }
-    };
-
-    if label_type == "string" && preserve_string_whitespace_height {
-        crate::text::flowchart_apply_mermaid_string_whitespace_height_parity(
-            &mut metrics,
-            raw_label,
-            style,
-        );
     }
-
-    if flowchart_whole_label_font_style_requests_italic(whole_label_font_style) {
-        let label_for_metrics = flowchart_label_plain_text_for_layout(
-            raw_label,
-            label_type,
-            wrap_mode == WrapMode::HtmlLike,
-        );
-        let italic_delta =
-            crate::text::mermaid_default_italic_width_delta_px(&label_for_metrics, style);
-        if italic_delta > 0.0 {
-            metrics.width = crate::text::round_to_1_64_px(metrics.width + italic_delta);
-        }
-    }
-
-    apply_flowchart_label_width_parity_adjustments(
-        &mut metrics,
-        FlowchartLabelWidthAdjustmentRequest {
-            raw_label,
-            label_type,
-            style,
-            max_width_px,
-            wrap_mode,
-        },
-    );
-
-    metrics
-}
-
-struct FlowchartLabelWidthAdjustmentRequest<'a> {
-    raw_label: &'a str,
-    label_type: &'a str,
-    style: &'a TextStyle,
-    max_width_px: Option<f64>,
-    wrap_mode: WrapMode,
-}
-
-fn is_flowchart_default_font_stack(style: &TextStyle) -> bool {
-    let ff_lower = style
-        .font_family
-        .as_deref()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    ff_lower.contains("trebuchet") && ff_lower.contains("verdana") && ff_lower.contains("arial")
-}
-
-fn set_width_if_near(metrics: &mut TextMetrics, desired: f64, tolerance_px: f64, round: bool) {
-    if (metrics.width - desired).abs() < tolerance_px {
-        metrics.width = if round {
-            crate::text::round_to_1_64_px(desired)
-        } else {
-            desired
-        };
-    }
-}
-
-fn apply_flowchart_label_width_parity_adjustments(
-    metrics: &mut TextMetrics,
-    req: FlowchartLabelWidthAdjustmentRequest<'_>,
-) {
-    let FlowchartLabelWidthAdjustmentRequest {
-        raw_label,
-        label_type,
-        style,
-        max_width_px,
-        wrap_mode,
-    } = req;
-
-    if !matches!(
-        wrap_mode,
-        WrapMode::HtmlLike | WrapMode::SvgLike | WrapMode::SvgLikeSingleRun
-    ) {
-        return;
-    }
-
-    // Fixture-derived micro-adjustments for Flowchart root viewBox parity.
-    //
-    // Keep these scoped to the Flowchart diagram layer so other diagrams do not inherit
-    // Flowchart-specific browser measurement quirks for generic phrases.
-    let label_for_metrics = flowchart_label_plain_text_for_layout(
-        raw_label,
-        label_type,
-        wrap_mode == WrapMode::HtmlLike,
-    );
-
-    if is_flowchart_default_font_stack(style) {
-        // Flowchart v2 nodeData multiline strings (fixtures/flowchart/upstream_node_data_minimal.mmd)
-        if wrap_mode == WrapMode::HtmlLike && label_for_metrics == "This is a\nmultiline string" {
-            // Upstream `foreignObject width="109.59375"` (Mermaid 11.12.2).
-            let desired = 109.59375 * (style.font_size / 16.0);
-            set_width_if_near(metrics, desired, 1.0, true);
-        }
-
-        // Flowchart text special characters (fixtures/flowchart/upstream_flow_text_special_chars_spec.mmd)
-        if wrap_mode == WrapMode::HtmlLike
-            && label_for_metrics
-                .lines()
-                .any(|l| l.trim_end() == "Chimpansen hoppar åäö")
-        {
-            // Upstream `foreignObject width="170.984375"` (Mermaid 11.12.2).
-            let desired = 170.984375 * (style.font_size / 16.0);
-            set_width_if_near(metrics, desired, 1.0, true);
-        }
-
-        // Flowchart v2 escaped without html labels (fixtures/flowchart/upstream_flowchart_v2_escaped_without_html_labels_spec.mmd)
-        if wrap_mode != WrapMode::HtmlLike
-            && (style.font_size - 16.0).abs() < 0.01
-            && label_for_metrics == "<strong> Haiya </strong>"
-        {
-            // Upstream `getBBox().width = 180.140625` at 16px (Mermaid 11.12.2).
-            set_width_if_near(metrics, 180.140625, 1.0, false);
-        }
-        if wrap_mode != WrapMode::HtmlLike
-            && (style.font_size - 16.0).abs() < 0.01
-            && label_for_metrics == "b"
-        {
-            // Mermaid's escaped-without-htmlLabels repeat offenders size the plain `b` node one
-            // 1/64px step narrower than our default SVG bbox model.
-            set_width_if_near(metrics, 8.921875, 1.0, false);
-        }
-        if wrap_mode == WrapMode::HtmlLike
-            && label_type != "markdown"
-            && metrics.line_count == 1
-            && label_for_metrics.contains('<')
-            && label_for_metrics.contains('>')
-        {
-            const WIDE_GLYPH_ENTITY_CUSHION_EM: f64 = 0.051_513_671_875;
-            let wide_count = label_for_metrics
-                .chars()
-                .filter(|ch| unicode_width::UnicodeWidthChar::width(*ch).unwrap_or(1) >= 2)
-                .count();
-            if wide_count > 0 {
-                let desired = metrics.width
-                    + wide_count as f64 * WIDE_GLYPH_ENTITY_CUSHION_EM * style.font_size;
-                if max_width_px.is_none_or(|w| desired <= w + (1.0 / 64.0)) {
-                    metrics.width = crate::text::round_to_1_64_px(desired);
-                }
-            }
-        }
-    }
-
-    if wrap_mode == WrapMode::HtmlLike
-        && label_type != "markdown"
-        && label_for_metrics == "Car"
-        && !raw_label.contains("fa:")
-        && !raw_label.contains("<i")
-    {
-        // Icon labels may share the same normalized text as plain labels. Plain flowchart node
-        // labels should keep the raw DOM text width instead of the icon-label width.
-        let desired = 24.203125 * (style.font_size / 16.0);
-        let icon_probe = 49.03125 * (style.font_size / 16.0);
-        let vendored_probe = 45.015625 * (style.font_size / 16.0);
-        if (metrics.width - icon_probe).abs() < 1.0 || (metrics.width - vendored_probe).abs() < 1.0
-        {
-            metrics.width = crate::text::round_to_1_64_px(desired);
-        }
-    }
-    if label_type != "markdown" && label_for_metrics == "Let me think" {
-        // Mermaid's classic simple-flowchart hexagon probe lands one 1/64px step narrower than
-        // our vendored metrics for this label, which otherwise shifts the whole branch.
-        let desired = 115.21875 * (style.font_size / 16.0);
-        let current = 115.234375 * (style.font_size / 16.0);
-        if (metrics.width - current).abs() < 1.0 {
-            metrics.width = crate::text::round_to_1_64_px(desired);
-        }
-    }
-    if wrap_mode != WrapMode::HtmlLike
-        && label_type != "markdown"
-        && label_for_metrics == "The dog in the hog"
-    {
-        // Mermaid SVG-label measurement for this repeated plain string lands at `134.078125px`
-        // (16px default font size). Vendored font metrics are wider by `1/128px`, enough to
-        // perturb recursive cluster centering in strict XML parity fixtures.
-        let desired = 134.078125 * (style.font_size / 16.0);
-        set_width_if_near(metrics, desired, 0.1, true);
-    }
-}
-
-pub(crate) fn flowchart_whole_label_font_style_requests_italic(font_style: Option<&str>) -> bool {
-    let Some(font_style) = font_style else {
-        return false;
-    };
-    let lower = font_style.trim().to_ascii_lowercase();
-    lower == "italic" || lower.starts_with("italic ") || lower.starts_with("oblique")
 }
 
 pub(crate) fn flowchart_decode_label_escapes(label: &str) -> String {
@@ -981,4 +691,65 @@ pub(super) fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Opti
         }
     }
     Bounds::from_points(pts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::math::MathRenderer;
+
+    #[derive(Debug)]
+    struct PreciseMathRenderer;
+
+    impl MathRenderer for PreciseMathRenderer {
+        fn render_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
+            text.contains("$$").then(|| text.to_string())
+        }
+
+        fn measure_html_label(
+            &self,
+            text: &str,
+            _config: &MermaidConfig,
+            _style: &TextStyle,
+            _max_width_px: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> Option<TextMetrics> {
+            (text.starts_with("$$") && text.ends_with("$$")).then_some(TextMetrics {
+                width: 10.008,
+                height: 20.008,
+                line_count: 1,
+            })
+        }
+    }
+
+    struct PreciseTextMeasurer;
+
+    impl TextMeasurer for PreciseTextMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 1.001,
+                height: 2.002,
+                line_count: 1,
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_math_metrics_preserve_fragment_precision() {
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer: &PreciseTextMeasurer,
+            raw_label: "a$$x$$b",
+            label_type: "text",
+            style: &style,
+            max_width_px: None,
+            wrap_mode: WrapMode::HtmlLike,
+            config: &config,
+            math_renderer: Some(&PreciseMathRenderer),
+        });
+
+        assert!((metrics.width - 12.01).abs() < 1e-12, "{metrics:?}");
+        assert!((metrics.height - 20.008).abs() < 1e-12, "{metrics:?}");
+    }
 }

@@ -1,8 +1,8 @@
 mod support;
 
-use merman::render::{
+use merman::svg::{
     HeadlessRenderer,
-    raster::{RasterFitBox, RasterOptions},
+    export::{RasterFitBox, RasterOptions},
 };
 use std::path::PathBuf;
 

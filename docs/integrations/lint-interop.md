@@ -20,19 +20,31 @@ External lint tools should continue to own:
 - broad style policy that is not source-backed Merman governance;
 - integration with markdownlint, remark, textlint, or project-specific rule packs.
 
-## Optional Web Analysis Integration
+## Optional Browser Analysis Integration
 
-Use `@mermanjs/web` when a JavaScript linter wants Merman evidence:
+Use `@mermanjs/web-analysis` when a linter running in a browser main thread or Web Worker wants Merman evidence without rendering dependencies. This package is not a Node.js or SSR transport.
 
 ```ts
-import { analyzeDocument } from "@mermanjs/web";
+import { analyzeDocument, initMerman } from "@mermanjs/web-analysis";
 
-const analysis = analyzeDocument(markdownSource, {
-  lint: { profile: "recommended" }
-}, "file:///workspace/README.md");
+await initMerman();
+
+const analysis = analyzeDocument(
+  markdownSource,
+  {
+    lint: { profile: "recommended" },
+  },
+  "file:///workspace/README.md",
+);
 ```
 
 `analyzeDocument()` uses the URI extension to choose standalone Mermaid, Markdown, or MDX source modeling. Markdown and MDX diagnostics are remapped to host-document coordinates, including fix edits.
+
+Node.js and CI integrations should invoke the browserless CLI instead:
+
+```sh
+merman-cli lint --format json README.md
+```
 
 ## Recommended Adapter Shape
 
@@ -45,10 +57,7 @@ const analysis = analyzeDocument(markdownSource, {
 
 ## Rule Policy Boundary
 
-Merman lint configuration accepts only Merman-governed rule ids from the analysis rule catalog.
-External rule ids such as `require-direction`, `duplicate-ids`, `no-empty-labels`, or
-`no-orphan-nodes` remain external linter policy. Passing those ids through `lint.enable_rules`,
-`lint.disable_rules`, or `lint.rule_severities` is invalid by design.
+Merman lint configuration accepts only Merman-governed rule ids from the analysis rule catalog. External rule ids such as `require-direction`, `duplicate-ids`, `no-empty-labels`, or `no-orphan-nodes` remain external linter policy. Passing those ids through `lint.enable_rules`, `lint.disable_rules`, or `lint.rule_severities` is invalid by design.
 
 When an external tool wants to combine rule sets, keep two namespaces:
 
@@ -58,10 +67,7 @@ When an external tool wants to combine rule sets, keep two namespaces:
 | `duplicate-ids` | Keep the external rule id for project-wide style policy. Merman only emits the specific parser/semantic diagnostics it owns, such as `merman.git_graph.duplicate_commit_id`. |
 | `no-empty-labels`, `no-orphan-nodes`, project style packs | Keep these in the external linter. Do not mirror them into Merman config unless Merman later adds source-backed rules with new `merman.*` ids. |
 
-If an external rule wants to reuse Merman parser evidence, keep the mapping in the adapter: run
-`analyzeDocument()` with a Merman profile or explicit Merman rule ids, read Merman spans and related
-locations, emit the external tool's own rule id from the external rule implementation, and attach
-the original `merman.*` id as secondary metadata only when it helps debugging.
+If an external rule wants to reuse Merman parser evidence, keep the mapping in the adapter: run `analyzeDocument()` with a Merman profile or explicit Merman rule ids, read Merman spans and related locations, emit the external tool's own rule id from the external rule implementation, and attach the original `merman.*` id as secondary metadata only when it helps debugging.
 
 ## VS Code Coexistence
 

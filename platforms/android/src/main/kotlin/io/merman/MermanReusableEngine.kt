@@ -1,115 +1,79 @@
 package io.merman
 
-class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
+/** Reusable Android engine with an immutable optional host text-measurement callback. */
+class MermanReusableEngine(
+    optionsJson: String? = null,
+    textMeasurer: MermanTextMeasurer? = null,
+) : AutoCloseable {
+    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     private val lifecycleLock = Object()
-    private var handle: Long = nativeNew(optionsJson)
-    private var activeNativeThread: Thread? = null
-    private var closeRequested = false
+    private var handle: Long = nativeNew(optionsJson, textMeasurer)
 
-    fun setTextMeasurer(measurer: MermanTextMeasurer?) {
-        withLiveHandle { nativeSetTextMeasurer(it, measurer) }
+    /** Executes any operation ID advertised by [MermanEngine.runtimeCatalogJson]. */
+    fun execute(
+        operationId: String,
+        source: String,
+        optionsJson: String? = null,
+        uri: String? = null,
+    ): MermanOperationResult = withLiveHandle {
+        nativeExecute(it, operationId, source, optionsJson, uri)
     }
 
-    fun renderSvg(source: String): String =
-        withLiveHandle { nativeRenderSvg(it, source) }
+    fun renderSvg(source: String, optionsJson: String? = null): String =
+        executeText("svg", source, optionsJson)
 
-    fun renderAscii(source: String): String =
-        withLiveHandle { nativeRenderAscii(it, source) }
+    fun renderAscii(source: String, optionsJson: String? = null): String =
+        executeText("ascii", source, optionsJson)
 
-    fun parseJson(source: String): String =
-        withLiveHandle { nativeParseJson(it, source) }
+    fun renderPng(source: String, optionsJson: String? = null): ByteArray =
+        execute("png", source, optionsJson).data
 
-    fun layoutJson(source: String): String =
-        withLiveHandle { nativeLayoutJson(it, source) }
+    fun renderJpeg(source: String, optionsJson: String? = null): ByteArray =
+        execute("jpeg", source, optionsJson).data
 
-    fun analyzeJson(source: String): String =
-        withLiveHandle { nativeAnalyzeJson(it, source) }
+    fun renderPdf(source: String, optionsJson: String? = null): ByteArray =
+        execute("pdf", source, optionsJson).data
 
-    fun analyzeDocumentJson(source: String, uri: String): String =
-        withLiveHandle { nativeAnalyzeDocumentJson(it, source, uri) }
+    fun parseJson(source: String, optionsJson: String? = null): String =
+        executeText("semantic-json", source, optionsJson)
 
-    fun analyzeDocumentFactsJson(source: String, uri: String): String =
-        withLiveHandle { nativeAnalyzeDocumentFactsJson(it, source, uri) }
+    fun layoutJson(source: String, optionsJson: String? = null): String =
+        executeText("layout-json", source, optionsJson)
 
-    fun validateJson(source: String): String =
-        withLiveHandle { nativeValidateJson(it, source) }
+    fun analyzeJson(source: String, optionsJson: String? = null): String =
+        executeText("analysis-json", source, optionsJson)
+
+    fun analyzeDocumentJson(source: String, uri: String, optionsJson: String? = null): String =
+        executeText("document-analysis-json", source, optionsJson, uri)
+
+    fun analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String? = null): String =
+        executeText("document-analysis-facts-json", source, optionsJson, uri)
+
+    fun validateJson(source: String, optionsJson: String? = null): String =
+        executeText("validation-json", source, optionsJson)
 
     override fun close() {
-        val handleToFree = synchronized(lifecycleLock) {
-            if (handle == 0L) {
-                0L
-            } else {
-                closeRequested = true
-                val currentThread = Thread.currentThread()
-                while (activeNativeThread != null && activeNativeThread !== currentThread) {
-                    waitForActiveCallToFinish()
-                }
-                if (activeNativeThread === currentThread) {
-                    0L
-                } else {
-                    takeHandleForClose()
-                }
+        synchronized(lifecycleLock) {
+            if (handle == 0L) return
+            if (nativeTryClose(handle)) {
+                handle = 0L
             }
         }
-        freeHandle(handleToFree)
     }
+
+    private fun executeText(
+        operationId: String,
+        source: String,
+        optionsJson: String? = null,
+        uri: String? = null,
+    ): String = execute(operationId, source, optionsJson, uri).data.toString(Charsets.UTF_8)
 
     private inline fun <T> withLiveHandle(call: (Long) -> T): T {
-        val current = beginNativeCall()
-        try {
-            return call(current)
-        } finally {
-            finishNativeCall()
+        val current = synchronized(lifecycleLock) {
+            handle.takeIf { it != 0L }
+                ?: throw MermanException("Merman reusable engine is closed")
         }
-    }
-
-    private fun beginNativeCall(): Long =
-        synchronized(lifecycleLock) {
-            val currentThread = Thread.currentThread()
-            while (activeNativeThread != null && activeNativeThread !== currentThread) {
-                waitForActiveCallToFinish()
-            }
-            if (activeNativeThread === currentThread) {
-                throw MermanException(
-                    "Merman reusable engine cannot be re-entered from a native callback"
-                )
-            }
-            if (handle == 0L || closeRequested) {
-                throw MermanException("Merman reusable engine is closed")
-            }
-            activeNativeThread = currentThread
-            handle
-        }
-
-    private fun finishNativeCall() {
-        val handleToFree = synchronized(lifecycleLock) {
-            activeNativeThread = null
-            val current = if (closeRequested) takeHandleForClose() else 0L
-            lifecycleLock.notifyAll()
-            current
-        }
-        freeHandle(handleToFree)
-    }
-
-    private fun waitForActiveCallToFinish() {
-        try {
-            lifecycleLock.wait()
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw MermanException("Interrupted while waiting for Merman reusable engine")
-        }
-    }
-
-    private fun takeHandleForClose(): Long {
-        val current = handle
-        handle = 0L
-        return current
-    }
-
-    private fun freeHandle(handle: Long) {
-        if (handle != 0L) {
-            nativeFree(handle)
-        }
+        return call(current)
     }
 
     private companion object {
@@ -118,36 +82,21 @@ class MermanReusableEngine(optionsJson: String? = null) : AutoCloseable {
         }
 
         @JvmStatic
-        private external fun nativeNew(optionsJson: String?): Long
+        private external fun nativeNew(
+            optionsJson: String?,
+            textMeasurer: MermanTextMeasurer?,
+        ): Long
 
         @JvmStatic
-        private external fun nativeFree(handle: Long)
+        private external fun nativeTryClose(handle: Long): Boolean
 
         @JvmStatic
-        private external fun nativeSetTextMeasurer(handle: Long, measurer: MermanTextMeasurer?)
-
-        @JvmStatic
-        private external fun nativeRenderSvg(handle: Long, source: String): String
-
-        @JvmStatic
-        private external fun nativeRenderAscii(handle: Long, source: String): String
-
-        @JvmStatic
-        private external fun nativeParseJson(handle: Long, source: String): String
-
-        @JvmStatic
-        private external fun nativeLayoutJson(handle: Long, source: String): String
-
-        @JvmStatic
-        private external fun nativeAnalyzeJson(handle: Long, source: String): String
-
-        @JvmStatic
-        private external fun nativeAnalyzeDocumentJson(handle: Long, source: String, uri: String): String
-
-        @JvmStatic
-        private external fun nativeAnalyzeDocumentFactsJson(handle: Long, source: String, uri: String): String
-
-        @JvmStatic
-        private external fun nativeValidateJson(handle: Long, source: String): String
+        private external fun nativeExecute(
+            handle: Long,
+            operationId: String,
+            source: String,
+            optionsJson: String?,
+            uri: String?,
+        ): MermanOperationResult
     }
 }

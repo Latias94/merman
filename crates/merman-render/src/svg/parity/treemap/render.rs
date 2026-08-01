@@ -3,29 +3,11 @@ use crate::treemap::{TREEMAP_SECTION_HEADER_HEIGHT_PX, TREEMAP_SECTION_INNER_PAD
 
 // Treemap diagram SVG renderer implementation (split from parity.rs).
 
-fn treemap_leaf_label_fit_tolerance_px(
-    text: &str,
-    font_size_px: f64,
-    available_width_px: f64,
-) -> f64 {
-    // Chromium keeps the canonical `Item A1` leaf at 34px in the 125px-wide docs/basic layout,
-    // while our vendored measurer overshoots by ~0.86px and would otherwise shrink it to 33px.
-    if text == "Item A1"
-        && (font_size_px - 34.0).abs() < 1e-9
-        && (available_width_px - 117.0).abs() < 1e-9
-    {
-        0.9
-    } else {
-        0.0
-    }
-}
-
 pub(crate) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,
-    _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     #[derive(Default)]
     struct OrdinalScale {
         range: Vec<String>,
@@ -162,58 +144,10 @@ pub(crate) fn render_treemap_diagram_svg(
         }
     }
 
-    fn parse_css_rgb(color: &str) -> Option<(u8, u8, u8)> {
-        let c = color.trim();
-        if c.eq_ignore_ascii_case("black") {
-            return Some((0, 0, 0));
-        }
-        if c.eq_ignore_ascii_case("white") {
-            return Some((255, 255, 255));
-        }
-        if let Some(hex) = c.strip_prefix('#') {
-            let h = hex.trim();
-            if h.len() == 3 {
-                let r = u8::from_str_radix(&h[0..1].repeat(2), 16).ok()?;
-                let g = u8::from_str_radix(&h[1..2].repeat(2), 16).ok()?;
-                let b = u8::from_str_radix(&h[2..3].repeat(2), 16).ok()?;
-                return Some((r, g, b));
-            }
-            if h.len() == 6 {
-                let r = u8::from_str_radix(&h[0..2], 16).ok()?;
-                let g = u8::from_str_radix(&h[2..4], 16).ok()?;
-                let b = u8::from_str_radix(&h[4..6], 16).ok()?;
-                return Some((r, g, b));
-            }
-        }
-        let lower = c.to_ascii_lowercase();
-        if let Some(args) = lower.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')')) {
-            let parts = args
-                .split(',')
-                .map(|p| p.trim())
-                .filter(|p| !p.is_empty())
-                .collect::<Vec<_>>();
-            if parts.len() >= 3 {
-                let r = parts[0].parse::<u16>().ok()?;
-                let g = parts[1].parse::<u16>().ok()?;
-                let b = parts[2].parse::<u16>().ok()?;
-                if r <= 255 && g <= 255 && b <= 255 {
-                    return Some((r as u8, g as u8, b as u8));
-                }
-            }
-        }
-        None
-    }
-
     fn normalize_dom_style_color(color: &str) -> String {
-        // jsdom serialization tends to normalize hex colors to `rgb(r, g, b)` when the style
-        // attribute has been mutated (e.g. via `.style(...)` in upstream Mermaid).
-        let c = color.trim();
-        if c.starts_with('#')
-            && let Some((r, g, b)) = parse_css_rgb(c)
-        {
-            return format!("rgb({r}, {g}, {b})");
-        }
-        c.to_string()
+        // Upstream mutates this style through D3 after setting the attribute, so preserve the
+        // browser CSSOM serialization boundary while sharing the color parser.
+        super::super::util::cssom_color_value(color)
     }
 
     fn format_int_with_commas(n: i64) -> String {
@@ -272,7 +206,7 @@ pub(crate) fn render_treemap_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treemap");
     let diagram_id_esc = escape_xml(diagram_id);
 
-    let theme = PresentationTheme::new(effective_config).treemap();
+    let theme = PresentationTheme::new(effective_config).treemap()?;
 
     let mut color_scale = OrdinalScale::default();
     color_scale.range.push("transparent".to_string());
@@ -298,21 +232,22 @@ pub(crate) fn render_treemap_diagram_svg(
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
 
+    let measurer = options.text_measurer();
     let title = layout.title.as_deref().filter(|t| !t.trim().is_empty());
     let title_shift_y = layout.title_height;
     let title_bbox = title.map(|t| {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = crate::text::TextStyle {
             font_family: Some(r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()),
             font_size: 14.0,
             font_weight: None,
+            font_style: None,
         };
         let w = measurer
             .measure_svg_simple_text_bbox_width_px(t, &style)
             .max(0.0);
-        // Mermaid treemap computes root viewBox via `<svg>.getBBox()` in a browser pipeline.
-        // Empirically, treemap title `<text>` nodes land closer to ~`1.3em` bbox height.
-        let h = (style.font_size.max(1.0) * 1.3).max(0.0);
+        let h = measurer
+            .measure_svg_simple_text_bbox_height_px(t, &style)
+            .max(0.0);
         (w, h)
     });
 
@@ -429,35 +364,30 @@ pub(crate) fn render_treemap_diagram_svg(
         vb_h = layout.diagram_padding * 2.0;
     }
 
-    let css = treemap_css(diagram_id, effective_config);
+    let css = treemap_css(diagram_id, effective_config)?;
 
     let mut out = String::new();
-    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
-    let viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_x),
-        fmt(vb_y),
-        fmt(vb_w.max(1.0)),
-        fmt(vb_h.max(1.0))
-    );
-    let max_w_attr = fmt(vb_w.max(1.0)).to_string();
-    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let extra_attrs: [(&str, &str); 1] = [("class", "flowchart")];
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            extra_attrs: &extra_attrs,
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "treemap")
-        },
-    );
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "treemap");
+    root_chrome.extra_attrs = &extra_attrs;
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom = root_svg::RootDomProfile {
+        style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Treemap, diagram_id)
+            .write_open(
+                &mut out,
+                root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
+                    vb_x, vb_y, vb_w, vb_h,
+                )),
+                root_chrome,
+            )?;
 
     if let (Some(title), true) = (layout.acc_title.as_deref(), has_acc_title) {
         let _ = write!(
@@ -493,7 +423,7 @@ pub(crate) fn render_treemap_diagram_svg(
         ty = fmt(layout.title_height)
     );
 
-    let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    let computed_length_measurer = options.text_measurer_for(TextMeasurementPhase::ComputedLength);
     let font_family = r#""trebuchet ms",verdana,arial,sans-serif"#.to_string();
     let section_header_height = TREEMAP_SECTION_HEADER_HEIGHT_PX;
     let section_header_center_y = section_header_height / 2.0;
@@ -604,16 +534,22 @@ pub(crate) fn render_treemap_diagram_svg(
                 font_family: Some(font_family.clone()),
                 font_size: section_label_font_size,
                 font_weight: Some("bold".to_string()),
+                font_style: None,
             };
 
-            if measurer.measure(&label_text, &style).width > actual_available_width {
+            if computed_length_measurer.measure_svg_text_computed_length_px(&label_text, &style)
+                > actual_available_width
+            {
                 let ellipsis = "...";
                 let original = label_text.clone();
                 let mut current = original.clone();
                 while !current.is_empty() {
                     current.pop();
                     if current.is_empty() {
-                        if measurer.measure(ellipsis, &style).width > actual_available_width {
+                        if computed_length_measurer
+                            .measure_svg_text_computed_length_px(ellipsis, &style)
+                            > actual_available_width
+                        {
                             label_text.clear();
                         } else {
                             label_text = ellipsis.to_string();
@@ -621,7 +557,10 @@ pub(crate) fn render_treemap_diagram_svg(
                         break;
                     }
                     let candidate = format!("{current}{ellipsis}");
-                    if measurer.measure(&candidate, &style).width <= actual_available_width {
+                    if computed_length_measurer
+                        .measure_svg_text_computed_length_px(&candidate, &style)
+                        <= actual_available_width
+                    {
                         label_text = candidate;
                         break;
                     }
@@ -761,12 +700,12 @@ pub(crate) fn render_treemap_diagram_svg(
                 font_family: Some(font_family.clone()),
                 font_size: label_font_size,
                 font_weight: None,
+                font_style: None,
             };
 
             loop {
-                let fit_tolerance_px =
-                    treemap_leaf_label_fit_tolerance_px(&leaf.name, label_font_size, available_w);
-                if measurer.measure(&leaf.name, &style).width <= available_w + fit_tolerance_px
+                if computed_length_measurer.measure_svg_text_computed_length_px(&leaf.name, &style)
+                    <= available_w
                     || label_font_size <= min_label_font_size
                 {
                     break;
@@ -799,9 +738,8 @@ pub(crate) fn render_treemap_diagram_svg(
                     label_hidden = true;
                 }
             } else {
-                let fit_tolerance_px =
-                    treemap_leaf_label_fit_tolerance_px(&leaf.name, label_font_size, available_w);
-                if measurer.measure(&leaf.name, &style).width > available_w + fit_tolerance_px
+                if computed_length_measurer.measure_svg_text_computed_length_px(&leaf.name, &style)
+                    > available_w
                     || label_font_size < min_label_font_size
                     || available_h < label_font_size
                 {
@@ -876,8 +814,10 @@ pub(crate) fn render_treemap_diagram_svg(
                     font_family: Some(font_family.clone()),
                     font_size: value_font_size,
                     font_weight: None,
+                    font_style: None,
                 };
-                let value_w_px = measurer.measure(&value_text, &style).width;
+                let value_w_px = computed_length_measurer
+                    .measure_svg_text_computed_length_px(&value_text, &style);
                 if value_w_px <= available_w_for_value
                     && value_y + value_font_size <= max_value_bottom_y
                     && value_font_size >= min_value_font_size
@@ -927,7 +867,7 @@ pub(crate) fn render_treemap_diagram_svg(
     }
 
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]
@@ -964,16 +904,18 @@ mod tests {
         &fragment[start..end]
     }
 
-    #[test]
-    fn treemap_leaf_label_fit_tolerance_matches_mermaid_fixture() {
-        assert_eq!(
-            super::treemap_leaf_label_fit_tolerance_px("Item A1", 34.0, 117.0),
-            0.9
-        );
-        assert_eq!(
-            super::treemap_leaf_label_fit_tolerance_px("Item A2", 34.0, 117.0),
-            0.0
-        );
+    fn attr_f64(tag: &str, name: &str) -> f64 {
+        let prefix = format!(r#"{name}=""#);
+        let start = tag.find(&prefix).expect("attribute") + prefix.len();
+        let end = start + tag[start..].find('"').expect("attribute end");
+        tag[start..end].parse().expect("numeric attribute")
+    }
+
+    fn font_size_px(tag: &str) -> f64 {
+        let (_, suffix) = tag.split_once("font-size:").expect("font-size style");
+        let value = suffix.trim_start();
+        let end = value.find("px").expect("font-size px suffix");
+        value[..end].trim().parse().expect("font-size number")
     }
 
     #[test]
@@ -1011,13 +953,13 @@ mod tests {
             leaves,
         };
 
-        let svg = render_treemap_diagram_svg(
-            &layout,
-            &serde_json::json!({}),
-            &serde_json::json!({}),
-            &SvgRenderOptions::default(),
-        )
-        .unwrap();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&request, &debug, &session).expect("SVG execution");
+        let svg = render_treemap_diagram_svg(&layout, &serde_json::json!({}), &execution).unwrap();
 
         let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");
         assert!(
@@ -1028,9 +970,10 @@ mod tests {
         let wide = leaf_group(&svg, 0);
         let wide_label = opening_tag_by_class(wide, "treemapLabel");
         let wide_value = opening_tag_by_class(wide, "treemapValue");
-        assert!(wide_label.contains("font-size: 16px"), "{wide_label}");
-        assert!(wide_value.contains("font-size: 10px"), "{wide_value}");
-        assert!(wide_value.contains(r#"y="59""#), "{wide_value}");
+        assert!(!wide_label.contains("display: none"), "{wide_label}");
+        assert!(!wide_value.contains("display: none"), "{wide_value}");
+        assert!(font_size_px(wide_label) > font_size_px(wide_value));
+        assert!(attr_f64(wide_value, "y") > attr_f64(wide_label, "y"));
 
         let narrow = leaf_group(&svg, 1);
         let narrow_label = opening_tag_by_class(narrow, "treemapLabel");
@@ -1039,22 +982,21 @@ mod tests {
             narrow.contains(">A label much wider than its cell</text>"),
             "{narrow}"
         );
-        assert!(narrow_label.contains("font-size: 4px"), "{narrow_label}");
+        assert!(font_size_px(narrow_label) <= font_size_px(wide_label));
+        assert!(font_size_px(narrow_label) > 0.0);
         assert!(!narrow_label.contains("display: none"), "{narrow_label}");
         assert!(
             narrow_label.contains(r#"clip-path="url(#clip-treemap-1)""#),
             "narrow complex labels remain present and rely on clipping: {narrow_label}"
         );
-        assert!(narrow_value.contains("font-size: 4px"), "{narrow_value}");
-        assert!(narrow_value.contains(r#"y="23""#), "{narrow_value}");
+        assert!(font_size_px(narrow_value) <= font_size_px(narrow_label));
+        assert!(attr_f64(narrow_value, "y") > attr_f64(narrow_label, "y"));
         assert!(!narrow_value.contains("display: none"), "{narrow_value}");
 
         let tiny = leaf_group(&svg, 2);
         let tiny_label = opening_tag_by_class(tiny, "treemapLabel");
         let tiny_value = opening_tag_by_class(tiny, "treemapValue");
-        assert!(tiny_label.contains("font-size: 16px"), "{tiny_label}");
         assert!(tiny_label.contains("display: none"), "{tiny_label}");
-        assert!(tiny_value.contains("font-size: 14px"), "{tiny_value}");
         assert!(tiny_value.contains("display: none"), "{tiny_value}");
     }
 }

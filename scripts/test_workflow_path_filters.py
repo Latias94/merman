@@ -71,9 +71,17 @@ class WorkflowPathFilterTests(unittest.TestCase):
             ".github/workflows/security-audit.yml",
             "Cargo.lock",
             "Cargo.toml",
+            "capabilities/artifact-profiles-v1.json",
             "crates/**/Cargo.toml",
+            "docs/security/RUSTSEC_EXCEPTIONS.json",
             "fuzz/Cargo.lock",
             "fuzz/Cargo.toml",
+            "platforms/**/THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
+            "platforms/python/legal/rust-cargo-dependencies/*.json",
+            "scripts/generate-rust-license-report.py",
+            "scripts/python_wheel_licenses.py",
+            "scripts/verify_artifact_dependency_closures.py",
+            "scripts/verify_rustsec_exceptions.py",
         }
 
         for event_name in ("push", "pull_request"):

@@ -1,240 +1,508 @@
 # Benchmarking
 
-This document describes how to benchmark `merman` locally in a way that is reproducible and useful
-for tracking regressions.
+This document defines the measurement contract for `merman`. Use
+`docs/performance/RUNBOOK.md` for the operational sequence and
+`docs/performance/PERF_PLAN.md` for the active optimization queue.
 
-For the optimization backlog (prioritized, correctness-first), see:
-`docs/performance/FEARLESS_REFACTORING.md`.
-For the execution order, see `docs/performance/RUNBOOK.md`.
-For a one-step local workflow, use `python3 tools/bench/perf_runner.py --profile canary`.
+Performance evidence never overrides semantic parity, deterministic output, resource limits, or
+security behavior. A faster result with a different public operation, input, output contract, or
+error contract is not an accepted optimization.
 
-## Goals
+## Measurement lanes
 
-- Track performance changes over time (regression detection).
-- Compare pipeline stages (parse vs layout vs SVG emission).
-- Keep results meaningful across machines and CI.
+Keep these lanes separate because they answer different questions:
 
-The goal here is not to replace Mermaid.js in the browser. This work is mostly for native apps,
-text editors, CI pipelines, preview tools, and doc generators where embedding a JS engine just to
-draw a chart is heavy and awkward. Criterion stays in the toolbox for regression tracking, but
-parity and predictable headless output remain the top priorities.
+- Native Criterion `pipeline` benchmarks measure Merman stages and public end-to-end operations.
+- `compare_self.py` compares two Merman revisions on one host. Its confirmation mode is the
+  decision-grade regression and candidate-admission lane.
+- The stress benches and stage spot-checks attribute work after a public-operation change has been
+  observed. They do not independently admit production code.
+- `compare_mermaid_renderers.py` and the browser harness provide cross-renderer context. Different
+  transports, algorithms, capabilities, fixture bytes, or output-quality contracts must not be
+  combined into one aggregate admission number.
+- Native allocation, peak-live-heap, Node RSS, and artifact-size evidence use their own harnesses.
+  Do not infer memory or size behavior from latency alone.
 
-## Running Criterion benches
+## Native Criterion benchmarks
 
-`merman` includes Criterion benchmarks for the headless pipeline.
+The `pipeline` bench can be run directly for local attribution:
 
 ```bash
-cargo bench -p merman --features render --bench pipeline
+cargo bench -p merman --features svg --bench pipeline
 ```
 
-Notes:
+It measures:
 
-- Criterion performs multiple warm-up and measurement iterations and reports statistics.
-- Results vary across CPUs/OSes. Use relative comparisons on the same machine for regressions.
-
-## What is benchmarked
-
-The `pipeline` bench measures:
-
-- `parse/*`: parsing Mermaid into a semantic model (reused `Engine`, no layout).
+- `parse/*`: parsing with a reused `Engine`, without layout.
 - `parse_cold_engine/*`: request-style parsing with a fresh `Engine` per iteration.
-- `parse_known_type/*`: parsing when the diagram type is already known (skips detection).
-- `layout/*`: computing layout (geometry + routes) from a parsed diagram.
-- `render/*`: SVG emission from an already-laid-out diagram.
-- `end_to_end/*`: full pipeline (parse + layout + SVG emission).
+- `compatibility_json_parse/*`: compatibility JSON parsing when the diagram type is already known.
+  Historical reports may use its registered `parse_known_type/*` alias.
+- `layout/*`: geometry and route computation from a parsed diagram.
+- `render/*`: SVG emission from an already laid-out diagram.
+- `end_to_end/*`: parse, layout, and SVG emission through the public pipeline.
 
-The dedicated stress benches are separate on purpose:
+Bench fixtures live under `crates/merman/benches/fixtures/`. A direct Criterion invocation is useful
+for exploration, but its internal samples are not independent base/head observations and cannot by
+themselves establish an optimization claim. Use `compare_self.py --evidence-mode confirmation` for
+that claim.
 
-- `flowchart_stress`: render-only batching for flowchart fixed-cost work.
-- `architecture_layout_stress`: layout-only batching for architecture FCoSE/manatee work.
-- `architecture_stress`: render-only batching for architecture fixed-cost work.
-- `mindmap_layout_stress`: layout-only batching for mindmap COSE fixed-cost work.
-- `text_measure_stress`: text measurement batching for label/layout tuning.
+## Decision-grade self-comparison
 
-Bench fixtures live under `crates/merman/benches/fixtures/` and are intentionally small, focused
-inputs designed for regression tracking.
+### Two independent runner recipes
 
-## Comparing with mermaid-rs-renderer (optional)
+Base and head are separate `RunnerRecipe` values. Each recipe records its own:
 
-If you have a local checkout under `repo-ref/mermaid-rs-renderer`, you can generate a renderer
-comparison report:
+- checkout and human-readable label;
+- Cargo package and benchmark target;
+- feature list and default-feature policy;
+- Rust toolchain and optional compilation target;
+- Cargo target directory;
+- corpus manifest path;
+- a corpus schema-v2 lane contract that owns public operation, lifecycle, transport, selector
+  history, and the logical-operation divisor.
 
-```bash
-python3 tools/bench/compare_mermaid_renderers.py
-```
+Do not project the head recipe onto an older revision. Capability names can change across releases.
+For example, `v0.8.0-alpha.3` exposes SVG rendering through `render`, while the current candidate
+uses `svg`.
 
-By default this runs the `quick` corpus suite, writes a Markdown report to
-`docs/performance/COMPARISON.md`, and writes a structured JSON report to
-`target/bench/renderer_comparison.json`.
-
-The comparison harness is intentionally corpus-driven. `tools/bench/corpus.json` records which
-fixtures belong to each suite, their diagram family, broad feature tags, and the quality gates that
-should eventually be paired with the timing result. This keeps benchmark selection out of the
-runner implementation and makes coverage differences explicit.
-
-The helper script sets `MMDR_RUN_CRITERION_BENCHES=1` for the local mmdr checkout automatically.
-If you invoke `cargo bench --bench renderer` there by hand, set that env var yourself or the bench
-binary will only run its smoke validation path.
-
-For broader validation, prefer the named suites in `tools/bench/corpus.json`:
-
-- `standard`: routine cross-family validation.
-- `cross_family`: one medium fixture per supported family.
-- `flowchart`: flowchart-heavy routing and layout stress coverage.
-- `stress`: heavy fixtures when validating hotspot work.
-- `full`: every fixture in corpus order.
-
-Both comparison helpers add `--locked` when the target repo has `Cargo.lock`, so benchmark runs do
-not silently drift to newer registry dependencies. If the local `mermaid-rs-renderer` checkout needs
-a newer Rust toolchain than this workspace's `rust-toolchain.toml`, pass it explicitly, for example:
+This historical comparison makes that difference explicit:
 
 ```bash
-python3 tools/bench/compare_mermaid_renderers.py --mmdr-toolchain 1.92.0
+python3 tools/bench/compare_self.py \
+  --base-dir ../merman-alpha3 \
+  --head-dir . \
+  --base-label v0.8.0-alpha.3 \
+  --head-label HEAD \
+  --base-package merman \
+  --head-package merman \
+  --base-bench pipeline \
+  --head-bench pipeline \
+  --base-features render \
+  --head-features svg \
+  --base-toolchain 1.95.0 \
+  --head-toolchain 1.95.0 \
+  --base-target-dir target/performance/base \
+  --head-target-dir target/performance/head \
+  --base-corpus tools/bench/corpus.json \
+  --head-corpus tools/bench/corpus.json \
+  --suite canary \
+  --preset long \
+  --evidence-mode confirmation \
+  --calibration-pairs 8 \
+  --max-pairs 64 \
+  --relative-threshold-percent 10 \
+  --absolute-threshold-ns 50000 \
+  --out target/performance/alpha3_to_head.md \
+  --json-out target/performance/alpha3_to_head.json
 ```
 
-If you prefer keeping comparison artifacts out of the docs tree, pass `--out` and `--json-out`
-explicitly, e.g.:
+The default-feature policy is also side-specific and defaults to enabled. Use
+`--no-base-default-features` or `--no-head-default-features` when the corresponding recipe must have
+a narrow explicit feature closure and the selected suite does not require a disabled family. Missing
+capability for any mandatory fixture is an evidence-contract failure. Use `--base-target` and
+`--head-target` for explicit cross-target recipes; otherwise the native target is recorded.
+
+The alpha.3 range is historical context, not causal proof for one optimization. Prove a candidate
+against its adjacent clean pre-change commit using the same two-sided recipe contract.
+
+### Build and executable freeze
+
+`compare_self.py` performs build work before any timed pair:
+
+1. It invokes locked Cargo bench compilation independently for each recipe with `--no-run` and
+   Cargo JSON diagnostics.
+2. It accepts exactly one matching Criterion executable for the requested package and bench.
+3. It records and verifies the executable digest and discovers exact benchmark names directly from
+   that executable.
+4. Every timed sample invokes the frozen executable directly with Criterion's bench mode enabled.
+
+Cargo is therefore outside the timed AB/BA schedule. A missing lockfile, ambiguous executable,
+changed digest, absent benchmark, or failed direct invocation is an evidence-contract failure, not
+a slow sample.
+
+Base and head should normally use distinct target directories. When disk constraints require
+`--freeze-shared-target`, the runner clears only the shared target's `bench` profile before building
+each side, then copies that side's executable under `target/perf-frozen`. This reset is required:
+Cargo's cache is not a content-addressed boundary between different path-workspace checkouts, so a
+plain second `--target-dir` build can otherwise reuse the first checkout's executable. The debug
+profile and immutable frozen copies are not removed. Do not run another Cargo process against that
+target during either reset, build, or timing schedule. Different Git trees that still resolve to
+byte-identical benchmark executables fail the comparison, because they do not provide an
+independently built binary delta to measure. The JSON report records the comparison harness digest
+as well as both executable digests.
+
+### Corpus and fixture byte gate
+
+The harness loads the corpus independently from both recipes. It compares the selected fixture on
+both sides before timing and records each path, byte length, and SHA-256 digest.
+
+Only byte-identical fixtures available to both executables are comparable. Missing or different
+bytes remain visible as coverage evidence but cannot produce a timing ratio. A required selection
+with no comparable row fails the evidence contract. This prevents source evolution from being
+misreported as an engine regression or improvement.
+
+### Diagnostic evidence
+
+Diagnostic mode runs one to four paired observations with alternating AB/BA order, balanced whenever
+the requested pair count is even. It is intended for PR triage and hypothesis selection only:
+
+- observed movement is always advisory;
+- it cannot accept or reject a performance candidate;
+- it exits successfully when timing completes, regardless of movement;
+- recipe, byte, capability, runner, and report-contract failures still use exit code `2`.
+
+Do not keep sampling a diagnostic run until it looks favorable. Move to a preregistered confirmation
+run when a result will influence production code.
+
+### Confirmation evidence
+
+Confirmation mode separates calibration from the final comparison:
+
+1. Run at least eight order-balanced same-binary A/A pairs for base and for head.
+2. Require the two-sided identity and order-effect intervals to remain fully inside the
+   preregistered relative and absolute equivalence margins, and estimate dispersion for both
+   metrics.
+3. Derive the next even confirmation count from each metric using
+   `max(8, ceil(((1.645 + 0.842) * sigma / MDE)^2))`.
+4. Use the largest required count across every required row and both metrics, bounded by the
+   preregistered `--max-pairs` budget.
+5. Collect a fresh, even, order-balanced AB/BA confirmation schedule. Calibration and exploratory
+   observations are never reused as confirmation evidence.
+
+If A/A is unstable or the derived count exceeds the fixed budget, the result is inconclusive. The
+harness does not weaken thresholds, extend the budget after seeing results, or stop when an interval
+first becomes favorable.
+
+One normalized Criterion point estimate per side within an AB/BA pair is one independent
+observation. Corpus schema-v2 lane metadata owns the public operation and normalization. Current and
+registered historical selectors can therefore confirm the same operation even when their Criterion
+group names differ. An explicit `--base-logical-operations` or `--head-logical-operations` value must
+match the registered divisor. Legacy corpus schema-v1 evidence has no such attestation: confirmation
+requires exact benchmark identity and divisors of one, while any override remains diagnostic-only.
+
+### Statistics and decisions
+
+The canonical signed metrics are:
+
+- relative movement: `r = log(head / base)`;
+- absolute movement: `d = head - base` in nanoseconds.
+
+Positive values mean regression. The report retains every raw pair and computes deterministic
+paired-bootstrap bounds with suite-level 95% simultaneous coverage. For `R` comparable rows, the
+confidence family contains `2R` components: relative and absolute movement for every row. A
+Bonferroni adjustment gives each component confidence `1 - 0.05 / (2R)`. The ordinary end-to-end
+regression threshold is relative movement greater than 10 percent **and** absolute movement greater
+than 50 us.
+`--absolute-threshold-us 50` is an equivalent convenience form of
+`--absolute-threshold-ns 50000`.
+
+#### Low-latency public operations
+
+The ordinary absolute threshold is structurally unreachable when the complete public-operation
+baseline is below 50 us and dominates the relative threshold for every baseline below 500 us. A
+candidate with a frozen baseline below 500 us may preregister this alternative only before
+collecting confirmation samples and only for a complete public operation with frozen base/head
+revisions and inputs. Private stages remain attribution evidence.
+
+Let `B` be the frozen baseline estimate in nanoseconds per logical operation. Let `e_r` and `e_d` be
+the maximum absolute endpoints from the independent base and head A/A simultaneous 95% intervals
+for log ratio, absolute delta, and their order effects. A/A is stable only when identity or zero is
+inside every interval, `e_r <= -ln(0.95)`, `e_d <= min(1,000 ns, 0.05 * B)`, and the power-derived
+pair count does not exceed the preregistered cap. Define:
+
+```text
+T_r = max(-ln(0.90), 3 * e_r)
+T_d = max(1,000 ns, min(50,000 ns, B * (1 - exp(-T_r))), 3 * e_d)
+```
+
+Fresh confirmation accepts the performance claim only when the simultaneous one-sided 95% upper
+bounds for `r = ln(head/base)` and `d = head-base` are below `-T_r` and `-T_d`. Derive one fixed even
+AB/BA pair count from both thresholds using the normal power procedure, with at least eight pairs
+and a preregistered cap no greater than 64. Do not reuse discovery or A/A observations, remove rows,
+change the lifecycle, or extend the budget after seeing confirmation.
+
+The low-latency gate handles measurement scale; it does not erase engineering cost. A candidate
+that adds persistent state or a large owner implementation must also preregister and pass a concrete
+memory, throughput, or documented integration objective, keep cold and unaffected paths within
+their noise budgets, and remove the superseded production path and temporary oracle before
+acceptance.
+
+Confirmation fixes `--bootstrap-resamples` at a decision-grade minimum of 10,000. Smaller values
+are permitted only for diagnostic exploration and can never produce a confirmation outcome;
+values above 100,000 are rejected to keep evidence generation bounded.
+
+Per row:
+
+- `confirmed_regression`: both regression lower bounds clear their positive thresholds;
+- `confirmed_non_regression`: either regression upper bound cannot clear its threshold;
+- `inconclusive`: the interval crosses the joint decision boundary, A/A is unstable, or the fixed
+  measurement budget is insufficient.
+
+Candidate admission is a different question from regression gating. It uses the mirrored
+improvement view of the same paired bounds. A candidate is performance-confirmed only when both
+mirrored improvement bounds clear the relative and absolute thresholds. It is accepted only when
+that improvement and all applicable semantic, error, resource, memory, security, host, and control
+gates pass. A suite exit of `0` is not proof of improvement.
+
+Suite exit precedence is fixed:
+
+| Exit | Meaning |
+| ---: | --- |
+| `2` | Evidence-contract failure, including invalid recipes, byte/capability gaps, runner errors, or no comparable required row. |
+| `1` | At least one confirmed regression. |
+| `3` | At least one required confirmation row is statistically inconclusive. |
+| `0` | Complete diagnostic advisory, or suite-wide conclusive non-regression. |
+
+The precedence is `2 > 1 > 3 > 0`. Candidate accepted/rejected/inconclusive state must be read from
+the mirrored per-row fields and mandatory non-performance gates, never inferred from this process
+code alone.
+
+### Structural complexity and resource amplification
+
+The latency gates above are not universal admission criteria. A separately preregistered
+structural lane may accept a repair without a measurable ordinary-fixture speedup when an
+externally reachable input controls repeated work, the old implementation contains a higher-order
+or unbounded term, and the candidate removes or caps that term.
+
+Freeze the evidence model before implementation:
+
+- name the independent input variables and the resource limit that bounds each one;
+- state the reachable pre-change and post-change time and added-space bounds, distinguishing
+  worst-case bounds from expected hash-table behavior;
+- identify the exact loop, lookup, rebuild, or expansion that realizes the old term;
+- choose code-path proof plus an exact test-only work counter, or a preregistered multi-scale curve
+  when the bound cannot be established directly;
+- preserve semantic output, structured errors and precedence, security policy, resource charges,
+  cancellation, and deterministic ordering;
+- run the existing representative public lane as a non-regression control when practical, and add
+  a memory bound when the data-structure change adds scale-sensitive state.
+
+Acceptance requires a reviewed causal derivation and passing correctness/resource gates. A noisy
+or sub-threshold clock result does not invalidate a proven removal of attacker-controlled
+quadratic work, but a confirmed material public-workload regression still requires rejection or an
+explicitly approved tradeoff. Describe the result as, for example, `O(A^2)` to expected `O(A)` or
+`O(T * (V + E))` to `O(T + V + E)` with its added-space bound. Do not call it a latency speedup
+unless a separate public-operation timing confirmation passes.
+
+Prefer existing correctness suites plus one combined adversarial scale test over a permanent
+fixture-specific benchmark. Delete candidate-only counters, lanes, contracts, and generators after
+rejection; retain infrastructure only when it serves a stable recurring contract.
+
+### Report schema
+
+Self-comparison reports use schema version `2`. The JSON is the audit artifact; Markdown and PR
+comments are projections of it. It records:
+
+- both full runner recipes and revisions;
+- Cargo lock, manifest, toolchain, build-command, target, environment, host, and executable-digest
+  provenance;
+- corpus and fixture paths, byte lengths, hashes, capability discovery, and coverage gaps;
+- evidence mode, thresholds, confidence settings, bootstrap seed/resamples, pair budgets, and the
+  declared/effective lane contract and logical-operation divisor;
+- base/head A/A calibration, order/stability diagnostics, derived power requirement, and every raw
+  pair;
+- fresh AB/BA confirmation pairs, one-sided relative and absolute bounds, regression state, mirrored
+  improvement state, aggregate outcome, and exit code.
+
+`--out` and `--json-out` must resolve to distinct files, including after resolving `..` components
+and symbolic links. The runner rejects aliases before building either candidate.
+
+Consumers must fail closed on an unknown schema. Schema version `1` can be displayed only as legacy
+diagnostic evidence and cannot support a current admission decision. The comment renderer always
+writes an available failure projection, including for nonstandard signal/OOM exit codes, then exits
+`2` when its consumer contract fails. CI combines that status with the producer exit code.
+
+## Native allocation and peak-live evidence
+
+Run the isolated native `System` allocator lane explicitly:
+
+```bash
+python3 tools/bench/run_native_memory.py \
+  --json-out target/bench/native_memory.json
+```
+
+The driver builds a dedicated instrumented executable once, freezes its SHA-256 digest, and then
+launches one fresh process for every operation or matched zero-work sample. The renderer is prepared
+before the allocator snapshot, so `fresh-process` describes sample isolation while `reused-engine`
+describes the measured public operation. This executable is never used for latency evidence.
+
+The registered contract fixes six scales (`1, 2, 4, 10, 32, 100`), one seed across the matrix, at
+least five repeats, and alternating operation/zero order. Strict one-line JSON records executable and
+invocation identity, generated node/edge counts, deterministic SVG identity and dimensions,
+allocation count, allocated bytes, and peak live-byte growth. The analysis subtracts each matched
+zero sample, retains per-scale medians, and uses deterministic matched-vector bootstrap bounds for
+the OLS slope and scale-100 median.
+
+The Flowchart generator uses three nodes and four edges per scale unit, so its `100x` boundary stays
+inside the default layout-work policy while still exercising 100 clusters, 300 nodes, and 400 edges.
+Protocol smoke runs matched operation/zero pairs at both `1x` and `100x`; this catches setup leakage
+and resource-budget drift before a full 60-process matrix.
+
+An upper bound at or below the cap passes; a lower bound above the cap fails; a crossing interval is
+inconclusive. Exit precedence is the same `2 > 1 > 3 > 0` contract used by latency evidence. The
+checked-in `infrastructure-smoke` owner contract contains broad harness-safety bounds only and has
+`candidate_admission: false`. Every optimization owner must preregister tighter adjacent-candidate
+memory bounds and combine them with its semantic and latency gates.
+
+The aggregate runner keeps this lane opt-in:
+
+```bash
+python3 tools/bench/perf_runner.py --profile triage --include-native-memory
+```
+
+A full native-memory report records the Git commit/tree and dirty disposition, workspace/package
+manifest and lock digests, build environment, requested and actual Rust toolchain, executable digest,
+and the complete raw schedule. Full evidence rejects a dirty worktree by default. `--allow-dirty`
+exists only for investigation, forces `candidate_admission` false, and cannot create a durable
+receipt. Protocol smoke is likewise never admission evidence.
+
+After a clean full run, freeze the report, source inputs, every corpus fixture, recipe, host, and
+executable into the authoritative receipt envelope:
+
+```bash
+python3 tools/bench/freeze_perf_baseline.py freeze \
+  --native-memory-report target/bench/native_memory.json \
+  --out docs/performance/baselines/runtime-<source-commit>.json
+```
+
+The freezer revalidates every persisted protocol response and recomputes paired adjustments,
+bootstrap bounds, metric classifications, and aggregate exit precedence before accepting the
+report. A report by itself is not a frozen baseline. The manifest describes the measured source
+commit, so verify it from a clean checkout of that recorded commit while passing the manifest path
+from the receipt commit:
+
+```bash
+python3 tools/bench/freeze_perf_baseline.py verify \
+  --repo-root ../merman-source-commit \
+  --manifest docs/performance/baselines/runtime-<source-commit>.json
+```
+
+## Cross-renderer comparison
+
+If `repo-ref/mermaid-rs-renderer` is available, this command produces fixture-level diagnostic
+context:
 
 ```bash
 python3 tools/bench/compare_mermaid_renderers.py \
+  --preset long \
   --suite standard \
-  --out target/bench/COMPARISON.latest.md \
-  --json-out target/bench/COMPARISON.latest.json
+  --expected-merman-rev <merman-commit> \
+  --expected-mmdr-rev <mmdr-commit> \
+  --mmdr-toolchain 1.92.0 \
+  --out target/bench/renderer_comparison.md \
+  --json-out target/bench/renderer_comparison.json
 ```
 
-For lower-noise results (recommended when tracking canaries), use the `long` preset:
+The runner rejects dirty Merman or mmdr checkouts before starting Cargo. `--allow-dirty` is available
+for explicitly diagnostic work: it fingerprints the tracked diff and every untracked file, then
+rechecks both repositories and all benchmark-owned inputs after sampling. A revision, worktree,
+fixture, runner, lockfile, config, or browser-bundle change fails the contract with exit `2`.
+
+Use `--skip-mermaid-js` when the optional Puppeteer lane is not required. Available suites can be
+listed with `--list-suites`; `standard`, `cross_family`, `flowchart`, `stress`, and `full` broaden the
+registered native corpus. They are not the complete supported-family inventory: `full` means every
+registered fixture, not every Merman family.
+
+Before a fixture-level ratio is shown, the harness compares the exact bytes used by both native
+benches. Missing, skipped, errored, or non-identical fixtures remain coverage facts rather than being
+treated as fast or slow. Do not use a family aggregate or a ratio spanning unlike transports as an
+optimization gate.
+
+Schema `3` retains repository and input provenance, family-level coverage, contract status, the
+Criterion console mid-point estimate kind, and all Mermaid.js per-call samples with p50/p95/p99.
+Native Criterion raw samples are not retained, so the report remains diagnostic and explicitly sets
+`baseline_eligible` to false. The runner also performs a Mermaid.js SVG preflight, but DOM and raster
+parity remain separate gates.
+
+The steady-state modes are also distinct:
+
+- Merman: native Criterion `end_to_end/*`.
+- `mermaid-rs-renderer`: its native Criterion `end_to_end/*`.
+- Mermaid.js: repeated warm `mermaid.render()` calls in one Puppeteer/Chromium process.
+
+Cold CLI startup, Node N-API, browser WASM, DOM comparison, and raster comparison stay in separate
+lanes with explicit lifecycle and output contracts.
+
+## Browser comparison with Mermaid.js
+
+Use the generated family-baseline corpus for the web-to-web comparison. The full command builds the
+current Web artifact and measures one baseline from each supported generated-example family:
 
 ```bash
-python3 tools/bench/compare_mermaid_renderers.py --preset long
+npm --prefix playground run benchmark:corpus -- \
+  --iterations 6 \
+  --warmups 2 \
+  --out target/bench/browser-family-corpus.json
 ```
 
-If you want to avoid the optional upstream Mermaid JS (puppeteer) run (which can be noisy and slow),
-add `--skip-mermaid-js`:
+After an already verified playground build, select fixtures for a diagnostic rerun with:
 
 ```bash
-python3 tools/bench/compare_mermaid_renderers.py --preset long --skip-mermaid-js
+npm --prefix playground run benchmark:corpus:built -- \
+  --fixtures c4-system-context,mind-map,requirement-trace \
+  --iterations 6 \
+  --warmups 2 \
+  --out target/bench/browser-family-targeted.json
 ```
 
-To see the available corpus suites:
+The corpus runner derives its inventory from generated examples whose evidence role is
+`family-baseline`. It starts a fresh Chromium process for every selected fixture to bound retained
+renderer state. Within that fixture, Merman and Mermaid.js still use the same page, source bytes,
+theme, viewport, warmup policy, iteration count, and deterministic AB/BA schedule. Independent cold
+and warm controller runs report first-publishable SVG and reused-engine publishable SVG separately.
+Both engines pass through the production browser adapters and the same strict SVG evidence checks.
 
-```bash
-python3 tools/bench/compare_mermaid_renderers.py --list-suites
-```
+Corpus schema `1` embeds the raw schema-`5` controller reports, fixture byte counts and SHA-256
+digests, family coverage, actual order, seeds, versions, failures, skips, and process-isolation mode.
+It never overwrites an existing output. A whole-corpus budget rejects plans that would retain more
+than 4,096 raw samples before the first fixture runs. In each successful fixture mode's
+`report.aggregates.ratios`, the numerator is Mermaid.js and the denominator is Merman, so values
+greater than `1` favor Merman.
 
-The main suites are:
+An even `--iterations` value is required by the balanced schedule. A two-iteration, zero-warmup run
+is useful only to verify coverage and discover large candidates. The default six iterations and two
+warmups provide better diagnostic ranking, but they are not a universal admission threshold. Use a
+targeted rerun, inspect raw samples, variance, and absolute milliseconds, then confirm any production
+change against the same Merman base/head public operation before accepting it.
 
-- `quick`: a small smoke set for local iteration; mirrors the historical comparison filter.
-- `standard`: a balanced cross-family set for routine comparison reports.
-- `cross_family`: one representative medium fixture per supported diagram family.
-- `flowchart`: flowchart-heavy routing and layout stress coverage.
-- `stress`: heavier fixtures used when validating optimization work.
-- `full`: every fixture in `tools/bench/corpus.json`.
-
-The legacy `--filter` path is still available for ad-hoc exact selections. When `--filter` is set,
-`--suite` is ignored:
-
-```bash
-python3 tools/bench/compare_mermaid_renderers.py \
-  --filter 'end_to_end/(flowchart_medium|class_medium)' \
-  --out target/bench/filter.md \
-  --json-out target/bench/filter.json
-```
-
-### How to read comparison reports
-
-The comparison report separates three signals that should not be collapsed into a single speed
-number:
-
-- Performance: successful timing samples for each renderer.
-- Coverage: requested, available, measured, missing, skipped, and errored fixture counts.
-- Quality expectations: fixture-level tags for future SVG sanity, DOM comparison, and raster
-  comparison gates.
-
-Ratios are only computed when both renderers successfully measured the same fixture. Missing,
-skipped, and errored fixtures reduce coverage rather than being treated as slow or fast results.
-This matters when comparing `merman` with renderers that have different goals or partial Mermaid
-coverage.
-
-The current harness measures warm steady-state rendering:
-
-- `merman`: Criterion `end_to_end/*` benches.
-- `mermaid-rs-renderer`: Criterion `end_to_end/*` benches in the local checkout.
-- Mermaid JS: repeated warm `mermaid.render()` calls inside a single Puppeteer/Chromium process.
-
-Cold CLI startup, WASM/browser-hosted `@mermanjs/web`, DOM diff, and raster diff should remain
-separate modes or quality gates. Do not mix them into the warm native comparison without making the
-mode explicit in the JSON schema.
-
-## Browser comparison with Mermaid JS
-
-Native `merman-cli` results and Mermaid JS browser results should not be treated as the same kind
-of benchmark. The CLI path is useful for native pipeline regressions; the browser path is useful
-for playground and web embedding decisions.
-
-For web-to-web comparisons, measure after both engines are initialized in the same headless
-Chromium session:
-
-- Merman: initialize `@mermanjs/web` once, then measure repeated `renderSvg()` calls.
-- Mermaid JS: initialize Mermaid once, then measure repeated `mermaid.render()` calls.
-- Use the same fixtures, theme, viewport width, warmup window, and measurement window.
-- Keep cold-start numbers separate from steady-state render numbers.
-
-`tools/bench/mermaid_js_bench.cjs` already provides the Mermaid JS side of this comparison through
-the pinned `tools/mermaid-cli` dependency set. A future `@mermanjs/web` browser harness should emit
-the same JSON shape so `tools/bench/compare_mermaid_renderers.py` can report native, WASM, and
-Mermaid JS results without mixing unlike measurements.
-
-For interactive visual comparison rather than timed measurement, see
+`tools/bench/mermaid_js_bench.cjs` supplies the Mermaid.js side through the pinned
+`tools/mermaid-cli` dependencies for the cross-transport native diagnostic lane above; it is not the
+web-to-web admission lane. Interactive visual comparison is documented in
 `docs/workstreams/web-wasm-playground/MERMAID_COMPARE_MODE.md`.
 
-See `docs/performance/PERF_PLAYBOOK.md` for the recommended default canary suite and report naming.
+## Stage and render diagnostics
 
-## Stage spot-check (recommended for triage)
-
-When you want to attribute a performance change to a specific pipeline stage quickly (parse vs
-layout vs SVG emission), use the stage spot-check script:
+Use the stage spot-check only after a public-operation signal needs attribution:
 
 ```bash
-python3 tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium --out target/bench/stage_spotcheck.md
+python3 tools/bench/stage_spotcheck.py \
+  --preset long \
+  --fixtures flowchart_medium,class_medium \
+  --out target/bench/stage_spotcheck.md
 ```
 
-This runs a small set of `--exact` Criterion benchmarks for both `merman` and
-`repo-ref/mermaid-rs-renderer` and writes a compact stage-by-stage report.
+When `render/*` is slow, direct `merman-render` callers can enable
+`SvgDebugOptions::include_timing_diagnostics` through an explicit `*_with_debug` entry point. Keep
+timing diagnostics disabled in the measured production path. The API is documented in
+`crates/merman-render/README.md`.
 
-The helper script also sets `MMDR_RUN_CRITERION_BENCHES=1` for the local mmdr checkout
-automatically.
-
-For lower-noise spotchecks, use the `long` preset:
+Stress benches batch small operations to amplify fixed costs:
 
 ```bash
-python3 tools/bench/stage_spotcheck.py --preset long --fixtures flowchart_medium,class_medium
+cargo bench -p merman --features svg --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features layout-cytoscape --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features layout-cytoscape --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features svg --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+cargo bench -p merman --features svg --bench text_measure_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
 ```
 
-The stage spot-check helper accepts the same `--mmdr-toolchain` option when the reference checkout
-needs a newer toolchain.
+These results are owner-local diagnostics. Record and normalize their fixed-repeat divisor before
+comparing them, and confirm the corresponding public end-to-end operation before accepting code.
 
-## Recommendations
+## Host discipline
 
-- Prefer comparing two git revisions on the same machine.
-- Run with a mostly idle system (close background heavy apps).
-- Keep the Rust toolchain consistent (e.g. stable vs nightly).
-
-## Stress benches (render-only, lower noise)
-
-Some render paths are fast enough (µs-scale) that small changes get lost in noise. The
-`*_stress` benches batch many renders per iteration to amplify fixed-cost improvements and
-stabilize A/B comparisons.
-
-```bash
-cargo bench -p merman --features render --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features render --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features render --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features render --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features render --bench text_measure_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-```
-
-## Future work
-
-- Add additional “stress” fixtures (node-heavy flowcharts, dense edge routing).
-- Add timing output to `merman-cli` for ad-hoc benchmarking without Criterion.
-- Add a documented “upstream CLI” comparison mode (optional, requires Node.js).
+- Compare clean committed revisions on the same host.
+- Keep the toolchain, target, power mode, thermal state, and background load stable.
+- Prebuild serially and do not run Cargo while the paired schedule is sampling.
+- Freeze the experiment configuration before viewing confirmation data.
+- Retain the schema-v2 JSON report even when the result is rejected or inconclusive.

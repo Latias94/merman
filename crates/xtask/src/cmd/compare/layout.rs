@@ -28,13 +28,11 @@ pub(crate) fn svg_compare_engine_with_site_config(overrides: serde_json::Value) 
 }
 
 pub(crate) fn svg_compare_layout_opts() -> merman_render::LayoutOptions {
-    merman_render::LayoutOptions {
-        text_measurer: std::sync::Arc::new(
-            merman_render::text::VendoredFontMetricsTextMeasurer::default(),
-        ),
-        use_manatee_layout: true,
-        ..Default::default()
-    }
+    merman_render::LayoutOptions::default()
+}
+
+pub(crate) fn svg_compare_environment() -> merman::svg::RenderEnvironment {
+    merman::svg::RenderEnvironment::deterministic()
 }
 
 #[cfg(test)]
@@ -50,10 +48,8 @@ mod tests {
 flowchart TD
   A --> B
 "##,
-                merman::ParseOptions::default(),
             )
-            .expect("parse succeeds")
-            .expect("diagram detected");
+            .expect("parse succeeds");
 
         assert_eq!(
             meta.effective_config.get_str("themeVariables.primaryColor"),

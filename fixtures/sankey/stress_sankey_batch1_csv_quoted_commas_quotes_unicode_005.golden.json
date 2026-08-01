@@ -42,7 +42,7 @@
         {
           "source": "Phase 1 - alpha",
           "target": "Ship",
-          "value": 6.0
+          "value": 6
         },
         {
           "source": "Phase 1 - alpha",
@@ -52,7 +52,7 @@
         {
           "source": "Phase 2 - beta",
           "target": "Ship",
-          "value": 4.0
+          "value": 4
         },
         {
           "source": "Phase 2 - beta",

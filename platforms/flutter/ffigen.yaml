@@ -1,0 +1,30 @@
+name: MermanNativeBindings
+description: Generated ABI 3 declarations for the Merman native function table.
+output: lib/src/generated/native_abi.dart
+headers:
+  entry-points:
+    - ../../crates/merman-ffi/include/merman.h
+  include-directives:
+    - '**merman.h'
+    - '**merman_text_measurement_abi.h'
+compiler-opts:
+  - -I../../crates/merman-ffi/include
+comments:
+  style: any
+  length: full
+functions:
+  include:
+    - merman_get_native_api
+structs:
+  include:
+    - MermanNative.*
+typedefs:
+  include:
+    - MermanNative.*
+enums:
+  include:
+    - MermanNative.*
+macros:
+  include:
+    - MERMAN_NATIVE_.*
+    - MERMAN_TEXT_MEASUREMENT_.*

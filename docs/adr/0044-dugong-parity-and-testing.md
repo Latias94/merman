@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`merman` is a headless, pure-Rust reimplementation of Mermaid `@11.12.3`. Achieving rendering parity
+`merman` is a headless, pure-Rust reimplementation of pinned Mermaid `@11.16.0`. Achieving rendering parity
 for DAG-based diagrams requires a Dagre-class layout engine plus a Graphlib-like graph container.
 
 We will implement Dagre in Rust as a general-purpose library named `dugong`, with the graph container
@@ -37,14 +37,11 @@ To avoid subjective drift, we need:
   - multigraphs (edge `name` keys)
   - graph-level attributes (`setGraph/getGraph` equivalent)
   - default node/edge labels (`setDefaultNodeLabel/setDefaultEdgeLabel` equivalent)
-- `dugong` exposes a Dagre-style entrypoint:
-  - `layout(graph)` mutates the graph by setting node positions and edge routes (points), matching
-    upstream semantics.
-  - `layout_dagreish(graph)` provides a parity-oriented pipeline that mirrors Dagre’s layout
-    sequence more closely (rank/normalize/order/BK positioning), and is used by `merman` where SVG
-    parity requires Dagre-compatible behavior.
-    - It is gated behind the `dugong/dagreish` feature (enabled by default) to keep the minimal
-      pipeline lightweight for downstream consumers that do not need parity mode.
+- `dugong::layout(graph)` is the sole Dagre-style entrypoint. It executes the complete
+  source-backed rank/normalize/order/BK pipeline, mutates node positions and edge routes, and
+  publishes graph dimensions like upstream Dagre.
+- The former minimal approximation and `layout_dagreish` alternate entrypoint are removed. A
+  public layout interface must not select a less-correct algorithm merely because it is smaller.
 
 ### Dagre pipeline notes (connectivity + compound graphs)
 
@@ -101,7 +98,7 @@ Those concerns are handled by `merman` via a headless rendering pipeline and plu
 
 ## Consequences
 
-- `dugong` becomes a reusable Rust layout engine with a clear, test-driven parity baseline.
+- `dugong` becomes a reusable Rust layout engine with one clear, test-driven parity interface.
 - `merman` can depend on `dugong` for layout while keeping rendering backends and UI integration
   separate and headless.
 - Exact Mermaid SVG parity remains dependent on faithful porting of Mermaid-specific rendering

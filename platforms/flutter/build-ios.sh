@@ -6,14 +6,36 @@ FLUTTER_ROOT="$REPO_ROOT/platforms/flutter"
 OUT_DIR="$REPO_ROOT/target/flutter-ios-xcframework"
 FRAMEWORK_NAME="MermanFFI"
 FRAMEWORK_OUT="$FLUTTER_ROOT/ios/$FRAMEWORK_NAME.xcframework"
-INCLUDE_HEADER="$REPO_ROOT/crates/merman-ffi/include/merman.h"
+FFI_INCLUDE_DIR="$REPO_ROOT/crates/merman-ffi/include"
 AUTO_INSTALL_RUST_TARGETS="${MERMAN_AUTO_INSTALL_RUST_TARGETS:-auto}"
+RECIPE_PROFILE="flutter-ios-native"
+
+recipe_field() {
+    python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" --field "$1"
+}
+
+NATIVE_SDK_PROFILE="$(recipe_field profile)"
+NATIVE_SDK_TARGET="$(recipe_field target)"
+NATIVE_SDK_LIBRARY_STEM="${NATIVE_SDK_TARGET//-/_}"
+
+if [[ "${MERMAN_CHECK_RECIPE_ONLY:-false}" == "true" ]]; then
+    exit 0
+fi
 
 require_tool() {
     if ! command -v "$1" >/dev/null 2>&1; then
         echo "required tool not found: $1" >&2
         exit 1
     fi
+}
+
+verify_macho_c_abi() {
+    local library="$1"
+    python3 "$REPO_ROOT/scripts/native_symbol_contract.py" --contract c-abi \
+        --llvm-nm "$LLVM_NM" \
+        --all-macho-architectures \
+        --label "$RECIPE_PROFILE $library" \
+        "$library"
 }
 
 ensure_rust_target_installed() {
@@ -56,15 +78,27 @@ $target
 
 build_cdylib() {
     local target="$1"
-    echo "==> Building merman-ffi for $target"
+    echo "==> Building $RECIPE_PROFILE for $target"
     ensure_rust_target_installed "$target"
-    cargo build --release -p merman-ffi --target "$target" --manifest-path "$REPO_ROOT/Cargo.toml"
+    python3 "$REPO_ROOT/scripts/artifact_profile_recipe.py" "$RECIPE_PROFILE" \
+        --build --locked --target-triple "$target"
+}
+
+verify_public_headers() {
+    local headers_dir="$1"
+    local public_header
+    for public_header in "$FFI_INCLUDE_DIR"/*.h; do
+        test -f "$headers_dir/$(basename "$public_header")"
+    done
+    printf '#include "merman.h"\n' | xcrun clang -fsyntax-only -x c -I "$headers_dir" -
 }
 
 write_framework_metadata() {
     local framework_dir="$1"
     mkdir -p "$framework_dir/Headers" "$framework_dir/Modules"
-    cp "$INCLUDE_HEADER" "$framework_dir/Headers/merman.h"
+    cp "$FFI_INCLUDE_DIR"/*.h "$framework_dir/Headers/"
+
+    verify_public_headers "$framework_dir/Headers"
 
     cat > "$framework_dir/Modules/module.modulemap" <<'EOF'
 framework module MermanFFI {
@@ -108,7 +142,7 @@ make_framework() {
     mkdir -p "$framework_dir"
     cp "$binary" "$framework_dir/$FRAMEWORK_NAME"
     install_name_tool -id "@rpath/$FRAMEWORK_NAME.framework/$FRAMEWORK_NAME" "$framework_dir/$FRAMEWORK_NAME"
-    xcrun strip -x "$framework_dir/$FRAMEWORK_NAME" 2>/dev/null || true
+    xcrun strip -x "$framework_dir/$FRAMEWORK_NAME"
     write_framework_metadata "$framework_dir"
 }
 
@@ -119,6 +153,12 @@ require_tool lipo
 require_tool install_name_tool
 require_tool xcrun
 
+LLVM_NM="${MERMAN_LLVM_NM:-$(xcrun --find llvm-nm)}"
+if [[ ! -f "$LLVM_NM" ]]; then
+    echo "llvm-nm does not exist: $LLVM_NM" >&2
+    exit 1
+fi
+
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
@@ -127,13 +167,13 @@ build_cdylib aarch64-apple-ios-sim
 build_cdylib x86_64-apple-ios
 
 make_framework \
-    "$REPO_ROOT/target/aarch64-apple-ios/release/libmerman_ffi.dylib" \
+    "$REPO_ROOT/target/aarch64-apple-ios/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib" \
     "$OUT_DIR/ios-arm64/$FRAMEWORK_NAME.framework"
 
 mkdir -p "$OUT_DIR/ios-simulator"
 lipo -create \
-    "$REPO_ROOT/target/aarch64-apple-ios-sim/release/libmerman_ffi.dylib" \
-    "$REPO_ROOT/target/x86_64-apple-ios/release/libmerman_ffi.dylib" \
+    "$REPO_ROOT/target/aarch64-apple-ios-sim/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib" \
+    "$REPO_ROOT/target/x86_64-apple-ios/$NATIVE_SDK_PROFILE/lib$NATIVE_SDK_LIBRARY_STEM.dylib" \
     -output "$OUT_DIR/ios-simulator/$FRAMEWORK_NAME"
 
 make_framework \
@@ -145,5 +185,10 @@ xcodebuild -create-xcframework \
     -framework "$OUT_DIR/ios-arm64/$FRAMEWORK_NAME.framework" \
     -framework "$OUT_DIR/ios-simulator/$FRAMEWORK_NAME.framework" \
     -output "$FRAMEWORK_OUT"
+
+for FRAMEWORK_DIR in "$FRAMEWORK_OUT"/*/"$FRAMEWORK_NAME.framework"; do
+    verify_public_headers "$FRAMEWORK_DIR/Headers"
+    verify_macho_c_abi "$FRAMEWORK_DIR/$FRAMEWORK_NAME"
+done
 
 echo "==> Wrote $FRAMEWORK_OUT"

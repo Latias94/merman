@@ -1,0 +1,19 @@
+---
+config:
+  theme: dark
+  fontFamily: courier
+  fontSize: 16px
+  sequence:
+    actorFontFamily: courier
+    noteFontFamily: courier
+    messageFontFamily: courier
+  handDrawnSeed: 1
+  architecture:
+    seed: 1
+  cynefin:
+    seed: 1
+---
+railroad-beta
+value = choice(nonterminal("string"), nonterminal("number"), nonterminal("object"), nonterminal("array"), terminal("true"), terminal("false"), terminal("null")) ;
+number = oneOrMore(nonterminal("digit")) ;
+digit = choice(terminal("0"), terminal("1"), terminal("2"), terminal("3")) ;

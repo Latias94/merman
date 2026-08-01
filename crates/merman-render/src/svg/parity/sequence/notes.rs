@@ -103,6 +103,11 @@ fn render_sequence_note_lines<'a>(
 ) {
     for (i, line) in lines.into_iter().enumerate() {
         let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
+        let text = if decoded.as_ref().is_empty() {
+            "\u{200B}"
+        } else {
+            decoded.as_ref()
+        };
         let y = text_y + (i as f64) * line_step;
         let _ = write!(
             &mut *out,
@@ -110,7 +115,18 @@ fn render_sequence_note_lines<'a>(
             x = fmt(cx),
             y = fmt(y),
             fs = fmt(actor_label_font_size),
-            text = escape_xml(decoded.as_ref())
+            text = escape_xml(text)
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn empty_note_rows_render_the_upstream_zero_width_space() {
+        let mut out = String::new();
+        super::render_sequence_note_lines(&mut out, ["first", "", "last"], 50.0, 10.0, 19.0, 16.0);
+
+        assert!(out.contains("<tspan x=\"50\">\u{200b}</tspan>"), "{out}");
     }
 }

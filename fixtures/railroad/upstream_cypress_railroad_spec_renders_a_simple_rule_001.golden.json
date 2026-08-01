@@ -1,0 +1,18 @@
+{
+  "diagramType": "railroad",
+  "model": {
+    "type": "railroad",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "digit",
+        "definition": {
+          "type": "terminal",
+          "value": "0"
+        }
+      }
+    ]
+  }
+}

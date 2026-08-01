@@ -15,7 +15,8 @@ the public surface.
 Primary capability areas:
 
 - `merman-core`: detection, preprocessing, configuration merge, parsing,
-  sanitization, semantic JSON, and typed render model construction.
+  sanitization, compatibility semantic JSON, parser-backed editor facts, and typed render model
+  projection.
 - `merman-render`: layout models, SVG parity renderers, root viewport handling,
   theme/config projection, text measurement, and render pipeline internals.
 - `merman-ascii`: terminal rendering adapters and ASCII-specific layout/routing.
@@ -35,62 +36,68 @@ Authoritative baseline sources:
 - `docs/adr/0001-upstream-baseline.md`
 - `crates/merman-core/src/baseline.rs`
 
-Generated override filenames and some historical comments may still carry
-`11_12_2`, `11_15_0`, or `11.12.x`/`11.15.x` suffixes. Treat those names as
-legacy provenance unless a current-facing document explicitly says otherwise. New code should prefer
-`for_pinned_mermaid_baseline`, `pinned_mermaid_baseline_*`, and constants from
-`merman_core::baseline` over versioned constructor names.
+Historical implementation comments may still name the Mermaid release where an algorithm was first
+ported. Current assets and APIs must instead use the owning registry's
+`pinned_mermaid_baseline()` constructor or constants from `merman_core::baseline`; stale version
+suffixes are not an authority for current behavior.
 
 ## Architecture Boundaries
 
-Current direction:
+Current contract:
 
-- The canonical headless render flow should be named the **Headless Render Operation**: parse,
-  typed render model construction, layout, SVG emission, postprocess metadata, and pipeline
-  ordering behind one behavior-bearing module. Public adapters choose input/output shape; they do
-  not rebuild that flow independently.
-- The core parser flow should be named the **Parse Pipeline**: preprocessing, detection or
-  known-type metadata projection, runtime date hooks, parser dispatch, lenient error behavior,
-  timing diagnostics, and common DB sanitization behind one internal module. `Engine` remains the
-  public facade for metadata, semantic JSON, and typed render-model entrypoints.
-- SVG and raster outputs from Mermaid source should route through the Headless Render Operation.
-  Raw SVG input may stay adapter-local because it does not have a Mermaid parse/render model.
-- **Diagram Family Facts** are the pinned-baseline facts for one Mermaid family: ids, aliases,
-  feature profile, detector order, parser adapters, typed render adapters, known-type side effects,
-  public metadata, and admission status. Call sites should consume projections from those facts
-  instead of duplicating hand-maintained lists.
+- The **Headless Render Operation** is the canonical Mermaid-source render flow: family semantic
+  construction, typed layout, SVG emission, postprocess metadata, and pipeline ordering behind one
+  behavior-bearing module. Public adapters choose input/output shape; they do not rebuild that flow.
+- The **Parse Pipeline** owns preprocessing, detection or known-type metadata projection, runtime
+  date hooks, family dispatch, lenient error behavior, timing diagnostics, source remapping, and
+  common sanitization. `Engine` remains the public facade; family modules own grammar meaning.
+- **Diagram Family Facts** are the single pinned-baseline catalog for ids, aliases, detector order,
+  semantic/editor/render adapters, config namespaces, authoring headers, public metadata, and
+  admission capability. The complete language catalog is invariant across feature combinations;
+  registries and public family metadata are projections.
+- Each built-in family owns one successful semantic construction. Compatibility JSON,
+  parser-backed editor facts, and typed render models project that construction rather than running
+  parallel successful grammars.
+- Built-in rendering is typed end to end. `FamilyRenderArtifact` owns the matching semantic/layout
+  pair, compatibility layout JSON projects from it, and SVG consumes it.
+- `RenderEnvironment` selects text-measurement phases, math/icons, time, randomness, and resource
+  limits once per operation. Family renderers do not construct hidden production services or read
+  process-global render policy.
+- Every built-in SVG root uses the operation-owned Root Viewport protocol for dimension
+  normalization, sizing, accessibility chrome, escaping, attribute order, and deferred
+  finalization. Families supply source-backed content bounds and family root semantics; they do not
+  own root emission or consult fixture-derived root data.
+- Editor body semantics are parser-complete, parser-recovered, or unavailable. Generic TextScan
+  semantics are deleted; legal source-start headers remain catalog-backed.
+- Analysis diagnostics and parser-backed facts each use their independently defined schema `1`.
+  Other facts versions are rejected at the version boundary, and the superseded TextScan path is
+  not supported in parallel.
+- **Capability and Artifact Profiles** are separate contracts. The capability descriptor owns
+  additive semantic vocabulary and implications; artifact profiles own exact Cargo build recipes.
+  Neither substitutes for the ABI, protocol, package, runtime, or release authority at the surface
+  that implements it.
 - **Admission Inventory** records which fixture/family surfaces are parser-only, layout-covered,
   SVG-covered, root-parity-covered, skipped, or deferred for the pinned baseline and why. Parser
   and typed-render capability evidence should be checked against Diagram Family Facts projections.
-- Diagram detection and parser registration should derive from pinned-baseline
-  registry facts instead of scattering diagram ids across call sites.
-- Each diagram family should own semantic construction, compatibility JSON
-  projection, typed render model construction, layout, SVG rendering, and
-  diagram-specific parity exceptions.
-- Public adapters should choose input/output shape; they should not rebuild the
-  parse/layout/SVG/postprocess pipeline independently.
 - Effective config and presentation theme should be projected into narrow views
-  before diagram renderers consume them. Sequence, Class, Flowchart, State, ER,
-  Block, Sankey, Event Modeling, TreeView, Packet, Venn, Ishikawa, Treemap,
-  QuadrantChart, Radar, Pie, Requirement, Kanban, and Timeline are the first
-  renderer-side family pilots for this: layout and SVG parity settings now flow
-  through family-owned config views instead of scattered raw diagram namespace
-  lookups.
-- Root viewport and emitted SVG bounds logic belongs under the SVG parity layer,
-  not under one diagram family.
-- Override data is a last resort for pinned-baseline parity and must have
-  removal evidence plus no-growth gate coverage.
+  before diagram renderers consume them.
+- ADR-0062 forbids production fixture overrides: fixture ids and complete source or label strings
+  must not select root, geometry, or measurement answers. Mermaid config, theme variables, diagram
+  directives, and host-owned CSS/output overrides remain supported user inputs; they are general
+  configuration and presentation contracts, not fixture answers.
 
 Current non-goal:
 
-- Do not treat `layout: elk` / `flowchart.defaultRenderer=elk` recognition as a
-  complete local ELK implementation. Detection/config side effects are preserved,
-  but full ELK layout parity needs a separate spike and design decision.
+- Do not infer that one admitted ELK-backed family implies complete support for every Mermaid ELK
+  consumer. Flowchart and Class have explicit source-backed paths; other families require their own
+  admission evidence.
 
 ## Where To Look First
 
 - Architecture issue ledger:
   `docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md`
+- Family-owned architecture contract:
+  `docs/adr/0073-family-owned-diagram-architecture.md`
 - Current config/frontmatter support:
   `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md`
 - Upstream baseline policy:
@@ -100,10 +107,10 @@ Current non-goal:
   `docs/adr/0042-rendering-strategy.md`,
   `docs/adr/0063-extensible-svg-output-pipeline.md`,
   `docs/adr/0064-host-styling-svg-postprocessors.md`
-- SVG root/override policy:
+- SVG root and text-measurement policy:
   `docs/adr/0050-svg-viewbox-parity.md`,
-  `docs/adr/0062-fixture-derived-overrides.md`,
-  `docs/workstreams/fearless-refactor/OVERRIDE_POLICY.md`
+  `docs/adr/0057-headless-svg-text-bbox.md`,
+  `docs/adr/0062-fixture-derived-overrides.md`
 - ASCII boundary:
   `docs/adr/0065-ascii-output-boundary.md`,
   `docs/adr/0067-ascii-color-role-api.md`

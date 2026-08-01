@@ -29,30 +29,12 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-
 
 Use narrower `compare-*` commands when the change touches only one diagram family.
 
-## Override Gate
+## Fixture-Independence Gate
 
-Use this when a change touches generated override data, manual raw SVG/path bridges, or text
-measurement fallback tables:
-
-```sh
-cargo run -p xtask -- report-overrides --check-no-growth
-```
-
-The gate fails when any override category grows beyond the explicit budget encoded in
-`xtask report-overrides`. Real growth is allowed only when the budget and
-`OVERRIDE_FOOTPRINT.md` are updated with reviewable evidence.
-
-When deleting text metric lookups, also prove every consumer path is safe. For layout-affecting
-lookups, run the relevant layout snapshot test in addition to the diagram DOM parity commands;
-Block labels are not safe to prune solely because the vendored SVG/HTML measurer matches the
-stored value.
-
-For root viewport audits, set `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1` only in the local
-comparison process to prove whether a table or entry still guards real `parity-root` drift. Do not
-use this environment variable in release gates. For large buckets, add `--report-root-all` or
-`--report-root-limit <n>` to the Flowchart, GitGraph, Mindmap, Sequence, State, or
-`compare-all-svgs --report-root` commands so the root delta report is not capped at the default
-top 25 rows.
+Fixtures and upstream SVGs verify production behavior; they must not provide production answers.
+The architecture guard rejects generated root/text tables, complete-label metric lookups, direct
+family root mutation, and the removed override-generation commands. When text or root behavior
+changes, run the affected family tests plus normal and `parity-root` comparison modes.
 
 ## Feature Gate
 
@@ -84,5 +66,4 @@ cargo run -p xtask -- verify --strict
 ```
 
 This is the release-level superset of the other gates and includes fmt, all-features check, public
-feature matrix, workspace clippy, override no-growth, nextest, SVG DOM parity, and full SVG root
-parity.
+feature matrix, workspace clippy, nextest, SVG DOM parity, and full SVG root parity.

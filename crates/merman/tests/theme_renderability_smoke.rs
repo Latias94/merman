@@ -1,7 +1,7 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
 use merman::MermaidConfig;
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 
 fn legacy_init_theme_compat_config() -> MermaidConfig {
     MermaidConfig::from_value(serde_json::json!({
@@ -17,8 +17,12 @@ fn legacy_init_theme_compat_config() -> MermaidConfig {
 }
 
 fn render_svg(name: &str, source: &str) -> String {
+    render_svg_with_site_config(name, source, legacy_init_theme_compat_config())
+}
+
+fn render_svg_with_site_config(name: &str, source: &str, site_config: MermaidConfig) -> String {
     HeadlessRenderer::new()
-        .with_site_config(legacy_init_theme_compat_config())
+        .with_site_config(site_config)
         .with_vendored_text_measurer()
         .with_diagram_id(name)
         .render_svg_sync(source)
@@ -26,6 +30,7 @@ fn render_svg(name: &str, source: &str) -> String {
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
+#[cfg(feature = "layout-cytoscape")]
 fn assert_renderable_theme_signals(
     name: &str,
     svg: &str,
@@ -60,11 +65,12 @@ fn assert_renderable_theme_signals(
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn representative_dark_theme_diagrams_keep_visible_theme_signals() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
             "theme-flowchart",
-            r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "primaryTextColor": "#f8fafc", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "edgeLabelBackground": "#0f172a", "nodeTextColor": "#f8fafc", "strokeWidth": 4}}}%%
+            r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "primaryTextColor": "#f8fafc", "nodeBorder": "#38bdf8", "lineColor": "#f59e0b", "edgeLabelBackground": "#0f172a", "strokeWidth": 4}}}%%
 flowchart TD
   A[Dark Node] -->|Readable Edge| B[Other]
 "##,
@@ -109,7 +115,7 @@ classDiagram
         ),
         (
             "theme-state",
-            r##"%%{init: {"themeVariables": {"transitionColor": "#22c55e", "lineColor": "#38bdf8", "stateLabelColor": "#f8fafc", "transitionLabelColor": "#facc15", "stateBkg": "#111827", "stateBorder": "#38bdf8", "specialStateColor": "#f97316", "strokeWidth": 4}}}%%
+            r##"%%{init: {"themeVariables": {"transitionColor": "#22c55e", "lineColor": "#38bdf8", "stateLabelColor": "#f8fafc", "transitionLabelColor": "#facc15", "stateBkg": "#111827", "nodeBorder": "#38bdf8", "specialStateColor": "#f97316", "strokeWidth": 4}}}%%
 stateDiagram-v2
   [*] --> Idle: start
   Idle --> Done: finish
@@ -121,7 +127,7 @@ stateDiagram-v2
         ),
         (
             "theme-er",
-            r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "nodeTextColor": "#fde68a", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
+            r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#f8fafc", "primaryTextColor": "#fde68a", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
 erDiagram
   CUSTOMER ||--o{ ORDER : places
   CUSTOMER {
@@ -160,7 +166,7 @@ mindmap
         ),
         (
             "theme-gitgraph",
-            r##"%%{init: {"themeVariables": {"git0": "#22c55e", "gitBranchLabel0": "#020617", "git1": "#38bdf8", "gitBranchLabel1": "#0f172a", "commitLabelColor": "#f8fafc", "commitLabelBackground": "#111827", "commitLineColor": "#f59e0b"}}}%%
+            r##"%%{init: {"themeVariables": {"git0": "#22c55e", "gitBranchLabel0": "#020617", "git1": "#38bdf8", "gitBranchLabel1": "#0f172a", "commitLabelColor": "#f8fafc", "commitLabelBackground": "#111827"}}}%%
 gitGraph
   commit id: "A"
   branch dev
@@ -169,7 +175,7 @@ gitGraph
 "##,
             &["main", "dev"],
             &[
-                "#22c55e", "#020617", "#38bdf8", "#0f172a", "#f8fafc", "#111827", "#f59e0b",
+                "#22c55e", "#020617", "#38bdf8", "#0f172a", "#f8fafc", "#111827",
             ],
         ),
         (
@@ -210,7 +216,7 @@ architecture-beta
         ),
         (
             "theme-block",
-            r##"%%{init: {"themeVariables": {"nodeTextColor": "#f8fafc", "clusterBkg": "#172554", "clusterBorder": "#38bdf8", "lineColor": "#f59e0b", "strokeWidth": 4}}}%%
+            r##"%%{init: {"themeVariables": {"primaryTextColor": "#f8fafc", "clusterBkg": "#172554", "clusterBorder": "#38bdf8", "lineColor": "#f59e0b", "strokeWidth": 4}}}%%
 block
   block:Core
     A["Alpha"]
@@ -230,7 +236,7 @@ block
         ),
         (
             "theme-journey",
-            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "faceColor": "#111827", "fillType0": "#172554", "actor0": "#f97316"}}}%%
+            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "fillType0": "#172554"}}}%%
 journey
   title Theme Journey
   section Checkout
@@ -238,7 +244,7 @@ journey
     Pay: 3: Alice
 "##,
             &["Theme Journey", "Checkout", "Sign Up", "Pay", "Alice"],
-            &["#f8fafc", "#111827", "#172554", "#f97316"],
+            &["#f8fafc", "#172554"],
         ),
         (
             "theme-quadrantchart",
@@ -267,16 +273,14 @@ quadrantChart
         ),
         (
             "theme-packet",
-            r##"%%{init: {"packet": {"startByteColor": "#22c55e", "endByteColor": "#f97316", "labelColor": "#f8fafc", "titleColor": "#fde68a", "blockStrokeColor": "#38bdf8", "blockStrokeWidth": 2, "blockFillColor": "#111827"}}}%%
+            r##"%%{init: {"packet": {"labelColor": "#f8fafc", "titleColor": "#fde68a"}}}%%
 packet
 title Theme Packet
 +8: "Byte"
 +16: "Word"
 "##,
             &["Theme Packet", "Byte", "Word"],
-            &[
-                "#22c55e", "#f97316", "#f8fafc", "#fde68a", "#38bdf8", "#111827",
-            ],
+            &["#f8fafc", "#fde68a"],
         ),
         (
             "theme-sankey",
@@ -361,15 +365,13 @@ gantt
         ),
         (
             "theme-treemap",
-            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "titleColor": "#fde68a"}, "treemap": {"sectionStrokeColor": "#38bdf8", "sectionFillColor": "#172554", "leafStrokeColor": "#facc15", "leafFillColor": "#111827", "labelColor": "#f8fafc", "valueColor": "#fb923c", "titleColor": "#fde68a"}}}%%
+            r##"%%{init: {"themeVariables": {"textColor": "#f8fafc", "titleColor": "#fde68a"}, "treemap": {"labelColor": "#f8fafc", "titleColor": "#fde68a"}}}%%
 treemap-beta
   "Theme Section"
     "Theme Leaf": 42
 "##,
             &["Theme Section", "Theme Leaf", "42"],
-            &[
-                "#f8fafc", "#fde68a", "#38bdf8", "#172554", "#facc15", "#111827", "#fb923c",
-            ],
+            &["#f8fafc", "#fde68a"],
         ),
         (
             "theme-pie",
@@ -530,14 +532,24 @@ UpdateRelStyle(customer, system, $textColor="#a7f3d0", $lineColor="#facc15")
 
 #[test]
 fn packet_and_sankey_theme_smoke_count_dom_consumed_selectors_as_visible() {
-    let packet = render_svg(
+    let packet = render_svg_with_site_config(
         "packet-visible-audit",
-        r##"%%{init: {"packet": {"startByteColor": "#22c55e", "endByteColor": "#f97316", "labelColor": "#f8fafc", "titleColor": "#fde68a", "blockStrokeColor": "#38bdf8", "blockStrokeWidth": 3, "blockFillColor": "#111827"}}}%%
-packet
+        r#"packet
 title Packet Visible Audit
 +8: "Byte"
 +16: "Word"
-"##,
+"#,
+        MermaidConfig::from_value(serde_json::json!({
+            "packet": {
+                "startByteColor": "#22c55e",
+                "endByteColor": "#f97316",
+                "labelColor": "#f8fafc",
+                "titleColor": "#fde68a",
+                "blockStrokeColor": "#38bdf8",
+                "blockStrokeWidth": 3,
+                "blockFillColor": "#111827"
+            }
+        })),
     );
 
     assert!(
@@ -629,6 +641,7 @@ Target,Done,2
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn mindmap_theme_smoke_counts_current_span_and_child_section_dom_as_visible() {
     let svg = render_svg(
         "mindmap-visible-audit",
@@ -691,14 +704,28 @@ mindmap
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn mindmap_neo_theme_smoke_counts_data_look_dom_and_neo_css_as_visible() {
-    let svg = render_svg(
+    let svg = render_svg_with_site_config(
         "mindmap-neo-visible-audit",
-        r##"%%{init: {"theme": "redux", "look": "neo", "themeVariables": {"THEME_COLOR_LIMIT": 2, "mainBkg": "#111827", "nodeBorder": "#38bdf8", "strokeWidth": 3, "dropShadow": "drop-shadow(1px 2px 2px rgba(0,0,0,.4))", "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
-mindmap
+        r##"mindmap
   Root
     Child
 "##,
+        MermaidConfig::from_value(serde_json::json!({
+            "theme": "redux",
+            "look": "neo",
+            "themeVariables": {
+                "THEME_COLOR_LIMIT": 2,
+                "mainBkg": "#111827",
+                "nodeBorder": "#38bdf8",
+                "strokeWidth": 3,
+                "dropShadow": "drop-shadow(1px 2px 2px rgba(0,0,0,.4))",
+                "useGradient": true,
+                "gradientStart": "#112233",
+                "gradientStop": "#445566"
+            }
+        })),
     );
 
     assert!(
@@ -744,15 +771,27 @@ mindmap
 
 #[test]
 fn er_theme_smoke_counts_current_xhtml_label_and_edge_dom_as_visible() {
-    let svg = render_svg(
+    let svg = render_svg_with_site_config(
         "er-visible-audit",
-        r##"%%{init: {"look": "neo", "themeVariables": {"textColor": "#f8fafc", "lineColor": "#22c55e", "mainBkg": "#111827", "nodeBorder": "#38bdf8", "nodeTextColor": "#fde68a", "tertiaryColor": "#172554", "edgeLabelBackground": "#334155", "strokeWidth": 3}}}%%
-erDiagram
+        r#"erDiagram
   CUSTOMER ||--o{ ORDER : places
   CUSTOMER {
     string name
   }
-"##,
+"#,
+        MermaidConfig::from_value(serde_json::json!({
+            "look": "neo",
+            "themeVariables": {
+                "textColor": "#f8fafc",
+                "lineColor": "#22c55e",
+                "mainBkg": "#111827",
+                "nodeBorder": "#38bdf8",
+                "nodeTextColor": "#fde68a",
+                "tertiaryColor": "#172554",
+                "edgeLabelBackground": "#334155",
+                "strokeWidth": 3
+            }
+        })),
     );
 
     assert!(

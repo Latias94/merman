@@ -1,0 +1,86 @@
+{
+  "diagramType": "venn",
+  "layout": {
+    "VennDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 800.0,
+        "max_y": 450.0
+      },
+      "width": 800.0,
+      "height": 450.0,
+      "diagram_height": 450.0,
+      "title_height": 0.0,
+      "scale": 0.5,
+      "padding": 8.0,
+      "use_max_width": true,
+      "use_debug_layout": false,
+      "areas": [
+        {
+          "sets": [
+            "A"
+          ],
+          "size": 10.0,
+          "text_x": 183.0,
+          "text_y": 225.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "A",
+              "x": 262.269,
+              "y": 225.0,
+              "radius": 217.0
+            }
+          ],
+          "path": "\nM 262.27 225 \nm -217 0 \na 217 217 0 1 0 434 0 \na 217 217 0 1 0 -434 0"
+        },
+        {
+          "sets": [
+            "B"
+          ],
+          "size": 10.0,
+          "text_x": 617.0,
+          "text_y": 225.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "B",
+              "x": 537.731,
+              "y": 225.0,
+              "radius": 217.0
+            }
+          ],
+          "path": "\nM 537.73 225 \nm -217 0 \na 217 217 0 1 0 434 0 \na 217 217 0 1 0 -434 0"
+        },
+        {
+          "sets": [
+            "A",
+            "B"
+          ],
+          "size": 2.5,
+          "text_x": 400.0,
+          "text_y": 225.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "A",
+              "x": 262.269,
+              "y": 225.0,
+              "radius": 217.0
+            },
+            {
+              "set": "B",
+              "x": 537.731,
+              "y": 225.0,
+              "radius": 217.0
+            }
+          ],
+          "path": "\nM 400 392.69 \nA 217 217 0 0 1 400 57.31 \nA 217 217 0 0 1 400 392.69"
+        }
+      ],
+      "text_areas": [],
+      "text_nodes": []
+    }
+  }
+}

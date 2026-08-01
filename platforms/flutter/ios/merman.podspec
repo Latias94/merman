@@ -1,13 +1,13 @@
 Pod::Spec.new do |s|
   s.name             = 'merman'
-  s.version          = '0.8.0-alpha.3'
+  s.version          = '0.8.0-alpha.4'
   s.summary          = 'Flutter FFI bindings for headless Mermaid rendering.'
   s.description      = <<-DESC
     Provides a Flutter plugin that links the merman Rust FFI framework and
     exposes it to Dart FFI via DynamicLibrary.process().
   DESC
   s.homepage         = 'https://github.com/Latias94/merman'
-  s.license          = { :type => 'MIT' }
+  s.license          = { :type => 'MIT OR Apache-2.0', :file => '../LICENSE' }
   s.author           = { 'Merman' => 'https://github.com/Latias94/merman' }
   s.source           = { :path => '.' }
 

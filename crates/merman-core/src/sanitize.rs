@@ -1,11 +1,7 @@
 use crate::MermaidConfig;
-#[cfg(feature = "full-sanitization")]
 use crate::generated::dompurify_defaults;
-#[cfg(feature = "full-sanitization")]
 use lol_html::{RewriteStrSettings, element, rewrite_str};
-#[cfg(feature = "full-sanitization")]
 use std::collections::HashSet;
-#[cfg(feature = "full-sanitization")]
 use std::sync::OnceLock;
 
 fn break_to_placeholder(input: &str) -> String {
@@ -101,7 +97,6 @@ fn escape_html_preserving_breaks(text: &str, escape_equals: bool) -> String {
     placeholder_to_break(&out)
 }
 
-#[cfg(feature = "full-sanitization")]
 fn default_allowed_tags() -> &'static HashSet<&'static str> {
     static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
     SET.get_or_init(|| {
@@ -112,7 +107,6 @@ fn default_allowed_tags() -> &'static HashSet<&'static str> {
     })
 }
 
-#[cfg(feature = "full-sanitization")]
 fn default_allowed_attr() -> &'static HashSet<&'static str> {
     static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
     SET.get_or_init(|| {
@@ -123,7 +117,6 @@ fn default_allowed_attr() -> &'static HashSet<&'static str> {
     })
 }
 
-#[cfg(feature = "full-sanitization")]
 fn default_uri_safe_attr() -> &'static HashSet<&'static str> {
     static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
     SET.get_or_init(|| {
@@ -134,7 +127,6 @@ fn default_uri_safe_attr() -> &'static HashSet<&'static str> {
     })
 }
 
-#[cfg(feature = "full-sanitization")]
 fn default_data_uri_tags() -> &'static HashSet<&'static str> {
     static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
     SET.get_or_init(|| {
@@ -145,7 +137,6 @@ fn default_data_uri_tags() -> &'static HashSet<&'static str> {
     })
 }
 
-#[cfg(feature = "full-sanitization")]
 fn is_dompurify_data_attr_name(name: &str) -> bool {
     let Some(rest) = name.strip_prefix("data-") else {
         return false;
@@ -154,16 +145,14 @@ fn is_dompurify_data_attr_name(name: &str) -> bool {
     !rest.is_empty() && rest.chars().all(is_dompurify_data_attr_suffix_char)
 }
 
-#[cfg(feature = "full-sanitization")]
 fn is_dompurify_data_attr_suffix_char(ch: char) -> bool {
-    // Source: DOMPurify 3.4.0 `DATA_ATTR = /^data-[\-\w.\u00B7-\uFFFF]+$/`.
+    // Source: DOMPurify 3.4.12 `DATA_ATTR = /^data-[\-\w.\u00B7-\uFFFF]+$/`.
     matches!(
         ch,
         '-' | '.' | '_' | '0'..='9' | 'A'..='Z' | 'a'..='z'
     ) || ('\u{00B7}'..='\u{FFFF}').contains(&ch)
 }
 
-#[cfg(feature = "full-sanitization")]
 fn is_dompurify_aria_attr_name(name: &str) -> bool {
     let Some(rest) = name.strip_prefix("aria-") else {
         return false;
@@ -172,13 +161,11 @@ fn is_dompurify_aria_attr_name(name: &str) -> bool {
     !rest.is_empty() && rest.chars().all(is_dompurify_aria_attr_suffix_char)
 }
 
-#[cfg(feature = "full-sanitization")]
 fn is_dompurify_aria_attr_suffix_char(ch: char) -> bool {
-    // Source: DOMPurify 3.4.0 `ARIA_ATTR = /^aria-[\-\w]+$/`.
+    // Source: DOMPurify 3.4.12 `ARIA_ATTR = /^aria-[\-\w]+$/`.
     matches!(ch, '-' | '_' | '0'..='9' | 'A'..='Z' | 'a'..='z')
 }
 
-#[cfg(feature = "full-sanitization")]
 fn remove_dompurify_attr_whitespace(input: &str) -> std::borrow::Cow<'_, str> {
     let Some(first) = input
         .char_indices()
@@ -197,9 +184,8 @@ fn remove_dompurify_attr_whitespace(input: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(out)
 }
 
-#[cfg(feature = "full-sanitization")]
 fn is_dompurify_attr_whitespace(ch: char) -> bool {
-    // Source: DOMPurify 3.4.0 `ATTR_WHITESPACE`.
+    // Source: DOMPurify 3.4.12 `ATTR_WHITESPACE`.
     matches!(
         ch,
         '\u{0000}'..='\u{0020}'
@@ -212,9 +198,8 @@ fn is_dompurify_attr_whitespace(ch: char) -> bool {
     )
 }
 
-#[cfg(feature = "full-sanitization")]
 fn is_dompurify_script_or_data_uri(value: &str) -> bool {
-    // Source: DOMPurify 3.4.0 `IS_SCRIPT_OR_DATA = /^(?:\w+script|data):/i`.
+    // Source: DOMPurify 3.4.12 `IS_SCRIPT_OR_DATA = /^(?:\w+script|data):/i`.
     let Some(colon) = value.find(':') else {
         return false;
     };
@@ -237,9 +222,8 @@ fn is_dompurify_script_or_data_uri(value: &str) -> bool {
         .all(|byte| is_js_regex_word_byte(*byte))
 }
 
-#[cfg(feature = "full-sanitization")]
 fn is_dompurify_allowed_uri(value: &str) -> bool {
-    // Source: DOMPurify 3.4.0 `IS_ALLOWED_URI`.
+    // Source: DOMPurify 3.4.12 `IS_ALLOWED_URI`.
     if value.is_empty() {
         return false;
     }
@@ -267,7 +251,6 @@ fn is_dompurify_allowed_uri(value: &str) -> bool {
             .is_some_and(|byte| !is_dompurify_uri_scheme_byte(*byte) && *byte != b':')
 }
 
-#[cfg(feature = "full-sanitization")]
 fn has_dompurify_allowed_uri_scheme(value: &str) -> bool {
     let bytes = value.as_bytes();
     const ALLOWED_URI_SCHEMES: &[&[u8]] = &[
@@ -280,17 +263,14 @@ fn has_dompurify_allowed_uri_scheme(value: &str) -> bool {
         .any(|scheme| ascii_case_insensitive_starts_with(bytes, 0, scheme))
 }
 
-#[cfg(feature = "full-sanitization")]
 fn is_dompurify_uri_scheme_byte(byte: u8) -> bool {
     byte.is_ascii_alphabetic() || matches!(byte, b'+' | b'.' | b'-')
 }
 
-#[cfg(feature = "full-sanitization")]
 fn is_js_regex_word_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
-#[cfg(feature = "full-sanitization")]
 #[derive(Debug, Clone)]
 struct DompurifyEffectiveConfig {
     allowed_tags: HashSet<String>,
@@ -305,7 +285,6 @@ struct DompurifyEffectiveConfig {
     keep_content: bool,
 }
 
-#[cfg(feature = "full-sanitization")]
 fn dompurify_config_object(
     config: &MermaidConfig,
 ) -> Option<&serde_json::Map<String, serde_json::Value>> {
@@ -316,7 +295,6 @@ fn dompurify_config_object(
         .and_then(|v| v.as_object())
 }
 
-#[cfg(feature = "full-sanitization")]
 fn dompurify_extract_string_list(
     dompurify_config: Option<&serde_json::Map<String, serde_json::Value>>,
     key: &str,
@@ -333,7 +311,6 @@ fn dompurify_extract_string_list(
         .unwrap_or_default()
 }
 
-#[cfg(feature = "full-sanitization")]
 fn dompurify_effective_config(
     config: &MermaidConfig,
     forbid_style_when_unconfigured: bool,
@@ -445,17 +422,19 @@ fn dompurify_effective_config(
     }
 }
 
-#[cfg(feature = "full-sanitization")]
 fn dompurify_is_valid_attribute(
     cfg: &DompurifyEffectiveConfig,
     lc_tag: &str,
     lc_name: &str,
     value: &str,
 ) -> bool {
-    if cfg.allow_data_attr
-        && !cfg.forbid_attr.contains(lc_name)
-        && is_dompurify_data_attr_name(lc_name)
-    {
+    // DOMPurify applies FORBID_ATTR before its data-* and aria-* convenience paths.
+    // Keeping that priority here makes every accepted attribute route obey one policy.
+    if cfg.forbid_attr.contains(lc_name) {
+        return false;
+    }
+
+    if cfg.allow_data_attr && is_dompurify_data_attr_name(lc_name) {
         return true;
     }
 
@@ -463,7 +442,7 @@ fn dompurify_is_valid_attribute(
         return true;
     }
 
-    if !cfg.allowed_attr.contains(lc_name) || cfg.forbid_attr.contains(lc_name) {
+    if !cfg.allowed_attr.contains(lc_name) {
         return false;
     }
 
@@ -471,7 +450,7 @@ fn dompurify_is_valid_attribute(
         return true;
     }
 
-    let decoded_value = decode_attr_html_entities_minimally(value);
+    let decoded_value = decode_attr_html_entities(value);
     let value_no_ws = remove_dompurify_attr_whitespace(&decoded_value);
 
     if is_dompurify_allowed_uri(value_no_ws.as_ref()) {
@@ -493,21 +472,22 @@ fn dompurify_is_valid_attribute(
     value.is_empty()
 }
 
-#[cfg(feature = "full-sanitization")]
-fn decode_attr_html_entities_minimally(input: &str) -> String {
+fn decode_attr_html_entities(input: &str) -> String {
     if input.is_empty() {
         return String::new();
     }
 
+    // Mermaid's sanitizer normalizes these spellings before DOMPurify sees a parsed attribute.
+    // Preserve that compatibility, then apply the full HTML attribute entity algorithm because
+    // lol_html exposes the raw source value to the rewrite callback.
     let mut out = replace_ascii_case_insensitive_literal(input, "&colon;", ":");
     out = replace_ascii_case_insensitive_literal(&out, "&newline;", "\n");
     out = replace_ascii_case_insensitive_literal(&out, "&tab;", "\t");
     out = replace_decimal_colon_entity_like_current_regex(&out);
     out = replace_hex_colon_entity_like_current_regex(&out);
-    out
+    htmlize::unescape_attribute(out).into_owned()
 }
 
-#[cfg(feature = "full-sanitization")]
 fn replace_ascii_case_insensitive_literal(input: &str, needle: &str, replacement: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let bytes = input.as_bytes();
@@ -531,7 +511,6 @@ fn replace_ascii_case_insensitive_literal(input: &str, needle: &str, replacement
     out
 }
 
-#[cfg(feature = "full-sanitization")]
 fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u8]) -> bool {
     haystack
         .get(start..start + needle.len())
@@ -543,7 +522,6 @@ fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u
         })
 }
 
-#[cfg(feature = "full-sanitization")]
 fn replace_decimal_colon_entity_like_current_regex(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let bytes = input.as_bytes();
@@ -575,7 +553,6 @@ fn replace_decimal_colon_entity_like_current_regex(input: &str) -> String {
     out
 }
 
-#[cfg(feature = "full-sanitization")]
 fn replace_hex_colon_entity_like_current_regex(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let bytes = input.as_bytes();
@@ -620,7 +597,6 @@ fn replace_hex_colon_entity_like_current_regex(input: &str) -> String {
     out
 }
 
-#[cfg(feature = "full-sanitization")]
 fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> String {
     if text.is_empty() {
         return text.to_string();
@@ -723,8 +699,8 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
 
                 if matches!(lc_name.as_str(), "href" | "src" | "xlink:href") {
                     // DOMPurify validates URI values on parsed DOM values (entities already decoded).
-                    // `lol_html` gives us raw values, so we decode the minimal subset Mermaid relies on.
-                    let decoded = decode_attr_html_entities_minimally(&value);
+                    // `lol_html` gives us raw values, so apply HTML attribute entity semantics here.
+                    let decoded = decode_attr_html_entities(&value);
                     if decoded != value {
                         let _ = el.set_attribute(&name, &decoded);
                     }
@@ -754,19 +730,11 @@ pub fn remove_script(text: &str) -> String {
     if !text.contains('<') {
         return text.to_string();
     }
-    #[cfg(feature = "full-sanitization")]
-    {
-        let cfg = dompurify_effective_config(
-            &MermaidConfig::from_value(serde_json::Value::Object(serde_json::Map::new())),
-            false,
-        );
-        dompurify_like_sanitize_html(text, &cfg)
-    }
-
-    #[cfg(not(feature = "full-sanitization"))]
-    {
-        escape_html_preserving_breaks(text, true)
-    }
+    let cfg = dompurify_effective_config(
+        &MermaidConfig::from_value(serde_json::Value::Object(serde_json::Map::new())),
+        false,
+    );
+    dompurify_like_sanitize_html(text, &cfg)
 }
 
 fn effective_html_labels(config: &MermaidConfig) -> bool {
@@ -774,6 +742,54 @@ fn effective_html_labels(config: &MermaidConfig) -> bool {
         .get_bool("htmlLabels")
         .or_else(|| config.get_bool("flowchart.htmlLabels"))
         .unwrap_or(true)
+}
+
+fn is_unformatted_ascii_paragraph(text: &str) -> bool {
+    let Some(body) = text
+        .strip_prefix("<p>")
+        .and_then(|text| text.strip_suffix("</p>"))
+    else {
+        return false;
+    };
+    let bytes = body.as_bytes();
+    bytes.first().is_some_and(u8::is_ascii_alphanumeric)
+        && bytes.last().is_some_and(u8::is_ascii_alphanumeric)
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || *byte == b' ')
+}
+
+fn sanitizer_preserves_unformatted_ascii_paragraph(config: &MermaidConfig) -> bool {
+    if effective_html_labels(config)
+        && !matches!(
+            config.get_str("securityLevel"),
+            Some("antiscript" | "strict" | "sandbox" | "loose")
+        )
+    {
+        return false;
+    }
+
+    let dompurify = dompurify_config_object(config);
+    let list_contains = |key: &str, expected: &str| {
+        dompurify
+            .and_then(|object| object.get(key))
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|values| {
+                values
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .any(|value| value.eq_ignore_ascii_case(expected))
+            })
+    };
+    let replaces_default_allowed_tags = dompurify
+        .and_then(|object| object.get("ALLOWED_TAGS"))
+        .and_then(serde_json::Value::as_array)
+        .is_some();
+    let paragraph_is_allowed = !replaces_default_allowed_tags
+        || list_contains("ALLOWED_TAGS", "p")
+        || list_contains("ADD_TAGS", "p");
+
+    paragraph_is_allowed && !list_contains("FORBID_TAGS", "p")
 }
 
 fn sanitize_more(text: &str, config: &MermaidConfig) -> String {
@@ -798,23 +814,21 @@ pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
     if text.is_empty() {
         return text.to_string();
     }
+    // This grammar contains no user-controlled markup. Skip DOM parsing only when the configured
+    // policy also guarantees that the sole generated `<p>` element is preserved unchanged.
+    if is_unformatted_ascii_paragraph(text)
+        && sanitizer_preserves_unformatted_ascii_paragraph(config)
+    {
+        return text.to_string();
+    }
 
     let t = sanitize_more(text, config);
     if !t.contains('<') {
         return t;
     }
 
-    #[cfg(feature = "full-sanitization")]
-    {
-        let cfg = dompurify_effective_config(config, true);
-        dompurify_like_sanitize_html(&t, &cfg)
-    }
-
-    #[cfg(not(feature = "full-sanitization"))]
-    {
-        let _ = config;
-        escape_html_preserving_breaks(&t, true)
-    }
+    let cfg = dompurify_effective_config(config, true);
+    dompurify_like_sanitize_html(&t, &cfg)
 }
 
 pub fn sanitize_text_or_array(
@@ -846,7 +860,6 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    #[cfg_attr(not(feature = "full-sanitization"), allow(dead_code))]
     fn cfg_strict() -> MermaidConfig {
         MermaidConfig::from_value(json!({
             "securityLevel": "strict",
@@ -902,28 +915,27 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
-    fn decode_attr_entities_matches_minimal_dompurify_url_subset_without_regex() {
+    fn decode_attr_entities_matches_browser_attribute_semantics_without_regex() {
         assert_eq!(
-            decode_attr_html_entities_minimally("javascript&colon;alert&NEWLINE;one&TAB;two"),
+            decode_attr_html_entities("javascript&colon;alert&NEWLINE;one&TAB;two"),
             "javascript:alert\none\ttwo"
         );
         assert_eq!(
-            decode_attr_html_entities_minimally("a&#58;b&#00058;c&#058d"),
+            decode_attr_html_entities("a&#58;b&#00058;c&#058d"),
             "a:b:c:d"
         );
         assert_eq!(
-            decode_attr_html_entities_minimally("a&#x3a;b&#X0003A;c&#x03adef"),
+            decode_attr_html_entities("a&#x3a;b&#X0003A;c&#x03adef"),
             "a:b:c:def"
         );
         assert_eq!(
-            decode_attr_html_entities_minimally("&colon &newline &tab &#59; &#x3b;"),
-            "&colon &newline &tab &#59; &#x3b;"
+            decode_attr_html_entities("&colon &newline &tab &#59; &#x3b;"),
+            "&colon &newline &tab ; ;"
         );
+        assert_eq!(decode_attr_html_entities("jav&#x61;script:"), "javascript:");
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn dompurify_attr_name_matchers_follow_source_regex_boundaries() {
         assert!(is_dompurify_data_attr_name("data-x"));
@@ -942,7 +954,6 @@ mod tests {
         assert!(!is_dompurify_aria_attr_name("aria-\u{00B7}"));
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn dompurify_attr_whitespace_cleanup_matches_source_regex_boundaries() {
         assert_eq!(
@@ -965,7 +976,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn dompurify_script_or_data_uri_matches_source_regex_boundaries() {
         assert!(is_dompurify_script_or_data_uri("javascript:alert(1)"));
@@ -984,7 +994,6 @@ mod tests {
         assert!(!is_dompurify_script_or_data_uri("javascript"));
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn dompurify_allowed_uri_matches_source_regex_boundaries() {
         for uri in [
@@ -1027,7 +1036,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn remove_script_strips_script_blocks_and_javascript_urls_and_events() {
         let label_string = r#"1
@@ -1058,7 +1066,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn remove_script_decodes_colon_entities_before_url_validation_without_regex() {
         assert_eq!(
@@ -1069,7 +1076,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn remove_script_preserves_target_and_adds_noopener_for_blank() {
         assert_eq!(
@@ -1089,7 +1095,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn remove_script_removes_iframes() {
         let out = remove_script(
@@ -1099,7 +1104,6 @@ mod tests {
         assert_eq!(out.trim(), "");
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_strict_runs_remove_script_and_forbids_style() {
         let cfg = cfg_strict();
@@ -1112,7 +1116,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_matches_mermaid_common_spec_minimally() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1122,6 +1125,65 @@ mod tests {
         let malicious = "javajavascript:script:alert(1)";
         let out = sanitize_text(malicious, &cfg);
         assert!(!out.contains("javascript:alert(1)"));
+    }
+
+    #[test]
+    fn unformatted_ascii_paragraph_fast_path_obeys_the_effective_sanitizer_policy() {
+        let input = "<p>ASCII 123  Label</p>";
+        for (config, expected) in [
+            (json!({ "securityLevel": "strict" }), input),
+            (json!({ "securityLevel": "antiscript" }), input),
+            (json!({ "securityLevel": "sandbox" }), input),
+            (json!({ "securityLevel": "loose" }), input),
+            (
+                json!({
+                    "securityLevel": "strict",
+                    "dompurifyConfig": { "FORBID_TAGS": ["p"] }
+                }),
+                "ASCII 123  Label",
+            ),
+            (
+                json!({
+                    "securityLevel": "loose",
+                    "dompurifyConfig": { "ALLOWED_TAGS": [] }
+                }),
+                "ASCII 123  Label",
+            ),
+            (
+                json!({
+                    "securityLevel": "loose",
+                    "dompurifyConfig": {
+                        "ALLOWED_TAGS": [],
+                        "ADD_TAGS": ["P"]
+                    }
+                }),
+                input,
+            ),
+            (
+                json!({
+                    "securityLevel": "loose",
+                    "dompurifyConfig": {
+                        "FORBID_TAGS": ["p"],
+                        "KEEP_CONTENT": false
+                    }
+                }),
+                "",
+            ),
+            (
+                json!({
+                    "securityLevel": "custom",
+                    "htmlLabels": false
+                }),
+                input,
+            ),
+        ] {
+            let config = MermaidConfig::from_value(config);
+            assert_eq!(sanitize_text(input, &config), expected);
+        }
+
+        let unknown_security =
+            MermaidConfig::from_value(json!({ "securityLevel": "custom", "htmlLabels": true }));
+        assert_ne!(sanitize_text(input, &unknown_security), input);
     }
 
     #[test]
@@ -1136,30 +1198,6 @@ mod tests {
         assert!(!out.contains("&lt;br"));
     }
 
-    #[cfg(not(feature = "full-sanitization"))]
-    #[test]
-    fn sanitize_text_minimal_profile_escapes_html_in_strict_mode() {
-        let cfg = cfg_strict();
-        assert_eq!(
-            sanitize_text(r#"<script>alert(1)</script><b a=1>ok</b><br/>x"#, &cfg),
-            r#"&lt;script&gt;alert(1)&lt;/script&gt;&lt;b a&#61;1&gt;ok&lt;/b&gt;<br/>x"#
-        );
-    }
-
-    #[cfg(not(feature = "full-sanitization"))]
-    #[test]
-    fn sanitize_text_minimal_profile_conservatively_escapes_loose_html() {
-        let cfg = MermaidConfig::from_value(json!({
-            "securityLevel": "loose",
-            "flowchart": { "htmlLabels": true }
-        }));
-        assert_eq!(
-            sanitize_text(r#"<b onclick="alert(1)">ok</b>"#, &cfg),
-            r#"&lt;b onclick&#61;"alert(1)"&gt;ok&lt;/b&gt;"#
-        );
-    }
-
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_sandbox_runs_remove_script_like_mermaid() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1174,7 +1212,6 @@ mod tests {
         assert!(!out.contains("&equals;"));
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_dompurify_config_add_attr_allows_onclick_like_dompurify() {
         // Mermaid supports passing `dompurifyConfig` through to DOMPurify.
@@ -1190,7 +1227,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_dompurify_config_forbid_attr_removes_href_like_dompurify() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1201,7 +1237,25 @@ mod tests {
         assert_eq!(sanitize_text(r#"<a href="/x">y</a>"#, &cfg), "<a>y</a>");
     }
 
-    #[cfg(feature = "full-sanitization")]
+    #[test]
+    fn sanitize_text_dompurify_forbid_attr_overrides_aria_and_data_defaults() {
+        let cfg = MermaidConfig::from_value(json!({
+            "securityLevel": "loose",
+            "flowchart": { "htmlLabels": true },
+            "dompurifyConfig": {
+                "FORBID_ATTR": ["aria-label", "data-secret"]
+            }
+        }));
+
+        assert_eq!(
+            sanitize_text(
+                r#"<span aria-label="visible" data-secret="hidden" title="kept">text</span>"#,
+                &cfg,
+            ),
+            r#"<span title="kept">text</span>"#,
+        );
+    }
+
     #[test]
     fn sanitize_text_dompurify_defaults_strip_unknown_attribute_and_keep_style_attr() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1215,7 +1269,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_dompurify_defaults_remove_unknown_tag_keep_content() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1228,7 +1281,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_dompurify_defaults_allow_aria_and_data_attrs() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1263,7 +1315,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_allows_svg_elements_inside_svg_container() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1280,7 +1331,6 @@ mod tests {
         assert!(out.contains("d=\"M224 0c-17.7"));
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_strips_javascript_xlink_href_in_svg() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1298,7 +1348,6 @@ mod tests {
         assert!(!out.to_ascii_lowercase().contains("xlink:href"));
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_strips_javascript_href_after_dompurify_attr_whitespace_cleanup() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1312,7 +1361,27 @@ mod tests {
         assert!(!out.to_ascii_lowercase().contains("href="));
     }
 
-    #[cfg(feature = "full-sanitization")]
+    #[test]
+    fn sanitize_text_strips_script_schemes_obfuscated_with_html_character_references() {
+        let cfg = MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "flowchart": { "htmlLabels": true }
+        }));
+        let out = sanitize_text(
+            concat!(
+                r#"<a href="jav&#x61;script:alert(1)">hex</a>"#,
+                r#"<a href="java&#115;cript:alert(2)">decimal</a>"#,
+                r#"<a href="https://mermaid.js.org/">safe</a>"#,
+            ),
+            &cfg,
+        );
+
+        assert!(out.contains(">hex</a>"));
+        assert!(out.contains(">decimal</a>"));
+        assert_eq!(out.matches("href=").count(), 1, "{out}");
+        assert!(out.contains(r#"href="https://mermaid.js.org/""#));
+    }
+
     #[test]
     fn sanitize_text_dompurify_allowed_uri_matches_pinned_source_schemes() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1329,7 +1398,6 @@ mod tests {
         assert!(!out.contains(r#"href="foo:bar""#));
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_allow_unknown_protocols_still_blocks_script_or_data_uri() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1349,7 +1417,6 @@ mod tests {
         assert!(!out.to_ascii_lowercase().contains("data:text/html"));
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_dompurify_hook_target_depends_on_allow_data_attr() {
         let cfg = MermaidConfig::from_value(json!({
@@ -1378,7 +1445,6 @@ mod tests {
         assert!(out.contains("rel=\"noopener\""));
     }
 
-    #[cfg(feature = "full-sanitization")]
     #[test]
     fn sanitize_text_dompurify_keep_content_false_removes_custom_element_content() {
         let cfg = MermaidConfig::from_value(json!({

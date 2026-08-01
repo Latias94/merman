@@ -6,6 +6,13 @@
   }
 }
 
+#let validate-error-mode(error-mode) = {
+  if not ("panic", "text", "placeholder").contains(error-mode) {
+    panic("unknown merman error-mode: " + str(error-mode))
+  }
+  error-mode
+}
+
 #let diagram-error(result, error-mode, width) = {
   if error-mode == "text" {
     text(fill: rgb("#b91c1c"))[merman: #error-message(result)]

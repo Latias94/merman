@@ -1,23 +1,75 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "source": {
     "mermaid_version": "11.16.0",
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.0",
     "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
-    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
+    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v2"
+    "renderer_revision": "xtask-upstream-svg-v3"
   },
   "attestation": {
-    "mode": "adopted-existing"
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "locale": "en-US",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
   },
   "complete": true,
   "fixtures": {
     "basic_ir": {
       "input_sha256": "0b80631185c18e748face0ab265a682c087b1d61db1a14df0c5c3fb867ce9b02",
-      "svg_sha256": "47b4921049ab0ccedaf3d6ad66dfaea289b076d9f1dbed07bd70153c4fbde623",
+      "svg_sha256": "1d19dc330f108297e78b46c459c4e0246f8277e1fcdb97a394d4150464b02e17",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_adapts_to_dark_theme_colors_005": {
+      "input_sha256": "c8142568715ebf200f666cde4c417b423cb33b1311a2d99c136a0f6899b2fc2c",
+      "svg_sha256": "e4326d059caacecfce2a3aef0370cca0b5ad6efe25a87040bbaedb93513f9758",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_renders_a_simple_rule_001": {
+      "input_sha256": "e241058f6560da1df452c12c75e7f6b3162a8c6f981a4aa66433d76d1b005be5",
+      "svg_sha256": "80277fc43064600aade68442aecab4850f23926663257a71d89bd85664664041",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_renders_multiple_rules_in_one_diagram_004": {
+      "input_sha256": "e2098d1350d543800407724288b206b9498ea21c8d9e7b3737205e8637c6d625",
+      "svg_sha256": "ccf2644a2f5d79a570b1d43a13d3dbe31751dc95891e37ee00baa9170864f72a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_renders_optional_and_repetition_operators_003": {
+      "input_sha256": "49fa95465763fd3d8e36acd42c523710b1828c8f73077febdb83803d10fcfaad",
+      "svg_sha256": "47ce7793fed0ce7e920bc0d073b32ab84b563ecb0de5302e3358e613ddc2f259",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_renders_sequences_and_choices_002": {
+      "input_sha256": "39bdbe5fc825bd6ca1787a57974c5780d415df238928a737d1465207dfac1f17",
+      "svg_sha256": "5ba640a4a2886cff2e4daa38415ecb2f943f3768b487a304998d469eeaaa620b",
       "renderer_profile": "mmdc-default"
     }
   },

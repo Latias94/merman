@@ -88,7 +88,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
 
     out.push_str(r#"<g class="basic label-container outer-path">"#);
     if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &outer_path,
                 common.fill_color,
@@ -102,7 +102,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stacked_rectangle(
         write_stacked_rectangle_rough_path_group(out, common, &fill_d, &stroke_d);
     }
     if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &inner_path,
                 common.fill_color,

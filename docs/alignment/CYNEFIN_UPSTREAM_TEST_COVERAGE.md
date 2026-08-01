@@ -25,19 +25,34 @@ Scope: Mermaid tag `@11.16.0`.
 
 ## Fixture Coverage
 
-- `fixtures/cynefin/basic_domains_transitions.mmd`
-  - Semantic snapshot: `fixtures/cynefin/basic_domains_transitions.golden.json`
-  - Layout snapshot: `fixtures/cynefin/basic_domains_transitions.layout.golden.json`
+- The active corpus contains 13 fixtures:
+  - 12 exact Mermaid Cypress render cases from
+    `repo-ref/mermaid/cypress/integration/rendering/cynefin/cynefin.spec.js`, covering all five
+    domains, transitions, an empty framework, dense domain contents, config sizing/description
+    switches, theme variables, straight boundaries, confusion overflow, self-loop filtering,
+    accessibility directives, and explicit seeds;
+  - `fixtures/cynefin/basic_domains_transitions.mmd`, a local source-backed transition fixture that
+    keeps the compact domain/link form in the semantic and layout snapshot lane.
+- Every active fixture has a semantic golden, a typed-layout golden, and a pinned Mermaid SVG. The
+  Cypress cases are imported from the pinned source; the local fixture is retained because it
+  exercises the smallest useful transition graph independently of the larger examples.
 
 ## Upstream SVG Baselines
 
-Admitted to the primary SVG parity matrix. The normalized fixture has a complete Mermaid
-`@11.16.0` baseline under `fixtures/upstream-svgs/cynefin/`, with per-file input/SVG hashes and an
-explicit `adopted-existing` provenance attestation. `compare-cynefin-svgs --check-dom` and the
-ordinary `compare-all-svgs` structural DOM gate cover the committed corpus.
+Admitted to the primary SVG parity matrix. All 13 normalized fixtures have complete Mermaid
+`@11.16.0` baselines under `fixtures/upstream-svgs/cynefin/`, with per-file input/SVG hashes and
+explicit provenance attestations. `compare-cynefin-svgs --check-dom` and the ordinary
+`compare-all-svgs` structural DOM gate cover the committed corpus.
 
 ## Known Residuals
 
 - Browser `getBBox()` item badge widths are represented through the headless text measurer.
 - Primary matrix admission should classify this as a bounded text-metric residual instead of adding
   broad SVG normalization.
+
+## Verification
+
+```text
+cargo run -p xtask -- compare-cynefin-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- check-upstream-svgs --diagram cynefin --check-dom --dom-mode parity --dom-decimals 3
+```

@@ -79,7 +79,7 @@ pub(in crate::svg::parity) fn flowchart_cluster_root_offsets(
 }
 
 pub(super) fn flowchart_node_dom_indices<'a>(
-    model: &'a crate::flowchart::FlowchartV2Model,
+    model: &'a crate::flowchart::FlowchartModel,
 ) -> FxHashMap<&'a str, usize> {
     if !model.vertex_calls.is_empty() {
         let mut out: FxHashMap<&'a str, usize> = FxHashMap::default();

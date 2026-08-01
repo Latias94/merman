@@ -68,24 +68,13 @@ fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
     out
 }
 
-pub(crate) fn render_packet_diagram_svg(
-    layout: &PacketDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: PacketDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_packet_diagram_svg_model(layout, &model, effective_config, diagram_title, options)
-}
-
 pub(crate) fn render_packet_diagram_svg_model(
     layout: &PacketDiagramLayout,
     model: &PacketDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -104,32 +93,21 @@ pub(crate) fn render_packet_diagram_svg_model(
     let aria_labelledby = model
         .acc_title
         .as_deref()
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = model
         .acc_descr
         .as_deref()
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    let viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    let style_attr = format!("max-width: {}px; background-color: white;", fmt(vb_w));
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "packet")
-        },
-    );
+        .map(|_| format!("chart-desc-{diagram_id}"));
+    let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
+    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "packet");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+    root_chrome.dom.trailing_newline = false;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Packet, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -232,7 +210,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     }
 
     out.push_str("</svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]

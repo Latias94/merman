@@ -2,10 +2,7 @@
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
-use std::borrow::Cow;
-use std::str::FromStr as _;
-
-use roughr::Color;
+use merman_core::theme_color::{ColorChannel, ColorSourceFormat, ThemeColor, rgba};
 
 pub(super) use crate::config::{config_diagram_look, config_f64, config_f64_css_px};
 
@@ -43,7 +40,7 @@ pub(super) fn normalize_css_font_family(font_family: &str) -> String {
     crate::config::normalize_css_font_family(font_family)
 }
 
-pub(super) fn theme_color(
+pub(super) fn theme_token(
     effective_config: &serde_json::Value,
     key: &str,
     fallback: &str,
@@ -126,7 +123,7 @@ impl<'a> SvgTheme<'a> {
     }
 
     pub(super) fn color(&self, key: &str, fallback: &str) -> String {
-        theme_color(self.effective_config, key, fallback)
+        theme_token(self.effective_config, key, fallback)
     }
 
     pub(super) fn theme_name(&self) -> String {
@@ -161,15 +158,38 @@ impl<'a> SvgTheme<'a> {
     }
 }
 
-pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> Option<String> {
-    let color = Color::from_str(color.trim()).ok()?;
-    Some(format!(
-        "rgba({}, {}, {}, {})",
-        color.red,
-        color.green,
-        color.blue,
-        fmt(opacity)
-    ))
+pub(super) fn css_rgba_fade(color: &str, opacity: f64) -> crate::Result<String> {
+    let color = ThemeColor::parse(color.trim())?;
+    let faded = rgba(
+        color.channel(ColorChannel::Red),
+        color.channel(ColorChannel::Green),
+        color.channel(ColorChannel::Blue),
+        opacity,
+    )?;
+    Ok(faded)
+}
+
+pub(in crate::svg::parity) fn cssom_color_value(value: &str) -> String {
+    let value = value.trim();
+    let Ok(color) = ThemeColor::parse(value) else {
+        // Preserve CSS variables and browser-supported syntaxes outside Khroma's parser surface.
+        return value.to_string();
+    };
+
+    if color.source_format() == ColorSourceFormat::Keyword {
+        return value.to_ascii_lowercase();
+    }
+
+    let red = color.channel(ColorChannel::Red).round() as i64;
+    let green = color.channel(ColorChannel::Green).round() as i64;
+    let blue = color.channel(ColorChannel::Blue).round() as i64;
+    let alpha = color.channel(ColorChannel::Alpha);
+    if alpha < 1.0 {
+        let alpha = (alpha * 1000.0).round() / 1000.0;
+        format!("rgba({red}, {green}, {blue}, {})", fmt(alpha))
+    } else {
+        format!("rgb({red}, {green}, {blue})")
+    }
 }
 
 pub(super) fn scoped_svg_id(diagram_id: &str, local_id: &str) -> String {
@@ -180,38 +200,7 @@ pub(super) fn scoped_svg_url(diagram_id: &str, local_id: &str) -> String {
     format!("url(#{})", scoped_svg_id(diagram_id, local_id))
 }
 
-pub(super) fn fmt_debug_3dp(v: f64) -> String {
-    let mut out = String::new();
-    fmt_debug_3dp_into(&mut out, v);
-    out
-}
-
 use std::fmt::Write as _;
-
-fn trim_trailing_zeros_and_dot(out: &mut String, start: usize) {
-    while out.len() > start && out.as_bytes()[out.len() - 1] == b'0' {
-        out.pop();
-    }
-    if out.len() > start && out.as_bytes()[out.len() - 1] == b'.' {
-        out.pop();
-    }
-}
-
-pub(super) fn fmt_debug_3dp_into(out: &mut String, v: f64) {
-    if !v.is_finite() || v.abs() < 0.0005 {
-        out.push('0');
-        return;
-    }
-
-    let scaled = v * 1000.0;
-    let k = scaled.round() as i64;
-    if k == 0 {
-        out.push('0');
-        return;
-    }
-
-    append_fixed_3dp_trimmed(out, k);
-}
 
 pub(super) fn fmt_string(v: f64) -> String {
     let mut out = String::new();
@@ -416,104 +405,13 @@ fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
     buf.format_finite(v)
 }
 
-pub(super) fn fmt_max_width_px(v: f64) -> String {
-    let mut out = String::new();
-    fmt_max_width_px_into(&mut out, v);
-    out
-}
-
-pub(super) fn apply_root_viewport_override(
-    diagram_id: &str,
-    viewbox_attr: &mut String,
-    width_attr: &mut String,
-    height_attr: &mut String,
-    max_width_style: &mut String,
-    lookup: fn(&str) -> Option<(&'static str, &'static str)>,
-) {
-    let Some((viewbox, max_w)) = lookup(diagram_id) else {
-        return;
-    };
-
-    if std::env::var_os("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES").is_some() {
-        return;
-    }
-
-    *viewbox_attr = viewbox.to_string();
-    let mut it = viewbox.split_whitespace();
-    let _ = it.next(); // min-x
-    let _ = it.next(); // min-y
-    *width_attr = it.next().unwrap_or("0").to_string();
-    *height_attr = it.next().unwrap_or("0").to_string();
-    *max_width_style = max_w.to_string();
-}
-
-pub(super) fn fmt_max_width_px_into(out: &mut String, v: f64) {
-    // Mermaid's `max-width: ...px` strings are effectively rendered with ~6 significant digits,
-    // trimming trailing zeros (see upstream fixtures: `1184.88`, `432.812`, `85.4375`, `2019.2`).
-    if !v.is_finite() || v.abs() < 0.0005 {
-        out.push('0');
-        return;
-    }
-
-    let abs = v.abs().max(0.0005);
-    let exp10 = abs.log10().floor() as i32;
-    let sig = 6i32;
-    let decimals = (sig - 1 - exp10).clamp(0, 6) as usize;
-
-    fn round_ties_to_even(x: f64) -> f64 {
-        if !x.is_finite() {
-            return 0.0;
-        }
-        let sign = if x.is_sign_negative() { -1.0 } else { 1.0 };
-        let ax = x.abs();
-        let f = ax.floor();
-        let frac = ax - f;
-        let i = if frac < 0.5 {
-            f
-        } else if frac > 0.5 {
-            f + 1.0
-        } else {
-            // exactly halfway: choose the even integer
-            let fi = f as i64;
-            if fi % 2 == 0 { f } else { f + 1.0 }
-        };
-        sign * i
-    }
-
-    let scale = 10f64.powi(decimals as i32);
-    let mut rounded = round_ties_to_even(v * scale) / scale;
-    if rounded.abs() < 0.0005 {
-        rounded = 0.0;
-    }
-
-    let start = out.len();
-    let _ = write!(out, "{:.*}", decimals, rounded);
-    if out.as_bytes()[start..].contains(&b'.') {
-        trim_trailing_zeros_and_dot(out, start);
-    }
-    if out.len() == start + 2 && &out[start..] == "-0" {
-        out.truncate(start);
-        out.push('0');
-    }
-}
-
 pub(super) fn escape_xml(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     escape_xml_into(&mut out, text);
     out
 }
 
-pub(super) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str> {
-    // Mermaid preprocesses diagrams with `encodeEntities(...)`, rewriting `#...;` sequences into
-    // `ﬂ°...¶ß` placeholders so grammars that treat `#` / `;` specially do not break.
-    //
-    // In headless SVG output we must decode those placeholders back into Unicode so text labels
-    // match upstream Mermaid's browser-decoded output.
-    if !text.contains('ﬂ') && !text.contains('¶') && !text.contains('#') {
-        return Cow::Borrowed(text);
-    }
-    merman_core::entities::decode_mermaid_entities_to_unicode(text)
-}
+pub(super) use crate::entities::decode_mermaid_entities_for_render_text;
 
 fn xml_text_is_plain_ascii(text: &str) -> bool {
     text.bytes().all(|b| {
@@ -522,21 +420,8 @@ fn xml_text_is_plain_ascii(text: &str) -> bool {
     })
 }
 
-fn is_xml_10_char(ch: char) -> bool {
-    // XML 1.0 excludes C0 controls except tab, LF, and CR.
-    matches!(
-        ch,
-        '\u{9}'
-            | '\u{A}'
-            | '\u{D}'
-            | '\u{20}'..='\u{D7FF}'
-            | '\u{E000}'..='\u{FFFD}'
-            | '\u{10000}'..='\u{10FFFF}'
-    )
-}
-
 fn xml_text_replacement(ch: char) -> Option<&'static str> {
-    if !is_xml_10_char(ch) {
+    if !crate::xml::is_xml_1_0_char(ch) {
         return Some("");
     }
     match ch {
@@ -549,7 +434,7 @@ fn xml_text_replacement(ch: char) -> Option<&'static str> {
 }
 
 fn xml_attr_replacement(ch: char) -> Option<&'static str> {
-    if !is_xml_10_char(ch) {
+    if !crate::xml::is_xml_1_0_char(ch) {
         return Some("");
     }
     match ch {
@@ -676,44 +561,6 @@ impl std::fmt::Display for EscapeAttrDisplay<'_> {
     }
 }
 
-pub(super) fn replace_placeholders_once(out: &str, replacements: &[(&str, &str)]) -> String {
-    if replacements.is_empty() {
-        return out.to_string();
-    }
-
-    let mut hits: Vec<(usize, &str, &str)> = Vec::with_capacity(replacements.len());
-    for (needle, value) in replacements {
-        let Some(pos) = out.find(needle) else {
-            continue;
-        };
-        hits.push((pos, *needle, *value));
-    }
-
-    if hits.is_empty() {
-        return out.to_string();
-    }
-
-    hits.sort_by_key(|(pos, _, _)| *pos);
-
-    let mut cap = out.len();
-    for (_pos, needle, value) in &hits {
-        cap = cap.saturating_sub(needle.len()).saturating_add(value.len());
-    }
-
-    let mut rebuilt = String::with_capacity(cap);
-    let mut cursor: usize = 0;
-    for (pos, needle, value) in hits {
-        if pos < cursor {
-            continue;
-        }
-        rebuilt.push_str(&out[cursor..pos]);
-        rebuilt.push_str(value);
-        cursor = pos + needle.len();
-    }
-    rebuilt.push_str(&out[cursor..]);
-    rebuilt
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -804,16 +651,44 @@ mod tests {
     }
 
     #[test]
-    fn css_rgba_fade_parses_css_colors() {
+    fn css_rgba_fade_matches_khroma_color_semantics() {
         assert_eq!(
-            css_rgba_fade("#8090a0", 0.5).as_deref(),
-            Some("rgba(128, 144, 160, 0.5)")
+            css_rgba_fade("#8090a0", 0.5).expect("valid hex color"),
+            "rgba(128, 144, 160, 0.5)"
         );
         assert_eq!(
-            css_rgba_fade("hsl(80, 100%, 96.2745098039%)", 0.5).as_deref(),
-            Some("rgba(249, 255, 236, 0.5)")
+            css_rgba_fade("rebeccapurple", 0.5).expect("valid named color"),
+            "rgba(102, 51, 153, 0.5)"
         );
-        assert!(css_rgba_fade("var(--not-runtime-resolved)", 0.5).is_none());
+        assert_eq!(
+            css_rgba_fade("rgb(20% 40% 60% / 25%)", 0.2).expect("valid modern RGB color"),
+            "rgba(51, 102, 153, 0.2)"
+        );
+        assert_eq!(
+            css_rgba_fade("hsl(80, 100%, 96%)", 0.5).expect("valid HSL color"),
+            "rgba(248.2, 255, 234.6, 0.5)"
+        );
+        assert_eq!(
+            css_rgba_fade("#8090a080", 0.5).expect("valid alpha hex color"),
+            "rgba(128, 144, 160, 0.5)"
+        );
+    }
+
+    #[test]
+    fn css_rgba_fade_rejects_unsupported_css_color() {
+        let error = css_rgba_fade("var(--not-runtime-resolved)", 0.5)
+            .expect_err("unresolved CSS variables are not khroma colors");
+
+        assert!(error.to_string().contains("var(--not-runtime-resolved)"));
+    }
+
+    #[test]
+    fn cssom_color_value_matches_browser_serialization_boundaries() {
+        assert_eq!(cssom_color_value("#8090a0"), "rgb(128, 144, 160)");
+        assert_eq!(cssom_color_value("hsl(80 100% 96%)"), "rgb(248, 255, 235)");
+        assert_eq!(cssom_color_value("#8090a080"), "rgba(128, 144, 160, 0.502)");
+        assert_eq!(cssom_color_value("ReBeccAPurple"), "rebeccapurple");
+        assert_eq!(cssom_color_value("var(--MyColor)"), "var(--MyColor)");
     }
 
     #[test]
@@ -848,34 +723,5 @@ mod tests {
         assert_eq!(fmt_path_into_string(1.23456), "1.235");
         assert_eq!(fmt_path_into_string(1.0), "1");
         assert_eq!(fmt_path_into_string(-1.2345), "-1.235");
-    }
-
-    #[test]
-    fn fmt_debug_3dp_into_matches_expected() {
-        fn fmt_debug_3dp_into_string(v: f64) -> String {
-            let mut s = String::new();
-            fmt_debug_3dp_into(&mut s, v);
-            s
-        }
-
-        assert_eq!(fmt_debug_3dp_into_string(f64::NAN), "0");
-        assert_eq!(fmt_debug_3dp_into_string(0.0004), "0");
-        assert_eq!(fmt_debug_3dp_into_string(1.0), "1");
-        assert_eq!(fmt_debug_3dp_into_string(1.23), "1.23");
-        assert_eq!(fmt_debug_3dp_into_string(1.2346), "1.235");
-    }
-
-    #[test]
-    fn fmt_max_width_px_into_matches_expected() {
-        fn fmt_max_width_px_into_string(v: f64) -> String {
-            let mut s = String::new();
-            fmt_max_width_px_into(&mut s, v);
-            s
-        }
-
-        assert_eq!(fmt_max_width_px_into_string(f64::NAN), "0");
-        assert_eq!(fmt_max_width_px_into_string(0.0004), "0");
-        assert_eq!(fmt_max_width_px_into_string(1184.88), "1184.88");
-        assert_eq!(fmt_max_width_px_into_string(2019.2), "2019.2");
     }
 }

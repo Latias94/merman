@@ -134,8 +134,7 @@ pub(super) fn class_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} g.clickable{{cursor:pointer;}}#{} .edgeTerminals{{font-size:11px;line-height:initial;}}#{} .classTitleText,#{} .classDiagramTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
-        id.as_str(),
+        r#"#{} g.clickable{{cursor:pointer;}}#{} .edgeTerminals{{font-size:11px;line-height:initial;}}#{} .classTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
         id.as_str(),
         id.as_str(),
         id.as_str(),

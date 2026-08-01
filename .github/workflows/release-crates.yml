@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to publish, for example v0.8.0-alpha.3"
+        description: "Release tag to publish, for example v0.8.0-alpha.4"
         required: true
         type: string
       source_ref:
@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           tag_re="^v${semver_re#^}"
           fail() {
             echo "::error::$1" >&2
@@ -63,7 +63,7 @@ jobs:
           validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
             validated_source_ref="refs/tags/$source_tag"
@@ -114,18 +114,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
-      - name: Verify Cargo workspace version matches tag
+      - name: Verify release projections and README install mode
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d ' ')
-          if [ "$CARGO_VERSION" != "$VERSION" ]; then
-            echo "::error::Cargo workspace version '$CARGO_VERSION' does not match tag $VERSION"
-            exit 1
-          fi
-
-      - name: Verify FFI publish surface
-        run: python3 scripts/verify-ffi-publish-surface.py
+        run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -135,6 +127,9 @@ jobs:
 
       - name: Verify release crate publish order
         run: python3 scripts/verify-release-crate-order.py
+
+      - name: Verify target-scoped artifact dependency closures
+        run: python3 scripts/verify_artifact_dependency_closures.py
 
       - name: Preflight crates in dependency order
         id: crates
@@ -161,6 +156,7 @@ jobs:
             merman-layout-elk
             merman-editor-core
             merman-render
+            merman-export
             merman
             merman-lsp
             merman-bindings-core
@@ -184,8 +180,125 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
+  web-owner-preflight:
+    name: web-owner-preflight
+    needs: preflight
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify pinned source commit
+        env:
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install WASM tools
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.108 --locked
+          cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Verify generated Web contracts
+        run: |
+          cargo run --locked -p xtask -- verify-mermaid-reference
+          cargo run --locked -p xtask -- verify-editor-token-descriptor
+          cargo run --locked -p xtask -- verify-text-measurement-protocol
+          cargo run --locked -p xtask -- verify-capability-surface
+          cargo run --locked -p xtask -- verify-artifact-profiles
+          cargo run --locked -p xtask -- verify-web-diagram-catalog
+
+      - name: Build and smoke Web package group
+        run: |
+          npm ci --prefix platforms/web
+          npm run build --prefix platforms/web
+          npm run verify:packages --prefix platforms/web
+          npm run smoke --prefix platforms/web
+
+  typst-owner-preflight:
+    name: typst-owner-preflight
+    needs: preflight
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      TYPST_CLI_VERSION: "0.15.0"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify pinned source commit
+        env:
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@wasm-tools
+
+      - name: Download Typst
+        shell: bash
+        run: |
+          set -euo pipefail
+          typst_asset="typst-x86_64-unknown-linux-musl.tar.xz"
+          typst_root="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}"
+          download_dir="$(mktemp -d)"
+          curl -fsSL --retry 3 --retry-connrefused --retry-delay 2 \
+            -o "${download_dir}/${typst_asset}" \
+            "https://github.com/typst/typst/releases/download/v${TYPST_CLI_VERSION}/${typst_asset}"
+          tar -xJf "${download_dir}/${typst_asset}" -C "${download_dir}"
+          mkdir -p "${typst_root}"
+          install -m 0755 "${download_dir}/typst-x86_64-unknown-linux-musl/typst" "${typst_root}/typst"
+          "${typst_root}/typst" --version
+
+      - name: Verify generated Typst contracts
+        run: |
+          cargo run --locked -p xtask -- verify-capability-surface
+          cargo run --locked -p xtask -- verify-artifact-profiles
+          cargo run --locked -p xtask -- verify-typst-profile-constants
+
+      - name: Build and smoke exact Typst artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+          cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
+          cargo run --locked -p xtask -- build-typst-package --profile publish
+          typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"
+          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --typst "${typst_bin}"
+
   publish:
-    needs: [validate-inputs, preflight]
+    needs: [validate-inputs, preflight, web-owner-preflight, typst-owner-preflight]
     runs-on: ubuntu-24.04
     environment: crates.io
     steps:
@@ -222,6 +335,8 @@ jobs:
           CRATE_VERSIONS: ${{ needs.preflight.outputs.crate_versions }}
         run: |
           set -euo pipefail
+
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
 
           crate_version_available() {
             local crate="$1"
@@ -262,7 +377,7 @@ jobs:
               return 1
             fi
 
-            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            if [[ ! "$version" =~ $semver_re ]]; then
               echo "::error::Invalid crate version in preflight output for $crate: $version"
               return 1
             fi

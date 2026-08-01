@@ -161,7 +161,7 @@ Planned follow-up functions:
 | 4 | `MERMAN_NO_DIAGRAM` | No Mermaid diagram was detected. |
 | 5 | `MERMAN_PARSE_ERROR` | Mermaid parsing failed. |
 | 6 | `MERMAN_RENDER_ERROR` | Layout, SVG, or postprocessing failed. |
-| 7 | `MERMAN_UNSUPPORTED_FORMAT` | Requested output is not enabled or not implemented. |
+| 7 | `MERMAN_UNSUPPORTED_OPERATION` | Requested operation is not enabled or not implemented. |
 | 8 | `MERMAN_PANIC` | Rust panic was caught at the ABI boundary. |
 | 9 | `MERMAN_INTERNAL_ERROR` | Serialization, allocation, or other unexpected internal failure. |
 

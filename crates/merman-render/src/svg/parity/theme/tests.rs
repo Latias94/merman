@@ -172,7 +172,7 @@ fn presentation_theme_treemap_resolves_top_level_treemap_roles() {
         }
     });
 
-    let treemap = PresentationTheme::new(&cfg).treemap();
+    let treemap = PresentationTheme::new(&cfg).treemap().unwrap();
 
     assert_eq!(treemap.title_color, "#777777");
     assert_eq!(treemap.label_color, "#555555");
@@ -200,7 +200,7 @@ fn presentation_theme_treemap_uses_text_and_title_fallbacks() {
         }
     });
 
-    let treemap = PresentationTheme::new(&cfg).treemap();
+    let treemap = PresentationTheme::new(&cfg).treemap().unwrap();
 
     assert_eq!(treemap.title_color, "#202020");
     assert_eq!(treemap.label_color, "#101010");
@@ -215,7 +215,7 @@ fn presentation_theme_treemap_uses_default_scales_and_label_inversion() {
         }
     });
 
-    let treemap = PresentationTheme::new(&cfg).treemap();
+    let treemap = PresentationTheme::new(&cfg).treemap().unwrap();
 
     assert_eq!(treemap.color_scale[0], "hsl(240, 100%, 76.2745098039%)");
     assert_eq!(
@@ -317,7 +317,7 @@ fn presentation_theme_kanban_resolves_theme_roles() {
         }
     });
 
-    let kanban = PresentationTheme::new(&cfg).kanban();
+    let kanban = PresentationTheme::new(&cfg).kanban().unwrap();
 
     assert_eq!(kanban.text_color, "#f8fafc");
     assert_eq!(kanban.background, "#0f172a");
@@ -336,7 +336,7 @@ fn presentation_theme_kanban_dark_mode_adjusts_section_fill_down() {
         "darkMode": true
     });
 
-    let kanban = PresentationTheme::new(&cfg).kanban();
+    let kanban = PresentationTheme::new(&cfg).kanban().unwrap();
 
     assert_eq!(kanban.sections[0].c_scale, "hsl(240, 100%, 76.2745098039%)");
     assert_eq!(
@@ -348,6 +348,31 @@ fn presentation_theme_kanban_dark_mode_adjusts_section_fill_down() {
         kanban.sections[0].c_scale_inv,
         "hsl(60, 100%, 86.2745098039%)"
     );
+}
+
+#[test]
+fn presentation_theme_kanban_uses_khroma_for_every_supported_color_syntax() {
+    let cases = [
+        ("#ff0000", "hsl(0, 100%, 60%)"),
+        ("rebeccapurple", "hsl(270, 50%, 50%)"),
+        (
+            "rgb(18 52 86 / .5)",
+            "hsla(210, 65.3846153846%, 30.3921568627%, 0.5)",
+        ),
+    ];
+
+    for (input, expected) in cases {
+        let cfg = json!({ "themeVariables": { "cScale0": input } });
+        let kanban = PresentationTheme::new(&cfg).kanban().unwrap();
+        assert_eq!(kanban.sections[0].section_fill, expected, "{input}");
+    }
+}
+
+#[test]
+fn presentation_theme_kanban_rejects_invalid_derived_colors() {
+    let cfg = json!({ "themeVariables": { "cScale0": "var(--runtime-color)" } });
+    let error = PresentationTheme::new(&cfg).kanban().unwrap_err();
+    assert!(matches!(error, crate::Error::Color(_)));
 }
 
 #[test]
@@ -531,7 +556,7 @@ fn presentation_theme_venn_resolves_venn_roles() {
         }
     });
 
-    let venn = PresentationTheme::new(&cfg).venn();
+    let venn = PresentationTheme::new(&cfg).venn().unwrap();
 
     assert_eq!(venn.font_family_css, "Inter,sans-serif");
     assert_eq!(venn.title_color, "#f43f5e");
@@ -539,14 +564,17 @@ fn presentation_theme_venn_resolves_venn_roles() {
     assert_eq!(venn.circle_colors, vec!["#123456", "#abcdef"]);
     assert_eq!(venn.primary_color, "#987654");
     assert!(venn.is_dark_theme);
-    assert_eq!(venn.circle_text_color("#123456"), "#597189");
+    assert_eq!(
+        venn.circle_text_color("#123456").unwrap(),
+        "hsl(210, 65.3846153846%, 50.3921568627%)"
+    );
 }
 
 #[test]
 fn presentation_theme_venn_uses_default_venn_roles() {
     let cfg = json!({});
 
-    let venn = PresentationTheme::new(&cfg).venn();
+    let venn = PresentationTheme::new(&cfg).venn().unwrap();
 
     assert_eq!(
         venn.font_family_css,
@@ -557,8 +585,39 @@ fn presentation_theme_venn_uses_default_venn_roles() {
     assert!(venn.circle_colors.is_empty());
     assert_eq!(venn.primary_color, "#ECECFF");
     assert!(!venn.is_dark_theme);
-    assert_eq!(venn.circle_text_color("#abc"), "#77838f");
-    assert_eq!(venn.circle_text_color("not-a-color"), "#000000");
+    assert_eq!(
+        venn.circle_text_color("#abc").unwrap(),
+        "hsl(210, 25%, 43.3333333333%)"
+    );
+    assert!(matches!(
+        venn.circle_text_color("not-a-color"),
+        Err(crate::Error::Color(_))
+    ));
+}
+
+#[test]
+fn presentation_theme_venn_uses_background_color_not_theme_name_for_contrast() {
+    let dark_named_background = json!({
+        "theme": "base",
+        "themeVariables": { "background": "rebeccapurple" }
+    });
+    let theme = PresentationTheme::new(&dark_named_background)
+        .venn()
+        .unwrap();
+    assert!(theme.is_dark_theme);
+    assert_eq!(
+        theme.circle_text_color("rebeccapurple").unwrap(),
+        "hsl(270, 50%, 70%)"
+    );
+
+    let invalid_background = json!({
+        "theme": "dark",
+        "themeVariables": { "background": "not-a-color" }
+    });
+    assert!(matches!(
+        PresentationTheme::new(&invalid_background).venn(),
+        Err(crate::Error::Color(_))
+    ));
 }
 
 #[test]

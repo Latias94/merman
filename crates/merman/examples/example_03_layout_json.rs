@@ -1,6 +1,6 @@
 mod support;
 
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = support::read_mermaid_or_default(
@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Layout JSON exposes computed geometry and routes before SVG emission.
     let renderer = HeadlessRenderer::new().with_strict_parsing();
-    let Some(layout) = renderer.layout_diagram_sync(&input)? else {
+    let Some(layout) = renderer.layout_json_sync(&input)? else {
         return Err("no Mermaid diagram detected".into());
     };
 

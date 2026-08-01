@@ -1,23 +1,18 @@
 {
   "diagramType": "flowchart-elk",
   "model": {
-    "type": "flowchart-elk",
     "keyword": "flowchart-elk",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {
       "someclass": [
         "fill:#f96"
       ]
     },
-    "tooltips": {
-      "A": "link test",
-      "B": "click test"
-    },
+    "direction": "TB",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
     "vertexCalls": [
       "A",
@@ -37,8 +32,8 @@
         "id": "A",
         "label": "stadium shape test",
         "labelType": "text",
-        "shape": "stadium",
         "layoutShape": "stadium",
+        "shape": "stadium",
         "icon": null,
         "form": null,
         "pos": null,
@@ -46,11 +41,11 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [
           "clickable",
           "someclass"
         ],
+        "styles": [],
         "link": "index.html#link-clicked",
         "linkTarget": null,
         "haveCallback": false
@@ -59,8 +54,8 @@
         "id": "B",
         "label": "Go shopping",
         "labelType": "text",
-        "shape": "stadium",
         "layoutShape": "stadium",
+        "shape": "stadium",
         "icon": null,
         "form": null,
         "pos": null,
@@ -68,20 +63,20 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [
           "clickable"
         ],
+        "styles": [],
         "link": null,
         "linkTarget": null,
-        "haveCallback": true
+        "haveCallback": false
       },
       {
         "id": "C",
         "label": "Let me think...<br />Do I want something for work,<br />something to spend every free second with,<br />or something to get around?",
         "labelType": "text",
-        "shape": "stadium",
         "layoutShape": "stadium",
+        "shape": "stadium",
         "icon": null,
         "form": null,
         "pos": null,
@@ -89,10 +84,10 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [
           "someclass"
         ],
+        "styles": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -101,8 +96,8 @@
         "id": "D",
         "label": "Laptop",
         "labelType": "text",
-        "shape": "stadium",
         "layoutShape": "stadium",
+        "shape": "stadium",
         "icon": null,
         "form": null,
         "pos": null,
@@ -110,8 +105,8 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [],
+        "styles": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -120,8 +115,8 @@
         "id": "E",
         "label": "iPhone",
         "labelType": "text",
-        "shape": "stadium",
         "layoutShape": "stadium",
+        "shape": "stadium",
         "icon": null,
         "form": null,
         "pos": null,
@@ -129,8 +124,8 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [],
+        "styles": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -139,8 +134,8 @@
         "id": "F",
         "label": "Car<br/>wroom wroom",
         "labelType": "text",
-        "shape": "stadium",
         "layoutShape": "stadium",
+        "shape": "stadium",
         "icon": null,
         "form": null,
         "pos": null,
@@ -148,8 +143,8 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [],
+        "styles": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -157,91 +152,96 @@
     ],
     "edges": [
       {
+        "id": "L_A_B_0",
         "from": "A",
         "to": "B",
-        "id": "L_A_B_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
         "label": "Get money",
         "labelType": "text",
-        "style": [],
-        "classes": [],
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
         "interpolate": null,
+        "classes": [],
+        "style": [],
         "animate": null,
-        "animation": null
+        "animation": null,
+        "length": 1
       },
       {
+        "id": "L_B_C_0",
         "from": "B",
         "to": "C",
-        "id": "L_B_C_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
         "label": null,
         "labelType": "text",
-        "style": [],
-        "classes": [],
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
         "interpolate": null,
+        "classes": [],
+        "style": [],
         "animate": null,
-        "animation": null
+        "animation": null,
+        "length": 1
       },
       {
+        "id": "L_C_D_0",
         "from": "C",
         "to": "D",
-        "id": "L_C_D_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
         "label": "One",
         "labelType": "text",
-        "style": [],
-        "classes": [],
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
         "interpolate": null,
+        "classes": [],
+        "style": [],
         "animate": null,
-        "animation": null
+        "animation": null,
+        "length": 1
       },
       {
+        "id": "L_C_E_0",
         "from": "C",
         "to": "E",
-        "id": "L_C_E_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
         "label": "Two",
         "labelType": "text",
-        "style": [],
-        "classes": [],
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
         "interpolate": null,
+        "classes": [],
+        "style": [],
         "animate": null,
-        "animation": null
+        "animation": null,
+        "length": 1
       },
       {
+        "id": "L_C_F_0",
         "from": "C",
         "to": "F",
-        "id": "L_C_F_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
         "label": "Three",
         "labelType": "text",
-        "style": [],
-        "classes": [],
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
         "interpolate": null,
+        "classes": [],
+        "style": [],
         "animate": null,
-        "animation": null
+        "animation": null,
+        "length": 1
       }
     ],
-    "subgraphs": []
+    "subgraphs": [],
+    "tooltips": {
+      "A": "link test",
+      "B": "click test"
+    },
+    "type": "flowchart-elk"
   }
 }

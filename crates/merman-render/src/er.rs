@@ -1,86 +1,86 @@
 use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
-use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+use crate::text::{
+    TextMeasurer, TextMetrics, TextStyle, WrapMode, measure_mermaid_text_dimensions,
+};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
+#[cfg(feature = "layout-elk")]
+use merman_layout_elk as elk;
 use serde_json::Value;
 use std::collections::HashMap;
 
 mod config;
 
-use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
+use config::{ErLayoutAlgorithm, ErLayoutSettings};
 
-pub(crate) type ErModel = merman_core::diagrams::er::ErDiagramRenderModel;
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
 
-pub(crate) fn er_generic_markdown_plain_text(text: &str) -> Option<String> {
-    if !(text.contains('<') || text.contains('>')) {
-        return None;
-    }
-    let lower = text.to_ascii_lowercase();
-    if lower.contains("<br") || lower.contains("<strong") || lower.contains("<em") {
-        return None;
-    }
-    if !(text.contains('*') || text.contains('_') || text.contains('`')) {
-        return None;
-    }
+pub(crate) fn uses_elk_layout(effective_config: &Value) -> bool {
+    ErConfigView::new(effective_config).is_elk_layout()
+}
 
-    let mut plain = text.trim().to_string();
-    loop {
-        let next = plain
-            .strip_prefix("**")
-            .and_then(|s| s.strip_suffix("**"))
-            .or_else(|| plain.strip_prefix("__").and_then(|s| s.strip_suffix("__")))
-            .or_else(|| plain.strip_prefix('*').and_then(|s| s.strip_suffix('*')))
-            .or_else(|| plain.strip_prefix('_').and_then(|s| s.strip_suffix('_')))
-            .or_else(|| plain.strip_prefix('`').and_then(|s| s.strip_suffix('`')));
+#[derive(Debug, Clone)]
+pub(crate) struct ErBoxLabel {
+    markdown_input: String,
+    rendered_text: String,
+    xhtml_fragment: String,
+    generic_workaround: bool,
+}
 
-        let Some(next) = next else {
-            break;
+impl ErBoxLabel {
+    pub(crate) fn from_source(source: &str) -> Self {
+        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(source);
+        let source = decoded.as_ref().trim();
+        let parsed = merman_core::common::parse_generic_types(source);
+        let generic_workaround = parsed != source;
+        let markdown_input = if generic_workaround {
+            parsed.replace('<', "&lt;").replace('>', "&gt;")
+        } else {
+            source.to_string()
         };
-        plain = next.trim().to_string();
+        let xhtml_fragment =
+            crate::text::mermaid_markdown_to_xhtml_label_fragment(&markdown_input, true);
+        let rendered_text = if generic_workaround {
+            crate::text::mermaid_xhtml_label_text_content(&xhtml_fragment).unwrap_or(parsed)
+        } else {
+            source.to_string()
+        };
+
+        Self {
+            markdown_input,
+            rendered_text,
+            xhtml_fragment,
+            generic_workaround,
+        }
     }
 
-    if plain.is_empty() || plain == text {
-        None
-    } else {
-        Some(plain)
+    pub(crate) fn markdown_input(&self) -> &str {
+        &self.markdown_input
+    }
+
+    pub(crate) fn rendered_text(&self) -> &str {
+        &self.rendered_text
+    }
+
+    pub(crate) fn xhtml_fragment(&self) -> &str {
+        &self.xhtml_fragment
+    }
+
+    pub(crate) fn uses_generic_workaround(&self) -> bool {
+        self.generic_workaround
     }
 }
 
-pub(crate) fn er_label_has_structural_markdown(text: &str) -> bool {
-    if !(text.contains('*') || text.contains('_') || text.contains('`') || text.contains('<')) {
-        return false;
-    }
-
-    let parser = pulldown_cmark::Parser::new_ext(
-        text,
-        pulldown_cmark::Options::ENABLE_TABLES
-            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-            | pulldown_cmark::Options::ENABLE_TASKLISTS,
-    );
-    parser.into_iter().any(|ev| {
-        matches!(
-            ev,
-            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong)
-                | pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis)
-                | pulldown_cmark::Event::Code(_)
-                | pulldown_cmark::Event::Html(_)
-                | pulldown_cmark::Event::InlineHtml(_)
-        )
-    })
-}
-
-pub(crate) fn er_html_label_metrics(
-    text: &str,
+pub(crate) fn er_box_label_metrics(
+    label: &ErBoxLabel,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
 ) -> TextMetrics {
-    let text = text.trim();
-    if text.is_empty() {
+    if label.rendered_text().is_empty() {
         return TextMetrics {
             width: 0.0,
             height: 0.0,
@@ -88,45 +88,17 @@ pub(crate) fn er_html_label_metrics(
         };
     }
 
-    let lower = text.to_ascii_lowercase();
-    let has_inline_html =
-        lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
-
-    let apply_width_override = |metrics: &mut TextMetrics| {
-        if let Some(width) =
-            crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(style.font_size, text)
-        {
-            metrics.width = width.max(0.0);
-        }
-    };
-
-    let generic_markdown_plain = er_generic_markdown_plain_text(text);
-    let measure_text = generic_markdown_plain.as_deref().unwrap_or(text);
-
-    if (measure_text.contains('<') || measure_text.contains('>')) && !has_inline_html {
-        let mut metrics = measurer.measure_wrapped(measure_text, style, None, WrapMode::HtmlLike);
-        apply_width_override(&mut metrics);
-        return metrics;
-    }
-
-    let has_markdown = er_label_has_structural_markdown(text);
-    let mut metrics = if has_markdown || has_inline_html {
-        crate::text::measure_markdown_with_flowchart_bold_deltas(
+    if label.uses_generic_workaround() {
+        measurer.measure_wrapped(label.rendered_text(), style, None, WrapMode::HtmlLike)
+    } else {
+        crate::text::measure_xhtml_label_fragment(
             measurer,
-            measure_text,
+            label.xhtml_fragment(),
             style,
             None,
             WrapMode::HtmlLike,
         )
-    } else {
-        measurer.measure_wrapped(measure_text, style, None, WrapMode::HtmlLike)
-    };
-    apply_width_override(&mut metrics);
-    if text.contains('`') {
-        let svg_bbox_w = measurer.measure_svg_simple_text_bbox_width_px(text, style);
-        metrics.width = crate::text::round_to_1_64_px(metrics.width.max(svg_bbox_w));
     }
-    metrics
 }
 
 pub(crate) fn calculate_text_width_like_mermaid_px(
@@ -134,43 +106,15 @@ pub(crate) fn calculate_text_width_like_mermaid_px(
     style: &TextStyle,
     text: &str,
 ) -> i64 {
-    // Mermaid `calculateTextWidth` uses SVG `drawSimpleText(...).getBBox().width` and rounds to
-    // integers. It probes both `sans-serif` and the configured `fontFamily`, but typically
-    // takes the larger width to avoid underestimation when the configured family cannot render
-    // in the current user agent.
-    let mut sans = style.clone();
-    sans.font_family = Some("sans-serif".to_string());
-    sans.font_weight = None;
-
-    let mut fam = style.clone();
-    fam.font_weight = None;
-
-    let w_fam = measurer.measure_svg_simple_text_bbox_width_px(text, &fam);
-    let w_sans = measurer.measure_svg_simple_text_bbox_width_px(text, &sans);
-    let w = match (
-        w_fam.is_finite() && w_fam > 0.0,
-        w_sans.is_finite() && w_sans > 0.0,
-    ) {
-        (true, true) => w_fam.max(w_sans),
-        (true, false) => w_fam,
-        (false, true) => w_sans,
-        (false, false) => 0.0,
-    };
-    if !w.is_finite() {
-        return 0;
-    }
-    // Our headless SVG bbox approximation uses a power-of-two grid internally. Nudge by half of a
-    // 1/256px step to avoid systematic round-down at the `.5` boundary that can affect
-    // `minEntityWidth` clamping in Mermaid's `erBox.ts` `drawRect` branch.
-    (w + (1.0 / 512.0)).round() as i64
+    measure_mermaid_text_dimensions(measurer, text, style).width
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ErEntityMeasureRow {
-    pub type_text: String,
-    pub name_text: String,
-    pub key_text: String,
-    pub comment_text: String,
+    pub type_label: ErBoxLabel,
+    pub name_label: ErBoxLabel,
+    pub key_label: ErBoxLabel,
+    pub comment_label: ErBoxLabel,
     pub height: f64,
 }
 
@@ -179,7 +123,7 @@ pub(crate) struct ErEntityMeasure {
     pub width: f64,
     pub height: f64,
     pub text_padding: f64,
-    pub label_text: String,
+    pub label: ErBoxLabel,
     pub label_html_width: f64,
     pub label_height: f64,
     pub label_max_width_px: i64,
@@ -199,10 +143,9 @@ pub(crate) fn measure_entity_box(
     attr_style: &TextStyle,
     settings: ErEntityMeasurementSettings,
 ) -> ErEntityMeasure {
-    // Mermaid measures ER attribute table text via HTML labels (`foreignObject`) and browser font
-    // metrics. Our headless measurer is an approximation; keep the math as close as possible to
-    // upstream and avoid introducing arbitrary scaling factors.
-    const ATTR_TEXT_WIDTH_SCALE: f64 = 1.0;
+    // Mermaid measures ER attribute-table text through HTML labels (`foreignObject`). Consume the
+    // operation-owned measurement directly: browser hosts provide DOM metrics and the vendored
+    // profile is the explicit headless fallback.
 
     // Mermaid's ER renderer (erBox.ts) uses `config.htmlLabels` inconsistently:
     // - It passes `useHtmlLabels: config.htmlLabels` into `createText`, where `undefined`
@@ -223,18 +166,14 @@ pub(crate) fn measure_entity_box(
     let min_w = settings.min_entity_width;
     let wrapping_width_px = settings.wrapping_width_px;
 
-    let label_text = if entity.alias.trim().is_empty() {
+    let label_source = if entity.alias.trim().is_empty() {
         entity.label.as_str()
     } else {
         entity.alias.as_str()
-    }
-    .to_string();
-    let label_metrics = er_html_label_metrics(&label_text, measurer, label_style);
-    let label_html_width = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
-        label_style.font_size,
-        &label_text,
-    )
-    .unwrap_or_else(|| label_metrics.width.max(0.0));
+    };
+    let label = ErBoxLabel::from_source(label_source);
+    let label_metrics = er_box_label_metrics(&label, measurer, label_style);
+    let label_html_width = label_metrics.width.max(0.0);
 
     // No attributes: use `drawRect`-like padding rules from Mermaid erBox.ts.
     if entity.attributes.is_empty() {
@@ -244,10 +183,9 @@ pub(crate) fn measure_entity_box(
         // not on the HTML label bbox. Preserve that quirk: upstream can end up with nodes that are
         // narrower than `minEntityWidth` when `calculateTextWidth()` is larger than the HTML bbox
         // used by `drawRect`.
-        let calc_w = calculate_text_width_like_mermaid_px(measurer, label_style, &label_text);
-        let clamp_to_min_w = crate::generated::er_text_overrides_11_12_2::
-            lookup_entity_drawrect_clamp_to_min_entity_width(&label_text)
-            .unwrap_or((calc_w as f64 + label_pad_x * 2.0) < min_w);
+        let calc_w =
+            calculate_text_width_like_mermaid_px(measurer, label_style, label.markdown_input());
+        let clamp_to_min_w = (calc_w as f64 + label_pad_x * 2.0) < min_w;
         let width = if clamp_to_min_w {
             min_w
         } else {
@@ -258,7 +196,7 @@ pub(crate) fn measure_entity_box(
             width: width.max(1.0),
             height: height.max(1.0),
             text_padding,
-            label_text,
+            label,
             label_html_width,
             label_height: label_metrics.height.max(0.0),
             label_max_width_px: if clamp_to_min_w {
@@ -298,46 +236,27 @@ pub(crate) fn measure_entity_box(
     let mut total_rows_h = 0.0;
 
     for a in &entity.attributes {
-        let ty = merman_core::common::parse_generic_types(&a.ty);
-        let type_m = er_html_label_metrics(&ty, measurer, attr_style);
-        let name_m = er_html_label_metrics(&a.name, measurer, attr_style);
+        let type_label = ErBoxLabel::from_source(&a.ty);
+        let name_label = ErBoxLabel::from_source(&a.name);
+        let type_m = er_box_label_metrics(&type_label, measurer, attr_style);
+        let name_m = er_box_label_metrics(&name_label, measurer, attr_style);
 
-        let type_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
-            attr_style.font_size,
-            &ty,
-        )
-        .unwrap_or(type_m.width)
-            * ATTR_TEXT_WIDTH_SCALE;
-        let name_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
-            attr_style.font_size,
-            &a.name,
-        )
-        .unwrap_or(name_m.width)
-            * ATTR_TEXT_WIDTH_SCALE;
+        let type_w = type_m.width;
+        let name_w = name_m.width;
         max_type_raw_w = max_type_raw_w.max(type_w);
         max_name_raw_w = max_name_raw_w.max(name_w);
         max_type_col_w = max_type_col_w.max(type_w + padding);
         max_name_col_w = max_name_col_w.max(name_w + padding);
 
-        let key_text = a.keys.join(",");
-        let keys_m = er_html_label_metrics(&key_text, measurer, attr_style);
-        let keys_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
-            attr_style.font_size,
-            &key_text,
-        )
-        .unwrap_or(keys_m.width)
-            * ATTR_TEXT_WIDTH_SCALE;
+        let key_label = ErBoxLabel::from_source(&a.keys.join(","));
+        let keys_m = er_box_label_metrics(&key_label, measurer, attr_style);
+        let keys_w = keys_m.width;
         max_keys_raw_w = max_keys_raw_w.max(keys_w);
         max_keys_col_w = max_keys_col_w.max(keys_w + padding);
 
-        let comment_text = a.comment.clone();
-        let comment_m = er_html_label_metrics(&comment_text, measurer, attr_style);
-        let comment_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
-            attr_style.font_size,
-            &comment_text,
-        )
-        .unwrap_or(comment_m.width)
-            * ATTR_TEXT_WIDTH_SCALE;
+        let comment_label = ErBoxLabel::from_source(&a.comment);
+        let comment_m = er_box_label_metrics(&comment_label, measurer, attr_style);
+        let comment_w = comment_m.width;
         max_comment_raw_w = max_comment_raw_w.max(comment_w);
         max_comment_col_w = max_comment_col_w.max(comment_w + padding);
 
@@ -349,10 +268,10 @@ pub(crate) fn measure_entity_box(
             + text_padding;
 
         rows.push(ErEntityMeasureRow {
-            type_text: ty,
-            name_text: a.name.clone(),
-            key_text,
-            comment_text,
+            type_label,
+            name_label,
+            key_label,
+            comment_label,
             height: row_h.max(1.0),
         });
         total_rows_h += row_h.max(1.0);
@@ -404,7 +323,7 @@ pub(crate) fn measure_entity_box(
         width: width.max(1.0),
         height: height.max(1.0),
         text_padding,
-        label_text,
+        label,
         label_html_width,
         label_height: label_metrics.height.max(0.0),
         label_max_width_px: wrapping_width_px,
@@ -440,10 +359,6 @@ fn edge_label_metrics(
         return (0.0, 0.0);
     }
 
-    let lower = text.to_ascii_lowercase();
-    let has_inline_html =
-        lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
-    let has_markdown = text.contains('*') || text.contains('_');
     let wrap_mode = if html_labels {
         WrapMode::HtmlLike
     } else {
@@ -455,21 +370,15 @@ fn edge_label_metrics(
     // - HTML mode uses the generic HTML edge-label path (`foreignObject`, line-height 1.5)
     // - SVG mode uses `createFormattedText(...)` (`<text>/<tspan>`, line-height 1.1)
     // Markdown emphasis is tokenized in both branches before the final DOM shape is emitted.
-    if has_markdown || has_inline_html {
-        let m = crate::text::measure_markdown_with_flowchart_bold_deltas(
-            measurer, text, style, None, wrap_mode,
-        );
-        return (m.width.max(0.0), m.height.max(0.0));
-    }
-
-    let m = measurer.measure_wrapped(text, style, None, wrap_mode);
-    let w = if html_labels {
-        crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(style.font_size, text)
-            .unwrap_or(m.width)
+    let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
+    let m = if html_labels {
+        crate::text::measure_xhtml_label_fragment(measurer, &fragment, style, None, wrap_mode)
+    } else if let Some(plain_text) = crate::text::mermaid_xhtml_label_plain_text(&fragment) {
+        measurer.measure_wrapped(&plain_text, style, None, wrap_mode)
     } else {
-        m.width
+        crate::text::measure_markdown_with_inline_styles(measurer, text, style, None, wrap_mode)
     };
-    (w.max(0.0), m.height.max(0.0))
+    (m.width.max(0.0), m.height.max(0.0))
 }
 
 fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
@@ -620,34 +529,101 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
     }
 }
 
-pub fn layout_er_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<ErDiagramLayout> {
-    let model: ErModel = crate::json::from_value_ref(semantic)?;
-    layout_er_diagram_typed(&model, effective_config, measurer)
-}
-
-pub fn layout_er_diagram_typed(
+#[cfg(not(feature = "layout-elk"))]
+pub(crate) fn layout_er_diagram_typed(
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<ErDiagramLayout> {
+    layout_er_diagram_typed_with_elk_authority(
+        model,
+        effective_config,
+        measurer,
+        ErElkAuthority::Raw,
+    )
+}
+
+#[cfg(feature = "layout-elk")]
+/// Lays out an ER diagram through ELK using the render operation's captured seed.
+///
+/// This remains crate-private so the public typed API stays fail-closed for ELK's unseeded
+/// `randomSeed = 0` source sentinel.
+pub(crate) fn layout_er_diagram_typed_with_elk_operation_seed(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    operation_seed: elk::ElkOperationSeed,
+) -> Result<ErDiagramLayout> {
+    layout_er_diagram_typed_with_elk_authority(
+        model,
+        effective_config,
+        measurer,
+        ErElkAuthority::Operation(operation_seed),
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ErElkAuthority {
+    #[cfg(not(feature = "layout-elk"))]
+    Raw,
+    #[cfg(feature = "layout-elk")]
+    Operation(elk::ElkOperationSeed),
+}
+
+fn layout_er_diagram_typed_with_elk_authority(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    elk_authority: ErElkAuthority,
+) -> Result<ErDiagramLayout> {
+    let settings = ErConfigView::new(effective_config).layout_settings(&model.direction);
+
+    if settings.algorithm == ErLayoutAlgorithm::Elk {
+        #[cfg(feature = "layout-elk")]
+        {
+            let operation_seed = match elk_authority {
+                ErElkAuthority::Operation(operation_seed) => Some(operation_seed),
+            };
+            return layout_er_diagram_elk_typed(
+                model,
+                effective_config,
+                measurer,
+                settings,
+                operation_seed,
+            );
+        }
+        #[cfg(not(feature = "layout-elk"))]
+        {
+            let _ = elk_authority;
+            return Err(Error::MissingCapability {
+                capability: crate::RenderCapability::LayoutElk,
+                diagram_type: "er".to_string(),
+            });
+        }
+    }
+
+    layout_er_diagram_dagre_typed(model, measurer, settings)
+}
+
+fn layout_er_diagram_dagre_typed(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    measurer: &dyn TextMeasurer,
+    settings: ErLayoutSettings,
+) -> Result<ErDiagramLayout> {
     let ErLayoutSettings {
+        algorithm: _,
         graph: graph_label,
         label_style,
         attr_style,
         relationship_label_style,
         relationship_html_labels,
         entity_measurement,
-    } = ErConfigView::new(effective_config).layout_settings(&model.direction);
+    } = settings;
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
         multigraph: true,
-        // Mermaid's dagre adapter always enables `compound: true` (even if there are no clusters).
-        // This also makes the ranker behavior match upstream for disconnected ER graphs.
+        // Mermaid's Dagre adapter always enables `compound: true`, even without clusters.
         compound: true,
     });
     g.set_graph(graph_label);
@@ -810,7 +786,7 @@ pub fn layout_er_diagram_typed(
         );
     }
 
-    dugong::layout_dagreish(&mut g);
+    dugong::layout(&mut g);
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     for id in g.node_ids() {
@@ -954,27 +930,7 @@ pub fn layout_er_diagram_typed(
         });
     }
 
-    let bounds = {
-        let mut points: Vec<(f64, f64)> = Vec::new();
-        for n in &nodes {
-            let hw = n.width / 2.0;
-            let hh = n.height / 2.0;
-            points.push((n.x - hw, n.y - hh));
-            points.push((n.x + hw, n.y + hh));
-        }
-        for e in &out_edges {
-            for p in &e.points {
-                points.push((p.x, p.y));
-            }
-            if let Some(l) = &e.label {
-                let hw = l.width / 2.0;
-                let hh = l.height / 2.0;
-                points.push((l.x - hw, l.y - hh));
-                points.push((l.x + hw, l.y + hh));
-            }
-        }
-        Bounds::from_points(points)
-    };
+    let bounds = er_layout_bounds(&nodes, &out_edges);
 
     Ok(ErDiagramLayout {
         nodes,
@@ -983,45 +939,524 @@ pub fn layout_er_diagram_typed(
     })
 }
 
+fn er_layout_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    for node in nodes {
+        let half_width = node.width / 2.0;
+        let half_height = node.height / 2.0;
+        points.push((node.x - half_width, node.y - half_height));
+        points.push((node.x + half_width, node.y + half_height));
+    }
+    for edge in edges {
+        points.extend(edge.points.iter().map(|point| (point.x, point.y)));
+        if let Some(label) = &edge.label {
+            let half_width = label.width / 2.0;
+            let half_height = label.height / 2.0;
+            points.push((label.x - half_width, label.y - half_height));
+            points.push((label.x + half_width, label.y + half_height));
+        }
+    }
+    Bounds::from_points(points)
+}
+
+#[cfg(feature = "layout-elk")]
+fn layout_er_diagram_elk_typed(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    settings: ErLayoutSettings,
+    operation_seed: Option<elk::ElkOperationSeed>,
+) -> Result<ErDiagramLayout> {
+    let elk_graph = er_elk_graph(model, effective_config, measurer, &settings)?;
+    let source_edge_by_id = elk_graph
+        .edges
+        .iter()
+        .map(|edge| (edge.id.as_str(), edge))
+        .collect::<HashMap<_, _>>();
+    let elk_layout = match operation_seed {
+        Some(operation_seed) => elk::layout_with_operation_seed(&elk_graph, operation_seed),
+        None => elk::layout(&elk_graph),
+    }
+    .map_err(|err| Error::InvalidModel {
+        message: format!("ER ELK layout failed: {err}"),
+    })?;
+
+    let mut out_nodes = elk_layout
+        .nodes
+        .into_iter()
+        .map(|node| LayoutNode {
+            id: node.id,
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
+            is_cluster: false,
+            label_width: None,
+            label_height: None,
+        })
+        .collect::<Vec<_>>();
+
+    let mut out_edges = Vec::with_capacity(elk_layout.edges.len());
+    for edge in elk_layout.edges {
+        let Some(source) = source_edge_by_id.get(edge.id.as_str()).copied() else {
+            return Err(Error::InvalidModel {
+                message: format!("ELK layout returned unknown ER edge {}", edge.id),
+            });
+        };
+        let Some(index) = parse_er_rel_idx_from_edge_name(&edge.id) else {
+            return Err(Error::InvalidModel {
+                message: format!("ELK layout returned malformed ER edge id {}", edge.id),
+            });
+        };
+        let Some(relationship) = model.relationships.get(index) else {
+            return Err(Error::InvalidModel {
+                message: format!("ELK layout returned out-of-range ER edge id {}", edge.id),
+            });
+        };
+        let points = edge
+            .points
+            .into_iter()
+            .map(|point| LayoutPoint {
+                x: point.x,
+                y: point.y,
+            })
+            .collect::<Vec<_>>();
+        let label = source.label.and_then(|source_label| {
+            edge.labels
+                .first()
+                .map(|label| LayoutLabel {
+                    x: label.x + label.width / 2.0,
+                    y: label.y + label.height / 2.0,
+                    width: label.width,
+                    height: label.height,
+                })
+                .or_else(|| {
+                    calc_label_position(&points).map(|(x, y)| LayoutLabel {
+                        x,
+                        y,
+                        width: source_label.width,
+                        height: source_label.height,
+                    })
+                })
+        });
+        let rel_type = relationship.rel_spec.rel_type.as_str();
+        out_edges.push(LayoutEdge {
+            id: edge.id,
+            from: source.source.clone(),
+            to: source.target.clone(),
+            from_cluster: None,
+            to_cluster: None,
+            points,
+            label,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: er_marker_id(relationship.rel_spec.card_b.as_str(), "START"),
+            end_marker: er_marker_id(relationship.rel_spec.card_a.as_str(), "END"),
+            stroke_dasharray: (rel_type == "NON_IDENTIFYING").then(|| "8,8".to_string()),
+        });
+    }
+
+    out_nodes.sort_by(|left, right| left.id.cmp(&right.id));
+    out_edges.sort_by(|left, right| left.id.cmp(&right.id));
+    let bounds = er_layout_bounds(&out_nodes, &out_edges);
+    Ok(ErDiagramLayout {
+        nodes: out_nodes,
+        edges: out_edges,
+        bounds,
+    })
+}
+
+#[cfg(feature = "layout-elk")]
+fn er_elk_graph(
+    model: &merman_core::diagrams::er::ErDiagramRenderModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    settings: &ErLayoutSettings,
+) -> Result<elk::Graph> {
+    let ErLayoutSettings {
+        algorithm: _,
+        graph,
+        label_style,
+        attr_style,
+        relationship_label_style,
+        relationship_html_labels,
+        entity_measurement,
+    } = settings;
+
+    let mut entities: Vec<&ErEntity> = model.entities.values().collect();
+    entities.sort_by(|left, right| {
+        fn counter(id: &str) -> Option<usize> {
+            id.rsplit_once('-')?.1.parse().ok()
+        }
+        (counter(&left.id), left.id.as_str()).cmp(&(counter(&right.id), right.id.as_str()))
+    });
+
+    let nodes = entities
+        .into_iter()
+        .map(|entity| {
+            let (width, height) = entity_box_dimensions(
+                entity,
+                measurer,
+                label_style,
+                attr_style,
+                *entity_measurement,
+            );
+            elk::Node {
+                id: entity.id.clone(),
+                kind: elk::NodeKind::Leaf,
+                width,
+                height,
+                parent: None,
+                direction: None,
+                hierarchy_handling: None,
+                layer_constraint: None,
+                label: None,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let entity_ids = nodes
+        .iter()
+        .map(|node| node.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let mut edges = Vec::with_capacity(model.relationships.len());
+    for (index, relationship) in model.relationships.iter().enumerate() {
+        if !entity_ids.contains(relationship.entity_a.as_str())
+            || !entity_ids.contains(relationship.entity_b.as_str())
+        {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "relationship references missing entities: {} -> {}",
+                    relationship.entity_a, relationship.entity_b
+                ),
+            });
+        }
+        let (label_width, label_height) = edge_label_metrics(
+            &relationship.role_a,
+            measurer,
+            relationship_label_style,
+            *relationship_html_labels,
+        );
+        edges.push(elk::Edge {
+            id: format!("er-rel-{index}"),
+            source: relationship.entity_a.clone(),
+            target: relationship.entity_b.clone(),
+            label: (!relationship.role_a.trim().is_empty()).then_some(elk::Label {
+                width: label_width,
+                height: label_height,
+            }),
+            minlen: 1,
+            inside_self_loops_yo: false,
+        });
+    }
+
+    Ok(elk::Graph {
+        id: "root".to_string(),
+        direction: match graph.rankdir {
+            dugong::RankDir::LR => elk::Direction::Right,
+            dugong::RankDir::RL => elk::Direction::Left,
+            dugong::RankDir::BT => elk::Direction::Up,
+            dugong::RankDir::TB => elk::Direction::Down,
+        },
+        nodes,
+        edges,
+        // Mermaid's ELK adapter sets `spacing.baseValue = 40`; the source-backed adapter owns
+        // that exact option projection, so family-specific Dagre spacing does not leak into ELK.
+        spacing: elk::Spacing::default(),
+        options: er_elk_layout_options(effective_config),
+    })
+}
+
+#[cfg(feature = "layout-elk")]
+fn er_elk_layout_options(effective_config: &Value) -> elk::LayoutOptions {
+    use crate::config::{config_bool, config_string};
+
+    let model_order = config_string(effective_config, &["elk", "considerModelOrder"])
+        .map(
+            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+                "NONE" => elk::ModelOrderStrategy::None,
+                "PREFER_EDGES" => elk::ModelOrderStrategy::PreferEdges,
+                "PREFER_NODES" => elk::ModelOrderStrategy::PreferNodes,
+                _ => elk::ModelOrderStrategy::NodesAndEdges,
+            },
+        )
+        .unwrap_or_default();
+    let cycle_breaking = config_string(effective_config, &["elk", "cycleBreakingStrategy"])
+        .map(
+            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+                "DEPTH_FIRST" => elk::CycleBreakingStrategy::DepthFirst,
+                "INTERACTIVE" => elk::CycleBreakingStrategy::Interactive,
+                "MODEL_ORDER" => elk::CycleBreakingStrategy::ModelOrder,
+                "GREEDY_MODEL_ORDER" => elk::CycleBreakingStrategy::GreedyModelOrder,
+                _ => elk::CycleBreakingStrategy::Greedy,
+            },
+        )
+        .unwrap_or_default();
+    let node_placement = config_string(effective_config, &["elk", "nodePlacementStrategy"])
+        .map(
+            |strategy| match strategy.trim().to_ascii_uppercase().as_str() {
+                "SIMPLE" => elk::NodePlacementStrategy::Simple,
+                "NETWORK_SIMPLEX" => elk::NodePlacementStrategy::NetworkSimplex,
+                "LINEAR_SEGMENTS" => elk::NodePlacementStrategy::LinearSegments,
+                _ => elk::NodePlacementStrategy::BrandesKoepf,
+            },
+        )
+        .unwrap_or_default();
+    let node_placement_alignment =
+        config_string(effective_config, &["elk", "nodePlacementAlignment"])
+            .map(
+                |alignment| match alignment.trim().to_ascii_uppercase().as_str() {
+                    "LEFTUP" => elk::NodePlacementAlignment::LeftUp,
+                    "LEFTDOWN" => elk::NodePlacementAlignment::LeftDown,
+                    "RIGHTUP" => elk::NodePlacementAlignment::RightUp,
+                    "RIGHTDOWN" => elk::NodePlacementAlignment::RightDown,
+                    "BALANCED" => elk::NodePlacementAlignment::Balanced,
+                    _ => elk::NodePlacementAlignment::None,
+                },
+            )
+            .unwrap_or_default();
+
+    elk::LayoutOptions {
+        layered: elk::LayeredOptions {
+            merge_edges: config_bool(effective_config, &["elk", "mergeEdges"]).unwrap_or(false),
+            merge_hierarchy_edges: true,
+            unnecessary_bendpoints: true,
+            inside_self_loops_activate: config_bool(
+                effective_config,
+                &["elk", "insideSelfLoops", "activate"],
+            )
+            .unwrap_or(false),
+            self_loop_distribution: elk::SelfLoopDistributionStrategy::Equally,
+            force_node_model_order: config_bool(effective_config, &["elk", "forceNodeModelOrder"])
+                .unwrap_or(false),
+            consider_model_order: model_order != elk::ModelOrderStrategy::None,
+            model_order,
+            cycle_breaking,
+            node_placement,
+            node_placement_alignment,
+            ..Default::default()
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
+    use crate::text::{
+        TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+    };
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn er_elk_keeps_the_source_default_nonzero_seed() {
+        assert_eq!(
+            super::er_elk_layout_options(&serde_json::Value::Null)
+                .layered
+                .random_seed,
+            1
+        );
+    }
+
+    #[cfg(feature = "layout-elk")]
+    #[test]
+    fn er_elk_zero_seed_adapter_graph_requires_an_operation_seed() {
+        use std::num::NonZeroU64;
+
+        let mut model = merman_core::diagrams::er::ErDiagramRenderModel {
+            direction: "TB".to_string(),
+            ..Default::default()
+        };
+        for id in ["CUSTOMER", "ORDER"] {
+            model.entities.insert(
+                id.to_string(),
+                merman_core::diagrams::er::ErEntityRenderModel {
+                    id: id.to_string(),
+                    label: id.to_string(),
+                    ..Default::default()
+                },
+            );
+        }
+        model
+            .relationships
+            .push(merman_core::diagrams::er::ErRelationshipRenderModel {
+                entity_a: "CUSTOMER".to_string(),
+                role_a: "places".to_string(),
+                entity_b: "ORDER".to_string(),
+                ..Default::default()
+            });
+
+        let effective_config = serde_json::json!({ "layout": "elk" });
+        let settings =
+            super::ErConfigView::new(&effective_config).layout_settings(&model.direction);
+        let mut graph = super::er_elk_graph(
+            &model,
+            &effective_config,
+            &VendoredFontMetricsTextMeasurer::default(),
+            &settings,
+        )
+        .expect("ER ELK adapter graph");
+        graph.options.layered.random_seed = 0;
+
+        assert!(super::elk::layout(&graph).is_err());
+
+        let operation_seed = super::elk::ElkOperationSeed::from_operation_seed(
+            NonZeroU64::new(0x6572_2d73_6565_6421).expect("nonzero operation seed"),
+        );
+        let first = super::elk::layout_with_operation_seed(&graph, operation_seed)
+            .expect("seeded ER layout");
+        let replayed = super::elk::layout_with_operation_seed(&graph, operation_seed)
+            .expect("replayed seeded ER layout");
+
+        assert_eq!(first, replayed);
+    }
+
+    struct ErProbeMeasurer;
+
+    struct ErPrecisionMeasurer;
+
+    impl TextMeasurer for ErProbeMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 73.25,
+                height: 22.5,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_simple_text_bbox_width_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            if style.font_family.as_deref() == Some("sans-serif") {
+                120.0
+            } else {
+                80.0
+            }
+        }
+
+        fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            17.0
+        }
+    }
+
+    impl TextMeasurer for ErPrecisionMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 73.123_456_789,
+                height: 17.25,
+                line_count: 1,
+            }
+        }
+    }
 
     fn default_style() -> TextStyle {
         TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,
             font_weight: None,
+            font_style: None,
         }
     }
 
+    fn measure_box_label(
+        source: &str,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+    ) -> TextMetrics {
+        let label = super::ErBoxLabel::from_source(source);
+        super::er_box_label_metrics(&label, measurer, style)
+    }
+
     #[test]
-    fn er_html_label_metrics_use_er_owned_width_overrides() {
+    fn er_html_label_metrics_use_the_selected_html_measurer() {
+        let metrics = measure_box_label("type~T~", &ErProbeMeasurer, &default_style());
+
+        assert_eq!(metrics.width, 73.25);
+        assert_eq!(metrics.height, 22.5);
+    }
+
+    #[test]
+    fn er_inline_code_label_metrics_stay_on_the_html_measurement_path() {
+        let metrics =
+            measure_box_label("inline: `**not bold**`", &ErProbeMeasurer, &default_style());
+
+        assert_eq!(metrics.width, 73.25);
+        assert_eq!(metrics.height, 22.5);
+    }
+
+    #[test]
+    fn er_inline_html_metrics_measure_visible_runs_instead_of_tag_source() {
+        let metrics = measure_box_label(
+            "short<br><strong>bold</strong>",
+            &ErProbeMeasurer,
+            &default_style(),
+        );
+
+        assert_eq!(metrics.width, 73.25);
+        assert_eq!(metrics.height, 48.0);
+        assert_eq!(metrics.line_count, 2);
+    }
+
+    #[test]
+    fn er_raw_code_and_anchor_metrics_measure_the_rendered_dom() {
         let measurer = VendoredFontMetricsTextMeasurer::default();
-        let metrics = super::er_html_label_metrics("type<T>", &measurer, &default_style());
+        let style = default_style();
+        let source = "<a href='https://example.com'><code>Entity</code></a>";
+        let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(source, true);
+        let expected = crate::text::measure_html_with_inline_styles(
+            &measurer,
+            &fragment,
+            &style,
+            None,
+            WrapMode::HtmlLike,
+        );
 
-        assert_eq!(metrics.width, 57.953125);
-        assert_eq!(metrics.height, 24.0);
+        let actual = measure_box_label(source, &measurer, &style);
+        let literal = measurer.measure_wrapped(source, &style, None, WrapMode::HtmlLike);
+
+        assert_eq!(actual.width, expected.width);
+        assert_eq!(actual.height, expected.height);
+        assert_eq!(actual.line_count, expected.line_count);
+        assert!(
+            actual.width < literal.width,
+            "actual={actual:?}, literal={literal:?}"
+        );
     }
 
     #[test]
-    fn er_label_markdown_detection_requires_structural_markup() {
-        assert!(super::er_label_has_structural_markdown("last*Name*"));
-        assert!(super::er_label_has_structural_markdown("__phone__"));
-        assert!(super::er_label_has_structural_markdown("`code`"));
-        assert!(!super::er_label_has_structural_markdown("*id"));
-        assert!(!super::er_label_has_structural_markdown("driver_license"));
+    fn er_plain_underscore_edge_label_preserves_host_precision() {
+        assert_eq!(
+            super::edge_label_metrics(
+                "driver_license",
+                &ErPrecisionMeasurer,
+                &default_style(),
+                true,
+            ),
+            (73.123_456_789, 17.25)
+        );
     }
 
     #[test]
-    fn er_generic_markdown_plain_text_strips_wrapping_delimiters_only() {
-        assert_eq!(
-            super::er_generic_markdown_plain_text("*string(99)<T<<~>>>*").as_deref(),
-            Some("string(99)<T<<~>>>")
+    fn er_calculate_text_width_uses_shared_mermaid_family_selection() {
+        let width = super::calculate_text_width_like_mermaid_px(
+            &ErProbeMeasurer,
+            &default_style(),
+            "DRIVER",
         );
+
+        assert_eq!(width, 80);
+    }
+
+    #[test]
+    fn er_generic_workaround_is_derived_from_the_source_transformation() {
+        let generic = super::ErBoxLabel::from_source("*string(99)~T~~~~~~*");
+        assert!(generic.uses_generic_workaround());
+        assert_eq!(generic.rendered_text(), "string(99)<T<<~>>>");
         assert_eq!(
-            super::er_generic_markdown_plain_text("string(99)<T<<~>>>"),
-            None
+            generic.markdown_input(),
+            "*string(99)&lt;T&lt;&lt;~&gt;&gt;&gt;*"
         );
+
+        let raw_html = super::ErBoxLabel::from_source("<code>type<T></code>");
+        assert!(!raw_html.uses_generic_workaround());
+        assert!(raw_html.xhtml_fragment().contains("<code>"));
     }
 }

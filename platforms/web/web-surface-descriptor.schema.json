@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://merman.dev/schemas/web-surface-descriptor-v1.schema.json",
+  "title": "Merman Web surface descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "default_package",
+    "packages"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "default_package": {
+      "$ref": "#/$defs/kebabName"
+    },
+    "packages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/package"
+      }
+    }
+  },
+  "$defs": {
+    "kebabName": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "package_dir",
+        "artifact_profile",
+        "runtime_profile",
+        "visibility"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/kebabName"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^@mermanjs/web(?:-[a-z0-9][a-z0-9-]*)?$"
+        },
+        "package_dir": {
+          "type": "string",
+          "pattern": "^packages/[a-z0-9][a-z0-9-]*$"
+        },
+        "artifact_profile": {
+          "type": "string",
+          "pattern": "^web-[a-z0-9][a-z0-9-]*$"
+        },
+        "runtime_profile": {
+          "enum": [
+            "analysis",
+            "render",
+            "ascii",
+            "editor",
+            "full"
+          ]
+        },
+        "visibility": {
+          "enum": [
+            "candidate",
+            "public"
+          ]
+        }
+      }
+    }
+  },
+  "x-merman-invariants": {
+    "uniqueBy": [
+      "id",
+      "name",
+      "package_dir",
+      "artifact_profile"
+    ],
+    "derivedFields": {
+      "package_dir": "packages/{id}",
+      "artifact_profile": "web-{id}"
+    },
+    "conditionalPackages": [
+      {
+        "when": {
+          "visibility": "candidate"
+        },
+        "allowed": [
+          {
+            "id": "render",
+            "runtime_profile": "render"
+          }
+        ]
+      }
+    ],
+    "defaultPackage": {
+      "referenceField": "default_package",
+      "targetField": "id",
+      "requiredFields": {
+        "visibility": "public",
+        "name": "@mermanjs/web"
+      }
+    }
+  }
+}

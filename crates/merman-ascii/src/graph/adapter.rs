@@ -5,11 +5,11 @@ use super::style::{resolve_edge_style, resolve_group_style, resolve_node_style};
 use crate::AsciiDirection;
 use crate::error::{AsciiError, Result};
 use crate::options::AsciiRenderOptions;
-use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::flowchart::FlowchartModel;
 use std::collections::HashSet;
 
 pub(crate) fn from_flowchart_model(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     options: &AsciiRenderOptions,
 ) -> Result<AsciiGraph> {
     validate_supported_flowchart_model(model)?;
@@ -143,7 +143,7 @@ fn parse_node_shape(shape: Option<&str>) -> Result<GraphNodeShape> {
     }
 }
 
-fn validate_supported_flowchart_model(model: &FlowchartV2Model) -> Result<()> {
+fn validate_supported_flowchart_model(model: &FlowchartModel) -> Result<()> {
     if model
         .subgraphs
         .iter()

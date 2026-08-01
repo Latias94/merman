@@ -133,10 +133,10 @@ fn info_css_parts_with_font_size_source(
     .unwrap_or(16.0)
     .max(1.0);
 
-    let text_color = theme_color(effective_config, "textColor", "#333");
-    let line_color = theme_color(effective_config, "lineColor", "#333333");
-    let error_bkg = theme_color(effective_config, "errorBkgColor", "#552222");
-    let error_text = theme_color(effective_config, "errorTextColor", "#552222");
+    let text_color = theme_token(effective_config, "textColor", "#333");
+    let line_color = theme_token(effective_config, "lineColor", "#333333");
+    let error_bkg = theme_token(effective_config, "errorBkgColor", "#552222");
+    let error_text = theme_token(effective_config, "errorTextColor", "#552222");
 
     let mut out = String::new();
     write_mermaid_base_css_prefix(
@@ -173,14 +173,14 @@ pub(super) fn info_css_with_config(
     out
 }
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 pub(super) struct ArchitectureCssParts {
     pub(super) css: String,
     pub(super) font_family: String,
     pub(super) font_size: f64,
 }
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 pub(super) fn architecture_css_parts_with_config(
     diagram_id: &str,
     effective_config: &serde_json::Value,
@@ -194,25 +194,25 @@ pub(super) fn architecture_css_parts_with_config(
         crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
             .max(1.0);
 
-    let text_color = theme_color(effective_config, "textColor", "#333");
-    let line_color = theme_color(effective_config, "lineColor", "#333333");
-    let error_bkg = theme_color(effective_config, "errorBkgColor", "#552222");
-    let error_text = theme_color(effective_config, "errorTextColor", "#552222");
-    let primary_border = theme_color(
+    let text_color = theme_token(effective_config, "textColor", "#333");
+    let line_color = theme_token(effective_config, "lineColor", "#333333");
+    let error_bkg = theme_token(effective_config, "errorBkgColor", "#552222");
+    let error_text = theme_token(effective_config, "errorTextColor", "#552222");
+    let primary_border = theme_token(
         effective_config,
         "primaryBorderColor",
         "hsl(240, 60%, 86.2745098039%)",
     );
-    let arch_edge_color = theme_color(effective_config, "archEdgeColor", &line_color);
+    let arch_edge_color = theme_token(effective_config, "archEdgeColor", &line_color);
     let arch_edge_arrow_color =
-        theme_color(effective_config, "archEdgeArrowColor", &arch_edge_color);
+        theme_token(effective_config, "archEdgeArrowColor", &arch_edge_color);
     let arch_edge_width = crate::config::config_css_number_or_string(
         effective_config,
         &["themeVariables", "archEdgeWidth"],
     )
     .unwrap_or_else(|| "3".to_string());
     let arch_group_border_color =
-        theme_color(effective_config, "archGroupBorderColor", &primary_border);
+        theme_token(effective_config, "archGroupBorderColor", &primary_border);
     let arch_group_border_width = crate::config::config_css_number_or_string(
         effective_config,
         &["themeVariables", "archGroupBorderWidth"],
@@ -268,7 +268,7 @@ pub(super) fn architecture_css_parts_with_config(
     }
 }
 
-#[cfg(feature = "cytoscape-layout")]
+#[cfg(feature = "layout-cytoscape")]
 #[cfg_attr(not(test), allow(dead_code))]
 pub(super) fn architecture_css_with_config(
     diagram_id: &str,
@@ -392,7 +392,7 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
     out
 }
 
-pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> Result<String> {
     // Mirrors pinned Mermaid ER unified renderer stylesheet ordering (see `diagrams/er/styles.ts`
     // and shared base stylesheet).
     // Keep `:root` last (matches upstream fixtures).
@@ -413,21 +413,16 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
         .optional_color("nodeTextColor")
         .unwrap_or_else(|| text_color.clone());
     const DEFAULT_ER_TERTIARY: &str = "hsl(80, 100%, 96.2745098039%)";
-    const DEFAULT_ER_TERTIARY_FADE: &str = "rgba(248.6666666666, 255, 235.9999999999, 0.5)";
     let tertiary_color = theme.color("tertiaryColor", DEFAULT_ER_TERTIARY);
     let edge_label_background = theme.color("edgeLabelBackground", "rgba(232,232,232, 0.8)");
     let er_edge_label_background = match theme.theme_name().as_str() {
         "redux-color" | "redux-dark-color" => theme.optional_color("erEdgeLabelBackground"),
         _ => None,
     };
-    let label_background = er_edge_label_background.clone().unwrap_or_else(|| {
-        if tertiary_color == DEFAULT_ER_TERTIARY {
-            DEFAULT_ER_TERTIARY_FADE.to_string()
-        } else {
-            css_rgba_fade(&tertiary_color, 0.5)
-                .unwrap_or_else(|| DEFAULT_ER_TERTIARY_FADE.to_string())
-        }
-    });
+    let label_background = match er_edge_label_background.clone() {
+        Some(background) => background,
+        None => css_rgba_fade(&tertiary_color, 0.5)?,
+    };
     let edge_label_background = er_edge_label_background.unwrap_or(edge_label_background);
     let stroke_width = if theme.look() == "neo" {
         theme.css_value("strokeWidth", "1px")
@@ -500,7 +495,7 @@ pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> 
         id, line_color
     );
     out.push_str(&mermaid_base_css_root_rule(&id, &font));
-    out
+    Ok(out)
 }
 
 fn pie_theme_option(
@@ -587,12 +582,15 @@ pub(super) fn sankey_css(diagram_id: &str, effective_config: &serde_json::Value)
     out
 }
 
-pub(super) fn treemap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+pub(super) fn treemap_css(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) -> Result<String> {
     // Mermaid's treemap styles merge `treemap.*` options with theme title/text colors. Keep
     // `:root` last to match upstream SVG baselines.
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
-    let theme = PresentationTheme::new(effective_config).treemap();
+    let theme = PresentationTheme::new(effective_config).treemap()?;
     let mut out = parts.css_prefix;
 
     let _ = write!(
@@ -617,7 +615,7 @@ pub(super) fn treemap_css(diagram_id: &str, effective_config: &serde_json::Value
         theme.title_font_size
     );
     out.push_str(&parts.root_rule);
-    out
+    Ok(out)
 }
 
 pub(super) fn push_xychart_css(out: &mut String, diagram_id: &str) {

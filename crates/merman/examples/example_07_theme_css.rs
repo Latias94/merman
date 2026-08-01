@@ -1,6 +1,6 @@
 mod support;
 
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This uses a Mermaid init directive; host-owned defaults should use `with_site_config`.

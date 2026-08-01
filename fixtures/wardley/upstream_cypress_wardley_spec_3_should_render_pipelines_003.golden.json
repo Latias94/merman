@@ -1,0 +1,114 @@
+{
+  "diagramType": "wardley",
+  "model": {
+    "type": "wardley",
+    "title": "Kettle Evolution Pipeline",
+    "accTitle": null,
+    "accDescr": null,
+    "nodes": [
+      {
+        "id": "Kettle",
+        "label": "Kettle",
+        "x": 45.0,
+        "y": 56.99999999999999,
+        "className": "component",
+        "isPipelineParent": true,
+        "inertia": false
+      },
+      {
+        "id": "Power",
+        "label": "Power",
+        "x": 70.0,
+        "y": 10.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "User",
+        "label": "User",
+        "x": 50.0,
+        "y": 95.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Kettle_Campfire Kettle",
+        "label": "Campfire Kettle",
+        "x": 35.0,
+        "y": 56.99999999999999,
+        "className": "pipeline-component",
+        "labelOffsetX": -60,
+        "labelOffsetY": 35,
+        "inPipeline": true
+      },
+      {
+        "id": "Kettle_Electric Kettle",
+        "label": "Electric Kettle",
+        "x": 53.0,
+        "y": 56.99999999999999,
+        "className": "pipeline-component",
+        "labelOffsetX": -60,
+        "labelOffsetY": 35,
+        "inPipeline": true
+      },
+      {
+        "id": "Kettle_Smart Kettle",
+        "label": "Smart Kettle",
+        "x": 72.0,
+        "y": 56.99999999999999,
+        "className": "pipeline-component",
+        "labelOffsetX": -30,
+        "labelOffsetY": 35,
+        "inPipeline": true
+      }
+    ],
+    "links": [
+      {
+        "source": "Kettle",
+        "target": "Power",
+        "dashed": false
+      },
+      {
+        "source": "User",
+        "target": "Kettle_Electric Kettle",
+        "dashed": false
+      },
+      {
+        "source": "Kettle_Campfire Kettle",
+        "target": "Kettle",
+        "dashed": false
+      },
+      {
+        "source": "Kettle_Electric Kettle",
+        "target": "Kettle",
+        "dashed": false
+      },
+      {
+        "source": "Kettle_Smart Kettle",
+        "target": "Kettle",
+        "dashed": false
+      }
+    ],
+    "trends": [],
+    "pipelines": [
+      {
+        "nodeId": "Kettle",
+        "componentIds": [
+          "Kettle_Campfire Kettle",
+          "Kettle_Electric Kettle",
+          "Kettle_Smart Kettle"
+        ]
+      }
+    ],
+    "annotations": [],
+    "notes": [],
+    "accelerators": [],
+    "deaccelerators": [],
+    "annotationsBox": null,
+    "axes": {},
+    "size": {
+      "width": 1100.0,
+      "height": 800.0
+    }
+  }
+}

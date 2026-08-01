@@ -1,13 +1,74 @@
 use super::super::*;
+use merman_core::diagrams::xychart::XyChartDiagramRenderModel;
 
 // XYChart diagram SVG renderer implementation (split from parity.rs).
 
+/// Mermaid uses JavaScript's `String#length` for XYChart bar labels, which counts UTF-16 code
+/// units rather than Unicode scalar values.
+fn javascript_string_length(text: &str) -> f64 {
+    text.encode_utf16().count() as f64
+}
+
+/// Computes the result of Mermaid's one-pixel decrement loop without iterating once per pixel.
+///
+/// The upstream renderer decrements a candidate font size until it fits. That is observable for
+/// ordinary dimensions, but a finite value such as `1e308` cannot make numerical progress when
+/// subtracting one, so the browser algorithm never terminates. The fit predicates are monotonic;
+/// solving their upper bound directly preserves the same discrete candidate for normal values and
+/// makes extreme finite dimensions terminate in constant time.
+fn font_size_after_unit_decrements(initial: f64, maximum_that_fits: f64) -> f64 {
+    if !(initial.is_finite() && initial > 0.0) || maximum_that_fits.is_nan() {
+        return 0.0;
+    }
+    if maximum_that_fits >= initial {
+        return initial;
+    }
+    if maximum_that_fits <= 0.0 {
+        return 0.0;
+    }
+
+    let decrements = (initial - maximum_that_fits).ceil();
+    let candidate = initial - decrements;
+    if candidate.is_finite() && candidate > 0.0 {
+        candidate
+    } else {
+        0.0
+    }
+}
+
+fn horizontal_label_font_size(item_width: f64, label: &str, initial: f64, inset_px: f64) -> f64 {
+    let denominator = javascript_string_length(label) * 0.7;
+    let maximum_that_fits = if denominator > 0.0 {
+        (item_width - inset_px) / denominator
+    } else {
+        f64::INFINITY
+    };
+    font_size_after_unit_decrements(initial, maximum_that_fits)
+}
+
+fn vertical_label_font_size(
+    item_width: f64,
+    item_height: f64,
+    label: &str,
+    initial: f64,
+    y_offset: f64,
+) -> f64 {
+    let denominator = javascript_string_length(label) * 0.7;
+    let horizontal_maximum = if denominator > 0.0 {
+        item_width / denominator
+    } else {
+        f64::INFINITY
+    };
+    let maximum_that_fits = horizontal_maximum.min(item_height - y_offset);
+    font_size_after_unit_decrements(initial, maximum_that_fits)
+}
+
 pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
-    _semantic: &serde_json::Value,
+    model: &XyChartDiagramRenderModel,
     _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     use rustc_hash::FxHashMap;
     use std::collections::hash_map::Entry;
 
@@ -121,6 +182,19 @@ pub(crate) fn render_xychart_diagram_svg(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("xychart");
+    let diagram_id_esc = escape_xml(diagram_id);
+    let acc_title = model
+        .acc_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let acc_descr = model
+        .acc_descr
+        .as_deref()
+        .map(|description| description.trim_end_matches('\n'))
+        .filter(|description| !description.trim().is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let data_label_config = if layout.show_data_label {
         Some((
             layout.show_data_label_outside_bar,
@@ -131,21 +205,31 @@ pub(crate) fn render_xychart_diagram_svg(
     };
 
     let mut out = String::new();
-    let w_attr = fmt(layout.width.max(1.0)).to_string();
-    let h_attr = fmt(layout.height.max(1.0)).to_string();
-    let viewbox_attr = format!("0 0 {w_attr} {h_attr}");
-    let style_attr = format!("max-width: {w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "xychart")
-        },
-    );
+    let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
+    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "xychart");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+    root_chrome.dom.trailing_newline = false;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::XyChart, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
+
+    if let Some(title) = acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            escape_xml(title)
+        );
+    }
+    if let Some(description) = acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            escape_xml(description)
+        );
+    }
 
     out.push_str("<style>");
     push_xychart_css(&mut out, diagram_id);
@@ -218,33 +302,19 @@ pub(crate) fn render_xychart_diagram_svg(
 
                     if !valid_items.is_empty() {
                         if layout.chart_orientation == "horizontal" {
-                            fn fits(
-                                item: &BarItem<'_>,
-                                font_size: f64,
-                                char_width_factor: f64,
-                                inset_px: f64,
-                            ) -> bool {
-                                let text_w = font_size
-                                    * (item.label.chars().count() as f64)
-                                    * char_width_factor;
-                                text_w <= item.rect.width - inset_px
-                            }
-
                             let mut min_font = f64::INFINITY;
                             for item in &valid_items {
-                                let mut fs = item.rect.height * bar_data_label_scale_factor;
-                                while !fits(
-                                    item,
-                                    fs,
-                                    bar_data_label_scale_factor,
+                                let fs = horizontal_label_font_size(
+                                    item.rect.width,
+                                    item.label,
+                                    item.rect.height * bar_data_label_scale_factor,
                                     bar_data_label_inset_px,
-                                ) && fs > 0.0
-                                {
-                                    fs -= 1.0;
-                                }
+                                );
                                 min_font = min_font.min(fs);
                             }
-                            let uniform = min_font.floor().max(0.0);
+                            let uniform = if min_font.is_finite() { min_font } else { 0.0 }
+                                .floor()
+                                .max(0.0);
                             for item in &valid_items {
                                 let mut t = node("text");
                                 let x = if *show_data_label_outside_bar {
@@ -270,42 +340,27 @@ pub(crate) fn render_xychart_diagram_svg(
                             }
                         } else {
                             let y_offset = bar_data_label_inset_px;
-                            fn fits(
-                                item: &BarItem<'_>,
-                                font_size: f64,
-                                char_width_factor: f64,
-                                y_offset: f64,
-                            ) -> bool {
-                                let text_w = font_size
-                                    * (item.label.chars().count() as f64)
-                                    * char_width_factor;
-                                let center_x = item.rect.x + item.rect.width / 2.0;
-                                let left = center_x - text_w / 2.0;
-                                let right = center_x + text_w / 2.0;
-                                let horizontal =
-                                    left >= item.rect.x && right <= item.rect.x + item.rect.width;
-                                let vertical = item.rect.y + y_offset + font_size
-                                    <= item.rect.y + item.rect.height;
-                                horizontal && vertical
-                            }
-
                             let mut min_font = f64::INFINITY;
                             for item in &valid_items {
-                                let denom = (item.label.chars().count() as f64)
+                                let denominator = javascript_string_length(item.label)
                                     * bar_data_label_scale_factor;
-                                let mut fs = if denom <= 0.0 {
+                                let initial = if denominator <= 0.0 {
                                     0.0
                                 } else {
-                                    item.rect.width / denom
+                                    item.rect.width / denominator
                                 };
-                                while !fits(item, fs, bar_data_label_scale_factor, y_offset)
-                                    && fs > 0.0
-                                {
-                                    fs -= 1.0;
-                                }
+                                let fs = vertical_label_font_size(
+                                    item.rect.width,
+                                    item.rect.height,
+                                    item.label,
+                                    initial,
+                                    y_offset,
+                                );
                                 min_font = min_font.min(fs);
                             }
-                            let uniform = min_font.floor().max(0.0);
+                            let uniform = if min_font.is_finite() { min_font } else { 0.0 }
+                                .floor()
+                                .max(0.0);
                             for item in &valid_items {
                                 let mut t = node("text");
                                 t.attr("x", fmt_xy(item.rect.x + item.rect.width / 2.0));
@@ -382,5 +437,46 @@ pub(crate) fn render_xychart_diagram_svg(
     render_node(&mut out, &arena, 0);
     out.push_str(r#"<g class="mermaid-tmp-group"/>"#);
     out.push_str("</svg>\n");
-    Ok(out)
+    root_document.complete(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn upstream_decrement(initial: f64, maximum_that_fits: f64) -> f64 {
+        let mut font_size = initial;
+        while font_size > maximum_that_fits && font_size > 0.0 {
+            font_size -= 1.0;
+        }
+        font_size
+    }
+
+    #[test]
+    fn closed_form_font_sizing_matches_mermaid_for_normal_dimensions() {
+        for (initial, maximum_that_fits) in [(10.2, 8.0), (10.0, 8.8), (8.0, 8.0), (0.5, 0.0)] {
+            assert_eq!(
+                font_size_after_unit_decrements(initial, maximum_that_fits)
+                    .floor()
+                    .max(0.0),
+                upstream_decrement(initial, maximum_that_fits)
+                    .floor()
+                    .max(0.0),
+            );
+        }
+    }
+
+    #[test]
+    fn huge_finite_bar_dimensions_complete_without_a_decrement_loop() {
+        let font_size = horizontal_label_font_size(1e308, "123", 7e307, 10.0);
+
+        assert!(font_size.is_finite());
+        assert!(font_size > 0.0);
+    }
+
+    #[test]
+    fn bar_label_length_uses_javascript_utf16_code_units() {
+        assert_eq!(javascript_string_length("A"), 1.0);
+        assert_eq!(javascript_string_length("\u{1F469}\u{200D}\u{1F4BB}"), 5.0);
+    }
 }

@@ -34,3 +34,7 @@ Cons:
 - Higher initial implementation effort than ad-hoc line parsing.
 - Requires careful testing around lexer precedence and comment handling to reach full parity.
 
+The grammar source remains checked in alongside the implementation, while its generated parser is
+maintainer-owned source at `crates/merman-core/src/generated/lalrpop/sequence_grammar.rs`.
+`cargo run -p xtask -- verify-lalrpop-parsers` prevents grammar and generated-parser drift without
+requiring downstream builds to compile or execute LALRPOP.

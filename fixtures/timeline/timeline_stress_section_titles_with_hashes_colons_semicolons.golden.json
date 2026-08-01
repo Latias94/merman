@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Section titles with punctuation",
     "accTitle": null,
     "accDescr": null,

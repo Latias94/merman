@@ -6,7 +6,7 @@
 
 use crate::graphlib::{EdgeKey, Graph};
 use crate::{EdgeLabel, GraphLabel, NodeLabel, Point};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Default)]
 struct DummyNodeIdGen {
@@ -155,9 +155,22 @@ fn normalize_edge(
     );
 }
 
+/// Restores the original edges after [`run`].
+///
+/// The graph must retain the disjoint, acyclic, single-successor dummy chains produced by [`run`].
+/// Debug builds assert these phase invariants.
 pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let chains = g.graph().dummy_chains.clone();
+    let mut dummy_nodes: Vec<String> = Vec::new();
+    let mut scheduled: FxHashSet<usize> = FxHashSet::default();
+    let mut restored_edges: Vec<(EdgeKey, EdgeLabel)> = Vec::with_capacity(chains.len());
+
     for start in chains {
+        if g.node_ix(&start)
+            .is_some_and(|start_ix| scheduled.contains(&start_ix))
+        {
+            continue;
+        }
         let Some(start_node) = g.node(&start) else {
             continue;
         };
@@ -172,6 +185,26 @@ pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         while let Some(node) = g.node(&v) {
             if node.dummy.is_none() {
                 break;
+            }
+            let Some(v_ix) = g.node_ix(&v) else {
+                break;
+            };
+            if !scheduled.insert(v_ix) {
+                break;
+            }
+            #[cfg(debug_assertions)]
+            {
+                let successors = g.successors(&v);
+                debug_assert_eq!(
+                    successors.len(),
+                    1,
+                    "normalize::undo requires single-successor dummy chains"
+                );
+                debug_assert!(
+                    g.node_ix(successors[0])
+                        .is_none_or(|successor_ix| !scheduled.contains(&successor_ix)),
+                    "normalize::undo requires disjoint acyclic dummy chains"
+                );
             }
             let w = g
                 .first_successor(&v)
@@ -188,13 +221,18 @@ pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
                 }
             }
 
-            let _ = g.remove_node(&v);
+            dummy_nodes.push(v);
             v = w;
             if v.is_empty() {
                 break;
             }
         }
 
-        g.set_edge_key(edge_obj, orig_label);
+        restored_edges.push((edge_obj, orig_label));
+    }
+
+    g.remove_nodes(dummy_nodes.iter().map(String::as_str));
+    for (edge, label) in restored_edges {
+        g.set_edge_key(edge, label);
     }
 }

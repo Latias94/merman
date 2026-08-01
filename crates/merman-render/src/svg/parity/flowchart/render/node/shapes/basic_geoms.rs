@@ -33,7 +33,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
             (w / 2.0, -h),
         ];
         let path_data = path_from_points(&rough_points);
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_hachure_paths_for_svg_path(
                 &path_data,
                 common.fill_color,

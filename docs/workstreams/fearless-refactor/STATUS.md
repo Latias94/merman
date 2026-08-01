@@ -1,82 +1,50 @@
 # Fearless Refactor Status
 
-Snapshot: 2026-06-06
+Snapshot: 2026-07-19
 
-This page is the short-form dashboard for the fearless-refactor workstream.
-The detailed plan still lives in `TODO.md`, `MILESTONES.md`, `OVERRIDE_FOOTPRINT.md`, and `COMPLETION_AUDIT.md`.
+The original fearless-refactor workstream is complete and retained as historical context. Current
+Mermaid alignment and release-readiness work is tracked by the alignment dashboard and active
+implementation plan instead of appending progress notes here.
 
-## Current Read
+| Concern | Current authority |
+| --- | --- |
+| Architecture ownership | `docs/adr/0073-family-owned-diagram-architecture.md` |
+| Implementation | `docs/plans/2026-07-14-001-refactor-family-owned-architecture-plan.md` |
+| Active release alignment | `docs/plans/2026-07-19-001-refactor-mermaid-parity-editor-release-alignment-plan.md` |
+| Parity policy and status | `docs/workstreams/PARITY_BOUNDARY.md` and `docs/alignment/STATUS.md` |
 
-Current-release closeout: complete.
+Architecture completion does not imply that every later worktree passes every parity gate. The
+alignment dashboard owns the current verification read.
 
-Future derivation backlog remains, but no current-release P0 closeout item is open.
+## Current State
 
-What is done:
+- Successful parsing constructs family semantics once; compatibility JSON, typed rendering, and
+  editor facts are projections.
+- Family parsers own lexical facts and recovery spans; a single editor planner resolves semantic
+  overlays and emits the transport representation.
+- Built-in rendering uses the canonical typed headless operation and family-owned artifacts.
+- Render dependencies, including host/system text measurement, are selected by the operation-owned
+  render environment.
+- Every family emits its SVG root through the shared Root Viewport module.
+- Native ABI remains version `2`; analysis, facts, and LSP schemas remain version `1` while the
+  coordinated repository consumers can migrate in the same change.
+- One generated Mermaid reference bundle owns release and companion package/source provenance.
+- Generated root tables, complete-label text tables, fixture-keyed calibration branches, and their
+  generation/audit commands have been removed.
+- Browser-probed vendored font profiles contain reusable glyph, kerning, scale, and endpoint facts;
+  fixtures are transient probe inputs and verification evidence, never runtime keys.
 
-- M0 safety baseline is complete.
-- M1 pipeline ownership cleanup is complete.
-- M2 typed model expansion is complete for all in-tree Mermaid diagrams except the explicit error/custom-registry fallback path.
-- M3 text subsystem modularization is complete.
-- M4 large renderer decomposition is effectively complete.
-- Render numeric config parsing is centralized in `crates/merman-render/src/config.rs`; diagram
-  modules no longer carry local `json_f64` / `config_f64` / CSS `px` parser copies.
-- Root viewport override no-growth is now `183` according to
-  `cargo run -p xtask -- report-overrides --check-no-growth`. A 2026-07-12 disabled-root audit
-  removed 37 stale generated pins from C4, Flowchart, State, and Timeline, while retaining the
-  77 entries that still guard root drift. The exact 130 outside-table mismatch keys in those four
-  families stayed unchanged and remain separate parity work rather than override evidence.
-- Sequence layout has been split down to focused actor, activation, block-step, block-bounds,
-  note, message, rect, root-bounds, and orchestration owners.
-- `cargo run -p xtask -- verify --strict` passes; the latest closeout run covered workspace
-  nextest (`1246` passed, `3` skipped), normal SVG DOM parity, and full root parity with the
-  explicit nine-residual policy.
-- `cargo run -p xtask -- verify --strict` includes full `parity-root` coverage.
-- `cargo run -p xtask -- report-overrides --check-no-growth` passes.
-- The latest targeted disabled-root audit keeps the affected generated root pins stale-free and
-  preserves the outside-table key set without widening comparator or residual policy.
-- `cargo bench -p merman --features render` has a fresh post-cleanup release gate record in
-  `docs/performance/spotcheck_2026-05-14_flowchart_override_inventory_full_bench_gate.md`.
-- Root `CHANGELOG.md` now calls out the refactor release-readiness work.
-- Clippy is part of the strict release gate.
-- Hand-curated helper overrides are at `0`.
-- Manual raw SVG/path bridge functions are at `0`.
+## Active Rules
 
-What is still open:
+- Fix parser, semantic model, layout, DOM structure, or root-bound ownership at its source.
+- Use a host text measurer when exact installed-font behavior is required.
+- Treat browser-only differences as documented residuals when no source-backed headless model can
+  derive them robustly.
+- Do not add literal-label, fixture-id, topology-signature, or old-viewBox branches to production.
+- Run focused family tests first, then workspace, clippy, strict verification, and parity gates.
 
-- Future root viewport and text lookup derivation targets remain for later releases.
-- No known-obsolete override bucket is waiting on blind deletion in the current release scope.
-- Any future override reduction should still start from disabled-root or text-measurement evidence,
-  not table pruning by count alone.
+## Historical Documents
 
-## Remaining Work Shape
-
-The remaining work is not another broad pipeline rewrite.
-It is mostly evidence-driven debt reduction:
-
-- root viewport buckets that still reflect real `parity-root` drift
-- text lookup buckets that still guard real browser/font behavior
-- explicit browser/font buckets whose exactness cost would exceed the value of a cleaner model
-- a few retained guards that must stay until the upstream geometry or text model changes
-
-Largest remaining buckets:
-
-- root viewport: `pie` 58, `flowchart` 36, `state` 32, `mindmap` 30, `eventmodeling` 9,
-  `timeline` 7, `er` 6, `sankey` 3, `c4` 2
-- text lookup: `class` 269, `c4` 201, `block` 120, `flowchart` 50, `state` 27, `er` 9
-
-## Next Practical Slices
-
-1. Keep shrinking root viewport debt only where typed layout or emitted-bounds logic can absorb it.
-2. Keep pruning text lookup debt only where DOM parity, layout snapshots, and strict gates all stay green.
-3. Prefer larger structural wins over small one-off deletions when the evidence points to a shared model fix.
-4. Re-run the release gate after each meaningful deletion batch.
-
-## Completion Definition
-
-This workstream is finished when:
-
-- `TODO.md` has no unresolved P0 items
-- the remaining override debt is either removed or explicitly justified
-- `cargo run -p xtask -- verify --strict` is still green
-- `cargo bench -p merman --features render` has a fresh release-ready spotcheck
-- `CHANGELOG.md` and the audit docs reflect the final state
+`MILESTONES.md`, `TODO.md`, `CHANGELOG.md`, and `COMPLETION_AUDIT.md` describe earlier states. They
+may mention mechanisms that no longer exist and are retained as historical evidence, not current
+implementation guidance.

@@ -1,0 +1,174 @@
+{
+  "diagramType": "venn",
+  "model": {
+    "type": "venn",
+    "title": "Software Engineering Skills",
+    "accTitle": null,
+    "accDescr": null,
+    "subsets": [
+      {
+        "sets": [
+          "Frontend"
+        ],
+        "size": 10.0,
+        "label": "Frontend"
+      },
+      {
+        "sets": [
+          "Backend"
+        ],
+        "size": 10.0,
+        "label": "Backend"
+      },
+      {
+        "sets": [
+          "DevOps"
+        ],
+        "size": 10.0,
+        "label": "DevOps"
+      },
+      {
+        "sets": [
+          "Backend",
+          "Frontend"
+        ],
+        "size": 2.5,
+        "label": "Fullstack"
+      },
+      {
+        "sets": [
+          "Backend",
+          "DevOps"
+        ],
+        "size": 2.5
+      },
+      {
+        "sets": [
+          "DevOps",
+          "Frontend"
+        ],
+        "size": 2.5
+      },
+      {
+        "sets": [
+          "Backend",
+          "DevOps",
+          "Frontend"
+        ],
+        "size": 1.1111111111111112
+      }
+    ],
+    "textNodes": [
+      {
+        "sets": [
+          "Frontend"
+        ],
+        "id": "React"
+      },
+      {
+        "sets": [
+          "Frontend"
+        ],
+        "id": "CSS"
+      },
+      {
+        "sets": [
+          "Frontend"
+        ],
+        "id": "HTML"
+      },
+      {
+        "sets": [
+          "Backend"
+        ],
+        "id": "Node.js"
+      },
+      {
+        "sets": [
+          "Backend"
+        ],
+        "id": "SQL"
+      },
+      {
+        "sets": [
+          "Backend"
+        ],
+        "id": "APIs"
+      },
+      {
+        "sets": [
+          "DevOps"
+        ],
+        "id": "Docker"
+      },
+      {
+        "sets": [
+          "DevOps"
+        ],
+        "id": "CI/CD"
+      },
+      {
+        "sets": [
+          "Backend",
+          "Frontend"
+        ],
+        "id": "REST"
+      },
+      {
+        "sets": [
+          "Backend",
+          "Frontend"
+        ],
+        "id": "GraphQL"
+      },
+      {
+        "sets": [
+          "Backend",
+          "DevOps"
+        ],
+        "id": "Monitoring"
+      },
+      {
+        "sets": [
+          "DevOps",
+          "Frontend"
+        ],
+        "id": "Performance"
+      },
+      {
+        "sets": [
+          "Backend",
+          "DevOps",
+          "Frontend"
+        ],
+        "id": "Architecture"
+      }
+    ],
+    "styleEntries": [
+      {
+        "targets": [
+          "Frontend"
+        ],
+        "styles": {
+          "fill": "#ff6b6b"
+        }
+      },
+      {
+        "targets": [
+          "Backend"
+        ],
+        "styles": {
+          "fill": "#4ecdc4"
+        }
+      },
+      {
+        "targets": [
+          "DevOps"
+        ],
+        "styles": {
+          "fill": "#45b7d1"
+        }
+      }
+    ]
+  }
+}

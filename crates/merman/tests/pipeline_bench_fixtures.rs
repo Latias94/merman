@@ -1,8 +1,7 @@
-#![cfg(feature = "render")]
+#![cfg(all(feature = "svg", feature = "layout-cytoscape"))]
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 fn assert_no_empty_style_elements(name: &str, svg: &str) {
     let mut cursor = 0;
@@ -43,15 +42,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
 
     let engine = merman_core::Engine::new();
     let parse_options = merman_core::ParseOptions::strict();
-    let layout = merman::render::LayoutOptions {
-        viewport_width: 800.0,
-        viewport_height: 600.0,
-        text_measurer: Arc::new(merman::render::VendoredFontMetricsTextMeasurer::default()),
-        math_renderer: None,
-        use_manatee_layout: true,
-        flowchart_elk_backend: Default::default(),
-        resource_limits: Default::default(),
-    };
+    let layout = merman::svg::LayoutOptions::headless_svg_defaults();
 
     for path in fixtures {
         let name = path
@@ -63,9 +54,8 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             .unwrap_or_else(|err| panic!("{name}: read {}: {err}", path.display()));
 
         let metadata = engine
-            .parse_metadata_sync(&input, parse_options)
-            .unwrap_or_else(|err| panic!("{name}: metadata parse failed: {err}"))
-            .unwrap_or_else(|| panic!("{name}: metadata parser returned no diagram"));
+            .parse_metadata_sync(&input)
+            .unwrap_or_else(|err| panic!("{name}: metadata parse failed: {err}"));
 
         engine
             .parse_diagram_with_type_sync(&metadata.diagram_type, &input, parse_options)
@@ -81,19 +71,19 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
             .unwrap_or_else(|err| panic!("{name}: render-model parse failed: {err}"))
             .unwrap_or_else(|| panic!("{name}: render-model parser returned no diagram"));
 
-        let svg_options = merman::render::SvgRenderOptions {
-            diagram_id: Some(merman::render::sanitize_svg_id(&name)),
+        let svg_options = merman::svg::SvgRenderOptions {
+            diagram_id: Some(merman::svg::sanitize_svg_id(&name)),
             ..Default::default()
         };
         let svg =
-            merman::render::render_svg_sync(&engine, &input, parse_options, &layout, &svg_options)
+            merman::svg::render_svg_sync(&engine, &input, parse_options, &layout, &svg_options)
                 .unwrap_or_else(|err| panic!("{name}: end-to-end SVG render failed: {err}"))
                 .unwrap_or_else(|| panic!("{name}: render returned no SVG"));
 
         assert!(
             !svg.is_empty(),
             "{name}: render returned an empty SVG for {:?}",
-            parsed.meta.diagram_type
+            parsed.metadata().diagram_type
         );
         assert_no_empty_style_elements(&name, &svg);
     }

@@ -1,6 +1,7 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
+use merman::svg::RenderResourceProfile;
 use merman_core::MAX_DIAGRAM_NESTING_DEPTH;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -221,12 +222,41 @@ fn zed_class_generics_fallback_text_is_not_double_escaped() {
 }
 
 #[test]
-fn zed_deeply_nested_flowchart_renders_past_legacy_depth_limit() {
+fn zed_deeply_nested_flowchart_respects_the_selected_resource_profile() {
     let source = deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2);
-    let svg = render_resvg_safe("zed-deep-flowchart", &source);
+    let error = renderer("zed-deep-flowchart-interactive")
+        .render_svg_sync(&source)
+        .expect_err("the interactive profile must bound semantic nesting before layout");
+    assert!(
+        error.to_string().contains("max_model_nesting_depth"),
+        "{error}"
+    );
+
+    let svg = renderer("zed-deep-flowchart-trusted")
+        .with_resource_profile(RenderResourceProfile::TrustedNative)
+        .render_svg_sync(&source)
+        .expect("trusted raw vector rendering should accept the deep SVG tree")
+        .expect("flowchart should be detected");
 
     assert!(svg.contains("<svg"));
     assert!(!svg.contains(r#"aria-roledescription="error""#));
+}
+
+#[test]
+#[cfg(feature = "png")]
+fn zed_deeply_nested_flowchart_is_rejected_before_recursive_raster_backend() {
+    let source = deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2);
+    let error = renderer("zed-deep-flowchart-png")
+        .with_resource_profile(RenderResourceProfile::TrustedNative)
+        .render_png_sync(&source, &merman::svg::export::RasterOptions::default())
+        .expect_err("rasterization must reject a tree deeper than the backend capability");
+
+    assert!(
+        error
+            .to_string()
+            .contains(merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID),
+        "{error}"
+    );
 }
 
 #[test]

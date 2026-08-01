@@ -1,5 +1,6 @@
 use super::util::SvgTheme;
-use crate::chart_palette::{XyChartPaletteConfig, resolve_xychart_plot_palette};
+use crate::chart_palette::resolve_xychart_plot_palette;
+use merman_core::theme_color::{darken, lighten};
 use serde_json::Value;
 
 mod families;
@@ -285,27 +286,12 @@ pub(crate) struct VennTheme {
 }
 
 impl VennTheme {
-    pub(crate) fn circle_text_color(&self, base_color: &str) -> String {
-        let Some((r, g, b)) = parse_venn_css_rgb(base_color) else {
-            return if self.is_dark_theme {
-                "#ffffff".to_string()
-            } else {
-                "#000000".to_string()
-            };
-        };
-        let adjust = if self.is_dark_theme { 30.0 } else { -30.0 };
-        let mix = |channel: u8| -> u8 {
-            if adjust > 0.0 {
-                (channel as f64 + (255.0 - channel as f64) * (adjust / 100.0))
-                    .round()
-                    .clamp(0.0, 255.0) as u8
-            } else {
-                (channel as f64 * (1.0 + adjust / 100.0))
-                    .round()
-                    .clamp(0.0, 255.0) as u8
-            }
-        };
-        format!("#{:02x}{:02x}{:02x}", mix(r), mix(g), mix(b))
+    pub(crate) fn circle_text_color(&self, base_color: &str) -> crate::Result<String> {
+        if self.is_dark_theme {
+            Ok(lighten(base_color, 30.0)?)
+        } else {
+            Ok(darken(base_color, 30.0)?)
+        }
     }
 }
 

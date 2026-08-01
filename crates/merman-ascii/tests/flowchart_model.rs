@@ -2,7 +2,7 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
 };
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::flowchart::{FlowNode, FlowchartV2Model};
+use merman_core::diagrams::flowchart::{FlowNode, FlowchartModel};
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;
@@ -13,7 +13,7 @@ fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::
         .expect("flowchart should parse")
         .expect("flowchart should be detected");
 
-    render_model(&parsed.model, options)
+    render_model(parsed.model(), options)
 }
 
 fn parse_flowchart_error(input: &str) -> String {
@@ -147,8 +147,9 @@ fn assert_rectangular_terminal_grid(rendered: &str) {
     }
 }
 
-fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartV2Model {
-    FlowchartV2Model {
+fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartModel {
+    FlowchartModel {
+        keyword: "graph".to_string(),
         acc_descr: None,
         acc_title: None,
         class_defs: Default::default(),
@@ -160,6 +161,7 @@ fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartV2Mo
             label: Some(label.to_string()),
             label_type: None,
             layout_shape: Some(layout_shape.to_string()),
+            shape: None,
             icon: None,
             form: None,
             pos: None,
@@ -741,7 +743,8 @@ fn flowchart_parser_long_subgraph_title_wraps_to_multiple_rows() {
 #[test]
 fn render_model_subgraph_direction_override_renders_local_left_right_layout_without_cross_boundary_edges()
  {
-    let model = merman_core::diagrams::flowchart::FlowchartV2Model {
+    let model = merman_core::diagrams::flowchart::FlowchartModel {
+        keyword: "graph".to_string(),
         acc_descr: None,
         acc_title: None,
         class_defs: Default::default(),
@@ -754,6 +757,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
                 label: Some("A".to_string()),
                 label_type: None,
                 layout_shape: None,
+                shape: None,
                 icon: None,
                 form: None,
                 pos: None,
@@ -772,6 +776,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
                 label: Some("B".to_string()),
                 label_type: None,
                 layout_shape: None,
+                shape: None,
                 icon: None,
                 form: None,
                 pos: None,
@@ -793,6 +798,8 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             label: None,
             label_type: None,
             edge_type: Some("arrow_point".to_string()),
+            arrow: "-->".to_string(),
+            is_user_defined_id: false,
             stroke: Some("normal".to_string()),
             interpolate: None,
             classes: Vec::new(),
@@ -1861,18 +1868,17 @@ fn flowchart_parser_shape_data_pipeline_example_renders_readable_ascii_shapes() 
 
 #[test]
 fn flowchart_parser_rejects_remaining_uncommon_shapes() {
-    for shape in ["icon"] {
-        let input = format!("flowchart LR\nA@{{ shape: {shape}, label: \"X\" }}");
-        let err = render_flowchart(&input, &AsciiRenderOptions::ascii())
-            .expect_err("unsupported shape should be rejected");
-        assert!(matches!(
-            err,
-            merman_ascii::AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "non-rectangular node shapes",
-            }
-        ));
-    }
+    let shape = "icon";
+    let input = format!("flowchart LR\nA@{{ shape: {shape}, label: \"X\" }}");
+    let err = render_flowchart(&input, &AsciiRenderOptions::ascii())
+        .expect_err("unsupported shape should be rejected");
+    assert!(matches!(
+        err,
+        merman_ascii::AsciiError::UnsupportedFeature {
+            diagram_type: "flowchart",
+            feature: "non-rectangular node shapes",
+        }
+    ));
 }
 
 #[test]

@@ -1,17 +1,42 @@
-use crate::json::from_value_ref;
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
 };
+use crate::resources::{ModelComplexity, RenderResourcePolicy};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use dugong::graphlib::{Graph, GraphOptions};
+use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
+use merman_core::diagrams::requirement::{
+    RequirementDiagramRenderModel, RequirementRenderElement, RequirementRenderNode,
+};
 use serde_json::Value;
+use std::collections::HashMap;
 
 mod config;
 
 pub(crate) use config::RequirementConfigView;
+
+fn requirement_layout_work_units(model: &RequirementDiagramRenderModel) -> usize {
+    let node_count = model
+        .requirements
+        .iter()
+        .filter(|node| node.name != "__proto__")
+        .count()
+        .saturating_add(
+            model
+                .elements
+                .iter()
+                .filter(|node| node.name != "__proto__")
+                .count(),
+        );
+    let edge_count = model.relationships.len();
+    // Dugong's ranking, crossing, and routing phases repeatedly inspect graph incidence. Charge a
+    // deterministic V*E upper bound before constructing the graph rather than exposing a
+    // Requirement-specific public threshold.
+    node_count
+        .saturating_add(edge_count)
+        .saturating_add(node_count.saturating_mul(edge_count))
+}
 
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
@@ -40,6 +65,59 @@ pub(crate) struct RequirementLabelMetrics {
     pub(crate) max_width_px: i64,
 }
 
+#[derive(Debug)]
+pub(crate) struct RequirementPreparedArtifact {
+    layout: RequirementDiagramLayout,
+    nodes: Vec<RequirementNodeLabelPlan>,
+    edges: Vec<RequirementEdgeLabelPlan>,
+}
+
+impl RequirementPreparedArtifact {
+    pub(crate) fn layout(&self) -> &RequirementDiagramLayout {
+        &self.layout
+    }
+
+    pub(crate) fn render_parts(
+        &self,
+    ) -> (
+        &RequirementDiagramLayout,
+        &[RequirementNodeLabelPlan],
+        &[RequirementEdgeLabelPlan],
+    ) {
+        (&self.layout, &self.nodes, &self.edges)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RequirementNodeLabelPlan {
+    pub(crate) lines: Vec<RequirementNodeLabelLine>,
+    pub(crate) divider_y_offset: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RequirementNodeLabelLine {
+    pub(crate) display_text: String,
+    pub(crate) metrics: RequirementLabelMetrics,
+    pub(crate) y_offset: f64,
+    pub(crate) bold: bool,
+    pub(crate) keep_centered: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RequirementEdgeLabelPlan {
+    pub(crate) relationship_type: String,
+    pub(crate) display_text: String,
+    pub(crate) max_width_px: i64,
+}
+
+#[derive(Debug)]
+struct RequirementLabelSpec {
+    display_text: String,
+    measurement_bold: bool,
+    render_bold: bool,
+    keep_centered: bool,
+}
+
 pub(crate) fn requirement_styles_force_bold(css_styles: &[String]) -> bool {
     css_styles.iter().any(|raw| {
         let s = raw.trim().trim_end_matches(';');
@@ -64,58 +142,12 @@ pub(crate) fn requirement_styles_force_bold(css_styles: &[String]) -> bool {
     })
 }
 
-fn calculate_text_dimensions_like_mermaid(
-    measurer: &dyn TextMeasurer,
-    style: &TextStyle,
-    text: &str,
-) -> (i64, i64, i64) {
-    let mut width = 0_i64;
-    let mut height = 0_i64;
-    let mut line_height = 0_i64;
-
-    for line in crate::text::split_html_br_lines(text) {
-        let measured_line = if line.is_empty() { "\u{200b}" } else { line };
-        let line_width = measurer
-            .measure_svg_simple_text_bbox_width_px(measured_line, style)
-            .max(0.0)
-            .round() as i64;
-        let measured_height = measurer
-            .measure_svg_simple_text_bbox_height_px(measured_line, style)
-            .max(0.0)
-            .round() as i64;
-        width = width.max(line_width);
-        height += measured_height;
-        line_height = line_height.max(measured_height);
-    }
-
-    (width, height, line_height)
-}
-
 pub(crate) fn calculate_text_width_like_mermaid_px(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     text: &str,
 ) -> i64 {
-    let mut sans = style.clone();
-    sans.font_family = Some("sans-serif".to_string());
-    sans.font_weight = None;
-
-    let mut configured = style.clone();
-    configured.font_weight = None;
-
-    let sans_dimensions = calculate_text_dimensions_like_mermaid(measurer, &sans, text);
-    let configured_dimensions = calculate_text_dimensions_like_mermaid(measurer, &configured, text);
-
-    // Mermaid measures both families but selects sans-serif only when every dimension is larger.
-    // In particular, it does not take the maximum width of the two probes.
-    if sans_dimensions.0 > configured_dimensions.0
-        && sans_dimensions.1 > configured_dimensions.1
-        && sans_dimensions.2 > configured_dimensions.2
-    {
-        sans_dimensions.0
-    } else {
-        configured_dimensions.0
-    }
+    crate::text::measure_mermaid_text_dimensions(measurer, text, style).width
 }
 
 pub(crate) fn measure_requirement_label_metrics(
@@ -140,7 +172,7 @@ pub(crate) fn measure_requirement_label_metrics(
         (calculate_text_width_like_mermaid_px(measurer, calculation_style, calculation_text) + 50)
             .max(0);
     let max_width = (max_width_px > 0).then_some(max_width_px as f64);
-    let measured = crate::text::measure_markdown_with_flowchart_bold_deltas(
+    let measured = crate::text::measure_markdown_with_inline_styles(
         measurer,
         calculation_text,
         html_style,
@@ -161,6 +193,21 @@ pub(crate) fn measure_requirement_label_metrics(
 struct RequirementBoxLayout {
     width: f64,
     height: f64,
+    lines: Vec<RequirementNodeLabelLine>,
+    divider_y_offset: Option<f64>,
+}
+
+impl RequirementBoxLayout {
+    fn into_node_plan(self) -> (f64, f64, RequirementNodeLabelPlan) {
+        (
+            self.width,
+            self.height,
+            RequirementNodeLabelPlan {
+                lines: self.lines,
+                divider_y_offset: self.divider_y_offset,
+            },
+        )
+    }
 }
 
 fn requirement_box_layout(
@@ -168,76 +215,85 @@ fn requirement_box_layout(
     html_style_regular: &TextStyle,
     html_style_bold: &TextStyle,
     calculation_style: &TextStyle,
-    lines: &[(String, String, bool)],
+    lines: Vec<RequirementLabelSpec>,
     gap: f64,
     padding: f64,
 ) -> RequirementBoxLayout {
     // Mirrors Mermaid `requirementBox.ts` label stacking and bbox-based sizing.
-    let mut html_metrics: Vec<Option<RequirementLabelMetrics>> = Vec::with_capacity(lines.len());
     let mut max_w: f64 = 0.0;
+    let mut min_y = 0.0;
+    let mut max_y = 0.0;
+    let mut y_offset = 0.0;
+    let mut prepared_lines = Vec::with_capacity(lines.len());
+    let mut type_height = 0.0;
+    let mut name_height = 0.0;
+    let mut has_body = false;
 
-    // First pass: label bbox widths/heights (HTML).
-    for (display, calculation, bold) in lines {
-        let m = measure_requirement_label_metrics(
+    for (idx, line) in lines.into_iter().enumerate() {
+        let Some(metrics) = measure_requirement_label_metrics(
             measurer,
             html_style_regular,
             html_style_bold,
             calculation_style,
-            display,
-            calculation,
-            *bold,
-        );
-        if let Some(m) = &m {
-            max_w = max_w.max(m.width);
-        }
-        html_metrics.push(m);
-    }
-
-    let total_w = max_w + padding;
-
-    // Second pass: vertical extents.
-    let mut min_y = 0.0;
-    let mut max_y = 0.0;
-    let mut y_offset = 0.0;
-
-    for (idx, m) in html_metrics.iter().enumerate() {
-        let Some(m) = m else {
+            &line.display_text,
+            &line.display_text,
+            line.measurement_bold,
+        ) else {
             continue;
         };
+        max_w = max_w.max(metrics.width);
 
         if idx == 0 {
-            min_y = -m.height / 2.0;
-            max_y = m.height / 2.0;
-            y_offset = m.height;
-            continue;
-        }
-        if idx == 1 {
-            let top = -m.height / 2.0 + y_offset;
-            let bottom = m.height / 2.0 + y_offset;
+            min_y = -metrics.height / 2.0;
+            max_y = metrics.height / 2.0;
+            type_height = metrics.height;
+            y_offset = metrics.height;
+        } else if idx == 1 {
+            let top = -metrics.height / 2.0 + y_offset;
+            let bottom = metrics.height / 2.0 + y_offset;
             min_y = min_y.min(top);
             max_y = max_y.max(bottom);
-            y_offset += m.height + gap;
-            continue;
+            name_height = metrics.height;
+            y_offset += metrics.height + gap;
+        } else {
+            let top = -metrics.height / 2.0 + y_offset;
+            let bottom = metrics.height / 2.0 + y_offset;
+            min_y = min_y.min(top);
+            max_y = max_y.max(bottom);
+            y_offset += metrics.height;
+            has_body = true;
         }
 
-        let top = -m.height / 2.0 + y_offset;
-        let bottom = m.height / 2.0 + y_offset;
-        min_y = min_y.min(top);
-        max_y = max_y.max(bottom);
-        y_offset += m.height;
+        let line_y_offset = match idx {
+            0 => 0.0,
+            1 => type_height,
+            _ => y_offset - metrics.height,
+        };
+        prepared_lines.push(RequirementNodeLabelLine {
+            display_text: line.display_text,
+            metrics,
+            y_offset: line_y_offset,
+            bold: line.render_bold,
+            keep_centered: line.keep_centered,
+        });
     }
 
     let bbox_h = (max_y - min_y).max(1.0);
-    let total_h = bbox_h + padding;
 
     RequirementBoxLayout {
-        width: total_w.max(1.0),
-        height: total_h.max(1.0),
+        width: (max_w + padding).max(1.0),
+        height: (bbox_h + padding).max(1.0),
+        lines: prepared_lines,
+        divider_y_offset: has_body.then_some(type_height + name_height + gap),
     }
 }
 
 fn requirement_edge_id(src: &str, dst: &str, idx: usize) -> String {
     format!("{src}-{dst}-{idx}")
+}
+
+fn requirement_edge_key(src: &str, dst: &str) -> EdgeKey {
+    EdgeKey::new(src, dst, Some(requirement_edge_id(src, dst, 0)))
 }
 
 fn prefixed_nonempty_line(prefix: &str, value: &str) -> String {
@@ -249,20 +305,123 @@ fn prefixed_nonempty_line(prefix: &str, value: &str) -> String {
     }
 }
 
-pub fn layout_requirement_diagram(
-    model: &Value,
-    effective_config: &Value,
-    text_measurer: &dyn TextMeasurer,
-) -> Result<RequirementDiagramLayout> {
-    let model: RequirementDiagramRenderModel = from_value_ref(model)?;
-    layout_requirement_diagram_typed(&model, effective_config, text_measurer)
+fn node_label_spec(
+    display_text: String,
+    measurement_bold: bool,
+    render_bold: bool,
+    keep_centered: bool,
+) -> RequirementLabelSpec {
+    RequirementLabelSpec {
+        display_text,
+        measurement_bold,
+        render_bold,
+        keep_centered,
+    }
 }
 
-pub fn layout_requirement_diagram_typed(
+fn requirement_node_label_specs(node: &RequirementRenderNode) -> Vec<RequirementLabelSpec> {
+    let style_bold = requirement_styles_force_bold(&node.css_styles);
+    vec![
+        node_label_spec(
+            format!("&lt;&lt;{}&gt;&gt;", node.node_type),
+            style_bold,
+            false,
+            true,
+        ),
+        node_label_spec(node.name.clone(), true, true, true),
+        node_label_spec(
+            prefixed_nonempty_line("ID: ", &node.requirement_id),
+            style_bold,
+            false,
+            false,
+        ),
+        node_label_spec(
+            prefixed_nonempty_line("Text: ", &node.text),
+            style_bold,
+            false,
+            false,
+        ),
+        node_label_spec(
+            prefixed_nonempty_line("Risk: ", &node.risk),
+            style_bold,
+            false,
+            false,
+        ),
+        node_label_spec(
+            prefixed_nonempty_line("Verification: ", &node.verify_method),
+            style_bold,
+            false,
+            false,
+        ),
+    ]
+}
+
+fn element_node_label_specs(node: &RequirementRenderElement) -> Vec<RequirementLabelSpec> {
+    let style_bold = requirement_styles_force_bold(&node.css_styles);
+    vec![
+        node_label_spec(
+            "&lt;&lt;Element&gt;&gt;".to_string(),
+            style_bold,
+            false,
+            true,
+        ),
+        node_label_spec(node.name.clone(), true, true, true),
+        node_label_spec(
+            prefixed_nonempty_line("Type: ", &node.element_type),
+            style_bold,
+            false,
+            false,
+        ),
+        node_label_spec(
+            prefixed_nonempty_line("Doc Ref: ", &node.doc_ref),
+            style_bold,
+            false,
+            false,
+        ),
+    ]
+}
+
+struct RequirementMeasurementStyles {
+    html_regular: TextStyle,
+    html_bold: TextStyle,
+    calculation: TextStyle,
+}
+
+fn requirement_measurement_styles(
+    settings: &config::RequirementLayoutSettings,
+) -> RequirementMeasurementStyles {
+    let font_family = Some(settings.font_family.clone());
+    RequirementMeasurementStyles {
+        html_regular: TextStyle {
+            font_family: font_family.clone(),
+            font_size: settings.font_size,
+            font_weight: None,
+            font_style: None,
+        },
+        html_bold: TextStyle {
+            font_family,
+            font_size: settings.font_size,
+            font_weight: Some("bold".to_string()),
+            font_style: None,
+        },
+        calculation: TextStyle {
+            font_family: Some(settings.calculation_font_family.clone()),
+            font_size: settings.calculation_font_size,
+            font_weight: None,
+            font_style: None,
+        },
+    }
+}
+
+/// Lays out a Requirement model under the resource policy owned by the render operation.
+pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     model: &RequirementDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
-) -> Result<RequirementDiagramLayout> {
+    resource_limits: RenderResourcePolicy,
+) -> Result<RequirementPreparedArtifact> {
+    resource_limits.check_model_complexity(ModelComplexity::from_requirement(model))?;
+    resource_limits.check_layout_work_units(requirement_layout_work_units(model))?;
     let direction = if model.direction.trim().is_empty() {
         normalize_dir("TB")
     } else {
@@ -270,25 +429,13 @@ pub fn layout_requirement_diagram_typed(
     };
 
     let cfg = RequirementConfigView::new(effective_config).layout_settings();
-    let font_family = Some(cfg.font_family);
-    let html_style_regular = TextStyle {
-        font_family: font_family.clone(),
-        font_size: cfg.font_size,
-        font_weight: None,
-    };
-    let html_style_bold = TextStyle {
-        font_family,
-        font_size: cfg.font_size,
-        font_weight: Some("bold".to_string()),
-    };
-    let calculation_style = TextStyle {
-        font_family: Some(cfg.calculation_font_family),
-        font_size: cfg.calculation_font_size,
-        font_weight: None,
-    };
+    let styles = requirement_measurement_styles(&cfg);
 
     let padding = 20.0;
     let gap = 20.0;
+    let mut requirement_node_labels = HashMap::new();
+    let mut element_node_labels = HashMap::new();
+    let mut edge_labels = HashMap::new();
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
@@ -311,85 +458,62 @@ pub fn layout_requirement_diagram_typed(
         if r.name == "__proto__" {
             continue;
         }
-
-        let type_disp = format!("&lt;&lt;{}&gt;&gt;", r.node_type);
-        let type_calculation = type_disp.clone();
-        let style_bold = requirement_styles_force_bold(&r.css_styles);
-        let mut lines: Vec<(String, String, bool)> = Vec::new();
-        lines.push((type_disp, type_calculation, style_bold));
-        lines.push((r.name.clone(), r.name.clone(), true));
-
-        let id_line = prefixed_nonempty_line("ID: ", &r.requirement_id);
-        lines.push((id_line.clone(), id_line, style_bold));
-
-        let text_line = prefixed_nonempty_line("Text: ", &r.text);
-        lines.push((text_line.clone(), text_line, style_bold));
-
-        let risk_line = prefixed_nonempty_line("Risk: ", &r.risk);
-        lines.push((risk_line.clone(), risk_line, style_bold));
-
-        let verify_line = prefixed_nonempty_line("Verification: ", &r.verify_method);
-        lines.push((verify_line.clone(), verify_line, style_bold));
+        if r.name.trim().is_empty() {
+            return Err(Error::InvalidModel {
+                message: format!("missing requirement name label for {}", r.name),
+            });
+        }
 
         let box_layout = requirement_box_layout(
             text_measurer,
-            &html_style_regular,
-            &html_style_bold,
-            &calculation_style,
-            &lines,
+            &styles.html_regular,
+            &styles.html_bold,
+            &styles.calculation,
+            requirement_node_label_specs(r),
             gap,
             padding,
         );
+        let (width, height, label_plan) = box_layout.into_node_plan();
         g.set_node(
             r.name.clone(),
             NodeLabel {
-                width: box_layout.width,
-                height: box_layout.height,
+                width,
+                height,
                 ..Default::default()
             },
         );
+        requirement_node_labels.insert(r.name.clone(), label_plan);
     }
 
     for e in &model.elements {
         if e.name == "__proto__" {
             continue;
         }
-
-        let type_disp = "&lt;&lt;Element&gt;&gt;".to_string();
-        let type_calculation = type_disp.clone();
-        let style_bold = requirement_styles_force_bold(&e.css_styles);
-        let mut lines: Vec<(String, String, bool)> = Vec::new();
-        lines.push((type_disp, type_calculation, style_bold));
-        lines.push((e.name.clone(), e.name.clone(), true));
-
-        let type_line = e.element_type.trim().to_string();
-        let type_line = if type_line.is_empty() {
-            String::new()
-        } else {
-            format!("Type: {type_line}")
-        };
-        lines.push((type_line.clone(), type_line, style_bold));
-
-        let doc_line = prefixed_nonempty_line("Doc Ref: ", &e.doc_ref);
-        lines.push((doc_line.clone(), doc_line, style_bold));
+        if e.name.trim().is_empty() {
+            return Err(Error::InvalidModel {
+                message: format!("missing element name label for {}", e.name),
+            });
+        }
 
         let box_layout = requirement_box_layout(
             text_measurer,
-            &html_style_regular,
-            &html_style_bold,
-            &calculation_style,
-            &lines,
+            &styles.html_regular,
+            &styles.html_bold,
+            &styles.calculation,
+            element_node_label_specs(e),
             gap,
             padding,
         );
+        let (width, height, label_plan) = box_layout.into_node_plan();
         g.set_node(
             e.name.clone(),
             NodeLabel {
-                width: box_layout.width,
-                height: box_layout.height,
+                width,
+                height,
                 ..Default::default()
             },
         );
+        element_node_labels.insert(e.name.clone(), label_plan);
     }
 
     for rel in &model.relationships {
@@ -404,28 +528,28 @@ pub fn layout_requirement_diagram_typed(
             });
         }
 
-        // Mermaid's requirement diagram edge ids currently collide for multiple relationships
-        // between the same nodes (the upstream DB resets the counter for every relation).
-        // Downstream graphlib layout will overwrite earlier edges; only the last relation survives.
-        // Mirror this behavior to match the upstream SVG baselines.
-        let edge_id = requirement_edge_id(&rel.src, &rel.dst, 0);
+        // Mermaid 11.16 emits each Graphlib edge's label, pattern, and marker even when its public
+        // id collides: the id counter resets to zero, while identity remains (v, w, name).
+        // Preserve distinct endpoint pairs and the same-endpoint last-write-wins behavior.
+        let edge_key = requirement_edge_key(&rel.src, &rel.dst);
 
         let label_display = format!("&lt;&lt;{}&gt;&gt;", rel.rel_type);
         let label_calculation = label_display.clone();
         let metrics = measure_requirement_label_metrics(
             text_measurer,
-            &html_style_regular,
-            &html_style_bold,
-            &calculation_style,
+            &styles.html_regular,
+            &styles.html_bold,
+            &styles.calculation,
             &label_display,
             &label_calculation,
             false,
         )
-        .unwrap_or(RequirementLabelMetrics {
-            width: 0.0,
-            height: 0.0,
-            max_width_px: 0,
-        });
+        .ok_or_else(|| Error::InvalidModel {
+            message: format!(
+                "missing relationship label for {} -> {} ({})",
+                rel.src, rel.dst, rel.rel_type
+            ),
+        })?;
 
         let el = EdgeLabel {
             width: metrics.width.max(0.0),
@@ -437,10 +561,21 @@ pub fn layout_requirement_diagram_typed(
             weight: 1.0,
             ..Default::default()
         };
-        g.set_edge_named(rel.src.clone(), rel.dst.clone(), Some(edge_id), Some(el));
+        g.set_edge_named(
+            edge_key.v.clone(),
+            edge_key.w.clone(),
+            edge_key.name.clone(),
+            Some(el),
+        );
+        let label_plan = RequirementEdgeLabelPlan {
+            relationship_type: rel.rel_type.clone(),
+            display_text: label_display,
+            max_width_px: metrics.max_width_px,
+        };
+        edge_labels.insert(edge_key, label_plan);
     }
 
-    dugong::layout_dagreish(&mut g);
+    dugong::layout(&mut g);
 
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for v in g.nodes() {
@@ -463,10 +598,17 @@ pub fn layout_requirement_diagram_typed(
     }
 
     let mut out_edges: Vec<LayoutEdge> = Vec::new();
+    let mut prepared_edge_labels = Vec::new();
     for ek in g.edge_keys() {
         let Some(e) = g.edge_by_key(&ek) else {
             continue;
         };
+        let prepared_label = edge_labels.remove(&ek).ok_or_else(|| Error::InvalidModel {
+            message: format!(
+                "missing prepared Requirement edge label for {} -> {} ({:?})",
+                ek.v, ek.w, ek.name
+            ),
+        })?;
 
         let points = e
             .points
@@ -503,6 +645,7 @@ pub fn layout_requirement_diagram_typed(
             end_marker: None,
             stroke_dasharray: None,
         });
+        prepared_edge_labels.push(prepared_label);
     }
 
     fn bounds_for_nodes_edges(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
@@ -547,11 +690,28 @@ pub fn layout_requirement_diagram_typed(
     }
 
     let bounds = bounds_for_nodes_edges(&out_nodes, &out_edges);
-
-    Ok(RequirementDiagramLayout {
+    let mut prepared_node_labels = Vec::with_capacity(out_nodes.len());
+    for node in &out_nodes {
+        // A node's public id is its Graphlib identity, so there is no lossy re-keying here.
+        // Preserve the renderer's historical requirement-before-element precedence when both
+        // semantic collections contain the same node name.
+        let prepared_label = requirement_node_labels
+            .remove(&node.id)
+            .or_else(|| element_node_labels.remove(&node.id))
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared Requirement node label for {}", node.id),
+            })?;
+        prepared_node_labels.push(prepared_label);
+    }
+    let layout = RequirementDiagramLayout {
         nodes: out_nodes,
         edges: out_edges,
         bounds,
+    };
+    Ok(RequirementPreparedArtifact {
+        layout,
+        nodes: prepared_node_labels,
+        edges: prepared_edge_labels,
     })
 }
 
@@ -605,6 +765,7 @@ mod tests {
             font_family: Some("configured".to_string()),
             font_size: 16.0,
             font_weight: None,
+            font_style: None,
         };
 
         assert_eq!(
@@ -621,44 +782,33 @@ mod tests {
             font_family: family.clone(),
             font_size: 24.0,
             font_weight: None,
+            font_style: None,
         };
         let bold = TextStyle {
             font_family: family.clone(),
             font_size: 24.0,
             font_weight: Some("bold".to_string()),
+            font_style: None,
         };
         let calculation = TextStyle {
             font_family: family,
             font_size: 10.0,
             font_weight: None,
+            font_style: None,
         };
+        let body = "Text: font size precedence should be deterministic";
         let lines = vec![
-            (
-                "&lt;&lt;Requirement&gt;&gt;".to_string(),
+            node_label_spec(
                 "&lt;&lt;Requirement&gt;&gt;".to_string(),
                 false,
-            ),
-            (
-                "req_font_size".to_string(),
-                "req_font_size".to_string(),
+                false,
                 true,
             ),
-            (
-                "ID: req_font_size".to_string(),
-                "ID: req_font_size".to_string(),
-                false,
-            ),
-            (
-                "Text: font size precedence should be deterministic".to_string(),
-                "Text: font size precedence should be deterministic".to_string(),
-                false,
-            ),
-            ("Risk: Low".to_string(), "Risk: Low".to_string(), false),
-            (
-                "Verification: Test".to_string(),
-                "Verification: Test".to_string(),
-                false,
-            ),
+            node_label_spec("req_font_size".to_string(), true, true, true),
+            node_label_spec("ID: req_font_size".to_string(), false, false, false),
+            node_label_spec(body.to_string(), false, false, false),
+            node_label_spec("Risk: Low".to_string(), false, false, false),
+            node_label_spec("Verification: Test".to_string(), false, false, false),
         ];
 
         let text = measure_requirement_label_metrics(
@@ -666,16 +816,27 @@ mod tests {
             &regular,
             &bold,
             &calculation,
-            &lines[3].0,
-            &lines[3].1,
+            body,
+            body,
             false,
         )
         .expect("text line should be measured");
         let layout =
-            requirement_box_layout(&measurer, &regular, &bold, &calculation, &lines, 20.0, 20.0);
+            requirement_box_layout(&measurer, &regular, &bold, &calculation, lines, 20.0, 20.0);
 
-        assert_eq!(text.max_width_px, 279);
-        assert_eq!((text.width, text.height), (279.0, 108.0));
-        assert_eq!((layout.width, layout.height), (299.0, 418.0));
+        let expected_max_width =
+            calculate_text_width_like_mermaid_px(&measurer, &calculation, body) + 50;
+        assert_eq!(text.max_width_px, expected_max_width);
+        assert_eq!(text.width, expected_max_width as f64);
+        assert!(
+            text.height > regular.font_size,
+            "the constrained requirement body must wrap"
+        );
+        assert_eq!(layout.width, text.width + 20.0);
+        assert!(layout.height > text.height + 20.0);
+        assert_eq!(layout.lines.len(), 6);
+        assert_eq!(layout.lines[0].y_offset, 0.0);
+        assert_eq!(layout.lines[1].y_offset, layout.lines[0].metrics.height);
+        assert_eq!(layout.divider_y_offset, Some(layout.lines[2].y_offset));
     }
 }

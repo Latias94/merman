@@ -178,28 +178,6 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
         out
     }
 
-    fn normalize_diagram_dir(detected: &str) -> Option<String> {
-        match detected {
-            "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
-                Some("state".to_string())
-            }
-            "class" | "classDiagram" => Some("class".to_string()),
-            "gitGraph" => Some("gitgraph".to_string()),
-            "quadrantChart" => Some("quadrantchart".to_string()),
-            "er" => Some("er".to_string()),
-            "journey" => Some("journey".to_string()),
-            "xychart" => Some("xychart".to_string()),
-            "requirement" => Some("requirement".to_string()),
-            "architecture-beta" => Some("architecture".to_string()),
-            "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
-            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
-                Some(detected.to_string())
-            }
-            _ => None,
-        }
-    }
-
     if install && !with_baselines {
         return Err(XtaskError::SnapshotUpdateFailed(
             "`--install` only applies when `--with-baselines` is set".to_string(),
@@ -302,7 +280,7 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
     let example_re = Regex::new(r#"(?s)\{\s*title:\s*(?:'([^']*)'|"([^"]*)").*?code:\s*`([^`]*)`"#)
         .map_err(|err| XtaskError::SnapshotUpdateFailed(format!("bad regex: {err}")))?;
 
-    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline();
 
     let mut existing_by_diagram: std::collections::HashMap<
         String,
@@ -368,7 +346,8 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                     continue;
                 }
             };
-            let Some(diagram_dir) = normalize_diagram_dir(detected) else {
+            let Some(diagram_dir) = normalize_imported_diagram_dir(detected).map(str::to_string)
+            else {
                 skipped.push(format!(
                     "skip (unsupported detected type '{detected}'): {}",
                     ts_path.display()
@@ -442,7 +421,20 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                     canonical_fixture_text,
                 )
             });
-        if let Some(existing_path) = existing.get(&c.body) {
+        let existing_path = existing.get(&c.body).cloned();
+        let out_path = c.fixtures_dir.join(format!("{}.mmd", c.stem));
+        let deferred_out_path = crate::cmd::fixtures_root()
+            .join("_deferred")
+            .join(&c.diagram_dir)
+            .join(format!("{}.mmd", c.stem));
+        if let Some(existing_path) = existing_path.as_deref()
+            && !should_revalidate_deferred_fixture(
+                existing_path,
+                &deferred_out_path,
+                with_baselines,
+                overwrite,
+            )
+        {
             if with_baselines {
                 report_skip_duplicate_content += 1;
                 report_lines.push(format!(
@@ -463,7 +455,6 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             continue;
         }
 
-        let out_path = c.fixtures_dir.join(format!("{}.mmd", c.stem));
         if out_path.exists() && !overwrite {
             if with_baselines {
                 report_skip_exists += 1;
@@ -480,10 +471,6 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             skipped.push(format!("skip (exists): {}", out_path.display()));
             continue;
         }
-        let deferred_out_path = crate::cmd::fixtures_root()
-            .join("_deferred")
-            .join(&c.diagram_dir)
-            .join(format!("{}.mmd", c.stem));
         if deferred_out_path.exists() && !overwrite {
             skipped.push(format!(
                 "skip (already deferred): {}",

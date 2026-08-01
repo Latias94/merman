@@ -1,162 +1,507 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
-import { surfaces } from "./surface-manifest.mjs";
 
-const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const workspaceRoot = path.join(root, "..", "..");
-const wasmSizeBudgets = path.join(workspaceRoot, "docs", "release", "WASM_SIZE_BUDGETS.json");
-const generatedPackageJson = path.join(root, "pkg", "package.json");
-const presetManifest = path.join(root, "pkg", "merman_wasm_preset.json");
-const wasmBinary = path.join(root, "pkg", "merman_wasm_bg.wasm");
-const required = [
-  path.join(root, "dist", "index.js"),
-  path.join(root, "dist", "index.d.ts"),
-  generatedPackageJson,
-  presetManifest,
-  path.join(root, "pkg", "merman_wasm.js"),
-  path.join(root, "pkg", "merman_wasm.d.ts"),
-  wasmBinary,
-  ...surfaces.flatMap((surface) => [
-    path.join(root, "dist", "surfaces", `${surface.entry}.js`),
-    path.join(root, "dist", "surfaces", `${surface.entry}.d.ts`),
-    path.join(root, "pkg", surface.entry, "package.json"),
-    path.join(root, "pkg", surface.entry, "merman_wasm.js"),
-    path.join(root, "pkg", surface.entry, "merman_wasm.d.ts"),
-    path.join(root, "pkg", surface.entry, "merman_wasm_bg.wasm"),
-    path.join(root, "pkg", surface.entry, "merman_wasm_preset.json"),
-  ]),
-];
+import { spawnNpmSync } from "../../../scripts/npm-command.mjs";
+import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
+import {
+  allPackageWasmExportNames,
+  webPackages,
+} from "./surface-manifest.mjs";
+import {
+  packageDistFileRecords,
+  wasmRuntimeFileRecords,
+} from "./wasm-runtime-files.mjs";
 
-const missing = required.filter((file) => {
+const webRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PACKAGE_FILE_ALLOWLIST = Object.freeze([
+  "LICENSE",
+  "README.md",
+  "THIRD_PARTY_LICENSES",
+  "THIRD_PARTY_NOTICES.md",
+  "artifacts",
+  "dist",
+]);
+
+if (isMainModule()) {
   try {
-    return !existsSync(file) || !statSync(file).isFile() || statSync(file).size === 0;
-  } catch {
-    return true;
+    verifyPackageGroup();
+    console.log(`[merman-web] package group verified (${webPackages.length} package artifacts).`);
+  } catch (error) {
+    console.error(`prepack: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
   }
-});
+}
 
-if (missing.length > 0) {
-  console.error(
-    [
-      "prepack: missing generated web package files.",
-      "Run `npm run build --prefix platforms/web` before pack/publish.",
-      ...missing.map((file) => `  - ${path.relative(root, file)}`),
-    ].join("\n"),
+export function verifyPackageGroup({ descriptors = webPackages } = {}) {
+  const checked = descriptors.map(verifyPackage);
+  const publicPackages = checked.filter((item) => item.descriptor.visibility === "public");
+  assertLockstepVersions(publicPackages);
+  assertIndependentSizeEvidence(checked, publicPackages);
+  assertPackageTypeConsumers(checked);
+  return checked;
+}
+
+function verifyPackage(descriptor) {
+  const packageRoot = path.join(webRoot, descriptor.package_dir);
+  const manifest = readJson(path.join(packageRoot, "package.json"));
+  assertPackageManifest(descriptor, manifest);
+  const artifactRoot = path.join(packageRoot, "artifacts");
+  const wasmPath = path.join(artifactRoot, "wasm", "merman_wasm_bg.wasm");
+  const provenance = readJson(path.join(artifactRoot, "provenance.json"));
+
+  assertArtifactRoot(artifactRoot, descriptor.name);
+
+  for (const file of [
+    path.join(packageRoot, "README.md"),
+    path.join(packageRoot, "LICENSE"),
+    path.join(packageRoot, "THIRD_PARTY_NOTICES.md"),
+    path.join(packageRoot, "dist", "package-entries", `${descriptor.id}.js`),
+    path.join(packageRoot, "dist", "package-entries", `${descriptor.id}.d.ts`),
+    path.join(artifactRoot, "wasm", "merman_wasm.js"),
+    path.join(artifactRoot, "wasm", "merman_wasm.d.ts"),
+    path.join(artifactRoot, "wasm", "merman_wasm_bg.wasm.d.ts"),
+    wasmPath,
+  ]) {
+    assertFile(file);
+  }
+
+  const wasmFiles = walkFiles(artifactRoot).filter((file) => file.endsWith(".wasm"));
+  if (wasmFiles.length !== 1 || path.resolve(wasmFiles[0]) !== path.resolve(wasmPath)) {
+    throw new Error(
+      `${descriptor.name} must contain exactly one WASM binary at artifacts/wasm/merman_wasm_bg.wasm.`,
+    );
+  }
+  if (existsSync(path.join(packageRoot, "pkg"))) {
+    throw new Error(`${descriptor.name} must not package the legacy pkg directory.`);
+  }
+  assertPackageEntryFiles(descriptor, packageRoot);
+  assertProvenance(descriptor, manifest, provenance, artifactRoot, packageRoot);
+  assertLegalProjection(descriptor, packageRoot);
+  return { descriptor, manifest, wasmBytes: statSync(wasmPath).size, packageBytes: treeSize(packageRoot) };
+}
+
+export function assertPackageManifest(descriptor, manifest) {
+  if (manifest.name !== descriptor.name) {
+    throw new Error(`${descriptor.package_dir}/package.json must name ${descriptor.name}.`);
+  }
+  if (manifest.merman?.artifact_profile !== descriptor.artifact_profile.id) {
+    throw new Error(`${descriptor.name} must reference artifact profile ${descriptor.artifact_profile.id}.`);
+  }
+  if ((manifest.private === true) !== (descriptor.visibility === "candidate")) {
+    throw new Error(`${descriptor.name} private flag must match descriptor visibility.`);
+  }
+  if (manifest.license !== "MIT OR Apache-2.0") {
+    throw new Error(`${descriptor.name} must declare the repository SPDX license expression.`);
+  }
+  if (
+    !Array.isArray(manifest.files) ||
+    JSON.stringify([...manifest.files].sort()) !== JSON.stringify(PACKAGE_FILE_ALLOWLIST)
+  ) {
+    throw new Error(`${descriptor.name} must declare the closed package files allowlist.`);
+  }
+  if (manifest.scripts !== undefined) {
+    throw new Error(`${descriptor.name} must not declare npm lifecycle scripts.`);
+  }
+  if (manifest.bundleDependencies !== undefined || manifest.bundledDependencies !== undefined) {
+    throw new Error(`${descriptor.name} must not declare bundled npm dependencies.`);
+  }
+  if (descriptor.visibility === "candidate") {
+    if (manifest.publishConfig !== undefined) {
+      throw new Error(`${descriptor.name} private candidate must not declare publishConfig.`);
+    }
+  } else if (JSON.stringify(manifest.publishConfig) !== JSON.stringify({ access: "public" })) {
+    throw new Error(`${descriptor.name} must declare only publishConfig.access=public.`);
+  }
+  const exports = manifest.exports;
+  if (!exports || typeof exports !== "object" || Array.isArray(exports)) {
+    throw new Error(`${descriptor.name} must declare a closed exports object.`);
+  }
+  if (JSON.stringify(Object.keys(exports).sort()) !== JSON.stringify(["."])) {
+    throw new Error(`${descriptor.name} may export only its package root.`);
+  }
+  const entryJavaScript = `./dist/package-entries/${descriptor.id}.js`;
+  const entryTypes = `./dist/package-entries/${descriptor.id}.d.ts`;
+  if (manifest.main !== entryJavaScript || manifest.types !== entryTypes) {
+    throw new Error(`${descriptor.name} must point main and types at its own package entry.`);
+  }
+  const rootExport = exports["."];
+  if (!rootExport || typeof rootExport !== "object" || Array.isArray(rootExport)) {
+    throw new Error(`${descriptor.name} package-root export must be an object.`);
+  }
+  if (JSON.stringify(Object.keys(rootExport).sort()) !== JSON.stringify(["import", "types"])) {
+    throw new Error(`${descriptor.name} package-root export must contain only import and types.`);
+  }
+  if (rootExport.import !== entryJavaScript || rootExport.types !== entryTypes) {
+    throw new Error(`${descriptor.name} package-root export must point at its own package entry.`);
+  }
+}
+
+function assertProvenance(descriptor, manifest, provenance, artifactRoot, packageRoot) {
+  if (!provenance || typeof provenance !== "object" || Array.isArray(provenance)) {
+    throw new Error(`${descriptor.name} provenance is invalid.`);
+  }
+  if (provenance.schema_version !== 2) {
+    throw new Error(`${descriptor.name} provenance schema must be 2.`);
+  }
+  if (
+    provenance.package?.id !== descriptor.id ||
+    provenance.package?.name !== descriptor.name ||
+    provenance.package?.version !== manifest.version ||
+    provenance.package?.visibility !== descriptor.visibility
+  ) {
+    throw new Error(`${descriptor.name} provenance package identity is stale.`);
+  }
+  if (provenance.artifact_profile !== descriptor.artifact_profile.id) {
+    throw new Error(`${descriptor.name} provenance references the wrong artifact profile.`);
+  }
+  assertEqualArray(
+    provenance.runtime_capability_ids,
+    descriptor.artifact_profile.expected.runtime_ids,
+    `${descriptor.name} provenance runtime capability IDs`,
   );
-  process.exit(1);
-}
-
-try {
-  const packageJson = JSON.parse(readFileSync(generatedPackageJson, "utf8"));
-  if (packageJson.type !== "module") {
-    console.error("prepack: generated pkg/package.json must declare `type: module`.");
-    console.error("Run `npm run build --prefix platforms/web` before pack/publish.");
-    process.exit(1);
+  assertEqualArray(
+    provenance.outputs,
+    descriptor.artifact_profile.expected.outputs,
+    `${descriptor.name} provenance outputs`,
+  );
+  if (provenance.wasm?.path !== "wasm/merman_wasm_bg.wasm") {
+    throw new Error(`${descriptor.name} provenance must name its one WASM artifact.`);
   }
-} catch (error) {
-  console.error(`prepack: failed to read generated pkg/package.json: ${error.message}`);
-  process.exit(1);
-}
-
-try {
-  const manifest = JSON.parse(readFileSync(presetManifest, "utf8"));
-  const allowNonDefaultPreset = process.env.MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET === "1";
-  if (manifest.preset !== "browser-full" && !allowNonDefaultPreset) {
-    console.error(
-      [
-        `prepack: generated WASM preset is '${manifest.preset}', expected 'browser-full'.`,
-        "The published @mermanjs/web package currently defaults to the full browser artifact.",
-        "Rebuild with `npm run build:wasm:full --prefix platforms/web` before pack/publish,",
-        "or set MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 for an intentional local slim package.",
-      ].join("\n"),
-    );
-    process.exit(1);
+  if (typeof provenance.wasm?.input_digest !== "string" || typeof provenance.wasm?.source_digest !== "string") {
+    throw new Error(`${descriptor.name} provenance is missing input evidence.`);
   }
-  if (manifest.preset === "browser-full") {
-    checkDefaultBrowserFullWasmBudget(loadDefaultBrowserFullWasmBudget());
+  assertArtifactFileEvidence({
+    packageWasmRoot: path.join(artifactRoot, "wasm"),
+    sourceWasmRoot: path.join(webRoot, "pkg", descriptor.id),
+    packageDistRoot: path.join(packageRoot, "dist"),
+    sourceDistRoot: path.join(webRoot, "dist"),
+    packageId: descriptor.id,
+    artifactFiles: provenance.artifact_files,
+    label: descriptor.name,
+  });
+}
+
+export function assertArtifactFileEvidence({
+  packageWasmRoot,
+  sourceWasmRoot,
+  packageDistRoot,
+  sourceDistRoot,
+  packageId,
+  artifactFiles,
+  label,
+}) {
+  assertArtifactFileManifest(artifactFiles, label);
+  const packageRecords = wasmRuntimeFileRecords(packageWasmRoot, { strictTopLevel: true });
+  const sourceRecords = wasmRuntimeFileRecords(sourceWasmRoot);
+  const packageDistRecords = packageDistFileRecords(packageDistRoot, packageId);
+  const sourceDistRecords = packageDistFileRecords(sourceDistRoot, packageId, {
+    allowSiblingPackageEntries: true,
+  });
+  const expected = [...artifactFiles].sort(compareArtifactRecords);
+  assertEqualArtifactRecords(
+    expected,
+    [...packageRecords, ...packageDistRecords].sort(compareArtifactRecords),
+    `${label} copied package artifacts`,
+  );
+  assertEqualArtifactRecords(
+    expected,
+    [...sourceRecords, ...sourceDistRecords].sort(compareArtifactRecords),
+    `${label} source package artifacts`,
+  );
+}
+
+function assertArtifactRoot(artifactRoot, label) {
+  const entries = readdirSync(artifactRoot, { withFileTypes: true });
+  const actual = entries.map((entry) => entry.name).sort();
+  if (JSON.stringify(actual) !== JSON.stringify(["provenance.json", "wasm"])) {
+    throw new Error(`${label} artifacts must contain only provenance.json and wasm/.`);
   }
-} catch (error) {
-  console.error(`prepack: failed to read pkg/merman_wasm_preset.json: ${error.message}`);
-  process.exit(1);
+  if (!entries.find((entry) => entry.name === "provenance.json")?.isFile()) {
+    throw new Error(`${label} artifacts/provenance.json must be a regular file.`);
+  }
+  if (!entries.find((entry) => entry.name === "wasm")?.isDirectory()) {
+    throw new Error(`${label} artifacts/wasm must be a directory.`);
+  }
 }
 
-for (const surface of surfaces) {
-  checkSurfaceManifest(surface);
+function assertPackageEntryFiles(descriptor, packageRoot) {
+  const entryRoot = path.join(packageRoot, "dist", "package-entries");
+  const expected = [
+    `${descriptor.id}.d.ts`,
+    `${descriptor.id}.d.ts.map`,
+    `${descriptor.id}.js`,
+    `${descriptor.id}.js.map`,
+  ];
+  const actual = readdirSync(entryRoot).sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${descriptor.name} may package only its own compiled entry wrapper.`);
+  }
 }
 
-function loadDefaultBrowserFullWasmBudget() {
-  let budgets;
+function assertArtifactFileManifest(records, label) {
+  if (!Array.isArray(records) || records.length === 0) {
+    throw new Error(`${label} provenance must contain copied package artifact hashes.`);
+  }
+  let previousPath = "";
+  for (const record of records) {
+    if (!record || typeof record !== "object" || Array.isArray(record)) {
+      throw new Error(`${label} provenance artifact entry is invalid.`);
+    }
+    if (JSON.stringify(Object.keys(record).sort()) !== JSON.stringify(["bytes", "path", "sha256"])) {
+      throw new Error(`${label} provenance artifact entry must contain path, bytes, and sha256.`);
+    }
+    if (
+      typeof record.path !== "string" ||
+      !(record.path.startsWith("artifacts/wasm/") || record.path.startsWith("dist/")) ||
+      record.path.includes("\\") ||
+      record.path.includes("..") ||
+      record.path <= previousPath
+    ) {
+      throw new Error(`${label} provenance artifact paths must be sorted, unique package-relative paths.`);
+    }
+    if (!Number.isSafeInteger(record.bytes) || record.bytes <= 0) {
+      throw new Error(`${label} provenance artifact bytes must be positive integers.`);
+    }
+    if (typeof record.sha256 !== "string" || !/^sha256:[0-9a-f]{64}$/.test(record.sha256)) {
+      throw new Error(`${label} provenance artifact sha256 is invalid.`);
+    }
+    previousPath = record.path;
+  }
+}
+
+function assertEqualArtifactRecords(expected, actual, label) {
+  if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+    throw new Error(`${label} do not match their provenance evidence.`);
+  }
+}
+
+function compareArtifactRecords(left, right) {
+  if (left.path < right.path) return -1;
+  if (left.path > right.path) return 1;
+  return 0;
+}
+
+function assertLockstepVersions(publicPackages) {
+  const versions = new Set(publicPackages.map((item) => item.manifest.version));
+  if (versions.size !== 1) {
+    throw new Error("Admitted @mermanjs browser packages must use one lockstep version.");
+  }
+}
+
+export function assertIndependentSizeEvidence(checked, publicPackages) {
+  const full = checked.find((item) => item.descriptor.id === "full");
+  if (!full) throw new Error("The Web package group is missing the full package.");
+  for (const item of publicPackages) {
+    if (item.descriptor.id === "full" || item.descriptor.id === "render") continue;
+    const saving = 1 - item.packageBytes / full.packageBytes;
+    if (saving < 0.15) {
+      throw new Error(
+        `${item.descriptor.name} is only ${(saving * 100).toFixed(1)}% smaller than @mermanjs/web; public slim workflow packages require at least 15% unpacked-size evidence.`,
+      );
+    }
+  }
+}
+
+function assertPackageTypeConsumers(checked) {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-types-"));
   try {
-    budgets = JSON.parse(readFileSync(wasmSizeBudgets, "utf8"));
-  } catch (error) {
-    console.error(`prepack: failed to read WASM size budgets: ${error.message}`);
-    process.exit(1);
-  }
+    const tarballs = path.join(root, "tarballs");
+    mkdirSync(tarballs, { recursive: true });
+    writeJson(path.join(root, "package.json"), { private: true, type: "module" });
 
-  const budget = budgets.web_package?.["browser-full"];
-  if (!budget) {
-    console.error("prepack: missing web_package.browser-full WASM size budget.");
-    process.exit(1);
-  }
-
-  return {
-    raw: budget.max_raw_bytes,
-    gzip: budget.max_gzip_bytes,
-    brotli: budget.max_brotli_bytes,
-  };
-}
-
-function checkSurfaceManifest(surface) {
-  const entry = surface.entry;
-  const manifestPath = path.join(root, "pkg", entry, "merman_wasm_preset.json");
-  let manifest;
-  try {
-    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  } catch (error) {
-    console.error(`prepack: failed to read pkg/${entry}/merman_wasm_preset.json: ${error.message}`);
-    process.exit(1);
-  }
-
-  if (manifest.preset !== surface.preset) {
-    console.error(
+    const packed = checked.map((item) => {
+      const packageRoot = path.join(webRoot, item.descriptor.package_dir);
+      const result = runNpm(
+        ["pack", "--json", "--pack-destination", tarballs, "--ignore-scripts"],
+        packageRoot,
+      );
+      let metadata;
+      try {
+        metadata = JSON.parse(result.stdout);
+      } catch (error) {
+        throw new Error(
+          `Unable to read npm pack metadata for ${item.descriptor.name}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      const filename = metadata?.[0]?.filename;
+      if (typeof filename !== "string" || filename.length === 0) {
+        throw new Error(`npm pack did not report a tarball for ${item.descriptor.name}.`);
+      }
+      return path.join(tarballs, filename);
+    });
+    runNpm(
       [
-        `prepack: generated WASM preset for ./${entry} is '${manifest.preset}', expected '${surface.preset}'.`,
-        "Run `npm run build --prefix platforms/web` before pack/publish.",
-      ].join("\n"),
+        "install",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--offline",
+        "--package-lock=false",
+        ...packed,
+      ],
+      root,
     );
-    process.exit(1);
-  }
-}
 
-function checkDefaultBrowserFullWasmBudget(defaultBrowserFullWasmBudget) {
-  const bytes = readFileSync(wasmBinary);
-  const sizes = {
-    raw: bytes.length,
-    gzip: gzipSync(bytes, { level: 9 }).length,
-    brotli: brotliCompressSync(bytes, {
-      params: {
-        [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+    const imports = [];
+    for (const [index, item] of checked.entries()) {
+      const moduleName = `module${index}`;
+      imports.push(
+        `import { initMerman as init${index} } from ${JSON.stringify(item.descriptor.name)};`,
+        `import type { MermanInitInput as Init${index} } from ${JSON.stringify(item.descriptor.name)};`,
+        `const check${index}: (input?: Init${index}) => Promise<unknown> = init${index};`,
+        `async function checkModule${index}(): Promise<void> {`,
+        `  const ${moduleName} = await init${index}();`,
+      );
+      const enabled = new Set(item.descriptor.wasmExportNames);
+      for (const exportName of allPackageWasmExportNames) {
+        if (enabled.has(exportName)) {
+          imports.push(`  void ${moduleName}.${exportName};`);
+        } else {
+          imports.push(
+            `  // @ts-expect-error ${item.descriptor.id} must not expose raw WASM ${exportName}.`,
+            `  void ${moduleName}.${exportName};`,
+          );
+        }
+      }
+      imports.push("}", `void check${index};`, `void checkModule${index};`);
+    }
+    writeJson(path.join(root, "tsconfig.json"), {
+      compilerOptions: {
+        strict: true,
+        target: "ES2020",
+        module: "NodeNext",
+        moduleResolution: "NodeNext",
+        skipLibCheck: false,
       },
-    }).length,
-  };
+      include: ["consumer.ts"],
+    });
+    writeFileSync(path.join(root, "consumer.ts"), `${imports.join("\n")}\n`);
 
-  const failures = Object.entries(defaultBrowserFullWasmBudget)
-    .filter(([metric, max]) => typeof max !== "number" || sizes[metric] > max)
-    .map(
-      ([metric, max]) =>
-        `  - ${metric}: actual=${sizes[metric]} max=${max}`,
-    );
-
-  if (failures.length > 0) {
-    console.error(
-      [
-        "prepack: browser-full WASM size budget exceeded.",
-        "The published @mermanjs/web artifact should be built with the workspace wasm-size profile.",
-        ...failures,
-      ].join("\n"),
-    );
-    process.exit(1);
+    const tsc = path.join(webRoot, "node_modules", "typescript", "bin", "tsc");
+    const result = spawnSync(process.execPath, [tsc, "--noEmit", "--pretty", "false", "-p", "tsconfig.json"], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    if (result.error) {
+      throw new Error(`Unable to compile installed package declarations: ${result.error.message}`);
+    }
+    if (result.status !== 0) {
+      throw new Error(
+        `Installed package declaration consumer failed:\n${[result.stdout, result.stderr].filter(Boolean).join("\n")}`,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
+}
+
+function runNpm(args, cwd) {
+  const result = spawnNpmSync(args, {
+    cwd,
+    encoding: "utf8",
+  });
+  if (result.error) {
+    throw new Error(`Unable to run npm ${args[0]}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `npm ${args[0]} failed:\n${[result.stdout, result.stderr].filter(Boolean).join("\n")}`,
+    );
+  }
+  return result;
+}
+
+export function assertLegalProjection(descriptor, packageRoot) {
+  const legal = legalProjectionForArtifactProfile(descriptor.artifact_profile.id);
+  assertFileContents(
+    path.join(packageRoot, "THIRD_PARTY_NOTICES.md"),
+    legal.notice,
+    `${descriptor.name} third-party notice`,
+  );
+
+  const legalRoot = path.join(packageRoot, "THIRD_PARTY_LICENSES");
+  const expectedFiles = legal.files.map((file) => file.relative);
+  const actualFiles = walkFiles(legalRoot).map((file) =>
+    path.relative(legalRoot, file).split(path.sep).join("/"),
+  );
+  assertEqualArray(
+    actualFiles,
+    expectedFiles,
+    `${descriptor.name} third-party legal file projection`,
+  );
+  for (const file of legal.files) {
+    assertSameFile(
+      path.join(legalRoot, ...file.relative.split("/")),
+      file.source,
+    );
+  }
+}
+
+function assertSameFile(actual, expected) {
+  assertFile(actual);
+  assertFile(expected);
+  if (!readFileSync(actual).equals(readFileSync(expected))) {
+    throw new Error(`Legal projection is stale: ${actual}.`);
+  }
+}
+
+function assertFileContents(actual, expected, label) {
+  assertFile(actual);
+  if (readFileSync(actual, "utf8") !== expected) {
+    throw new Error(`${label} is stale.`);
+  }
+}
+
+function assertEqualArray(actual, expected, label) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${label} does not match its artifact profile.`);
+  }
+}
+
+function readJson(file) {
+  try {
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    throw new Error(`Cannot read ${file}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function writeJson(file, value) {
+  writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function assertFile(file) {
+  if (!existsSync(file) || !statSync(file).isFile() || statSync(file).size === 0) {
+    throw new Error(`Missing package file: ${file}.`);
+  }
+}
+
+function walkFiles(directory) {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = path.join(directory, entry.name);
+      return entry.isDirectory() ? walkFiles(entryPath) : [entryPath];
+    })
+    .sort();
+}
+
+function treeSize(directory) {
+  return walkFiles(directory).reduce((size, file) => size + statSync(file).size, 0);
+}
+
+function isMainModule() {
+  return process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 }

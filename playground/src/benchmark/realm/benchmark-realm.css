@@ -1,0 +1,18 @@
+html,
+body,
+#presentation-host {
+  box-sizing: border-box;
+  height: 100%;
+  margin: 0;
+  min-height: 1px;
+  min-width: 1px;
+  overflow: hidden;
+  padding: 0;
+  width: 100%;
+}
+
+#presentation-host {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}

@@ -5,18 +5,36 @@
       "nodes": [
         {
           "id": "mc",
-          "x": 41.539,
+          "x": 35.68,
           "y": 0.0,
-          "width": 83.078,
+          "width": 71.36,
           "height": 32.0,
           "is_cluster": false
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "mc",
+          "allocated": {
+            "x": 35.68,
+            "y": 0.0,
+            "width": 71.36,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 71.36,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,
-        "max_x": 83.078,
+        "max_x": 71.36,
         "max_y": 16.0
       }
     }

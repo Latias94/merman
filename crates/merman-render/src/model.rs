@@ -1,29 +1,8 @@
-use merman_core::ParseMetadata;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutMeta {
-    pub diagram_type: String,
-    pub title: Option<String>,
-    pub config: Value,
-    pub effective_config: Value,
-}
-
-impl LayoutMeta {
-    pub fn from_parse_metadata(meta: &ParseMetadata) -> Self {
-        Self {
-            diagram_type: meta.diagram_type.clone(),
-            title: meta.title.clone(),
-            config: meta.config.as_value().clone(),
-            effective_config: meta.effective_config.as_value().clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bounds {
     pub min_x: f64,
     pub min_y: f64,
@@ -69,6 +48,27 @@ pub struct LayoutLabel {
 pub struct ClassNodeRowMetrics {
     pub members: Vec<crate::text::TextMetrics>,
     pub methods: Vec<crate::text::TextMetrics>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClassPreparedHtmlLabel {
+    pub metrics: crate::text::TextMetrics,
+    pub max_width_px: i64,
+    pub xhtml: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClassPreparedHtmlNodeLabels {
+    pub title: ClassPreparedHtmlLabel,
+    pub annotation: Option<ClassPreparedHtmlLabel>,
+    pub members: Vec<ClassPreparedHtmlLabel>,
+    pub methods: Vec<ClassPreparedHtmlLabel>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ClassNodeLabelPlan {
+    RowMetrics(ClassNodeRowMetrics),
+    PreparedHtml(ClassPreparedHtmlNodeLabels),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,6 +139,12 @@ pub struct LayoutEdge {
 pub struct BlockDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
+    #[serde(
+        default,
+        rename = "shapeGeometries",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub shape_geometries: Vec<crate::block::BlockShapeGeometry>,
     pub bounds: Option<Bounds>,
 }
 
@@ -165,12 +171,6 @@ pub struct ArchitectureDiagramLayout {
     /// source audit; they are layout-engine rects, not browser `node.boundingBox()` values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fcose_compound_bounds: Vec<ArchitectureCompoundBounds>,
-    /// Optional local FCoSE phase trace for source-backed Architecture layout audits.
-    ///
-    /// This is populated only by explicit diagnostic runs and should stay out of normal rendering
-    /// decisions.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub fcose_debug_stages: Vec<ArchitectureFcoseDebugStage>,
     pub bounds: Option<Bounds>,
 }
 
@@ -178,38 +178,6 @@ pub struct ArchitectureDiagramLayout {
 pub struct ArchitectureCompoundBounds {
     pub id: String,
     pub bounds: Bounds,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchitectureFcoseDebugStage {
-    pub run_index: usize,
-    pub tag: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub iterations: Option<usize>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bbox: Option<Bounds>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub nodes: Vec<ArchitectureFcoseDebugNodeBounds>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub compound_bounds: Vec<ArchitectureCompoundBounds>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub relocate: Option<ArchitectureFcoseRelocateDebug>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchitectureFcoseDebugNodeBounds {
-    pub id: String,
-    pub kind: String,
-    pub bounds: Bounds,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub displacement: Option<LayoutPoint>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchitectureFcoseRelocateDebug {
-    pub original_center: LayoutPoint,
-    pub rect_center: LayoutPoint,
-    pub delta: LayoutPoint,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -229,7 +197,6 @@ pub struct ArchitectureCytoscapeServiceBounds {
 pub struct ArchitectureCytoscapeServiceLabelMetrics {
     pub text_width: f64,
     pub half_width: f64,
-    pub applied_scale: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -402,8 +369,6 @@ pub struct VennAreaLayout {
     #[serde(default)]
     pub circles: Vec<VennCircleLayout>,
     pub path: String,
-    #[serde(rename = "distinctPath")]
-    pub distinct_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -605,7 +570,7 @@ pub struct QuadrantChartDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowchartV2Layout {
+pub struct FlowchartLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
@@ -613,16 +578,110 @@ pub struct FlowchartV2Layout {
     /// Mermaid's DOM insertion order for each extracted root graph (`""` = top-level root).
     #[serde(skip)]
     pub dom_node_order_by_root: std::collections::HashMap<String, Vec<String>>,
-    /// Source-backed ELK carries Mermaid DOM `getBoundingClientRect()` edge-label bounds.
+    /// Whether SVG emission follows Mermaid's ELK adapter DOM structure.
     #[serde(skip)]
-    pub source_backed_edge_label_bboxes: bool,
-    /// Source-ported ELK should follow Mermaid ELK renderer DOM quirks.
-    #[serde(skip)]
-    pub source_ported_elk_rendering: bool,
+    pub uses_elk_adapter_dom: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SwimlaneDirection {
+    #[serde(rename = "TB")]
+    Tb,
+    #[serde(rename = "LR")]
+    Lr,
+    #[serde(rename = "BT")]
+    Bt,
+    #[serde(rename = "RL")]
+    Rl,
+}
+
+impl SwimlaneDirection {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Tb => "TB",
+            Self::Lr => "LR",
+            Self::Bt => "BT",
+            Self::Rl => "RL",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StateDiagramV2Layout {
+pub struct SwimlaneTitleRect {
+    pub left: f64,
+    pub right: f64,
+    pub top: f64,
+    pub bottom: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneNodeLayout {
+    pub id: String,
+    pub label: String,
+    pub label_type: String,
+    pub shape: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub top_lane_id: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub label_width: f64,
+    pub label_height: f64,
+    pub layer: usize,
+    pub order: usize,
+    pub is_edge_label: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneLaneLayout {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub padding: f64,
+    /// Layout-phase label width. SVG rendering must remeasure the emitted title with its
+    /// `SvgBBox` measurer rather than treating this as a browser `<text>.getBBox()` fact.
+    pub title_label_width: f64,
+    /// Layout-phase label height; see `title_label_width` for the phase boundary.
+    pub title_label_height: f64,
+    #[serde(default)]
+    pub content_top: Option<f64>,
+    #[serde(default)]
+    pub title_rect: Option<SwimlaneTitleRect>,
+    #[serde(default)]
+    pub requested_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneEdgeLayout {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub points: Vec<LayoutPoint>,
+    #[serde(default)]
+    pub label_node_id: Option<String>,
+    pub reversed_for_layout: bool,
+    pub curve: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneLayout {
+    pub direction: SwimlaneDirection,
+    pub nodes: Vec<SwimlaneNodeLayout>,
+    pub lanes: Vec<SwimlaneLaneLayout>,
+    pub edges: Vec<SwimlaneEdgeLayout>,
+    pub bounds: Option<Bounds>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
@@ -630,13 +689,54 @@ pub struct StateDiagramV2Layout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClassDiagramV2Layout {
+pub struct ClassDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
+    /// Whether SVG emission follows Mermaid's registered ELK renderer DOM structure.
     #[serde(skip)]
-    pub class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>>,
+    pub uses_elk_adapter_dom: bool,
+    #[serde(skip)]
+    pub class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
+    /// DOM ownership produced by the same recursive Dagre preparation that owns layout.
+    ///
+    /// Compatibility layout JSON remains flat, while SVG rendering consumes this typed tree so it
+    /// never has to reconstruct extracted namespace roots from the semantic model.
+    #[serde(skip)]
+    pub render_tree: ClassRenderTree,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ClassRenderRoot {
+    pub namespace_id: Option<String>,
+    pub cluster_ids: Vec<String>,
+    pub edge_ids: Vec<String>,
+    pub items: Vec<ClassRenderItem>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ClassRenderRootId(pub usize);
+
+#[derive(Debug, Clone)]
+pub struct ClassRenderTree {
+    pub roots: Vec<ClassRenderRoot>,
+    pub top: ClassRenderRootId,
+}
+
+impl Default for ClassRenderTree {
+    fn default() -> Self {
+        Self {
+            roots: vec![ClassRenderRoot::default()],
+            top: ClassRenderRootId(0),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ClassRenderItem {
+    Node(String),
+    Subgraph(ClassRenderRootId),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -646,12 +746,24 @@ pub struct ErDiagramLayout {
     pub bounds: Option<Bounds>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SequenceBlockLayout {
+    pub start_y: f64,
+    pub stop_y: f64,
+    pub section_ys_by_id: FxHashMap<String, f64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
+    /// Canonical vertical geometry captured while replaying Mermaid's sequence layout cursor.
+    ///
+    /// This remains outside compatibility layout JSON because it is renderer-owned phase data.
+    #[serde(skip)]
+    pub block_layouts_by_id: FxHashMap<String, SequenceBlockLayout>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -714,6 +826,8 @@ pub struct PieLegendItemLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PieDiagramLayout {
     pub bounds: Option<Bounds>,
+    #[serde(default)]
+    pub title: Option<String>,
     pub center_x: f64,
     pub center_y: f64,
     pub radius: f64,
@@ -754,7 +868,8 @@ pub struct TimelineLineLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineTaskLayout {
     pub node: TimelineNodeLayout,
-    pub connector: TimelineLineLayout,
+    #[serde(default)]
+    pub connectors: Vec<TimelineLineLayout>,
     pub events: Vec<TimelineNodeLayout>,
 }
 
@@ -766,6 +881,7 @@ pub struct TimelineSectionLayout {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineDiagramLayout {
+    pub direction: merman_core::diagrams::timeline::TimelineDirection,
     pub bounds: Option<Bounds>,
     pub left_margin: f64,
     pub base_x: f64,
@@ -1226,7 +1342,7 @@ pub struct CynefinDiagramLayout {
     pub show_domain_descriptions: bool,
     pub boundary_amplitude: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seed: Option<i32>,
+    pub seed: Option<f64>,
     pub domain_layouts: Vec<CynefinDomainLayout>,
     pub items: Vec<CynefinItemLayout>,
     pub transitions: Vec<CynefinTransitionLayout>,
@@ -1474,8 +1590,8 @@ pub struct C4DiagramLayout {
     pub height: f64,
     #[serde(default = "crate::c4::default_use_max_width")]
     pub use_max_width: bool,
-    pub viewport_width: f64,
-    pub viewport_height: f64,
+    pub container_width: f64,
+    pub container_height: f64,
     pub c4_type: String,
     pub title: Option<String>,
     pub boundaries: Vec<C4BoundaryLayout>,
@@ -1488,45 +1604,4 @@ pub struct ErrorDiagramLayout {
     pub viewbox_width: f64,
     pub viewbox_height: f64,
     pub max_width_px: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum LayoutDiagram {
-    BlockDiagram(Box<BlockDiagramLayout>),
-    RequirementDiagram(Box<RequirementDiagramLayout>),
-    ArchitectureDiagram(Box<ArchitectureDiagramLayout>),
-    MindmapDiagram(Box<MindmapDiagramLayout>),
-    SankeyDiagram(Box<SankeyDiagramLayout>),
-    RadarDiagram(Box<RadarDiagramLayout>),
-    TreemapDiagram(Box<TreemapDiagramLayout>),
-    VennDiagram(Box<VennDiagramLayout>),
-    XyChartDiagram(Box<XyChartDiagramLayout>),
-    QuadrantChartDiagram(Box<QuadrantChartDiagramLayout>),
-    FlowchartV2(Box<FlowchartV2Layout>),
-    StateDiagramV2(Box<StateDiagramV2Layout>),
-    ClassDiagramV2(Box<ClassDiagramV2Layout>),
-    ErDiagram(Box<ErDiagramLayout>),
-    SequenceDiagram(Box<SequenceDiagramLayout>),
-    InfoDiagram(Box<InfoDiagramLayout>),
-    PacketDiagram(Box<PacketDiagramLayout>),
-    TimelineDiagram(Box<TimelineDiagramLayout>),
-    PieDiagram(Box<PieDiagramLayout>),
-    JourneyDiagram(Box<JourneyDiagramLayout>),
-    KanbanDiagram(Box<KanbanDiagramLayout>),
-    GitGraphDiagram(Box<GitGraphDiagramLayout>),
-    TreeViewDiagram(Box<TreeViewDiagramLayout>),
-    IshikawaDiagram(Box<IshikawaDiagramLayout>),
-    EventModelingDiagram(Box<EventModelingDiagramLayout>),
-    CynefinDiagram(Box<CynefinDiagramLayout>),
-    RailroadDiagram(Box<RailroadDiagramLayout>),
-    GanttDiagram(Box<GanttDiagramLayout>),
-    C4Diagram(Box<C4DiagramLayout>),
-    ErrorDiagram(Box<ErrorDiagramLayout>),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutedDiagram {
-    pub meta: LayoutMeta,
-    pub semantic: Value,
-    pub layout: LayoutDiagram,
 }

@@ -1,0 +1,11 @@
+{
+  "name": "@mermanjs/node-win32-x64-msvc",
+  "version": "0.8.0-alpha.4",
+  "private": true,
+  "description": "Private Merman Node native candidate for Windows x64 MSVC.",
+  "main": "./merman.node",
+  "files": ["merman.node", "LICENSE-APACHE", "LICENSE-MIT", "README.md", "THIRD_PARTY_LICENSES", "THIRD_PARTY_NOTICES.md"],
+  "license": "MIT OR Apache-2.0",
+  "os": ["win32"],
+  "cpu": ["x64"]
+}

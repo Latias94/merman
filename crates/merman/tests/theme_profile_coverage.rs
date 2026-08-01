@@ -1,6 +1,6 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
-use merman::render::{HeadlessRenderer, HostThemeProfile};
+use merman::svg::{HeadlessRenderer, HostThemeProfile};
 
 const USER_GITGRAPH_THEME_REGRESSION: &str = r#"gitGraph
     commit
@@ -82,10 +82,24 @@ fn assert_contains_all(name: &str, svg: &str, expected: &[&str]) {
     }
 }
 
+#[cfg(feature = "layout-cytoscape")]
 fn assert_current_dom_consumes(name: &str, svg: &str, expected: &[&str]) {
+    let normalized_svg = svg
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace())
+        .collect::<String>();
     for needle in expected {
+        let found = if needle.contains('{') {
+            let normalized_needle = needle
+                .chars()
+                .filter(|ch| !ch.is_ascii_whitespace())
+                .collect::<String>();
+            normalized_svg.contains(&normalized_needle)
+        } else {
+            svg.contains(needle)
+        };
         assert!(
-            svg.contains(needle),
+            found,
             "{name}: expected current DOM/CSS surface {needle:?} in SVG: {svg}"
         );
     }
@@ -277,6 +291,7 @@ fn host_theme_profile_covers_core_diagram_roles() {
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn host_theme_profile_series_palette_reaches_ordinal_diagrams() {
     let cases: &[(&str, &str, &[&str])] = &[
         (
@@ -380,6 +395,7 @@ fn host_theme_profile_centers_gitgraph_branch_labels_with_editor_fonts() {
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn host_theme_profile_covers_additional_current_diagram_surfaces() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (

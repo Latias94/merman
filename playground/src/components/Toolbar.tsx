@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 import {
   useAppStore,
   type HostThemePreset,
@@ -7,6 +8,12 @@ import {
   type Theme,
   type UITheme,
 } from "@/src/store";
+import {
+  selectCompletedRenderBatch,
+  selectCurrentDiagramType,
+  selectCurrentMermanRenderTime,
+  useRenderCoordinator,
+} from "@/src/runtime/use-render-coordinator";
 import {
   DIAGRAM_FONT_VALUES,
   isDiagramFont,
@@ -20,13 +27,17 @@ import {
   copySVGToClipboard,
   copyCodeToClipboard,
 } from "@/src/lib/export";
+import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
+import { BenchDialog } from "@/src/components/BenchDialog";
 import {
   asciiSupportDescription,
   asciiSupportLabelKey,
 } from "@/src/lib/ascii-support";
-import { useMerman } from "@/src/hooks/useMerman";
-import { BenchDialog } from "@/src/components/BenchDialog";
+import {
+  selectMermanFacade,
+  useMermanRuntime,
+} from "@/src/runtime/use-merman-runtime";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
 import {
   createMarkdownImageLink,
@@ -34,9 +45,9 @@ import {
 } from "@/src/lib/mermaid-live";
 import {
   SUPPORTED_HOST_THEME_PRESETS,
+  SUPPORTED_THEMES,
   normalizeHostThemePresetName,
   normalizeThemeName,
-  type HostThemePresetName,
 } from "@mermanjs/web";
 import { Button } from "@/components/ui/button";
 import {
@@ -103,18 +114,36 @@ export function Toolbar() {
     setUITheme,
     toggleExamples,
     showExamples,
-    lastRenderTime,
-    diagramType,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      code: state.code,
+      diagramFont: state.diagramFont,
+      diagramTheme: state.diagramTheme,
+      hostThemePreset: state.hostThemePreset,
+      mermaidConfig: state.mermaidConfig,
+      setDiagramFont: state.setDiagramFont,
+      setDiagramTheme: state.setDiagramTheme,
+      setHostThemePreset: state.setHostThemePreset,
+      setTextMeasurementMode: state.setTextMeasurementMode,
+      setUITheme: state.setUITheme,
+      showExamples: state.showExamples,
+      textMeasurementMode: state.textMeasurementMode,
+      toggleExamples: state.toggleExamples,
+      uiTheme: state.uiTheme,
+    }))
+  );
+  const diagramType = useRenderCoordinator(selectCurrentDiagramType);
+  const lastRenderTime = useRenderCoordinator(selectCurrentMermanRenderTime);
+  const currentBatch = useRenderCoordinator(selectCompletedRenderBatch);
   const { copyShareUrl } = useShare();
-  const { render, renderAscii, getThemes } = useMerman();
+  const facade = useMermanRuntime(selectMermanFacade);
   const asciiSupport = useAsciiSupport();
   const [isExporting, setIsExporting] = useState(false);
   const currentLang = getCurrentLanguage();
 
   const themeOptions: { value: Theme; label: string }[] = useMemo(() => {
     const seen = new Set<Theme>();
-    return getThemes()
+    return (facade?.getThemes() ?? SUPPORTED_THEMES)
       .map(normalizeThemeName)
       .filter((theme) => {
         if (seen.has(theme)) return false;
@@ -125,7 +154,7 @@ export function Toolbar() {
         value: theme,
         label: t(`themes.${theme}`, { defaultValue: theme }),
       }));
-  }, [getThemes, t]);
+  }, [facade, t]);
 
   const hostThemeOptions: { value: HostThemePreset; label: string }[] = useMemo(
     () => [
@@ -138,16 +167,6 @@ export function Toolbar() {
     [t]
   );
 
-  const activeHostThemePreset: HostThemePresetName | undefined =
-    hostThemePreset === "none" ? undefined : hostThemePreset;
-  const renderOptions = useMemo(
-    () => ({
-      hostThemePreset: activeHostThemePreset,
-      textMeasurementMode,
-      diagramFont,
-    }),
-    [activeHostThemePreset, diagramFont, textMeasurementMode]
-  );
   const renderThemeLabel =
     hostThemePreset === "none"
       ? t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })
@@ -167,56 +186,84 @@ export function Toolbar() {
     { value: "system", label: t("uiThemes.system") },
   ];
 
-  const renderCurrentSvg = useCallback((pipeline?: "resvg-safe") => {
-    const result = render(code, diagramTheme, mermaidConfig, {
-      ...renderOptions,
-      ...(pipeline ? { pipeline } : {}),
-    });
-    if (!result.svg) {
-      throw new Error(result.error ?? "Failed to render SVG");
-    }
-    return result.svg;
-  }, [code, diagramTheme, mermaidConfig, render, renderOptions]);
+  const currentMerman =
+    currentBatch?.merman.status === "success" ? currentBatch.merman : null;
+  const artifactActionsEnabled = currentMerman !== null;
+  const renderCurrentSvgArtifact = useCallback(
+    (pipeline?: "resvg-safe") => {
+      if (!currentBatch || !currentMerman) {
+        throw new Error("Current Merman render is unavailable.");
+      }
+      if (!pipeline) return currentMerman.artifact;
+      if (!facade) throw new Error("Merman runtime is not ready.");
+      const snapshot = currentBatch.snapshot;
+      const result = facade.render(
+        snapshot.source,
+        snapshot.theme,
+        snapshot.configJson,
+        { ...snapshot.options, pipeline }
+      );
+      if (result.status === "failure") {
+        throw new Error(result.error.summary);
+      }
+      return result.artifact;
+    },
+    [currentBatch, currentMerman, facade]
+  );
 
-  // 导出 SVG
+  // Export actions consume only the completed, current render batch.
   const handleExportSVG = useCallback(() => {
     try {
-      exportSVG(renderCurrentSvg(), "merman-diagram");
+      exportSVG(renderCurrentSvgArtifact(), "merman-diagram");
       toast.success(t("export.svgSuccess"));
     } catch {
       toast.error(t("export.failed"));
     }
-  }, [renderCurrentSvg, t]);
+  }, [renderCurrentSvgArtifact, t]);
 
-  // 导出 PNG
   const handleExportPNG = useCallback(async () => {
     setIsExporting(true);
+    let notificationId: string | number | undefined;
     try {
-      await exportPNG(renderCurrentSvg("resvg-safe"), "merman-diagram", 2);
-      toast.success(t("export.pngSuccess"));
-    } catch {
-      toast.error(t("export.failed"));
+      const plan = await exportPNG(
+        renderCurrentSvgArtifact("resvg-safe"),
+        "merman-diagram",
+        2,
+        {
+          onPlan: ({ outputWidth, outputHeight }) => {
+            notificationId = toast.loading(
+              t("export.pngPreparing", {
+                width: outputWidth,
+                height: outputHeight,
+              })
+            );
+          },
+        }
+      );
+      toast.success(
+        t("export.pngSuccess", {
+          width: plan.outputWidth,
+          height: plan.outputHeight,
+        }),
+        { id: notificationId }
+      );
+    } catch (error) {
+      toast.error(pngExportErrorMessage(error, t), { id: notificationId });
     } finally {
       setIsExporting(false);
     }
-  }, [renderCurrentSvg, t]);
+  }, [renderCurrentSvgArtifact, t]);
 
-  // 导出 ASCII
   const handleExportASCII = useCallback(() => {
-    if (!asciiSupport.isSupported(diagramType)) {
-      toast.error(t("export.asciiNotSupported"));
-      return;
-    }
-    const ascii = renderAscii(code, diagramTheme, mermaidConfig);
+    const ascii = currentMerman?.ascii;
     if (!ascii) {
       toast.error(t("export.asciiNotSupported"));
       return;
     }
     exportASCII(ascii, "merman-diagram");
     toast.success(t("export.asciiSuccess"));
-  }, [asciiSupport, code, diagramType, diagramTheme, mermaidConfig, renderAscii, t]);
+  }, [currentMerman, t]);
 
-  // 复制代码
   const handleCopyCode = useCallback(async () => {
     if (!code.trim()) {
       toast.error(t("share.copyFailed"));
@@ -245,17 +292,15 @@ export function Toolbar() {
     }
   }, [code, diagramTheme, mermaidConfig, t]);
 
-  // 复制 SVG
   const handleCopySVG = useCallback(async () => {
     try {
-      await copySVGToClipboard(renderCurrentSvg());
+      await copySVGToClipboard(renderCurrentSvgArtifact());
       toast.success(t("share.copied"));
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [renderCurrentSvg, t]);
+  }, [renderCurrentSvgArtifact, t]);
 
-  // 分享
   const handleShare = useCallback(async () => {
     if (!code.trim()) {
       toast.error(t("share.copyFailed"));
@@ -312,28 +357,6 @@ export function Toolbar() {
     []
   );
 
-  // 应用 UI 主题到 HTML
-  const handleUIThemeChange = useCallback(
-    (theme: UITheme) => {
-      setUITheme(theme);
-      const root = document.documentElement;
-      if (theme === "dark") {
-        root.classList.add("dark");
-      } else if (theme === "light") {
-        root.classList.remove("dark");
-      } else {
-        // system
-        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-          root.classList.add("dark");
-        } else {
-          root.classList.remove("dark");
-        }
-      }
-    },
-    [setUITheme]
-  );
-
-  // 切换语言
   const handleLanguageChange = useCallback((lang: string) => {
     changeLanguage(lang as "en" | "zh");
   }, []);
@@ -397,19 +420,50 @@ export function Toolbar() {
           </DropdownMenuRadioItem>
         ))}
       </DropdownMenuRadioGroup>
+      <div className="sm:hidden">
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{t("toolbar.toggleTheme")}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={uiTheme}
+          onValueChange={(value) => setUITheme(value as UITheme)}
+        >
+          {UI_THEME_OPTIONS.map((option) => (
+            <DropdownMenuRadioItem key={option.value} value={option.value}>
+              {UI_THEME_ICONS[option.value]}
+              {option.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{t("toolbar.language")}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={currentLang}
+          onValueChange={handleLanguageChange}
+        >
+          {languages.map((lang) => (
+            <DropdownMenuRadioItem key={lang.code} value={lang.code}>
+              <span className="mr-2">{lang.flag}</span>
+              {lang.name}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </div>
     </DropdownMenuContent>
   );
 
   return (
     <>
       <Toaster position="bottom-right" richColors />
-      <header className="relative flex h-14 items-center gap-2 overflow-hidden border-b bg-card px-3 sm:px-4">
+      <header className="relative flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b bg-card px-3 sm:px-4">
         {/* 左侧：Logo 和功能按钮 */}
         <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-4">
           <div className="flex items-center gap-2">
-            <div className="size-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">M</span>
-            </div>
+            <img
+              src={`${import.meta.env.BASE_URL}icon.svg`}
+              alt=""
+              aria-hidden="true"
+              className="size-8 rounded-md"
+            />
             <div className="hidden sm:block">
               <h1 className="text-sm font-semibold leading-none">Merman</h1>
               <p className="text-xs text-muted-foreground">{t("app.playground")}</p>
@@ -422,9 +476,11 @@ export function Toolbar() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
+                id="examples-trigger"
                 variant={showExamples ? "secondary" : "ghost"}
                 size="sm"
                 onClick={toggleExamples}
+                aria-label={t("toolbar.examples")}
               >
                 <BookOpen className="size-4" />
                 <span className="hidden sm:inline">{t("toolbar.examples")}</span>
@@ -433,9 +489,8 @@ export function Toolbar() {
             <TooltipContent>{t("toolbar.examples")}</TooltipContent>
           </Tooltip>
 
-          <div className="hidden sm:block">
-            <BenchDialog />
-          </div>
+          <BenchDialog />
+
         </div>
 
         <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 sm:hidden">
@@ -443,7 +498,11 @@ export function Toolbar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon-sm">
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label={t("toolbar.theme")}
+                  >
                     <Palette className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -457,7 +516,11 @@ export function Toolbar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon-sm">
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label={renderSettingsLabel}
+                  >
                     <Type className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -471,7 +534,12 @@ export function Toolbar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon-sm" disabled={isExporting}>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    disabled={isExporting}
+                    aria-label={t("toolbar.export")}
+                  >
                     <Download className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -481,15 +549,24 @@ export function Toolbar() {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>{t("export.title")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleExportSVG}>
+              <DropdownMenuItem
+                onClick={handleExportSVG}
+                disabled={!artifactActionsEnabled}
+              >
                 <FileCode className="size-4" />
                 {t("export.svg")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportPNG}>
+              <DropdownMenuItem
+                onClick={handleExportPNG}
+                disabled={!artifactActionsEnabled}
+              >
                 <ImageIcon className="size-4" />
                 {t("export.png")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportASCII} disabled={!asciiSupported}>
+              <DropdownMenuItem
+                onClick={handleExportASCII}
+                disabled={!currentMerman?.ascii}
+              >
                 <FileText className="size-4" />
                 {t("export.ascii")}
                 <span className="ml-auto max-w-44 truncate text-xs text-muted-foreground">
@@ -505,7 +582,10 @@ export function Toolbar() {
                 <FileText className="size-4" />
                 {t("export.copyMarkdown")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleCopySVG}>
+              <DropdownMenuItem
+                onClick={handleCopySVG}
+                disabled={!artifactActionsEnabled}
+              >
                 <Copy className="size-4" />
                 {t("export.copySvg")}
               </DropdownMenuItem>
@@ -519,7 +599,12 @@ export function Toolbar() {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="outline" size="icon-sm" onClick={handleShare}>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={handleShare}
+                aria-label={t("share.copyLink")}
+              >
                 <Share2 className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -545,6 +630,7 @@ export function Toolbar() {
                     variant="outline"
                     size="sm"
                     className="w-8 px-0 sm:w-auto sm:px-2.5"
+                    aria-label={t("toolbar.theme")}
                   >
                     <Palette className="size-4" />
                     <span className="hidden sm:inline">{renderThemeLabel}</span>
@@ -566,6 +652,7 @@ export function Toolbar() {
                     variant="outline"
                     size="sm"
                     className="w-8 px-0 sm:w-auto sm:px-2.5"
+                    aria-label={renderSettingsLabel}
                   >
                     <Type className="size-4" />
                     <span className="hidden sm:inline">{renderSettingsLabel}</span>
@@ -588,6 +675,7 @@ export function Toolbar() {
                     size="sm"
                     className="w-8 px-0 sm:w-auto sm:px-2.5"
                     disabled={isExporting}
+                    aria-label={t("toolbar.export")}
                   >
                     <Download className="size-4" />
                     <span className="hidden sm:inline">{t("toolbar.export")}</span>
@@ -600,17 +688,26 @@ export function Toolbar() {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>{t("export.title")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleExportSVG}>
+              <DropdownMenuItem
+                onClick={handleExportSVG}
+                disabled={!artifactActionsEnabled}
+              >
                 <FileCode className="size-4" />
                 {t("export.svg")}
                 <span className="ml-auto text-xs text-muted-foreground">{t("export.svgDesc")}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportPNG}>
+              <DropdownMenuItem
+                onClick={handleExportPNG}
+                disabled={!artifactActionsEnabled}
+              >
                 <ImageIcon className="size-4" />
                 {t("export.png")}
                 <span className="ml-auto text-xs text-muted-foreground">{t("export.pngDesc")}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportASCII} disabled={!asciiSupported}>
+              <DropdownMenuItem
+                onClick={handleExportASCII}
+                disabled={!currentMerman?.ascii}
+              >
                 <FileText className="size-4" />
                 {t("export.ascii")}
                 <span className="ml-auto text-xs text-muted-foreground">
@@ -629,7 +726,10 @@ export function Toolbar() {
                   {t("export.copyMarkdownDesc")}
                 </span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleCopySVG}>
+              <DropdownMenuItem
+                onClick={handleCopySVG}
+                disabled={!artifactActionsEnabled}
+              >
                 <Copy className="size-4" />
                 {t("export.copySvg")}
               </DropdownMenuItem>
@@ -652,6 +752,7 @@ export function Toolbar() {
                 size="sm"
                 className="w-8 px-0 sm:w-auto sm:px-2.5"
                 onClick={handleShare}
+                aria-label={t("share.copyLink")}
               >
                 <Share2 className="size-4" />
                 <span className="hidden sm:inline">{t("toolbar.share")}</span>
@@ -668,7 +769,11 @@ export function Toolbar() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("toolbar.language")}
+                    >
                       <Languages className="size-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -699,7 +804,11 @@ export function Toolbar() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("toolbar.toggleTheme")}
+                    >
                       {UI_THEME_ICONS[uiTheme]}
                     </Button>
                   </DropdownMenuTrigger>
@@ -711,7 +820,7 @@ export function Toolbar() {
                 <DropdownMenuSeparator />
                 <DropdownMenuRadioGroup
                   value={uiTheme}
-                  onValueChange={(v) => handleUIThemeChange(v as UITheme)}
+                  onValueChange={(v) => setUITheme(v as UITheme)}
                 >
                   {UI_THEME_OPTIONS.map((option) => (
                     <DropdownMenuRadioItem key={option.value} value={option.value}>
@@ -737,6 +846,7 @@ export function Toolbar() {
                   href="https://github.com/Latias94/merman"
                   target="_blank"
                   rel="noopener noreferrer"
+                  aria-label={t("toolbar.viewSource")}
                 >
                   <Github className="size-4" />
                 </a>

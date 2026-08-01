@@ -165,8 +165,8 @@ impl<'a> StateConfigView<'a> {
             hand_drawn_seed: self
                 .effective_config
                 .get("handDrawnSeed")
-                .and_then(Value::as_u64)
-                .unwrap_or(0),
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0),
             html_labels,
             html_label_wrapping_width: self.html_label_wrapping_width(),
             state_padding: self.state_padding(),
@@ -202,6 +202,7 @@ impl<'a> StateConfigView<'a> {
             font_family,
             font_size,
             font_weight: None,
+            font_style: None,
         }
     }
 
@@ -238,7 +239,7 @@ pub(super) struct StateLayoutSettings {
 pub(crate) struct StateRenderSettings {
     pub(crate) title_top_margin: f64,
     pub(crate) diagram_look: String,
-    pub(crate) hand_drawn_seed: u64,
+    pub(crate) hand_drawn_seed: f64,
     pub(crate) html_labels: bool,
     pub(crate) html_label_wrapping_width: f64,
     pub(crate) state_padding: f64,
@@ -367,7 +368,7 @@ mod tests {
         let settings = StateConfigView::new(&cfg).render_settings();
 
         assert_eq!(settings.diagram_look, "neo");
-        assert_eq!(settings.hand_drawn_seed, 42);
+        assert_eq!(settings.hand_drawn_seed, 42.0);
         assert!(!settings.html_labels);
         assert!(settings.security_level_loose);
         assert_eq!(settings.html_label_wrapping_width, 0.0);

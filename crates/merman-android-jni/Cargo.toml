@@ -1,0 +1,38 @@
+[package]
+name = "merman-android-jni"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Internal Android JNI transport for merman."
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.merman]
+artifact-profile-required = true
+
+[features]
+default = []
+system-clock = ["merman-bindings-core/system-clock"]
+system-timezone = ["merman-bindings-core/system-timezone"]
+system-random = ["merman-bindings-core/system-random"]
+analysis = ["merman-bindings-core/analysis"]
+ascii = ["merman-bindings-core/ascii"]
+svg = ["merman-bindings-core/svg"]
+png = ["svg", "merman-bindings-core/png"]
+jpeg = ["svg", "merman-bindings-core/jpeg"]
+pdf = ["svg", "merman-bindings-core/pdf"]
+layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
+layout-elk = ["svg", "merman-bindings-core/layout-elk"]
+math = ["svg", "merman-bindings-core/math"]
+
+[dependencies]
+merman-bindings-core.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.22.4", default-features = false }

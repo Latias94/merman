@@ -6,7 +6,7 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.common/src/org/eclipse/elk/alg/common/nodespacing/NodeMarginCalculator.java
 
 use crate::graph::{LGraph, LMargin, LPort, PortSide};
-use crate::options::{PortAlignment, PortConstraints};
+use crate::options::{NodeLabelPlacement, PortAlignment, PortConstraints};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 struct Rect {
@@ -32,6 +32,7 @@ impl Rect {
 pub fn calculate_label_and_node_sizes(graph: &mut LGraph, nodes: impl IntoIterator<Item = usize>) {
     for node in nodes {
         place_ports(graph, node);
+        place_node_labels(graph, node);
     }
 }
 
@@ -62,6 +63,146 @@ fn place_ports(graph: &mut LGraph, node: usize) {
             place_free_ports(graph, node, PortSide::West);
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum HorizontalLabelAlignment {
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum VerticalLabelAlignment {
+    Top,
+    Center,
+    Bottom,
+}
+
+fn place_node_labels(graph: &mut LGraph, node: usize) {
+    let Some((horizontal_alignment, vertical_alignment)) =
+        inside_label_alignment(graph.layerless_nodes[node].node_label_placement)
+    else {
+        return;
+    };
+    if graph.layerless_nodes[node].labels.is_empty() {
+        return;
+    }
+
+    let padding = graph.options.node_labels_padding;
+    let gap = graph.options.spacing.label_label;
+    let horizontal_layout_mode = !graph.options.direction.is_vertical();
+    let node = &mut graph.layerless_nodes[node];
+    let content_left = padding.left;
+    let content_top = padding.top;
+    let content_width = node.size.width - padding.left - padding.right;
+    let content_height = node.size.height - padding.top - padding.bottom;
+
+    if horizontal_layout_mode {
+        let labels_height = node
+            .labels
+            .iter()
+            .map(|label| label.size.height)
+            .sum::<f64>()
+            + gap * node.labels.len().saturating_sub(1) as f64;
+        let mut y = aligned_position(
+            content_top,
+            content_height,
+            labels_height,
+            vertical_alignment,
+        );
+
+        for label in &mut node.labels {
+            label.position.x = aligned_position(
+                content_left,
+                content_width,
+                label.size.width,
+                horizontal_alignment,
+            );
+            label.position.y = y;
+            y += label.size.height + gap;
+        }
+    } else {
+        let labels_width = node
+            .labels
+            .iter()
+            .map(|label| label.size.width)
+            .sum::<f64>()
+            + gap * node.labels.len().saturating_sub(1) as f64;
+        let mut x = aligned_position(
+            content_left,
+            content_width,
+            labels_width,
+            horizontal_alignment,
+        );
+
+        for label in &mut node.labels {
+            label.position.x = x;
+            label.position.y = aligned_position(
+                content_top,
+                content_height,
+                label.size.height,
+                vertical_alignment,
+            );
+            x += label.size.width + gap;
+        }
+    }
+}
+
+fn inside_label_alignment(
+    placement: NodeLabelPlacement,
+) -> Option<(HorizontalLabelAlignment, VerticalLabelAlignment)> {
+    use HorizontalLabelAlignment::{Center as HCenter, Left, Right};
+    use NodeLabelPlacement::*;
+    use VerticalLabelAlignment::{Bottom, Center as VCenter, Top};
+
+    match placement {
+        InsideTopLeft => Some((Left, Top)),
+        InsideTopCenter => Some((HCenter, Top)),
+        InsideTopRight => Some((Right, Top)),
+        InsideCenterLeft => Some((Left, VCenter)),
+        InsideCenter => Some((HCenter, VCenter)),
+        InsideCenterRight => Some((Right, VCenter)),
+        InsideBottomLeft => Some((Left, Bottom)),
+        InsideBottomCenter => Some((HCenter, Bottom)),
+        InsideBottomRight => Some((Right, Bottom)),
+        Fixed | OutsideTopLeft | OutsideTopCenter | OutsideTopRight | OutsideBottomLeft
+        | OutsideBottomCenter | OutsideBottomRight | OutsideLeftTop | OutsideLeftCenter
+        | OutsideLeftBottom | OutsideRightTop | OutsideRightCenter | OutsideRightBottom => None,
+    }
+}
+
+trait LabelAlignment: Copy {
+    fn factor(self) -> f64;
+}
+
+impl LabelAlignment for HorizontalLabelAlignment {
+    fn factor(self) -> f64 {
+        match self {
+            Self::Left => 0.0,
+            Self::Center => 0.5,
+            Self::Right => 1.0,
+        }
+    }
+}
+
+impl LabelAlignment for VerticalLabelAlignment {
+    fn factor(self) -> f64 {
+        match self {
+            Self::Top => 0.0,
+            Self::Center => 0.5,
+            Self::Bottom => 1.0,
+        }
+    }
+}
+
+fn aligned_position(
+    content_start: f64,
+    content_size: f64,
+    item_size: f64,
+    alignment: impl LabelAlignment,
+) -> f64 {
+    content_start + (content_size - item_size) * alignment.factor()
 }
 
 fn place_fixed_pos_ports(graph: &mut LGraph, node: usize, side: PortSide) {
@@ -287,8 +428,105 @@ fn process_node_margin(graph: &mut LGraph, node: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{LNode, LSize, PortType};
-    use crate::options::LayeredOptions;
+    use crate::graph::{EdgeLabelPlacement, LLabel, LNode, LPoint, LSize, PortType};
+    use crate::options::{ElkDirection, LayeredOptions, NodeLabelPlacement};
+
+    fn node_label(width: f64, height: f64) -> LLabel {
+        LLabel {
+            text: "label".to_string(),
+            size: LSize { width, height },
+            position: LPoint::default(),
+            placement: EdgeLabelPlacement::Center,
+            inline: false,
+            label_side: None,
+            end_label_edge: None,
+            original_label_edge: None,
+        }
+    }
+
+    #[test]
+    fn label_and_node_size_calculation_places_inside_top_center_node_labels() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let mut node = LNode::new("group", 100.3125, 105.0, None);
+        node.node_label_placement = NodeLabelPlacement::InsideTopCenter;
+        node.labels.push(LLabel {
+            text: "three".to_string(),
+            size: LSize {
+                width: 38.765625,
+                height: 22.0,
+            },
+            // LEFT direction preprocessing mirrors an unplaced label to this position.
+            position: LPoint {
+                x: -38.765625,
+                y: 0.0,
+            },
+            placement: EdgeLabelPlacement::Center,
+            inline: false,
+            label_side: None,
+            end_label_edge: None,
+            original_label_edge: None,
+        });
+        graph.layerless_nodes.push(node);
+        graph.set_node_layer(0, 0);
+
+        calculate_label_and_node_sizes(&mut graph, [0]);
+        calculate_node_margins(&mut graph, [0]);
+
+        assert_eq!(
+            graph.layerless_nodes[0].labels[0].position,
+            LPoint {
+                x: 30.7734375,
+                y: 5.0,
+            }
+        );
+        assert_eq!(graph.layerless_nodes[0].margin, LMargin::default());
+    }
+
+    #[test]
+    fn horizontal_layout_mode_stacks_multiple_node_labels_vertically() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.direction = ElkDirection::Right;
+        graph.options.spacing.label_label = 3.0;
+        let mut node = LNode::new("group", 100.0, 80.0, None);
+        node.node_label_placement = NodeLabelPlacement::InsideTopCenter;
+        node.labels.push(node_label(20.0, 10.0));
+        node.labels.push(node_label(30.0, 12.0));
+        graph.layerless_nodes.push(node);
+
+        calculate_label_and_node_sizes(&mut graph, [0]);
+
+        assert_eq!(
+            graph.layerless_nodes[0].labels[0].position,
+            LPoint { x: 40.0, y: 5.0 }
+        );
+        assert_eq!(
+            graph.layerless_nodes[0].labels[1].position,
+            LPoint { x: 35.0, y: 18.0 }
+        );
+    }
+
+    #[test]
+    fn vertical_layout_mode_stacks_transposed_node_labels_horizontally() {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        graph.options.direction = ElkDirection::Down;
+        graph.options.spacing.label_label = 3.0;
+        let mut node = LNode::new("group", 80.0, 100.0, None);
+        node.node_label_placement = NodeLabelPlacement::InsideCenterLeft;
+        node.labels.push(node_label(10.0, 20.0));
+        node.labels.push(node_label(12.0, 30.0));
+        graph.layerless_nodes.push(node);
+
+        calculate_label_and_node_sizes(&mut graph, [0]);
+
+        assert_eq!(
+            graph.layerless_nodes[0].labels[0].position,
+            LPoint { x: 5.0, y: 40.0 }
+        );
+        assert_eq!(
+            graph.layerless_nodes[0].labels[1].position,
+            LPoint { x: 18.0, y: 35.0 }
+        );
+    }
 
     #[test]
     fn label_and_node_size_calculation_places_free_ports_on_node_border() {

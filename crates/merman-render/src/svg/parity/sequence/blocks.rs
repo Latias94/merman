@@ -1,33 +1,44 @@
 use super::super::*;
 use super::block_collection::AltSection;
-use super::block_geometry::{
-    frame_x_from_message_ids, message_ids_y_range, section_message_y_range, section_separator_ys,
-};
+use super::block_geometry::SequenceBlockGeometry;
 use super::block_text::{
-    LoopTextRenderContext, display_block_label, wrap_svg_text_lines, write_loop_text_lines,
+    LoopTextPlacement, LoopTextRenderContext, display_block_label, write_loop_text_lines,
     write_section_title_lines,
 };
-use crate::sequence::{sequence_block_label_wrap_width, sequence_text_line_step_px};
+use crate::model::SequenceBlockLayout;
+use crate::sequence::sequence_block_label_wrap_width;
 use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) default_frame_x1: f64,
     pub(super) default_frame_x2: f64,
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
-    pub(super) msg_endpoints: &'a FxHashMap<&'a str, (&'a str, &'a str)>,
     pub(super) actor_nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
-    pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
-    pub(super) label_box_height: f64,
-    pub(super) box_text_margin: f64,
+    pub(super) label_box_width: f64,
     pub(super) wrap_padding: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) loop_text_style: &'a TextStyle,
+    pub(super) sanitize_config: &'a merman_core::MermaidConfig,
+    pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
+}
+
+pub(super) struct SimpleSequenceBlock<'a> {
+    pub(super) control_id: &'a str,
+    pub(super) label_id: &'a str,
+    pub(super) block_label: &'static str,
+    pub(super) raw_label: &'a str,
+    pub(super) geometry: SequenceBlockGeometry<'a>,
+    pub(super) layout: Option<&'a SequenceBlockLayout>,
 }
 
 impl<'a> SequenceBlockRenderContext<'a> {
     fn loop_text_context(&self) -> LoopTextRenderContext<'_> {
-        LoopTextRenderContext::new(self.measurer, self.loop_text_style)
+        LoopTextRenderContext::new(
+            self.measurer,
+            self.loop_text_style,
+            self.sanitize_config,
+            self.math_renderer,
+        )
     }
 
     fn label_wrap_width(&self, label_id: &str, fallback: Option<f64>) -> Option<f64> {
@@ -83,10 +94,16 @@ pub(super) fn write_block_frame(
     );
 }
 
-pub(super) fn write_block_label_box(out: &mut String, frame_x1: f64, frame_y1: f64, label: &str) {
+pub(super) fn write_block_label_box(
+    out: &mut String,
+    frame_x1: f64,
+    frame_y1: f64,
+    label_box_width: f64,
+    label: &str,
+) {
     let x1 = frame_x1;
     let y1 = frame_y1;
-    let x2 = x1 + 50.0;
+    let x2 = x1 + label_box_width;
     let y2 = y1 + 13.0;
     let y3 = y1 + 20.0;
     let x3 = x2 - 8.4;
@@ -100,7 +117,7 @@ pub(super) fn write_block_label_box(out: &mut String, frame_x1: f64, frame_y1: f
         x3 = fmt(x3),
         y3 = fmt(y3)
     );
-    let label_cx = (x1 + 25.0).round();
+    let label_cx = (x1 + label_box_width / 2.0).round();
     let label_cy = y1 + 13.0;
     let _ = write!(
         out,
@@ -113,53 +130,69 @@ pub(super) fn write_block_label_box(out: &mut String, frame_x1: f64, frame_y1: f
 
 pub(super) fn render_simple_sequence_block(
     out: &mut String,
-    control_id: &str,
-    label_id: &str,
-    block_label: &str,
-    raw_label: &str,
-    message_ids: &[&str],
+    block: SimpleSequenceBlock<'_>,
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
-    let Some((min_y, max_y)) = message_ids_y_range(
-        message_ids.iter().copied(),
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-        false,
-    ) else {
+    if block.geometry.frame_y_range().is_none() {
+        return;
+    }
+    let Some(layout) = block.layout else {
         return;
     };
 
-    let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-        message_ids.iter().copied(),
-        ctx.msg_endpoints,
-        ctx.actor_nodes_by_id,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-    )
-    .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    let (frame_x1, frame_x2, _min_left) = block
+        .geometry
+        .frame_x(ctx.actor_nodes_by_id)
+        .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
 
-    let header_offset = if block_label == "break" {
-        93.0
-    } else if raw_label.trim().is_empty() {
-        (79.0 - ctx.label_box_height).max(0.0)
-    } else {
-        79.0
-    };
-    let frame_y1 = min_y - header_offset;
-    let frame_y2 = max_y + 10.0;
+    let frame_y1 = layout.start_y;
+    let frame_y2 = layout.stop_y;
 
-    write_control_structure_group_open(out, control_id);
+    write_control_structure_group_open(out, block.control_id);
     write_block_frame(out, frame_x1, frame_x2, frame_y1, frame_y2);
-    write_block_label_box(out, frame_x1, frame_y1, block_label);
-    let label_box_right = frame_x1 + 50.0;
+    write_block_label_box(
+        out,
+        frame_x1,
+        frame_y1,
+        ctx.label_box_width,
+        block.block_label,
+    );
+    let label_box_right = frame_x1 + ctx.label_box_width;
     let text_x = (label_box_right + frame_x2) / 2.0;
     let text_y = frame_y1 + 18.0;
-    let label = display_block_label(raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
-    let max_w = ctx.label_wrap_width(label_id, Some((frame_x2 - label_box_right).max(0.0)));
+    let label =
+        display_block_label(block.raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
+    let max_w = ctx.label_wrap_width(block.label_id, Some((frame_x2 - label_box_right).max(0.0)));
     let loop_text_ctx = ctx.loop_text_context();
-    write_loop_text_lines(out, &loop_text_ctx, text_x, text_y, max_w, &label, true);
+    write_loop_text_lines(
+        out,
+        &loop_text_ctx,
+        LoopTextPlacement {
+            x: text_x,
+            y0: text_y,
+            block_start_y: frame_y1,
+            max_width: max_w,
+            use_tspan: true,
+        },
+        &label,
+    );
     out.push_str("</g>");
+}
+
+fn section_geometry<'a>(sections: &[AltSection<'a>]) -> SequenceBlockGeometry<'a> {
+    sections
+        .iter()
+        .fold(SequenceBlockGeometry::empty(), |geometry, section| {
+            geometry.merged(section.geometry)
+        })
+}
+
+fn section_separator_ys(sections: &[AltSection<'_>]) -> Option<Vec<f64>> {
+    sections
+        .iter()
+        .skip(1)
+        .map(|section| section.separator_y)
+        .collect()
 }
 
 pub(super) fn render_sectioned_sequence_block(
@@ -167,36 +200,32 @@ pub(super) fn render_sectioned_sequence_block(
     control_id: &str,
     block_label: &str,
     sections: &[AltSection<'_>],
-    adjust_header_for_wrap: bool,
+    layout: Option<&SequenceBlockLayout>,
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
     if sections.is_empty() {
         return;
     }
 
-    let Some((min_y, max_y)) = section_message_y_range(
-        sections,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-        false,
-    ) else {
+    let geometry = section_geometry(sections);
+    if geometry.frame_y_range().is_none() {
+        return;
+    }
+    let Some(layout) = layout else {
+        return;
+    };
+    let Some(sep_ys) = section_separator_ys(sections) else {
         return;
     };
 
-    let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-        sections.iter().flat_map(|s| s.message_ids.iter().copied()),
-        ctx.msg_endpoints,
-        ctx.actor_nodes_by_id,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-    )
-    .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    let (frame_x1, frame_x2, _min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
+        ctx.default_frame_x1,
+        ctx.default_frame_x2,
+        f64::INFINITY,
+    ));
 
-    let header_offset =
-        section_header_offset(sections, frame_x1, frame_x2, adjust_header_for_wrap, ctx);
-    let frame_y1 = min_y - header_offset;
-    let frame_y2 = max_y + 10.0;
+    let frame_y1 = layout.start_y;
+    let frame_y2 = layout.stop_y;
 
     write_control_structure_group_open(out, control_id);
 
@@ -208,13 +237,6 @@ pub(super) fn render_sectioned_sequence_block(
     // Mermaid output and avoid sub-pixel gaps at the frame border.
     let dash_x1 = frame_x1;
     let dash_x2 = frame_x2;
-    let sep_ys = section_separator_ys(
-        sections,
-        min_y,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-    );
     for y in &sep_ys {
         let _ = write!(
             out,
@@ -226,10 +248,10 @@ pub(super) fn render_sectioned_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(out, frame_x1, frame_y1, block_label);
+    write_block_label_box(out, frame_x1, frame_y1, ctx.label_box_width, block_label);
 
     // section labels
-    let label_box_right = frame_x1 + 50.0;
+    let label_box_right = frame_x1 + ctx.label_box_width;
     let main_text_x = (label_box_right + frame_x2) / 2.0;
     let center_text_x = (frame_x1 + frame_x2) / 2.0;
     for (i, sec) in sections.iter().enumerate() {
@@ -244,11 +266,14 @@ pub(super) fn render_sectioned_sequence_block(
             write_loop_text_lines(
                 out,
                 &loop_text_ctx,
-                main_text_x,
-                y,
-                max_w,
+                LoopTextPlacement {
+                    x: main_text_x,
+                    y0: y,
+                    block_start_y: frame_y1,
+                    max_width: max_w,
+                    use_tspan: true,
+                },
                 &label_text,
-                true,
             );
             continue;
         }
@@ -259,6 +284,7 @@ pub(super) fn render_sectioned_sequence_block(
             &loop_text_ctx,
             center_text_x,
             y,
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1),
             ctx.label_wrap_width(sec.label_id, None),
             &label_text,
         );
@@ -271,63 +297,36 @@ pub(super) fn render_critical_sequence_block(
     out: &mut String,
     control_id: &str,
     sections: &[AltSection<'_>],
+    layout: Option<&SequenceBlockLayout>,
     ctx: &SequenceBlockRenderContext<'_>,
 ) {
     if sections.is_empty() {
         return;
     }
 
-    let Some((min_y, max_y)) = section_message_y_range(
-        sections,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-        false,
-    ) else {
+    let geometry = section_geometry(sections);
+    if geometry.frame_y_range().is_none() {
+        return;
+    }
+    let Some(layout) = layout else {
+        return;
+    };
+    let Some(sep_ys) = section_separator_ys(sections) else {
         return;
     };
 
-    let (mut frame_x1, frame_x2, min_left) = frame_x_from_message_ids(
-        sections.iter().flat_map(|s| s.message_ids.iter().copied()),
-        ctx.msg_endpoints,
-        ctx.actor_nodes_by_id,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-    )
-    .unwrap_or((ctx.default_frame_x1, ctx.default_frame_x2, f64::INFINITY));
+    let (mut frame_x1, frame_x2, min_left) = geometry.frame_x(ctx.actor_nodes_by_id).unwrap_or((
+        ctx.default_frame_x1,
+        ctx.default_frame_x2,
+        f64::INFINITY,
+    ));
     if sections.len() > 1 && min_left.is_finite() {
         // Mermaid's `critical` w/ `option` sections widens the frame to the left.
         frame_x1 = frame_x1.min(min_left - 9.0);
     }
 
-    let header_offset = if sections
-        .first()
-        .is_some_and(|s| s.raw_label.trim().is_empty())
-    {
-        (79.0 - ctx.label_box_height).max(0.0)
-    } else if sections.len() > 1 {
-        // Mermaid does not apply the wrap height adjustment for multi-section
-        // `critical` blocks (those with one or more `option` sections).
-        79.0
-    } else {
-        // Mermaid's `adjustLoopHeightForWrap(...)` expands the header height when the
-        // section label wraps to multiple lines. This affects the frame's top y.
-        let label_text = display_block_label(sections[0].raw_label, true)
-            .unwrap_or_else(|| "\u{200B}".to_string());
-        let label_box_right = frame_x1 + 50.0;
-        let max_w = ctx.label_wrap_width(
-            sections[0].label_id,
-            Some((frame_x2 - label_box_right).max(0.0)),
-        );
-        let wrapped = wrap_svg_text_lines(&label_text, ctx.measurer, ctx.loop_text_style, max_w);
-        let extra_lines = wrapped.len().saturating_sub(1) as f64;
-        let extra_per_line = (sequence_text_line_step_px(ctx.loop_text_style.font_size)
-            - ctx.box_text_margin)
-            .max(0.0);
-        79.0 + extra_lines * extra_per_line
-    };
-    let frame_y1 = min_y - header_offset;
-    let frame_y2 = max_y + 10.0;
+    let frame_y1 = layout.start_y;
+    let frame_y2 = layout.stop_y;
 
     write_control_structure_group_open(out, control_id);
 
@@ -337,13 +336,6 @@ pub(super) fn render_critical_sequence_block(
     // separators (dashed)
     let dash_x1 = frame_x1;
     let dash_x2 = frame_x2;
-    let sep_ys = section_separator_ys(
-        sections,
-        min_y,
-        ctx.edges_by_id,
-        ctx.nodes_by_id,
-        ctx.msg_endpoints,
-    );
     for y in &sep_ys {
         let _ = write!(
             out,
@@ -355,10 +347,10 @@ pub(super) fn render_critical_sequence_block(
     }
 
     // label box + label text
-    write_block_label_box(out, frame_x1, frame_y1, "critical");
+    write_block_label_box(out, frame_x1, frame_y1, ctx.label_box_width, "critical");
 
     // section labels
-    let label_box_right = frame_x1 + 50.0;
+    let label_box_right = frame_x1 + ctx.label_box_width;
     let main_text_x = (label_box_right + frame_x2) / 2.0;
     let center_text_x = (frame_x1 + frame_x2) / 2.0;
     for (i, sec) in sections.iter().enumerate() {
@@ -373,11 +365,14 @@ pub(super) fn render_critical_sequence_block(
             write_loop_text_lines(
                 out,
                 &loop_text_ctx,
-                main_text_x,
-                y,
-                max_w,
+                LoopTextPlacement {
+                    x: main_text_x,
+                    y0: y,
+                    block_start_y: frame_y1,
+                    max_width: max_w,
+                    use_tspan: true,
+                },
                 &label_text,
-                true,
             );
             continue;
         }
@@ -388,42 +383,11 @@ pub(super) fn render_critical_sequence_block(
             &loop_text_ctx,
             center_text_x,
             y,
+            sep_ys.get(i - 1).copied().unwrap_or(frame_y1),
             ctx.label_wrap_width(sec.label_id, None),
             &label_text,
         );
     }
 
     out.push_str("</g>");
-}
-
-fn section_header_offset(
-    sections: &[AltSection<'_>],
-    frame_x1: f64,
-    frame_x2: f64,
-    adjust_header_for_wrap: bool,
-    ctx: &SequenceBlockRenderContext<'_>,
-) -> f64 {
-    if sections
-        .first()
-        .is_some_and(|s| s.raw_label.trim().is_empty())
-    {
-        return (79.0 - ctx.label_box_height).max(0.0);
-    }
-    if !adjust_header_for_wrap {
-        return 79.0;
-    }
-
-    let base = 79.0;
-    let label_box_right = frame_x1 + 50.0;
-    let max_w = ctx.label_wrap_width(
-        sections[0].label_id,
-        Some((frame_x2 - label_box_right).max(0.0)),
-    );
-    let label =
-        display_block_label(sections[0].raw_label, true).unwrap_or_else(|| "\u{200B}".to_string());
-    let wrapped = wrap_svg_text_lines(&label, ctx.measurer, ctx.loop_text_style, max_w);
-    let extra_lines = wrapped.len().saturating_sub(1) as f64;
-    let extra_per_line =
-        (sequence_text_line_step_px(ctx.loop_text_style.font_size) - ctx.box_text_margin).max(0.0);
-    base + extra_lines * extra_per_line
 }

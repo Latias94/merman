@@ -3,8 +3,10 @@ use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
     TimelineTaskLayout,
 };
-use crate::text::{TextMeasurer, TextStyle, normalize_font_key};
-use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
+use crate::text::{TextMeasurer, TextStyle};
+use merman_core::diagrams::timeline::{
+    TimelineDiagramRenderModel, TimelineDirection, TimelineRenderTask,
+};
 use std::borrow::Cow;
 
 mod config;
@@ -20,22 +22,21 @@ const TASK_CONTENT_WIDTH_DEFAULT: f64 = 150.0;
 const EVENT_VERTICAL_OFFSET_FROM_TASK_Y: f64 = 200.0;
 const EVENT_GAP_Y: f64 = 10.0;
 
+// Mermaid 11.16 uses a separate renderer for `timeline TD`. These values mirror that renderer's
+// block geometry rather than transposing the horizontal layout.
+const VERTICAL_NODE_CONTENT_WIDTH: f64 = 200.0;
+const VERTICAL_EVENT_CONTENT_WIDTH: f64 = 300.0;
+const VERTICAL_NODE_PADDING: f64 = 5.0;
+const VERTICAL_EVENT_SPACING: f64 = 10.0;
+const VERTICAL_SECTION_TASK_GAP: f64 = 20.0;
+const VERTICAL_TASK_AXIS_GAP: f64 = 20.0;
+const VERTICAL_TASK_GAP: f64 = 30.0;
+const VERTICAL_EVENT_AXIS_GAP: f64 = 50.0;
+
 const TITLE_Y: f64 = 20.0;
 
 pub(crate) fn default_use_max_width() -> bool {
     false
-}
-
-fn timeline_font_key(style: &TextStyle) -> String {
-    style
-        .font_family
-        .as_deref()
-        .map(normalize_font_key)
-        .unwrap_or_default()
-}
-
-fn timeline_uses_fira_sans_browser_fallback(style: &TextStyle) -> bool {
-    timeline_font_key(style) == "firasans"
 }
 
 fn section_index(full_section: i64) -> i64 {
@@ -181,32 +182,19 @@ fn wrap_lines(
     }
 }
 
-fn timeline_first_line_bbox_height_px(style: &TextStyle) -> f64 {
-    if timeline_uses_fira_sans_browser_fallback(style) && (style.font_size - 17.0).abs() <= 0.01 {
-        return 25.0;
-    }
-
-    let first_line_em = 1.1875;
-    (style.font_size.max(1.0) * first_line_em).floor()
-}
-
-fn text_bbox_height(lines: &[String], style: &TextStyle) -> f64 {
+fn text_bbox_height(lines: &[String], style: &TextStyle, measurer: &dyn TextMeasurer) -> f64 {
     // Mermaid timeline measures SVG `<text>.getBBox().height` (see upstream `svgDraw.js`).
     //
-    // In the pinned Mermaid CLI/browser baselines, the bbox behaves as:
-    // - first line: ~1.1875em (Trebuchet MS default)
-    // - additional lines: 1.1em each
+    // The first visible line is measured through the operation-selected DOM-shape route. Mermaid
+    // places subsequent tspans at `dy=1.1em`, so their contribution is source-derived.
     let font_size = style.font_size.max(1.0);
-    let lines = lines.iter().filter(|l| !l.trim().is_empty()).count();
-    if lines == 0 {
+    let mut visible_lines = lines.iter().filter(|line| !line.trim().is_empty());
+    let Some(first_line) = visible_lines.next() else {
         return 0.0;
-    }
-    // Empirically, browser `getBBox().height` for SVG `<text>` in upstream timeline fixtures can
-    // "snap" the first-line height down to an integer for non-default font sizes (notably when
-    // the diagram sets `themeVariables.fontSize`). Mirror that so our layout stays on the same
-    // lattice as upstream `mmdc` baselines.
-    let first = timeline_first_line_bbox_height_px(style);
-    let additional = (lines.saturating_sub(1) as f64) * font_size * 1.1;
+    };
+    let additional_lines = visible_lines.count();
+    let first = measurer.measure_svg_tspan_text_bbox_height_px(first_line, style);
+    let additional = additional_lines as f64 * font_size * 1.1;
     first + additional
 }
 
@@ -221,7 +209,7 @@ fn virtual_node_height(
     // Mermaid timeline `wrap()` compares `tspan.getComputedTextLength()` against `node.width`
     // (the configured inner width, excluding padding).
     let lines = wrap_lines(text, content_width.max(1.0), style, measurer);
-    let bbox_h = text_bbox_height(&lines, style);
+    let bbox_h = text_bbox_height(&lines, style, measurer);
     // Mermaid timeline uses `conf.fontSize` (top-level `config.fontSize`) for the extra vertical
     // offset, even when the actual rendered font size comes from `themeVariables.fontSize`.
     let h = bbox_h + layout_font_size.max(1.0) * 1.1 * 0.5 + padding;
@@ -236,6 +224,7 @@ struct TimelineNodeRequest<'a> {
     x: f64,
     y: f64,
     content_width: f64,
+    padding: f64,
     max_height: f64,
     style: &'a TextStyle,
     layout_font_size: f64,
@@ -252,6 +241,7 @@ fn compute_node(
         x,
         y,
         content_width,
+        padding,
         max_height,
         style,
         layout_font_size,
@@ -261,18 +251,18 @@ fn compute_node(
         content_width,
         style,
         layout_font_size,
-        NODE_PADDING,
+        padding,
         measurer,
     );
     let height = h0.max(max_height).max(1.0);
-    let width = (content_width + NODE_PADDING * 2.0).max(1.0);
+    let width = (content_width + padding * 2.0).max(1.0);
     TimelineNodeLayout {
         x,
         y,
         width,
         height,
         content_width: content_width.max(1.0),
-        padding: NODE_PADDING,
+        padding,
         section_class: section_class(full_section),
         label: label.to_string(),
         label_lines,
@@ -312,15 +302,6 @@ fn bounds_from_nodes_and_lines<'a, 'b>(
     }
 }
 
-fn timeline_svg_bbox_x_with_ascii_overhang_override_px(
-    font_key: &str,
-    font_size_px: f64,
-    text: &str,
-) -> Option<(f64, f64)> {
-    crate::generated::timeline_text_overrides_11_12_2::
-        lookup_timeline_svg_bbox_x_with_ascii_overhang_px(font_key, font_size_px, text)
-}
-
 fn expand_bounds_for_node_text(
     min_x: &mut f64,
     _min_y: &mut f64,
@@ -340,31 +321,34 @@ fn expand_bounds_for_node_text(
             if line.trim().is_empty() {
                 continue;
             }
-            // Timeline node labels can overflow the node shape. Mermaid computes the final
-            // viewport from SVG `getBBox()`, which includes glyph overhang and can be asymmetric
-            // even for ASCII strings (observed in upstream fixtures).
-            let (left, right) = timeline_svg_bbox_x_with_ascii_overhang_override_px(
-                style.font_family.as_deref().unwrap_or_default(),
-                style.font_size,
-                line,
-            )
-            .unwrap_or_else(|| measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, style));
-            *min_x = (*min_x).min(anchor_x - left);
-            *max_x = (*max_x).max(anchor_x + right);
+            // `wrap()` replaces the direct text run with child `<tspan>` rows before Mermaid
+            // reads the root SVG bbox. Preserve that DOM shape in the measurement route. The
+            // rendered text is middle-anchored at the node center, so each row contributes half
+            // of its tspan bbox width on either side of that anchor.
+            let half_width = measurer
+                .measure_svg_tspan_text_bbox_width_px(line, style)
+                .max(0.0)
+                / 2.0;
+            *min_x = (*min_x).min(anchor_x - half_width);
+            *max_x = (*max_x).max(anchor_x + half_width);
         }
     }
 }
 
-pub fn layout_timeline_diagram(
-    semantic: &serde_json::Value,
+pub(crate) fn layout_timeline_diagram_typed(
+    model: &TimelineDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
-    let model: TimelineDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_timeline_diagram_typed(&model, effective_config, measurer)
+    match model.direction {
+        TimelineDirection::LeftToRight => {
+            layout_timeline_horizontal(model, effective_config, measurer)
+        }
+        TimelineDirection::TopDown => layout_timeline_vertical(model, effective_config, measurer),
+    }
 }
 
-pub fn layout_timeline_diagram_typed(
+fn layout_timeline_horizontal(
     model: &TimelineDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
@@ -466,6 +450,7 @@ pub fn layout_timeline_diagram_typed(
                     x: master_x,
                     y: section_y,
                     content_width,
+                    padding: NODE_PADDING,
                     max_height: max_section_height,
                     style: &text_style,
                     layout_font_size,
@@ -488,6 +473,7 @@ pub fn layout_timeline_diagram_typed(
                         x: task_x,
                         y: task_y,
                         content_width: task_content_width,
+                        padding: NODE_PADDING,
                         max_height: max_task_height,
                         style: &text_style,
                         layout_font_size,
@@ -516,6 +502,7 @@ pub fn layout_timeline_diagram_typed(
                             x: task_x,
                             y: event_y,
                             content_width: task_content_width,
+                            padding: NODE_PADDING,
                             max_height: 50.0,
                             style: &text_style,
                             layout_font_size,
@@ -529,7 +516,7 @@ pub fn layout_timeline_diagram_typed(
 
                 tasks.push(TimelineTaskLayout {
                     node: task_node,
-                    connector,
+                    connectors: vec![connector],
                     events,
                 });
 
@@ -557,6 +544,7 @@ pub fn layout_timeline_diagram_typed(
                     x: master_x,
                     y: master_y,
                     content_width: task_content_width,
+                    padding: NODE_PADDING,
                     max_height: max_task_height,
                     style: &text_style,
                     layout_font_size,
@@ -585,6 +573,7 @@ pub fn layout_timeline_diagram_typed(
                         x: master_x,
                         y: event_y,
                         content_width: task_content_width,
+                        padding: NODE_PADDING,
                         max_height: 50.0,
                         style: &text_style,
                         layout_font_size,
@@ -598,7 +587,7 @@ pub fn layout_timeline_diagram_typed(
 
             orphan_tasks.push(TimelineTaskLayout {
                 node: task_node,
-                connector,
+                connectors: vec![connector],
                 events,
             });
 
@@ -665,6 +654,7 @@ pub fn layout_timeline_diagram_typed(
             font_family: text_style.font_family.clone(),
             font_size: title_font_size,
             font_weight: Some("bold".to_string()),
+            font_style: None,
         };
         let metrics = measurer.measure(t, &title_style);
         all_nodes_full.push(TimelineNodeLayout {
@@ -701,6 +691,7 @@ pub fn layout_timeline_diagram_typed(
     let vb_max_y = full_max_y + viewbox_padding;
 
     Ok(TimelineDiagramLayout {
+        direction: model.direction,
         bounds: Some(Bounds {
             min_x: vb_min_x,
             min_y: vb_min_y,
@@ -721,13 +712,347 @@ pub fn layout_timeline_diagram_typed(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn layout_vertical_tasks<'a>(
+    tasks: impl IntoIterator<Item = &'a TimelineRenderTask>,
+    timeline_x: f64,
+    start_y: f64,
+    task_spacing: f64,
+    max_task_height: f64,
+    mut section_color: i64,
+    advance_section_color: bool,
+    text_style: &TextStyle,
+    layout_font_size: f64,
+    measurer: &dyn TextMeasurer,
+    all_nodes: &mut Vec<TimelineNodeLayout>,
+    all_lines: &mut Vec<TimelineLineLayout>,
+) -> Vec<TimelineTaskLayout> {
+    let mut layouts = Vec::new();
+    let mut task_y = start_y;
+    let task_width = VERTICAL_NODE_CONTENT_WIDTH + VERTICAL_NODE_PADDING * 2.0;
+    let task_x = timeline_x - VERTICAL_TASK_AXIS_GAP - task_width;
+    let events_x = timeline_x + VERTICAL_EVENT_AXIS_GAP;
+
+    for task in tasks {
+        let task_node = compute_node(
+            TimelineNodeRequest {
+                kind: "task",
+                label: &task.task,
+                full_section: section_color,
+                x: task_x,
+                y: task_y,
+                content_width: VERTICAL_NODE_CONTENT_WIDTH,
+                padding: VERTICAL_NODE_PADDING,
+                max_height: max_task_height,
+                style: text_style,
+                layout_font_size,
+            },
+            measurer,
+        );
+        all_nodes.push(task_node.clone());
+
+        let mut events = Vec::new();
+        let mut connectors = Vec::new();
+        let mut event_y = task_y;
+        for event in &task.events {
+            let event_node = compute_node(
+                TimelineNodeRequest {
+                    kind: "event",
+                    label: event,
+                    full_section: section_color,
+                    x: events_x,
+                    y: event_y,
+                    content_width: VERTICAL_EVENT_CONTENT_WIDTH,
+                    padding: VERTICAL_NODE_PADDING,
+                    max_height: 0.0,
+                    style: text_style,
+                    layout_font_size,
+                },
+                measurer,
+            );
+            let line_y = event_y + event_node.height / 2.0;
+            let connector = TimelineLineLayout {
+                kind: "task-events".to_string(),
+                x1: timeline_x,
+                y1: line_y,
+                x2: events_x,
+                y2: line_y,
+            };
+            all_lines.push(connector.clone());
+            connectors.push(connector);
+            event_y += event_node.height + VERTICAL_EVENT_SPACING;
+            all_nodes.push(event_node.clone());
+            events.push(event_node);
+        }
+
+        layouts.push(TimelineTaskLayout {
+            node: task_node,
+            connectors,
+            events,
+        });
+        task_y += task_spacing;
+        if advance_section_color {
+            section_color += 1;
+        }
+    }
+
+    layouts
+}
+
+fn layout_timeline_vertical(
+    model: &TimelineDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<TimelineDiagramLayout> {
+    let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
+
+    let cfg = TimelineConfigView::new(effective_config).layout_settings();
+    let text_style = cfg.text_style;
+    let render_font_size = text_style.font_size;
+    let layout_font_size = cfg.layout_font_size;
+    let left_margin = cfg.left_margin;
+
+    let node_total_width = VERTICAL_NODE_CONTENT_WIDTH + VERTICAL_NODE_PADDING * 2.0;
+    let event_total_width = VERTICAL_EVENT_CONTENT_WIDTH + VERTICAL_NODE_PADDING * 2.0;
+    let left_width = node_total_width + VERTICAL_TASK_AXIS_GAP;
+    let right_width = event_total_width + VERTICAL_EVENT_AXIS_GAP;
+    let section_content_width = (left_width + right_width - VERTICAL_NODE_PADDING * 2.0).max(50.0);
+
+    let mut max_section_height: f64 = 0.0;
+    for section in &model.sections {
+        let (height, _) = virtual_node_height(
+            section,
+            section_content_width,
+            &text_style,
+            layout_font_size,
+            VERTICAL_NODE_PADDING,
+            measurer,
+        );
+        max_section_height = max_section_height.max(height);
+    }
+
+    let mut max_task_height: f64 = 0.0;
+    let mut max_event_stack_height: f64 = 0.0;
+    for task in &model.tasks {
+        let (height, _) = virtual_node_height(
+            "[object Object]",
+            VERTICAL_NODE_CONTENT_WIDTH,
+            &text_style,
+            layout_font_size,
+            VERTICAL_NODE_PADDING,
+            measurer,
+        );
+        max_task_height = max_task_height.max(height);
+
+        let mut event_stack_height = 0.0;
+        for event in &task.events {
+            let (height, _) = virtual_node_height(
+                event,
+                VERTICAL_EVENT_CONTENT_WIDTH,
+                &text_style,
+                layout_font_size,
+                VERTICAL_NODE_PADDING,
+                measurer,
+            );
+            event_stack_height += height;
+        }
+        if !task.events.is_empty() {
+            event_stack_height +=
+                task.events.len().saturating_sub(1) as f64 * VERTICAL_EVENT_SPACING;
+        }
+        max_event_stack_height = max_event_stack_height.max(event_stack_height);
+    }
+
+    let task_spacing = max_task_height.max(max_event_stack_height) + VERTICAL_TASK_GAP;
+    let base_x = BASE_MARGIN + left_margin;
+    let base_y = BASE_MARGIN;
+    let has_sections = !model.sections.is_empty();
+    let timeline_x = base_x + left_width;
+
+    let mut sections = Vec::new();
+    let mut orphan_tasks = Vec::new();
+    let mut all_nodes_pre_title = Vec::new();
+    let mut all_lines_pre_title = Vec::new();
+
+    if has_sections {
+        let mut master_y = base_y;
+        for (section_number, section_label) in model.sections.iter().enumerate() {
+            let section_number = section_number as i64;
+            let tasks_for_section = model
+                .tasks
+                .iter()
+                .filter(|task| task.section == *section_label)
+                .collect::<Vec<_>>();
+            let section_node = compute_node(
+                TimelineNodeRequest {
+                    kind: "section",
+                    label: section_label,
+                    full_section: section_number,
+                    x: timeline_x - left_width,
+                    y: master_y,
+                    content_width: section_content_width,
+                    padding: VERTICAL_NODE_PADDING,
+                    max_height: max_section_height,
+                    style: &text_style,
+                    layout_font_size,
+                },
+                measurer,
+            );
+            all_nodes_pre_title.push(section_node.clone());
+            let task_start_y = master_y + section_node.height + VERTICAL_SECTION_TASK_GAP;
+            let tasks = layout_vertical_tasks(
+                tasks_for_section.iter().copied(),
+                timeline_x,
+                task_start_y,
+                task_spacing,
+                max_task_height,
+                section_number,
+                false,
+                &text_style,
+                layout_font_size,
+                measurer,
+                &mut all_nodes_pre_title,
+                &mut all_lines_pre_title,
+            );
+            let task_count = tasks_for_section.len();
+            let section_height = section_node.height
+                + VERTICAL_SECTION_TASK_GAP
+                + task_spacing * task_count.max(1) as f64
+                - if task_count > 0 {
+                    VERTICAL_TASK_GAP * 2.0
+                } else {
+                    0.0
+                };
+            master_y += section_height;
+            sections.push(TimelineSectionLayout {
+                node: section_node,
+                tasks,
+            });
+        }
+    } else {
+        orphan_tasks = layout_vertical_tasks(
+            model.tasks.iter(),
+            timeline_x,
+            base_y,
+            task_spacing,
+            max_task_height,
+            0,
+            !cfg.disable_multicolor,
+            &text_style,
+            layout_font_size,
+            measurer,
+            &mut all_nodes_pre_title,
+            &mut all_lines_pre_title,
+        );
+    }
+
+    let pre_title_bounds = bounds_from_nodes_and_lines(&all_nodes_pre_title, &all_lines_pre_title);
+    let has_pre_title_content = pre_title_bounds.is_some();
+    let (mut pre_min_x, mut pre_min_y, mut pre_max_x, mut pre_max_y) =
+        pre_title_bounds.unwrap_or((0.0, 0.0, 0.0, 0.0));
+    if has_pre_title_content {
+        expand_bounds_for_node_text(
+            &mut pre_min_x,
+            &mut pre_min_y,
+            &mut pre_max_x,
+            &mut pre_max_y,
+            &all_nodes_pre_title,
+            &text_style,
+            measurer,
+        );
+    }
+    let pre_title_box_width = if has_pre_title_content {
+        (pre_max_x - pre_min_x).max(1.0)
+    } else {
+        0.0
+    };
+    let title = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(str::to_string);
+    let title_x = pre_title_box_width / 2.0 - left_margin;
+
+    let mut all_nodes_full = all_nodes_pre_title.clone();
+    if let Some(title) = title.as_deref() {
+        let title_font_size = render_font_size * 1.9375;
+        let title_style = TextStyle {
+            font_family: text_style.font_family.clone(),
+            font_size: title_font_size,
+            font_weight: Some("bold".to_string()),
+            font_style: None,
+        };
+        let metrics = measurer.measure(title, &title_style);
+        all_nodes_full.push(TimelineNodeLayout {
+            x: title_x,
+            y: TITLE_Y - title_font_size,
+            width: metrics.width.max(1.0),
+            height: title_font_size.max(1.0),
+            content_width: metrics.width.max(1.0),
+            padding: 0.0,
+            section_class: "section-root".to_string(),
+            label: title.to_string(),
+            label_lines: vec![title.to_string()],
+            kind: "title-bounds".to_string(),
+        });
+    }
+
+    let (_, _, _, content_max_y) =
+        bounds_from_nodes_and_lines(&all_nodes_full, &all_lines_pre_title)
+            .unwrap_or((0.0, 0.0, 0.0, 0.0));
+    let activity_line = TimelineLineLayout {
+        kind: "activity".to_string(),
+        x1: timeline_x,
+        y1: base_y - render_font_size * 2.0,
+        x2: timeline_x,
+        y2: content_max_y + render_font_size * 0.5 + 20.0,
+    };
+    let mut all_lines_full = all_lines_pre_title;
+    all_lines_full.push(activity_line.clone());
+
+    let (mut full_min_x, mut full_min_y, mut full_max_x, mut full_max_y) =
+        bounds_from_nodes_and_lines(&all_nodes_full, &all_lines_full)
+            .unwrap_or((0.0, 0.0, 0.0, 0.0));
+    expand_bounds_for_node_text(
+        &mut full_min_x,
+        &mut full_min_y,
+        &mut full_max_x,
+        &mut full_max_y,
+        &all_nodes_full,
+        &text_style,
+        measurer,
+    );
+    let padding = cfg.viewbox_padding;
+
+    Ok(TimelineDiagramLayout {
+        direction: model.direction,
+        bounds: Some(Bounds {
+            min_x: full_min_x - padding,
+            min_y: full_min_y - padding,
+            max_x: full_max_x + padding,
+            max_y: full_max_y + padding,
+        }),
+        left_margin,
+        base_x,
+        base_y,
+        pre_title_box_width,
+        sections,
+        orphan_tasks,
+        activity_line,
+        title,
+        title_x,
+        title_y: TITLE_Y,
+        use_max_width: cfg.use_max_width,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::{Engine, ParseOptions};
+    use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::path::PathBuf;
-
-    const LONG_WORD: &str = "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious";
 
     fn workspace_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -735,49 +1060,110 @@ mod tests {
             .join("..")
     }
 
-    #[test]
-    fn fira_sans_17_timeline_metrics_match_mermaid_11_16_computed_length_wrap() {
-        let style = TextStyle {
-            font_family: Some("Fira Sans".to_string()),
-            font_size: 17.0,
-            font_weight: None,
+    fn layout_timeline(source: &str) -> TimelineDiagramLayout {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Timeline(model) = parsed.model() else {
+            panic!("expected timeline render model");
         };
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-
-        let (height, lines) = virtual_node_height(
-            "Quality Management System (4)",
-            TASK_CONTENT_WIDTH_DEFAULT,
-            &style,
-            16.0,
-            NODE_PADDING,
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        layout_timeline_diagram_typed(
+            model,
+            parsed.metadata().effective_config.as_value(),
             &measurer,
-        );
-
-        assert_eq!(lines, ["Quality   Management", "System   (4)"]);
-        assert!(
-            (height - 72.5).abs() < 0.001,
-            "expected Fira/Sans browser Timeline height to be 72.5px, got {height}"
-        );
+        )
+        .expect("layout ok")
     }
 
     #[test]
-    fn svg_override_paths_cover_long_word_bbox() {
-        assert_eq!(
-            timeline_svg_bbox_x_with_ascii_overhang_override_px(
-                "\"trebuchet ms\", verdana, arial, sans-serif",
-                16.0,
-                LONG_WORD,
-            ),
-            Some((235.3203125, 235.3203125))
+    fn timeline_bbox_height_uses_tspan_measurement_for_first_line() {
+        struct TspanHeightMeasurer;
+
+        impl TextMeasurer for TspanHeightMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+                crate::text::TextMetrics {
+                    width: 1.0,
+                    height: 1.0,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                assert_eq!(text, "first");
+                25.0
+            }
+        }
+
+        let style = TextStyle {
+            font_size: 17.0,
+            ..TextStyle::default()
+        };
+        let lines = vec!["first".to_string(), "second".to_string()];
+
+        let height = text_bbox_height(&lines, &style, &TspanHeightMeasurer);
+
+        assert_eq!(height, 25.0 + 17.0 * 1.1);
+    }
+
+    #[test]
+    fn node_text_bounds_measure_the_rendered_tspan_dom_shape() {
+        struct TspanOnlyMeasurer;
+
+        impl TextMeasurer for TspanOnlyMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+                crate::text::TextMetrics {
+                    width: 1.0,
+                    height: 1.0,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_svg_text_bbox_x_with_ascii_overhang(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> (f64, f64) {
+                panic!("timeline labels are rendered as child tspans")
+            }
+
+            fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                assert_eq!(text, "an overflowing label");
+                320.0
+            }
+        }
+
+        let node = TimelineNodeLayout {
+            x: 200.0,
+            y: 50.0,
+            width: 190.0,
+            height: 50.0,
+            content_width: 150.0,
+            padding: 20.0,
+            section_class: "section-0".to_string(),
+            label: "an overflowing label".to_string(),
+            label_lines: vec!["an overflowing label".to_string()],
+            kind: "event".to_string(),
+        };
+        let mut min_x = node.x;
+        let mut min_y = node.y;
+        let mut max_x = node.x + node.width;
+        let mut max_y = node.y + node.height;
+
+        expand_bounds_for_node_text(
+            &mut min_x,
+            &mut min_y,
+            &mut max_x,
+            &mut max_y,
+            &[node],
+            &TextStyle::default(),
+            &TspanOnlyMeasurer,
         );
-        assert_eq!(
-            timeline_svg_bbox_x_with_ascii_overhang_override_px("", 16.0, LONG_WORD),
-            Some((235.3203125, 235.3203125))
-        );
-        assert_eq!(
-            timeline_svg_bbox_x_with_ascii_overhang_override_px("courier", 16.0, "Line 2"),
-            None
-        );
+
+        assert_eq!(min_x, 135.0);
+        assert_eq!(max_x, 455.0);
     }
 
     #[test]
@@ -788,16 +1174,7 @@ mod tests {
             .join("upstream_long_word_wrap.mmd");
         let text = std::fs::read_to_string(&path).expect("fixture");
 
-        let engine = Engine::new();
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected");
-        let out =
-            crate::layout_parsed(&parsed, &crate::LayoutOptions::default()).expect("layout ok");
-        let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
-            panic!("expected TimelineDiagram layout");
-        };
+        let layout = layout_timeline(&text);
 
         let actual = layout.activity_line.x2;
         assert!(
@@ -808,16 +1185,7 @@ mod tests {
 
     #[test]
     fn empty_timeline_does_not_invent_pre_title_width() {
-        let engine = Engine::new();
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram("timeline", ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected");
-        let out =
-            crate::layout_parsed(&parsed, &crate::LayoutOptions::default()).expect("layout ok");
-        let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
-            panic!("expected TimelineDiagram layout");
-        };
+        let layout = layout_timeline("timeline");
 
         assert_eq!(layout.pre_title_box_width, 0.0);
         assert_eq!(layout.activity_line.x1, 150.0);
@@ -827,5 +1195,36 @@ mod tests {
         assert_eq!(bounds.min_y, 50.0);
         assert_eq!(bounds.max_x, 500.0);
         assert_eq!(bounds.max_y, 150.0);
+    }
+
+    #[test]
+    fn top_down_timeline_uses_vertical_axis_and_one_connector_per_event() {
+        let layout = layout_timeline(concat!(
+            "timeline TD\n",
+            "section Delivery\n",
+            "Plan : Event A : Event B\n",
+            "Ship\n",
+        ));
+
+        assert_eq!(layout.direction, TimelineDirection::TopDown);
+        assert_eq!(layout.activity_line.x1, layout.activity_line.x2);
+        assert!(layout.activity_line.y2 > layout.activity_line.y1);
+        let section = &layout.sections[0];
+        assert_eq!(section.tasks.len(), 2);
+        assert_eq!(section.tasks[0].connectors.len(), 2);
+        assert!(section.tasks[1].connectors.is_empty());
+        assert!(section.tasks[0].node.x < layout.activity_line.x1);
+        assert!(
+            section.tasks[0]
+                .events
+                .iter()
+                .all(|event| event.x > layout.activity_line.x1)
+        );
+        assert!(section.tasks[1].node.y > section.tasks[0].node.y);
+        for connector in &section.tasks[0].connectors {
+            assert_eq!(connector.y1, connector.y2);
+            assert_eq!(connector.x1, layout.activity_line.x1);
+            assert!(connector.x2 > connector.x1);
+        }
     }
 }

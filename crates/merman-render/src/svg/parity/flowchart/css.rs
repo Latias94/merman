@@ -8,7 +8,7 @@ pub(in crate::svg::parity) fn flowchart_css(
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
-) -> String {
+) -> Result<String> {
     let id = escape_xml(diagram_id);
     let theme = PresentationTheme::new(effective_config).node_diagram();
     let stroke = theme.common.line_color.as_str();
@@ -29,131 +29,7 @@ pub(in crate::svg::parity) fn flowchart_css(
     let cluster_bkg = theme.cluster_bkg.as_str();
     let cluster_border = theme.cluster_border.as_str();
 
-    fn flowchart_label_bkg_from_edge_label_background(edge_label_background: &str) -> String {
-        fn parse_hex_channel(hex: &str) -> Option<u8> {
-            u8::from_str_radix(hex, 16).ok()
-        }
-
-        fn parse_hex_rgb(s: &str) -> Option<(f64, f64, f64)> {
-            let s = s.trim();
-            let hex = s.strip_prefix('#')?;
-            match hex.len() {
-                3 => {
-                    let r = parse_hex_channel(&hex[0..1].repeat(2))? as f64;
-                    let g = parse_hex_channel(&hex[1..2].repeat(2))? as f64;
-                    let b = parse_hex_channel(&hex[2..3].repeat(2))? as f64;
-                    Some((r, g, b))
-                }
-                6 => {
-                    let r = parse_hex_channel(&hex[0..2])? as f64;
-                    let g = parse_hex_channel(&hex[2..4])? as f64;
-                    let b = parse_hex_channel(&hex[4..6])? as f64;
-                    Some((r, g, b))
-                }
-                _ => None,
-            }
-        }
-
-        fn parse_csv_f64(s: &str) -> Option<Vec<f64>> {
-            let mut out = Vec::new();
-            for p in s.split(',') {
-                let p = p.trim();
-                if p.is_empty() {
-                    return None;
-                }
-                out.push(p.parse::<f64>().ok()?);
-            }
-            Some(out)
-        }
-
-        fn parse_rgb_like(s: &str, prefix: &str) -> Option<(f64, f64, f64)> {
-            let inner = s.trim().strip_prefix(prefix)?.strip_suffix(')')?;
-            let parts = parse_csv_f64(inner)?;
-            if parts.len() < 3 {
-                return None;
-            }
-            Some((parts[0], parts[1], parts[2]))
-        }
-
-        fn parse_named_color(s: &str) -> Option<(f64, f64, f64)> {
-            match s.trim().to_ascii_lowercase().as_str() {
-                "black" => Some((0.0, 0.0, 0.0)),
-                "white" => Some((255.0, 255.0, 255.0)),
-                _ => None,
-            }
-        }
-
-        fn parse_hsl_to_rgb(s: &str) -> Option<(f64, f64, f64)> {
-            let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
-            let mut parts = inner.split(',').map(|p| p.trim());
-            let h = parts.next()?.parse::<f64>().ok()?;
-            let s = parts
-                .next()?
-                .strip_suffix('%')?
-                .trim()
-                .parse::<f64>()
-                .ok()?;
-            let l = parts
-                .next()?
-                .strip_suffix('%')?
-                .trim()
-                .parse::<f64>()
-                .ok()?;
-
-            let h = (h / 360.0) % 1.0;
-            let s = (s / 100.0).clamp(0.0, 1.0);
-            let l = (l / 100.0).clamp(0.0, 1.0);
-
-            if s == 0.0 {
-                let v = (l * 255.0).round();
-                return Some((v, v, v));
-            }
-
-            fn hue_to_rgb(p: f64, q: f64, mut t: f64) -> f64 {
-                if t < 0.0 {
-                    t += 1.0;
-                }
-                if t > 1.0 {
-                    t -= 1.0;
-                }
-                if t < 1.0 / 6.0 {
-                    return p + (q - p) * 6.0 * t;
-                }
-                if t < 1.0 / 2.0 {
-                    return q;
-                }
-                if t < 2.0 / 3.0 {
-                    return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
-                }
-                p
-            }
-
-            let q = if l < 0.5 {
-                l * (1.0 + s)
-            } else {
-                l + s - l * s
-            };
-            let p = 2.0 * l - q;
-            let r = hue_to_rgb(p, q, h + 1.0 / 3.0) * 255.0;
-            let g = hue_to_rgb(p, q, h) * 255.0;
-            let b = hue_to_rgb(p, q, h - 1.0 / 3.0) * 255.0;
-            Some((r, g, b))
-        }
-
-        let rgb = parse_hex_rgb(edge_label_background)
-            .or_else(|| parse_rgb_like(edge_label_background, "rgb("))
-            .or_else(|| parse_rgb_like(edge_label_background, "rgba("))
-            .or_else(|| parse_hsl_to_rgb(edge_label_background))
-            .or_else(|| parse_named_color(edge_label_background));
-
-        let (r, g, b) = rgb.unwrap_or((232.0, 232.0, 232.0));
-        let r = r.round().clamp(0.0, 255.0) as i64;
-        let g = g.round().clamp(0.0, 255.0) as i64;
-        let b = b.round().clamp(0.0, 255.0) as i64;
-        format!("rgba({r}, {g}, {b}, 0.5)")
-    }
-
-    let label_bkg = flowchart_label_bkg_from_edge_label_background(edge_label_background);
+    let label_bkg = css_rgba_fade(edge_label_background, 0.5)?;
     let scoped_drop_shadow = drop_shadow
         .replace(
             "url(#drop-shadow-small)",
@@ -367,7 +243,7 @@ pub(in crate::svg::parity) fn flowchart_css(
         }
     }
 
-    out
+    Ok(out)
 }
 
 #[inline]
@@ -421,27 +297,28 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn neutral_named_white_edge_label_background_fades_to_white() {
+    fn khroma_named_edge_label_background_preserves_channels() {
         let css = flowchart_css(
-            "theme_neutral",
+            "theme_named_color",
             &json!({
                 "themeVariables": {
-                    "edgeLabelBackground": "white"
+                    "edgeLabelBackground": "rebeccapurple"
                 }
             }),
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
             &IndexMap::new(),
-        );
+        )
+        .expect("valid khroma color");
 
         assert!(
-            css.contains("#theme_neutral .labelBkg{background-color:rgba(255, 255, 255, 0.5);}")
+            css.contains("#theme_named_color .labelBkg{background-color:rgba(102, 51, 153, 0.5);}")
         );
     }
 
     #[test]
-    fn unknown_edge_label_background_keeps_mermaid_default_fade() {
-        let css = flowchart_css(
+    fn unsupported_edge_label_background_returns_color_error() {
+        let error = flowchart_css(
             "theme_unknown_color",
             &json!({
                 "themeVariables": {
@@ -451,10 +328,9 @@ mod tests {
             "\"trebuchet ms\",verdana,arial,sans-serif",
             16.0,
             &IndexMap::new(),
-        );
+        )
+        .expect_err("unsupported khroma color must fail");
 
-        assert!(css.contains(
-            "#theme_unknown_color .labelBkg{background-color:rgba(232, 232, 232, 0.5);}"
-        ));
+        assert!(error.to_string().contains("not-a-css-color"));
     }
 }

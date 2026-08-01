@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
+      "direction": "LR",
       "bounds": {
         "min_x": 100.0,
         "min_y": -61.0,
@@ -45,13 +46,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 295.0,
-                "y1": 253.2,
-                "x2": 295.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 295.0,
+                  "y1": 253.2,
+                  "x2": 295.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 200.0,
@@ -117,13 +120,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 495.0,
-                "y1": 253.2,
-                "x2": 495.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 495.0,
+                  "y1": 253.2,
+                  "x2": 495.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 400.0,
@@ -189,13 +194,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 695.0,
-                "y1": 253.2,
-                "x2": 695.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 695.0,
+                  "y1": 253.2,
+                  "x2": 695.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 600.0,
@@ -261,13 +268,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 895.0,
-                "y1": 253.2,
-                "x2": 895.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 895.0,
+                  "y1": 253.2,
+                  "x2": 895.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 800.0,
@@ -333,13 +342,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 1095.0,
-                "y1": 253.2,
-                "x2": 1095.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 1095.0,
+                  "y1": 253.2,
+                  "x2": 1095.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 1000.0,
@@ -405,13 +416,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 1295.0,
-                "y1": 253.2,
-                "x2": 1295.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 1295.0,
+                  "y1": 253.2,
+                  "x2": 1295.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 1200.0,
@@ -477,13 +490,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 1495.0,
-                "y1": 253.2,
-                "x2": 1495.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 1495.0,
+                  "y1": 253.2,
+                  "x2": 1495.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 1400.0,
@@ -549,13 +564,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 1695.0,
-                "y1": 253.2,
-                "x2": 1695.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 1695.0,
+                  "y1": 253.2,
+                  "x2": 1695.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 1600.0,
@@ -621,13 +638,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 1895.0,
-                "y1": 253.2,
-                "x2": 1895.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 1895.0,
+                  "y1": 253.2,
+                  "x2": 1895.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 1800.0,
@@ -693,13 +712,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 2095.0,
-                "y1": 253.2,
-                "x2": 2095.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 2095.0,
+                  "y1": 253.2,
+                  "x2": 2095.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 2000.0,
@@ -765,13 +786,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 2295.0,
-                "y1": 253.2,
-                "x2": 2295.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 2295.0,
+                  "y1": 253.2,
+                  "x2": 2295.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 2200.0,
@@ -837,13 +860,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 2495.0,
-                "y1": 253.2,
-                "x2": 2495.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 2495.0,
+                  "y1": 253.2,
+                  "x2": 2495.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 2400.0,
@@ -909,13 +934,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 2695.0,
-                "y1": 253.2,
-                "x2": 2695.0,
-                "y2": 558.8
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 2695.0,
+                  "y1": 253.2,
+                  "x2": 2695.0,
+                  "y2": 558.8
+                }
+              ],
               "events": [
                 {
                   "x": 2600.0,

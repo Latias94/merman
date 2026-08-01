@@ -14,12 +14,14 @@ import argparse
 import datetime as dt
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import run_native_memory
 from corpus_utils import fixture_names_for_suite, load_corpus
 
 
@@ -29,6 +31,7 @@ STANDARD_CANARY_FIXTURES = ",".join(
 )
 STANDARD_CANARY_SUITE = "canary"
 DEFAULT_COMPARE_SUITE = "standard"
+DEFAULT_NATIVE_MEMORY_LANE = "flowchart-end-to-end-memory"
 STRESS_BENCHES = [
     "flowchart_stress",
     "architecture_layout_stress",
@@ -44,6 +47,12 @@ class Step:
     cmd: list[str]
     cwd: Path
     env: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class ReportPublication:
+    source: Path
+    destination: Path
 
 
 def repo_root() -> Path:
@@ -79,7 +88,7 @@ def cargo_bench_cmd(
     warm_up: int,
     measurement: int,
     package: str = "merman",
-    features: str = "render",
+    features: str = "svg",
 ) -> list[str]:
     cmd = ["cargo", "bench", "--locked"]
     if package:
@@ -119,7 +128,7 @@ def render_target_path(
         if kind == "spotcheck":
             name = f"spotcheck_{stamp}_perf-runner_{profile}.{suffix}"
         else:
-            name = f"COMPARISON.perf-runner_{stamp}_{profile}.{suffix}"
+            name = f"renderer_comparison_{stamp}_perf-runner_{profile}.{suffix}"
         return repo_root() / "docs" / "performance" / name
     return report_root / f"{stamp}_{profile}_{kind}.{suffix}"
 
@@ -134,15 +143,116 @@ def suite_target_path(
 ) -> Path:
     stamp = today_stamp()
     if docs:
-        name = f"COMPARISON.perf-runner_{stamp}_{profile}_suite_{suite}.{suffix}"
+        name = f"renderer_comparison_{stamp}_perf-runner_{profile}_suite_{suite}.{suffix}"
         return repo_root() / "docs" / "performance" / name
     return report_root / f"{stamp}_{profile}_suite_{suite}.{suffix}"
 
 
+def native_memory_target_path(*, report_root: Path, profile: str) -> Path:
+    return report_root / f"{today_stamp()}_{profile}_native_memory.json"
+
+
+def resolved_report_root(value: str) -> Path:
+    path = Path(value)
+    return (repo_root() / path).resolve() if not path.is_absolute() else path
+
+
+def validate_report_root(value: str) -> Path:
+    path = resolved_report_root(value)
+    root = repo_root().resolve()
+    target_bench = (root / "target" / "bench").resolve()
+    if path.is_relative_to(root) and not path.is_relative_to(target_bench):
+        raise ValueError(
+            "an in-repository --report-root must remain under target/bench"
+        )
+    return path
+
+
+def build_report_publications(args: argparse.Namespace) -> list[ReportPublication]:
+    report_root = resolved_report_root(args.report_root)
+    publications = [
+        ReportPublication(
+            source=render_target_path(
+                report_root=report_root,
+                docs=False,
+                profile=args.profile,
+                kind="spotcheck",
+                suffix="md",
+            ),
+            destination=render_target_path(
+                report_root=report_root,
+                docs=True,
+                profile=args.profile,
+                kind="spotcheck",
+                suffix="md",
+            ),
+        )
+    ]
+    if args.profile in {"canary", "full"}:
+        publications.append(
+            ReportPublication(
+                source=render_target_path(
+                    report_root=report_root,
+                    docs=False,
+                    profile=args.profile,
+                    kind="comparison",
+                    suffix="md",
+                ),
+                destination=render_target_path(
+                    report_root=report_root,
+                    docs=True,
+                    profile=args.profile,
+                    kind="comparison",
+                    suffix="md",
+                ),
+            )
+        )
+    if args.profile == "full":
+        publications.append(
+            ReportPublication(
+                source=suite_target_path(
+                    report_root=report_root,
+                    docs=False,
+                    profile=args.profile,
+                    suite=args.compare_suite,
+                    suffix="md",
+                ),
+                destination=suite_target_path(
+                    report_root=report_root,
+                    docs=True,
+                    profile=args.profile,
+                    suite=args.compare_suite,
+                    suffix="md",
+                ),
+            )
+        )
+    return publications
+
+
+def publish_reports(
+    publications: list[ReportPublication], *, dry_run: bool
+) -> None:
+    print("\n==> publish Markdown reports")
+    for publication in publications:
+        print(
+            f"- {cli_path(repo_root(), publication.source)} -> "
+            f"{cli_path(repo_root(), publication.destination)}"
+        )
+    if dry_run:
+        return
+
+    missing = [item.source for item in publications if not item.source.is_file()]
+    if missing:
+        joined = ", ".join(str(path) for path in missing)
+        raise FileNotFoundError(f"performance reports were not produced: {joined}")
+    for publication in publications:
+        publication.destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(publication.source, publication.destination)
+
+
 def build_steps(args: argparse.Namespace) -> list[Step]:
     root = repo_root()
-    report_root = (root / args.report_root).resolve() if not Path(args.report_root).is_absolute() else Path(args.report_root)
-    docs = args.write_docs
+    report_root = resolved_report_root(args.report_root)
 
     steps: list[Step] = []
 
@@ -157,7 +267,7 @@ def build_steps(args: argparse.Namespace) -> list[Step]:
     if args.profile in {"triage", "canary", "full"}:
         stage_out = render_target_path(
             report_root=report_root,
-            docs=docs,
+            docs=False,
             profile=args.profile,
             kind="spotcheck",
             suffix="md",
@@ -206,7 +316,7 @@ def build_steps(args: argparse.Namespace) -> list[Step]:
     if args.profile in {"canary", "full"}:
         compare_out = render_target_path(
             report_root=report_root,
-            docs=docs,
+            docs=False,
             profile=args.profile,
             kind="comparison",
             suffix="md",
@@ -252,7 +362,7 @@ def build_steps(args: argparse.Namespace) -> list[Step]:
     if args.profile == "full":
         suite_compare_out = suite_target_path(
             report_root=report_root,
-            docs=docs,
+            docs=False,
             profile=args.profile,
             suite=args.compare_suite,
             suffix="md",
@@ -304,6 +414,47 @@ def build_steps(args: argparse.Namespace) -> list[Step]:
                     cwd=root,
                 )
             )
+
+    if args.include_native_memory:
+        memory_out = native_memory_target_path(
+            report_root=report_root,
+            profile=args.profile,
+        )
+        memory_cmd = python_cmd(
+            root,
+            "run_native_memory.py",
+            [
+                "--corpus",
+                args.corpus,
+                "--lane",
+                args.native_memory_lane,
+                "--repeats",
+                str(args.native_memory_repeats),
+                "--seed",
+                str(args.native_memory_seed),
+                "--bootstrap-resamples",
+                str(args.native_memory_bootstrap_resamples),
+                "--json-out",
+                cli_path(root, memory_out),
+            ]
+            + (
+                ["--contract", args.native_memory_contract]
+                if args.native_memory_contract
+                else []
+            )
+            + (
+                ["--toolchain", args.native_memory_toolchain]
+                if args.native_memory_toolchain
+                else []
+            ),
+        )
+        steps.append(
+            Step(
+                label=f"native memory ({args.native_memory_lane})",
+                cmd=memory_cmd,
+                cwd=root,
+            )
+        )
 
     return steps
 
@@ -396,6 +547,49 @@ def main(argv: list[str]) -> int:
         help="Root directory for local artifacts when not writing to docs.",
     )
     parser.add_argument(
+        "--corpus",
+        default=str(DEFAULT_CORPUS_PATH.relative_to(repo_root())),
+        help="Corpus registry used by opt-in native-memory evidence.",
+    )
+    parser.add_argument(
+        "--include-native-memory",
+        action="store_true",
+        help="Run the isolated native-memory driver after the selected latency profile.",
+    )
+    parser.add_argument(
+        "--native-memory-lane",
+        default=DEFAULT_NATIVE_MEMORY_LANE,
+        help="Registered native-memory lane to run.",
+    )
+    parser.add_argument(
+        "--native-memory-contract",
+        default="",
+        help="Optional owner evidence contract override; defaults to lane metadata.",
+    )
+    parser.add_argument(
+        "--native-memory-toolchain",
+        default="",
+        help="Optional rustup toolchain used only for the native-memory executable.",
+    )
+    parser.add_argument(
+        "--native-memory-repeats",
+        type=int,
+        default=5,
+        help="Fresh operation/zero pairs at every registered scale (default: 5).",
+    )
+    parser.add_argument(
+        "--native-memory-seed",
+        type=int,
+        default=run_native_memory.DEFAULT_SEED,
+        help="Fixed generator seed shared by the complete memory matrix.",
+    )
+    parser.add_argument(
+        "--native-memory-bootstrap-resamples",
+        type=int,
+        default=run_native_memory.DEFAULT_BOOTSTRAP_RESAMPLES,
+        help="Matched-vector bootstrap resamples for native-memory bounds.",
+    )
+    parser.add_argument(
         "--write-docs",
         action="store_true",
         help=(
@@ -427,8 +621,13 @@ def main(argv: list[str]) -> int:
         help="Print the planned commands without executing them.",
     )
     args = parser.parse_args(argv)
+    try:
+        validate_report_root(args.report_root)
+    except ValueError as error:
+        parser.error(str(error))
 
     steps = build_steps(args)
+    report_publications = build_report_publications(args)
 
     print(f"Profile: {args.profile}")
     print(f"Preset: {args.preset}")
@@ -440,36 +639,22 @@ def main(argv: list[str]) -> int:
     for step in steps:
         run_step(step, dry_run=args.dry_run)
 
+    if args.write_docs:
+        publish_reports(report_publications, dry_run=args.dry_run)
+
     if not args.dry_run:
         print("\nArtifacts:")
-        root = repo_root()
-        if args.profile in {"triage", "canary", "full"}:
-            stage_out = render_target_path(
-                report_root=(root / args.report_root).resolve() if not Path(args.report_root).is_absolute() else Path(args.report_root),
-                docs=args.write_docs,
-                profile=args.profile,
-                kind="spotcheck",
-                suffix="md",
+        for publication in report_publications:
+            artifact = (
+                publication.destination if args.write_docs else publication.source
             )
-            print(f"- {stage_out}")
-        if args.profile in {"canary", "full"}:
-            compare_out = render_target_path(
-                report_root=(root / args.report_root).resolve() if not Path(args.report_root).is_absolute() else Path(args.report_root),
-                docs=args.write_docs,
+            print(f"- {artifact}")
+        if args.include_native_memory:
+            memory_out = native_memory_target_path(
+                report_root=resolved_report_root(args.report_root),
                 profile=args.profile,
-                kind="comparison",
-                suffix="md",
             )
-            print(f"- {compare_out}")
-        if args.profile == "full":
-            suite_out = suite_target_path(
-                report_root=(root / args.report_root).resolve() if not Path(args.report_root).is_absolute() else Path(args.report_root),
-                docs=args.write_docs,
-                profile=args.profile,
-                suite=args.compare_suite,
-                suffix="md",
-            )
-            print(f"- {suite_out}")
+            print(f"- {memory_out}")
 
     return 0
 

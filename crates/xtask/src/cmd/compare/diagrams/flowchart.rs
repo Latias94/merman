@@ -2,18 +2,23 @@
 
 use crate::XtaskError;
 use crate::cmd::compare::{
-    CompareFixtureResult, CompareRunOptions, DEFAULT_LABEL_DELTA_REPORT_LIMIT,
-    DEFAULT_ROOT_DELTA_REPORT_LIMIT, LabelDeltaReportLimit, LabelMetricDelta, RootDelta,
-    RootDeltaReportLimit, collect_label_metric_deltas, parse_label_delta_report_limit,
-    parse_root_attrs, parse_root_delta_report_limit, run_svg_compare_with_roots, sanitize_svg_id,
+    CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
+    CompareRunOptions, CompareRunResult, DEFAULT_LABEL_DELTA_REPORT_LIMIT,
+    DEFAULT_ROOT_DELTA_REPORT_LIMIT, DiagramVerificationFact, LabelDeltaReportLimit,
+    LabelMetricDelta, ObservedNodeMathRenderer, ObservedRenderOperations, RootCoverageSummary,
+    RootDelta, RootDeltaReportLimit, RootEvidencePolicy, begin_required_math_evidence,
+    browser_measured_math_root_note, collect_label_metric_deltas,
+    comparison_mode_for_browser_measured_math, finish_required_math_evidence,
+    parse_label_delta_report_limit, parse_root_delta_report_limit, prepared_semantic_requires_math,
+    record_fixture_root_evidence, run_svg_compare, sanitize_svg_id,
     svg_compare_engine_with_site_config, write_compare_result_section, write_label_deltas_report,
-    write_notes_section, write_root_deltas_report,
+    write_notes_section, write_root_deltas_report, write_verification_policy_metadata,
 };
-use regex::Regex;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FlowchartUpstreamTrust {
@@ -58,7 +63,24 @@ fn write_flowchart_upstream_metadata(
     let _ = writeln!(report, "- Upstream provenance: `{provenance}`");
 }
 
-pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+fn flowchart_fixture_site_config(path: &Path) -> Option<merman::MermaidConfig> {
+    let fixtures_root = crate::cmd::fixtures_root();
+    let is_committed_fixture = path.starts_with(&fixtures_root)
+        || fs::canonicalize(path)
+            .ok()
+            .zip(fs::canonicalize(fixtures_root).ok())
+            .is_some_and(|(path, root)| path.starts_with(root));
+    if is_committed_fixture {
+        crate::cmd::fixture_site_config_for_path(path)
+    } else {
+        None
+    }
+}
+
+pub(super) fn compare_flowchart_args(
+    fact: DiagramVerificationFact,
+    args: Vec<String>,
+) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut fixtures_root_arg: Option<PathBuf> = None;
     let mut upstream_root_arg: Option<PathBuf> = None;
@@ -66,17 +88,12 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
     let mut check_dom: bool = false;
     let mut report_root: bool = false;
     let mut root_report_limit = DEFAULT_ROOT_DELTA_REPORT_LIMIT;
-    let mut report_root_pins_only: bool = false;
     let mut report_label: bool = false;
     let mut label_report_limit = DEFAULT_LABEL_DELTA_REPORT_LIMIT;
-    let mut report_label_root_pins_only: bool = false;
     let mut dom_decimals: u32 = 3;
-    let mut dom_mode: String = "parity".to_string();
+    let mut dom_mode = fact.default_dom_mode.to_string();
     let mut text_measurer: String = "vendored".to_string();
-    let mut apply_root_overrides: bool = true;
-    let mut include_elk_probes: bool = false;
     let mut force_elk_fixture: bool = false;
-    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -99,19 +116,11 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
             }
             "--check-dom" => check_dom = true,
             "--report-root" => report_root = true,
-            "--report-root-pins-only" => {
-                report_root = true;
-                report_root_pins_only = true;
-            }
             "--report-root-all" => {
                 report_root = true;
                 root_report_limit = RootDeltaReportLimit::All;
             }
             "--report-label" => report_label = true,
-            "--report-label-root-pins-only" => {
-                report_label = true;
-                report_label_root_pins_only = true;
-            }
             "--report-label-all" => {
                 report_label = true;
                 label_report_limit = LabelDeltaReportLimit::All;
@@ -136,7 +145,7 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 dom_mode = args
                     .get(i)
                     .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| "structure".to_string());
+                    .unwrap_or_else(|| fact.default_dom_mode.to_string());
             }
             "--text-measurer" => {
                 i += 1;
@@ -145,13 +154,6 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                     .map(|s| s.trim().to_ascii_lowercase())
                     .unwrap_or_else(|| "deterministic".to_string());
             }
-            "--flowchart-elk-backend" => {
-                i += 1;
-                flowchart_elk_backend =
-                    crate::cmd::parse_flowchart_elk_backend(args.get(i).map(String::as_str))?;
-            }
-            "--no-root-overrides" => apply_root_overrides = false,
-            "--include-elk-probes" => include_elk_probes = true,
             "--force-elk-fixture" => force_elk_fixture = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -159,60 +161,154 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         i += 1;
     }
 
-    if force_elk_fixture
-        && flowchart_elk_backend != merman_render::FlowchartElkBackend::SourcePorted
-    {
-        return Err(XtaskError::SvgCompareFailed(
-            "`--force-elk-fixture` requires `--flowchart-elk-backend source-ported`".to_string(),
-        ));
-    }
+    run_flowchart_compare(
+        fact,
+        FlowchartCompareRequest {
+            common: CompareRequest {
+                out_path,
+                filter,
+                check_dom,
+                dom_mode: Some(dom_mode),
+                dom_decimals: Some(dom_decimals),
+                report_root,
+                root_report_limit: Some(root_report_limit),
+                flowchart_text_measurer: Some(text_measurer),
+                ..CompareRequest::default()
+            },
+            fixtures_root: fixtures_root_arg,
+            upstream_root: upstream_root_arg,
+            report_label,
+            label_report_limit,
+            force_elk_fixture,
+        },
+    )
+    .map(|_| ())
+    .map_err(CompareRunFailure::into_error)
+}
+
+pub(super) fn compare_flowchart_request(
+    fact: DiagramVerificationFact,
+    request: CompareRequest,
+) -> CompareRunResult {
+    run_flowchart_compare(
+        fact,
+        FlowchartCompareRequest {
+            common: request,
+            fixtures_root: None,
+            upstream_root: None,
+            report_label: false,
+            label_report_limit: DEFAULT_LABEL_DELTA_REPORT_LIMIT,
+            force_elk_fixture: false,
+        },
+    )
+}
+
+struct FlowchartCompareRequest {
+    common: CompareRequest,
+    fixtures_root: Option<PathBuf>,
+    upstream_root: Option<PathBuf>,
+    report_label: bool,
+    label_report_limit: LabelDeltaReportLimit,
+    force_elk_fixture: bool,
+}
+
+fn run_flowchart_compare(
+    fact: DiagramVerificationFact,
+    request: FlowchartCompareRequest,
+) -> CompareRunResult {
+    let tools_root = crate::cmd::mermaid_cli_root();
+    let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)
+        .map_err(CompareRunFailure::without_evidence)?;
+    let math_renderer = toolchain_read_guard.node_katex_math_renderer();
+    run_flowchart_compare_with_math_renderer(fact, request, math_renderer)
+}
+
+fn run_flowchart_compare_with_math_renderer(
+    fact: DiagramVerificationFact,
+    request: FlowchartCompareRequest,
+    flowchart_math_renderer: Option<Arc<dyn merman::svg::MathRenderer + Send + Sync>>,
+) -> CompareRunResult {
+    let FlowchartCompareRequest {
+        common,
+        fixtures_root: fixtures_root_arg,
+        upstream_root: upstream_root_arg,
+        report_label,
+        label_report_limit,
+        force_elk_fixture,
+    } = request;
+    let out_path = common.out_path.clone();
+    let filter = common.filter.clone();
+    let check_dom = common.check_dom;
+    let report_root = common.report_root;
+    let root_report_limit = common
+        .root_report_limit
+        .unwrap_or(DEFAULT_ROOT_DELTA_REPORT_LIMIT);
+    let dom_decimals = common.dom_decimals.unwrap_or(3);
+    let dom_mode = common
+        .dom_mode
+        .clone()
+        .unwrap_or_else(|| fact.default_dom_mode.to_string());
+    let requested_dom_mode = crate::svgdom::DomMode::parse(&dom_mode);
+    let text_measurer = common
+        .flowchart_text_measurer
+        .clone()
+        .unwrap_or_else(|| "vendored".to_string());
 
     let should_report_root =
         report_root || matches!(dom_mode.trim(), "parity-root" | "parity_root");
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
-    let mut layout_opts = merman_render::LayoutOptions::default();
-    if matches!(
-        text_measurer.as_str(),
-        "vendored" | "vendored-font" | "vendored-font-metrics"
-    ) {
-        layout_opts.text_measurer =
-            std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
+    let layout_opts = merman_render::LayoutOptions::default();
+    let observed_math_renderer = flowchart_math_renderer
+        .clone()
+        .map(ObservedNodeMathRenderer::new);
+    let text_measurement = match text_measurer.as_str() {
+        "vendored" | "vendored-font" | "vendored-font-metrics" => {
+            merman::svg::TextMeasurementPolicy::parity()
+        }
+        "deterministic" => merman::svg::TextMeasurementPolicy::deterministic(),
+        other => {
+            return Err(CompareRunFailure::without_evidence(
+                XtaskError::SvgCompareFailed(format!(
+                    "unsupported Flowchart text measurer: {other}"
+                )),
+            ));
+        }
+    };
+    let mut environment = merman::svg::RenderEnvironment::deterministic()
+        .with_text_measurement_policy(text_measurement);
+    if let Some(renderer) = observed_math_renderer.clone() {
+        environment = environment.with_math_renderer(renderer);
     }
-    let tools_root = crate::cmd::mermaid_cli_root();
-    let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
-    let flowchart_math_renderer = toolchain_read_guard.node_katex_math_renderer();
-    if let Some(renderer) = flowchart_math_renderer.clone() {
-        layout_opts.math_renderer = Some(renderer);
-    }
-    layout_opts.flowchart_elk_backend = flowchart_elk_backend;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment)
+        .map_err(CompareRunFailure::without_evidence)?;
     let mut state = FlowchartCompareState {
         root_deltas: Vec::new(),
+        root_coverage: RootCoverageSummary::default(),
         label_deltas: Vec::new(),
-        root_pin_ids: if report_label || report_label_root_pins_only || report_root_pins_only {
-            collect_flowchart_root_pin_ids()
-        } else {
-            BTreeSet::new()
-        },
+        observed_operations,
     };
 
-    run_svg_compare_with_roots(
-        CompareRunOptions {
-            diagram: "flowchart",
-            out_path,
-            filter: filter.as_deref(),
-            check_dom,
-            dom_mode: &dom_mode,
-            dom_decimals,
+    run_svg_compare(
+        CompareHarnessOptions {
+            run: CompareRunOptions {
+                diagram: fact.diagram,
+                out_path,
+                filter: filter.as_deref(),
+                check_dom,
+                dom_mode: &dom_mode,
+                dom_decimals,
+            },
+            fixtures_root: fixtures_root_arg,
+            upstream_root: upstream_root_arg,
         },
-        fixtures_root_arg,
-        upstream_root_arg,
         &mut state,
         |_, report, paths, options| {
-            let _ = writeln!(report, "# Flowchart SVG Comparison\n");
+            let _ = writeln!(report, "# {} SVG Comparison\n", fact.report_title);
             write_flowchart_upstream_metadata(report, &paths.upstream_dir, options.filter);
             let _ = writeln!(
                 report,
-                "- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Flowchart ELK backend: `{}`\n- Forced ELK fixtures: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
+                "- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Forced ELK fixtures: `{}`\n",
+                fact.command,
                 options.dom_mode,
                 options.dom_decimals,
                 text_measurer,
@@ -221,31 +317,23 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 } else {
                     "none"
                 },
-                if apply_root_overrides {
-                    "enabled"
-                } else {
-                    "disabled"
-                },
-                crate::cmd::flowchart_elk_backend_name(flowchart_elk_backend),
                 if force_elk_fixture {
                     "enabled"
                 } else {
                     "disabled"
-                },
-                if report_root_pins_only {
-                    "root-pins-only"
-                } else {
-                    "all fixtures"
-                },
-                if report_label_root_pins_only {
-                    "root-pins-only"
-                } else {
-                    "all fixtures"
                 }
             );
+            write_verification_policy_metadata(
+                report,
+                &common,
+                fact,
+                options.dom_mode,
+                should_report_root,
+            );
+            report.push('\n');
         },
         |_, stem, _| {
-            crate::cmd::upstream_svg_baseline_skip_reason("flowchart", stem).map(str::to_string)
+            crate::cmd::upstream_svg_baseline_skip_reason(fact.diagram, stem).map(str::to_string)
         },
         |state, input| {
             let diagram_id = if input.stem.ends_with("_katex") {
@@ -258,17 +346,16 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 sanitize_svg_id(input.stem)
             };
 
-            let skip_dom_compare_for_math =
-                input.check_dom && input.text.contains("$$") && flowchart_math_renderer.is_none();
-
-            let fixture_engine = match crate::cmd::fixture_site_config_for_path(input.fixture_path)
-            {
+            let fixture_engine = match flowchart_fixture_site_config(input.fixture_path) {
                 Some(site_config) => engine.clone().with_site_config(site_config),
                 None => engine.clone(),
             };
-            let parsed = match futures::executor::block_on(
-                fixture_engine.parse_diagram(input.text, merman::ParseOptions::default()),
-            ) {
+            let renderer = merman::svg::HeadlessRenderer::new()
+                .with_engine(fixture_engine)
+                .with_parse_options(fact.parse_policy.options())
+                .with_layout_options(layout_opts.clone())
+                .with_environment(environment.clone());
+            let semantic = match renderer.prepare_semantic_sync(input.text) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     return Err(format!(
@@ -283,35 +370,30 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                     ));
                 }
             };
-
-            let flowchart_layout_elk = parsed.meta.effective_config.get_str("layout")
+            let flowchart_layout_elk = semantic.metadata().effective_config.get_str("layout")
                 == Some("elk")
-                || parsed
-                    .meta
+                || semantic
+                    .metadata()
                     .effective_config
                     .get_str("flowchart.defaultRenderer")
                     == Some("elk");
-            if parsed.meta.diagram_type == "flowchart-elk" || flowchart_layout_elk {
-                let admitted = crate::cmd::flowchart_elk_svg_compare_admitted(
-                    input.stem,
-                    include_elk_probes,
-                    flowchart_elk_backend,
-                );
-                if !admitted
-                    && !force_elk_fixture
-                    && let Some(reason) = crate::cmd::flowchart_elk_svg_compare_skip_reason(
-                        input.stem,
-                        include_elk_probes,
-                        flowchart_elk_backend,
-                    )
-                {
-                    return Ok(CompareFixtureResult::Skipped {
-                        reason: reason.to_string(),
-                    });
-                }
+            if (semantic.metadata().diagram_type == "flowchart-elk" || flowchart_layout_elk)
+                && !crate::cmd::flowchart_elk_svg_parity_admitted(input.stem)
+                && !force_elk_fixture
+                && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(input.stem)
+            {
+                return Ok(CompareFixtureResult::Skipped {
+                    reason: reason.to_string(),
+                });
             }
+            let requires_math = prepared_semantic_requires_math(input.fixture_path, &semantic)?;
+            let required_math_evidence_before = requires_math
+                .then(|| {
+                    begin_required_math_evidence(input.stem, observed_math_renderer.as_deref())
+                })
+                .transpose()?;
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let prepared = match semantic.continue_layout() {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!(
@@ -321,30 +403,20 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 }
             };
 
-            let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
+            if prepared.family_kind() != merman::svg::RenderFamilyKind::Flowchart {
                 return Err(format!(
-                    "unexpected layout type for {}: {}",
+                    "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    layouted.meta.diagram_type
+                    prepared.family_kind()
                 ));
-            };
+            }
 
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(diagram_id),
-                aria_roledescription: Some(parsed.meta.diagram_type.clone()),
-                math_renderer: flowchart_math_renderer.clone(),
-                apply_root_overrides,
                 ..Default::default()
             };
 
-            let local_svg = match merman_render::svg::render_flowchart_v2_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
-                &svg_opts,
-            ) {
+            let rendered = match prepared.render_svg_report(&svg_opts) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!(
@@ -353,16 +425,41 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                     ));
                 }
             };
-
-            let root_pinned = state.root_pin_ids.contains(input.stem);
-            let mut issues = Vec::new();
-            if report_label && (!report_label_root_pins_only || root_pinned) {
-                match collect_label_metric_deltas(
+            let render_evidence = state
+                .observed_operations
+                .observe(input.stem, rendered.report())?;
+            let local_svg = rendered.into_svg();
+            let mut notes = Vec::new();
+            let browser_measured_math = if let Some(before) = required_math_evidence_before {
+                let observed = observed_math_renderer
+                    .as_deref()
+                    .expect("required math evidence checked renderer availability");
+                let evidence = finish_required_math_evidence(input.stem, observed, before)?;
+                notes.push(format!(
+                    "observed {}: Node KaTeX successful renders={} browser measurements={}",
                     input.stem,
-                    input.upstream_svg,
-                    &local_svg,
-                    root_pinned,
-                ) {
+                    evidence.successful_renders(),
+                    evidence.successful_measurements()
+                ));
+                true
+            } else {
+                false
+            };
+
+            let fixture_dom_mode = comparison_mode_for_browser_measured_math(
+                requested_dom_mode,
+                check_dom,
+                browser_measured_math,
+            );
+            let dom_mode_override =
+                (fixture_dom_mode != requested_dom_mode).then_some(fixture_dom_mode);
+            if dom_mode_override.is_some() {
+                notes.push(browser_measured_math_root_note(input.stem));
+            }
+
+            let mut issues = Vec::new();
+            if report_label {
+                match collect_label_metric_deltas(input.stem, input.upstream_svg, &local_svg) {
                     Ok(mut rows) => state.label_deltas.append(&mut rows),
                     Err(e) => {
                         issues.push(format!("label metric parse failed for {}: {e}", input.stem))
@@ -370,50 +467,50 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
                 }
             }
 
-            if should_report_root && (!report_root_pins_only || root_pinned) {
-                match (
-                    parse_root_attrs(input.upstream_svg),
-                    parse_root_attrs(&local_svg),
-                ) {
-                    (Ok(up), Ok(lo)) => state.root_deltas.push(RootDelta {
-                        stem: input.stem.to_string(),
-                        max_width_delta: match (up.max_width_px, lo.max_width_px) {
-                            (Some(a), Some(b)) => Some(b - a),
-                            _ => None,
-                        },
-                        upstream: up,
-                        local: lo,
-                    }),
-                    (Err(e), _) => {
-                        issues.push(format!(
-                            "root parse failed for upstream {}: {e}",
-                            input.stem
-                        ));
-                    }
-                    (_, Err(e)) => {
-                        issues.push(format!("root parse failed for local {}: {e}", input.stem));
-                    }
-                }
+            let parity_root_coverage =
+                check_dom && requested_dom_mode == crate::svgdom::DomMode::ParityRoot;
+            if let Err(error) = record_fixture_root_evidence(
+                &mut state.root_coverage,
+                &mut state.root_deltas,
+                input.stem,
+                input.upstream_svg,
+                &local_svg,
+                RootEvidencePolicy {
+                    parity_root_requested: parity_root_coverage,
+                    browser_math_dimensions_are_diagnostic: dom_mode_override.is_some(),
+                    report_delta: should_report_root,
+                },
+            ) {
+                issues.push(error);
             }
 
-            let mut notes = Vec::new();
-            if skip_dom_compare_for_math {
-                notes.push(
-                    "contains `$$...$$` but no local Node/Puppeteer KaTeX backend was available"
-                        .to_string(),
-                );
-            }
-
-            Ok(CompareFixtureResult::Rendered {
-                local_svg,
-                compare_dom: !skip_dom_compare_for_math,
-                issues,
-                notes,
+            Ok(match dom_mode_override {
+                None => CompareFixtureResult::Rendered {
+                    render_evidence,
+                    local_svg,
+                    compare_dom: true,
+                    issues,
+                    notes,
+                },
+                dom_mode_override => CompareFixtureResult::RenderedWithPolicy {
+                    render_evidence,
+                    local_svg,
+                    compare_dom: true,
+                    compare_svg_when_dom_disabled: false,
+                    dom_mode_override,
+                    issues,
+                    notes,
+                },
             })
         },
+        |_, _, _| {},
         |state, report, paths, options, failures, notes| {
+            state.observed_operations.write_report(report);
             write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
             write_notes_section(report, notes);
+            if check_dom && requested_dom_mode == crate::svgdom::DomMode::ParityRoot {
+                state.root_coverage.write_report(report);
+            }
             if should_report_root {
                 write_root_deltas_report(report, &mut state.root_deltas[..], root_report_limit);
             }
@@ -426,37 +523,39 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
 
 struct FlowchartCompareState {
     root_deltas: Vec<RootDelta>,
+    root_coverage: RootCoverageSummary,
     label_deltas: Vec<LabelMetricDelta>,
-    root_pin_ids: BTreeSet<String>,
+    observed_operations: ObservedRenderOperations,
 }
 
-pub(crate) fn check_flowchart_elk_source_backed_probes(
-    args: Vec<String>,
-) -> Result<(), XtaskError> {
+pub(crate) fn check_flowchart_elk_parity(args: Vec<String>) -> Result<(), XtaskError> {
     if !args.is_empty() {
         return Err(XtaskError::Usage);
     }
 
+    let fact = super::diagram_verification_fact("flowchart")
+        .copied()
+        .expect("Flowchart must have a verification fact");
     let mut failures = Vec::new();
-    for stem in crate::cmd::flowchart_elk_svg_source_backed_probe_stems() {
+    for stem in crate::cmd::flowchart_elk_svg_parity_stems() {
         let out_path = crate::cmd::target_root()
             .join("compare")
-            .join("flowchart_elk_source_backed")
+            .join("flowchart_elk_parity")
             .join(format!("{stem}.md"));
-        let result = compare_flowchart_svgs(vec![
-            "--filter".to_string(),
-            (*stem).to_string(),
-            "--include-elk-probes".to_string(),
-            "--flowchart-elk-backend".to_string(),
-            "source-ported".to_string(),
-            "--check-dom".to_string(),
-            "--dom-mode".to_string(),
-            "parity".to_string(),
-            "--dom-decimals".to_string(),
-            "3".to_string(),
-            "--out".to_string(),
-            out_path.display().to_string(),
-        ]);
+        let result = compare_flowchart_args(
+            fact,
+            vec![
+                "--filter".to_string(),
+                (*stem).to_string(),
+                "--check-dom".to_string(),
+                "--dom-mode".to_string(),
+                "parity".to_string(),
+                "--dom-decimals".to_string(),
+                "3".to_string(),
+                "--out".to_string(),
+                out_path.display().to_string(),
+            ],
+        );
         if let Err(err) = result {
             failures.push(format!("{stem}: {err}"));
         }
@@ -469,9 +568,7 @@ pub(crate) fn check_flowchart_elk_source_backed_probes(
     }
 }
 
-pub(crate) fn audit_flowchart_elk_source_backed_coverage(
-    args: Vec<String>,
-) -> Result<(), XtaskError> {
+pub(crate) fn audit_flowchart_elk_parity_coverage(args: Vec<String>) -> Result<(), XtaskError> {
     if !args.is_empty() {
         return Err(XtaskError::Usage);
     }
@@ -493,23 +590,27 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
         .join("flowchart");
 
     let cases = collect_flowchart_elk_spec_snapshot_cases(&spec)?;
-    let admitted = crate::cmd::flowchart_elk_svg_source_backed_probe_stems();
+    let admitted = crate::cmd::flowchart_elk_svg_parity_stems();
     let mut admitted_layout_body_keys: BTreeMap<String, String> = BTreeMap::new();
     for stem in admitted {
         let fixture_path = fixture_dir.join(format!("{stem}.mmd"));
-        if let Ok(text) = fs::read_to_string(&fixture_path) {
-            admitted_layout_body_keys
-                .entry(canonical_flowchart_elk_layout_body_key(&text))
-                .or_insert_with(|| (*stem).to_string());
+        let svg_path = upstream_svg_dir.join(format!("{stem}.svg"));
+        if !svg_path.is_file() {
+            continue;
         }
-    }
-
-    for case in &cases {
-        if admitted.contains(&case.stem.as_str()) {
-            admitted_layout_body_keys
-                .entry(case.layout_body_key.clone())
-                .or_insert_with(|| case.stem.clone());
-        }
+        let text = match fs::read_to_string(&fixture_path) {
+            Ok(text) => text,
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(source) => {
+                return Err(XtaskError::ReadFile {
+                    path: fixture_path.display().to_string(),
+                    source,
+                });
+            }
+        };
+        admitted_layout_body_keys
+            .entry(canonical_flowchart_elk_layout_body_key(&text))
+            .or_insert_with(|| (*stem).to_string());
     }
 
     let mut admitted_count = 0usize;
@@ -530,6 +631,7 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
         let has_fixture = fixture_path.is_file();
         let has_svg = svg_path.is_file();
         let is_admitted = admitted.contains(&case.stem.as_str());
+        let has_exact_parity_baseline = is_admitted && has_fixture && has_svg;
         let covered_by_layout_body = admitted_layout_body_keys
             .get(&case.layout_body_key)
             .map(String::as_str);
@@ -554,30 +656,30 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
         } else {
             no_upstream_svg.push(case);
         }
-        if is_admitted {
+        if has_exact_parity_baseline {
             admitted_count += 1;
-        } else {
+        } else if let Some(representative) = covered_by_layout_body {
+            duplicate_covered.push((case, representative));
+        }
+        if !is_admitted {
             not_admitted.push(case);
-            if let Some(representative) = covered_by_layout_body {
-                duplicate_covered.push((case, representative));
-            }
         }
     }
 
     let uncovered_layout_body_count =
         unique_layout_body_keys.len() - covered_layout_body_keys.len();
 
-    println!("Flowchart ELK source-backed coverage");
+    println!("Flowchart ELK parity coverage");
     println!("spec: {}", spec_path.display());
     let duplicate_covered_count = duplicate_covered.len();
     println!("ELK render calls: {}", cases.len());
     println!(
-        "exact render calls covered by admitted probes or duplicate layout bodies: {}",
+        "exact render calls covered by parity fixtures or duplicate layout bodies: {}",
         admitted_count + duplicate_covered_count
     );
     println!("dedicated fixtures present: {fixture_count}");
     println!("dedicated upstream SVGs present: {upstream_svg_count}");
-    println!("source-backed admitted fixtures: {admitted_count}");
+    println!("canonical parity fixtures: {admitted_count}");
     println!(
         "dedicated fixture gaps covered by duplicate layout body: {}",
         missing
@@ -594,18 +696,21 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
     );
     println!(
         "unadmitted exact calls covered by duplicate layout body: {}",
-        duplicate_covered_count
+        duplicate_covered
+            .iter()
+            .filter(|(case, _)| !admitted.contains(&case.stem.as_str()))
+            .count()
     );
     println!("unique layout bodies: {}", unique_layout_body_keys.len());
     println!(
-        "unique layout bodies covered by admitted probes: {}",
+        "unique layout bodies covered by parity fixtures: {}",
         covered_layout_body_keys.len()
     );
     println!("uncovered unique layout bodies: {uncovered_layout_body_count}");
 
     if !duplicate_covered.is_empty() {
         println!();
-        println!("Exact calls covered through an admitted duplicate layout body:");
+        println!("Non-canonical calls covered through an admitted duplicate layout body:");
         for (case, representative) in &duplicate_covered {
             println!(
                 "- {} {} [{}{}]",
@@ -717,313 +822,153 @@ struct FlowchartElkSpecCase {
     snapshot: bool,
 }
 
+fn existing_flowchart_elk_source_identities() -> Result<HashMap<String, Vec<String>>, XtaskError> {
+    let fixture_dir = crate::cmd::fixtures_root().join("flowchart");
+    let entries = fs::read_dir(&fixture_dir).map_err(|source| XtaskError::ReadFile {
+        path: fixture_dir.display().to_string(),
+        source,
+    })?;
+    let mut identities = HashMap::<String, Vec<String>>::new();
+    for entry in entries {
+        let path = entry
+            .map_err(|source| XtaskError::ReadFile {
+                path: fixture_dir.display().to_string(),
+                source,
+            })?
+            .path();
+        let Some(stem) = path
+            .extension()
+            .filter(|extension| *extension == "mmd")
+            .and_then(|_| path.file_stem())
+            .and_then(|stem| stem.to_str())
+            .filter(|stem| stem.starts_with("upstream_cypress_flowchart_elk_spec_"))
+            .filter(|stem| crate::cmd::flowchart_elk_svg_parity_admitted(stem))
+        else {
+            continue;
+        };
+        let source = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
+            path: path.display().to_string(),
+            source,
+        })?;
+        identities
+            .entry(canonical_flowchart_elk_source_body_key(&source))
+            .or_default()
+            .push(stem.to_string());
+    }
+    for stems in identities.values_mut() {
+        stems.sort();
+    }
+    Ok(identities)
+}
+
 fn collect_flowchart_elk_spec_snapshot_cases(
     spec: &str,
 ) -> Result<Vec<FlowchartElkSpecCase>, XtaskError> {
     let source_slug = clamp_flowchart_elk_slug(slugify_flowchart_elk("flowchart-elk spec"), 48);
+    let existing_identities = existing_flowchart_elk_source_identities()?;
     let mut cases = Vec::new();
-    let it_positions = collect_flowchart_elk_it_positions(spec);
-    let bytes = spec.as_bytes();
-    let mut idx_in_file = 0usize;
+    let extraction =
+        crate::cmd::javascript_source::extract_cypress_render_cases(spec).map_err(|reason| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to parse the Flowchart ELK source as TypeScript: {reason}"
+            ))
+        })?;
+    if !extraction.unsupported.is_empty() {
+        let diagnostics = extraction
+            .unsupported
+            .iter()
+            .map(|diagnostic| {
+                format!(
+                    "{} at byte {}: {}",
+                    diagnostic.helper.as_str(),
+                    diagnostic.start_byte,
+                    diagnostic.reason
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(XtaskError::SnapshotUpdateFailed(format!(
+            "Flowchart ELK source contains calls that cannot be audited statically: {diagnostics}"
+        )));
+    }
 
-    for (call, needle) in [
-        ("imgSnapshotTest", "imgSnapshotTest"),
-        ("renderGraph", "renderGraph"),
-    ] {
-        let mut search_from = 0usize;
-        while let Some(abs) = find_flowchart_elk_call(spec, needle, search_from) {
-            let current_it = flowchart_elk_test_at(&it_positions, abs);
-            let skipped_it = current_it.is_some_and(|it| it.skipped);
-            if skipped_it {
-                search_from = abs + needle.len();
-                continue;
-            }
-
-            let after_call = abs + needle.len();
-            let mut open_paren = after_call;
-            while bytes
-                .get(open_paren)
-                .is_some_and(|b| is_flowchart_elk_ws_byte(*b))
-            {
-                open_paren += 1;
-            }
-            if bytes.get(open_paren) != Some(&b'(') {
-                search_from = after_call;
-                continue;
-            }
-            let Some(close_paren) = find_flowchart_elk_matching_paren(spec, open_paren) else {
-                search_from = open_paren + 1;
-                continue;
-            };
-
-            let args_slice = &spec[(open_paren + 1)..close_paren];
-            let use_last_template =
-                call == "renderGraph" && args_slice.trim_start().starts_with('[');
-            let extracted = if use_last_template {
-                extract_flowchart_elk_last_template_literal(args_slice, 0)
-            } else {
-                extract_flowchart_elk_first_template_literal(args_slice, 0)
-            };
-
-            if let Some((body, _end_rel)) = extracted {
-                let case_name = current_it
-                    .map(|it| it.name.clone())
-                    .unwrap_or_else(|| "example".to_string());
-                let test_slug = clamp_flowchart_elk_slug(slugify_flowchart_elk(&case_name), 64);
-                let flowchart_elk_source = body.contains("flowchart-elk");
-                let elk_config_source = body.contains("layout: elk")
-                    || body.contains("layout: 'elk'")
-                    || args_slice.contains("layout: 'elk'")
-                    || args_slice.contains("layout: \"elk\"")
-                    || args_slice.contains("defaultRenderer: 'elk'")
-                    || args_slice.contains("defaultRenderer: \"elk\"");
-                if flowchart_elk_source || elk_config_source {
-                    cases.push(FlowchartElkSpecCase {
-                        case_number: idx_in_file + 1,
-                        test_name: case_name,
-                        stem: format!(
-                            "upstream_cypress_{source_slug}_{test_slug}_{case_index:03}",
-                            case_index = idx_in_file + 1
-                        ),
-                        layout_body_key: canonical_flowchart_elk_layout_body_key(&body),
-                        call,
-                        snapshot: call == "imgSnapshotTest",
-                    });
-                }
-                idx_in_file += 1;
-                search_from = close_paren + 1;
-                continue;
-            }
-
-            search_from = close_paren + 1;
+    for (source_index, render_case) in extraction.cases.into_iter().enumerate() {
+        if !flowchart_elk_requested(&render_case.diagram, &render_case.options) {
+            continue;
         }
+        let fixture_source = crate::cmd::import::materialize_cypress_fixture_source(
+            &render_case.diagram,
+            render_case.helper,
+            &render_case.options,
+        )
+        .map_err(|reason| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to materialize a Flowchart ELK source case: {reason}"
+            ))
+        })?;
+        let case_name = render_case
+            .test_name
+            .unwrap_or_else(|| "example".to_string());
+        let test_slug = clamp_flowchart_elk_slug(slugify_flowchart_elk(&case_name), 64);
+        let call = render_case.helper.as_str();
+        let prefix = format!("upstream_cypress_{source_slug}_{test_slug}_");
+        let source_body_key = canonical_flowchart_elk_source_body_key(&fixture_source);
+        let existing_stems = existing_identities
+            .get(&source_body_key)
+            .into_iter()
+            .flatten()
+            .filter(|stem| stem.starts_with(&prefix))
+            .collect::<Vec<_>>();
+        let stem = match existing_stems.as_slice() {
+            [existing] => (*existing).clone(),
+            _ => format!(
+                "{prefix}{}",
+                crate::cmd::import::imported_fixture_content_id(&fixture_source)
+            ),
+        };
+        cases.push(FlowchartElkSpecCase {
+            case_number: source_index + 1,
+            test_name: case_name,
+            stem,
+            layout_body_key: canonical_flowchart_elk_layout_body_key(&fixture_source),
+            call,
+            snapshot: matches!(
+                render_case.helper,
+                crate::cmd::javascript_source::CypressRenderHelper::ImgSnapshotTest
+            ),
+        });
     }
 
     Ok(cases)
 }
 
-#[derive(Debug)]
-struct FlowchartElkItPos {
-    pos: usize,
-    name: String,
-    skipped: bool,
-}
-
-fn collect_flowchart_elk_it_positions(spec: &str) -> Vec<FlowchartElkItPos> {
-    let Ok(re) = Regex::new(r#"\b(it|it\.skip)\s*\(\s*'([^']*)'"#) else {
-        return Vec::new();
-    };
-    re.captures_iter(spec)
-        .filter_map(|caps| {
-            let matched = caps.get(0)?;
-            Some(FlowchartElkItPos {
-                pos: matched.start(),
-                name: caps.get(2)?.as_str().to_string(),
-                skipped: caps.get(1)?.as_str() == "it.skip",
+fn flowchart_elk_requested(body: &str, options: &serde_json::Value) -> bool {
+    value_path_is_elk(options, &["layout"])
+        || value_path_is_elk(options, &["flowchart", "defaultRenderer"])
+        || split_flowchart_elk_yaml_frontmatter(body)
+            .and_then(|(yaml, _)| serde_saphyr::from_str::<serde_json::Value>(yaml).ok())
+            .is_some_and(|frontmatter| {
+                value_path_is_elk(&frontmatter, &["config", "layout"])
+                    || value_path_is_elk(&frontmatter, &["config", "flowchart", "defaultRenderer"])
             })
-        })
-        .collect()
+        || first_flowchart_directive(body).is_some_and(|directive| directive == "flowchart-elk")
 }
 
-fn flowchart_elk_test_at(
-    it_positions: &[FlowchartElkItPos],
-    abs: usize,
-) -> Option<&FlowchartElkItPos> {
-    let mut current = None;
-    for it in it_positions {
-        if it.pos > abs {
-            break;
-        }
-        if it.pos < abs {
-            current = Some(it);
-        }
-    }
-    current
+fn value_path_is_elk(value: &serde_json::Value, path: &[&str]) -> bool {
+    path.iter()
+        .try_fold(value, |value, key| value.get(*key))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|renderer| renderer.eq_ignore_ascii_case("elk"))
 }
 
-fn is_flowchart_elk_ident_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$'
-}
-
-fn is_flowchart_elk_ws_byte(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\n' | b'\r')
-}
-
-fn find_flowchart_elk_call(text: &str, needle: &str, from: usize) -> Option<usize> {
-    let bytes = text.as_bytes();
-    let needle_bytes = needle.as_bytes();
-    let mut i = from;
-    while i + needle_bytes.len() <= bytes.len() {
-        if &bytes[i..i + needle_bytes.len()] == needle_bytes {
-            let before_ok = i == 0 || !is_flowchart_elk_ident_byte(bytes[i - 1]);
-            let after = i + needle_bytes.len();
-            let after_ok = after >= bytes.len() || !is_flowchart_elk_ident_byte(bytes[after]);
-            if before_ok && after_ok {
-                return Some(i);
-            }
-        }
-        i += 1;
-    }
-    None
-}
-
-fn find_flowchart_elk_matching_paren(text: &str, open_paren: usize) -> Option<usize> {
-    let bytes = text.as_bytes();
-    if bytes.get(open_paren) != Some(&b'(') {
-        return None;
-    }
-
-    let mut mode = JsScanMode::Normal;
-    let mut depth: i32 = 1;
-    let mut escaped = false;
-    let mut i = open_paren + 1;
-    while i < bytes.len() {
-        let byte = bytes[i];
-        match mode {
-            JsScanMode::Normal => {
-                if byte == b'/' && bytes.get(i + 1) == Some(&b'/') {
-                    mode = JsScanMode::LineComment;
-                    i += 2;
-                    continue;
-                }
-                if byte == b'/' && bytes.get(i + 1) == Some(&b'*') {
-                    mode = JsScanMode::BlockComment;
-                    i += 2;
-                    continue;
-                }
-                if byte == b'\'' {
-                    mode = JsScanMode::SingleQuote;
-                    escaped = false;
-                } else if byte == b'"' {
-                    mode = JsScanMode::DoubleQuote;
-                    escaped = false;
-                } else if byte == b'`' {
-                    mode = JsScanMode::Template;
-                    escaped = false;
-                } else if byte == b'(' {
-                    depth += 1;
-                } else if byte == b')' {
-                    depth -= 1;
-                    if depth == 0 {
-                        return Some(i);
-                    }
-                }
-                i += 1;
-            }
-            JsScanMode::SingleQuote => {
-                update_js_string_mode(byte, b'\'', &mut mode, &mut escaped);
-                i += 1;
-            }
-            JsScanMode::DoubleQuote => {
-                update_js_string_mode(byte, b'"', &mut mode, &mut escaped);
-                i += 1;
-            }
-            JsScanMode::Template => {
-                update_js_string_mode(byte, b'`', &mut mode, &mut escaped);
-                i += 1;
-            }
-            JsScanMode::LineComment => {
-                if byte == b'\n' {
-                    mode = JsScanMode::Normal;
-                }
-                i += 1;
-            }
-            JsScanMode::BlockComment => {
-                if byte == b'*' && bytes.get(i + 1) == Some(&b'/') {
-                    mode = JsScanMode::Normal;
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-        }
-    }
-    None
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum JsScanMode {
-    Normal,
-    SingleQuote,
-    DoubleQuote,
-    Template,
-    LineComment,
-    BlockComment,
-}
-
-fn update_js_string_mode(byte: u8, quote: u8, mode: &mut JsScanMode, escaped: &mut bool) {
-    if *escaped {
-        *escaped = false;
-    } else if byte == b'\\' {
-        *escaped = true;
-    } else if byte == quote {
-        *mode = JsScanMode::Normal;
-    }
-}
-
-fn extract_flowchart_elk_first_template_literal(
-    input: &str,
-    start: usize,
-) -> Option<(String, usize)> {
-    let bytes = input.as_bytes();
-    let mut i = start;
-    while i < bytes.len() {
-        if bytes[i] == b'`' {
-            return parse_flowchart_elk_template_literal(input, i);
-        }
-        i += 1;
-    }
-    None
-}
-
-fn extract_flowchart_elk_last_template_literal(
-    input: &str,
-    start: usize,
-) -> Option<(String, usize)> {
-    let mut cursor = start;
-    let mut last = None;
-    while let Some((value, end)) = extract_flowchart_elk_first_template_literal(input, cursor) {
-        last = Some((value, end));
-        cursor = end;
-    }
-    last
-}
-
-fn parse_flowchart_elk_template_literal(input: &str, start: usize) -> Option<(String, usize)> {
-    let bytes = input.as_bytes();
-    if bytes.get(start) != Some(&b'`') {
-        return None;
-    }
-    let mut out = String::new();
-    let mut escaped = false;
-    let mut i = start + 1;
-    while i < bytes.len() {
-        let byte = bytes[i];
-        if escaped {
-            match byte {
-                b'n' => out.push('\n'),
-                b'r' => out.push('\r'),
-                b't' => out.push('\t'),
-                b'`' => out.push('`'),
-                b'\\' => out.push('\\'),
-                _ => out.push(byte as char),
-            }
-            escaped = false;
-            i += 1;
-            continue;
-        }
-        if byte == b'\\' {
-            escaped = true;
-            i += 1;
-            continue;
-        }
-        if byte == b'`' {
-            return Some((out, i + 1));
-        }
-        out.push(byte as char);
-        i += 1;
-    }
-    None
+fn first_flowchart_directive(input: &str) -> Option<&str> {
+    let body = split_flowchart_elk_yaml_frontmatter(input)
+        .map(|(_, body)| body)
+        .unwrap_or(input);
+    body.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with("%%"))
+        .and_then(|line| line.split_ascii_whitespace().next())
 }
 
 fn slugify_flowchart_elk(input: &str) -> String {
@@ -1067,65 +1012,356 @@ fn clamp_flowchart_elk_slug(mut slug: String, max_len: usize) -> String {
 }
 
 fn canonical_flowchart_elk_layout_body_key(input: &str) -> String {
-    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
-    let body = strip_flowchart_elk_yaml_frontmatter(normalized.trim_start())
-        .trim_matches(|ch: char| ch.is_whitespace())
-        .replace("flowchart-elk", "flowchart");
-
-    body.lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
+    canonical_flowchart_elk_body_key(input, true)
 }
 
-fn strip_flowchart_elk_yaml_frontmatter(input: &str) -> &str {
-    let mut pieces = input.split_inclusive('\n');
-    let Some(first_piece) = pieces.next() else {
-        return input;
+fn canonical_flowchart_elk_source_body_key(input: &str) -> String {
+    canonical_flowchart_elk_body_key(input, false)
+}
+
+fn canonical_flowchart_elk_body_key(input: &str, ignore_renderer_selection: bool) -> String {
+    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    let (frontmatter, body) = split_flowchart_elk_yaml_frontmatter(&normalized)
+        .map(|(yaml, body)| (Some(yaml), body))
+        .unwrap_or((None, normalized.as_str()));
+    let mut value = match frontmatter {
+        Some(yaml) => match serde_saphyr::from_str::<serde_json::Value>(yaml) {
+            Ok(serde_json::Value::Null) => serde_json::Value::Object(serde_json::Map::new()),
+            Ok(value) => value,
+            Err(_) => {
+                return format!(
+                    "frontmatter:raw:{yaml}\nbody:{}",
+                    normalize_flowchart_elk_directive(body).trim_matches('\n')
+                );
+            }
+        },
+        None => serde_json::Value::Object(serde_json::Map::new()),
     };
+    crate::cmd::import::canonicalize_imported_config_value(&mut value);
+    let frontmatter_key = {
+        if ignore_renderer_selection {
+            remove_elk_renderer_path(&mut value, &["config", "layout"]);
+            remove_elk_renderer_path(&mut value, &["config", "flowchart", "defaultRenderer"]);
+        }
+        prune_empty_json_objects(&mut value);
+        if value.as_object().is_some_and(serde_json::Map::is_empty) {
+            String::new()
+        } else {
+            serde_json::to_string(&value).unwrap_or_default()
+        }
+    };
+    let body = normalize_flowchart_elk_directive(body)
+        .trim_matches('\n')
+        .to_string();
+    format!("frontmatter:{frontmatter_key}\nbody:{body}")
+}
+
+fn split_flowchart_elk_yaml_frontmatter(input: &str) -> Option<(&str, &str)> {
+    let mut pieces = input.split_inclusive('\n');
+    let first_piece = pieces.next()?;
     let first_line = first_piece.trim_end_matches(['\n', '\r']);
     if first_line.trim() != "---" {
-        return input;
+        return None;
     }
 
     let mut consumed = first_piece.len();
     for piece in pieces {
+        let yaml_end = consumed;
         consumed += piece.len();
         let line = piece.trim_end_matches(['\n', '\r']);
         if line.trim() == "---" {
-            return &input[consumed..];
+            return Some((&input[first_piece.len()..yaml_end], &input[consumed..]));
         }
     }
 
-    input
+    None
 }
 
-fn collect_flowchart_root_pin_ids() -> std::collections::BTreeSet<String> {
-    let path = crate::cmd::workspace_root()
-        .join("crates")
-        .join("merman-render")
-        .join("src")
-        .join("generated")
-        .join("flowchart_root_overrides_11_12_2.rs");
-    let Ok(src) = fs::read_to_string(path) else {
-        return std::collections::BTreeSet::new();
+fn remove_elk_renderer_path(value: &mut serde_json::Value, path: &[&str]) {
+    let Some((last, parents)) = path.split_last() else {
+        return;
     };
-    let Ok(re) = Regex::new(r#""((?:stress|upstream)_[^"]+)""#) else {
-        return std::collections::BTreeSet::new();
-    };
-    re.captures_iter(&src)
-        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
-        .collect()
+    let mut current = value;
+    for key in parents {
+        let Some(next) = current.get_mut(*key) else {
+            return;
+        };
+        current = next;
+    }
+    let should_remove = current
+        .get(*last)
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|renderer| renderer.eq_ignore_ascii_case("elk"));
+    if should_remove && let Some(object) = current.as_object_mut() {
+        object.remove(*last);
+    }
+}
+
+fn prune_empty_json_objects(value: &mut serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Object(object) => {
+            object.retain(|_, child| !prune_empty_json_objects(child));
+            object.is_empty()
+        }
+        serde_json::Value::Array(values) => {
+            for child in values {
+                prune_empty_json_objects(child);
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+fn normalize_flowchart_elk_directive(body: &str) -> String {
+    let mut normalized = String::with_capacity(body.len());
+    let mut replaced = false;
+    for line in body.split_inclusive('\n') {
+        if !replaced {
+            let trimmed = line.trim_start();
+            if !trimmed.is_empty() && !trimmed.starts_with("%%") {
+                let indentation = line.len() - trimmed.len();
+                if trimmed
+                    .strip_prefix("flowchart-elk")
+                    .is_some_and(|rest| rest.is_empty() || rest.starts_with(char::is_whitespace))
+                {
+                    normalized.push_str(&line[..indentation]);
+                    normalized.push_str("flowchart");
+                    normalized.push_str(&trimmed["flowchart-elk".len()..]);
+                    replaced = true;
+                    continue;
+                }
+                replaced = true;
+            }
+        }
+        normalized.push_str(line);
+    }
+    normalized
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        FlowchartUpstreamTrust, canonical_flowchart_elk_layout_body_key,
+        FlowchartCompareRequest, FlowchartUpstreamTrust, canonical_flowchart_elk_layout_body_key,
         classify_flowchart_upstream_dir, collect_flowchart_elk_spec_snapshot_cases,
-        compare_flowchart_svgs, write_flowchart_upstream_metadata,
+        compare_flowchart_args, run_flowchart_compare_with_math_renderer,
+        write_flowchart_upstream_metadata,
     };
+    use crate::cmd::compare::{
+        CompareRequest, DEFAULT_LABEL_DELTA_REPORT_LIMIT, DiagramVerificationFact,
+    };
+    use std::path::Path;
+    use std::sync::Arc;
+
+    #[derive(Debug)]
+    struct SuccessfulMathRenderer;
+
+    impl merman::svg::MathRenderer for SuccessfulMathRenderer {
+        fn render_html_label(
+            &self,
+            _text: &str,
+            _config: &merman::MermaidConfig,
+        ) -> Option<String> {
+            Some("<span>math</span>".to_string())
+        }
+
+        fn measure_html_label(
+            &self,
+            _text: &str,
+            _config: &merman::MermaidConfig,
+            _style: &merman::svg::TextStyle,
+            _max_width_px: Option<f64>,
+            _wrap_mode: merman::svg::WrapMode,
+        ) -> Option<merman::svg::TextMetrics> {
+            Some(merman::svg::TextMetrics {
+                width: 40.0,
+                height: 20.0,
+                line_count: 1,
+            })
+        }
+    }
+
+    fn compare_flowchart(args: Vec<String>) -> Result<(), crate::XtaskError> {
+        let fact = super::super::diagram_verification_fact("flowchart")
+            .copied()
+            .expect("Flowchart must have a verification fact");
+        compare_flowchart_args(fact, args)
+    }
+
+    fn flowchart_fact() -> DiagramVerificationFact {
+        super::super::diagram_verification_fact("flowchart")
+            .copied()
+            .expect("Flowchart must have a verification fact")
+    }
+
+    fn write_flowchart_compare_fixture(root: &Path, stem: &str, source: &str, upstream_svg: &str) {
+        let fixtures = root.join("fixtures").join("flowchart");
+        let upstream = root.join("upstream").join("flowchart");
+        std::fs::create_dir_all(&fixtures).expect("fixture directory should be created");
+        std::fs::create_dir_all(&upstream).expect("upstream directory should be created");
+        std::fs::write(fixtures.join(format!("{stem}.mmd")), source)
+            .expect("fixture should be written");
+        std::fs::write(upstream.join(format!("{stem}.svg")), upstream_svg)
+            .expect("upstream SVG should be written");
+    }
+
+    fn render_plain_flowchart(fact: DiagramVerificationFact, stem: &str, source: &str) -> String {
+        merman::svg::HeadlessRenderer::new()
+            .with_engine(super::svg_compare_engine_with_site_config(
+                serde_json::json!({ "handDrawnSeed": 1 }),
+            ))
+            .with_parse_options(fact.parse_policy.options())
+            .with_layout_options(merman_render::LayoutOptions::default())
+            .with_environment(
+                merman::svg::RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::parity()),
+            )
+            .with_diagram_id(stem)
+            .render_svg_report_sync(source)
+            .expect("plain Flowchart render should succeed")
+            .expect("plain Flowchart should be detected")
+            .into_svg()
+    }
+
+    fn flowchart_compare_request(root: &Path) -> FlowchartCompareRequest {
+        FlowchartCompareRequest {
+            common: CompareRequest {
+                out_path: Some(root.join("report.md")),
+                check_dom: true,
+                dom_mode: Some("parity".to_string()),
+                flowchart_text_measurer: Some("vendored".to_string()),
+                ..CompareRequest::default()
+            },
+            fixtures_root: Some(root.join("fixtures")),
+            upstream_root: Some(root.join("upstream")),
+            report_label: false,
+            label_report_limit: DEFAULT_LABEL_DELTA_REPORT_LIMIT,
+            force_elk_fixture: false,
+        }
+    }
+
+    #[test]
+    fn plain_flowchart_compare_does_not_require_a_math_backend() {
+        let temp = tempfile::tempdir().expect("temporary compare root");
+        let fact = flowchart_fact();
+        let source = "flowchart LR\n  A --> B\n";
+        let upstream = render_plain_flowchart(fact, "plain", source);
+        write_flowchart_compare_fixture(temp.path(), "plain", source, &upstream);
+
+        let evidence = run_flowchart_compare_with_math_renderer(
+            fact,
+            flowchart_compare_request(temp.path()),
+            None,
+        )
+        .expect("plain fixtures must not require a math backend");
+
+        assert_eq!(evidence.selected_fixtures(), 1);
+        assert_eq!(evidence.rendered_fixtures(), 1);
+        assert_eq!(evidence.comparisons(), 1);
+    }
+
+    #[test]
+    fn math_only_flowchart_compare_fails_without_a_backend() {
+        let temp = tempfile::tempdir().expect("temporary compare root");
+        let fact = flowchart_fact();
+        let source = "flowchart LR\n  A[\"$$x + y$$\"] --> B\n";
+        write_flowchart_compare_fixture(temp.path(), "math_only", source, "<svg/>");
+
+        let failure = run_flowchart_compare_with_math_renderer(
+            fact,
+            flowchart_compare_request(temp.path()),
+            None,
+        )
+        .expect_err("math fixtures must require a math backend");
+        let evidence = failure.evidence();
+        let message = failure.to_string();
+
+        assert_eq!(evidence.selected_fixtures(), 1);
+        assert_eq!(evidence.rendered_fixtures(), 0);
+        assert_eq!(evidence.comparisons(), 0);
+        assert!(message.contains("cannot compare math fixture math_only"));
+        assert!(message.contains("Node KaTeX backend is unavailable"));
+    }
+
+    #[test]
+    fn mixed_flowchart_selection_cannot_hide_a_missing_math_backend() {
+        let temp = tempfile::tempdir().expect("temporary compare root");
+        let fact = flowchart_fact();
+        let plain_source = "flowchart LR\n  A --> B\n";
+        let plain_upstream = render_plain_flowchart(fact, "a_plain", plain_source);
+        write_flowchart_compare_fixture(temp.path(), "a_plain", plain_source, &plain_upstream);
+        write_flowchart_compare_fixture(
+            temp.path(),
+            "b_math",
+            "flowchart LR\n  A[\"$$x + y$$\"] --> B\n",
+            "<svg/>",
+        );
+
+        let failure = run_flowchart_compare_with_math_renderer(
+            fact,
+            flowchart_compare_request(temp.path()),
+            None,
+        )
+        .expect_err("a plain fixture's DOM evidence must not hide a math failure");
+        let evidence = failure.evidence();
+        let message = failure.to_string();
+
+        assert_eq!(evidence.selected_fixtures(), 2);
+        assert_eq!(evidence.rendered_fixtures(), 1);
+        assert_eq!(evidence.comparisons(), 1);
+        assert!(message.contains("cannot compare math fixture b_math"));
+    }
+
+    #[test]
+    fn flowchart_math_backend_must_produce_fixture_scoped_evidence() {
+        let temp = tempfile::tempdir().expect("temporary compare root");
+        let fact = flowchart_fact();
+        write_flowchart_compare_fixture(
+            temp.path(),
+            "declined_math",
+            "flowchart LR\n  A[\"$$x + y$$\"] --> B\n",
+            "<svg/>",
+        );
+        let declining: Arc<dyn merman::svg::MathRenderer + Send + Sync> =
+            Arc::new(merman::svg::NoopMathRenderer);
+
+        let failure = run_flowchart_compare_with_math_renderer(
+            fact,
+            flowchart_compare_request(temp.path()),
+            Some(declining),
+        )
+        .expect_err("a backend that declines every call must not count as math evidence");
+        let message = failure.to_string();
+
+        assert!(message.contains("math fixture declined_math"));
+        assert!(message.contains("no successful Node KaTeX browser measurement evidence"));
+    }
+
+    #[test]
+    fn disabled_dom_check_does_not_activate_the_math_root_exception() {
+        let temp = tempfile::tempdir().expect("temporary compare root");
+        let fact = flowchart_fact();
+        write_flowchart_compare_fixture(
+            temp.path(),
+            "math_without_dom_check",
+            "flowchart LR\n  A[\"$$x + y$$\"] --> B\n",
+            "<svg/>",
+        );
+        let mut request = flowchart_compare_request(temp.path());
+        request.common.check_dom = false;
+        request.common.dom_mode = Some("parity-root".to_string());
+
+        let evidence = run_flowchart_compare_with_math_renderer(
+            fact,
+            request,
+            Some(Arc::new(SuccessfulMathRenderer)),
+        )
+        .expect("a disabled DOM check must not activate root comparison policy");
+
+        assert_eq!(evidence.selected_fixtures(), 1);
+        assert_eq!(evidence.rendered_fixtures(), 1);
+        assert_eq!(evidence.comparisons(), 0);
+    }
 
     #[test]
     fn flowchart_report_marks_canonical_upstream_as_provenance_validated() {
@@ -1178,17 +1414,15 @@ mod tests {
     }
 
     #[test]
-    fn source_backed_elk_admission_matches_html_demo_fixture() {
+    fn flowchart_elk_parity_admission_matches_html_demo_fixture() {
         let out_path = crate::cmd::target_root()
             .join("compare")
             .join("xtask-tests")
-            .join("flowchart_elk_demo_probe_sourceported.md");
+            .join("flowchart_elk_demo_parity.md");
 
-        compare_flowchart_svgs(vec![
+        compare_flowchart(vec![
             "--filter".to_string(),
             "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
-            "--flowchart-elk-backend".to_string(),
-            "source-ported".to_string(),
             "--check-dom".to_string(),
             "--dom-mode".to_string(),
             "parity".to_string(),
@@ -1197,130 +1431,223 @@ mod tests {
             "--out".to_string(),
             out_path.display().to_string(),
         ])
-        .expect("source-backed ELK admission should match the pinned HTML demo fixture");
+        .expect("ELK parity admission should match the pinned HTML demo fixture");
 
         let report = std::fs::read_to_string(&out_path).expect("probe report should be written");
         assert!(report.contains("All fixtures matched."));
     }
 
     #[test]
-    fn default_flowchart_elk_backend_allows_forced_fixture_diagnostics() {
+    fn forced_flowchart_elk_fixture_diagnostics_use_the_canonical_layout() {
         let out_path = crate::cmd::target_root()
             .join("compare")
             .join("xtask-tests")
             .join("flowchart_elk_default_forced.md");
 
-        compare_flowchart_svgs(vec![
+        compare_flowchart(vec![
             "--filter".to_string(),
             "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
             "--force-elk-fixture".to_string(),
             "--out".to_string(),
             out_path.display().to_string(),
         ])
-        .expect("forced ELK fixture diagnostics should use the default source-backed backend");
+        .expect("forced ELK fixture diagnostics should use the canonical ELK layout");
 
         let report = std::fs::read_to_string(&out_path).expect("forced report should be written");
-        assert!(report.contains("- Flowchart ELK backend: `source-ported`"));
+        assert!(report.contains("- Forced ELK fixtures: `enabled`"));
+        assert!(!report.contains("Flowchart ELK backend"));
     }
 
     #[test]
-    fn forced_elk_fixtures_reject_explicit_compat_backend() {
-        let err = compare_flowchart_svgs(vec![
-            "--force-elk-fixture".to_string(),
-            "--flowchart-elk-backend".to_string(),
-            "compat".to_string(),
-        ])
-        .expect_err("forced ELK fixture diagnostics should not run on the compat backend");
-
-        assert!(
-            err.to_string()
-                .contains("`--force-elk-fixture` requires `--flowchart-elk-backend source-ported`")
-        );
-    }
-
-    #[test]
-    fn flowchart_elk_coverage_collector_tracks_snapshot_and_render_graph_cases() {
+    fn flowchart_elk_coverage_uses_helper_contracts_and_structured_config() {
         let spec = r#"
-it('first elk snapshot', () => {
-  imgSnapshotTest(cy, `flowchart-elk
+it('directive', () => {
+  imgSnapshotTest(`flowchart-elk LR
     A --> B`);
 });
-
-it.skip('skipped elk snapshot', () => {
-  imgSnapshotTest(cy, `flowchart-elk
-    skipped --> ignored`);
+it.skip('skipped', () => {
+  imgSnapshotTest(`flowchart-elk LR
+    WRONG --> B`);
 });
-
-it('renderGraph elk config', () => {
-  renderGraph([
-    'fixture',
-    `flowchart LR
-      C --> D`
-  ], { layout: 'elk' });
+it('layout option', () => {
+  renderGraph(`flowchart LR
+    C --> D`, { layout: 'elk' });
 });
-
-it('renderGraph defaultRenderer elk config', () => {
-  renderGraph(
-    `flowchart TD
-      E --> F`,
-    { flowchart: { defaultRenderer: 'elk' } }
-  );
+it('renderer option', () => {
+  renderGraph(`flowchart TD
+    E --> F`, { flowchart: { defaultRenderer: 'elk' } });
 });
 "#;
 
         let cases = collect_flowchart_elk_spec_snapshot_cases(spec)
-            .expect("inline flowchart-elk spec should parse");
+            .expect("static Flowchart ELK calls should be auditable");
 
         assert_eq!(cases.len(), 3);
         assert_eq!(cases[0].case_number, 1);
-        assert_eq!(cases[0].test_name, "first elk snapshot");
-        assert_eq!(
-            cases[0].stem,
-            "upstream_cypress_flowchart_elk_spec_first_elk_snapshot_001"
-        );
+        assert_eq!(cases[0].test_name, "directive");
         assert_eq!(cases[0].call, "imgSnapshotTest");
         assert!(cases[0].snapshot);
-        assert_eq!(cases[0].layout_body_key, "flowchart\nA --> B");
-
         assert_eq!(cases[1].case_number, 2);
-        assert_eq!(cases[1].test_name, "renderGraph elk config");
-        assert_eq!(
-            cases[1].stem,
-            "upstream_cypress_flowchart_elk_spec_rendergraph_elk_config_002"
-        );
         assert_eq!(cases[1].call, "renderGraph");
         assert!(!cases[1].snapshot);
-        assert_eq!(cases[1].layout_body_key, "flowchart LR\nC --> D");
-
         assert_eq!(cases[2].case_number, 3);
-        assert_eq!(cases[2].test_name, "renderGraph defaultRenderer elk config");
-        assert_eq!(
-            cases[2].stem,
-            "upstream_cypress_flowchart_elk_spec_rendergraph_defaultrenderer_elk_config_003"
-        );
-        assert_eq!(cases[2].call, "renderGraph");
-        assert!(!cases[2].snapshot);
-        assert_eq!(cases[2].layout_body_key, "flowchart TD\nE --> F");
     }
 
     #[test]
-    fn flowchart_elk_layout_body_key_tracks_equivalent_layout_inputs() {
-        let flowchart_elk = r#"
----
+    fn flowchart_elk_source_identity_ignores_unrelated_helper_insertions() {
+        let original = r#"
+it('stable snapshot', () => {
+  imgSnapshotTest('flowchart-elk LR\nC --> D');
+});
+"#;
+        let with_unrelated_call = r#"
+it('unrelated render', () => {
+  renderGraph('flowchart-elk LR\nA --> B');
+});
+it('stable snapshot', () => {
+  imgSnapshotTest('flowchart-elk LR\nC --> D');
+});
+"#;
+
+        let original = collect_flowchart_elk_spec_snapshot_cases(original)
+            .expect("original source should be auditable");
+        let with_unrelated_call = collect_flowchart_elk_spec_snapshot_cases(with_unrelated_call)
+            .expect("updated source should be auditable");
+        let stable = with_unrelated_call
+            .iter()
+            .find(|case| case.test_name == "stable snapshot")
+            .expect("stable case should remain present");
+
+        assert_eq!(original[0].stem, stable.stem);
+        assert_eq!(original[0].layout_body_key, stable.layout_body_key);
+    }
+
+    #[test]
+    fn flowchart_elk_coverage_rejects_dynamic_or_multi_diagram_calls() {
+        let dynamic = r#"
+it('dynamic', () => {
+  renderGraph(graph, { layout: 'elk' });
+});
+"#;
+        let error = collect_flowchart_elk_spec_snapshot_cases(dynamic)
+            .expect_err("dynamic graph must make the coverage audit incomplete");
+        assert!(error.to_string().contains("cannot be audited statically"));
+
+        let multiple = r#"
+it('multiple', () => {
+  renderGraph(['flowchart LR\nA-->B', 'flowchart LR\nB-->C'], { layout: 'elk' });
+});
+"#;
+        let error = collect_flowchart_elk_spec_snapshot_cases(multiple)
+            .expect_err("multi-diagram rendering has no single-fixture equivalent");
+        assert!(error.to_string().contains("multiple diagrams"));
+    }
+
+    #[test]
+    fn flowchart_elk_detection_does_not_match_labels_or_comments() {
+        let spec = r#"
+it('label', () => {
+  renderGraph(`flowchart LR
+    A["layout: elk"] --> B`, {});
+});
+it('comment', () => {
+  renderGraph(`flowchart LR
+    %% flowchart-elk
+    C --> D`, {});
+});
+"#;
+
+        let cases = collect_flowchart_elk_spec_snapshot_cases(spec)
+            .expect("static non-ELK calls should remain auditable");
+        assert!(cases.is_empty());
+    }
+
+    #[test]
+    fn flowchart_elk_layout_identity_preserves_non_renderer_config() {
+        let renderer_only = r#"---
 config:
-  htmlLabels: true
+  layout: elk
 ---
-flowchart-elk LR
+flowchart LR
   A --> B
 "#;
-        let default_renderer = r#"
+        let directive = "flowchart-elk LR\n  A --> B\n";
+        assert_eq!(
+            canonical_flowchart_elk_layout_body_key(renderer_only),
+            canonical_flowchart_elk_layout_body_key(directive)
+        );
+
+        let html_labels = r#"---
+config:
+  layout: elk
+  htmlLabels: true
+---
+flowchart LR
+  A --> B
+"#;
+        assert_ne!(
+            canonical_flowchart_elk_layout_body_key(html_labels),
+            canonical_flowchart_elk_layout_body_key(directive)
+        );
+    }
+
+    #[test]
+    fn flowchart_elk_layout_identity_applies_static_helper_options() {
+        let spec = r#"
+it('zero margin', () => {
+  imgSnapshotTest(`flowchart LR
+    A --> B`, { layout: 'elk', flowchart: { titleTopMargin: 0 } });
+});
+it('wide margin', () => {
+  imgSnapshotTest(`flowchart LR
+    A --> B`, { layout: 'elk', flowchart: { titleTopMargin: 40 } });
+});
+"#;
+        let cases = collect_flowchart_elk_spec_snapshot_cases(spec)
+            .expect("static helper options should be part of the layout identity");
+        let imported = r#"---
+config:
+  architecture:
+    seed: 1
+  cynefin:
+    seed: 1
+  fontFamily: courier
+  fontSize: 16px
+  handDrawnSeed: 1
+  layout: elk
+  flowchart:
+    titleTopMargin: 0
+  sequence:
+    actorFontFamily: courier
+    messageFontFamily: courier
+    noteFontFamily: courier
+---
 flowchart LR
     A --> B
 "#;
 
+        assert_eq!(cases.len(), 2);
         assert_eq!(
-            canonical_flowchart_elk_layout_body_key(flowchart_elk),
-            canonical_flowchart_elk_layout_body_key(default_renderer)
+            cases[0].layout_body_key,
+            canonical_flowchart_elk_layout_body_key(imported)
         );
+        assert_ne!(cases[0].layout_body_key, cases[1].layout_body_key);
+    }
+
+    #[test]
+    fn flowchart_elk_coverage_preserves_unicode_and_escape_semantics() {
+        let spec = r#"
+it('unicode', () => {
+  imgSnapshotTest(`flowchart-elk LR
+    开始 --> 完成🚀
+    A["\u007D \uD83D\uDE0E"]`);
+});
+"#;
+
+        let cases = collect_flowchart_elk_spec_snapshot_cases(spec)
+            .expect("Unicode literal should be statically auditable");
+        assert_eq!(cases.len(), 1);
+        assert!(cases[0].layout_body_key.contains("开始 --> 完成🚀"));
+        assert!(cases[0].layout_body_key.contains("A[\"} 😎\"]"));
     }
 }

@@ -6,27 +6,33 @@ pub(crate) fn sequence_activation_start_x(center_x: f64, stacked_size: usize, wi
 }
 
 pub(crate) fn sequence_activation_stack_bounds(
-    starts: impl IntoIterator<Item = f64>,
+    depth: usize,
     center_x: f64,
     width: f64,
 ) -> (f64, f64) {
-    starts
-        .into_iter()
-        .fold((center_x - 1.0, center_x + 1.0), |(left, right), x| {
-            (left.min(x), right.max(x + width))
-        })
+    let mut left = center_x - 1.0;
+    let mut right = center_x + 1.0;
+    if depth == 0 {
+        return (left, right);
+    }
+
+    let first_start_x = sequence_activation_start_x(center_x, 0, width);
+    let last_start_x = sequence_activation_start_x(center_x, depth - 1, width);
+    left = left.min(first_start_x).min(last_start_x);
+    right = right.max(first_start_x + width).max(last_start_x + width);
+    (left, right)
 }
 
 pub(super) struct SequenceActivationState {
     width: f64,
-    stacks: BTreeMap<usize, Vec<f64>>,
+    depths: BTreeMap<usize, usize>,
 }
 
 impl SequenceActivationState {
     pub(super) fn new(width: f64) -> Self {
         Self {
             width,
-            stacks: BTreeMap::new(),
+            depths: BTreeMap::new(),
         }
     }
 
@@ -45,11 +51,11 @@ impl SequenceActivationState {
                 let Some(&idx) = actor_index.get(actor_id) else {
                     return true;
                 };
-                let cx = actor_centers_x[idx];
-                let stack = self.stacks.entry(idx).or_default();
-                let stacked_size = stack.len();
-                let startx = sequence_activation_start_x(cx, stacked_size, self.width);
-                stack.push(startx);
+                if actor_centers_x.get(idx).is_none() {
+                    return true;
+                }
+                let depth = self.depths.entry(idx).or_default();
+                *depth = depth.saturating_add(1);
                 true
             }
             // ACTIVE_END
@@ -60,8 +66,8 @@ impl SequenceActivationState {
                 let Some(&idx) = actor_index.get(actor_id) else {
                     return true;
                 };
-                if let Some(stack) = self.stacks.get_mut(&idx) {
-                    let _ = stack.pop();
+                if let Some(depth) = self.depths.get_mut(&idx) {
+                    *depth = depth.saturating_sub(1);
                 }
                 true
             }
@@ -71,10 +77,7 @@ impl SequenceActivationState {
 
     pub(super) fn actor_bounds(&self, actor_index: usize, center_x: f64) -> (f64, f64) {
         sequence_activation_stack_bounds(
-            self.stacks
-                .get(&actor_index)
-                .into_iter()
-                .flat_map(|stack| stack.iter().copied()),
+            self.depths.get(&actor_index).copied().unwrap_or_default(),
             center_x,
             self.width,
         )
@@ -99,16 +102,28 @@ mod tests {
     #[test]
     fn activation_stack_bounds_fold_full_active_stack() {
         assert_eq!(
-            sequence_activation_stack_bounds(std::iter::empty::<f64>(), 100.0, 10.0),
+            sequence_activation_stack_bounds(0, 100.0, 10.0),
             (99.0, 101.0)
         );
         assert_eq!(
-            sequence_activation_stack_bounds([95.0], 100.0, 10.0),
+            sequence_activation_stack_bounds(1, 100.0, 10.0),
             (95.0, 105.0)
         );
         assert_eq!(
-            sequence_activation_stack_bounds([95.0, 100.0], 100.0, 10.0),
+            sequence_activation_stack_bounds(2, 100.0, 10.0),
             (95.0, 110.0)
+        );
+        assert_eq!(
+            sequence_activation_stack_bounds(2, 100.0, -10.0),
+            (99.0, 101.0)
+        );
+    }
+
+    #[test]
+    fn activation_stack_bounds_only_need_progression_endpoints() {
+        assert_eq!(
+            sequence_activation_stack_bounds(10_000, 100.0, 10.0),
+            (95.0, 50_100.0)
         );
     }
 }

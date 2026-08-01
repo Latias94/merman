@@ -1,0 +1,154 @@
+{
+  "diagramType": "railroadPeg",
+  "model": {
+    "type": "railroadPeg",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "Expression",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "nonterminal",
+              "name": "Term"
+            },
+            {
+              "type": "repetition",
+              "element": {
+                "type": "sequence",
+                "elements": [
+                  {
+                    "type": "choice",
+                    "alternatives": [
+                      {
+                        "type": "terminal",
+                        "value": "+"
+                      },
+                      {
+                        "type": "terminal",
+                        "value": "-"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "nonterminal",
+                    "name": "Term"
+                  }
+                ]
+              },
+              "min": 0,
+              "max": null
+            }
+          ]
+        }
+      },
+      {
+        "name": "Term",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "nonterminal",
+              "name": "Factor"
+            },
+            {
+              "type": "repetition",
+              "element": {
+                "type": "sequence",
+                "elements": [
+                  {
+                    "type": "choice",
+                    "alternatives": [
+                      {
+                        "type": "terminal",
+                        "value": "*"
+                      },
+                      {
+                        "type": "terminal",
+                        "value": "/"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "nonterminal",
+                    "name": "Factor"
+                  }
+                ]
+              },
+              "min": 0,
+              "max": null
+            }
+          ]
+        }
+      },
+      {
+        "name": "Factor",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "nonterminal",
+              "name": "Number"
+            },
+            {
+              "type": "sequence",
+              "elements": [
+                {
+                  "type": "terminal",
+                  "value": "("
+                },
+                {
+                  "type": "nonterminal",
+                  "name": "Expression"
+                },
+                {
+                  "type": "terminal",
+                  "value": ")"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Number",
+        "definition": {
+          "type": "repetition",
+          "element": {
+            "type": "nonterminal",
+            "name": "Digit"
+          },
+          "min": 1,
+          "max": null
+        }
+      },
+      {
+        "name": "Digit",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "terminal",
+              "value": "0"
+            },
+            {
+              "type": "terminal",
+              "value": "1"
+            },
+            {
+              "type": "terminal",
+              "value": "2"
+            },
+            {
+              "type": "terminal",
+              "value": "3"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

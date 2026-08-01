@@ -1,221 +1,169 @@
-# merman-cli Official CLI Compatibility
+# merman-cli `mmdc` Compatibility
 
-**Status**: Complete for the documented CLI surface, with registered divergences
-**Baseline**: `@mermaid-js/mermaid-cli` `11.16.0`
-**Reference source**: `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js`
-**Created**: 2026-06-04
-**Last updated**: 2026-07-10
+| Contract | Value |
+| --- | --- |
+| Status | Supported versioned compatibility surface with registered divergences |
+| Baseline | `@mermaid-js/mermaid-cli@11.16.0` |
+| Interface | `merman-cli mmdc` |
+| Hidden compatibility alias | Root-level `mmdc` options; permanently supported and not advertised |
+| Native format transition | `render` / `batch -e` through `0.8.x`; use `-f/--format`; removed in `v0.9.0` |
+| Reference source | `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js` |
+| Last updated | 2026-07-29 |
 
-This document is the source of truth for making `merman-cli` behave like the official Mermaid CLI
-where a pure-Rust implementation can reasonably do so. It tracks both the public command surface and
-the observable file/stdout/Markdown behavior. Compatibility here means functional behavior under the
-`merman-cli` command name; the crate does not install an `mmdc` binary alias.
+Merman provides a browserless compatibility command for scripts that use the official Mermaid CLI. Compatibility is explicit and release-pinned: `merman-cli mmdc` owns the supported `mmdc@11.16.0` argument names, browser-independent defaults, file naming, Markdown detection, warnings, and fence scanner. The repository does not install an `mmdc` executable alias.
 
-## Goals
+The advertised root command does not own render flags. A root invocation that begins with an option owned by `mmdc` is permanently rewritten to the explicit `mmdc` subcommand before Clap parsing. This separation lets the compatibility contract track a named upstream release while native `render` and `batch` use stricter Rust CLI conventions without breaking existing scripts.
 
-- Make top-level `merman-cli` render/export usage behave like `mmdc` after changing the command
-  name.
-- Keep `detect`, `parse`, `layout`, and `render` developer subcommands available without blocking
-  official CLI compatibility.
-- Keep CLI help organized so compatibility flags, Rust-only extensions, and developer subcommands
-  are not presented as one flat surface.
-- Document deliberate divergence where upstream behavior is browser-specific or not compatible with
-  this Rust renderer.
-- Keep every official behavior backed by an integration test or a documented unsupported decision.
+## Migration
 
-## Non-Goals
+| Previous command | Pinned compatibility | Recommended native workflow |
+| --- | --- | --- |
+| `mmdc -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` | `merman-cli render diagram.mmd -o diagram.svg` |
+| `merman-cli -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` | `merman-cli render diagram.mmd -o diagram.svg` |
+| `merman-cli -i diagram.mmd` | `merman-cli mmdc -i diagram.mmd` | `merman-cli render diagram.mmd` |
+| `merman-cli -i - -o -` | `merman-cli mmdc -i - -o -` | `merman-cli render` with piped stdin |
+| Root Markdown inference | `merman-cli mmdc -i README.md -o out.md --artefacts assets` | `merman-cli batch README.md --output-dir README.merman` |
 
-- Pixel-identical raster output. Upstream uses Puppeteer screenshots/PDF output; `merman-cli` uses
-  pure-Rust SVG rendering and Rust rasterizers.
-- Replacing the Rust diagram renderers with browser execution.
+The default output names intentionally differ:
 
-## High-Level Design
+- `mmdc -i diagram.mmd` preserves the upstream-style append rule and writes `diagram.mmd.svg`.
+- `render diagram.mmd` replaces the input extension and writes `diagram.svg`.
+- Piped native `render` writes stdout by default.
+- Implicit `mmdc` stdin retains the pinned missing-input warning even with `--quiet`; explicit
+  `-i -` does not.
+- `mmdc -o -` without `-e` retains the pinned SVG-format warning even though stdout otherwise
+  enables quiet output.
+
+The permanent root rewrite uses the exact `mmdc` parser, defaults, validation, and execution path and emits no compatibility-layer warning. It is intentionally absent from root help and completions; explicit `merman-cli mmdc` remains the preferred spelling for new compatibility scripts. Bare root inputs and options that are not owned by `mmdc` still fail with exit `2` and a targeted workflow message.
+
+Native `render -e` and `batch -e` are separate temporary aliases for `-f/--format`. They are hidden from help and completions, their bounded migration warnings remain visible even with `--quiet`, and they are removed in `v0.9.0`. The removal does not apply to `mmdc -e/--outputFormat`.
+
+## Contract Boundary
+
+The compatibility command follows the successful browser-independent workflows of the pinned CLI:
+
+- SVG, PNG, and PDF output selection and extension inference.
+- `default`, `forest`, `dark`, and `neutral` theme validation.
+- width, height, background, config JSON, CSS, SVG id, scale, PDF-fit, quiet, and icon-pack arguments.
+- named input, explicit or implicit stdin, stdout, and default output naming.
+- strict `.md` / `.markdown` recognition, numbered artifacts, and Markdown image rewriting.
+- bounded parallel chart scheduling when `parallel-markdown` is compiled.
+- bounded preflight of a Puppeteer configuration file even though no browser is started.
+
+JPEG and ASCII/Unicode are native Merman capabilities. Use `render --format jpg|ascii|unicode`; they are deliberately absent from `mmdc --outputFormat`.
 
 ```mermaid
 flowchart LR
-    Args[clap CLI args] --> Plan[RenderPlan]
-    Plan --> Input[Input loader]
-    Input --> Branch{Input/output mode}
-    Branch --> Single[Single diagram render]
-    Branch --> Markdown[Markdown extraction]
-    Single --> Svg[SVG render + postprocess]
-    Markdown --> Batch[Numbered artefact renders]
-    Svg --> Writer[stdout/file writer]
-    Batch --> Writer
-    Plan --> Config[Mermaid/site config]
-    Config --> Svg
+    Args["mmdc argument parser"] --> Normalize["Pinned browser-independent defaults"]
+    Normalize --> Preflight["Pure validation and local metadata preflight"]
+    Preflight --> Acquire["Bounded input/config/CSS/icon acquisition"]
+    Acquire --> Prepare["Typed SVG, PNG, or PDF request"]
+    Prepare --> Execute["Headless Rust render"]
+    Execute --> Single["Atomic single-file publication"]
+    Execute --> Batch["Locked recoverable Markdown transaction"]
 ```
 
-The CLI is intentionally split into modules:
+Compatibility and native commands converge only after argument normalization. They share bounded acquisition, render backends, output alias checks, and publication machinery; they do not share a flattened command-line argument structure.
 
-- `cli.rs`: command-line contract and argument validation.
-- `commands.rs`: command dispatch for top-level compatibility and developer subcommands.
-- `render.rs`: render planning, format inference, single-diagram rendering.
-- `markdown.rs`: Markdown fence extraction, numbered artefact naming, image links, and rewrite
-  helpers.
-- `config.rs`: Mermaid config, layout options, math renderer, text measurement.
-- `io.rs`: stdin/file/stdout behavior.
-- `error.rs`: CLI error formatting and conversions.
+## Option Matrix
 
-## Alternatives Considered
+| `mmdc@11.16.0` option | Local contract |
+| --- | --- |
+| `-i, --input` | File or `-`; omission reads stdin and emits the pinned warning even with `--quiet` |
+| `-o, --output` | File or `-`; `-e` selects the format when present, while the output path must still use a supported compatibility extension; without `-e`, a supported non-stdout extension selects the format, omission defaults to SVG, and stdout warns before selecting SVG; missing or unsupported non-stdout extensions are rejected |
+| `-e, --outputFormat` | `svg`, `png`, or `pdf`, limited further by compiled output features |
+| `-t, --theme` | Exactly `default`, `forest`, `dark`, or `neutral` |
+| `-w, --width`; `-H, --height` | Pinned positive-integer parsing; defaults are 800 by 600 |
+| `-b, --backgroundColor` | Defaults to white on the compatibility path |
+| `-c, --configFile` | Bounded JSON object acquisition; config theme overrides the CLI theme like upstream |
+| `-C, --cssFile` | Bounded CSS acquisition and scoped SVG injection |
+| `-I, --svgId` | Root SVG id and internal marker prefix |
+| `-s, --scale` | Positive PNG scale; local raster limits still apply |
+| `-f, --pdfFit` | Fits the Rust vector PDF page to the rendered SVG viewport |
+| `-q, --quiet` | Suppresses render information and timing diagnostics, but not the two pinned argument warnings above |
+| `-p, --puppeteerConfigFile` | Bounded existence and JSON validation; accepted runtime no-op |
+| `-a, --artefacts` | Markdown-only artifact directory, subject to the one-root recovery rule |
+| `-j, --jobs` | Markdown concurrency when `parallel-markdown` is compiled; accepted no-op for a single diagram |
+| `--iconPacks` | Local `node_modules` Iconify packages; a miss never fetches implicitly |
+| `--iconPacksNamesAndUrls` | `prefix#source` definitions for local files, `file://`, or authorized HTTP(S) |
 
-### Option A: Pure-Rust compatibility layer (recommended)
+Merman-specific resource, runtime, sanitizer, raster, PDF, and icon-network controls remain visible on `mmdc` where they constrain the shared Rust backend. They are extensions, not claims about the official CLI.
 
-**Pros**: keeps the project browserless, works with existing renderers, easy to package, allows
-fine-grained tests around CLI behavior.
-**Cons**: browser-only behavior such as Puppeteer PDF layout must be emulated or documented as
-divergence.
-**Decision**: chosen.
+## Strict Markdown
 
-### Option B: Shell out to official `mmdc`
+Strict compatibility retains the pinned JavaScript regular-expression behavior rather than using the native scanner:
 
-**Pros**: exact upstream behavior for all browser paths.
-**Cons**: defeats the Rust CLI purpose, requires Node/Puppeteer, creates deployment and security
-costs, makes Rust renderers irrelevant for CLI output.
-**Decision**: rejected.
+- only case-sensitive `.md` and `.markdown` paths enter Markdown mode;
+- only the pinned lowercase `mermaid` marker and three-character backtick/colon matcher are recognized;
+- uppercase markers, tilde fences, longer native fences, MDX, and unclosed fences do not gain native behavior;
+- numbered output follows the compatibility output template;
+- zero charts with an image template writes no image; a Markdown target receives an unchanged document;
+- strict mode never deletes stale numbered files when a later run contains fewer charts or selects a different format or artifacts directory.
 
-### Option C: Embed a browser backend behind an optional feature
+Native `batch` is intentionally more ergonomic. It accepts `.md`, `.markdown`, and `.mdx` case-insensitively, recognizes backtick, tilde, and colon fences of length three or more, supports `Mermaid` case variants, and retains an unclosed Mermaid fence through end of file.
 
-**Pros**: could provide exact behavior for PDF/icon/plugin cases.
-**Cons**: large dependency surface, harder releases, duplicates official CLI.
-**Decision**: deferred. Revisit only if downstream users require exact browser PDF or plugin behavior.
+Both paths acquire a stable lock and resolve an incomplete owned transaction before new staging. Every chart completes in staging before publication, the rewritten document is committed last, and rollback/recovery state is reported honestly. This is a recoverable multi-file transaction, not a claim of globally atomic filesystem publication.
 
-## Success Metrics
+For strict `mmdc`, the rewritten document parent is the transaction root. An explicit `--artefacts` directory must remain below that root on the same filesystem. A split root or nested mount is rejected before creating directories, locking, accessing the network, or rendering. Native `batch` instead owns its complete output directory.
 
-| Metric | Target | Measurement |
-|---|---:|---|
-| Official option coverage | Every `mmdc@11.16.0` public flag is implemented or explicitly documented as an unsupported/divergent behavior | `cargo nextest run -p merman-cli` + matrix review |
-| Core single-diagram behavior | `-i`, `-o`, `-o -`, format inference, config/css/theme covered | CLI integration tests |
-| Markdown behavior | `.md`/`.markdown` extraction, numbered artefacts, output Markdown rewrite covered | CLI integration tests |
-| Unsupported/divergent behavior | Every divergence documented in this file | Status matrix review |
-| Regression coverage | Default and `--no-default-features` CLI test sets pass | nextest gates |
+## Deliberate Divergences
 
-## Official Option Matrix
+| Area | Divergence | Reason |
+| --- | --- | --- |
+| Rendering runtime | Pure Rust, no Puppeteer or Chromium | Browserless installation and execution are core product requirements |
+| Ambient runtime state | Deterministic date, UTC offset, and random stream by default; use `--runtime native` when all system adapters are compiled | Reproducible output remains the CLI default, while upstream Chromium observes host state |
+| Pixel output | PNG uses Merman's bounded SVG raster pipeline | It is not a Chromium screenshot contract |
+| PDF | Vector Rust conversion with bounded localized raster work | Chromium print CSS, pagination, and font rendering are browser-specific |
+| Puppeteer config | Validated, then ignored | There is no Puppeteer process to configure |
+| Network icons | Explicit `--allow-network`; private destinations also require `--allow-private-network` | Prevent implicit downloads and SSRF-style access |
+| Redirects | Every destination is resolved, classified, authorized, and pinned per hop | Initial authorization must not authorize a private redirect |
+| Resources | Source, auxiliary inputs, charts, staging, working set, jobs, redirects, and duration are bounded | Untrusted input must not allocate or work without a governed limit |
+| Markdown roots | One same-filesystem transaction root | Merman does not claim coordinated recovery across unrelated filesystems |
+| Concurrency | `--jobs` is capped by the selected resource profile and scheduling-weight permits | Thread count alone is not a sufficient memory bound |
+| Extra formats | JPEG and text are native-only | Upstream `mmdc@11.16.0` exposes SVG, PNG, and PDF |
 
-| Official option | Upstream behavior | Local status | Notes |
-|---|---|---|---|
-| `-t, --theme [theme]` | Choices: `default`, `forest`, `dark`, `neutral`; default `default`. Config file can override it. | Implemented | Local config merge matches upstream `{ theme }` then config file merge. |
-| `-w, --width [width]` | Positive integer, default `800`. | Implemented | Local accepts positive number and stores as `f64`. |
-| `-H, --height [height]` | Positive integer, default `600`. | Implemented | Local accepts positive number and stores as `f64`. |
-| `-i, --input <input>` | File path; `-` means stdin without missing-input warning. `.md`/`.markdown` activates Markdown mode. | Implemented | Single-diagram, stdin, and Markdown batch rendering implemented. |
-| `-o, --output [output]` | Missing output defaults to `<input>.svg` or `out.svg`; `-` writes stdout and defaults format to SVG. | Implemented divergence | Official extensions are validated; documented Rust extensions `jpg`/`jpeg`/`txt`/`ascii` are also accepted. |
-| `-a, --artefacts [artefacts]` | Only valid with Markdown input; creates directory recursively; overrides artefact location. | Implemented | Supports both `--artefacts` and Rust-friendly `--artifacts` alias. |
-| `-j, --jobs <jobs>` | Positive integer; default half available CPUs or `1`; limits Markdown render concurrency. | Implemented | Uses a bounded Rayon pool for Markdown chart renders; `jobs=1` keeps serial behavior. |
-| `-e, --outputFormat [format]` | Choices: `svg`, `png`, `pdf`; overrides output extension. | Implemented divergence | Local also supports `jpg`, `ascii`, `unicode` for Rust-specific output; unknown values are rejected by clap. |
-| `-b, --backgroundColor [color]` | Default `white`; applied to SVG/PNG/PDF browser page path. | Implemented | Local applies root background/postprocess and raster background. |
-| `-c, --configFile [configFile]` | JSON Mermaid config file; must exist and contain an object. | Implemented | JSON parse errors bubble as CLI errors; non-object JSON is rejected before rendering. |
-| `-C, --cssFile [cssFile]` | CSS file; must exist; injected into page before rendering. | Implemented | Local injects scoped CSS through SVG postprocessor. |
-| `-I, --svgId [svgId]` | Root SVG id used by `mermaid.render`. | Implemented | Local sanitizes for Rust SVG internals. |
-| `-s, --scale [scale]` | Positive float, default `1`; Puppeteer device scale factor. | Implemented | Local uses raster scale. |
-| `-f, --pdfFit` | PDF page clipped to chart bounding box. | Implemented divergence | Top-level default PDF uses a Letter-sized page approximation; `--pdfFit` uses chart-sized `svg2pdf` output. |
-| `-q, --quiet` | Suppresses info logs. | Implemented | Markdown chart-count and artefact logs are suppressed. |
-| `-p, --puppeteerConfigFile [file]` | JSON Puppeteer launch config; must exist. | Implemented divergence | File existence and JSON parsing match upstream preflight behavior; values are accepted no-op because the Rust CLI has no Puppeteer runtime. |
-| `--iconPacks <icons...>` | Registers Iconify package loaders in browser; may fetch from unpkg. | Implemented | Loads local `node_modules/<package>/icons.json` when present. Missing packages fetch from `https://unpkg.com/<package>/icons.json` only with `--allow-network`; the package tail is used as the Iconify prefix like upstream. |
-| `--iconPacksNamesAndUrls <prefix#url...>` | Registers explicit Iconify JSON URL loaders. | Implemented | Supports HTTP(S), `file://`, and local path Iconify JSON sources; HTTP(S) requires `--allow-network`, while local sources remain offline by default. The prefix before `#` overrides the JSON prefix like upstream loader registration. |
-| `--help`, `-h` | Print help and exit 0. | Implemented | Covered by CLI tests. |
-| `--version` | Print version and exit 0. | Implemented | Covered by CLI tests. |
+The network restrictions and one-root Markdown rule are intentional safety divergences. They are not silent fallbacks.
 
-## Rust Extension Option Matrix
+## Publication And Failure Semantics
 
-| Rust extension option | Local behavior | Status | Notes |
-|---|---|---|---|
-| `--fixed-today <YYYY-MM-DD>` | Overrides the local "today" date used by time-dependent diagrams. | Implemented | Primarily stabilizes Gantt parse/render output for snapshots and headless automation. |
-| `--fixed-local-offset-minutes <minutes>` | Overrides local timezone semantics with a fixed offset in minutes. | Implemented | Validated to offsets accepted by `chrono::FixedOffset`; useful for cross-runner Gantt determinism. |
+Compatibility output uses the same integrity boundary as native output:
 
-## Observable Behavior Matrix
+- argument conflicts and statically requested unavailable capabilities fail before input acquisition; capabilities discovered from diagram source fail during content processing;
+- output aliases of source, config, CSS, Puppeteer config, or local icon inputs are rejected;
+- a single output file keeps its prior complete contents until atomic replacement succeeds;
+- Markdown render failure leaves the previous final generation unchanged;
+- publication or rollback failure exits `3` and retains recovery evidence;
+- stdout contains only the requested payload, and a closed downstream pipe is success.
 
-| Behavior | Upstream source | Local status | Required tests |
-|---|---|---|---|
-| Missing input reads stdin and warns. | `cli()` input check | Implemented | Existing smoke path; add stderr assertion. |
-| `-i -` reads stdin and suppresses missing-input warning. | `cli()` input check | Implemented | Existing stdout test covers success. |
-| Explicit missing input file fails with a path-specific message. | `cli()` input check | Implemented | `top_level_missing_input_file_reports_path`. |
-| Missing output with input writes `<input>.svg`. | `cli()` output check | Implemented | `top_level_default_output_for_input_file_appends_svg`. |
-| Missing output with stdin writes `out.svg`. | `cli()` output check | Implemented | `top_level_default_output_for_stdin_writes_out_svg`. |
-| `-o -` writes stdout, defaults format to SVG if `-e` absent. | `cli()` output check | Implemented | Existing test checks no `-` file. |
-| Explicit output must end in `.md`, `.markdown`, `.svg`, `.png`, or `.pdf`. | `cli()` output regex | Implemented divergence | Unknown extensions are rejected; documented Rust extensions remain accepted. |
-| Runtime output format must be `svg`, `png`, or `pdf`. | `run()` output format check | Divergence | Local intentionally supports JPG/text. Document in help. |
-| Markdown input forbids stdout. | `run()` Markdown branch | Implemented | `markdown_input_rejects_stdout_output`. |
-| Markdown fenced block regex matches only whole-line triple backtick/colon `mermaid` blocks. | `mermaidChartsInMarkdown` | Implemented | `extracts_backtick_and_colon_mermaid_blocks`. |
-| Markdown artefact file naming uses `output-1.ext`, `output-2.ext`. | `output.replace(...)` | Implemented | `markdown_input_writes_numbered_svg_artefacts`. |
-| Output `.md`/`.markdown` rewrites Mermaid fences to Markdown images. | Markdown replacement branch | Implemented | `markdown_output_rewrites_mermaid_blocks_to_images`. |
-| Markdown image alt defaults to `diagram`; title/alt escaped. | `markdownImage()` | Implemented | `replaces_charts_with_escaped_markdown_images`. |
-| No Markdown charts logs a message and writes no artefacts. | Markdown branch | Implemented | `markdown_without_charts_logs_and_writes_no_artefacts`. |
-| Config file overrides default/CLI theme when it contains `theme`. | `Object.assign({ theme }, config)` | Implemented | `config_file_theme_overrides_cli_theme`. |
-| Config file `themeVariables` and `themeCSS` reach rendered SVG. | Mermaid config is loaded before render. | Implemented | `config_file_theme_variables_and_theme_css_affect_svg` asserts visible SVG colors plus scoped `themeCSS`. |
-| Config file root must be a JSON object. | Mermaid config object is merged into runtime config. | Implemented | `non_object_config_file_fails_before_rendering`; aligns CLI with bindings `site_config` object semantics. |
-| Missing config/css/puppeteer files fail before rendering. | `checkConfigFile`, css check | Implemented | Config/css/puppeteer paths are validated before render work. |
+Exit classes are stable across command dialects:
 
-## Deliberate Divergence Register
+| Exit | Class |
+| ---: | --- |
+| `0` | Success |
+| `1` | Content or render failure, including a layout or math capability required by parsed source but absent from the build |
+| `2` | Invocation or configuration error, including a statically requested option or output capability absent from the build |
+| `3` | Local/remote operational or publication failure |
 
-| Area | Divergence | Rationale | Follow-up |
-|---|---|---|---|
-| JPG output | Local supports `jpg`/`jpeg`; upstream `11.16.0` only supports `svg`, `png`, `pdf`. | Existing Rust CLI shipped JPG support and tests. | Keep as Rust extension; document as non-official. |
-| ASCII/Unicode output | Local supports text output; upstream does not. | Valuable Rust-native CLI capability. | Keep enabled by default for `merman-cli`; `--no-default-features` can still exclude it. |
-| RaTeX math | Local CLI enables `ratex-math` by default; upstream uses browser Mermaid/KaTeX behavior. | Rust CLI should render math without extra feature friction. | Keep `--math-renderer none|ratex`; no-default build still rejects. |
-| Puppeteer config | No browser runtime in local CLI. | Browserless architecture. | Validate file for compatibility, treat runtime config as accepted no-op. |
-| PDF output | Local PDF is generated through Rust `svg2pdf`, not Chromium print-to-PDF. | Browser PDF pagination, margins, and CSS print behavior cannot be pixel-identical without Puppeteer. | Top-level default uses a Letter page approximation; `--pdfFit` uses chart-sized output. |
-| Icon pack rendering internals | Upstream uses browser DOM `getBBox()` and Iconify `replaceIDs()` when embedding icons. | Local renderer parses Iconify JSON into a Rust registry and emits deterministic nested SVGs for Flowchart, Architecture, and TreeView; TreeView uses Mermaid's 14px icon size. | Keep tests focused on successful real icon rendering; deepen DOM-level icon parity separately if fixture comparison exposes differences. |
+## Version Lifecycle
 
-## Execution Model / Concurrency
+The compatibility version is generated from `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json` and reported by:
 
-Official `mmdc@11.16.0` uses `p-limit(jobs)` for Markdown files: every Mermaid code block becomes
-an independent render task, at most `jobs` tasks run at once, and `Promise.all(...)` returns images
-in source order for the final Markdown rewrite.
+```sh
+merman-cli capabilities --json
+```
 
-`merman-cli` mirrors the observable behavior with a synchronous CLI shell and a bounded Rayon
-thread pool inside Markdown mode:
+The JSON document uses capability schema 2 and current CLI contract 3. It includes the Merman package version, pinned Mermaid and `mmdc` versions, compiled command/capability/output sets, and the canonical descriptor digest. The CLI contract version tracks native command behavior independently from this pinned compatibility baseline. An `mmdc` behavior change requires a Mermaid baseline alignment, updated tests, this register, and a migration note. Merman does not silently follow the latest npm release.
 
-- `--jobs 1` uses the same serial path as a single diagram.
-- `--jobs N` renders Markdown chart artefacts on a pool with `N` worker threads.
-- Result collection is order-preserving, so rewritten Markdown always maps block 1 to
-  `output-1.ext`, block 2 to `output-2.ext`, and so on, regardless of completion order.
-- Each task writes its own numbered artefact. The overall operation fails if any task fails; tasks
-  already running may finish, matching the practical behavior of already-started upstream promises.
-- Informational artefact logs may appear in completion order, and `--quiet` suppresses them.
+## Verification
 
-## Work Breakdown
+Coverage is maintained by:
 
-### Phase 1: Compatibility Spec and Validation
+- process tests for command parsing, defaults, naming, stdin/stdout, errors, and migration diagnostics;
+- strict/native scanner snapshots and Markdown transaction recovery tests;
+- output-specific SVG, PNG, JPEG, and PDF smokes;
+- network authorization and redaction tests;
+- a 22-row exact Cargo feature process matrix;
+- generated help, completion, man page, and capability contracts;
+- release-archive structural checks plus host-native runtime smoke before publishing.
 
-- [x] Add clap-based top-level command surface.
-- [x] Modularize CLI entrypoint.
-- [x] Enable `ratex-math` and ASCII/Unicode output by default for `merman-cli`.
-- [x] Add first CLI compatibility regression tests.
-- [x] Add this compatibility document to `docs/alignment/STATUS.md`.
-
-### Phase 2: Markdown Export Parity
-
-- [x] Add Markdown extraction module with upstream-compatible regex.
-- [x] Add Markdown image escaping helper.
-- [x] Render numbered artefact files for `.md`/`.markdown` input.
-- [x] Rewrite Markdown output when output path is `.md`/`.markdown`.
-- [x] Implement `--artefacts` directory creation and relative link calculation.
-- [x] Add `--jobs` scheduling semantics for Markdown renders.
-
-### Phase 3: Strict Official Behavior
-
-- [x] Validate output extensions against official set, while preserving documented Rust extensions.
-- [x] Validate `puppeteerConfigFile` existence/JSON and document runtime no-op.
-- [x] Add config/theme/css precedence tests.
-- [x] Add stdout/Markdown incompatibility tests.
-- [x] Align user-facing errors where practical.
-
-### Phase 4: Browser-Specific Decision Points
-
-- [x] Decide `pdfFit` semantics for Rust `svg2pdf`.
-- [x] Implement Iconify icon pack support through a Rust SVG icon registry for Flowchart, Architecture, and TreeView.
-- [x] Document any final divergence in the register above.
-
-## Risks and Mitigations
-
-| Risk | Severity | Likelihood | Mitigation |
-|---|---:|---:|---|
-| Accidentally removing useful Rust-only output (`jpg`, `ascii`, `unicode`) | Medium | Medium | Keep divergence register and tests. |
-| Markdown regex drift from upstream | High | Medium | Copy upstream regex semantics into tests with fixtures. |
-| Output file naming surprises | Medium | Medium | Test exact paths for `.svg`, `.png`, `.pdf`, `.md`, and artefacts. |
-| Network icon pack behavior introduces supply-chain risk | High | Medium | Remote fetching only occurs when the user explicitly passes `--allow-network` with a missing `--iconPacks` package or an HTTP(S) `prefix#url`; tests use local JSON sources. |
-| PDF fit cannot match browser PDF exactly | Medium | High | Define Rust-specific behavior and document divergence. |
-
-## Immediate Next Tests
-
-- None currently identified in the documented CLI compatibility surface.
+The implementation target is functional and structural convergence backed by pinned source. Browser font metrics, `getBBox()` floats, `foreignObject`, RoughJS geometry, and Chromium export behavior remain bounded residuals rather than pixel-perfect claims.

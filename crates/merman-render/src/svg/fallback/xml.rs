@@ -1,6 +1,9 @@
 pub(super) fn escape_xml_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
+        if !crate::xml::is_xml_1_0_char(ch) {
+            continue;
+        }
         match ch {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
@@ -14,6 +17,9 @@ pub(super) fn escape_xml_text(s: &str) -> String {
 pub(super) fn escape_xml_attr(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
+        if !crate::xml::is_xml_1_0_char(ch) {
+            continue;
+        }
         match ch {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),

@@ -37,15 +37,16 @@ Publish leaf crates first, then the crates that depend on them:
 9. `merman-layout-elk`
 10. `merman-editor-core`
 11. `merman-render`
-12. `merman`
-13. `merman-lsp`
-14. `merman-bindings-core`
-15. `merman-cli`
-16. `merman-rustdoc`
-17. `merman-ffi`
-18. `merman-typst-plugin`
-19. `merman-uniffi`
-20. `merman-wasm`
+12. `merman-export`
+13. `merman`
+14. `merman-lsp`
+15. `merman-bindings-core`
+16. `merman-cli`
+17. `merman-rustdoc`
+18. `merman-ffi`
+19. `merman-typst-plugin`
+20. `merman-uniffi`
+21. `merman-wasm`
 
 Example:
 
@@ -61,6 +62,7 @@ cargo publish -p merman-ascii
 cargo publish -p merman-layout-elk
 cargo publish -p merman-editor-core
 cargo publish -p merman-render
+cargo publish -p merman-export
 cargo publish -p merman
 cargo publish -p merman-lsp
 cargo publish -p merman-bindings-core

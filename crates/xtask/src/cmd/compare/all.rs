@@ -1,14 +1,14 @@
 //! Compare all diagram SVGs under fixtures.
 
 use crate::XtaskError;
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::diagrams::compare_diagram_svgs;
+use super::diagrams::compare_diagram_request;
 use super::{
-    DomParityResidualPolicy, RootDeltaReportLimit, RootParityResidualPolicy,
-    diagram_supports_root_delta_report, parse_root_delta_report_limit,
+    AcceptedResidualPolicy, CompareEvidence, CompareRequest, CompareRunResult,
+    RootDeltaReportLimit, RootParityResidualPolicy, diagram_supports_root_delta_report,
+    parse_root_delta_report_limit,
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -53,23 +53,22 @@ fn compare_selected_diagram_svgs(
         path: compare_dir.display().to_string(),
         source,
     })?;
-    diagram_selection.print_root_deferred_skip();
     let diagrams = diagram_selection.diagrams;
 
     let invocation_options = options.invocation_options();
-    let mut failures = CompareAllFailures::new(&options, &diagrams);
+    let mut failures = CompareAllFailures::new(&options, &diagrams)?;
 
     for diagram in diagrams {
         println!("\n== compare {diagram} ==");
 
         let DiagramCompareInvocation {
-            args: cmd_args,
+            request,
             report_path,
         } = invocation_options.for_diagram(diagram, &compare_dir);
 
         failures.record(
             diagram,
-            compare_diagram_svgs(diagram, cmd_args),
+            compare_diagram_request(diagram, request),
             report_path.as_deref(),
         );
     }
@@ -84,12 +83,11 @@ struct CompareAllOptions {
     dom_decimals: Option<u32>,
     filter: Option<String>,
     flowchart_text_measurer: Option<String>,
-    flowchart_elk_backend: Option<merman_render::FlowchartElkBackend>,
-    include_elk_probes: bool,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
     only_diagrams: Vec<String>,
     skip_diagrams: Vec<String>,
+    write_root_residual_candidate: bool,
 }
 
 impl CompareAllOptions {
@@ -117,13 +115,6 @@ impl CompareAllOptions {
                     options.flowchart_text_measurer =
                         args.get(i).map(|s| s.trim().to_ascii_lowercase());
                 }
-                "--flowchart-elk-backend" => {
-                    i += 1;
-                    options.flowchart_elk_backend = Some(crate::cmd::parse_flowchart_elk_backend(
-                        args.get(i).map(String::as_str),
-                    )?);
-                }
-                "--include-elk-probes" => options.include_elk_probes = true,
                 "--report-root" => options.report_root = true,
                 "--report-root-all" => {
                     options.report_root = true;
@@ -150,13 +141,37 @@ impl CompareAllOptions {
                         options.skip_diagrams.push(diagram);
                     }
                 }
+                "--write-root-residual-candidate" => {
+                    options.write_root_residual_candidate = true;
+                }
                 "--help" | "-h" => return Err(XtaskError::Usage),
                 _ => return Err(XtaskError::Usage),
             }
             i += 1;
         }
 
+        options.validate()?;
         Ok(options)
+    }
+
+    fn validate(&self) -> Result<(), XtaskError> {
+        if !self.write_root_residual_candidate {
+            return Ok(());
+        }
+        let full_matrix = self.only_diagrams.is_empty() && self.skip_diagrams.is_empty();
+        let deterministic_profile = self.dom_decimals.unwrap_or(3) == 3
+            && self
+                .flowchart_text_measurer
+                .as_deref()
+                .is_none_or(|profile| profile == "vendored");
+        if self.root_parity_policy_enabled() && full_matrix && deterministic_profile {
+            Ok(())
+        } else {
+            Err(XtaskError::SvgCompareFailed(
+                "--write-root-residual-candidate requires an unfiltered full-matrix parity-root DOM check at 3 decimals with the vendored measurement profile"
+                    .to_string(),
+            ))
+        }
     }
 
     fn root_parity_policy_enabled(&self) -> bool {
@@ -168,19 +183,6 @@ impl CompareAllOptions {
                 .is_some_and(|mode| matches!(mode.trim(), "parity-root" | "parity_root"))
     }
 
-    fn dom_parity_policy_enabled(&self) -> bool {
-        self.check_dom
-            && self.filter.is_none()
-            && self
-                .dom_mode
-                .as_deref()
-                .is_some_and(|mode| mode.trim() == "parity")
-    }
-
-    fn global_root_parity_sweep(&self) -> bool {
-        self.root_parity_policy_enabled() && self.only_diagrams.is_empty()
-    }
-
     fn invocation_options(&self) -> CompareAllInvocationOptions<'_> {
         CompareAllInvocationOptions {
             check_dom: self.check_dom,
@@ -188,10 +190,9 @@ impl CompareAllOptions {
             dom_decimals: self.dom_decimals,
             filter: self.filter.as_deref(),
             flowchart_text_measurer: self.flowchart_text_measurer.as_deref(),
-            flowchart_elk_backend: self.flowchart_elk_backend,
-            include_elk_probes: self.include_elk_probes,
             report_root: self.report_root,
             root_report_limit: self.root_report_limit,
+            root_parity_policy_enabled: self.root_parity_policy_enabled(),
         }
     }
 }
@@ -199,7 +200,6 @@ impl CompareAllOptions {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CompareAllDiagramSelection {
     diagrams: Vec<&'static str>,
-    skipped_root_deferred: Vec<&'static str>,
 }
 
 impl CompareAllDiagramSelection {
@@ -224,103 +224,93 @@ impl CompareAllDiagramSelection {
             diagrams.retain(|d| !skip.iter().any(|s| s == &diagram_filter_key(d)));
         }
 
-        let skipped_root_deferred = if options.global_root_parity_sweep() {
-            let root_deferred: BTreeSet<&str> =
-                crate::cmd::root_viewport_deferred_diagrams().collect();
-            let skipped = diagrams
-                .iter()
-                .copied()
-                .filter(|d| root_deferred.contains(d))
-                .collect::<Vec<_>>();
-            diagrams.retain(|d| !root_deferred.contains(d));
-            skipped
-        } else {
-            Vec::new()
-        };
-
         if diagrams.is_empty() {
             return Err(XtaskError::Usage);
         }
 
-        Ok(Self {
-            diagrams,
-            skipped_root_deferred,
-        })
-    }
-
-    fn print_root_deferred_skip(&self) {
-        if !self.skipped_root_deferred.is_empty() {
-            println!(
-                "skipping root-viewport-deferred diagrams in global parity-root sweep: {}",
-                self.skipped_root_deferred.join(", ")
-            );
-        }
+        Ok(Self { diagrams })
     }
 }
 
 #[derive(Debug)]
 struct CompareAllFailures {
     skip_unmatched_filter_messages: bool,
-    dom_parity_policy: Option<DomParityResidualPolicy>,
+    check_dom: bool,
+    evidence: CompareEvidence,
     root_parity_policy: Option<RootParityResidualPolicy>,
     failures: Vec<String>,
 }
 
 impl CompareAllFailures {
-    fn new(options: &CompareAllOptions, diagrams: &[&str]) -> Self {
-        Self {
+    fn new(options: &CompareAllOptions, diagrams: &[&str]) -> Result<Self, XtaskError> {
+        let root_parity_policy = if options.root_parity_policy_enabled() {
+            Some(if options.write_root_residual_candidate {
+                RootParityResidualPolicy::candidate(options.dom_decimals.unwrap_or(3))
+            } else {
+                RootParityResidualPolicy::verify(diagrams, options.dom_decimals.unwrap_or(3))
+                    .map_err(XtaskError::SvgCompareFailed)?
+            })
+        } else {
+            None
+        };
+        Ok(Self {
             skip_unmatched_filter_messages: options.filter.is_some()
                 && options.only_diagrams.is_empty(),
-            dom_parity_policy: options
-                .dom_parity_policy_enabled()
-                .then(|| DomParityResidualPolicy::new(diagrams)),
-            root_parity_policy: options
-                .root_parity_policy_enabled()
-                .then(|| RootParityResidualPolicy::new(diagrams)),
+            check_dom: options.check_dom,
+            evidence: CompareEvidence::default(),
+            root_parity_policy,
             failures: Vec::new(),
-        }
+        })
     }
 
-    fn record(
-        &mut self,
-        diagram: &str,
-        result: Result<(), XtaskError>,
-        report_path: Option<&Path>,
-    ) {
-        match result {
-            Ok(()) => {}
-            Err(XtaskError::SvgCompareFailed(msg)) if self.should_skip_unmatched_filter(&msg) => {
+    fn record(&mut self, diagram: &str, result: CompareRunResult, report_path: Option<&Path>) {
+        let error = match result {
+            Ok(evidence) => {
+                self.evidence += evidence;
+                return;
+            }
+            Err(failure) => {
+                self.evidence += failure.evidence();
+                failure.into_error()
+            }
+        };
+        match error {
+            XtaskError::SvgCompareFailed(msg) if self.should_skip_unmatched_filter(&msg) => {
                 println!("(skipped: {msg})");
             }
-            Err(XtaskError::SvgCompareFailed(msg)) => {
+            XtaskError::SvgCompareFailed(msg) => {
                 self.record_svg_compare_failure(diagram, &msg, report_path);
             }
-            Err(err) => self.failures.push(format!("{diagram}: {err}")),
+            err => self.failures.push(format!("{diagram}: {err}")),
         }
     }
 
     fn finish(mut self) -> Result<(), XtaskError> {
-        if let Some(policy) = self.dom_parity_policy {
-            let accepted = policy.accepted_summaries();
-            if !accepted.is_empty() {
-                println!("\n== accepted DOM parity residuals ==");
-                for line in accepted {
-                    println!("{line}");
+        if let Some(policy) = self.root_parity_policy {
+            match policy.finish() {
+                Ok(finish) => {
+                    if !finish.accepted_summaries.is_empty() {
+                        println!("\n== accepted root parity residuals ==");
+                        for line in finish.accepted_summaries {
+                            println!("{line}");
+                        }
+                    }
+                    if let Some(path) = finish.candidate_path {
+                        println!(
+                            "\nroot parity residual candidate written to {}",
+                            path.display()
+                        );
+                    }
+                    self.failures.extend(finish.failures);
                 }
+                Err(error) => self.failures.push(error),
             }
-            self.failures.extend(policy.missing_failures());
         }
 
-        if let Some(policy) = self.root_parity_policy {
-            let accepted = policy.accepted_summaries();
-            if !accepted.is_empty() {
-                println!("\n== accepted root parity residuals ==");
-                for line in accepted {
-                    println!("{line}");
-                }
-            }
-            self.failures.extend(policy.missing_failures());
-        }
+        self.failures.extend(
+            self.evidence
+                .gate_failures("compare-all selected families", self.check_dom),
+        );
 
         if self.failures.is_empty() {
             Ok(())
@@ -330,17 +320,16 @@ impl CompareAllFailures {
     }
 
     fn record_svg_compare_failure(&mut self, diagram: &str, msg: &str, report_path: Option<&Path>) {
-        if let Some(policy) = self.dom_parity_policy.as_mut() {
-            if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
-                self.failures.push(failure);
-            }
-        } else if let Some(policy) = self.root_parity_policy.as_mut() {
+        if let Some(policy) = self.root_parity_policy.as_mut() {
             if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
                 self.failures.push(failure);
             }
         } else {
+            let report = report_path
+                .map(|path| format!("\nreport={}", path.display()))
+                .unwrap_or_default();
             self.failures.push(format!(
-                "{diagram}: {}",
+                "{diagram}: {}{report}",
                 XtaskError::SvgCompareFailed(msg.to_string())
             ));
         }
@@ -358,99 +347,51 @@ struct CompareAllInvocationOptions<'a> {
     dom_decimals: Option<u32>,
     filter: Option<&'a str>,
     flowchart_text_measurer: Option<&'a str>,
-    flowchart_elk_backend: Option<merman_render::FlowchartElkBackend>,
-    include_elk_probes: bool,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
+    root_parity_policy_enabled: bool,
 }
 
 impl CompareAllInvocationOptions<'_> {
     fn for_diagram(&self, diagram: &str, compare_dir: &Path) -> DiagramCompareInvocation {
-        let mut args = self.common_compare_args();
-        let report_path = self.push_report_path_args(diagram, compare_dir, &mut args);
-        self.push_diagram_args(diagram, &mut args);
-        self.push_root_report_args(diagram, &mut args);
-        DiagramCompareInvocation { args, report_path }
-    }
+        let report_path = self.dom_mode.map(dom_mode_slug).and_then(|mode| {
+            (!mode.is_empty()).then(|| compare_dir.join(format!("{diagram}_report_{mode}.md")))
+        });
+        let is_flowchart = diagram == "flowchart";
+        let supports_root_report = diagram_supports_root_delta_report(diagram);
+        let request = CompareRequest {
+            out_path: report_path.clone(),
+            filter: self.filter.map(str::to_string),
+            check_dom: self.check_dom,
+            dom_mode: self.dom_mode.map(str::to_string),
+            dom_decimals: self.dom_decimals,
+            report_root: self.report_root && supports_root_report,
+            root_report_limit: supports_root_report
+                .then_some(self.root_report_limit)
+                .flatten(),
+            flowchart_text_measurer: is_flowchart
+                .then_some(self.flowchart_text_measurer)
+                .flatten()
+                .map(str::to_string),
+            accepted_residual_policy: if self.root_parity_policy_enabled {
+                AcceptedResidualPolicy::RootParityExact
+            } else if matches!(diagram, "c4" | "class" | "ishikawa" | "venn") {
+                AcceptedResidualPolicy::ScopedDomEvidenceCatalog
+            } else {
+                AcceptedResidualPolicy::None
+            },
+        };
 
-    fn common_compare_args(&self) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
-        if self.check_dom {
-            out.push("--check-dom".to_string());
-        }
-        if let Some(mode) = self.dom_mode {
-            out.push("--dom-mode".to_string());
-            out.push(mode.to_string());
-        }
-        if let Some(n) = self.dom_decimals {
-            out.push("--dom-decimals".to_string());
-            out.push(n.to_string());
-        }
-        if let Some(f) = self.filter {
-            out.push("--filter".to_string());
-            out.push(f.to_string());
-        }
-        out
-    }
-
-    fn push_report_path_args(
-        &self,
-        diagram: &str,
-        compare_dir: &Path,
-        args: &mut Vec<String>,
-    ) -> Option<PathBuf> {
-        let mode = self.dom_mode.map(dom_mode_slug)?;
-        if mode.is_empty() {
-            return None;
-        }
-
-        let path = compare_dir.join(format!("{diagram}_report_{mode}.md"));
-        args.push("--out".to_string());
-        args.push(path.display().to_string());
-        Some(path)
-    }
-
-    fn push_diagram_args(&self, diagram: &str, args: &mut Vec<String>) {
-        if diagram != "flowchart" {
-            return;
-        }
-
-        if let Some(tm) = self.flowchart_text_measurer {
-            args.extend(["--text-measurer".to_string(), tm.to_string()]);
-        }
-        if let Some(backend) = self.flowchart_elk_backend {
-            args.extend([
-                "--flowchart-elk-backend".to_string(),
-                crate::cmd::flowchart_elk_backend_name(backend).to_string(),
-            ]);
-        }
-        if self.include_elk_probes {
-            args.push("--include-elk-probes".to_string());
-        }
-    }
-
-    fn push_root_report_args(&self, diagram: &str, args: &mut Vec<String>) {
-        if !self.report_root || !diagram_supports_root_delta_report(diagram) {
-            return;
-        }
-
-        args.push("--report-root".to_string());
-        match self.root_report_limit {
-            Some(RootDeltaReportLimit::All) => {
-                args.push("--report-root-all".to_string());
-            }
-            Some(RootDeltaReportLimit::Top(limit)) => {
-                args.push("--report-root-limit".to_string());
-                args.push(limit.to_string());
-            }
-            None => {}
+        DiagramCompareInvocation {
+            request,
+            report_path,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DiagramCompareInvocation {
-    args: Vec<String>,
+    request: CompareRequest,
     report_path: Option<PathBuf>,
 }
 
@@ -482,6 +423,7 @@ fn diagram_filter_key(diagram: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::compare::CompareRunFailure;
 
     #[test]
     fn diagram_filter_key_accepts_tree_view_aliases() {
@@ -502,9 +444,6 @@ mod tests {
             "upstream_info_spec".to_string(),
             "--flowchart-text-measurer".to_string(),
             " BROWSER ".to_string(),
-            "--flowchart-elk-backend".to_string(),
-            " source-ported ".to_string(),
-            "--include-elk-probes".to_string(),
             "--report-root-limit".to_string(),
             "7".to_string(),
             "--diagram".to_string(),
@@ -519,11 +458,6 @@ mod tests {
         assert_eq!(options.dom_decimals, None);
         assert_eq!(options.filter.as_deref(), Some("upstream_info_spec"));
         assert_eq!(options.flowchart_text_measurer.as_deref(), Some("browser"));
-        assert_eq!(
-            options.flowchart_elk_backend,
-            Some(merman_render::FlowchartElkBackend::SourcePorted)
-        );
-        assert!(options.include_elk_probes);
         assert!(options.report_root);
         assert_eq!(
             options.root_report_limit,
@@ -538,43 +472,26 @@ mod tests {
         assert!(CompareAllOptions::parse(vec!["--diagram".to_string()]).is_err());
         assert!(CompareAllOptions::parse(vec!["--skip".to_string()]).is_err());
         assert!(CompareAllOptions::parse(vec!["--report-root-limit".to_string()]).is_err());
-        assert!(CompareAllOptions::parse(vec!["--flowchart-elk-backend".to_string()]).is_err());
-        assert!(
-            CompareAllOptions::parse(vec![
-                "--flowchart-elk-backend".to_string(),
-                "unknown".to_string()
-            ])
-            .is_err()
-        );
     }
 
     #[test]
-    fn compare_all_invocation_passes_flowchart_elk_lane_only_to_flowchart() {
+    fn compare_all_invocation_passes_flowchart_text_measurement_only_to_flowchart() {
         let options = CompareAllOptions {
             filter: Some("elk_probe".to_string()),
             flowchart_text_measurer: Some("vendored".to_string()),
-            flowchart_elk_backend: Some(merman_render::FlowchartElkBackend::SourcePorted),
-            include_elk_probes: true,
             ..Default::default()
         };
         let invocation = options.invocation_options();
         let compare_dir = Path::new("target/compare");
 
         let flowchart = invocation.for_diagram("flowchart", compare_dir);
-        assert!(flowchart.args.contains(&"--text-measurer".to_string()));
-        assert!(flowchart.args.contains(&"vendored".to_string()));
-        assert!(
-            flowchart
-                .args
-                .contains(&"--flowchart-elk-backend".to_string())
+        assert_eq!(
+            flowchart.request.flowchart_text_measurer.as_deref(),
+            Some("vendored")
         );
-        assert!(flowchart.args.contains(&"source-ported".to_string()));
-        assert!(flowchart.args.contains(&"--include-elk-probes".to_string()));
 
         let info = invocation.for_diagram("info", compare_dir);
-        assert!(!info.args.contains(&"--text-measurer".to_string()));
-        assert!(!info.args.contains(&"--flowchart-elk-backend".to_string()));
-        assert!(!info.args.contains(&"--include-elk-probes".to_string()));
+        assert!(info.request.flowchart_text_measurer.is_none());
     }
 
     #[test]
@@ -585,14 +502,20 @@ mod tests {
             ..Default::default()
         };
         assert!(global.root_parity_policy_enabled());
-        assert!(global.global_root_parity_sweep());
+        assert_eq!(
+            global
+                .invocation_options()
+                .for_diagram("flowchart", Path::new("target/compare"))
+                .request
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::RootParityExact
+        );
 
         let targeted = CompareAllOptions {
             only_diagrams: vec!["flowchart".to_string()],
             ..global.clone()
         };
         assert!(targeted.root_parity_policy_enabled());
-        assert!(!targeted.global_root_parity_sweep());
 
         let filtered = CompareAllOptions {
             filter: Some("smoke".to_string()),
@@ -602,25 +525,88 @@ mod tests {
     }
 
     #[test]
-    fn compare_all_options_detects_dom_parity_policy_scope() {
-        let global = CompareAllOptions {
+    fn root_residual_candidate_requires_the_full_deterministic_root_profile() {
+        let options = CompareAllOptions::parse(vec![
+            "--check-dom".to_string(),
+            "--dom-mode".to_string(),
+            "parity-root".to_string(),
+            "--dom-decimals".to_string(),
+            "3".to_string(),
+            "--flowchart-text-measurer".to_string(),
+            "vendored".to_string(),
+            "--write-root-residual-candidate".to_string(),
+        ])
+        .expect("deterministic candidate profile");
+        assert!(options.write_root_residual_candidate);
+
+        for extra in [
+            vec!["--filter", "basic"],
+            vec!["--diagram", "flowchart"],
+            vec!["--dom-decimals", "6"],
+        ] {
+            let mut args = vec![
+                "--check-dom".to_string(),
+                "--dom-mode".to_string(),
+                "parity-root".to_string(),
+                "--write-root-residual-candidate".to_string(),
+            ];
+            args.extend(extra.into_iter().map(str::to_string));
+            assert!(CompareAllOptions::parse(args).is_err());
+        }
+    }
+
+    #[test]
+    fn structure_policy_metadata_is_family_specific() {
+        let options = CompareAllOptions {
             check_dom: true,
-            dom_mode: Some("parity".to_string()),
+            dom_mode: Some("structure".to_string()),
             ..Default::default()
         };
-        assert!(global.dom_parity_policy_enabled());
+        let invocation = options.invocation_options();
+        let compare_dir = Path::new("target/compare");
 
-        let targeted = CompareAllOptions {
-            only_diagrams: vec!["sequence".to_string()],
-            ..global.clone()
-        };
-        assert!(targeted.dom_parity_policy_enabled());
-
-        let filtered = CompareAllOptions {
-            filter: Some("smoke".to_string()),
-            ..global
-        };
-        assert!(!filtered.dom_parity_policy_enabled());
+        assert_eq!(
+            invocation
+                .for_diagram("sequence", compare_dir)
+                .request
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::None
+        );
+        assert_eq!(
+            invocation
+                .for_diagram("quadrantchart", compare_dir)
+                .request
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::None
+        );
+        assert_eq!(
+            invocation
+                .for_diagram("info", compare_dir)
+                .request
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::None
+        );
+        assert_eq!(
+            invocation
+                .for_diagram("ishikawa", compare_dir)
+                .request
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::ScopedDomEvidenceCatalog
+        );
+        assert_eq!(
+            invocation
+                .for_diagram("c4", compare_dir)
+                .request
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::ScopedDomEvidenceCatalog
+        );
+        assert_eq!(
+            invocation
+                .for_diagram("class", compare_dir)
+                .request
+                .accepted_residual_policy,
+            AcceptedResidualPolicy::ScopedDomEvidenceCatalog
+        );
     }
 
     #[test]
@@ -630,7 +616,7 @@ mod tests {
             filter: Some("missing".to_string()),
             ..Default::default()
         };
-        let global = CompareAllFailures::new(&global_options, &["info"]);
+        let global = CompareAllFailures::new(&global_options, &["info"]).expect("failure policy");
         assert!(global.should_skip_unmatched_filter(msg));
 
         let targeted_options = CompareAllOptions {
@@ -638,18 +624,21 @@ mod tests {
             only_diagrams: vec!["info".to_string()],
             ..Default::default()
         };
-        let targeted = CompareAllFailures::new(&targeted_options, &["info"]);
+        let targeted =
+            CompareAllFailures::new(&targeted_options, &["info"]).expect("failure policy");
         assert!(!targeted.should_skip_unmatched_filter(msg));
     }
 
     #[test]
     fn compare_all_failures_records_plain_svg_compare_failures() {
         let options = CompareAllOptions::default();
-        let mut failures = CompareAllFailures::new(&options, &["info"]);
+        let mut failures = CompareAllFailures::new(&options, &["info"]).expect("failure policy");
 
         failures.record(
             "info",
-            Err(XtaskError::SvgCompareFailed("dom mismatch".to_string())),
+            Err(CompareRunFailure::without_evidence(
+                XtaskError::SvgCompareFailed("dom mismatch".to_string()),
+            )),
             None,
         );
 
@@ -657,48 +646,89 @@ mod tests {
             failures.failures,
             ["info: svg compare failed:\ndom mismatch"]
         );
-    }
 
-    #[test]
-    fn compare_all_failures_accepts_expected_root_residuals() {
-        let options = CompareAllOptions {
-            check_dom: true,
-            dom_mode: Some("parity-root".to_string()),
-            ..Default::default()
-        };
-        let mut failures = CompareAllFailures::new(&options, &["gitgraph"]);
-
+        let mut failures = CompareAllFailures::new(&options, &["info"]).expect("failure policy");
         failures.record(
-            "gitgraph",
-            Err(XtaskError::SvgCompareFailed(
-                "dom mismatch for zed_pr_57644_gitgraph: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 845.25px; background-color: white;` local=`max-width: 845px; background-color: white;`; additional DOM differences (1): svg: attr `viewBox` mismatch upstream=`<n> <n> 845.25 370.5` local=`<n> <n> 845 370.25`)"
-                    .to_string(),
+            "info",
+            Err(CompareRunFailure::without_evidence(
+                XtaskError::SvgCompareFailed("dom mismatch".to_string()),
             )),
-            None,
+            Some(Path::new("target/compare/info_structure.md")),
         );
 
-        assert!(failures.finish().is_ok());
+        assert_eq!(
+            failures.failures,
+            ["info: svg compare failed:\ndom mismatch\nreport=target/compare/info_structure.md"]
+        );
     }
 
     #[test]
-    fn compare_all_failures_accepts_exact_documented_sequence_dom_residuals() {
-        let options = CompareAllOptions {
-            check_dom: true,
-            dom_mode: Some("parity".to_string()),
-            ..Default::default()
-        };
-        let mut failures = CompareAllFailures::new(&options, &["sequence"]);
-        let msg = "dom mismatch for upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026: upstream=a local=b (svg/g[16]: child count mismatch upstream=9 local=8)\n\
-dom mismatch for upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019: upstream=a local=b (svg/g[20]: child count mismatch upstream=9 local=8)\n\
-dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b (svg/g[61]/text[9]: attr `class` mismatch upstream=`sectionTitle` local=`loopText`; additional DOM differences (2): svg/g[61]/text[9]: child count mismatch upstream=0 local=1 | svg/g[61]: child count mismatch upstream=10 local=11)";
+    fn compare_all_failures_rejects_sequence_dom_mismatches() {
+        let former_residuals = [
+            (
+                "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026",
+                "dom mismatch for upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026: upstream=a local=b (svg/g[16]: child count mismatch upstream=9 local=8)",
+            ),
+            (
+                "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019",
+                "dom mismatch for upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019: upstream=a local=b (svg/g[20]: child count mismatch upstream=9 local=8)",
+            ),
+            (
+                "upstream_docs_diagrams_mermaid_api_sequence",
+                "dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b (svg/g[61]/text[9]: attr `class` mismatch upstream=`sectionTitle` local=`loopText`; additional DOM differences (2): svg/g[61]/text[9]: child count mismatch upstream=0 local=1 | svg/g[61]: child count mismatch upstream=10 local=11)",
+            ),
+        ];
 
-        failures.record(
-            "sequence",
-            Err(XtaskError::SvgCompareFailed(msg.to_string())),
-            Some(Path::new("target/compare/sequence_report_parity.md")),
+        for mode in ["structure", "parity"] {
+            for (stem, msg) in former_residuals {
+                let options = CompareAllOptions {
+                    check_dom: true,
+                    dom_mode: Some(mode.to_string()),
+                    ..Default::default()
+                };
+                let mut failures =
+                    CompareAllFailures::new(&options, &["sequence"]).expect("failure policy");
+                failures.record(
+                    "sequence",
+                    Err(CompareRunFailure::without_evidence(
+                        XtaskError::SvgCompareFailed(msg.to_string()),
+                    )),
+                    Some(Path::new("target/compare/sequence_report.md")),
+                );
+
+                let error = failures
+                    .finish()
+                    .expect_err("former Sequence DOM residuals must remain actionable");
+                assert!(error.to_string().contains(stem), "mode={mode}, stem={stem}");
+            }
+        }
+    }
+
+    #[test]
+    fn compare_all_rejects_a_filter_whose_only_match_is_skipped() {
+        let error = compare_all_svgs(vec![
+            "--filter".to_string(),
+            "stress_end_keyword_016".to_string(),
+            "--check-dom".to_string(),
+        ])
+        .expect_err("compare-all must not turn unmatched families plus one skip into success");
+        let message = error.to_string();
+
+        assert!(
+            message.contains("no canonical typed render evidence for sequence"),
+            "{message}"
         );
-
-        assert!(failures.finish().is_ok());
+        assert!(
+            message
+                .contains("no canonical typed render evidence for compare-all selected families"),
+            "{message}"
+        );
+        assert!(
+            message.contains(
+                "--check-dom produced no raw/source SVG-DOM or SVG-byte comparison evidence for compare-all selected families"
+            ),
+            "{message}"
+        );
     }
 
     #[test]
@@ -712,11 +742,10 @@ dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b
         let selection = CompareAllDiagramSelection::from_options(&options).expect("selection");
 
         assert_eq!(selection.diagrams, ["treeView"]);
-        assert!(selection.skipped_root_deferred.is_empty());
     }
 
     #[test]
-    fn compare_all_diagram_selection_skips_root_deferred_only_for_global_root_sweep() {
+    fn compare_all_global_root_sweep_includes_every_primary_family() {
         let options = CompareAllOptions {
             check_dom: true,
             dom_mode: Some("parity-root".to_string()),
@@ -724,20 +753,14 @@ dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b
         };
         let selection = CompareAllDiagramSelection::from_options(&options).expect("selection");
 
-        let root_deferred: Vec<&str> = crate::cmd::root_viewport_deferred_diagrams().collect();
-        assert!(!root_deferred.is_empty());
-        for diagram in root_deferred {
-            assert!(!selection.diagrams.contains(&diagram));
-            assert!(selection.skipped_root_deferred.contains(&diagram));
+        let primary: Vec<&str> = crate::cmd::primary_svg_matrix_diagrams().collect();
+        assert_eq!(selection.diagrams, primary);
+        for diagram in ["treeView", "ishikawa", "eventmodeling"] {
+            assert!(
+                selection.diagrams.contains(&diagram),
+                "global parity-root sweep must include {diagram}"
+            );
         }
-
-        let targeted = CompareAllOptions {
-            only_diagrams: vec!["flowchart".to_string()],
-            ..options
-        };
-        let selection = CompareAllDiagramSelection::from_options(&targeted).expect("selection");
-        assert_eq!(selection.diagrams, ["flowchart"]);
-        assert!(selection.skipped_root_deferred.is_empty());
     }
 
     #[test]
@@ -761,7 +784,7 @@ dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b
     }
 
     #[test]
-    fn compare_invocation_builds_common_dom_args_and_mode_report_path() {
+    fn compare_invocation_builds_typed_request_and_mode_report_path() {
         let compare_dir = Path::new("target/compare");
         let expected_report = compare_dir.join("info_report_parity_root.md");
         let invocation = CompareAllInvocationOptions {
@@ -777,19 +800,16 @@ dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b
             invocation.report_path.as_deref(),
             Some(expected_report.as_path())
         );
+        assert!(invocation.request.check_dom);
+        assert_eq!(invocation.request.dom_mode.as_deref(), Some("parity-root"));
+        assert_eq!(invocation.request.dom_decimals, Some(3));
         assert_eq!(
-            invocation.args,
-            vec![
-                "--check-dom".to_string(),
-                "--dom-mode".to_string(),
-                "parity-root".to_string(),
-                "--dom-decimals".to_string(),
-                "3".to_string(),
-                "--filter".to_string(),
-                "upstream_info_spec".to_string(),
-                "--out".to_string(),
-                expected_report.display().to_string(),
-            ]
+            invocation.request.filter.as_deref(),
+            Some("upstream_info_spec")
+        );
+        assert_eq!(
+            invocation.request.out_path.as_deref(),
+            Some(expected_report.as_path())
         );
     }
 
@@ -802,10 +822,20 @@ dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b
         };
 
         assert_eq!(
-            options.for_diagram("flowchart", compare_dir).args,
-            ["--text-measurer", "browser"]
+            options
+                .for_diagram("flowchart", compare_dir)
+                .request
+                .flowchart_text_measurer
+                .as_deref(),
+            Some("browser")
         );
-        assert!(options.for_diagram("state", compare_dir).args.is_empty());
+        assert!(
+            options
+                .for_diagram("state", compare_dir)
+                .request
+                .flowchart_text_measurer
+                .is_none()
+        );
     }
 
     #[test]
@@ -817,11 +847,12 @@ dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b
             ..Default::default()
         };
 
-        assert_eq!(
-            options.for_diagram("class", compare_dir).args,
-            ["--report-root", "--report-root-limit", "7"]
-        );
-        assert!(options.for_diagram("er", compare_dir).args.is_empty());
+        let class = options.for_diagram("class", compare_dir).request;
+        assert!(class.report_root);
+        assert_eq!(class.root_report_limit, Some(RootDeltaReportLimit::Top(7)));
+        let er = options.for_diagram("er", compare_dir).request;
+        assert!(!er.report_root);
+        assert_eq!(er.root_report_limit, None);
     }
 
     #[test]
@@ -834,6 +865,10 @@ dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b
         }
         .for_diagram("timeline", compare_dir);
 
-        assert_eq!(invocation.args, ["--report-root", "--report-root-all"]);
+        assert!(invocation.request.report_root);
+        assert_eq!(
+            invocation.request.root_report_limit,
+            Some(RootDeltaReportLimit::All)
+        );
     }
 }

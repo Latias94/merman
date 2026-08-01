@@ -2,27 +2,25 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_quadrantchart_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_quadrantchart_svg_from_text(text: &str) -> String {
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::QuadrantChartDiagram(layout) = &out.layout else {
-        panic!("expected QuadrantChartDiagram layout");
-    };
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
-    render_quadrantchart_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 fn assert_contains(haystack: &str, needle: &str) {
@@ -33,7 +31,51 @@ fn assert_contains(haystack: &str, needle: &str) {
 }
 
 #[test]
-fn quadrantchart_default_point_fill_is_valid_for_headless_renderability() {
+fn quadrantchart_frontmatter_title_and_accessibility_metadata_match_mermaid() {
+    let svg = render_quadrantchart_svg_from_text(
+        r#"---
+title: Frontmatter quadrant
+---
+quadrantChart
+  accTitle: Accessible quadrant
+  accDescr: Quadrant description
+  x-axis Low --> High
+  y-axis Low --> High
+  Feature: [0.5, 0.5]
+"#,
+    );
+
+    assert_contains(&svg, ">Frontmatter quadrant</text>");
+    assert_contains(&svg, r#"aria-labelledby="chart-title-quadrantchart""#);
+    assert_contains(&svg, r#"aria-describedby="chart-desc-quadrantchart""#);
+    assert_contains(
+        &svg,
+        r#"<title id="chart-title-quadrantchart">Accessible quadrant</title>"#,
+    );
+    assert_contains(
+        &svg,
+        r#"<desc id="chart-desc-quadrantchart">Quadrant description</desc>"#,
+    );
+}
+
+#[test]
+fn quadrantchart_body_title_overrides_frontmatter_title() {
+    let svg = render_quadrantchart_svg_from_text(
+        r#"---
+title: Frontmatter quadrant
+---
+quadrantChart
+  title Body quadrant
+  Feature: [0.5, 0.5]
+"#,
+    );
+
+    assert_contains(&svg, ">Body quadrant</text>");
+    assert!(!svg.contains(">Frontmatter quadrant</text>"));
+}
+
+#[test]
+fn quadrantchart_default_point_fill_matches_mermaid_11_16_theme_output() {
     let svg = render_quadrantchart_svg_from_text(
         r#"quadrantChart
   title Boundary points
@@ -48,10 +90,9 @@ fn quadrantchart_default_point_fill_is_valid_for_headless_renderability() {
 "#,
     );
 
-    assert!(!svg.contains("NaN"), "SVG leaked invalid color: {svg}");
     assert_contains(
         &svg,
-        r#"<circle cx="31" cy="469" r="5" fill="rgb(185, 185, 255)" stroke="rgb(185, 185, 255)" stroke-width="0px"/>"#,
+        r#"<circle cx="31" cy="469" r="5" fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)" stroke-width="0px"/>"#,
     );
 }
 

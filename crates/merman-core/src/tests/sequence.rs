@@ -51,7 +51,7 @@ Alice->>Bob: Hello
 Note over Alice,Bob: Review
 details Alice: {"owner": "platform"}"#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -75,6 +75,8 @@ details Alice: {"owner": "platform"}"#;
     let team_start = text.find("Team").unwrap();
     let team = first_symbol("Team");
     assert_eq!(team.detail.as_deref(), Some("sequence box"));
+    assert_eq!(team.role, EditorSemanticRole::Payload);
+    assert_eq!(team.kind, EditorSemanticKind::String);
     assert_eq!(team.selection.start, team_start);
     assert_eq!(team.selection.end, team_start + "Team".len());
 
@@ -130,6 +132,41 @@ details Alice: {"owner": "platform"}"#;
 }
 
 #[test]
+fn parse_sequence_editor_box_payload_reuses_db_color_semantics() {
+    let engine = Engine::new();
+    let text = concat!(
+        "sequenceDiagram\n",
+        "box aqua\n",
+        "participant Alice\n",
+        "end\n",
+        "box rebeccapurple Platform\n",
+        "participant Bob\n",
+        "end\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert!(!facts.symbols.iter().any(|symbol| {
+        symbol.name == "aqua" && symbol.detail.as_deref() == Some("sequence box")
+    }));
+    let platform = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Platform" && symbol.detail.as_deref() == Some("sequence box")
+        })
+        .expect("labeled box payload");
+    let start = text.find("Platform").unwrap();
+    assert_eq!(platform.role, EditorSemanticRole::Payload);
+    assert_eq!(
+        platform.selection,
+        SourceSpan::new(start, start + "Platform".len())
+    );
+}
+
+#[test]
 fn parse_sequence_editor_payload_spans_skip_directive_prefix_text() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram
@@ -138,7 +175,7 @@ accTitle: Title
 accDescr: accDescr
 Alice->>Bob: Alice"#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -174,7 +211,7 @@ sequenceDiagram
 participant Alice
 Alice->>Bob: Hello"#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -205,7 +242,7 @@ fn parse_sequence_editor_facts_crlf_frontmatter_spans_use_original_source() {
         "Alice->>Bob: Hello",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -231,7 +268,7 @@ sequenceDiagram
 participant Alice
 Alice->>Bob: Hello"#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -260,7 +297,7 @@ fn parse_sequence_editor_facts_crlf_init_directive_spans_use_original_source() {
         "Alice->>Bob: Hello",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -293,7 +330,7 @@ fn parse_sequence_editor_facts_crlf_frontmatter_init_unicode_spans_use_original_
         "顧客->>サーバー: こんにちは",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -312,7 +349,43 @@ fn parse_sequence_editor_facts_crlf_frontmatter_init_unicode_spans_use_original_
 }
 
 #[test]
-fn parse_sequence_editor_facts_parse_preprocessed_body_when_spans_cannot_remap() {
+fn parse_sequence_editor_facts_preserve_every_repeated_unicode_occurrence() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "sequenceDiagram\r\n",
+        "participant 顧客\r\n",
+        "顧客->>サーバー: こんにちは\r\n",
+        "Note over 顧客,サーバー: 確認\r\n",
+        "サーバー-->>顧客: 完了\r\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    for name in ["顧客", "サーバー"] {
+        let expected = text
+            .match_indices(name)
+            .map(|(start, _)| SourceSpan::new(start, start + name.len()))
+            .collect::<Vec<_>>();
+        let actual = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == name && symbol.role == EditorSemanticRole::Entity)
+            .map(|symbol| symbol.selection)
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected, "lost or reordered {name} occurrences");
+    }
+}
+
+#[test]
+fn parse_sequence_editor_facts_remap_entity_normalization_without_losing_other_facts() {
     let engine = Engine::new();
     let text = concat!(
         "---\n",
@@ -324,15 +397,11 @@ fn parse_sequence_editor_facts_parse_preprocessed_body_when_spans_cannot_remap()
     );
 
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    assert_eq!(
-        facts.span_coordinate_space,
-        EditorSpanCoordinateSpace::ParserInput
-    );
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
     }));
@@ -343,7 +412,7 @@ fn parse_sequence_editor_facts_parse_preprocessed_body_when_spans_cannot_remap()
             symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
         })
         .expect("Alice participant");
-    assert_eq!(alice.selection.start, "sequenceDiagram\nparticipant ".len());
+    assert_eq!(alice.selection.start, text.find("Alice").unwrap());
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence participant reference")
     }));
@@ -358,7 +427,7 @@ fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
@@ -371,28 +440,112 @@ fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
 fn parse_sequence_editor_facts_stop_after_non_advancing_lexer_error() {
     let engine = Engine::new();
     let text = "sequenceDiagram\nparticipant Alice\nparticipant Bob @{\nAlice->>Bob: Hello\n";
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1,
+        "a non-advancing lexer error must terminate the one shared token tape"
+    );
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Alice"));
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Bob"));
+    let invalid_start = text.find("@{").unwrap();
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(invalid_start, invalid_start + 2))
+    }));
 }
 
 #[test]
 fn parse_sequence_editor_facts_continue_after_advancing_lexer_error() {
     let engine = Engine::new();
-    let text = "sequenceDiagram\n<\nparticipant Alice\nAlice->>Bob: Hello\n";
+    let text = "sequenceDiagram\nparticipant Alice\n<\nparticipant Bob\nAlice->>Bob: Hello\n";
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
         .unwrap()
         .expect("sequence editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1,
+        "an advancing lexer error must not rebuild the token tape"
+    );
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Alice"));
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Bob"));
+    let invalid_start = text.find('<').unwrap();
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(invalid_start, invalid_start + 1))
+    }));
+}
+
+#[test]
+fn parse_sequence_strict_failure_and_editor_recovery_share_exact_lexer_span() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "sequenceDiagram\r\n",
+        "顧客->>サーバー: こんにちは\r\n",
+        "<\r\n",
+        "participant 後続\r\n",
+    );
+    let invalid_start = text.find('<').unwrap();
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text)
+        .unwrap()
+        .expect("sequence recovery facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(invalid_start, invalid_start + 1))
+    }));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "後続"));
+
+    let error = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("strict Sequence parsing rejects the invalid token");
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("invalid Sequence token returned a non-parse error");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(invalid_start, invalid_start + 1))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+}
+
+#[test]
+fn parse_sequence_minimal_signals_preserve_canonical_db_order_without_a_second_grammar() {
+    let engine = Engine::new();
+    let text = concat!(
+        "sequenceDiagram\n",
+        "Alice->>+Bob: Start\n",
+        "Bob-->>-Alice: Done\n",
+    );
+
+    let parsed = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .unwrap()
+        .expect("minimal Sequence parse");
+    let messages = parsed.model["messages"].as_array().unwrap();
+    assert_eq!(parsed.model["actorOrder"], json!(["Alice", "Bob"]));
+    assert_eq!(messages.len(), 4);
+    assert_eq!(messages[0]["message"], "Start");
+    assert_eq!(messages[1]["type"], 17);
+    assert_eq!(messages[2]["message"], "Done");
+    assert_eq!(messages[3]["type"], 18);
 }
 
 #[test]

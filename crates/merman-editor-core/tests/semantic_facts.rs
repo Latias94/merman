@@ -126,9 +126,10 @@ fn product_families_are_parser_backed_and_role_aware() {
                 "commit id:\"C1\"\n",
                 "branch feature\n",
                 "checkout feature\n",
+                "commit id:\"F1\"\n",
                 "merge main id:\"M1\"\n",
             ),
-            required_ids: &["C1", "feature", "main", "M1"],
+            required_ids: &["C1", "feature", "F1", "main", "M1"],
             required_outline: &[],
             required_prefixes: &[],
             forbidden_ids: &[],
@@ -222,18 +223,18 @@ fn product_families_are_parser_backed_and_role_aware() {
             snippet: concat!(
                 "zenuml\n",
                 "title Login Flow\n",
-                "accTitle Login accessibility title\n",
-                "accDescr Login accessibility description\n",
                 "Alice\n",
                 "Bob\n",
                 "A as API\n",
+                "accTitle: Login accessibility title\n",
+                "accDescr: Login accessibility description\n",
                 "Alice->Bob: Login\n",
                 "SomeType result = A.SyncMessage()\n",
                 "new Session(with, params)\n",
             ),
-            required_ids: &["Alice", "Bob", "A", "Session"],
+            required_ids: &["Alice", "Bob", "A", "accTitle", "accDescr", "Session"],
             required_outline: &[],
-            required_prefixes: &["title", "accTitle", "accDescr"],
+            required_prefixes: &["title"],
             forbidden_ids: &[
                 "Login",
                 "Flow",
@@ -249,13 +250,15 @@ fn product_families_are_parser_backed_and_role_aware() {
 
     for case in cases {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            "file:///tmp/example.mmd",
-            1,
-            case.snippet.to_string(),
-            DocumentKind::Diagram,
-        );
-        let index = &snapshot.fences[0].text_index;
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                case.snippet.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+        let index = snapshot.fences()[0].text_index();
 
         assert_eq!(
             index.source(),
@@ -313,7 +316,7 @@ fn capability_matrix_families_are_parser_backed_in_editor_core() {
             concat!(
                 "eventmodeling\n",
                 "tf 01 cmd AddItem { productId: 7 }\n",
-                "tf 02 evt ItemAdded [[ItemAddedData]] ->> 01\n",
+                "tf 02 evt ItemAdded ->> 01 [[ItemAddedData]]\n",
                 "\n",
                 "data ItemAddedData {\n",
                 "  productId: 7\n",
@@ -379,26 +382,30 @@ fn capability_matrix_families_are_parser_backed_in_editor_core() {
         ),
         ("venn", "venn-beta\nset A\nset B\nunion A,B\n"),
     ] {
-        let snapshot = workspace.upsert(
-            "file:///tmp/capability-matrix.mmd",
-            1,
-            snippet.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/capability-matrix.mmd",
+                1,
+                snippet.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         assert_eq!(
-            snapshot.fences[0].text_index.source(),
+            snapshot.fences()[0].text_index().source(),
             FenceTextIndexSource::ParserComplete,
             "unexpected parser provenance for {label}"
         );
     }
 
-    let snapshot = workspace.upsert(
-        "file:///tmp/capability-matrix.mmd",
-        1,
-        "flowchart TD\nA-->B\n".to_string(),
-        DocumentKind::Diagram,
-    );
-    let index = &snapshot.fences[0].text_index;
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/capability-matrix.mmd",
+            1,
+            "flowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
+    let index = snapshot.fences()[0].text_index();
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "A"));
     assert!(index.node_ids().any(|id| id == "B"));

@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": -30.0,
         "min_y": -30.0,
-        "max_x": 1079.076,
+        "max_x": 1040.333,
         "max_y": 736.0
       },
-      "total_width": 1109.076,
+      "total_width": 1070.333,
       "total_height": 766.0,
       "viewbox_x": -30.0,
       "viewbox_y": -30.0,
@@ -21,7 +21,7 @@
           "namespace": "Shop",
           "x": 0.0,
           "y": 0.0,
-          "width": 1049.076,
+          "width": 1010.333,
           "height": 130.0
         },
         {
@@ -30,7 +30,7 @@
           "namespace": "Ordering",
           "x": 0.0,
           "y": 140.0,
-          "width": 1049.076,
+          "width": 1010.333,
           "height": 130.0
         },
         {
@@ -39,7 +39,7 @@
           "namespace": "Read",
           "x": 0.0,
           "y": 280.0,
-          "width": 1049.076,
+          "width": 1010.333,
           "height": 130.0
         },
         {
@@ -48,7 +48,7 @@
           "namespace": "Cart",
           "x": 0.0,
           "y": 420.0,
-          "width": 1049.076,
+          "width": 1010.333,
           "height": 146.0
         },
         {
@@ -57,7 +57,7 @@
           "namespace": "Checkout",
           "x": 0.0,
           "y": 576.0,
-          "width": 1049.076,
+          "width": 1010.333,
           "height": 130.0
         }
       ],
@@ -71,7 +71,7 @@
           "text": "Cart",
           "x": 250.0,
           "y": 15.0,
-          "width": 134.0,
+          "width": 128.0,
           "height": 100.0,
           "fill": "white",
           "stroke": "#dbdada",
@@ -84,9 +84,9 @@
           "model_entity_type": "cmd",
           "entity_identifier": "Ordering.AddItem",
           "text": "AddItem\n{ sku: \"SKU-1\" }",
-          "x": 314.0,
+          "x": 308.0,
           "y": 155.0,
-          "width": 252.89,
+          "width": 243.333,
           "height": 100.0,
           "fill": "#bcd6fe",
           "stroke": "#679ac3",
@@ -99,9 +99,9 @@
           "model_entity_type": "evt",
           "entity_identifier": "Cart.ItemAdded",
           "text": "ItemAdded\n{\n  sku: \"SKU-1\"\n  quantity: 1\n}",
-          "x": 496.89,
+          "x": 481.333,
           "y": 435.0,
-          "width": 289.186,
+          "width": 278.0,
           "height": 116.0,
           "fill": "#ffb778",
           "stroke": "#c19a0f",
@@ -114,9 +114,9 @@
           "model_entity_type": "rmo",
           "entity_identifier": "Read.CartSummary",
           "text": "CartSummary",
-          "x": 716.076,
+          "x": 689.333,
           "y": 295.0,
-          "width": 198.0,
+          "width": 192.0,
           "height": 100.0,
           "fill": "#d3f1a2",
           "stroke": "#a3b732",
@@ -129,9 +129,9 @@
           "model_entity_type": "evt",
           "entity_identifier": "Checkout.CheckedOut",
           "text": "CheckedOut",
-          "x": 844.076,
+          "x": 811.333,
           "y": 591.0,
-          "width": 180.0,
+          "width": 174.0,
           "height": 100.0,
           "fill": "#ffb778",
           "stroke": "#c19a0f",
@@ -142,27 +142,27 @@
         {
           "source_frame": "01",
           "target_frame": "02",
-          "x1": 339.333,
+          "x1": 335.333,
           "y1": 115.0,
-          "x2": 398.297,
+          "x2": 389.111,
           "y2": 155.0,
           "stroke": "#333333"
         },
         {
           "source_frame": "02",
           "target_frame": "03",
-          "x1": 482.593,
+          "x1": 470.222,
           "y1": 255.0,
-          "x2": 593.285,
+          "x2": 574.0,
           "y2": 435.0,
           "stroke": "#333333"
         },
         {
           "source_frame": "04",
           "target_frame": "05",
-          "x1": 848.076,
+          "x1": 817.333,
           "y1": 395.0,
-          "x2": 904.076,
+          "x2": 869.333,
           "y2": 591.0,
           "stroke": "#333333"
         }

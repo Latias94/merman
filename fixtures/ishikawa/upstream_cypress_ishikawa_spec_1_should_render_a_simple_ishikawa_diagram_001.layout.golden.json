@@ -3,14 +3,14 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -169.475,
+        "min_x": -169.477,
         "min_y": -41.38,
         "max_x": 92.0,
         "max_y": 538.755
       },
-      "total_width": 261.475,
+      "total_width": 261.477,
       "total_height": 580.134,
-      "viewbox_x": -169.475,
+      "viewbox_x": -169.477,
       "viewbox_y": -41.38,
       "padding": 20.0,
       "use_max_width": true,
@@ -42,7 +42,7 @@
         }
       },
       "spine": {
-        "x1": -149.475,
+        "x1": -149.477,
         "y1": 250.0,
         "x2": 0.0,
         "y2": 250.0,
@@ -108,7 +108,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -149.475,
+                    "min_x": -149.477,
                     "min_y": 115.404,
                     "max_x": -67.397,
                     "max_y": 134.404

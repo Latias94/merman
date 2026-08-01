@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Accessibility block + wrapping stress",
     "accTitle": "Timeline accTitle with ﬂ°hash¶ß and",
     "accDescr": "This is a multiline accDescr block.\nIt contains #hashtags, ;semicolons, and a markdown link [example](https://example.com).\nIt also contains a forced line break token <br> to exercise wrapping rules.",

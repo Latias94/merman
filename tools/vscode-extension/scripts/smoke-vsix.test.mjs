@@ -10,9 +10,27 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import { runSmoke } from "./smoke-vsix.mjs";
+import { buildLaunchArgs, runSmoke } from "./smoke-vsix.mjs";
 
 describe("packaged VSIX smoke", () => {
+  it("keeps VS Code state inside short transaction-owned paths", () => {
+    const fixturePath = path.join(os.tmpdir(), "workspace", "fixture");
+    const tempRoot = path.join(os.tmpdir(), "mvs-123");
+    const launchArgs = buildLaunchArgs({ fixturePath, tempRoot });
+
+    assert.deepEqual(launchArgs, [
+      fixturePath,
+      `--user-data-dir=${path.join(tempRoot, "u")}`,
+      `--extensions-dir=${path.join(tempRoot, "e")}`,
+    ]);
+    assert.deepEqual(
+      launchArgs
+        .slice(1)
+        .map((arg) => path.relative(tempRoot, arg.slice(arg.indexOf("=") + 1))),
+      ["u", "e"],
+    );
+  });
+
   it("cleans the temporary extraction root when VSIX parsing fails", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "merman-vsix-smoke-test-"));
     try {

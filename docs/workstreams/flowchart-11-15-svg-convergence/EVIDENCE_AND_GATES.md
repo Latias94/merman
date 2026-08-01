@@ -1,7 +1,7 @@
 # Flowchart 11.15 SVG Convergence - Evidence And Gates
 
-Status: Active
-Last updated: 2026-06-12
+Status: Closed (historical archive)
+Last updated: 2026-07-21
 
 ## Smallest Current Repro
 

@@ -1,9 +1,10 @@
 # Alignment Workstream (Mermaid Parity)
 
 This folder tracks the **ongoing alignment workstream**: what to align next, how to prove we have
-a real gap, and how we decide between *model changes* vs *fixture-derived overrides*.
+a real gap, and how we decide between source-backed changes, generalized measurement facts, and
+accepted browser residuals.
 
-Baseline target (pinned upstream): Mermaid `@11.12.3`.
+Baseline target (pinned upstream): Mermaid `@11.16.0`.
 
 Related documentation:
 
@@ -44,12 +45,13 @@ Before “fixing”, validate the gap exists and is in-scope:
    - **Structure / selector drift**: wrong DOM structure, wrong CSS selector path, wrong class.
    - **Measurement drift**: widths/heights/translate differ; usually text measurement or bbox.
    - **Serialization drift**: attribute formatting/precision; fix in canonicalization or quantize.
-   - **Known upstream float noise**: consider fixture-derived overrides (viewport / text/bbox).
+   - **Known upstream float noise**: record a narrow accepted residual or improve generalized
+     browser/font measurement facts.
 
 4. **Minimize**
    Reduce to the smallest `.mmd` that reproduces the mismatch. Prefer one diagram + 1–2 nodes.
 
-## Decision guide: model change vs override
+## Decision guide: derivation vs accepted residual
 
 Use `docs/workstreams/PARITY_BOUNDARY.md` as the authoritative rule set. The short version:
 
@@ -57,17 +59,16 @@ Prefer **model changes** when:
 
 - The delta appears across many fixtures or diagram types.
 - Behavior is driven by spec/config semantics (e.g. `htmlLabels` precedence, theme variable rules).
-- Fix improves determinism and reduces future override growth.
+- Fix improves determinism and applies to unseen diagrams.
 
-Prefer **fixture-derived overrides** when:
+Prefer **general measurement facts or accepted residuals** when:
 
 - The delta is 1/64px-level and tied to browser `getBBox()` / float serialization quirks.
-- The string set is huge and the mismatch is not practically modelable without a browser engine.
+- The mismatch is not practically modelable without the host browser/font engine.
 - The fix would risk destabilizing many diagrams for a marginal strict-XML win.
 
-Useful inventory command:
-
-- `cargo run -p xtask -- report-overrides`
+Never key production behavior by fixture id or complete label text. Hosts that need exact system
+font geometry should provide the operation's host measurer.
 
 ## High-ROI pitfall catalog (what to align next)
 
@@ -245,7 +246,8 @@ How to validate coverage:
 
 1. Reproduce mismatch in a small fixture.
 2. Confirm in-scope and upstream-covered.
-3. Fix (model change preferred; override only when justified).
+3. Fix the owning grammar, model, layout, DOM emission, measurement profile, or root algorithm.
+   Browser-only residuals stay explicit in verification policy and never become production pins.
 4. Add regression (fixture or unit test).
 5. Run:
    - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`

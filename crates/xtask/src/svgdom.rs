@@ -20,6 +20,78 @@ pub(crate) enum DomMode {
     ParityRoot,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DomComparisonProfile {
+    descendants: DomMode,
+    root_viewport: bool,
+    normalize_browser_text_wrapping: bool,
+    normalize_browser_text_length: bool,
+}
+
+impl DomComparisonProfile {
+    pub(crate) const fn from_mode(mode: DomMode) -> Self {
+        match mode {
+            DomMode::ParityRoot => Self {
+                descendants: DomMode::Parity,
+                root_viewport: true,
+                normalize_browser_text_wrapping: false,
+                normalize_browser_text_length: false,
+            },
+            descendants => Self {
+                descendants,
+                root_viewport: false,
+                normalize_browser_text_wrapping: false,
+                normalize_browser_text_length: false,
+            },
+        }
+    }
+
+    pub(crate) const fn with_root_viewport(descendants: DomMode) -> Self {
+        debug_assert!(!matches!(descendants, DomMode::ParityRoot));
+        Self {
+            descendants,
+            root_viewport: true,
+            normalize_browser_text_wrapping: false,
+            normalize_browser_text_length: false,
+        }
+    }
+
+    pub(crate) const fn with_browser_text_wrapping_normalized(mut self) -> Self {
+        if !matches!(self.descendants, DomMode::Strict) {
+            self.normalize_browser_text_wrapping = true;
+        }
+        self
+    }
+
+    pub(crate) const fn with_browser_text_length_normalized(mut self) -> Self {
+        if !matches!(self.descendants, DomMode::Strict) {
+            self.normalize_browser_text_length = true;
+        }
+        self
+    }
+
+    const fn without_root_viewport(mut self) -> Self {
+        self.root_viewport = false;
+        self
+    }
+
+    pub(crate) const fn descendants(self) -> DomMode {
+        self.descendants
+    }
+
+    pub(crate) const fn compares_root_viewport(self) -> bool {
+        self.root_viewport
+    }
+
+    pub(crate) const fn normalizes_browser_text_wrapping(self) -> bool {
+        self.normalize_browser_text_wrapping
+    }
+
+    pub(crate) const fn normalizes_browser_text_length(self) -> bool {
+        self.normalize_browser_text_length
+    }
+}
+
 impl DomMode {
     pub(crate) fn parse(s: &str) -> Self {
         match s {
@@ -141,71 +213,22 @@ fn normalize_style_font_size_for_parity(style: &str, decimals: u32) -> Option<St
 }
 
 fn normalize_svg_root_style_parity_root(style: &str, decimals: u32) -> String {
-    // Root `style` includes `max-width: <n>px`, which is sensitive to tiny FP drift across
-    // targets/platforms (e.g. 1/64px). To keep CI parity stable while still tracking meaningful
-    // regressions, snap `max-width` to a small pixel lattice.
-    let step = 1.0 / 4.0; // 0.25px: collapses common subpixel drift across platforms.
-    let eps = 1e-9; // Avoid float edge cases at exact step boundaries.
-    // Biased snapping: use a threshold slightly above the midpoint between lattice steps so
-    // values that drift just above the midpoint (common on some platforms) still normalize to the
-    // lower step. This is more robust than pure `round` (midpoint splits) and less lossy than
-    // always flooring (boundary splits around exact step values).
-    //
-    // Threshold interpretation:
-    // - `0.5` would be true "round to nearest".
-    // - `> 0.5` biases toward the lower step.
-    // With `step=0.125`, `0.62` corresponds to ~0.015px above the midpoint, matching typical
-    // 1/64px drift seen in CI for Mermaid root viewport values.
-    let frac_threshold = 0.62;
-
     let re = {
         static ONCE: OnceLock<Regex> = OnceLock::new();
-        ONCE.get_or_init(|| Regex::new(r#"max-width:\s*([0-9.]+)px"#).unwrap())
+        ONCE.get_or_init(|| {
+            Regex::new(r#"max-width:\s*(-?(?:\d+\.\d+|\d+\.|\.\d+|\d+)(?:[eE][+-]?\d+)?)px"#)
+                .unwrap()
+        })
     };
 
     re.replace_all(style, |caps: &regex::Captures<'_>| {
         let raw = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
-        let Ok(v) = raw.parse::<f64>() else {
-            return caps
-                .get(0)
-                .map(|m| m.as_str())
-                .unwrap_or_default()
-                .to_string();
-        };
-        // Snap to the lattice with a slight bias toward the lower bucket to avoid platform
-        // drift flipping the signature across the midpoint.
-        let q = (v / step) + eps;
-        let base = q.floor();
-        let frac = q - base;
-        let snapped = if frac >= frac_threshold {
-            (base + 1.0) * step
-        } else {
-            base * step
-        };
-        let snapped = round_f64(snapped, decimals);
-        let snapped = if snapped == 0.0 { 0.0 } else { snapped };
-        let mut out = format!("{snapped}");
-        if out.contains('.') {
-            while out.ends_with('0') {
-                out.pop();
-            }
-            if out.ends_with('.') {
-                out.pop();
-            }
-        }
-        format!("max-width: {out}px")
+        format!("max-width: {}px", normalize_numeric_tokens(raw, decimals))
     })
     .to_string()
 }
 
 fn normalize_svg_root_viewbox_parity_root(view_box: &str, decimals: u32) -> String {
-    // Root `viewBox` is affected by label measurements and can drift by tiny fractions across
-    // platforms (commonly 1/64px). Snap to a small lattice to keep CI parity stable while still
-    // tracking meaningful viewport changes.
-    let step = 1.0 / 4.0; // 0.25px: collapses common subpixel drift across platforms.
-    let eps = 1e-9;
-    let frac_threshold = 0.62;
-
     let parts: Vec<&str> = view_box
         .split(|c: char| c.is_whitespace() || c == ',')
         .filter(|t| !t.is_empty())
@@ -214,43 +237,12 @@ fn normalize_svg_root_viewbox_parity_root(view_box: &str, decimals: u32) -> Stri
         return normalize_numeric_tokens(view_box, decimals);
     }
 
-    let mut out_parts: Vec<String> = Vec::with_capacity(4);
-    for (idx, p) in parts.into_iter().enumerate() {
-        let Ok(v) = p.parse::<f64>() else {
+    let mut out_parts = Vec::with_capacity(4);
+    for part in parts {
+        if part.parse::<f64>().is_err() {
             return normalize_numeric_tokens(view_box, decimals);
-        };
-
-        // In parity-root comparisons we mainly care about the viewport size (w/h). The origin
-        // (x/y) is frequently affected by transform-list rounding and platform-specific `getBBox`
-        // behavior, and tends to create noisy diffs that don't correlate with meaningful
-        // regressions. Mask x/y to keep CI stable while still tracking size changes.
-        if idx == 0 || idx == 1 {
-            out_parts.push("<n>".to_string());
-            continue;
         }
-
-        // Snap w/h with the same biased lattice as `max-width`.
-        let q = (v / step) + eps;
-        let base = q.floor();
-        let frac = q - base;
-        let snapped = if frac >= frac_threshold {
-            (base + 1.0) * step
-        } else {
-            base * step
-        };
-
-        let snapped = round_f64(snapped, decimals);
-        let snapped = if snapped == 0.0 { 0.0 } else { snapped };
-        let mut s = format!("{snapped}");
-        if s.contains('.') {
-            while s.ends_with('0') {
-                s.pop();
-            }
-            if s.ends_with('.') {
-                s.pop();
-            }
-        }
-        out_parts.push(s);
+        out_parts.push(normalize_numeric_tokens(part, decimals));
     }
 
     out_parts.join(" ")
@@ -434,7 +426,12 @@ fn is_geometry_attr(name: &str) -> bool {
     )
 }
 
-fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDomNode {
+fn build_node(
+    n: roxmltree::Node<'_, '_>,
+    mode: DomMode,
+    decimals: u32,
+    preserve_browser_text_rows: bool,
+) -> SvgDomNode {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
 
     fn is_block_diagram(n: roxmltree::Node<'_, '_>) -> bool {
@@ -517,6 +514,58 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         let gradient_prefix = format!("{diagram_id}-linearGradient-");
         val.replace(&node_prefix, "node-")
             .replace(&gradient_prefix, "linearGradient-")
+    }
+
+    fn vertical_timeline_diagram_id(n: roxmltree::Node<'_, '_>) -> Option<String> {
+        let svg = n.ancestors().find(|ancestor| {
+            ancestor.is_element()
+                && ancestor.tag_name().name() == "svg"
+                && ancestor
+                    .attribute("aria-roledescription")
+                    .is_some_and(|value| value == "timeline")
+        })?;
+        let activity_line = svg.descendants().find(|descendant| {
+            descendant.is_element()
+                && descendant.tag_name().name() == "line"
+                && descendant
+                    .parent()
+                    .and_then(|parent| parent.attribute("class"))
+                    .is_some_and(|class| {
+                        class.split_whitespace().any(|token| token == "lineWrapper")
+                    })
+                && descendant.attribute("stroke-width") == Some("4")
+        })?;
+        (activity_line.attribute("x1") == activity_line.attribute("x2"))
+            .then(|| svg.attribute("id").map(str::to_string))
+            .flatten()
+    }
+
+    fn normalize_vertical_timeline_broken_node_id(
+        n: roxmltree::Node<'_, '_>,
+        key: &str,
+        val: &str,
+    ) -> Option<String> {
+        let diagram_id = vertical_timeline_diagram_id(n)?;
+        // Marker definitions and references are rendering semantics; only the unreferenced node
+        // IDs are safe to align with Merman's diagram-scoped spelling.
+        let scoped_node_prefix = format!("{diagram_id}-node-");
+        if n.tag_name().name() == "path"
+            && key == "id"
+            && n.attribute("class").is_some_and(|class| {
+                class.split_whitespace().any(|token| token == "node-bkg")
+                    && class
+                        .split_whitespace()
+                        .any(|token| token == "node-undefined")
+            })
+            && let Some(ordinal) = val
+                .strip_prefix("undefined-node-")
+                .or_else(|| val.strip_prefix(&scoped_node_prefix))
+            && !ordinal.is_empty()
+            && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Some(format!("<timeline-node-{ordinal}>"));
+        }
+        None
     }
 
     if n.is_element() {
@@ -674,56 +723,6 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             has_plot && has_bar_plot
         }
 
-        fn is_quadrantchart_data_point_circle(n: roxmltree::Node<'_, '_>) -> bool {
-            if !(n.is_element() && n.tag_name().name() == "circle") {
-                return false;
-            }
-
-            let mut in_quadrantchart_svg = false;
-            let mut in_data_point = false;
-            for a in n.ancestors() {
-                if !a.is_element() {
-                    continue;
-                }
-                if a.tag_name().name() == "svg"
-                    && a.attribute("aria-roledescription")
-                        .is_some_and(|v| v == "quadrantChart")
-                {
-                    in_quadrantchart_svg = true;
-                }
-                if a.tag_name().name() == "g" && has_class_token(a, "data-point") {
-                    in_data_point = true;
-                }
-            }
-
-            in_quadrantchart_svg && in_data_point
-        }
-
-        fn is_invalid_svg_token(value: &str) -> bool {
-            let lower = value.trim().to_ascii_lowercase();
-            lower.contains("nan") || lower.contains("undefined") || lower.contains("infinity")
-        }
-
-        fn normalize_quadrantchart_default_point_color(
-            key: &str,
-            value: &str,
-            n: roxmltree::Node<'_, '_>,
-            mode: DomMode,
-        ) -> Option<String> {
-            if !matches!(mode, DomMode::Parity | DomMode::ParityRoot) {
-                return None;
-            }
-            if !matches!(key, "fill" | "stroke") || !is_quadrantchart_data_point_circle(n) {
-                return None;
-            }
-            let value = value.trim();
-            if is_invalid_svg_token(value) || value == "rgb(185, 185, 255)" {
-                Some("<quadrant-point-default-color>".to_string())
-            } else {
-                None
-            }
-        }
-
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
@@ -736,13 +735,6 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 // Merman keeps headless HTML label boxes non-clipping to absorb host font
                 // fallback drift. Treat that explicit browser-safety marker as non-semantic in
                 // parity DOM gates while preserving it in strict signatures.
-                continue;
-            }
-
-            if let Some(normalized) =
-                normalize_quadrantchart_default_point_color(&key, &val, n, mode)
-            {
-                attrs.insert(key, normalized);
                 continue;
             }
 
@@ -896,6 +888,13 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             }
             if matches!(
                 mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && let Some(normalized) = normalize_vertical_timeline_broken_node_id(n, &key, &val)
+            {
+                val = normalized;
+            }
+            if matches!(
+                mode,
                 DomMode::Strict | DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
             ) && key == "id"
                 && is_architecture_icon_content(n)
@@ -975,7 +974,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         if has_element_child {
             for c in n.children() {
                 if c.is_element() {
-                    children.push(build_node(c, mode, decimals));
+                    children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
                 } else if c.is_text()
                     && let Some(t) = c.text().and_then(normalize_text_node_text)
                 {
@@ -990,24 +989,28 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         } else {
             text = n.text().and_then(normalize_text_node_text);
             for c in n.children().filter(|c| c.is_element()) {
-                children.push(build_node(c, mode, decimals));
+                children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
             }
         }
     } else {
         // Non-strict modes treat text as non-semantic and only track element structure.
         for c in n.children().filter(|c| c.is_element()) {
-            children.push(build_node(c, mode, decimals));
+            children.push(build_node(c, mode, decimals, preserve_browser_text_rows));
         }
-        if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
-            && n.is_element()
-            && n.tag_name().name() == "text"
-            && is_architecture_diagram(n)
+        if preserve_browser_text_rows
+            && n.tag_name().name() == "tspan"
+            && n.attribute("class").is_some_and(|class| {
+                class
+                    .split_whitespace()
+                    .any(|token| token == "text-outer-tspan")
+            })
         {
-            // Mermaid's `createText()` emits `<text><tspan>...</tspan>...</text>` where the number
-            // of `tspan` lines depends on runtime font measurement and layout geometry (e.g. edge
-            // label width derived from endpoint distance). In parity comparisons we treat this as
-            // layout-dependent noise for Architecture diagrams to avoid spurious DOM diffs.
-            children.clear();
+            let raw = n
+                .descendants()
+                .filter(|descendant| descendant.is_text())
+                .filter_map(|descendant| descendant.text())
+                .collect::<String>();
+            text = normalize_text_node_text(&raw);
         }
     }
 
@@ -1333,14 +1336,104 @@ pub(crate) fn normalize_xml_entities(svg: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
-pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
+fn dom_signature_with_browser_text_rows(
+    svg: &str,
+    mode: DomMode,
+    decimals: u32,
+    preserve_browser_text_rows: bool,
+) -> Result<SvgDomNode, String> {
     let svg = normalize_xml_entities(svg);
     let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|e| e.to_string())?;
     let root = doc
         .descendants()
         .find(|n| n.has_tag_name("svg"))
         .ok_or_else(|| "missing <svg> root".to_string())?;
-    Ok(build_node(root, mode, decimals))
+    Ok(build_node(root, mode, decimals, preserve_browser_text_rows))
+}
+
+pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
+    dom_signature_with_browser_text_rows(svg, mode, decimals, false)
+}
+
+fn normalize_browser_text_wrapping(node: &mut SvgDomNode) {
+    for child in &mut node.children {
+        normalize_browser_text_wrapping(child);
+    }
+
+    if node.name != "text" || node.children.is_empty() {
+        return;
+    }
+
+    let is_generated_row = |child: &SvgDomNode| {
+        child.name == "tspan"
+            && child.attrs.get("class").is_some_and(|class| {
+                class
+                    .split_whitespace()
+                    .any(|token| token == "text-outer-tspan")
+            })
+    };
+    if !node.children.iter().all(is_generated_row) {
+        return;
+    }
+
+    // Row boundaries are safe to remove only when doing so preserves the exact normalized text.
+    // A boundary between `Hello` and `world` cannot prove whether the source contained a space, so
+    // whitespace remains semantic and that browser-dependent case stays a bounded residual.
+    let text = node
+        .children
+        .iter()
+        .filter_map(|child| child.text.as_deref())
+        .collect::<String>();
+    node.children = vec![SvgDomNode {
+        name: "tspan".to_string(),
+        attrs: [("class".to_string(), "text-outer-tspan".to_string())].into(),
+        text: (!text.is_empty()).then_some(text),
+        children: Vec::new(),
+    }];
+}
+
+fn normalize_browser_text_length(node: &mut SvgDomNode) {
+    for child in &mut node.children {
+        normalize_browser_text_length(child);
+    }
+
+    if node.name == "text"
+        && let Some(value) = node.attrs.get_mut("textLength")
+    {
+        *value = "<browser-text-length>".to_string();
+    }
+}
+
+pub(crate) fn dom_signature_for_comparison(
+    svg: &str,
+    profile: DomComparisonProfile,
+    decimals: u32,
+) -> Result<SvgDomNode, String> {
+    let mut signature = dom_signature_with_browser_text_rows(
+        svg,
+        profile.descendants(),
+        decimals,
+        profile.normalizes_browser_text_wrapping(),
+    )?;
+    if profile.normalizes_browser_text_wrapping() {
+        normalize_browser_text_wrapping(&mut signature);
+    }
+    if profile.normalizes_browser_text_length() {
+        normalize_browser_text_length(&mut signature);
+    }
+    if !profile.compares_root_viewport() {
+        return Ok(signature);
+    }
+
+    let root_signature = dom_signature(svg, DomMode::ParityRoot, decimals)?;
+    for key in ["style", "viewBox", "width", "height"] {
+        if let Some(value) = root_signature.attrs.get(key) {
+            signature.attrs.insert(key.to_string(), value.clone());
+        } else {
+            signature.attrs.remove(key);
+        }
+    }
+    Ok(signature)
 }
 
 fn escape_xml_text(s: &str) -> String {
@@ -1541,34 +1634,56 @@ pub(crate) fn format_dom_diffs(differences: &[String]) -> Option<String> {
     ))
 }
 
+#[cfg(test)]
 pub(crate) const PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER: &str =
     "scope=parity-normalized-descendants-match";
+#[cfg(test)]
 pub(crate) const PARITY_NORMALIZED_DESCENDANTS_DIFFER_MARKER: &str =
     "scope=parity-normalized-descendants-differ";
+#[cfg(test)]
+pub(crate) const STRUCTURE_NORMALIZED_DESCENDANTS_MATCH_MARKER: &str =
+    "scope=structure-normalized-descendants-match";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ParityRootMismatch {
     NormalizedDescendantsMatch {
+        descendants: DomMode,
         detail: String,
     },
     NormalizedDescendantsDiffer {
+        descendants: DomMode,
         detail: String,
         root_viewport_also_differs: bool,
     },
 }
 
+fn descendant_scope(mode: DomMode, matches: bool) -> String {
+    let mode = match mode {
+        DomMode::Strict => "strict",
+        DomMode::Structure => "structure",
+        DomMode::Parity | DomMode::ParityRoot => "parity",
+    };
+    let outcome = if matches { "match" } else { "differ" };
+    format!("scope={mode}-normalized-descendants-{outcome}")
+}
+
 impl fmt::Display for ParityRootMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NormalizedDescendantsMatch { detail } => {
-                write!(f, "{PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER}; {detail}")
+            Self::NormalizedDescendantsMatch {
+                descendants,
+                detail,
+            } => {
+                write!(f, "{}; {detail}", descendant_scope(*descendants, true))
             }
             Self::NormalizedDescendantsDiffer {
+                descendants,
                 detail,
                 root_viewport_also_differs,
             } => write!(
                 f,
-                "{PARITY_NORMALIZED_DESCENDANTS_DIFFER_MARKER}; root-viewport-also-differs={root_viewport_also_differs}; {detail}"
+                "{}; root-viewport-also-differs={root_viewport_also_differs}; {detail}",
+                descendant_scope(*descendants, false)
             ),
         }
     }
@@ -1587,11 +1702,12 @@ fn root_viewport_attrs_differ(upstream: &SvgDomNode, local: &SvgDomNode) -> bool
 /// `Parity` mode therefore reveals whether a root mismatch was hiding a parity-visible DOM
 /// regression while leaving both modes' tolerances unchanged. A descendant match here is only a
 /// match after `Parity` normalization; it does not claim that raw descendant geometry is equal.
-pub(crate) fn diagnose_parity_root_mismatch(
+pub(crate) fn diagnose_root_viewport_mismatch(
     upstream_svg: &str,
     local_svg: &str,
     upstream: &SvgDomNode,
     local: &SvgDomNode,
+    profile: DomComparisonProfile,
     decimals: u32,
 ) -> Result<Option<ParityRootMismatch>, String> {
     if upstream == local {
@@ -1600,13 +1716,16 @@ pub(crate) fn diagnose_parity_root_mismatch(
 
     let primary_detail = format_dom_diffs(&dom_diffs(upstream, local))
         .ok_or_else(|| "parity-root signatures differ without a diagnostic".to_string())?;
-    let upstream_without_root = dom_signature(upstream_svg, DomMode::Parity, decimals)
-        .map_err(|err| format!("upstream parity fallback parse failed: {err}"))?;
-    let local_without_root = dom_signature(local_svg, DomMode::Parity, decimals)
-        .map_err(|err| format!("local parity fallback parse failed: {err}"))?;
+    let descendant_profile = profile.without_root_viewport();
+    let upstream_without_root =
+        dom_signature_for_comparison(upstream_svg, descendant_profile, decimals)
+            .map_err(|err| format!("upstream descendant fallback parse failed: {err}"))?;
+    let local_without_root = dom_signature_for_comparison(local_svg, descendant_profile, decimals)
+        .map_err(|err| format!("local descendant fallback parse failed: {err}"))?;
 
     if upstream_without_root == local_without_root {
         return Ok(Some(ParityRootMismatch::NormalizedDescendantsMatch {
+            descendants: profile.descendants(),
             detail: primary_detail,
         }));
     }
@@ -1614,6 +1733,7 @@ pub(crate) fn diagnose_parity_root_mismatch(
     let detail = format_dom_diffs(&dom_diffs(&upstream_without_root, &local_without_root))
         .ok_or_else(|| "parity signatures differ without a diagnostic".to_string())?;
     Ok(Some(ParityRootMismatch::NormalizedDescendantsDiffer {
+        descendants: profile.descendants(),
         detail,
         root_viewport_also_differs: root_viewport_attrs_differ(upstream, local),
     }))
@@ -1705,7 +1825,7 @@ mod tests {
         assert_eq!(dom.attrs.get("width").map(|s| s.as_str()), Some("100%"));
         assert_eq!(
             dom.attrs.get("viewBox").map(|s| s.as_str()),
-            Some("<n> <n> 600 406")
+            Some("0 -5.976 600 405.976")
         );
         assert_eq!(
             dom.attrs.get("style").map(|s| s.as_str()),
@@ -1714,44 +1834,53 @@ mod tests {
     }
 
     #[test]
-    fn parity_root_snaps_svg_root_style_max_width() {
+    fn parity_root_keeps_distinct_svg_root_style_max_widths() {
         let a = r#"<svg width="100%" viewBox="0 0 560.391 10" style="max-width: 560.391px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let b = r#"<svg width="100%" viewBox="0 0 560.375 10" style="max-width: 560.375px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
         let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
-        assert_eq!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
+        assert_ne!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
         assert_eq!(
             dom_a.attrs.get("style").map(|s| s.as_str()),
-            Some("max-width: 560.25px; background-color: white;")
+            Some("max-width: 560.391px; background-color: white;")
+        );
+        assert_eq!(
+            dom_b.attrs.get("style").map(|s| s.as_str()),
+            Some("max-width: 560.375px; background-color: white;")
         );
     }
 
     #[test]
-    fn parity_root_snaps_svg_root_style_max_width_is_midpoint_stable() {
-        // Values that straddle the midpoint between steps should still normalize to the same
-        // signature to avoid platform-specific CI failures.
+    fn parity_root_does_not_hide_midpoint_straddling_widths() {
         let a = r#"<svg width="100%" viewBox="0 0 502.172 10" style="max-width: 502.172px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let b = r#"<svg width="100%" viewBox="0 0 502.188 10" style="max-width: 502.188px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
         let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
-        assert_eq!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
-        assert_eq!(
-            dom_a.attrs.get("style").map(|s| s.as_str()),
-            Some("max-width: 502.25px; background-color: white;")
-        );
+        assert_ne!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
     }
 
     #[test]
-    fn parity_root_snaps_svg_root_viewbox_numbers() {
+    fn parity_root_keeps_distinct_svg_root_viewbox_numbers() {
         let a = r#"<svg width="100%" viewBox="0 0 560.391 10.016" style="max-width: 560.391px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let b = r#"<svg width="100%" viewBox="0 0 560.375 10" style="max-width: 560.375px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
         let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
-        assert_eq!(dom_a.attrs.get("viewBox"), dom_b.attrs.get("viewBox"));
+        assert_ne!(dom_a.attrs.get("viewBox"), dom_b.attrs.get("viewBox"));
         assert_eq!(
             dom_a.attrs.get("viewBox").map(|s| s.as_str()),
-            Some("<n> <n> 560.25 10")
+            Some("0 0 560.391 10.016")
         );
+    }
+
+    #[test]
+    fn parity_root_keeps_distinct_svg_root_viewbox_origins() {
+        let a = r#"<svg viewBox="-1.25 -2.5 100 100"/>"#;
+        let b = r#"<svg viewBox="-1 -2.5 100 100"/>"#;
+
+        let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
+        let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
+
+        assert_ne!(dom_a.attrs.get("viewBox"), dom_b.attrs.get("viewBox"));
     }
 
     #[test]
@@ -1761,10 +1890,16 @@ mod tests {
         let upstream_root = dom_signature(upstream, DomMode::ParityRoot, 3).unwrap();
         let local_root = dom_signature(local, DomMode::ParityRoot, 3).unwrap();
 
-        let mismatch =
-            diagnose_parity_root_mismatch(upstream, local, &upstream_root, &local_root, 3)
-                .unwrap()
-                .expect("root viewport should differ");
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_root,
+            &local_root,
+            DomComparisonProfile::from_mode(DomMode::ParityRoot),
+            3,
+        )
+        .unwrap()
+        .expect("root viewport should differ");
 
         assert!(matches!(
             &mismatch,
@@ -1782,10 +1917,16 @@ mod tests {
         let upstream_root = dom_signature(upstream, DomMode::ParityRoot, 3).unwrap();
         let local_root = dom_signature(local, DomMode::ParityRoot, 3).unwrap();
 
-        let mismatch =
-            diagnose_parity_root_mismatch(upstream, local, &upstream_root, &local_root, 3)
-                .unwrap()
-                .expect("root viewport should differ");
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_root,
+            &local_root,
+            DomComparisonProfile::from_mode(DomMode::ParityRoot),
+            3,
+        )
+        .unwrap()
+        .expect("root viewport should differ");
 
         assert!(matches!(
             mismatch,
@@ -1800,10 +1941,16 @@ mod tests {
         let upstream_root = dom_signature(upstream, DomMode::ParityRoot, 3).unwrap();
         let local_root = dom_signature(local, DomMode::ParityRoot, 3).unwrap();
 
-        let mismatch =
-            diagnose_parity_root_mismatch(upstream, local, &upstream_root, &local_root, 3)
-                .unwrap()
-                .expect("root and subtree should differ");
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_root,
+            &local_root,
+            DomComparisonProfile::from_mode(DomMode::ParityRoot),
+            3,
+        )
+        .unwrap()
+        .expect("root and subtree should differ");
 
         assert!(matches!(
             &mismatch,
@@ -1817,6 +1964,39 @@ mod tests {
         assert!(rendered.contains("root-viewport-also-differs=true"));
         assert!(rendered.contains("svg/g[0]: attr `transform` mismatch"));
         assert!(!rendered.contains("max-width: 100px"));
+    }
+
+    #[test]
+    fn structure_root_diagnosis_reports_its_effective_descendant_scope() {
+        let upstream = r#"<svg viewBox="0 0 100 100"><path d="M 0 0 L 10 10"/></svg>"#;
+        let local = r#"<svg viewBox="0 0 120 100"><path d="M 5 5 L 20 20"/></svg>"#;
+        let profile = DomComparisonProfile::with_root_viewport(DomMode::Structure);
+        let upstream_root = dom_signature_for_comparison(upstream, profile, 3).unwrap();
+        let local_root = dom_signature_for_comparison(local, profile, 3).unwrap();
+
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_root,
+            &local_root,
+            profile,
+            3,
+        )
+        .unwrap()
+        .expect("root viewport should differ");
+
+        assert!(matches!(
+            &mismatch,
+            ParityRootMismatch::NormalizedDescendantsMatch {
+                descendants: DomMode::Structure,
+                ..
+            }
+        ));
+        assert!(
+            mismatch
+                .to_string()
+                .contains(STRUCTURE_NORMALIZED_DESCENDANTS_MATCH_MARKER)
+        );
     }
 
     #[test]
@@ -1873,6 +2053,173 @@ mod tests {
             Some("font-size:18px")
         );
         assert_ne!(dom_a, dom_b);
+    }
+
+    #[test]
+    fn evidence_profile_normalizes_only_generated_browser_text_rows() {
+        let one_row = r#"<svg><text><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">FontSizeSvgProbe</tspan></tspan></text></svg>"#;
+        let two_rows = r#"<svg><text><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">FontSizeSvgProb</tspan></tspan><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">e</tspan></tspan></text></svg>"#;
+        let changed_text = r#"<svg><text><tspan class="text-outer-tspan row" x="0"><tspan class="text-inner-tspan">DifferentLabel</tspan></tspan></text></svg>"#;
+
+        assert_ne!(
+            dom_signature(one_row, DomMode::Parity, 3).unwrap(),
+            dom_signature(two_rows, DomMode::Parity, 3).unwrap()
+        );
+
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+        assert_eq!(
+            dom_signature_for_comparison(one_row, profile, 3).unwrap(),
+            dom_signature_for_comparison(two_rows, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(one_row, profile, 3).unwrap(),
+            dom_signature_for_comparison(changed_text, profile, 3).unwrap()
+        );
+
+        let strict = DomComparisonProfile::from_mode(DomMode::Strict)
+            .with_browser_text_wrapping_normalized();
+        assert!(!strict.normalizes_browser_text_wrapping());
+        assert_ne!(
+            dom_signature_for_comparison(one_row, strict, 3).unwrap(),
+            dom_signature_for_comparison(two_rows, strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn browser_text_profile_preserves_real_text_and_normalizes_formatting_whitespace() {
+        let alpha = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Alpha</tspan></tspan></text></svg>"#;
+        let alpha_with_formatting_whitespace = r#"<svg>
+  <text>
+    <tspan class="text-outer-tspan row">
+      <tspan class="text-inner-tspan">
+        Alpha
+      </tspan>
+    </tspan>
+  </text>
+</svg>"#;
+        let beta = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Beta</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+
+        assert_eq!(
+            dom_signature_for_comparison(alpha, profile, 3).unwrap(),
+            dom_signature_for_comparison(alpha_with_formatting_whitespace, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(alpha, profile, 3).unwrap(),
+            dom_signature_for_comparison(beta, profile, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn browser_text_profile_preserves_architecture_label_content() {
+        let alpha = r#"<svg aria-roledescription="architecture"><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Alpha</tspan></tspan></text></svg>"#;
+        let beta = r#"<svg aria-roledescription="architecture"><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Beta</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+
+        assert_ne!(
+            dom_signature_for_comparison(alpha, profile, 3).unwrap(),
+            dom_signature_for_comparison(beta, profile, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn browser_text_profile_preserves_ambiguous_word_boundary_whitespace() {
+        let spaced = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Hello</tspan><tspan class="text-inner-tspan"> world</tspan></tspan></text></svg>"#;
+        let unspaced = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Helloworld</tspan></tspan></text></svg>"#;
+        let two_rows = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Hello</tspan></tspan><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">world</tspan></tspan></text></svg>"#;
+        let changed_word = r#"<svg><text><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">Goodbye</tspan></tspan><tspan class="text-outer-tspan row"><tspan class="text-inner-tspan">world</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+
+        assert_ne!(
+            dom_signature_for_comparison(spaced, profile, 3).unwrap(),
+            dom_signature_for_comparison(two_rows, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(spaced, profile, 3).unwrap(),
+            dom_signature_for_comparison(unspaced, profile, 3).unwrap()
+        );
+        assert_eq!(
+            dom_signature_for_comparison(unspaced, profile, 3).unwrap(),
+            dom_signature_for_comparison(two_rows, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(unspaced, profile, 3).unwrap(),
+            dom_signature_for_comparison(changed_word, profile, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn browser_text_profile_preserves_non_row_tspan_structure() {
+        let generated = r#"<svg><text><tspan class="text-outer-tspan row"><tspan>Label</tspan></tspan></text></svg>"#;
+        let authored =
+            r#"<svg><text><tspan class="authored"><tspan>Label</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::Parity)
+            .with_browser_text_wrapping_normalized();
+
+        assert_ne!(
+            dom_signature_for_comparison(generated, profile, 3).unwrap(),
+            dom_signature_for_comparison(authored, profile, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn evidence_profile_normalizes_only_present_browser_text_length_values() {
+        let measured_a = r#"<svg><text class="type" textLength="51">person</text></svg>"#;
+        let measured_b = r#"<svg><text class="type" textLength="52">person</text></svg>"#;
+        let missing = r#"<svg><text class="type">person</text></svg>"#;
+        let changed_class = r#"<svg><text class="different" textLength="52">person</text></svg>"#;
+
+        let profile =
+            DomComparisonProfile::from_mode(DomMode::Parity).with_browser_text_length_normalized();
+        assert_eq!(
+            dom_signature_for_comparison(measured_a, profile, 3).unwrap(),
+            dom_signature_for_comparison(measured_b, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(measured_a, profile, 3).unwrap(),
+            dom_signature_for_comparison(missing, profile, 3).unwrap()
+        );
+        assert_ne!(
+            dom_signature_for_comparison(measured_a, profile, 3).unwrap(),
+            dom_signature_for_comparison(changed_class, profile, 3).unwrap()
+        );
+
+        let strict =
+            DomComparisonProfile::from_mode(DomMode::Strict).with_browser_text_length_normalized();
+        assert!(!strict.normalizes_browser_text_length());
+        assert_ne!(
+            dom_signature_for_comparison(measured_a, strict, 3).unwrap(),
+            dom_signature_for_comparison(measured_b, strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn root_diagnosis_retains_browser_text_profile_for_descendants() {
+        let upstream = r#"<svg viewBox="0 0 100 100"><text><tspan class="text-outer-tspan row"><tspan>LongLabe</tspan></tspan><tspan class="text-outer-tspan row"><tspan>l</tspan></tspan></text></svg>"#;
+        let local = r#"<svg viewBox="0 0 101 100"><text><tspan class="text-outer-tspan row"><tspan>LongLabel</tspan></tspan></text></svg>"#;
+        let profile = DomComparisonProfile::from_mode(DomMode::ParityRoot)
+            .with_browser_text_wrapping_normalized();
+        let upstream_signature = dom_signature_for_comparison(upstream, profile, 3).unwrap();
+        let local_signature = dom_signature_for_comparison(local, profile, 3).unwrap();
+
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_signature,
+            &local_signature,
+            profile,
+            3,
+        )
+        .unwrap()
+        .expect("root viewport should differ");
+        assert!(matches!(
+            mismatch,
+            ParityRootMismatch::NormalizedDescendantsMatch { .. }
+        ));
     }
 
     #[test]
@@ -2057,6 +2404,49 @@ mod tests {
     }
 
     #[test]
+    fn structure_and_parity_fail_closed_on_vertical_timeline_marker_reference_semantics() {
+        let upstream = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs><g><path id="undefined-node-7" class="node-bkg node-undefined"/></g></svg>"#;
+        let local = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#timeline-arrowhead)"/></g><defs><marker id="timeline-arrowhead"/></defs><g><path id="timeline-node-7" class="node-bkg node-undefined"/></g></svg>"#;
+
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_ne!(
+                dom_signature(upstream, mode, 3).unwrap(),
+                dom_signature(local, mode, 3).unwrap()
+            );
+        }
+        assert_ne!(
+            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
+            dom_signature(local, DomMode::Strict, 3).unwrap()
+        );
+    }
+
+    #[test]
+    fn structure_and_parity_normalize_only_vertical_timeline_broken_node_ids() {
+        let upstream = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs><g><path id="undefined-node-7" class="node-bkg node-undefined"/></g></svg>"#;
+        let corrected_node_id = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="430" y1="18" x2="430" y2="495" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs><g><path id="timeline-node-7" class="node-bkg node-undefined"/></g></svg>"#;
+
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_eq!(
+                dom_signature(upstream, mode, 3).unwrap(),
+                dom_signature(corrected_node_id, mode, 3).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn structure_and_parity_preserve_horizontal_timeline_ids() {
+        let left = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="18" y1="430" x2="495" y2="430" stroke-width="4" marker-end="url(#arrowhead)"/></g><defs><marker id="undefined-arrowhead"/></defs></svg>"#;
+        let right = r#"<svg id="timeline" aria-roledescription="timeline"><g class="lineWrapper"><line x1="18" y1="430" x2="495" y2="430" stroke-width="4" marker-end="url(#timeline-arrowhead)"/></g><defs><marker id="timeline-arrowhead"/></defs></svg>"#;
+
+        for mode in [DomMode::Structure, DomMode::Parity, DomMode::ParityRoot] {
+            assert_ne!(
+                dom_signature(left, mode, 3).unwrap(),
+                dom_signature(right, mode, 3).unwrap()
+            );
+        }
+    }
+
+    #[test]
     fn parity_normalizes_architecture_service_background_path_spelling() {
         let old_path = r#"<svg aria-roledescription="architecture"><g class="architecture-services"><g class="architecture-service"><g><path class="node-bkg" id="node-api" d="M0 80 v-80 q0,-5 5,-5 h80 q5,0 5,5 v80 H0 Z"/></g></g></g></svg>"#;
         let new_path = r#"<svg aria-roledescription="architecture"><g class="architecture-services"><g class="architecture-service"><g><path class="node-bkg" id="node-api" d="M0,80 V5 Q0,0 5,0 H75 Q80,0 80,5 V80 Z"/></g></g></g></svg>"#;
@@ -2065,22 +2455,6 @@ mod tests {
         let new_dom = dom_signature(new_path, DomMode::Parity, 3).unwrap();
 
         assert_eq!(old_dom, new_dom);
-    }
-
-    #[test]
-    fn parity_normalizes_quadrantchart_invalid_default_point_color() {
-        let upstream = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle cx="1" cy="2" r="5" fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
-        let local = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle cx="1" cy="2" r="5" fill="rgb(185, 185, 255)" stroke="rgb(185, 185, 255)"/></g></g></svg>"#;
-
-        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
-        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
-
-        assert_eq!(upstream_dom, local_dom);
-
-        let upstream_strict = dom_signature(upstream, DomMode::Strict, 3).unwrap();
-        let local_strict = dom_signature(local, DomMode::Strict, 3).unwrap();
-
-        assert_ne!(upstream_strict, local_strict);
     }
 
     #[test]
@@ -2101,5 +2475,19 @@ mod tests {
         assert_eq!(rect.attrs.get("y").map(|s| s.as_str()), Some("<n>"));
         assert_eq!(rect.attrs.get("width").map(|s| s.as_str()), Some("<n>"));
         assert_eq!(rect.attrs.get("height").map(|s| s.as_str()), Some("<n>"));
+    }
+
+    #[test]
+    fn parity_does_not_equate_invalid_quadrant_color_with_browser_computed_black() {
+        let raw_upstream = r#"<svg><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
+        let browser_materialized = r#"<svg><g class="data-points"><g class="data-point"><circle fill="rgb(0, 0, 0)" stroke="none"/></g></g></svg>"#;
+
+        let raw_dom = dom_signature(raw_upstream, DomMode::Parity, 3).unwrap();
+        let materialized_dom = dom_signature(browser_materialized, DomMode::Parity, 3).unwrap();
+
+        assert_ne!(
+            raw_dom, materialized_dom,
+            "raw/source parity must not use browser-computed color equivalence"
+        );
     }
 }

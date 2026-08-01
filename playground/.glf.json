@@ -1,0 +1,7 @@
+{
+  "exclude": ["/^@napi-rs\\/canvas-/"],
+  "replace": {
+    "cytoscape@3.34.0": "./public/THIRD_PARTY_LICENSES/cytoscape/LICENSE",
+    "dompurify@3.4.12": "./node_modules/dompurify/LICENSE"
+  }
+}

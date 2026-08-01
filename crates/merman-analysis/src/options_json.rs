@@ -1,45 +1,31 @@
-use crate::{
-    AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, DiagnosticSeverity,
-    configurable_rule_descriptor,
-};
+use crate::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, DiagnosticSeverity};
 use chrono::NaiveDate;
 use merman_core::MermaidConfig;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Map;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct AnalysisOptionsJson {
     pub fixed_today: Option<String>,
     pub fixed_local_offset_minutes: Option<i32>,
     pub site_config: Option<Value>,
-    pub parse: Option<ParseOptionsJson>,
     pub resources: Option<ResourceOptionsJson>,
     pub lint: Option<LintOptionsJson>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ParseOptionsJson {
-    pub suppress_errors: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ResourceOptionsJson {
-    pub profile: Option<String>,
-    pub max_source_bytes: Option<usize>,
-    pub max_svg_bytes: Option<usize>,
-    pub max_flowchart_nodes: Option<usize>,
-    pub max_flowchart_edges: Option<usize>,
-    pub max_flowchart_subgraphs: Option<usize>,
-    pub max_class_nodes: Option<usize>,
-    pub max_class_edges: Option<usize>,
-    pub max_class_namespaces: Option<usize>,
-    pub max_label_bytes: Option<usize>,
+    #[serde(default)]
+    pub limits: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LintOptionsJson {
     pub profile: Option<String>,
     #[serde(default)]
@@ -51,9 +37,83 @@ pub struct LintOptionsJson {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LintRuleSeverityOverrideJson {
     pub rule_id: String,
     pub severity: String,
+}
+
+// The shared root format is forward-compatible, while direct consumers of the public nested
+// schema types retain their strict unknown-field validation.
+#[derive(Deserialize)]
+struct PermissiveAnalysisOptionsJson {
+    fixed_today: Option<String>,
+    fixed_local_offset_minutes: Option<i32>,
+    site_config: Option<Value>,
+    resources: Option<ResourceOptionsJson>,
+    lint: Option<PermissiveLintOptionsJson>,
+}
+
+#[derive(Deserialize)]
+struct PermissiveLintOptionsJson {
+    profile: Option<String>,
+    #[serde(default)]
+    enable_rules: Vec<String>,
+    #[serde(default)]
+    disable_rules: Vec<String>,
+    #[serde(default)]
+    rule_severities: Vec<PermissiveLintRuleSeverityOverrideJson>,
+}
+
+#[derive(Deserialize)]
+struct PermissiveLintRuleSeverityOverrideJson {
+    rule_id: String,
+    severity: String,
+}
+
+impl<'de> Deserialize<'de> for AnalysisOptionsJson {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(PermissiveAnalysisOptionsJson::deserialize(deserializer)?.into())
+    }
+}
+
+impl From<PermissiveAnalysisOptionsJson> for AnalysisOptionsJson {
+    fn from(options: PermissiveAnalysisOptionsJson) -> Self {
+        Self {
+            fixed_today: options.fixed_today,
+            fixed_local_offset_minutes: options.fixed_local_offset_minutes,
+            site_config: options.site_config,
+            resources: options.resources,
+            lint: options.lint.map(Into::into),
+        }
+    }
+}
+
+impl From<PermissiveLintOptionsJson> for LintOptionsJson {
+    fn from(options: PermissiveLintOptionsJson) -> Self {
+        Self {
+            profile: options.profile,
+            enable_rules: options.enable_rules,
+            disable_rules: options.disable_rules,
+            rule_severities: options
+                .rule_severities
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<PermissiveLintRuleSeverityOverrideJson> for LintRuleSeverityOverrideJson {
+    fn from(override_: PermissiveLintRuleSeverityOverrideJson) -> Self {
+        Self {
+            rule_id: override_.rule_id,
+            severity: override_.severity,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +146,7 @@ pub fn analysis_options_from_json_value(
 pub fn analysis_options_json_from_json_value(
     value: &Value,
 ) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
+    reject_removed_analysis_parse_option(value)?;
     let options_value = analysis_options_root_value(value)?;
     serde_json::from_value(options_value.clone()).map_err(|err| {
         AnalysisOptionsJsonError::new(format!("invalid analysis options JSON: {err}"))
@@ -96,6 +157,12 @@ fn analysis_options_root_value(value: &Value) -> Result<&Value, AnalysisOptionsJ
     let Value::Object(map) = value else {
         return Ok(value);
     };
+
+    if map.contains_key("merman") && map.contains_key("analysis") {
+        return Err(AnalysisOptionsJsonError::new(
+            "options JSON must not contain both `merman` and `analysis` wrappers",
+        ));
+    }
 
     if analysis_option_keys_present(map) {
         if ["merman", "analysis"]
@@ -109,17 +176,12 @@ fn analysis_options_root_value(value: &Value) -> Result<&Value, AnalysisOptionsJ
         return Ok(value);
     }
 
-    let mut wrapped_keys = ["merman", "analysis"].into_iter().filter(|key| {
+    let wrapped_key = ["merman", "analysis"].into_iter().find(|key| {
         map.get(*key)
             .and_then(Value::as_object)
             .is_some_and(analysis_option_keys_present)
     });
-    if let Some(key) = wrapped_keys.next() {
-        if wrapped_keys.next().is_some() {
-            return Err(AnalysisOptionsJsonError::new(
-                "options JSON must not contain both `merman` and `analysis` wrappers with analysis options",
-            ));
-        }
+    if let Some(key) = wrapped_key {
         return Ok(map
             .get(key)
             .expect("checked key existence and object shape"));
@@ -133,7 +195,6 @@ fn analysis_option_keys_present(map: &Map<String, Value>) -> bool {
         "fixed_today",
         "fixed_local_offset_minutes",
         "site_config",
-        "parse",
         "resources",
         "lint",
     ]
@@ -141,46 +202,80 @@ fn analysis_option_keys_present(map: &Map<String, Value>) -> bool {
     .any(|key| map.contains_key(*key))
 }
 
+fn reject_removed_analysis_parse_option(value: &Value) -> Result<(), AnalysisOptionsJsonError> {
+    let Value::Object(map) = value else {
+        return Ok(());
+    };
+    let removed = map.contains_key("parse")
+        || ["merman", "analysis"].iter().any(|key| {
+            map.get(*key)
+                .and_then(Value::as_object)
+                .is_some_and(|options| options.contains_key("parse"))
+        });
+    if removed {
+        return Err(AnalysisOptionsJsonError::new(
+            "analysis option `parse` was removed; analysis always retains family parse failures",
+        ));
+    }
+    Ok(())
+}
+
 impl AnalysisOptionsJson {
     pub fn to_analysis_options(&self) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
+        let today = self.fixed_today()?;
+        let offset_minutes = self.fixed_local_offset_minutes()?;
         let mut analysis = AnalysisOptions::default()
-            .with_parse_options(self.parse_options())
-            .with_max_source_bytes(self.max_source_bytes()?);
+            .with_max_source_bytes(self.max_source_bytes()?)
+            .with_max_document_diagrams(self.max_document_diagrams()?);
 
         if let Some(site_config) = self.site_config()? {
             analysis = analysis.with_site_config(site_config);
         }
-        if let Some(today) = self.fixed_today()? {
-            analysis = analysis.with_fixed_today(Some(today));
+        if let Some(offset_minutes) = offset_minutes {
+            analysis = analysis
+                .try_with_fixed_local_offset_minutes(offset_minutes)
+                .map_err(|error| AnalysisOptionsJsonError::new(error.to_string()))?;
         }
-        if let Some(offset_minutes) = self.fixed_local_offset_minutes()? {
-            analysis = analysis.with_fixed_local_offset_minutes(Some(offset_minutes));
+        if let Some(today) = today {
+            analysis = analysis
+                .try_with_fixed_today_at_local_midnight(today)
+                .map_err(|error| AnalysisOptionsJsonError::new(error.to_string()))?;
         }
 
         analysis = analysis.with_rule_config(self.rule_config()?);
         Ok(analysis)
     }
 
-    pub fn parse_options(&self) -> merman_core::ParseOptions {
-        if self
-            .parse
-            .as_ref()
-            .and_then(|parse| parse.suppress_errors)
-            .unwrap_or(false)
-        {
-            merman_core::ParseOptions::lenient()
-        } else {
-            merman_core::ParseOptions::strict()
-        }
+    pub fn max_source_bytes(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
+        self.resource_limit(merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str())
     }
 
-    pub fn max_source_bytes(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
-        let max_source_bytes = self
-            .resources
-            .as_ref()
-            .and_then(|resources| resources.max_source_bytes)
-            .filter(|max_source_bytes| *max_source_bytes > 0);
-        Ok(max_source_bytes)
+    pub fn max_document_diagrams(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
+        self.resource_limit(crate::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
+    }
+
+    fn resource_limit(&self, limit_id: &str) -> Result<Option<usize>, AnalysisOptionsJsonError> {
+        let Some(resources) = self.resources.as_ref() else {
+            return Ok(None);
+        };
+        if let Some(unknown) = resources
+            .limits
+            .keys()
+            .find(|id| analysis_resource_limit_minimum_value(id).is_none())
+        {
+            return Err(AnalysisOptionsJsonError::new(format!(
+                "unknown analysis resource limit id: {unknown}"
+            )));
+        }
+        let limit = resources.limits.get(limit_id).copied();
+        let minimum_value = analysis_resource_limit_minimum_value(limit_id)
+            .expect("analysis resource limit id must be validated by its owner descriptor");
+        if limit.is_some_and(|value| value < minimum_value) {
+            return Err(AnalysisOptionsJsonError::new(format!(
+                "resources.limits.{limit_id} must be at least {minimum_value}"
+            )));
+        }
+        Ok(limit)
     }
 
     pub fn rule_config(&self) -> Result<AnalysisRuleConfig, AnalysisOptionsJsonError> {
@@ -199,8 +294,9 @@ impl AnalysisOptionsJson {
                     "lint.enable_rules entries must not be empty",
                 ));
             }
-            validate_configurable_rule_id(rule_id, "lint.enable_rules")?;
-            config.enable_rule(rule_id.clone());
+            config
+                .enable_rule(rule_id.clone())
+                .map_err(|error| rule_config_error("lint.enable_rules", error))?;
         }
 
         for rule_id in &lint.disable_rules {
@@ -209,8 +305,9 @@ impl AnalysisOptionsJson {
                     "lint.disable_rules entries must not be empty",
                 ));
             }
-            validate_configurable_rule_id(rule_id, "lint.disable_rules")?;
-            config.disable_rule(rule_id.clone());
+            config
+                .disable_rule(rule_id.clone())
+                .map_err(|error| rule_config_error("lint.disable_rules", error))?;
         }
 
         for override_ in &lint.rule_severities {
@@ -219,11 +316,12 @@ impl AnalysisOptionsJson {
                     "lint.rule_severities.rule_id must not be empty",
                 ));
             }
-            validate_configurable_rule_id(&override_.rule_id, "lint.rule_severities.rule_id")?;
-            config.set_rule_severity(
-                override_.rule_id.clone(),
-                parse_lint_severity(&override_.severity)?,
-            );
+            config
+                .set_rule_severity(
+                    override_.rule_id.clone(),
+                    parse_lint_severity(&override_.severity)?,
+                )
+                .map_err(|error| rule_config_error("lint.rule_severities.rule_id", error))?;
         }
 
         Ok(config)
@@ -269,6 +367,17 @@ impl AnalysisOptionsJson {
     }
 }
 
+fn analysis_resource_limit_minimum_value(limit_id: &str) -> Option<usize> {
+    let source = merman_core::resources::InputResourceLimitId::MaxSourceBytes.descriptor();
+    if limit_id == source.stable_id {
+        return Some(source.minimum_value);
+    }
+    crate::ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
+        .iter()
+        .find(|descriptor| descriptor.stable_id == limit_id)
+        .map(|descriptor| descriptor.minimum_value)
+}
+
 fn parse_lint_profile(value: &str) -> Result<AnalysisRuleProfile, AnalysisOptionsJsonError> {
     match value.trim().to_ascii_lowercase().as_str() {
         "core" => Ok(AnalysisRuleProfile::Core),
@@ -292,22 +401,55 @@ fn parse_lint_severity(value: &str) -> Result<DiagnosticSeverity, AnalysisOption
     }
 }
 
-fn validate_configurable_rule_id(
-    rule_id: &str,
+fn rule_config_error(
     field: &str,
-) -> Result<(), AnalysisOptionsJsonError> {
-    if configurable_rule_descriptor(rule_id).is_none() {
-        return Err(AnalysisOptionsJsonError::new(format!(
-            "{field} entry `{rule_id}` must reference a configurable analysis rule id",
-        )));
-    }
-    Ok(())
+    error: crate::AnalysisRuleConfigError,
+) -> AnalysisOptionsJsonError {
+    AnalysisOptionsJsonError::new(format!(
+        "{field} entry `{}` must reference a configurable analysis rule id",
+        error.rule_id()
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{rule_descriptors, rules::RESOURCE_LIMIT_RULE_ID};
+
+    #[test]
+    fn shared_analysis_options_json_keeps_utc_without_an_explicit_timezone() {
+        let options = AnalysisOptionsJson {
+            fixed_today: Some("2026-01-15".to_string()),
+            ..Default::default()
+        };
+
+        let analysis = options.to_analysis_options().unwrap();
+        let context = analysis.runtime_policy().begin_operation().unwrap();
+
+        assert_eq!(
+            context.today_local(),
+            NaiveDate::from_ymd_opt(2026, 1, 15).unwrap()
+        );
+        assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(0));
+        assert_eq!(
+            context.clock_source(),
+            merman_core::runtime::RuntimeValueSource::Fixed
+        );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_rejects_unrepresentable_fixed_local_midnight() {
+        let options = AnalysisOptionsJson {
+            fixed_today: Some("-262143-01-01".to_string()),
+            fixed_local_offset_minutes: Some(1439),
+            ..Default::default()
+        };
+
+        let error = options
+            .to_analysis_options()
+            .expect_err("boundary local midnight must return an error");
+        assert!(error.to_string().contains("fixed_today local datetime"));
+    }
 
     #[test]
     fn shared_analysis_options_json_honors_lint_configuration() {
@@ -337,13 +479,88 @@ mod tests {
             .find(|descriptor| descriptor.id == "merman.authoring.config.prefer_frontmatter_config")
             .unwrap();
 
-        assert_eq!(analysis.rule_config.profile(), AnalysisRuleProfile::Core);
-        assert!(!analysis.rule_config.is_rule_enabled(*duplicate_commit));
-        assert!(!analysis.rule_config.is_rule_enabled(*prefer_init));
-        assert!(!analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+        assert_eq!(analysis.rule_config().profile(), AnalysisRuleProfile::Core);
+        assert!(!analysis.rule_config().is_rule_enabled(*duplicate_commit));
+        assert!(!analysis.rule_config().is_rule_enabled(*prefer_init));
+        assert!(!analysis.rule_config().is_rule_enabled(*prefer_frontmatter));
         assert_eq!(
-            analysis.rule_config.severity_for(*prefer_init),
+            analysis.rule_config().severity_for(*prefer_init),
             DiagnosticSeverity::Hint
+        );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_ignores_future_lint_fields() {
+        let options = serde_json::json!({
+            "lint": {
+                "profile": "recommended",
+                "future_lint_option": { "enabled": true },
+                "rule_severities": [
+                    {
+                        "rule_id": "merman.parse.no_diagram",
+                        "severity": "hint",
+                        "future_override_option": "accepted"
+                    }
+                ]
+            }
+        });
+
+        let analysis = analysis_options_from_json_value(&options).unwrap();
+        let no_diagram = rule_descriptors()
+            .iter()
+            .find(|descriptor| descriptor.id == "merman.parse.no_diagram")
+            .unwrap();
+
+        assert_eq!(
+            analysis.rule_config().profile(),
+            AnalysisRuleProfile::Recommended
+        );
+        assert_eq!(
+            analysis.rule_config().severity_for(*no_diagram),
+            DiagnosticSeverity::Hint
+        );
+    }
+
+    #[test]
+    fn public_lint_json_types_reject_unknown_fields() {
+        let lint_error = serde_json::from_value::<LintOptionsJson>(serde_json::json!({
+            "profile": "core",
+            "future_lint_option": true
+        }))
+        .expect_err("the public lint schema must reject unknown fields");
+        assert!(
+            lint_error
+                .to_string()
+                .contains("unknown field `future_lint_option`")
+        );
+        let override_error =
+            serde_json::from_value::<LintRuleSeverityOverrideJson>(serde_json::json!({
+                "rule_id": "merman.parse.no_diagram",
+                "severity": "hint",
+                "future_override_option": true
+            }))
+            .expect_err("the public severity override schema must reject unknown fields");
+        assert!(
+            override_error
+                .to_string()
+                .contains("unknown field `future_override_option`")
+        );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_keeps_resource_schema_strict() {
+        let error = analysis_options_json_from_json_value(&serde_json::json!({
+            "resources": {
+                "limits": {},
+                "future_resource_option": true
+            }
+        }))
+        .expect_err("resource options remain a versioned strict schema");
+
+        assert!(
+            error
+                .to_string()
+                .contains("unknown field `future_resource_option`")
         );
     }
 
@@ -365,11 +582,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            analysis.rule_config.profile(),
+            analysis.rule_config().profile(),
             AnalysisRuleProfile::Recommended
         );
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_init));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_frontmatter));
 
         let wrapped = serde_json::json!({
             "lint": {
@@ -381,9 +598,9 @@ mod tests {
         });
         let analysis = analysis_options_from_json_value(&wrapped).unwrap();
 
-        assert_eq!(analysis.rule_config.profile(), AnalysisRuleProfile::Core);
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+        assert_eq!(analysis.rule_config().profile(), AnalysisRuleProfile::Core);
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_init));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_frontmatter));
     }
 
     #[test]
@@ -506,7 +723,7 @@ mod tests {
             .find(|descriptor| descriptor.id == "merman.git_graph.duplicate_commit_id")
             .unwrap();
 
-        assert!(!analysis.rule_config.is_rule_enabled(*duplicate_commit));
+        assert!(!analysis.rule_config().is_rule_enabled(*duplicate_commit));
 
         let wrapped = serde_json::json!({
             "analysis": {
@@ -532,77 +749,117 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            analysis.rule_config.profile(),
+            analysis.rule_config().profile(),
             AnalysisRuleProfile::Recommended
         );
         assert_eq!(
-            analysis.rule_config.severity_for(*prefer_init),
+            analysis.rule_config().severity_for(*prefer_init),
             DiagnosticSeverity::Warning
         );
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
-        assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_init));
+        assert!(analysis.rule_config().is_rule_enabled(*prefer_frontmatter));
     }
 
     #[test]
-    fn shared_analysis_options_json_treats_zero_source_limit_as_default() {
-        let zero = serde_json::json!({
-            "analysis": {
-                "resources": {
-                    "max_source_bytes": 0
+    fn shared_analysis_options_json_rejects_removed_parse_options() {
+        for options in [
+            serde_json::json!({
+                "parse": { "suppress_errors": true }
+            }),
+            serde_json::json!({
+                "analysis": {
+                    "parse": { "suppress_errors": true }
                 }
-            }
-        });
+            }),
+            serde_json::json!({
+                "merman": {
+                    "parse": { "suppress_errors": true }
+                }
+            }),
+        ] {
+            let err = analysis_options_from_json_value(&options).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("analysis option `parse` was removed"),
+                "unexpected error for {options}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn shared_analysis_options_json_applies_owner_minimum_resource_values() {
         let positive = serde_json::json!({
             "analysis": {
                 "resources": {
-                    "max_source_bytes": 1024
+                    "limits": {
+                        "max_source_bytes": 1024,
+                        "max_document_diagrams": 256
+                    }
                 }
             }
         });
 
+        let zero_source = serde_json::json!({
+            "analysis": { "resources": { "limits": { "max_source_bytes": 0 } } }
+        });
+        assert!(analysis_options_from_json_value(&zero_source).is_err());
+
+        let zero_document = serde_json::json!({
+            "analysis": { "resources": { "limits": { "max_document_diagrams": 0 } } }
+        });
         assert_eq!(
-            analysis_options_from_json_value(&zero)
+            analysis_options_from_json_value(&zero_document)
                 .unwrap()
-                .max_source_bytes,
-            None
+                .max_document_diagrams(),
+            Some(0)
         );
-        assert_eq!(
-            analysis_options_from_json_value(&positive)
-                .unwrap()
-                .max_source_bytes,
-            Some(1024)
+
+        let options = analysis_options_from_json_value(&positive).unwrap();
+        assert_eq!(options.max_source_bytes(), Some(1024));
+        assert_eq!(options.max_document_diagrams(), Some(256));
+
+        let unknown = serde_json::json!({
+            "resources": {
+                "limits": { "max_future_analysis_resource": 1 }
+            }
+        });
+        let error = analysis_options_from_json_value(&unknown).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unknown analysis resource limit id"),
+            "unexpected error: {error}"
         );
     }
 
     #[test]
     fn shared_analysis_options_json_rejects_two_namespaced_analysis_wrappers() {
-        let mixed = serde_json::json!({
-            "merman": {
-                "lint": {
-                    "profile": "recommended"
-                }
-            },
-            "analysis": {
-                "resources": {
-                    "max_source_bytes": 1024
-                }
-            }
-        });
+        for mixed in [
+            serde_json::json!({ "merman": {}, "analysis": {} }),
+            serde_json::json!({
+                "merman": { "fixed_today": "2025-01-01" },
+                "analysis": {}
+            }),
+            serde_json::json!({
+                "merman": {},
+                "analysis": { "fixed_today": "2025-01-01" }
+            }),
+        ] {
+            let err = analysis_options_from_json_value(&mixed).unwrap_err();
 
-        let err = analysis_options_from_json_value(&mixed).unwrap_err();
-
-        assert!(
-            err.to_string()
-                .contains("must not contain both `merman` and `analysis` wrappers"),
-            "unexpected error: {err}"
-        );
+            assert!(
+                err.to_string()
+                    .contains("must not contain both `merman` and `analysis` wrappers"),
+                "unexpected error: {err}"
+            );
+        }
     }
 
     #[test]
     fn shared_analysis_options_json_rejects_mixed_direct_and_namespaced_options() {
         let mixed = serde_json::json!({
             "resources": {
-                "max_source_bytes": 1024
+                "limits": { "max_source_bytes": 1024 }
             },
             "analysis": {
                 "lint": {

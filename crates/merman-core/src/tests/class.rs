@@ -15,13 +15,48 @@ cssClass "C1" styleClass
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
         .unwrap();
-    assert_eq!(res.meta.diagram_type, "classDiagram");
+    assert_eq!(res.meta.diagram_type, "class");
 
     let c1 = &res.model["classes"]["C1"];
     assert_eq!(c1["label"], json!("Class 1 with text label"));
     assert_eq!(c1["cssClasses"], json!("default styleClass"));
     assert_eq!(c1["annotations"][0], json!("interface"));
     assert_eq!(c1["members"][0]["displayText"], json!("member1"));
+}
+
+#[test]
+fn parse_diagram_class_supports_inline_annotation_after_class_identifier() {
+    let engine = Engine::new();
+    let text = "classDiagram\nclass Shape <<interface>>\n";
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        res.model["classes"]["Shape"]["annotations"],
+        json!(["interface"])
+    );
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("class", text)
+        .unwrap()
+        .expect("class editor facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "interface"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("class annotation")
+    }));
+
+    let with_members = "classDiagram\nclass Shape <<interface>> {\n  noOfVertices\n  draw()\n}\n";
+    let res = block_on(engine.parse_diagram(with_members, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+    let shape = &res.model["classes"]["Shape"];
+    assert_eq!(shape["annotations"], json!(["interface"]));
+    assert_eq!(shape["members"].as_array().unwrap().len(), 1);
+    assert_eq!(shape["methods"].as_array().unwrap().len(), 1);
 }
 
 #[test]
@@ -483,7 +518,7 @@ cssClass "User,Admin" service
 style User fill:#fff
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -696,7 +731,7 @@ fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
     let text =
         "classDiagram\nclass `123`\n`123` --> Service\nclick `123` href \"https://example.com\"\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -733,7 +768,7 @@ fn parse_class_editor_facts_preserve_click_call_callback_name_span_after_whitesp
     let engine = Engine::new();
     let text = "classDiagram\nclass Admin\nclick Admin call   open(userId)\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -749,11 +784,85 @@ fn parse_class_editor_facts_preserve_click_call_callback_name_span_after_whitesp
 }
 
 #[test]
+fn parse_class_editor_facts_preserve_every_crlf_unicode_occurrence_and_payload_span() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "classDiagram-v2\r\n",
+        "namespace 公司 {\r\n",
+        "  class 顧客[\"客戶\"] {\r\n",
+        "    +查詢(id) 結果\r\n",
+        "  }\r\n",
+        "  note for 顧客 \"Primary customer\"\r\n",
+        "}\r\n",
+        "class 訂單\r\n",
+        "顧客 \"1\" *-- \"many\" 訂單 : owns 群組\r\n",
+        "note for 顧客 \"Important account\"\r\n",
+        "click 顧客 call open(customerId) \"Open customer\"\r\n",
+        "cssClass \"顧客,訂單\" service\r\n",
+        "style 顧客 fill:#fff\r\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
+        .unwrap()
+        .expect("Class editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    for name in ["顧客", "訂單"] {
+        let expected = text
+            .match_indices(name)
+            .map(|(start, value)| SourceSpan::new(start, start + value.len()))
+            .collect::<Vec<_>>();
+        let actual = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == name)
+            .map(|symbol| symbol.selection)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual, expected,
+            "Class lost or collapsed a {name:?} occurrence"
+        );
+    }
+
+    let payload = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing Class payload {name:?} ({detail})"))
+    };
+    for (name, detail) in [
+        ("客戶", "class display label"),
+        ("1", "class relation multiplicity"),
+        ("many", "class relation multiplicity"),
+        ("owns 群組", "class relation label"),
+        ("Primary customer", "class note"),
+        ("Important account", "class note"),
+        ("open", "class callback"),
+        ("customerId", "class callback args"),
+        ("Open customer", "class interaction string"),
+        ("fill:#fff", "class style"),
+    ] {
+        let start = text.find(name).unwrap();
+        assert_eq!(
+            payload(name, detail).selection,
+            SourceSpan::new(start, start + name.len()),
+            "Class payload {name:?} span drifted"
+        );
+    }
+}
+
+#[test]
 fn parse_class_editor_facts_record_expected_node_identifier_spans() {
     let engine = Engine::new();
     let text = "classDiagram\nclassDef service fill:#eee\n";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -768,7 +877,7 @@ fn parse_class_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "classDiagram\nclass User\nUser <|--";
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
@@ -780,24 +889,65 @@ fn parse_class_editor_facts_recovers_from_incomplete_input() {
 fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
     let engine = Engine::new();
     let text = "classDiagram\nclass User {\n  +name";
+    crate::diagrams::class::reset_class_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(text.len(), text.len()))
+    }));
+
+    crate::diagrams::class::reset_class_syntax_construction_count();
+    let error = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("strict Class parsing rejects an unterminated body");
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("unterminated Class body returned a non-parse error");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(text.len(), text.len()))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }
 
 #[test]
 fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
     let engine = Engine::new();
     let text = "classDiagram\n\"\nclass User\n";
+    let invalid_start = text.find('"').unwrap();
+    crate::diagrams::class::reset_class_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
         .unwrap()
         .expect("class editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(invalid_start, invalid_start + 1))
+    }));
+
+    crate::diagrams::class::reset_class_syntax_construction_count();
+    let error = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("strict Class parsing rejects an unterminated string");
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("unterminated Class string returned a non-parse error");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(invalid_start, invalid_start + 1))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }

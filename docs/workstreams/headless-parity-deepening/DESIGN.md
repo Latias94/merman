@@ -1,7 +1,10 @@
 # Headless Parity Deepening - DESIGN
 
-Status: Active
+Status: Superseded on 2026-07-15
 Last updated: 2026-06-02
+
+> Historical Mermaid 11.15 design. Fixture/root/text/SVG override tables and their tooling described
+> below were removed under ADR-0062. Configuration, theme, and CSS overrides are separate concepts.
 
 ## Problem
 

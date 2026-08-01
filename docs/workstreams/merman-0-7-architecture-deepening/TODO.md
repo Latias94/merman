@@ -43,7 +43,7 @@ Last updated: 2026-06-06
   State: TASKS.jsonl entry M07A-030 is done.
 
 - [x] M07A-040 [owner=planner] [deps=M07A-020,M07A-030] [scope=crates/merman/src/render/mod.rs,crates/merman-bindings-core,crates/merman-ffi,docs/adr]
-  Goal: Audit the pre-1.0 public adapter surface, delete or demote shallow convenience methods
+  Goal: Audit the public adapter surface, delete or demote shallow convenience methods
   where safe, and create an ADR only if a public contract changes.
   Validation: `cargo test -p merman --no-run`; `cargo nextest run -p merman-bindings-core`; `cargo nextest run -p merman-ffi`; `cargo fmt --all --check`
   Review: Deletions must not force callers to manually rebuild the render operation.

@@ -5,8 +5,8 @@
       "nodes": [
         {
           "id": "entity-_customer_order-0",
-          "x": 189.9,
-          "y": 192.375,
+          "x": 197.9,
+          "y": 200.375,
           "width": 379.8,
           "height": 384.75,
           "is_cluster": false
@@ -14,10 +14,10 @@
       ],
       "edges": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 379.8,
-        "max_y": 384.75
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 387.8,
+        "max_y": 392.75
       }
     }
   }

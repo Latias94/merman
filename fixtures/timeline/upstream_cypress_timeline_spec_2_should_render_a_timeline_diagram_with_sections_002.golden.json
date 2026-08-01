@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Timeline of Industrial Revolution",
     "accTitle": null,
     "accDescr": null,

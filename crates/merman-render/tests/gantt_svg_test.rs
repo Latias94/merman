@@ -1,29 +1,224 @@
 use merman_core::{Engine, ParseOptions};
-use merman_render::model::{LayoutDiagram, LayoutedDiagram};
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::{
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
+};
+use merman_render::family;
+use merman_render::model::GanttDiagramLayout;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-fn layout_gantt_from_text(text: &str) -> LayoutedDiagram {
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+fn layout_gantt_from_text(text: &str) -> GanttDiagramLayout {
+    layout_gantt_from_text_at_container_width(text, LayoutOptions::default().container_width)
+}
+
+fn layout_gantt_from_text_at_container_width(
+    text: &str,
+    container_width: f64,
+) -> GanttDiagramLayout {
+    let environment = RenderEnvironment::deterministic();
+    layout_gantt_from_text_with_environment(text, container_width, &environment)
+}
+
+fn layout_gantt_from_text_with_environment(
+    text: &str,
+    container_width: f64,
+    environment: &RenderEnvironment,
+) -> GanttDiagramLayout {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
+    let options = LayoutOptions {
+        container_width,
+        ..LayoutOptions::default()
+    };
+    let session = environment.begin_session().expect("render session");
+    let artifact = family::prepare(parsed, &options, session).expect("layout ok");
+    let projection = artifact.layout_json().expect("Gantt layout projection");
+    serde_json::from_value(projection["layout"]["GanttDiagram"].clone()).expect("Gantt layout")
+}
 
-    layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok")
+#[test]
+fn gantt_layout_uses_the_operation_container_width_unless_config_overrides_it() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: 2024-01-01, 1d";
+    let narrow = layout_gantt_from_text_at_container_width(source, 640.0);
+    let wide = layout_gantt_from_text_at_container_width(source, 960.0);
+
+    assert_eq!(narrow.width, 640.0);
+    assert_eq!(wide.width, 960.0);
+
+    let configured = layout_gantt_from_text_at_container_width(
+        "---\nconfig:\n  gantt:\n    useWidth: 420\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: 2024-01-01, 1d",
+        960.0,
+    );
+    assert_eq!(configured.width, 420.0);
+}
+
+struct RawBBoxProbeMeasurer {
+    calls: Arc<AtomicUsize>,
+    width: f64,
+}
+
+impl TextMeasurer for RawBBoxProbeMeasurer {
+    fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+        panic!("Gantt task labels must use the raw SVG text bbox operation")
+    }
+
+    fn measure_svg_raw_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        self.width
+    }
+}
+
+#[test]
+fn gantt_task_labels_route_through_raw_svg_bbox_measurement() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.gantt-raw-bbox").unwrap(),
+            "v1",
+        )
+        .unwrap(),
+        Arc::new(RawBBoxProbeMeasurer {
+            calls: Arc::clone(&calls),
+            width: 200.0,
+        }),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let layout = layout_gantt_from_text_with_environment(
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d",
+        1_184.0,
+        &environment,
+    );
+
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(layout.tasks[0].label.width, 200.0);
+}
+
+#[test]
+fn gantt_label_placement_uses_the_resolved_container_edges() {
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.gantt-raw-bbox-placement").unwrap(),
+            "v1",
+        )
+        .unwrap(),
+        Arc::new(RawBBoxProbeMeasurer {
+            calls: Arc::new(AtomicUsize::new(0)),
+            width: 200.0,
+        }),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let layout = layout_gantt_from_text_with_environment(
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nFull range: full, 2024-01-01, 10d\nStart label: start, 2024-01-01, 1d\nEnd label: end, 2024-01-10, 1d",
+        1_184.0,
+        &environment,
+    );
+    let start = layout
+        .tasks
+        .iter()
+        .find(|task| task.id == "start")
+        .expect("start task");
+    let end = layout
+        .tasks
+        .iter()
+        .find(|task| task.id == "end")
+        .expect("end task");
+
+    assert!(start.label.class.contains("taskTextOutsideRight"));
+    assert!(start.label.x > start.bar.x + start.bar.width);
+    assert!(end.label.class.contains("taskTextOutsideLeft"));
+    assert_eq!(end.label.x, end.bar.x - 5.0);
+}
+
+#[test]
+fn gantt_layout_stops_at_the_maximum_utc_date_without_panicking() {
+    // The raw model boundary case lives beside the private layout entry point.
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {
-    let out = layout_gantt_from_text(text);
-    render_layouted_svg(
-        &out,
-        LayoutOptions::default().text_measurer.as_ref(),
-        &SvgRenderOptions {
-            diagram_id: Some("gantt-config".to_string()),
-            now_ms_override: Some(1_704_067_200_000),
-            ..SvgRenderOptions::default()
-        },
+    let session = RenderEnvironment::deterministic()
+        .with_runtime_policy(
+            merman_core::runtime::RuntimePolicy::deterministic()
+                .with_fixed_unix_millis(1_704_067_200_000),
+        )
+        .begin_session()
+        .expect("begin render session");
+    let parsed = futures::executor::block_on(
+        Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()),
     )
-    .expect("render svg")
+    .expect("parse ok")
+    .expect("diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render svg")
+        .svg()
+        .to_owned()
+}
+
+#[test]
+fn gantt_frontmatter_title_renders_unless_the_body_overrides_it() {
+    let frontmatter_svg = render_gantt_svg_from_text(
+        r#"---
+title: Frontmatter schedule
+---
+gantt
+dateFormat YYYY-MM-DD
+section Delivery
+Task: 2024-01-01, 1d
+"#,
+    );
+    assert!(
+        frontmatter_svg.contains(r#"class="titleText">Frontmatter schedule</text>"#),
+        "frontmatter title should render when the Gantt body has none: {frontmatter_svg}"
+    );
+
+    let body_svg = render_gantt_svg_from_text(
+        r#"---
+title: Frontmatter schedule
+---
+gantt
+title Body schedule
+dateFormat YYYY-MM-DD
+section Delivery
+Task: 2024-01-01, 1d
+"#,
+    );
+    assert!(body_svg.contains(r#"class="titleText">Body schedule</text>"#));
+    assert!(!body_svg.contains(">Frontmatter schedule</text>"));
+}
+
+#[test]
+fn gantt_explicit_whitespace_title_overrides_frontmatter_without_trimming() {
+    let svg = render_gantt_svg_from_text(concat!(
+        "---\n",
+        "title: Frontmatter schedule\n",
+        "---\n",
+        "gantt\n",
+        "title  \n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Task: 2024-01-01, 1d\n",
+    ));
+
+    assert!(
+        svg.contains(r#"class="titleText"> </text>"#),
+        "the one remaining Jison separator must be rendered exactly: {svg}"
+    );
+    assert!(!svg.contains(">Frontmatter schedule</text>"));
 }
 
 #[test]
@@ -84,7 +279,7 @@ gantt
 
 #[test]
 fn gantt_vertical_markers_do_not_affect_standard_row_layout() {
-    let out = layout_gantt_from_text(
+    let layout = layout_gantt_from_text(
         r#"
 gantt
 dateFormat YYYY-MM-DD
@@ -96,10 +291,6 @@ Task B: task-b,2024-01-06,1d
 Final marker: vert,marker-final,2024-01-10,0d
 "#,
     );
-    let LayoutDiagram::GanttDiagram(layout) = out.layout else {
-        panic!("expected GanttDiagram layout");
-    };
-
     assert_eq!(layout.height, 148.0);
     assert_eq!(
         layout.rows.iter().map(|row| row.index).collect::<Vec<_>>(),
@@ -129,7 +320,7 @@ Final marker: vert,marker-final,2024-01-10,0d
 
 #[test]
 fn gantt_vertical_markers_do_not_affect_compact_row_packing() {
-    let out = layout_gantt_from_text(
+    let layout = layout_gantt_from_text(
         r#"---
 displayMode: compact
 ---
@@ -141,10 +332,6 @@ Task A: task-a,2024-01-01,1d
 Task B: task-b,2024-01-03,1d
 "#,
     );
-    let LayoutDiagram::GanttDiagram(layout) = out.layout else {
-        panic!("expected GanttDiagram layout");
-    };
-
     assert_eq!(layout.height, 124.0);
     assert_eq!(
         layout.rows.iter().map(|row| row.index).collect::<Vec<_>>(),

@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
+      "direction": "LR",
       "bounds": {
         "min_x": 95.0,
         "min_y": -61.0,
@@ -44,13 +45,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 295.0,
-                "y1": 235.6,
-                "x2": 295.0,
-                "y2": 594.0
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 295.0,
+                  "y1": 235.6,
+                  "x2": 295.0,
+                  "y2": 594.0
+                }
+              ],
               "events": [
                 {
                   "x": 200.0,
@@ -85,13 +88,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 495.0,
-                "y1": 235.6,
-                "x2": 495.0,
-                "y2": 594.0
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 495.0,
+                  "y1": 235.6,
+                  "x2": 495.0,
+                  "y2": 594.0
+                }
+              ],
               "events": [
                 {
                   "x": 400.0,
@@ -126,13 +131,15 @@
                 ],
                 "kind": "task"
               },
-              "connector": {
-                "kind": "task-events",
-                "x1": 695.0,
-                "y1": 235.6,
-                "x2": 695.0,
-                "y2": 594.0
-              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 695.0,
+                  "y1": 235.6,
+                  "x2": 695.0,
+                  "y2": 594.0
+                }
+              ],
               "events": [
                 {
                   "x": 600.0,

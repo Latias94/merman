@@ -3,6 +3,9 @@
 Status: Closed
 Last updated: 2026-06-12
 
+> Archive note: references to live override inventories and generator/audit commands describe the
+> closed Mermaid 11.15 implementation. Those production mechanisms were removed under ADR-0062.
+
 ## Smallest Current Repro
 
 ```bash
@@ -28,13 +31,14 @@ is:
 
 - keep implementing source-derived Mermaid rules for shape geometry, parser semantics, config, and
   renderer DOM structure;
-- keep generated/version-pinned override tables auditable through `cargo run -p xtask -- report-overrides`;
+- keep the then-current generated/version-pinned override tables auditable through the former
+  `cargo run -p xtask -- report-overrides` command;
 - avoid adding new hand-written per-string metric constants in renderer call sites unless the value
   is tied to a documented Mermaid source rule or a generated browser-probe table;
 - treat remaining strict-root rows caused only by browser font / `getBBox()` / `getComputedTextLength()`
   lattice drift as diagnostic residuals, not as blockers for structural 11.15 adaptation.
 
-Current live override inventory from `cargo run -p xtask -- report-overrides --check-no-growth`:
+Historical closeout override inventory from the former `report-overrides --check-no-growth` gate:
 root viewport overrides = 282, text metric lookup overrides = 495, SVG text metric table rows = 186,
 and Flowchart font metric table rows = 3774. Override growth check passed.
 

@@ -2,13 +2,15 @@ use crate::XtaskError;
 use crate::cmd;
 use std::process::Command;
 
+const STRICT_WEB_SCRIPTS: [&str; 4] = ["build", "test", "smoke", "verify:packages"];
+
 #[derive(Debug, Default)]
 struct VerifyOptions {
     clippy: bool,
     all_features: bool,
-    check_overrides: bool,
     feature_matrix: bool,
     root_parity: bool,
+    strict: bool,
 }
 
 pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
@@ -21,13 +23,12 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
             match arg.as_str() {
                 "--clippy" => options.clippy = true,
                 "--all-features" => options.all_features = true,
-                "--check-overrides" => options.check_overrides = true,
                 "--feature-matrix" => options.feature_matrix = true,
                 "--root-parity" => options.root_parity = true,
                 "--strict" => {
+                    options.strict = true;
                     options.clippy = true;
                     options.all_features = true;
-                    options.check_overrides = true;
                     options.feature_matrix = true;
                     options.root_parity = true;
                 }
@@ -44,26 +45,29 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
 
     fn print_verify_usage() {
         println!(
-            "usage: xtask verify [--clippy] [--all-features] [--check-overrides] [--feature-matrix] [--root-parity] [--strict]"
+            "usage: xtask verify [--clippy] [--all-features] [--feature-matrix] [--root-parity] [--strict]"
         );
         println!();
         println!("Default gates:");
         println!("  cargo fmt --check");
-        println!("  cargo nextest run");
+        println!("  cargo nextest run --workspace");
+        println!("  cargo test -p merman-render --doc");
+        println!("  cargo test -p merman --doc --features svg");
+        println!("  compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3");
         println!("  compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3");
         println!();
         println!("Optional gates:");
         println!("  --clippy        run cargo clippy --workspace --all-targets -- -D warnings");
         println!("  --all-features  run cargo check --workspace --all-features");
         println!("                  also applies --all-features to clippy when combined");
-        println!("  --check-overrides");
-        println!("                  fail if generated/manual override counts grow beyond budget");
         println!("  --feature-matrix");
-        println!("                  check public no-default/render/raster feature combinations");
-        println!("  --root-parity   run full SVG root parity after normal DOM parity");
         println!(
-            "  --strict        shorthand for --clippy --all-features --check-overrides --feature-matrix --root-parity"
+            "                  validate public Cargo capability closures and build critical combinations"
         );
+        println!("  --root-parity   run full SVG root parity after normal DOM parity");
+        println!("  --strict        run every optional gate plus materialized release, generated,");
+        println!("                  Web, Playground browser, VS Code, and skill evidence");
+        println!("                  and cargo test --workspace --doc");
     }
 
     let workspace_root = crate::cmd::workspace_root();
@@ -88,6 +92,11 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         .arg("--check")
         .current_dir(&workspace_root);
     run_checked("cargo fmt --check", &mut fmt_cmd)?;
+
+    if !options.strict {
+        println!("\n== editor token descriptor ==");
+        cmd::verify_editor_token_descriptor(Vec::new())?;
+    }
 
     if options.all_features {
         println!("\n== cargo check --workspace --all-features ==");
@@ -130,14 +139,88 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         run_checked(what, &mut clippy_cmd)?;
     }
 
-    if options.check_overrides {
-        println!("\n== override growth budget ==");
-        cmd::report_overrides(vec!["--check-no-growth".to_string()])?;
-    }
-
     if options.feature_matrix {
         println!("\n== feature matrix ==");
-        run_feature_matrix(&workspace_root, &mut run_checked)?;
+        let args = options
+            .strict
+            .then(|| "--strict".to_string())
+            .into_iter()
+            .collect();
+        cmd::verify_feature_matrix(args)?;
+    }
+
+    if options.strict {
+        println!("\n== materialized Mermaid reference bundle ==");
+        cmd::verify_mermaid_reference(vec!["--materialized".to_string()])?;
+
+        println!("\n== all generated contracts ==");
+        cmd::verify_generated(Vec::new())?;
+
+        println!("\n== alignment evidence ==");
+        cmd::check_alignment(Vec::new())?;
+
+        println!("\n== Mermaid alignment skill ==");
+        let mut skill_cmd = Command::new("python3");
+        skill_cmd
+            .arg(".agents/skills/align-mermaid-release/scripts/validate_workflow.py")
+            .current_dir(&workspace_root);
+        run_checked("align-mermaid-release workflow validator", &mut skill_cmd)?;
+
+        println!("\n== open-source release materials ==");
+        for (what, script, argument) in [
+            (
+                "governed RustSec exceptions",
+                "scripts/verify_rustsec_exceptions.py",
+                None,
+            ),
+            (
+                "target-scoped artifact dependency closures",
+                "scripts/verify_artifact_dependency_closures.py",
+                None,
+            ),
+            (
+                "third-party source and license contract",
+                "scripts/verify-third-party-licenses.py",
+                None,
+            ),
+            (
+                "Rust dependency license report",
+                "scripts/generate-rust-license-report.py",
+                Some("--check"),
+            ),
+            (
+                "release legal material projections",
+                "scripts/sync-release-legal-materials.py",
+                Some("--check"),
+            ),
+            (
+                "Cargo package legal materials",
+                "scripts/verify_crate_package_legal_materials.py",
+                None,
+            ),
+        ] {
+            let mut legal_cmd = Command::new("python3");
+            legal_cmd.arg(script).current_dir(&workspace_root);
+            if let Some(argument) = argument {
+                legal_cmd.arg(argument);
+            }
+            run_checked(what, &mut legal_cmd)?;
+        }
+        for package_dir in ["playground", "tools/vscode-extension"] {
+            run_npm_script(
+                &workspace_root,
+                package_dir,
+                "licenses:check",
+                &mut run_checked,
+            )?;
+        }
+
+        println!("\n== ZenUML candidate matrix ==");
+        let mut npm_cmd = Command::new("npm");
+        npm_cmd
+            .args(["run", "verify:zenuml-candidate"])
+            .current_dir(workspace_root.join("playground"));
+        run_checked("npm run verify:zenuml-candidate", &mut npm_cmd)?;
     }
 
     println!("\n== cargo nextest ==");
@@ -145,8 +228,43 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     nextest_cmd
         .arg("nextest")
         .arg("run")
+        .arg("--workspace")
         .current_dir(&workspace_root);
-    run_checked("cargo nextest run", &mut nextest_cmd)?;
+    run_checked("cargo nextest run --workspace", &mut nextest_cmd)?;
+
+    println!("\n== architecture compile-fail contracts ==");
+    for (what, package, features) in [
+        ("cargo test -p merman-render --doc", "merman-render", None),
+        (
+            "cargo test -p merman --doc --features svg",
+            "merman",
+            Some("svg"),
+        ),
+    ] {
+        let mut doctest_cmd = Command::new("cargo");
+        doctest_cmd.args(["test", "-p", package, "--doc"]);
+        if let Some(features) = features {
+            doctest_cmd.args(["--features", features]);
+        }
+        doctest_cmd.current_dir(&workspace_root);
+        run_checked(what, &mut doctest_cmd)?;
+    }
+    if options.strict {
+        let mut workspace_doctest_cmd = Command::new("cargo");
+        workspace_doctest_cmd
+            .args(["test", "--workspace", "--doc"])
+            .current_dir(&workspace_root);
+        run_checked("cargo test --workspace --doc", &mut workspace_doctest_cmd)?;
+    }
+
+    println!("\n== svg dom structure ==");
+    cmd::compare_all_svgs(vec![
+        "--check-dom".to_string(),
+        "--dom-mode".to_string(),
+        "structure".to_string(),
+        "--dom-decimals".to_string(),
+        "3".to_string(),
+    ])?;
 
     println!("\n== svg dom parity ==");
     cmd::compare_all_svgs(vec![
@@ -168,134 +286,67 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         ])?;
     }
 
-    Ok(())
-}
+    if options.strict {
+        println!("\n== Web package ==");
+        for script in STRICT_WEB_SCRIPTS {
+            run_npm_script(&workspace_root, "platforms/web", script, &mut run_checked)?;
+        }
 
-fn run_feature_matrix(
-    workspace_root: &std::path::Path,
-    run_checked: &mut impl FnMut(&str, &mut Command) -> Result<(), XtaskError>,
-) -> Result<(), XtaskError> {
-    let checks: &[(&str, &[&str])] = &[
-        (
-            "cargo check -p merman --no-default-features",
-            &["check", "-p", "merman", "--no-default-features"],
-        ),
-        (
-            "cargo check -p merman --no-default-features --features render",
-            &[
-                "check",
-                "-p",
-                "merman",
-                "--no-default-features",
-                "--features",
-                "render",
-            ],
-        ),
-        (
-            "cargo check -p merman --no-default-features --features raster",
-            &[
-                "check",
-                "-p",
-                "merman",
-                "--no-default-features",
-                "--features",
-                "raster",
-            ],
-        ),
-        (
-            "cargo check -p merman-core --no-default-features",
-            &["check", "-p", "merman-core", "--no-default-features"],
-        ),
-        (
-            "cargo nextest run -p merman-lsp --no-default-features --lib",
-            &[
-                "nextest",
-                "run",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--lib",
-            ],
-        ),
-        (
-            "cargo check -p merman-lsp --no-default-features --lib",
-            &[
-                "check",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--lib",
-            ],
-        ),
-        (
-            "cargo check -p merman-lsp --no-default-features --features core-full-registry --lib",
-            &[
-                "check",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--features",
-                "core-full-registry",
-                "--lib",
-            ],
-        ),
-        (
-            "cargo check -p merman-lsp --no-default-features --features core-full-config --lib",
-            &[
-                "check",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--features",
-                "core-full-config",
-                "--lib",
-            ],
-        ),
-        (
-            "cargo check -p merman-lsp --no-default-features --features core-full-sanitization --lib",
-            &[
-                "check",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--features",
-                "core-full-sanitization",
-                "--lib",
-            ],
-        ),
-        (
-            "cargo check -p merman-lsp --no-default-features --features core-host --lib",
-            &[
-                "check",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--features",
-                "core-host",
-                "--lib",
-            ],
-        ),
-        (
-            "cargo check -p merman-lsp --no-default-features --features stdio --bin merman-lsp",
-            &[
-                "check",
-                "-p",
-                "merman-lsp",
-                "--no-default-features",
-                "--features",
-                "stdio",
-                "--bin",
-                "merman-lsp",
-            ],
-        ),
-    ];
+        println!("\n== Playground package and browsers ==");
+        for script in ["test", "lint", "build", "test:browser:chromium"] {
+            run_npm_script(&workspace_root, "playground", script, &mut run_checked)?;
+        }
 
-    for (what, args) in checks {
-        println!("{what}");
-        let mut cmd = Command::new("cargo");
-        cmd.args(*args).current_dir(workspace_root);
-        run_checked(what, &mut cmd)?;
+        println!("\n== VS Code extension ==");
+        run_npm_script(
+            &workspace_root,
+            "tools/vscode-extension",
+            "test",
+            &mut run_checked,
+        )?;
     }
 
     Ok(())
+}
+
+fn run_npm_script(
+    workspace_root: &std::path::Path,
+    package_dir: &str,
+    script: &str,
+    run_checked: &mut impl FnMut(&str, &mut Command) -> Result<(), XtaskError>,
+) -> Result<(), XtaskError> {
+    let what = format!("npm run {script} ({package_dir})");
+    println!("{what}");
+    let mut command = Command::new("npm");
+    command
+        .args(["run", script])
+        .current_dir(workspace_root.join(package_dir));
+    run_checked(&what, &mut command)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strict_web_scripts_exist_in_workspace_manifest() {
+        let manifest_path = crate::cmd::workspace_root().join("platforms/web/package.json");
+        let manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&manifest_path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", manifest_path.display())),
+        )
+        .unwrap_or_else(|error| panic!("parse {}: {error}", manifest_path.display()));
+        let scripts = manifest["scripts"]
+            .as_object()
+            .expect("platforms/web/package.json must define scripts");
+
+        for script in STRICT_WEB_SCRIPTS {
+            assert!(
+                scripts
+                    .get(script)
+                    .is_some_and(serde_json::Value::is_string),
+                "strict Web verification script `{script}` is missing"
+            );
+        }
+    }
 }

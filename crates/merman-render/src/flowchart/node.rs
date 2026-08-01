@@ -17,6 +17,8 @@ fn node_render_dimensions(
     let p = padding.max(0.0);
 
     let shape = layout_shape.unwrap_or("squareRect");
+    crate::flowchart::FlowchartShape::resolve(shape)
+        .unwrap_or_else(|error| panic!("unvalidated Flowchart shape reached layout: {error}"));
 
     fn circle_points(
         center_x: f64,
@@ -64,20 +66,6 @@ fn node_render_dimensions(
             Some((min_x, min_y, max_x, max_y))
         } else {
             None
-        }
-    }
-
-    fn f32_dims(w: f64, h: f64) -> (f64, f64) {
-        let w_f32 = w as f32;
-        let h_f32 = h as f32;
-        if w_f32.is_finite()
-            && h_f32.is_finite()
-            && w_f32.is_sign_positive()
-            && h_f32.is_sign_positive()
-        {
-            (w_f32 as f64, h_f32 as f64)
-        } else {
-            (w.max(0.0), h.max(0.0))
         }
     }
 
@@ -167,18 +155,18 @@ fn node_render_dimensions(
     }
 
     match shape {
-        // Flowchart v2 anchor ignores any label and uses the roughjs 2px circle bbox for Dagre.
-        // Chromium's `getBBox()` for Mermaid's seeded anchor path is slightly wider than 2px.
-        "anchor" => (2.001_899_003_982_544, 2.0),
+        // Flowchart v2 anchor ignores its label and uses a fixed 1px source radius.
+        "anchor" => (2.0, 2.0),
 
         // Default flowchart process node.
-        "squareRect" | "data-store" | "datastore" => {
+        "squareRect" | "rect" | "proc" | "process" | "rectangle" => {
             if look_is_neo {
                 (text_w + 32.0, text_h + 24.0)
             } else {
                 (text_w + 4.0 * p, text_h + 2.0 * p)
             }
         }
+        "data-store" | "datastore" => (text_w + 4.0 * p, text_h + 2.0 * p),
 
         // Mermaid uses a few aliases for the same rounded-rectangle shape across layers.
         // In FlowDB output (flowchart-v2), this commonly appears as `rounded`.
@@ -257,7 +245,7 @@ fn node_render_dimensions(
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
             let rect_offset = 10.0;
-            f32_dims(w + rect_offset, h + rect_offset)
+            (w + rect_offset, h + rect_offset)
         }
 
         // Circle.
@@ -265,6 +253,16 @@ fn node_render_dimensions(
             // Mermaid uses half-padding for circles and bases radius on label width.
             let d = text_w + p;
             (d, d)
+        }
+
+        // Organic arc paths use the browser-visible path bbox, not their construction box.
+        "bang" => {
+            let geometry = crate::flowchart::bang_geometry(text_w, text_h, p);
+            (geometry.width(), geometry.height())
+        }
+        "cloud" => {
+            let geometry = crate::flowchart::cloud_geometry(text_w, text_h, p);
+            (geometry.width(), geometry.height())
         }
 
         // Double circle.
@@ -278,11 +276,8 @@ fn node_render_dimensions(
         // Small start circle (stateStart in rendering-elements).
         "sm-circ" | "small-circle" | "start" => (14.0, 14.0),
 
-        // Stop framed circle (stateEnd in rendering-elements).
-        //
-        // Mermaid renders this through RoughJS' ellipse path and then uses `getBBox()` for Dagre.
-        // Chromium's bbox for the generated path is slightly wider than 14px at 11.12.2.
-        "fr-circ" | "framed-circle" | "stop" => (14.013_293_266_296_387, 14.0),
+        // Stop framed circle (`stateEnd.ts`) normalizes both source dimensions to 14px.
+        "fr-circ" | "framed-circle" | "stop" => (14.0, 14.0),
 
         // Fork/join bar (uses `lineColor` fill/stroke; no label).
         "fork" | "join" => (70.0, 10.0),
@@ -293,13 +288,11 @@ fn node_render_dimensions(
         // Flowchart v2 lightning bolt (Communication link). Mermaid clears `node.label`.
         "bolt" | "com-link" | "lightning-bolt" => (35.0, 70.0),
 
-        // Flowchart v2 filled circle (junction). Mermaid clears `node.label`.
-        // Width comes from RoughJS `circle` bbox at 11.12.2.
-        "f-circ" | "junction" | "filled-circle" => (14.013_293_266_296_387, 14.0),
+        // Flowchart v2 filled circle (`filledCircle.ts`) uses a fixed 7px source radius.
+        "f-circ" | "junction" | "filled-circle" => (14.0, 14.0),
 
-        // Flowchart v2 crossed circle (summary). Mermaid clears `node.label`.
-        // Width comes from RoughJS `circle` bbox at 11.12.2 with radius=30.
-        "cross-circ" | "summary" | "crossed-circle" => (60.056_972_503_662_11, 60.0),
+        // Flowchart v2 crossed circle (`crossedCircle.ts`) has a minimum 30px source radius.
+        "cross-circ" | "summary" | "crossed-circle" => (60.0, 60.0),
 
         // Flowchart v2 delay / halfRoundedRectangle (rendering-elements).
         "delay" | "half-rounded-rectangle" => {
@@ -324,7 +317,7 @@ fn node_render_dimensions(
             points.push((-w / 2.0, h / 2.0));
             let (min_x, min_y, max_x, max_y) =
                 bbox_of_points(&points).unwrap_or((-w / 2.0, -h / 2.0, w / 2.0, h / 2.0));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Flowchart v2 lined cylinder (Disk storage).
@@ -333,7 +326,7 @@ fn node_render_dimensions(
             let rx = w / 2.0;
             let ry = rx / (2.5 + w / 50.0);
             let height = text_h + 2.0 * p + 3.0 * ry;
-            f32_dims(w, height)
+            (w, height)
         }
 
         // Flowchart v2 curved trapezoid (Display).
@@ -367,7 +360,7 @@ fn node_render_dimensions(
 
             let (min_x, min_y, max_x, max_y) =
                 bbox_of_points(&points).unwrap_or((0.0, 0.0, total_width, total_height));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Flowchart v2 divided rectangle (Divided process).
@@ -387,28 +380,28 @@ fn node_render_dimensions(
                 (-x, y + rect_offset),
             ];
             let (min_x, min_y, max_x, max_y) = bbox_of_points(&points).unwrap_or((x, y, -x, -y));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Flowchart v2 triangle (Extract).
         "tri" | "extract" | "triangle" => {
             let w = text_w + p;
             let h = w + text_h;
-            f32_dims(h, h)
+            (h, h)
         }
 
         // Flowchart v2 flipped triangle (Manual file).
         "manual-file" | "flipped-triangle" | "flip-tri" => {
             let w = text_w + p;
             let h = w + text_h;
-            f32_dims(h, h)
+            (h, h)
         }
 
         // Flowchart v2 sloped rectangle (Manual input).
         "manual-input" | "sloped-rectangle" | "sl-rect" => {
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
-            f32_dims(w, (1.5 * h).max(0.0))
+            (w, (1.5 * h).max(0.0))
         }
 
         // Flowchart v2 document (wave-edged rectangle).
@@ -443,7 +436,7 @@ fn node_render_dimensions(
                 w / 2.0,
                 final_h / 2.0,
             ));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Flowchart v2 stacked document (multi-wave edged rectangle).
@@ -482,7 +475,7 @@ fn node_render_dimensions(
 
             let (min_x, min_y, max_x, max_y) =
                 bbox_of_points(&outer_points).unwrap_or((x, y, x + w, y + final_h));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Flowchart v2 stacked rectangle (multi-process).
@@ -492,7 +485,7 @@ fn node_render_dimensions(
             let w = (text_w + 2.0 * p).max(0.0);
             let h = (text_h + 2.0 * p).max(0.0);
             let rect_offset = 5.0;
-            f32_dims(w + 2.0 * rect_offset, h + 2.0 * rect_offset)
+            (w + 2.0 * rect_offset, h + 2.0 * rect_offset)
         }
 
         // Flowchart v2 paper-tape / wave rectangle.
@@ -530,7 +523,7 @@ fn node_render_dimensions(
                 w / 2.0,
                 final_h / 2.0,
             ));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Flowchart v2 lined document.
@@ -564,7 +557,7 @@ fn node_render_dimensions(
                 w / 2.0,
                 final_h / 2.0,
             ));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Flowchart v2 tagged rectangle.
@@ -589,7 +582,7 @@ fn node_render_dimensions(
             let mut pts = rect_points;
             pts.extend(tag_points);
             let (min_x, min_y, max_x, max_y) = bbox_of_points(&pts).unwrap_or((x, y, x + w, y + h));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Flowchart v2 tagged document.
@@ -637,7 +630,7 @@ fn node_render_dimensions(
                 w / 2.0,
                 final_h / 2.0,
             ));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Flowchart v2 trapezoidal pentagon (Loop limit).
@@ -646,7 +639,7 @@ fn node_render_dimensions(
             let min_height = 20.0;
             let w = (text_w + 2.0 * p).max(min_width);
             let h = (text_h + 2.0 * p).max(min_height);
-            f32_dims(w, h)
+            (w, h)
         }
 
         // Flowchart v2 bow-tie rect (Stored data).
@@ -679,7 +672,7 @@ fn node_render_dimensions(
             ));
             let (min_x, min_y, max_x, max_y) =
                 bbox_of_points(&points).unwrap_or((-w / 2.0, -h / 2.0, w / 2.0, h / 2.0));
-            f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
+            ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
         // Hourglass/collate (label cleared, but label group still emitted).
@@ -944,8 +937,7 @@ fn node_render_dimensions(
         // Keep a reasonable headless size for layout stability.
         "ellipse" => (text_w + 2.0 * p, text_h + 2.0 * p),
 
-        // Fallback: treat unknown shapes as default rectangles.
-        _ => (text_w + 4.0 * p, text_h + 2.0 * p),
+        _ => panic!("Flowchart shape {shape} has no layout geometry"),
     }
 }
 
@@ -1009,22 +1001,21 @@ mod render_dimension_tests {
     }
 }
 
-pub(super) struct NodeLayoutDimensionsRequest<'a> {
-    pub(super) layout_shape: Option<&'a str>,
-    pub(super) layout_direction: &'a str,
-    pub(super) metrics: crate::text::TextMetrics,
-    pub(super) padding: f64,
-    pub(super) look_is_neo: bool,
-    pub(super) state_padding: f64,
-    pub(super) wrap_mode: crate::text::WrapMode,
-    pub(super) node_icon: Option<&'a str>,
-    pub(super) node_img: Option<&'a str>,
-    pub(super) node_pos: Option<&'a str>,
-    pub(super) node_asset_width: Option<f64>,
-    pub(super) node_asset_height: Option<f64>,
+pub(crate) struct NodeLayoutDimensionsRequest<'a> {
+    pub(crate) layout_shape: Option<&'a str>,
+    pub(crate) layout_direction: &'a str,
+    pub(crate) metrics: crate::text::TextMetrics,
+    pub(crate) padding: f64,
+    pub(crate) look_is_neo: bool,
+    pub(crate) state_padding: f64,
+    pub(crate) node_icon: Option<&'a str>,
+    pub(crate) node_img: Option<&'a str>,
+    pub(crate) node_pos: Option<&'a str>,
+    pub(crate) node_asset_width: Option<f64>,
+    pub(crate) node_asset_height: Option<f64>,
 }
 
-pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f64, f64) {
+pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f64, f64) {
     let NodeLayoutDimensionsRequest {
         layout_shape,
         layout_direction,
@@ -1032,7 +1023,6 @@ pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
         padding,
         look_is_neo,
         state_padding,
-        wrap_mode,
         node_icon,
         node_img,
         node_pos,
@@ -1040,78 +1030,74 @@ pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
         node_asset_height,
     } = req;
 
-    fn chromium_tilted_cylinder_bbox_width_shrink(height: f64) -> f64 {
-        // Chromium's `getBBox()` for Mermaid's `tiltedCylinder.ts` path has a reproducible width
-        // contraction at a couple of label-height buckets used by upstream flowchart fixtures.
-        // Mermaid feeds those contracted bounds into Dagre, so keep our layout width aligned.
-        //
-        // Values were measured against headless Chromium using the exact SVG path emitted by
-        // Mermaid 11.12.x for the classic horizontal-cylinder shape.
-        if (height - 79.300_003_051_757_81).abs() < 1e-5 || (height - 79.3).abs() < 1e-5 {
-            return 0.006_711_671_355_788;
-        }
-        if (height - 79.5).abs() < 1e-5 {
-            return 0.006_714_202_955_465;
-        }
-        0.0
+    let shape = layout_shape.unwrap_or("squareRect");
+    let resolved_shape = crate::flowchart::FlowchartShape::resolve(shape)
+        .unwrap_or_else(|error| panic!("unvalidated Flowchart shape reached layout: {error}"));
+
+    if resolved_shape == crate::flowchart::FlowchartShape::ImageSquare
+        && node_img.is_some_and(|s| !s.trim().is_empty())
+    {
+        let asset_h = node_asset_height.unwrap_or(60.0).max(1.0);
+        let asset_w = node_asset_width.unwrap_or(asset_h).max(1.0);
+        let aspect_ratio = if asset_h > 0.0 {
+            asset_w / asset_h
+        } else {
+            1.0
+        };
+        let image_width = if node_asset_height.is_some() {
+            asset_h * aspect_ratio
+        } else {
+            asset_w.max(if metrics.width > 0.0 { 200.0 } else { 0.0 })
+        };
+        let image_height = if aspect_ratio != 0.0 {
+            image_width / aspect_ratio
+        } else {
+            asset_h
+        };
+        let has_label = metrics.width > 0.0 && metrics.height > 0.0;
+        let label_padding = if has_label { 8.0 } else { 0.0 };
+        let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
+        let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
+        return (
+            image_width.max(label_bbox_w),
+            image_height + label_padding + label_bbox_h,
+        );
     }
 
-    let shape = layout_shape.unwrap_or("squareRect");
+    if matches!(
+        resolved_shape,
+        crate::flowchart::FlowchartShape::Icon
+            | crate::flowchart::FlowchartShape::IconCircle
+            | crate::flowchart::FlowchartShape::IconRounded
+            | crate::flowchart::FlowchartShape::IconSquare
+    ) {
+        let has_label = metrics.width > 0.0 && metrics.height > 0.0;
+        let label_padding = if has_label { 8.0 } else { 0.0 };
+        let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
+        let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
 
-    if (shape == "imageSquare" || shape == "icon" || shape.starts_with("icon"))
-        && (node_icon.is_some() || node_img.is_some())
-    {
-        if shape == "imageSquare" {
-            if node_img.is_some_and(|s| !s.trim().is_empty()) {
-                let asset_h = node_asset_height.unwrap_or(60.0).max(1.0);
-                let asset_w = node_asset_width.unwrap_or(asset_h).max(1.0);
-                let aspect_ratio = if asset_h > 0.0 {
-                    asset_w / asset_h
-                } else {
-                    1.0
-                };
-                let image_width = if node_asset_height.is_some() {
-                    asset_h * aspect_ratio
-                } else {
-                    asset_w.max(if metrics.width > 0.0 { 200.0 } else { 0.0 })
-                };
-                let image_height = if aspect_ratio != 0.0 {
-                    image_width / aspect_ratio
-                } else {
-                    asset_h
-                };
-                let has_label = metrics.width > 0.0 && metrics.height > 0.0;
-                let label_padding = if has_label { 8.0 } else { 0.0 };
-                let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
-                let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
-                return (
-                    image_width.max(label_bbox_w),
-                    image_height + label_padding + label_bbox_h,
-                );
+        let asset_h = node_asset_height.unwrap_or(48.0);
+        let asset_w = node_asset_width.unwrap_or(48.0);
+        let icon_size = asset_h.max(asset_w);
+        let has_icon = node_icon.is_some_and(|icon| !icon.trim().is_empty());
+        let icon_outer_size = match resolved_shape {
+            crate::flowchart::FlowchartShape::IconCircle => {
+                let icon_bbox_size = if has_icon { icon_size } else { 0.0 };
+                icon_bbox_size * std::f64::consts::SQRT_2 + 40.0
             }
-        } else if node_icon.is_some_and(|s| !s.trim().is_empty()) {
-            let has_label = metrics.width > 0.0 && metrics.height > 0.0;
-            let label_padding = if has_label { 8.0 } else { 0.0 };
-            let label_bbox_w = if has_label { metrics.width + 4.0 } else { 0.0 };
-            let label_bbox_h = if has_label { metrics.height + 4.0 } else { 0.0 };
+            crate::flowchart::FlowchartShape::IconRounded
+            | crate::flowchart::FlowchartShape::IconSquare => icon_size + padding,
+            crate::flowchart::FlowchartShape::Icon => icon_size,
+            _ => unreachable!("the icon branch excludes non-icon shapes"),
+        };
 
-            let asset_h = node_asset_height.unwrap_or(48.0).max(1.0);
-            let asset_w = node_asset_width.unwrap_or(48.0).max(1.0);
-            let icon_size = asset_h.max(asset_w);
-            let icon_outer_size = if shape == "iconSquare" {
-                icon_size + padding
-            } else {
-                icon_size
-            };
+        let outer_w = icon_outer_size.max(label_bbox_w);
+        let outer_h = icon_outer_size + label_padding + label_bbox_h;
 
-            let outer_w = icon_outer_size.max(label_bbox_w);
-            let outer_h = icon_outer_size + label_padding + label_bbox_h;
-
-            // Mermaid icon helpers support `pos=t` for top-aligned labels, but that does not
-            // change the node's outer bbox.
-            let _ = node_pos;
-            return (outer_w, outer_h);
-        }
+        // Mermaid icon helpers support `pos=t` for top-aligned labels, but that does not
+        // change the node's outer bbox.
+        let _ = node_pos;
+        return (outer_w, outer_h);
     }
 
     // Mermaid `forkJoin.ts` inflates the Dagre node dimensions by `state.padding / 2` after
@@ -1190,74 +1176,9 @@ pub(super) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
             if min_x.is_finite() && max_x.is_finite() && min_y.is_finite() && max_y.is_finite() {
                 let bbox_w = (max_x - min_x).max(0.0);
                 let bbox_h = (max_y - min_y).max(0.0);
-
-                // Mermaid flowchart-v2 feeds Dagre with dimensions produced by `getBBox()`, and
-                // Chromium returns those extents as f32-rounded values. Matching that lattice is
-                // important for strict SVG `data-points` parity, since tiny width differences
-                // propagate into Dagre x-coordinates.
-                let w_f32 = bbox_w as f32;
-                let h_f32 = bbox_h as f32;
-                if w_f32.is_finite()
-                    && h_f32.is_finite()
-                    && w_f32.is_sign_positive()
-                    && h_f32.is_sign_positive()
-                {
-                    return (w_f32 as f64, h_f32 as f64);
-                }
-
                 return (bbox_w, bbox_h);
             }
         }
-    }
-
-    // Chromium's `getBBox()` for HTML-label hexagons consistently lands on an `f32` lattice in
-    // upstream baselines, while SVG-label hexagons preserve the exact path-derived width. Keep
-    // the narrower `f32` quantization only for HTML-label flowchart nodes so both profiles align.
-    if matches!(shape, "hexagon" | "hex" | "prepare")
-        && matches!(wrap_mode, crate::text::WrapMode::HtmlLike)
-    {
-        let w_f32 = render_w as f32;
-        let h_f32 = render_h as f32;
-        if w_f32.is_finite()
-            && h_f32.is_finite()
-            && w_f32.is_sign_positive()
-            && h_f32.is_sign_positive()
-        {
-            return (w_f32 as f64, h_f32 as f64);
-        }
-    }
-
-    // Mermaid flowchart-v2 cylinder-like shapes (`cylinder`, `lined-cylinder`) derive layout
-    // dimensions from `updateNodeBounds(...)` over an SVG `<path>` with arc commands. Chromium's
-    // `getBBox()` tends to land one f32 ULP above the theoretical height, which affects Dagre
-    // spacing and therefore edge points (`data-points`) in strict parity mode.
-    if matches!(
-        shape,
-        "cylinder" | "cyl" | "db" | "database" | "lin-cyl" | "disk" | "lined-cylinder"
-    ) {
-        let h_f32 = render_h as f32;
-        if h_f32.is_finite() && h_f32.is_sign_positive() {
-            let bits = h_f32.to_bits();
-            if bits < u32::MAX {
-                let bumped = f32::from_bits(bits + 1) as f64;
-                return (render_w, bumped);
-            }
-        }
-    }
-
-    // Mermaid flowchart-v2 calls `updateNodeBounds(...)` on the horizontal-cylinder path and
-    // Chromium returns a slightly contracted width for a couple of common 4-line label heights.
-    // Dagre uses that contracted bbox, while the rendered path itself keeps the theoretical arc
-    // parameters. Mirror the layout-side bbox here so node x-positions and `data-points` align.
-    if matches!(shape, "h-cyl" | "das" | "horizontal-cylinder") {
-        let h_f32 = render_h as f32;
-        let bbox_h = if h_f32.is_finite() && h_f32.is_sign_positive() {
-            h_f32 as f64
-        } else {
-            render_h
-        };
-        let shrink = chromium_tilted_cylinder_bbox_width_shrink(bbox_h);
-        return ((render_w - shrink).max(0.0), bbox_h.max(0.0));
     }
 
     (render_w, render_h)

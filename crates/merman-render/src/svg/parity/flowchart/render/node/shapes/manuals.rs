@@ -34,7 +34,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
     ];
     let path_data = path_from_points(&pts);
     if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
                 common.fill_color,
@@ -79,7 +79,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
     let bbox_y_offset = if ctx.node_html_labels {
         0.0
     } else {
-        crate::text::svg_create_text_bbox_y_offset_px(&node_text_style)
+        ctx.measurer
+            .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style)
     };
     label.dy = metrics.height / 2.0 - h / 2.0 + p / 2.0 + bbox_y_offset;
 }
@@ -107,7 +108,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
     let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
     let path_data = path_from_points(&points);
     if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
                 common.fill_color,
@@ -151,7 +152,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
     let bbox_y_offset = if ctx.node_html_labels {
         0.0
     } else {
-        crate::text::svg_create_text_bbox_y_offset_px(&node_text_style)
+        ctx.measurer
+            .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style)
     };
     label.dy = metrics.height / 2.0 - h / 4.0 + p - bbox_y_offset;
 }

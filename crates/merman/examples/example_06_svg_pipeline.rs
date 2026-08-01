@@ -1,6 +1,6 @@
 mod support;
 
-use merman::render::{
+use merman::svg::{
     CssOverridePolicy, HeadlessRenderer, RenderResult, ScopedCssPostprocessor, SvgPipeline,
     SvgPostprocessContext, SvgPostprocessor,
 };

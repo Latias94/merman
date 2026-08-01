@@ -1,25 +1,43 @@
 # SVG Output Pipeline
 
-`merman` has two SVG output contracts:
+`merman` has distinct SVG output contracts:
 
 - `render_svg_sync` returns Mermaid-parity SVG and remains the default.
 - `SvgPipeline` turns that parity SVG into consumer-oriented output for previews, raster export,
   or host-specific cleanup.
+- `ResvgCompatibleSvg` is a sealed artifact produced only after the terminal resvg finalizer. It is
+  the only input accepted by the low-level raster encoders and cannot delegate non-navigation
+  rendering resources to a host file or network resolver.
 
 Default SVG output is not optimized or cleaned by default because parity output is the comparison
 surface for upstream Mermaid fixtures. Consumers that need renderer compatibility should opt in to
 a pipeline explicitly. Mermaid-parity SVG may contain `<foreignObject>` HTML labels; that is
 expected and should not be treated as the export-safe surface.
 
+## Artifact Evidence Lanes
+
+Output contracts and evidence contracts are related but not interchangeable:
+
+| Lane | Proves | Required gate | Does not prove |
+| --- | --- | --- | --- |
+| Raw/source SVG parity | Emitted bytes or the declared SVG-DOM comparison profile agree with the pinned upstream artifact. | `xtask` raw-byte or SVG-DOM compare. | Browser computed colors, label overlap, edge contact, or raster compatibility. |
+| Browser-visible | The pinned browser computes the expected styles and client geometry under the declared viewport, fonts, and runtime graph. | Build-freshness gate followed by browser computed-style/geometry tests. | Exact SVG serialization or `usvg` / `resvg` compatibility. |
+| Resvg-safe | The explicit pipeline emits resource-closed consumer SVG that `usvg` / `resvg` can parse and render without resolving host files or network resources. | Pipeline tests plus raster-consumer tests. | Raw upstream serialization, browser presentation parity, or browser DOM safety. |
+
+Theme SVG assertions, Block analytic geometry, and Gantt SVG-DOM comparisons are useful structural
+evidence, but they are not browser-visible evidence. Browser-visible claims require the browser lane.
+
 Typical choices:
 
 - Use `render_svg_sync` when the caller wants the closest Mermaid-compatible SVG string.
 - Use `render_svg_readable_sync` or `SvgPipeline::readable()` for browser previews that can keep `<foreignObject>` but should also expose SVG text fallbacks.
-- Use `render_svg_resvg_safe_sync` or `SvgPipeline::resvg_safe()` before PNG/JPG/PDF export through `resvg` / `usvg`.
-- Use `merman-cli --svg-pipeline resvg-safe` when you want the CLI to write export-safe SVG bytes
-  instead of the default Mermaid-parity SVG contract.
+- Use `render_resvg_compatible_svg_with_pipeline_sync` or
+  `SvgPipeline::process_resvg_compatible()` before calling low-level PNG/JPG/PDF encoders.
+- Use `merman-cli render --svg-pipeline resvg-safe` when you want the CLI to write export-safe SVG
+  bytes instead of the default Mermaid-parity SVG contract.
 - Use `HeadlessRenderer::render_png_sync`, `render_jpeg_sync`, or `render_pdf_sync` when the input is Mermaid source and the caller wants the standard render-and-raster path; those helpers select the raster-safe pipeline through the Headless Render Operation.
-- Add `SvgPostprocessor` passes when a host application needs product-specific styling, metadata, or cleanup after a built-in preset.
+- Add `SvgPostprocessor` passes when a host application needs product-specific draft styling or
+  metadata. The selected built-in preset always runs after these passes.
 
 ## Presets
 
@@ -27,12 +45,18 @@ Typical choices:
 | --- | --- |
 | `SvgPipeline::parity()` | No post-processing. This preserves the exact SVG string produced by the parity renderer. |
 | `SvgPipeline::readable()` | Adds best-effort SVG `<text>` overlays for labels emitted via `<foreignObject>`. |
-| `SvgPipeline::resvg_safe()` | Adds readable fallbacks, strips the original `<foreignObject>` elements, and removes common `usvg` / `resvg` hazards such as unsupported CSS blocks, animation declarations, CSS `deg` units, empty visual attributes, empty rectangle placeholders, and non-finite values. |
+| `SvgPipeline::resvg_safe()` | Adds readable fallbacks, strips the original `<foreignObject>` elements, and removes common `usvg` / `resvg` hazards. Structural references are limited to same-document fragments; ordinary image resources require an approved inline PNG/JPEG/GIF/WebP data URL whose encoding is syntactically decodable; `feImage` accepts either form. `<a>` navigation links remain metadata outside the raster-resource contract. |
+
+For Mermaid 11.16 Quadrant, parity output intentionally retains upstream's invalid
+`hsl(..., NaN%)` point presentation attributes. A browser ignores them and uses the SVG initial
+black fill with no stroke. The typed Quadrant resvg-safe path explicitly emits
+`fill="#000000" stroke="none"`; this keeps the export visible without teaching the raw comparator
+that invalid HSL and RGB are equivalent.
 
 ## Rendering With A Pipeline
 
 ```rust
-use merman::render::{HeadlessRenderer, SvgPipeline};
+use merman::svg::{HeadlessRenderer, SvgPipeline};
 
 let renderer = HeadlessRenderer::new();
 let svg = renderer
@@ -48,8 +72,8 @@ let svg = renderer
 Runnable example:
 
 ```bash
-cargo run -p merman --features render --example example_06_svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
-merman-cli -i fixtures/flowchart/basic.mmd -o out.svg --svg-pipeline resvg-safe
+cargo run -p merman --features svg --example example_06_svg_pipeline < fixtures/flowchart/basic.mmd > out.svg
+merman-cli render fixtures/flowchart/basic.mmd --output out.svg --svg-pipeline resvg-safe
 ```
 
 The compatibility helpers are wrappers around the same pipeline:
@@ -58,13 +82,19 @@ The compatibility helpers are wrappers around the same pipeline:
 - `render_svg_resvg_safe_sync(...)` uses `SvgPipeline::resvg_safe()`.
 - `svg_readable(svg)` and `svg_resvg_safe(svg)` apply the presets to an existing SVG string.
 
+The source-string helpers extract root SVG attributes only as descriptive metadata. They never
+promote `aria-roledescription` or any other SVG text into the closed `RenderFamilyKind` capability.
+Only the typed family render operation can retain that capability through postprocessing. A
+diagram-type string alone does not authorize a family-specific fallback, and
+`finalize_resvg_svg(svg, session)` deliberately performs only family-agnostic cleanup.
+
 ## Host Postprocessors
 
-Applications can append product-specific passes after a built-in preset. The postprocess context
-includes preset, pass ordering, diagram type, diagram title, and root SVG id:
+Applications can append product-specific draft passes. The postprocess context includes preset,
+pass ordering, diagram type, diagram title, and root SVG id:
 
 ```rust
-use merman::render::{
+use merman::svg::{
     RenderResult, SvgPipeline, SvgPostprocessContext, SvgPostprocessor,
 };
 use std::borrow::Cow;
@@ -93,15 +123,49 @@ let pipeline = SvgPipeline::resvg_safe().with_postprocessor(AddComment);
 # let _ = pipeline;
 ```
 
-Built-in passes always run before custom postprocessors, and custom postprocessors run in insertion
-order. Custom pass errors are surfaced as render errors with the pass name attached.
+Custom postprocessors run in insertion order, then the selected built-in preset runs as the terminal
+stage. The resource policy checks output size after every custom pass. A `resvg_safe` pipeline then
+tokenizes and sanitizes CSS, strips active SVG constructs and unsafe attributes, parses the final
+XML, removes external image, paint, filter, cursor, and structural references, and validates the
+residual compatibility contract. Attributes in the SVG, XLink, and XML namespaces are interpreted
+by local name, matching `usvg`; namespace aliases therefore cannot bypass the terminal contract.
+The terminal validator also resolves the same-document `<use>` graph before `usvg`, rejecting
+cycles and expanded node/depth limits while retaining occurrence counts for inline-image export
+budgets. It uses the same `svgtypes` IRI grammar as the pinned `usvg` dependency for local
+fragment references. Local `feImage` and marker references contribute to that graph; local
+filter, mask, and clip-path definitions are conservatively charged once per `<use>`-expanded
+source element so attribute, inline-style, and stylesheet effect selection cannot bypass
+embedded-image budgets.
+Custom pass errors are surfaced with the pass name attached.
+Finalized output is represented by `ResvgCompatibleSvg`; callers cannot construct that type from an
+arbitrary string.
+
+Do not modify the SVG string after terminal finalization and continue describing it as resvg-safe.
+Any later XML, attribute, or CSS rewrite invalidates the sealed artifact's evidence. Put host
+styling and structural passes inside the same `SvgPipeline`; if an external component must rewrite
+an already finalized string, pass the result through `finalize_resvg_svg` again before rasterizing.
+
+This contract targets `usvg` / `resvg`. It does not claim browser DOM safety. Browser embedding must
+use the Web package's `SafeInlineSvg` validator and the surrounding CSP/sandbox policy.
+
+Parity and readable output retain Mermaid's external-resource references. A host that intentionally
+supports external images should resolve them under its own root, protocol, byte, and pixel policy,
+inline the accepted bytes as an approved data URL in a custom draft postprocessor, and then let the
+terminal resvg-safe preset validate the result. Do not re-enable a generic `usvg` string resolver on
+untrusted output.
+
+The sealed type proves resource location and data-URL syntax, not that the decoded bytes form the
+declared image container or that decoding is cheap. Hosts that send `ResvgCompatibleSvg` directly
+to a third-party rasterizer must enforce byte, container, dimension, frame, and aggregate decode
+budgets for inline images. Merman's PNG/JPG/PDF APIs perform those checks before their backend
+parses the SVG.
 
 ## Built-In Host Styling Blocks
 
 Host styling should use product-neutral postprocessors rather than modifying `resvg_safe` itself:
 
 ```rust
-use merman::render::{
+use merman::svg::{
     CssOverridePolicy, HeadlessRenderer, RootBackgroundPostprocessor, ScopedCssPostprocessor,
     SvgPipeline,
 };
@@ -142,7 +206,7 @@ before rasterizing.
 
 Product-specific rules still belong in host code. For example, Zed-style accent token assignment,
 theme color selection, and diagram-family-specific color semantics should be implemented as custom
-`SvgPostprocessor` passes layered after these generic blocks. `RootBackgroundPostprocessor` is the
+`SvgPostprocessor` draft passes. `RootBackgroundPostprocessor` is the
 narrow exception for a common host canvas need: it rewrites only the root `<svg>` inline
 `background-color`, preserving all Mermaid-owned diagram colors.
 

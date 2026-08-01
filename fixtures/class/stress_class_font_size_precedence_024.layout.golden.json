@@ -1,13 +1,13 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "FontSizeProbe",
-          "x": 201.957,
+          "x": 152.801,
           "y": 63.0,
-          "width": 403.914,
+          "width": 305.602,
           "height": 126.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 403.914,
+        "max_x": 305.602,
         "max_y": 126.0
       }
     }

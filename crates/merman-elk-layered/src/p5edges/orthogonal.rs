@@ -112,6 +112,7 @@ impl HyperEdgeSegment {
         }
     }
 
+    #[cfg(test)]
     pub fn with_incoming_outgoing(
         incoming: impl Into<Vec<f64>>,
         outgoing: impl Into<Vec<f64>>,

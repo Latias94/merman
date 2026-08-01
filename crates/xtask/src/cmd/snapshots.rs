@@ -1,8 +1,9 @@
 use crate::XtaskError;
 use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures, fixtures_root_for_diagram};
 use crate::util::*;
+use merman_fixture_render_context::RenderContextCatalog;
 use regex::Regex;
-use serde_json::{Map, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -19,39 +20,32 @@ fn snapshot_selector_accepts(selector: &str, diagram_type: &str) -> bool {
         "er" => diagram_type == "erDiagram",
         "flowchart" => matches!(diagram_type, "flowchart-v2" | "flowchart-elk"),
         "state" => diagram_type == "stateDiagram",
-        "class" => diagram_type == "classDiagram",
+        "class" => matches!(diagram_type, "class" | "classDiagram"),
         "gitgraph" => diagram_type == "gitGraph",
         "quadrantchart" => diagram_type == "quadrantChart",
         _ => false,
     }
 }
 
-fn fixture_site_config_overrides() -> &'static Map<String, JsonValue> {
-    static OVERRIDES: OnceLock<Map<String, JsonValue>> = OnceLock::new();
-    OVERRIDES.get_or_init(|| {
-        let value: JsonValue = serde_json::from_str(include_str!(
-            "../../../../fixtures/_config/site_config_overrides.json"
-        ))
-        .expect("valid fixture site config override manifest");
-        match value {
-            JsonValue::Object(map) => map,
-            other => {
-                panic!("fixture site config override manifest must be a JSON object, got {other:?}")
-            }
-        }
+fn fixture_render_context_catalog() -> &'static RenderContextCatalog {
+    static CATALOG: OnceLock<RenderContextCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        RenderContextCatalog::load(crate::cmd::fixtures_root()).unwrap_or_else(|error| {
+            panic!("failed to load the committed fixture render-context catalog: {error}")
+        })
     })
 }
 
 pub(crate) fn fixture_site_config_for_path(path: &Path) -> Option<merman::MermaidConfig> {
-    let relative_name = path
-        .strip_prefix(crate::cmd::workspace_root().join("fixtures"))
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/");
-    fixture_site_config_overrides()
-        .get(&relative_name)
-        .cloned()
-        .map(merman::MermaidConfig::from_value)
+    fixture_render_context_catalog()
+        .context_for_fixture(path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to resolve fixture render context for {}: {error}",
+                path.display()
+            )
+        })
+        .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
 }
 
 fn layout_snapshot_site_config() -> merman::MermaidConfig {
@@ -67,6 +61,11 @@ fn layout_snapshot_site_config() -> merman::MermaidConfig {
             "maxEdges"
         ]
     }))
+}
+
+fn layout_snapshot_environment() -> merman::svg::RenderEnvironment {
+    merman::svg::RenderEnvironment::deterministic()
+        .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::deterministic())
 }
 
 pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
@@ -204,111 +203,130 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         )));
     }
 
-    merman::time::with_fixed_local_offset_minutes(Some(0), || {
-        let engine = merman::Engine::new()
-            .with_site_config(layout_snapshot_site_config())
-            .with_fixed_today(Some(
-                chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-            ))
-            .with_fixed_local_offset_minutes(Some(0));
-        let layout_opts = merman_render::LayoutOptions::default();
-        let mut failures = Vec::new();
+    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("valid UTC offset")
+        .with_fixed_today(Some(
+            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+        ));
+    let environment = layout_snapshot_environment().with_runtime_policy(runtime_policy.clone());
+    let engine = merman::Engine::new()
+        .with_site_config(layout_snapshot_site_config())
+        .with_runtime_policy(runtime_policy);
+    let layout_opts = merman_render::LayoutOptions::default();
+    let mut failures = Vec::new();
 
-        for mmd_path in mmd_files {
-            let text = match fs::read_to_string(&mmd_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!("failed to read {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
-
-            let parsed = match futures::executor::block_on(engine.parse_diagram(
-                &text,
-                merman::ParseOptions {
-                    suppress_errors: true,
-                },
-            )) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                    continue;
-                }
-                Err(err) => {
-                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
-
-            if !snapshot_selector_accepts(&diagram, parsed.meta.diagram_type.as_str()) {
+    for mmd_path in mmd_files {
+        let text = match fs::read_to_string(&mmd_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
                 continue;
             }
+        };
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-                Ok(v) => v,
-                Err(merman_render::Error::UnsupportedDiagram { .. }) => {
-                    // Layout snapshots are only defined for diagram types currently supported by
-                    // `merman-render::layout_parsed`. Skip unsupported diagrams so `--diagram all`
-                    // can be used for "all supported layout diagrams".
-                    continue;
-                }
-                Err(err) => {
-                    failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
-
-            let mut layout_json = match serde_json::to_value(&layouted.layout) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!(
-                        "failed to serialize layout JSON for {}: {err}",
-                        mmd_path.display()
-                    ));
-                    continue;
-                }
-            };
-            round_json_numbers(&mut layout_json, decimals);
-
-            let mut out = serde_json::json!({
-                "diagramType": parsed.meta.diagram_type,
-                "layout": layout_json,
-            });
-            normalize_layout_snapshot(&parsed.meta.diagram_type, &mut out);
-
-            let pretty = match serde_json::to_string_pretty(&out) {
-                Ok(v) => v,
-                Err(err) => {
-                    failures.push(format!(
-                        "failed to pretty-print JSON for {}: {err}",
-                        mmd_path.display()
-                    ));
-                    continue;
-                }
-            };
-
-            let out_path = mmd_path.with_extension("layout.golden.json");
-            if existing_only && !out_path.is_file() {
+        let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
+            &text,
+            merman::ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
                 continue;
             }
-            if let Some(parent) = out_path.parent()
-                && let Err(err) = fs::create_dir_all(parent)
-            {
-                failures.push(format!("failed to create dir {}: {err}", parent.display()));
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
                 continue;
             }
-            if let Err(err) = fs::write(&out_path, format!("{pretty}\n")) {
-                failures.push(format!("failed to write {}: {err}", out_path.display()));
-                continue;
-            }
+        };
+
+        if !snapshot_selector_accepts(&diagram, parsed.metadata().diagram_type.as_str()) {
+            continue;
         }
+        let diagram_type = parsed.metadata().diagram_type.clone();
 
-        if failures.is_empty() {
-            Ok(())
-        } else {
-            Err(XtaskError::LayoutSnapshotUpdateFailed(failures.join("\n")))
+        let session = match environment.begin_session() {
+            Ok(session) => session,
+            Err(err) => {
+                failures.push(format!("render session failed: {err}"));
+                continue;
+            }
+        };
+        let artifact = match merman_render::family::prepare(parsed, &layout_opts, session) {
+            Ok(v) => v,
+            Err(merman_render::Error::UnsupportedDiagram { .. }) => {
+                // Layout snapshots are only defined for renderable built-in families. Skip
+                // unsupported diagrams so `--diagram all` remains useful for the full corpus.
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let mut artifact_json = match artifact.layout_json() {
+            Ok(value) => value,
+            Err(err) => {
+                failures.push(format!(
+                    "failed to serialize layout JSON for {}: {err}",
+                    mmd_path.display()
+                ));
+                continue;
+            }
+        };
+        let Some(mut layout_json) = artifact_json
+            .as_object_mut()
+            .and_then(|object| object.remove("layout"))
+        else {
+            failures.push(format!(
+                "layout artifact for {} omitted its layout projection",
+                mmd_path.display()
+            ));
+            continue;
+        };
+        round_json_numbers(&mut layout_json, decimals);
+
+        let mut out = serde_json::json!({
+            "diagramType": diagram_type,
+            "layout": layout_json,
+        });
+        normalize_layout_snapshot(&diagram_type, &mut out);
+
+        let pretty = match serde_json::to_string_pretty(&out) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!(
+                    "failed to pretty-print JSON for {}: {err}",
+                    mmd_path.display()
+                ));
+                continue;
+            }
+        };
+
+        let out_path = mmd_path.with_extension("layout.golden.json");
+        if existing_only && !out_path.is_file() {
+            continue;
         }
-    })
+        if let Some(parent) = out_path.parent()
+            && let Err(err) = fs::create_dir_all(parent)
+        {
+            failures.push(format!("failed to create dir {}: {err}", parent.display()));
+            continue;
+        }
+        if let Err(err) = fs::write(&out_path, format!("{pretty}\n")) {
+            failures.push(format!("failed to write {}: {err}", out_path.display()));
+            continue;
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(XtaskError::LayoutSnapshotUpdateFailed(failures.join("\n")))
+    }
 }
 
 pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
@@ -327,6 +345,12 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     failures.extend(crate::cmd::admission_inventory_alignment_failures(
         &fixtures_root,
     ));
+    failures.extend(crate::cmd::committed_cypress_corpus_alignment_failures(
+        &workspace_root,
+    ));
+    if crate::cmd::mermaid_repo_root().is_dir() {
+        failures.extend(crate::cmd::cypress_corpus_source_alignment_failures());
+    }
 
     // 1) Every *_MINIMUM.md should have a *_UPSTREAM_TEST_COVERAGE.md sibling.
     let mut minimum_docs: Vec<PathBuf> = Vec::new();
@@ -388,7 +412,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
         s.contains('*') || s.contains('?') || s.contains('[') || s.contains(']')
     }
 
-    fn is_flowchart_elk_source_backed_probe_fixture(path: &Path) -> bool {
+    fn is_flowchart_elk_parity_fixture(path: &Path) -> bool {
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
             return false;
         };
@@ -397,15 +421,15 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
             .and_then(|parent| parent.file_name())
             .and_then(|name| name.to_str())
             == Some("flowchart");
-        is_flowchart_fixture && crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem)
+        is_flowchart_fixture && crate::cmd::flowchart_elk_svg_parity_admitted(stem)
     }
 
     // 2) Every ordinary `fixtures/**/*.mmd` must have a sibling `.golden.json`.
     // `fixtures/_deferred/**` contains fixtures that were intentionally kept out of the alignment
     // gates (e.g. upstream CLI renders an error, or depends on unsupported options). Do not require
     // goldens for these files.
-    // Flowchart ELK source-backed probes are intentionally governed by the upstream SVG probe gate
-    // instead of the broad semantic golden snapshot lane.
+    // Flowchart ELK parity fixtures are governed by the dedicated upstream SVG parity gate instead
+    // of the broad semantic golden snapshot lane.
     let mmd_files = collect_mmd_fixtures(
         &fixtures_root,
         MmdFixtureScan {
@@ -416,7 +440,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
         },
     );
     for mmd in &mmd_files {
-        if is_flowchart_elk_source_backed_probe_fixture(mmd) {
+        if is_flowchart_elk_parity_fixture(mmd) {
             continue;
         }
         let golden = mmd.with_extension("golden.json");
@@ -501,9 +525,18 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GeneratedArtifactCheck {
+    CapabilitySurface,
     DefaultConfig,
     DompurifyDefaults,
-    FlowchartFontMetrics,
+    EditorTokenDescriptor,
+    LalrpopParsers,
+    NativeAbi,
+    PlaygroundExampleCatalog,
+    ResourceContract,
+    ThemeSnapshot,
+    TextMeasurementProtocol,
+    TypstProfileConstants,
+    WebDiagramCatalog,
 }
 
 fn verify_default_config_checks() -> [GeneratedArtifactCheck; 1] {
@@ -514,20 +547,50 @@ fn verify_dompurify_defaults_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::DompurifyDefaults]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 3] {
+fn verify_web_diagram_catalog_checks() -> [GeneratedArtifactCheck; 1] {
+    [GeneratedArtifactCheck::WebDiagramCatalog]
+}
+
+fn verify_theme_snapshot_checks() -> [GeneratedArtifactCheck; 1] {
+    [GeneratedArtifactCheck::ThemeSnapshot]
+}
+
+fn verify_lalrpop_parsers_checks() -> [GeneratedArtifactCheck; 1] {
+    [GeneratedArtifactCheck::LalrpopParsers]
+}
+
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 12] {
     [
+        GeneratedArtifactCheck::CapabilitySurface,
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
-        GeneratedArtifactCheck::FlowchartFontMetrics,
+        GeneratedArtifactCheck::EditorTokenDescriptor,
+        GeneratedArtifactCheck::LalrpopParsers,
+        GeneratedArtifactCheck::NativeAbi,
+        GeneratedArtifactCheck::PlaygroundExampleCatalog,
+        GeneratedArtifactCheck::ResourceContract,
+        GeneratedArtifactCheck::ThemeSnapshot,
+        GeneratedArtifactCheck::TextMeasurementProtocol,
+        GeneratedArtifactCheck::TypstProfileConstants,
+        GeneratedArtifactCheck::WebDiagramCatalog,
     ]
 }
 
 impl GeneratedArtifactCheck {
     fn label(self) -> &'static str {
         match self {
+            GeneratedArtifactCheck::CapabilitySurface => "capability surface",
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
-            GeneratedArtifactCheck::FlowchartFontMetrics => "flowchart font metrics",
+            GeneratedArtifactCheck::EditorTokenDescriptor => "editor token descriptor",
+            GeneratedArtifactCheck::LalrpopParsers => "checked-in LALRPOP parsers",
+            GeneratedArtifactCheck::NativeAbi => "native ABI",
+            GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
+            GeneratedArtifactCheck::ResourceContract => "resource contract",
+            GeneratedArtifactCheck::ThemeSnapshot => "Mermaid theme snapshot",
+            GeneratedArtifactCheck::TextMeasurementProtocol => "text-measurement protocol",
+            GeneratedArtifactCheck::TypstProfileConstants => "Typst profile constants",
+            GeneratedArtifactCheck::WebDiagramCatalog => "web diagram catalog",
         }
     }
 }
@@ -575,27 +638,50 @@ fn verify_generated_artifact_check(
     tmp_dir: &Path,
 ) -> Result<Option<String>, XtaskError> {
     match check {
+        GeneratedArtifactCheck::CapabilitySurface => super::verify_capability_surface_artifacts(),
         GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
         GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
-        GeneratedArtifactCheck::FlowchartFontMetrics => {
-            verify_flowchart_font_metrics_artifact(tmp_dir)
+        GeneratedArtifactCheck::EditorTokenDescriptor => {
+            super::verify_editor_token_descriptor_artifacts()
         }
+        GeneratedArtifactCheck::LalrpopParsers => super::verify_lalrpop_parsers_artifacts(),
+        GeneratedArtifactCheck::NativeAbi => super::verify_native_abi_artifacts(),
+        GeneratedArtifactCheck::PlaygroundExampleCatalog => {
+            super::verify_playground_example_catalog(Vec::new()).map(|()| None)
+        }
+        GeneratedArtifactCheck::ResourceContract => super::verify_resource_contract_artifacts(),
+        GeneratedArtifactCheck::ThemeSnapshot => verify_theme_snapshot_artifact(tmp_dir),
+        GeneratedArtifactCheck::TextMeasurementProtocol => {
+            super::verify_text_measurement_protocol_artifacts()
+        }
+        GeneratedArtifactCheck::TypstProfileConstants => {
+            super::verify_typst_profile_constants_artifact()
+        }
+        GeneratedArtifactCheck::WebDiagramCatalog => verify_web_diagram_catalog_artifact(tmp_dir),
     }
 }
 
 fn verify_default_config_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
     let expected_config = PathBuf::from("crates/merman-core/src/generated/default_config.json");
+    let expected_shape =
+        PathBuf::from("crates/merman-core/src/generated/default_config_shape.json");
     let actual_config = tmp_dir.join("default_config.actual.json");
+    let actual_shape = tmp_dir.join("default_config_shape.actual.json");
     super::gen_default_config(vec![
         "--out".to_string(),
         actual_config.display().to_string(),
+        "--shape-out".to_string(),
+        actual_shape.display().to_string(),
     ])?;
     let expected_config_json: JsonValue = serde_json::from_str(&read_text(&expected_config)?)?;
     let actual_config_json: JsonValue = serde_json::from_str(&read_text(&actual_config)?)?;
-    if expected_config_json != actual_config_json {
+    let expected_shape_json: JsonValue = serde_json::from_str(&read_text(&expected_shape)?)?;
+    let actual_shape_json: JsonValue = serde_json::from_str(&read_text(&actual_shape)?)?;
+    if expected_config_json != actual_config_json || expected_shape_json != actual_shape_json {
         return Ok(Some(format!(
-            "default config mismatch: regenerate with `cargo run -p xtask -- gen-default-config` ({})",
-            expected_config.display()
+            "default config value/shape mismatch: regenerate with `cargo run -p xtask -- gen-default-config` ({}, {})",
+            expected_config.display(),
+            expected_shape.display()
         )));
     }
 
@@ -619,26 +705,29 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
     Ok(None)
 }
 
-fn verify_flowchart_font_metrics_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
-    let expected_flowchart_font_metrics =
-        PathBuf::from("crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs");
-    let actual_flowchart_font_metrics = tmp_dir.join("font_metrics_flowchart_11_12_2.actual.rs");
-    super::gen_font_metrics(vec![
-        "--in".to_string(),
-        "fixtures/upstream-svgs/flowchart".to_string(),
-        "--out".to_string(),
-        actual_flowchart_font_metrics.display().to_string(),
-        "--font-size".to_string(),
-        "16".to_string(),
-        "--preserve-layout-from".to_string(),
-        expected_flowchart_font_metrics.display().to_string(),
-    ])?;
-    if read_text_normalized(&expected_flowchart_font_metrics)?
-        != read_text_normalized(&actual_flowchart_font_metrics)?
-    {
+fn verify_theme_snapshot_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
+    let expected = PathBuf::from("crates/merman-core/src/generated/theme_variables_11_16_0.json");
+    let actual = tmp_dir.join("theme_variables_11_16_0.actual.json");
+    super::gen_theme_snapshot(vec!["--out".to_string(), actual.display().to_string()])?;
+    let expected_json: JsonValue = serde_json::from_str(&read_text(&expected)?)?;
+    let actual_json: JsonValue = serde_json::from_str(&read_text(&actual)?)?;
+    if expected_json != actual_json {
         return Ok(Some(format!(
-            "flowchart font metrics mismatch: regenerate with `cargo run -p xtask -- gen-font-metrics --in fixtures/upstream-svgs/flowchart --out crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs --font-size 16 --preserve-layout-from crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs` ({})",
-            expected_flowchart_font_metrics.display()
+            "Mermaid theme snapshot mismatch: regenerate with `cargo run -p xtask -- gen-theme-snapshot` ({})",
+            expected.display()
+        )));
+    }
+    Ok(None)
+}
+
+fn verify_web_diagram_catalog_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
+    let expected = PathBuf::from("platforms/web/src/generated/diagram-catalog.ts");
+    let actual = tmp_dir.join("diagram-catalog.actual.ts");
+    super::gen_web_diagram_catalog(vec!["--out".to_string(), actual.display().to_string()])?;
+    if read_text_normalized(&expected)? != read_text_normalized(&actual)? {
+        return Ok(Some(format!(
+            "web diagram catalog mismatch: regenerate with `cargo run -p xtask -- gen-web-diagram-catalog` ({})",
+            expected.display()
         )));
     }
 
@@ -652,6 +741,21 @@ pub(crate) fn verify_default_config(args: Vec<String>) -> Result<(), XtaskError>
 
 pub(crate) fn verify_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError> {
     let checks = verify_dompurify_defaults_checks();
+    verify_generated_artifact_checks(args, &checks)
+}
+
+pub(crate) fn verify_lalrpop_parsers(args: Vec<String>) -> Result<(), XtaskError> {
+    let checks = verify_lalrpop_parsers_checks();
+    verify_generated_artifact_checks(args, &checks)
+}
+
+pub(crate) fn verify_theme_snapshot(args: Vec<String>) -> Result<(), XtaskError> {
+    let checks = verify_theme_snapshot_checks();
+    verify_generated_artifact_checks(args, &checks)
+}
+
+pub(crate) fn verify_web_diagram_catalog(args: Vec<String>) -> Result<(), XtaskError> {
+    let checks = verify_web_diagram_catalog_checks();
     verify_generated_artifact_checks(args, &checks)
 }
 
@@ -704,14 +808,17 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     //
     // Also pin "today" so time-dependent diagrams (notably Gantt) remain deterministic and the
     // generated snapshots match the test harness (`crates/merman-core/tests/snapshots.rs`).
+    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("valid UTC offset")
+        .with_fixed_today(Some(
+            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+        ));
     let engine = merman::Engine::new()
         .with_site_config(merman::MermaidConfig::from_value(
             serde_json::json!({ "handDrawnSeed": 1 }),
         ))
-        .with_fixed_today(Some(
-            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-        ))
-        .with_fixed_local_offset_minutes(Some(0));
+        .with_runtime_policy(runtime_policy);
     let mut failures = Vec::new();
 
     fn ms_to_local_iso(ms: i64) -> Option<String> {
@@ -872,8 +979,10 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 mod tests {
     use super::{
         GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures,
-        fixture_site_config_overrides, snapshot_selector_accepts, validate_verify_generated_args,
-        verify_default_config_checks, verify_dompurify_defaults_checks, verify_generated_checks,
+        fixture_render_context_catalog, fixture_site_config_for_path, layout_snapshot_environment,
+        snapshot_selector_accepts, validate_verify_generated_args, verify_default_config_checks,
+        verify_dompurify_defaults_checks, verify_generated_checks, verify_lalrpop_parsers_checks,
+        verify_theme_snapshot_checks, verify_web_diagram_catalog_checks,
     };
     use crate::cmd::is_parser_only_fixture;
     use crate::cmd::workspace_root;
@@ -891,10 +1000,27 @@ mod tests {
         assert_eq!(
             verify_generated_checks(),
             [
+                GeneratedArtifactCheck::CapabilitySurface,
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
-                GeneratedArtifactCheck::FlowchartFontMetrics,
+                GeneratedArtifactCheck::EditorTokenDescriptor,
+                GeneratedArtifactCheck::LalrpopParsers,
+                GeneratedArtifactCheck::NativeAbi,
+                GeneratedArtifactCheck::PlaygroundExampleCatalog,
+                GeneratedArtifactCheck::ResourceContract,
+                GeneratedArtifactCheck::ThemeSnapshot,
+                GeneratedArtifactCheck::TextMeasurementProtocol,
+                GeneratedArtifactCheck::TypstProfileConstants,
+                GeneratedArtifactCheck::WebDiagramCatalog,
             ]
+        );
+        assert_eq!(
+            verify_lalrpop_parsers_checks(),
+            [GeneratedArtifactCheck::LalrpopParsers]
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::CapabilitySurface.label(),
+            "capability surface"
         );
         assert_eq!(
             GeneratedArtifactCheck::DefaultConfig.label(),
@@ -903,6 +1029,47 @@ mod tests {
         assert_eq!(
             GeneratedArtifactCheck::DompurifyDefaults.label(),
             "dompurify defaults"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::EditorTokenDescriptor.label(),
+            "editor token descriptor"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::LalrpopParsers.label(),
+            "checked-in LALRPOP parsers"
+        );
+        assert_eq!(GeneratedArtifactCheck::NativeAbi.label(), "native ABI");
+        assert_eq!(
+            GeneratedArtifactCheck::PlaygroundExampleCatalog.label(),
+            "Playground example catalog"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::ResourceContract.label(),
+            "resource contract"
+        );
+        assert_eq!(
+            verify_theme_snapshot_checks(),
+            [GeneratedArtifactCheck::ThemeSnapshot]
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::ThemeSnapshot.label(),
+            "Mermaid theme snapshot"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::TextMeasurementProtocol.label(),
+            "text-measurement protocol"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::TypstProfileConstants.label(),
+            "Typst profile constants"
+        );
+        assert_eq!(
+            verify_web_diagram_catalog_checks(),
+            [GeneratedArtifactCheck::WebDiagramCatalog]
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::WebDiagramCatalog.label(),
+            "web diagram catalog"
         );
     }
 
@@ -986,14 +1153,22 @@ mod tests {
     }
 
     #[test]
-    fn fixture_site_config_manifest_references_existing_fixtures() {
+    fn fixture_render_context_catalog_projects_site_config_for_every_entry() {
         let fixtures_root = workspace_root().join("fixtures");
-        for relative_name in fixture_site_config_overrides().keys() {
-            let path = fixtures_root.join(relative_name);
-            assert!(
-                path.exists(),
-                "fixture site config override references missing fixture {}",
-                path.display()
+        let contexts = fixture_render_context_catalog()
+            .contexts()
+            .collect::<Vec<_>>();
+        assert!(!contexts.is_empty(), "expected committed render contexts");
+
+        for context in contexts {
+            let path = fixtures_root.join(context.fixture());
+            let config = fixture_site_config_for_path(&path)
+                .unwrap_or_else(|| panic!("missing render context for {}", path.display()));
+            assert_eq!(
+                config.get_str("securityLevel"),
+                Some(context.security_level().as_str()),
+                "site config for {}",
+                context.fixture()
             );
         }
     }
@@ -1026,5 +1201,19 @@ mod tests {
     #[test]
     fn snapshot_selector_keeps_error_diagrams_for_scoped_runs() {
         assert!(snapshot_selector_accepts("class", "error"));
+    }
+
+    #[test]
+    fn layout_snapshot_generation_uses_the_verifier_measurement_profile() {
+        let session = layout_snapshot_environment()
+            .begin_session()
+            .expect("begin layout snapshot render session");
+        let route = session.text_measurement_route(merman::svg::TextMeasurementPhase::Layout);
+
+        assert_eq!(
+            route.primary.profile().as_str(),
+            "merman.deterministic-text"
+        );
+        assert_eq!(route.fallback, None);
     }
 }

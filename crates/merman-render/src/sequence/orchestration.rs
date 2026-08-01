@@ -13,7 +13,7 @@ use super::messages::{SequenceMessageLayoutContext, layout_sequence_message};
 use super::notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use super::rect::SequenceRectOpen;
 use crate::math::MathRenderer;
-use crate::model::{LayoutEdge, LayoutNode};
+use crate::model::{LayoutEdge, LayoutNode, SequenceBlockLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
@@ -50,15 +50,28 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
 pub(super) struct SequenceLayoutGraph {
     pub(super) nodes: Vec<LayoutNode>,
     pub(super) edges: Vec<LayoutEdge>,
+    pub(super) block_layouts_by_id: rustc_hash::FxHashMap<String, SequenceBlockLayout>,
     pub(super) bottom_box_top_y: f64,
+    pub(super) bounds_start_x: f64,
+    pub(super) bounds_stop_x: f64,
+}
+
+struct OpenSequenceBlockLayout {
+    id: String,
+    start_y: f64,
+    section_ys_by_id: rustc_hash::FxHashMap<String, f64>,
 }
 
 struct SequenceLayoutLoopState<'a> {
     cursor_y: f64,
     block_stopy_stack: Vec<Option<f64>>,
+    open_sequence_blocks: Vec<OpenSequenceBlockLayout>,
+    block_layouts_by_id: rustc_hash::FxHashMap<String, SequenceBlockLayout>,
     rect_stack: Vec<SequenceRectOpen>,
     activation_state: SequenceActivationState,
     actor_lifecycle: SequenceActorLifecycle<'a>,
+    bounds_start_x: f64,
+    bounds_stop_x: f64,
 }
 
 impl<'a> SequenceLayoutLoopState<'a> {
@@ -71,26 +84,73 @@ impl<'a> SequenceLayoutLoopState<'a> {
             destroyed_actors: &ctx.model.destroyed_actors,
             actor_height: ctx.actor_height,
         });
+        let (bounds_start_x, bounds_stop_x) = ctx
+            .actor_centers_x
+            .iter()
+            .copied()
+            .zip(ctx.actor_widths.iter().copied())
+            .map(|(center_x, width)| (center_x - width / 2.0, center_x + width / 2.0))
+            .reduce(|left, right| (left.0.min(right.0), left.1.max(right.1)))
+            .unwrap_or((0.0, ctx.sequence_default_width.max(1.0)));
 
         Self {
             cursor_y: ctx.actor_top_offset_y + ctx.max_actor_layout_height,
             block_stopy_stack: Vec::new(),
+            open_sequence_blocks: Vec::new(),
+            block_layouts_by_id: rustc_hash::FxHashMap::default(),
             rect_stack: Vec::new(),
             activation_state,
             actor_lifecycle,
+            bounds_start_x,
+            bounds_stop_x,
         }
     }
 
-    fn open_block(&mut self) {
+    fn open_content_block(&mut self) {
         self.block_stopy_stack.push(None);
+    }
+
+    fn open_sequence_block(&mut self, id: &str, start_y: f64) {
+        self.open_content_block();
+        self.open_sequence_blocks.push(OpenSequenceBlockLayout {
+            id: id.to_string(),
+            start_y,
+            section_ys_by_id: rustc_hash::FxHashMap::default(),
+        });
+    }
+
+    fn add_sequence_section(&mut self, id: &str, y: f64) {
+        if let Some(open) = self.open_sequence_blocks.last_mut() {
+            open.section_ys_by_id.insert(id.to_string(), y);
+        }
     }
 
     fn include_inserted_bottom(&mut self, inserted_bottom_y: f64, box_margin: f64) {
         include_block_stopy(&mut self.block_stopy_stack, inserted_bottom_y, box_margin);
     }
 
-    fn close_block(&mut self, box_margin: f64) {
+    fn include_inserted_horizontal(&mut self, min_x: f64, max_x: f64, box_margin: f64) {
+        let nested_margin = self.block_stopy_stack.len() as f64 * box_margin;
+        self.bounds_start_x = self.bounds_start_x.min(min_x - nested_margin);
+        self.bounds_stop_x = self.bounds_stop_x.max(max_x + nested_margin);
+    }
+
+    fn close_content_block(&mut self, box_margin: f64) {
         self.cursor_y = close_block_cursor(&mut self.block_stopy_stack, self.cursor_y, box_margin);
+    }
+
+    fn close_sequence_block(&mut self, box_margin: f64) {
+        self.close_content_block(box_margin);
+        if let Some(open) = self.open_sequence_blocks.pop() {
+            self.block_layouts_by_id.insert(
+                open.id,
+                SequenceBlockLayout {
+                    start_y: open.start_y,
+                    stop_y: self.cursor_y,
+                    section_ys_by_id: open.section_ys_by_id,
+                },
+            );
+        }
     }
 }
 
@@ -99,10 +159,8 @@ fn include_block_stopy(
     inserted_bottom_y: f64,
     box_margin: f64,
 ) {
-    let depth = block_stopy_stack.len();
-    for (index, stopy) in block_stopy_stack.iter_mut().enumerate() {
-        let nested_margin = (depth - index) as f64 * box_margin;
-        let candidate = inserted_bottom_y + nested_margin;
+    if let Some(stopy) = block_stopy_stack.last_mut() {
+        let candidate = inserted_bottom_y + box_margin;
         *stopy = Some(stopy.map_or(candidate, |current| current.max(candidate)));
     }
 }
@@ -112,10 +170,16 @@ fn close_block_cursor(
     cursor_y: f64,
     box_margin: f64,
 ) -> f64 {
-    block_stopy_stack
-        .pop()
-        .flatten()
-        .unwrap_or(cursor_y + box_margin)
+    let closed_stopy = block_stopy_stack.pop().flatten();
+    if let Some(closed_stopy) = closed_stopy {
+        if let Some(parent_stopy) = block_stopy_stack.last_mut() {
+            let candidate = closed_stopy + box_margin;
+            *parent_stopy = Some(parent_stopy.map_or(candidate, |current| current.max(candidate)));
+        }
+        closed_stopy
+    } else {
+        cursor_y + box_margin
+    }
 }
 
 fn handle_sequence_directive<'a>(
@@ -133,18 +197,21 @@ fn handle_sequence_directive<'a>(
 
     match msg.message_type {
         message_type if is_block_start(message_type) => {
+            let start_y = state.cursor_y + ctx.box_margin;
+            state.open_sequence_block(&msg.id, start_y);
             state.cursor_y += directive_steps
                 .get(msg.id.as_str())
                 .copied()
                 .unwrap_or_default();
-            state.open_block();
             true
         }
         message_type if is_block_end(message_type) => {
-            state.close_block(ctx.box_margin);
+            state.close_sequence_block(ctx.box_margin);
             true
         }
         message_type if is_block_section(message_type) => {
+            let section_y = state.cursor_y + ctx.box_margin + ctx.box_text_margin;
+            state.add_sequence_section(&msg.id, section_y);
             state.cursor_y += directive_steps
                 .get(msg.id.as_str())
                 .copied()
@@ -170,11 +237,11 @@ fn handle_sequence_rect(
                 state.cursor_y + box_margin,
             ));
             state.cursor_y += rect_step_start;
-            state.open_block();
+            state.open_content_block();
             true
         }
         23 => {
-            state.close_block(box_margin);
+            state.close_content_block(box_margin);
             if let Some(open) = state.rect_stack.pop() {
                 let closed = open.close(actor_centers_x);
                 nodes.push(closed.node);
@@ -229,6 +296,11 @@ fn handle_sequence_note(
         note.rect_min_x,
         note.rect_max_x,
         note.rect_max_y,
+    );
+    state.include_inserted_horizontal(
+        note.node.x - note.node.width / 2.0,
+        note.node.x + note.node.width / 2.0,
+        ctx.box_margin,
     );
     state.include_inserted_bottom(note.rect_max_y, ctx.box_margin);
 
@@ -285,6 +357,8 @@ fn handle_sequence_message(
         edge,
         from_x,
         to_x,
+        inserted_min_x,
+        inserted_max_x,
         line_y,
         inserted_bottom_y,
         cursor_step,
@@ -296,12 +370,13 @@ fn handle_sequence_message(
         from_x.max(to_x) + SEQUENCE_FRAME_SIDE_PAD_PX,
         inserted_bottom_y,
     );
-    state.include_inserted_bottom(inserted_bottom_y, ctx.box_margin);
-
+    state.include_inserted_horizontal(inserted_min_x, inserted_max_x, ctx.box_margin);
     state.cursor_y += cursor_step;
-    state.cursor_y += state
+    let lifecycle_adjustment = state
         .actor_lifecycle
         .apply_message_y_adjustment(msg_idx, &edge.from, &edge.to, line_y);
+    state.cursor_y += lifecycle_adjustment;
+    state.include_inserted_bottom(inserted_bottom_y + lifecycle_adjustment, ctx.box_margin);
     edges.push(edge);
     true
 }
@@ -413,7 +488,10 @@ pub(super) fn build_sequence_layout_graph(
     SequenceLayoutGraph {
         nodes,
         edges,
+        block_layouts_by_id: state.block_layouts_by_id,
         bottom_box_top_y,
+        bounds_start_x: state.bounds_start_x,
+        bounds_stop_x: state.bounds_stop_x,
     }
 }
 
@@ -423,7 +501,7 @@ fn include_rect_stack_bounds(
     max_x: f64,
     max_y: f64,
 ) {
-    for open in rect_stack.iter_mut() {
+    if let Some(open) = rect_stack.last_mut() {
         open.include_min_max(min_x, max_x, max_y);
     }
 }
@@ -450,6 +528,14 @@ mod tests {
 
         assert_eq!(close_block_cursor(&mut stack, 130.0, 7.0), 167.0);
         assert_eq!(close_block_cursor(&mut stack, 167.0, 7.0), 174.0);
+    }
+
+    #[test]
+    fn empty_nested_block_does_not_replace_parent_content_bounds() {
+        let mut stack = vec![Some(107.0), None];
+
+        assert_eq!(close_block_cursor(&mut stack, 200.0, 7.0), 207.0);
+        assert_eq!(stack, vec![Some(107.0)]);
     }
 
     #[test]

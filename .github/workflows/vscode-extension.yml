@@ -9,22 +9,36 @@ on:
       - ".github/workflows/vscode-extension.yml"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "LICENSE-*"
+      - "THIRD_PARTY_NOTICES.md"
+      - "THIRD_PARTY_LICENSES/**"
       - "crates/**"
+      - "editor-language/**"
+      - "fixtures/**"
       - "platforms/web/src/svg-safety-policy.ts"
+      - "playground/examples/manifest.json"
       - "scripts/check-svg-safety-policy.mjs"
       - "scripts/generate-svg-safety-policy.mjs"
       - "scripts/svg-safety-policy.mjs"
+      - "scripts/sync-release-legal-materials.py"
       - "tools/vscode-extension/**"
   pull_request:
     paths:
       - ".github/workflows/vscode-extension.yml"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "LICENSE-*"
+      - "THIRD_PARTY_NOTICES.md"
+      - "THIRD_PARTY_LICENSES/**"
       - "crates/**"
+      - "editor-language/**"
+      - "fixtures/**"
       - "platforms/web/src/svg-safety-policy.ts"
+      - "playground/examples/manifest.json"
       - "scripts/check-svg-safety-policy.mjs"
       - "scripts/generate-svg-safety-policy.mjs"
       - "scripts/svg-safety-policy.mjs"
+      - "scripts/sync-release-legal-materials.py"
       - "tools/vscode-extension/**"
   workflow_dispatch:
     inputs:
@@ -58,7 +72,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           tag_re="^v${semver_re#^}"
           fail() {
             echo "::error::$1" >&2
@@ -75,7 +89,7 @@ jobs:
           validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
             :
             validated_source_ref="refs/tags/${SOURCE_REF#refs/tags/}"
           else
@@ -84,8 +98,33 @@ jobs:
 
           printf 'source_ref=%s\n' "$validated_source_ref" >> "$GITHUB_OUTPUT"
 
-  package:
+  editor-language-contract:
     needs: validate-inputs
+    name: editor-language-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Verify legal material projections
+        run: python3 scripts/sync-release-legal-materials.py --check
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Verify generated editor language contract
+        run: cargo run --locked -p xtask -- verify-editor-token-descriptor
+
+  package:
+    needs: [validate-inputs, editor-language-contract]
     name: package (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -134,7 +173,9 @@ jobs:
         run: npm ci
 
       - name: Build release runtime binaries
-        run: cargo build --release --locked -p merman-lsp -p merman-cli
+        run: |
+          python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked
+          python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
 
       - name: Typecheck extension
         working-directory: tools/vscode-extension
@@ -161,24 +202,33 @@ jobs:
       - name: Derive VSIX release metadata
         id: vsix
         run: |
-          release_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
-          manifest_version="${release_version%%-*}"
+          runtime_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          extension_version="$(node -p "require('./tools/vscode-extension/package.json').version")"
+          source_sha="$(git rev-parse HEAD)"
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          runtime_channel="stable"
+          if [[ "$runtime_version" == *-* ]]; then
+            runtime_channel="${runtime_version#*-}"
+            runtime_channel="${runtime_channel%%.*}"
+          fi
           {
-            echo "release_version=${release_version}"
-            echo "manifest_version=${manifest_version}"
+            echo "extension_version=${extension_version}"
+            echo "runtime_version=${runtime_version}"
+            echo "runtime_channel=${runtime_channel}"
+            echo "source_sha=${source_sha}"
           } >> "$GITHUB_OUTPUT"
-          echo "VSIX release_version=${release_version} manifest_version=${manifest_version}"
+          echo "VSIX extension_version=${extension_version} runtime_version=${runtime_version} runtime_channel=${runtime_channel} source_sha=${source_sha}"
 
       - name: Package VSIX
         working-directory: tools/vscode-extension
         env:
-          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+          MERMAN_VSCODE_RELEASE_VERSION: ${{ steps.vsix.outputs.extension_version }}
         run: npm run package -- --target "${{ matrix.target }}" --out "merman-vscode-${{ matrix.target }}.vsix"
 
       - name: Verify VSIX contents
         working-directory: tools/vscode-extension
         env:
-          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+          MERMAN_VSCODE_RELEASE_VERSION: ${{ steps.vsix.outputs.extension_version }}
         run: npm run verify:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix" --platform "${{ matrix.target }}" --target "${{ matrix.target }}"
 
       - name: Smoke packaged VSIX
@@ -194,6 +244,6 @@ jobs:
       - name: Upload VSIX
         uses: actions/upload-artifact@v6
         with:
-          name: merman-vscode-${{ matrix.target }}
+          name: merman-vscode-${{ steps.vsix.outputs.extension_version }}-runtime-${{ steps.vsix.outputs.runtime_version }}-${{ steps.vsix.outputs.runtime_channel }}-${{ steps.vsix.outputs.source_sha }}-${{ matrix.target }}
           path: tools/vscode-extension/merman-vscode-${{ matrix.target }}.vsix
           if-no-files-found: error

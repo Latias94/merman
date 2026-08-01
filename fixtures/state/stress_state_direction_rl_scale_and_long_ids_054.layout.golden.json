@@ -5,31 +5,31 @@
       "nodes": [
         {
           "id": "AnotherLongIdentifier_ABC_DEF",
-          "x": 180.013,
+          "x": 185.6,
           "y": 28.0,
-          "width": 216.0,
+          "width": 227.2,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "ThisIsAReallyLongStateIdentifierWithNumbers123",
-          "x": 630.654,
+          "x": 709.2,
           "y": 28.0,
-          "width": 216.0,
+          "width": 350.72,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "root_end",
-          "x": 15.007,
+          "x": 15.0,
           "y": 28.0,
-          "width": 14.013,
+          "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "root_start",
-          "x": 795.654,
+          "x": 941.56,
           "y": 28.0,
           "width": 14.0,
           "height": 14.0,
@@ -45,15 +45,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 788.654,
+              "x": 934.56,
               "y": 28.0
             },
             {
-              "x": 763.654,
+              "x": 909.56,
               "y": 28.0
             },
             {
-              "x": 739.154,
+              "x": 885.06,
               "y": 28.5
             }
           ],
@@ -74,22 +74,22 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 523.154,
+              "x": 534.34,
               "y": 28.5
             },
             {
-              "x": 405.334,
+              "x": 416.52,
               "y": 28.0
             },
             {
-              "x": 288.513,
+              "x": 299.7,
               "y": 28.5
             }
           ],
           "label": {
-            "x": 405.334,
+            "x": 416.52,
             "y": 28.0,
-            "width": 184.641,
+            "width": 184.64,
             "height": 24.0
           },
           "start_label_left": null,
@@ -108,15 +108,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 72.513,
+              "x": 72.5,
               "y": 28.5
             },
             {
-              "x": 47.013,
+              "x": 47.0,
               "y": 28.0
             },
             {
-              "x": 22.007,
+              "x": 22.0,
               "y": 28.0
             }
           ],
@@ -134,7 +134,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 802.654,
+        "max_x": 948.56,
         "max_y": 48.0
       }
     }

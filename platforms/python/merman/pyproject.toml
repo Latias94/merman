@@ -4,12 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "merman"
-version = "0.8.0a3"
+version = "0.8.0a4"
 description = "Experimental Python bindings for Merman headless Mermaid rendering."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT OR Apache-2.0"
-license-files = ["LICENSE"]
+license-files = [
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "THIRD_PARTY_LICENSES/*",
+  "THIRD_PARTY_LICENSES/*/*",
+]
 authors = [
   { name = "Mingzhen Zhuang", email = "superfrankie621@gmail.com" },
 ]

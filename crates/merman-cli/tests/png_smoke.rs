@@ -3,7 +3,7 @@ use png::ColorType;
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn repo_root() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -30,7 +30,7 @@ fn cli_renders_png_smoke() {
             "render",
             "--format",
             "png",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             fixture.to_string_lossy().as_ref(),
         ])
@@ -65,7 +65,7 @@ fn cli_rasterizes_svg_input_to_png() {
             "render",
             "--format",
             "png",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             svg_in.to_string_lossy().as_ref(),
         ])
@@ -77,6 +77,111 @@ fn cli_rasterizes_svg_input_to_png() {
         bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
         "output is not a PNG"
     );
+}
+
+#[test]
+fn cli_rasterizes_explicit_svg_stdin_to_png() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out = tmp.path().join("out.png");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut child = Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "png",
+            "--input-kind",
+            "svg",
+            "--output",
+            out.to_string_lossy().as_ref(),
+            "-",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn CLI");
+    use std::io::Write as _;
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(
+            br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>"#,
+        )
+        .expect("write SVG stdin");
+    let output = child.wait_with_output().expect("wait for CLI");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let bytes = fs::read(&out).expect("read png");
+    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+}
+
+#[test]
+fn scoped_unbounded_raster_and_images_keep_other_profile_limits() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = tmp.path().join("input.svg");
+    let out = tmp.path().join("out.png");
+    fs::write(
+        &input,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>"#,
+    )
+    .expect("write SVG");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "png",
+            "--resource-profile",
+            "constrained",
+            "--raster-unbounded",
+            "--embedded-images-unbounded",
+            "--resource-limit",
+            "max_model_items=10000000",
+            "--output",
+            out.to_string_lossy().as_ref(),
+            input.to_string_lossy().as_ref(),
+        ])
+        .assert()
+        .success();
+
+    let bytes = fs::read(&out).expect("read PNG");
+    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+}
+
+#[test]
+fn scoped_unbounded_raster_still_obeys_scheduling_budget() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let input = tmp.path().join("large.svg");
+    let out = tmp.path().join("out.png");
+    fs::write(
+        &input,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10000 10000"><rect width="10000" height="10000"/></svg>"#,
+    )
+    .expect("write SVG");
+
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .args([
+            "render",
+            "--format",
+            "png",
+            "--resource-profile",
+            "constrained",
+            "--raster-unbounded",
+            "--output",
+            out.to_string_lossy().as_ref(),
+            input.to_string_lossy().as_ref(),
+        ])
+        .output()
+        .expect("run CLI");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    assert!(stderr.contains("max_scheduling_weight_bytes"), "{stderr}");
+    assert!(!out.exists());
 }
 
 #[test]
@@ -102,11 +207,11 @@ fn cli_rasterizes_raw_svg_after_resvg_safe_boundary() {
             "render",
             "--format",
             "png",
-            "--backgroundColor",
+            "--background",
             "#f8fafc",
-            "--cssFile",
+            "--css-file",
             css.to_string_lossy().as_ref(),
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             svg_in.to_string_lossy().as_ref(),
         ])
@@ -142,7 +247,7 @@ fn cli_rasterizes_svg_input_to_png_with_fit_width_and_scale() {
             "250",
             "--scale",
             "2",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             svg_in.to_string_lossy().as_ref(),
         ])
@@ -168,7 +273,7 @@ fn cli_rasterizes_svg_input_to_png_with_max_width_limit() {
     .expect("write svg");
 
     let exe = assert_cmd::cargo_bin!("merman-cli");
-    Command::new(exe)
+    let output = Command::new(exe)
         .current_dir(&root)
         .args([
             "render",
@@ -176,12 +281,18 @@ fn cli_rasterizes_svg_input_to_png_with_max_width_limit() {
             "png",
             "--raster-max-width",
             "128",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             svg_in.to_string_lossy().as_ref(),
         ])
-        .assert()
-        .success();
+        .output()
+        .expect("run cli");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("constrained from 1000x500 to 128x64 pixels"),
+        "{stderr}"
+    );
 
     let bytes = fs::read(&out).expect("read png");
     assert_eq!(png_dimensions(&bytes), (128, 64));
@@ -236,7 +347,7 @@ fn cli_renders_png_for_negative_viewbox_diagrams() {
             "render",
             "--format",
             "png",
-            "--out",
+            "--output",
             out.to_string_lossy().as_ref(),
             fixture.to_string_lossy().as_ref(),
         ])

@@ -1,11 +1,35 @@
 use super::*;
 use crate::{
     EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, Error,
-    MermaidConfig, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel, SourceSpan,
+    MermaidConfig, ParseControl, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel,
+    SourceSpan,
 };
 use chrono::NaiveDate;
 use futures::executor::block_on;
 use serde_json::json;
+
+fn meta() -> ParseMetadata {
+    ParseMetadata {
+        diagram_type: "gantt".to_string(),
+        config: MermaidConfig::empty_object(),
+        effective_config: MermaidConfig::empty_object(),
+        title: None,
+    }
+}
+
+fn large_gantt_db(task_count: usize) -> GanttDb {
+    let mut db = GanttDb::default();
+    db.clear();
+    db.set_date_format("YYYY-MM-DD");
+    db.add_section("Delivery");
+    for index in 0..task_count {
+        let id = format!("task-{index}");
+        let fields = [id.as_str(), "2026-01-01", "1d"];
+        let task_info = db.parse_task_info(&fields);
+        db.add_task(&format!("Task {index}"), &fields.join(","), task_info);
+    }
+    db
+}
 
 fn parse(text: &str) -> Value {
     parse_with_site_config(text, None)
@@ -22,13 +46,287 @@ fn parse_with_site_config(text: &str, site_config: Option<MermaidConfig>) -> Val
         .model
 }
 
+fn with_test_local_time_zone<R>(time_zone: crate::time::LocalTimeZone, f: impl FnOnce() -> R) -> R {
+    let context = crate::runtime::RuntimePolicy::deterministic()
+        .with_local_time_zone(time_zone)
+        .begin_operation()
+        .expect("test operation context");
+    crate::runtime::with_operation_context(&context, f)
+}
+
 fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
     let m = m0 + 1;
     let naive = NaiveDate::from_ymd_opt(y, m, d)
         .unwrap()
         .and_hms_opt(h, min, s)
         .unwrap();
-    crate::time::datetime_from_naive_local(naive).timestamp_millis()
+    crate::runtime::datetime_from_naive_local(naive)
+        .expect("test datetime is supported by the active timezone")
+        .timestamp_millis()
+}
+
+#[test]
+fn gantt_entrypoints_construct_one_semantic_source() {
+    let engine = Engine::new();
+    let text = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Build: build,2026-01-01,2d\n",
+    );
+
+    reset_gantt_syntax_construction_count();
+    engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(gantt_syntax_construction_count(), 1);
+
+    reset_gantt_syntax_construction_count();
+    engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(gantt_syntax_construction_count(), 1);
+
+    reset_gantt_syntax_construction_count();
+    engine
+        .parse_editor_semantic_facts_with_type_sync("gantt", text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(gantt_syntax_construction_count(), 1);
+}
+
+#[test]
+fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints() {
+    let text = concat!(
+        "gantt\n",
+        "title Delivery roadmap\n",
+        "accTitle: Delivery\n",
+        "accDescr: Delivery tasks\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Build: build,2026-01-01,2d\n",
+        "Ship: ship,after build,1d\n",
+    );
+    let meta = ParseMetadata {
+        diagram_type: "gantt".to_string(),
+        config: MermaidConfig::default(),
+        effective_config: MermaidConfig::default(),
+        title: None,
+    };
+    let standalone_json = parse_gantt(text, &meta).unwrap();
+    reset_gantt_syntax_construction_count();
+    let (combined_json, combined_editor) = crate::family::test_support::into_result(
+        parse_gantt_json_and_editor_facts(text, &meta, &ParseControl::new()),
+    )
+    .unwrap();
+
+    assert_eq!(gantt_syntax_construction_count(), 1);
+    assert_eq!(combined_json, standalone_json);
+    assert!(!combined_editor.symbols.is_empty());
+}
+
+#[test]
+fn gantt_task_finalization_observes_cancellation_inside_large_task_sets() {
+    let mut db = large_gantt_db(512);
+    let control = ParseControl::new();
+    control.cancel_after_checkpoints(2);
+
+    assert!(db.finalize_tasks_controlled(&control).is_err());
+}
+
+#[test]
+fn gantt_model_projection_observes_cancellation_inside_large_task_sets() {
+    let mut db = large_gantt_db(512);
+    db.finalize_tasks_controlled(&ParseControl::new())
+        .unwrap()
+        .unwrap();
+    let control = ParseControl::new();
+    control.cancel_after_checkpoints(2);
+
+    assert!(super::parse::gantt_db_to_render_model_controlled(db, &control).is_err());
+}
+
+#[test]
+fn gantt_json_projection_observes_cancellation_inside_large_task_sets() {
+    let model = GanttDiagramRenderModel {
+        tasks: vec![GanttRenderTask::default(); 512],
+        ..GanttDiagramRenderModel::default()
+    };
+    let control = ParseControl::new();
+    control.cancel_after_checkpoints(2);
+
+    assert!(
+        super::parse::render_model_to_compat_json_controlled(&model, &meta(), &control).is_err()
+    );
+}
+
+#[test]
+fn gantt_typed_projection_matches_compatibility_semantics() {
+    let text = concat!(
+        "gantt\n",
+        "title Delivery roadmap\n",
+        "accTitle: Delivery\n",
+        "accDescr: Delivery tasks\n",
+        "dateFormat YYYY-MM-DD\n",
+        "axisFormat %Y-%m-%d\n",
+        "todayMarker stroke-width:2px\n",
+        "inclusiveEndDates\n",
+        "section Delivery\n",
+        "Build: crit,build,2026-01-01,2d\n",
+        "click build href \"https://example.com/\" onBuild\n",
+    );
+    let effective_config = MermaidConfig::from_value(json!({ "securityLevel": "loose" }));
+    let meta = ParseMetadata {
+        diagram_type: "gantt".to_string(),
+        config: MermaidConfig::default(),
+        effective_config,
+        title: None,
+    };
+    let compat = parse_gantt(text, &meta).unwrap();
+    let typed = parse_gantt_model_for_render(text, &meta).unwrap();
+
+    assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), compat);
+    assert_eq!(compat["type"], "gantt");
+    assert!(compat["tickInterval"].is_null());
+    assert_eq!(compat["links"]["build"], "https://example.com/");
+    assert_eq!(compat["clickEvents"]["build"]["function_name"], "onBuild");
+}
+
+#[test]
+fn gantt_typed_projection_preserves_empty_and_header_only_output_states() {
+    let meta = ParseMetadata {
+        diagram_type: "gantt".to_string(),
+        config: MermaidConfig::empty_object(),
+        effective_config: MermaidConfig::empty_object(),
+        title: None,
+    };
+    for source in ["", "gantt"] {
+        let compat = parse_gantt(source, &meta).unwrap();
+        let typed = parse_gantt_model_for_render(source, &meta).unwrap();
+
+        assert_eq!(
+            render_model_to_compat_json(&typed, &meta).unwrap(),
+            compat,
+            "projection drift for {source:?}"
+        );
+    }
+}
+
+#[test]
+fn gantt_date_format_consumes_one_separator_and_preserves_extra_whitespace() {
+    for (spacing, expected) in [("  ", " YYYY-MM-DD"), ("   ", "  YYYY-MM-DD")] {
+        let text =
+            format!("gantt\ndateFormat{spacing}YYYY-MM-DD\nsection Demo\nTask: id,2026-01-01,1d\n");
+        let model = parse(&text);
+        assert_eq!(model["dateFormat"], expected);
+
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("gantt", &text)
+            .unwrap()
+            .expect("gantt editor facts");
+        let value_start = text.find("YYYY-MM-DD").unwrap();
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "YYYY-MM-DD"
+                && symbol.detail.as_deref() == Some("gantt date format")
+                && symbol.selection
+                    == SourceSpan::new(value_start, value_start + "YYYY-MM-DD".len())
+        }));
+    }
+}
+
+#[test]
+fn gantt_title_preserves_jison_separator_and_last_assignment_semantics() {
+    for (statement, expected) in [("title   Delivery  ", "  Delivery  "), ("title  ", " ")] {
+        let text = format!(
+            "gantt\n{statement}\ndateFormat YYYY-MM-DD\nsection Demo\nTask: id,2026-01-01,1d\n"
+        );
+        let model = parse(&text);
+        assert_eq!(model["title"], expected, "statement: {statement:?}");
+    }
+
+    let model = parse(concat!(
+        "gantt\n",
+        "title First\n",
+        "title  \n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Demo\n",
+        "Task: id,2026-01-01,1d\n",
+    ));
+    assert_eq!(model["title"], " ");
+
+    let unicode = concat!(
+        "gantt\r\n",
+        " title  😀 Delivery  \r\n",
+        "dateFormat YYYY-MM-DD\r\n",
+        "section Demo\r\n",
+        "Task: id,2026-01-01,1d\r\n",
+    );
+    let model = parse(unicode);
+    assert_eq!(model["title"], " 😀 Delivery  ");
+
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", unicode)
+        .unwrap()
+        .expect("gantt editor facts");
+    let title = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.detail.as_deref() == Some("gantt title"))
+        .expect("title payload");
+    let payload_start = unicode.find("😀 Delivery").unwrap();
+    assert_eq!(title.name, "😀 Delivery");
+    assert_eq!(
+        title.selection,
+        SourceSpan::new(payload_start, payload_start + "😀 Delivery".len(),)
+    );
+}
+
+#[test]
+fn gantt_title_requires_content_after_the_separator() {
+    let text = concat!(
+        "gantt\n",
+        "title \n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Demo\n",
+        "Task: id,2026-01-01,1d\n",
+    );
+    let title_start = text.find("title").unwrap();
+
+    let Error::DiagramParse { diagnostic, .. } = Engine::new()
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("a bare title separator must not match the pinned Jison title token")
+    else {
+        panic!("a bare title separator returned a non-parse error");
+    };
+    assert!(
+        diagnostic
+            .message()
+            .contains("unrecognized statement: title")
+    );
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(title_start, title_start + "title ".len()))
+    );
+
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text)
+        .unwrap()
+        .expect("gantt editor facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(
+        facts
+            .diagnostics
+            .iter()
+            .any(|item| item.message.contains("unrecognized statement: title"))
+    );
+    assert!(
+        !facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.detail.as_deref() == Some("gantt title"))
+    );
 }
 
 #[test]
@@ -49,7 +347,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
         "click id2 call open(userId) href \"https://example.com/\"\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
 
@@ -235,7 +533,7 @@ fn gantt_editor_facts_preserve_parser_symbol_spans() {
 fn gantt_editor_facts_recovers_unclosed_multiline_acc_descr_payload() {
     let text = concat!("gantt\n", "accDescr {\n", "  Draft release notes\n");
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
 
@@ -243,8 +541,11 @@ fn gantt_editor_facts_recovers_unclosed_multiline_acc_descr_payload() {
     assert_eq!(facts.diagnostics.len(), 1);
     let diagnostic = &facts.diagnostics[0];
     assert!(diagnostic.message.contains("unterminated accDescr block"));
-    let block_start = text.find("accDescr").unwrap();
-    assert_eq!(diagnostic.span.unwrap().start, block_start);
+    let insertion = text.trim_end().len();
+    assert_eq!(
+        diagnostic.span.unwrap(),
+        crate::SourceSpan::new(insertion, insertion)
+    );
 
     let note_start = text.find("Draft release notes").unwrap();
     assert!(facts.symbols.iter().any(|symbol| {
@@ -265,7 +566,7 @@ fn gantt_editor_facts_recovers_from_incomplete_input() {
         "Task 2",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
 
@@ -296,7 +597,7 @@ fn gantt_editor_facts_skip_leading_mermaid_directives() {
         "Task 1: id1,2014-01-01,1d\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
 
@@ -317,17 +618,33 @@ fn gantt_editor_facts_skip_leading_mermaid_directives() {
 #[test]
 fn gantt_editor_facts_reports_invalid_weekday_diagnostic() {
     let text = "gantt\nweekday foo\n";
+    reset_gantt_syntax_construction_count();
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
 
+    assert_eq!(gantt_syntax_construction_count(), 1);
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     let value_start = text.find("foo").unwrap();
     assert!(facts.diagnostics.iter().any(|diagnostic| {
         diagnostic.message.contains("invalid weekday")
             && diagnostic.span == Some(SourceSpan::new(value_start, value_start + "foo".len()))
     }));
+
+    reset_gantt_syntax_construction_count();
+    let Error::DiagramParse { diagnostic, .. } = Engine::new()
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("invalid weekday must fail strict Gantt parsing")
+    else {
+        panic!("invalid weekday returned a non-parse error");
+    };
+    assert_eq!(gantt_syntax_construction_count(), 1);
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(value_start, value_start + "foo".len()))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }
 
 #[test]
@@ -340,7 +657,7 @@ fn gantt_editor_facts_skip_frontmatter() {
         "Task 1: id1,2014-01-01,1d\n",
     );
     let facts = Engine::new()
-        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("gantt", text)
         .unwrap()
         .expect("gantt editor facts");
 
@@ -358,7 +675,8 @@ fn gantt_render_model_uses_fixed_today_for_missing_year_dates() {
         .with_fixed_today(Some(
             NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today"),
         ))
-        .with_fixed_local_offset_minutes(Some(0));
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("UTC is a valid fixed offset");
     let parsed = block_on(engine.parse_diagram_for_render_model(
         r#"
 gantt
@@ -371,7 +689,7 @@ Missing ref: id2,after missing,1d
     ))
     .unwrap()
     .unwrap();
-    let RenderSemanticModel::Gantt(model) = parsed.model else {
+    let RenderSemanticModel::Gantt(model) = parsed.model() else {
         panic!("expected Gantt render model");
     };
     let task = |id: &str| {
@@ -580,11 +898,24 @@ test1: id1,202304,1d
 
 #[test]
 fn gantt_js_date_fallback_year_bounds_match_upstream_guardrail() {
-    let dt = parse_js_date_fallback("10000").unwrap();
-    assert_eq!(dt.year(), 10000);
+    let utc = crate::time::LocalTimeZone::utc();
+    with_test_local_time_zone(utc, || {
+        let dt = parse_js_date_fallback("10000").unwrap();
+        assert_eq!(dt.year(), 10000);
 
-    let err = parse_js_date_fallback("10001").unwrap_err();
-    assert!(err.to_string().contains("Invalid date:10001"));
+        let err = parse_js_date_fallback("10001").unwrap_err();
+        assert!(err.to_string().contains("Invalid date:10001"));
+    });
+}
+
+#[cfg(feature = "system-timezone")]
+#[test]
+fn gantt_js_date_fallback_supports_upper_guardrail_in_system_timezone() {
+    let system = crate::time::LocalTimeZone::try_system().expect("system time-zone adapter");
+    with_test_local_time_zone(system, || {
+        let dt = parse_js_date_fallback("10000").unwrap();
+        assert_eq!(dt.year(), 10000);
+    });
 }
 
 #[test]
@@ -621,6 +952,69 @@ fn gantt_parse_duration_matches_upstream_examples() {
         assert!(value.is_nan(), "expected invalid duration for {invalid:?}");
         assert_eq!(unit, "ms");
     }
+}
+
+#[test]
+fn gantt_duration_arithmetic_rejects_unrepresentable_ranges_without_panicking() {
+    let utc = crate::time::LocalTimeZone::utc();
+    with_test_local_time_zone(utc, || {
+        let base = local_from_naive(
+            NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        )
+        .unwrap();
+        let max = local_from_naive(chrono::NaiveDateTime::MAX).unwrap();
+
+        assert!(add_days_local(base, i64::MIN).is_none());
+        assert!(add_months_local(base, i64::MAX).is_none());
+        assert!(add_months_local(base, i64::MIN).is_none());
+        assert!(add_years_local(base, i64::MAX).is_none());
+        assert!(add_years_local(base, i64::MIN).is_none());
+        let db = GanttDb::default();
+        assert_eq!(
+            get_end_date(&db, max, "x", "1ms", false).unwrap(),
+            Some(max)
+        );
+        assert_eq!(
+            get_end_date(&db, base, "x", "1000000000000000000000000000000M", false).unwrap(),
+            Some(base)
+        );
+        assert_eq!(
+            get_end_date(&db, base, "x", "1000000000000000000000000000000y", false).unwrap(),
+            Some(base)
+        );
+    });
+}
+
+#[test]
+fn gantt_huge_calendar_durations_use_the_existing_zero_duration_fallback() {
+    for duration in ["9223372036854775808M", "999999999999999999999999999999999y"] {
+        let model = parse(&format!(
+            "gantt\ndateFormat x\nsection Boundary\nTask: task,0,{duration}\n"
+        ));
+        let task = &model["tasks"][0];
+        assert_eq!(task["startTime"], task["endTime"], "duration {duration}");
+    }
+}
+
+#[test]
+fn gantt_maximum_date_semantic_model_supports_one_millisecond_duration() {
+    let max_midnight = NaiveDate::MAX.and_hms_opt(0, 0, 0).unwrap();
+    let max_ms =
+        chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(max_midnight, chrono::Utc)
+            .timestamp_millis();
+    let source = format!("gantt\ndateFormat x\nsection Boundary\nTask: task,{max_ms},1ms\n");
+    let utc = crate::time::LocalTimeZone::utc();
+    let parsed = with_test_local_time_zone(utc, || {
+        block_on(Engine::new().parse_diagram(&source, ParseOptions::default()))
+    })
+    .expect("one millisecond remains representable on NaiveDate::MAX")
+    .expect("gantt detected");
+    let task = &parsed.model["tasks"][0];
+    assert_eq!(task["startTime"], max_ms);
+    assert_eq!(task["endTime"], max_ms + 1);
 }
 
 #[test]
@@ -811,6 +1205,12 @@ fn dayjs_strict_parses_month_names_and_offsets() {
 }
 
 #[test]
+fn gantt_date_parsers_reject_utf8_at_byte_cutoffs_without_panicking() {
+    assert!(parse_dayjs_like_strict("YYYY", "你好").is_none());
+    assert!(parse_js_date_fallback("2024-01-01T00:你").is_err());
+}
+
+#[test]
 fn gantt_js_date_fallback_parses_iso_date_only_as_utc() {
     let model = parse(
         r#"
@@ -837,6 +1237,23 @@ test1: id1,2013-01-01,1d
             .unwrap()
             .timestamp_millis()
     );
+}
+
+#[test]
+fn dayjs_strict_rejects_rather_than_panics_on_multibyte_input() {
+    // `parse_int_exact` used to slice at a byte offset without checking char
+    // boundaries, panicking on multi-byte (e.g. Japanese) input.
+    assert!(parse_dayjs_like_strict("YYYY-MM-DD", "日本語のテキスト").is_none());
+    assert!(parse_dayjs_like_strict("MM-DD", "日本-24").is_none());
+    assert!(parse_dayjs_like_strict("YYYY-MMM-DD", "２０１３-Jan-０２").is_none());
+}
+
+#[test]
+fn js_date_fallback_rejects_rather_than_panics_on_multibyte_timezone_suffix() {
+    // Same byte-boundary bug as above, reached via the timezone-offset tail
+    // of `parse_js_date_fallback`.
+    assert!(parse_js_date_fallback("2013-01-01T00:00:00+日本語").is_err());
+    assert!(parse_js_date_fallback("2013-01-01T00:00+タ").is_err());
 }
 
 #[test]
@@ -1780,6 +2197,8 @@ test2: id2,after missing,1d
 "#,
     );
     let tasks = model["tasks"].as_array().unwrap();
-    let expected = today_midnight_local().timestamp_millis();
+    let expected = today_midnight_local()
+        .expect("current date is supported by the active timezone")
+        .timestamp_millis();
     assert_eq!(tasks[1]["startTime"].as_i64().unwrap(), expected);
 }

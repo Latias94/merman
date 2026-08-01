@@ -13,33 +13,24 @@ readme = "README.md"
 keywords = ["mermaid", "lsp", "language-server", "completion", "diagnostics"]
 categories = ["development-tools", "text-editors"]
 
+[package.metadata.dist]
+auto-includes = false
+default-features = false
+include = ["README.md"]
+features = ["stdio"]
+
+[package.metadata.merman]
+artifact-profile-required = true
+fixed-capabilities = ["analysis", "editor"]
+
 [features]
-default = ["stdio", "core-full", "core-host"]
-stdio = ["dep:tower", "dep:tracing-subscriber"]
-core-full = [
-    "merman-analysis/core-full",
-    "merman-core/full",
-    "merman-editor-core/core-full",
-]
-core-full-registry = [
-    "merman-analysis/core-full-registry",
-    "merman-core/full-registry",
-    "merman-editor-core/core-full-registry",
-]
-core-full-config = [
-    "merman-analysis/core-full-config",
-    "merman-core/full-config",
-    "merman-editor-core/core-full-config",
-]
-core-full-sanitization = [
-    "merman-analysis/core-full-sanitization",
-    "merman-core/full-sanitization",
-    "merman-editor-core/core-full-sanitization",
-]
-core-host = [
-    "merman-analysis/core-host",
-    "merman-core/host",
-    "merman-editor-core/core-host",
+default = []
+stdio = [
+    "dep:tracing-subscriber",
+    "tokio/io-std",
+    "tokio/io-util",
+    "tokio/macros",
+    "tokio/rt-multi-thread",
 ]
 
 [[bin]]
@@ -53,24 +44,19 @@ path = "tests/stdio_smoke.rs"
 required-features = ["stdio"]
 
 [dependencies]
-futures.workspace = true
-lsp-types.workspace = true
-tower-lsp.workspace = true
-tokio.workspace = true
-url.workspace = true
+futures = { workspace = true, features = ["std"] }
+tower-lsp-server.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 merman-analysis.workspace = true
 merman-core.workspace = true
 merman-editor-core.workspace = true
 ropey.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
-tower = { version = "0.4.13", optional = true }
+tower = { version = "0.5.2", default-features = false }
 tracing.workspace = true
-tracing-subscriber = { workspace = true, features = ["fmt", "env-filter"], optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 
 [dev-dependencies]
-assert_cmd = "2.2.2"
-tempfile = "3.27.0"
-tokio = { workspace = true, features = ["test-util"] }
-tower = "0.4.13"
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "test-util"] }
+tower = { version = "0.5.2", default-features = false, features = ["util"] }

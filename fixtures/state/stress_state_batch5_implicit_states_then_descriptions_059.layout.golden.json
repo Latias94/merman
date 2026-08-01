@@ -7,7 +7,7 @@
           "id": "root_end",
           "x": 116.0,
           "y": 421.0,
-          "width": 14.013,
+          "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
@@ -23,7 +23,7 @@
           "id": "s1",
           "x": 116.0,
           "y": 92.0,
-          "width": 151.359,
+          "width": 151.36,
           "height": 40.0,
           "is_cluster": false
         },
@@ -39,7 +39,7 @@
           "id": "s3",
           "x": 116.0,
           "y": 344.0,
-          "width": 46.234,
+          "width": 46.24,
           "height": 40.0,
           "is_cluster": false
         }
@@ -97,7 +97,7 @@
           "label": {
             "x": 116.0,
             "y": 149.0,
-            "width": 57.922,
+            "width": 57.92,
             "height": 24.0
           },
           "start_label_left": null,
@@ -131,7 +131,7 @@
           "label": {
             "x": 116.0,
             "y": 287.0,
-            "width": 67.203,
+            "width": 67.2,
             "height": 24.0
           },
           "start_label_left": null,

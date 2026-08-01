@@ -31,6 +31,65 @@ pub(super) fn svg_line_plain_text(line: &[SvgWord]) -> String {
     out
 }
 
+fn svg_word_style(
+    style: &crate::text::TextStyle,
+    word_type: SvgWordType,
+) -> crate::text::TextStyle {
+    let mut word_style = style.clone();
+    let (font_weight, font_style) = match word_type {
+        SvgWordType::Normal => ("normal", "normal"),
+        SvgWordType::Strong => ("bold", "normal"),
+        SvgWordType::Em => ("normal", "italic"),
+    };
+    word_style.font_weight = Some(font_weight.to_string());
+    word_style.font_style = Some(font_style.to_string());
+    word_style
+}
+
+fn svg_word_rendered_text(word: &SvgWord, word_index: usize) -> String {
+    if word_index == 0 {
+        word.content.clone()
+    } else {
+        format!(" {}", word.content)
+    }
+}
+
+fn svg_line_computed_length_px(
+    line: &[SvgWord],
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+) -> f64 {
+    line.iter()
+        .enumerate()
+        .map(|(index, word)| {
+            let text = svg_word_rendered_text(word, index);
+            let word_style = svg_word_style(style, word.word_type);
+            measurer.measure_svg_text_computed_length_px(&text, &word_style)
+        })
+        .sum()
+}
+
+pub(super) fn svg_line_tspan_bbox_width_px(
+    line: &[SvgWord],
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+) -> f64 {
+    if line.is_empty() {
+        return 0.0;
+    }
+    let text = svg_line_plain_text(line);
+    let mut measured_style = style.clone();
+    // The current operation transports one style. Homogeneous rows can therefore preserve the
+    // exact inner-run style; mixed rows still use the correct outer-tspan primitive with the base
+    // style until measurement requests can carry structured runs.
+    if let Some(word_type) = line.first().map(|word| word.word_type)
+        && line.iter().all(|word| word.word_type == word_type)
+    {
+        measured_style = svg_word_style(style, word_type);
+    }
+    measurer.measure_svg_tspan_text_bbox_width_px(&text, &measured_style)
+}
+
 pub(super) fn wrap_svg_words_to_lines(
     text: &str,
     max_width_px: f64,
@@ -46,7 +105,7 @@ pub(super) fn wrap_svg_words_to_lines(
     // - long tokens are split by character when they do not fit (via `splitWordToFitWidth`)
     // - lines are greedily constructed and then split further as needed (`splitLineToFitWidth`)
     //
-    // References (Mermaid@11.12.x):
+    // References (Mermaid@11.16.0):
     // - `packages/mermaid/src/rendering-util/createText.ts`
     // - `packages/mermaid/src/rendering-util/splitText.ts`
     // - `packages/mermaid/src/rendering-util/handle-markdown-text.ts`
@@ -55,10 +114,6 @@ pub(super) fn wrap_svg_words_to_lines(
     } else {
         ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX
     };
-
-    fn line_to_string(line: &[SvgWord]) -> String {
-        svg_line_plain_text(line)
-    }
 
     fn check_fit(
         measurer: &dyn crate::text::TextMeasurer,
@@ -69,7 +124,7 @@ pub(super) fn wrap_svg_words_to_lines(
         if line.is_empty() {
             return true;
         }
-        measurer.measure(line_to_string(line).as_str(), style).width <= max_width_px
+        svg_line_computed_length_px(line, measurer, style) <= max_width_px
     }
 
     fn split_word_to_fit_width(
@@ -357,150 +412,111 @@ pub(super) fn write_svg_text_lines(out: &mut String, lines: &[SvgLine]) {
     out.push_str("</text>");
 }
 
-fn plain_single_word_title_fits(
-    title: &str,
-    title_width_px: f64,
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
-) -> bool {
-    if !(title_width_px.is_finite() && title_width_px > 0.0) {
-        return false;
-    }
-    if title.is_empty() || !title.bytes().all(|b| b.is_ascii_alphanumeric()) {
-        return false;
-    }
-
-    let conservative_width = title.len() as f64 * style.font_size.max(1.0);
-    if conservative_width <= title_width_px {
-        return true;
-    }
-
-    measurer.measure(title, style).width <= title_width_px
-}
-
-fn plain_ascii_words_title(text: &str) -> bool {
-    if text.is_empty() {
-        return false;
-    }
-
-    let mut prev_space = false;
-    for (idx, b) in text.bytes().enumerate() {
-        if b == b' ' {
-            if idx == 0 || prev_space {
-                return false;
-            }
-            prev_space = true;
-            continue;
-        }
-        if !b.is_ascii_alphanumeric() {
-            return false;
-        }
-        prev_space = false;
-    }
-
-    !prev_space
-}
-
-pub(super) fn plain_ascii_words_single_line_width(
-    title: &str,
-    title_width_px: f64,
-    measurer: &dyn crate::text::TextMeasurer,
-    style: &crate::text::TextStyle,
-) -> Option<f64> {
-    if !(title_width_px.is_finite() && title_width_px > 0.0 && plain_ascii_words_title(title)) {
-        return None;
-    }
-
-    let width = measurer.measure(title, style).width;
-    if width <= title_width_px {
-        Some(width)
-    } else {
-        None
-    }
-}
-
-pub(super) fn write_svg_plain_ascii_words_text_line(out: &mut String, text: &str) {
-    out.push_str(r#"<text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#);
-    if let Some((first, rest)) = text.split_once(' ') {
-        out.push_str(first);
-        out.push_str("</tspan>");
-        for word in rest.split(' ') {
-            out.push_str(
-                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> "#,
-            );
-            out.push_str(word);
-            out.push_str("</tspan>");
-        }
-        out.push_str("</tspan></text>");
-    } else {
-        out.push_str(text);
-        out.push_str("</tspan></tspan></text>");
-    }
-}
-
 pub(super) fn write_architecture_service_title(
     out: &mut String,
     title: &str,
     icon_size_px: f64,
     title_width_px: f64,
-    measurer: &crate::text::VendoredFontMetricsTextMeasurer,
+    measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
 ) {
-    let plain_single_line = plain_single_word_title_fits(title, title_width_px, measurer, style);
-
     let _ = write!(
         out,
         r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
         x = fmt(icon_size_px / 2.0),
         y = fmt(icon_size_px)
     );
-    if plain_single_line {
-        write_svg_plain_ascii_words_text_line(out, title);
-    } else {
-        let lines = wrap_svg_words_to_lines(title, title_width_px, measurer, style);
-        write_svg_text_lines(out, &lines);
-    }
+    let lines = wrap_svg_words_to_lines(title, title_width_px, measurer, style);
+    write_svg_text_lines(out, &lines);
     out.push_str("</g></g>");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::TextMeasurer;
+    use crate::text::{TextMeasurer, TextMetrics, TextStyle};
+    use std::cell::RefCell;
+
+    type MeasurementCall = (String, Option<String>, Option<String>);
+
+    #[derive(Default)]
+    struct ExactPrimitiveProbe {
+        computed_calls: RefCell<Vec<MeasurementCall>>,
+        bbox_calls: RefCell<Vec<MeasurementCall>>,
+    }
+
+    impl TextMeasurer for ExactPrimitiveProbe {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("Architecture createText must not use generic measurement")
+        }
+
+        fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.computed_calls.borrow_mut().push((
+                text.to_string(),
+                style.font_weight.clone(),
+                style.font_style.clone(),
+            ));
+            let scale = if style.font_weight.as_deref() == Some("bold") {
+                20.0
+            } else if style.font_style.as_deref() == Some("italic") {
+                15.0
+            } else {
+                10.0
+            };
+            text.chars().count() as f64 * scale
+        }
+
+        fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.bbox_calls.borrow_mut().push((
+                text.to_string(),
+                style.font_weight.clone(),
+                style.font_style.clone(),
+            ));
+            211.0
+        }
+    }
 
     fn text_style() -> crate::text::TextStyle {
         crate::text::TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,
             font_weight: None,
+            font_style: None,
         }
     }
 
     #[test]
-    fn plain_single_word_title_fast_path_is_narrow_and_width_checked() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-        let style = text_style();
+    fn styled_svg_wrap_uses_computed_length_with_inner_run_styles() {
+        let measurer = ExactPrimitiveProbe::default();
+        let lines = wrap_svg_words_to_lines("a **b** *c*", 80.0, &measurer, &text_style());
 
-        assert!(plain_single_word_title_fits("s1", 120.0, &measurer, &style));
-        assert!(!plain_single_word_title_fits(
-            "s 1", 120.0, &measurer, &style
-        ));
-        assert!(!plain_single_word_title_fits(
-            "s_1", 120.0, &measurer, &style
-        ));
-        assert!(plain_ascii_words_title("Service Farm"));
-        assert!(!plain_ascii_words_title("Service  Farm"));
-        assert!(!plain_ascii_words_title("Service-Farm"));
-        assert!(!plain_single_word_title_fits(
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-            1.0,
-            &measurer,
-            &style
-        ));
+        assert_eq!(lines.len(), 1);
+        let calls = measurer.computed_calls.borrow();
+        assert!(calls.iter().any(|call| {
+            call == &(
+                "a".to_string(),
+                Some("normal".to_string()),
+                Some("normal".to_string()),
+            )
+        }));
+        assert!(calls.iter().any(|call| {
+            call == &(
+                " b".to_string(),
+                Some("bold".to_string()),
+                Some("normal".to_string()),
+            )
+        }));
+        assert!(calls.iter().any(|call| {
+            call == &(
+                " c".to_string(),
+                Some("normal".to_string()),
+                Some("italic".to_string()),
+            )
+        }));
     }
 
     #[test]
-    fn architecture_plain_service_title_fast_path_matches_single_word_dom() {
+    fn architecture_plain_service_title_matches_create_text_dom() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = text_style();
         let mut out = String::new();
@@ -514,15 +530,13 @@ mod tests {
     }
 
     #[test]
-    fn architecture_plain_words_fast_path_matches_single_line_dom() {
+    fn architecture_plain_words_match_single_line_create_text_dom() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = text_style();
         let mut out = String::new();
-        let mut wrapped = String::new();
 
-        write_svg_plain_ascii_words_text_line(&mut out, "Service Farm");
         write_svg_text_lines(
-            &mut wrapped,
+            &mut out,
             &wrap_svg_words_to_lines("Service Farm", 120.0, &measurer, &style),
         );
 
@@ -530,23 +544,24 @@ mod tests {
             out,
             r#"<text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Service</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> Farm</tspan></tspan></text>"#
         );
-        assert_eq!(out, wrapped);
     }
 
     #[test]
-    fn plain_ascii_words_single_line_width_reuses_svg_measurement() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    fn emitted_line_bbox_uses_tspan_operation_and_homogeneous_run_style() {
+        let measurer = ExactPrimitiveProbe::default();
         let style = text_style();
-        let title = "Service Farm";
-        let expected = measurer.measure(title, &style).width;
+        let lines = wrap_svg_words_to_lines("**Bold words**", 1_000.0, &measurer, &style);
+        let line = lines.first().expect("one bold line");
 
+        assert_eq!(svg_line_computed_length_px(line, &measurer, &style), 200.0);
+        assert_eq!(svg_line_tspan_bbox_width_px(line, &measurer, &style), 211.0);
         assert_eq!(
-            plain_ascii_words_single_line_width(title, expected + 1.0, &measurer, &style),
-            Some(expected)
-        );
-        assert_eq!(
-            plain_ascii_words_single_line_width(title, expected - 1.0, &measurer, &style),
-            None
+            measurer.bbox_calls.borrow().as_slice(),
+            &[(
+                "Bold words".to_string(),
+                Some("bold".to_string()),
+                Some("normal".to_string()),
+            )]
         );
     }
 }

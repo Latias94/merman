@@ -14,25 +14,299 @@ keywords = ["mermaid", "diagrams", "svg", "cli", "headless"]
 categories = ["command-line-utilities", "visualization"]
 exclude = ["tests/**"]
 
+[package.metadata.dist]
+auto-includes = false
+default-features = false
+include = [
+    "README.md",
+    "assets/completions/",
+    "assets/man/",
+]
+features = [
+    "analysis",
+    "ascii",
+    "icons",
+    "jpeg",
+    "layout-cytoscape",
+    "layout-elk",
+    "markdown",
+    "math",
+    "network-icons",
+    "parallel-markdown",
+    "pdf",
+    "png",
+    "shell-completions",
+    "svg",
+    "system-clock",
+    "system-random",
+    "system-timezone",
+    "system-timing",
+]
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }{ archive-suffix }"
+pkg-fmt = "txz"
+bin-dir = "{ name }-{ target }/{ bin }{ binary-ext }"
+disabled-strategies = ["quick-install"]
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+bin-dir = "{ bin }{ binary-ext }"
+
+[package.metadata.merman]
+artifact-profile-required = true
+
 [features]
-default = ["ratex-math", "ascii", "elk-layout"]
-ascii = ["merman/ascii"]
-elk-layout = ["merman/elk-layout"]
-ratex-math = ["merman/ratex-math"]
+default = [
+    "analysis",
+    "ascii",
+    "icons",
+    "jpeg",
+    "layout-cytoscape",
+    "layout-elk",
+    "markdown",
+    "math",
+    "network-icons",
+    "parallel-markdown",
+    "pdf",
+    "png",
+    "shell-completions",
+    "svg",
+    "system-clock",
+    "system-random",
+    "system-timezone",
+    "system-timing",
+]
+
+# Public leaves describe observable CLI capabilities. Keep them additive: exact
+# absence claims belong to a `default-features = false` artifact profile.
+analysis = [
+    "dep:atomic-write-file",
+    "dep:merman-analysis",
+    "dep:same-file",
+    "dep:sha2",
+    "dep:similar",
+]
+svg = ["dep:atomic-write-file", "dep:same-file", "merman/svg"]
+ascii = ["dep:atomic-write-file", "dep:same-file", "merman/ascii"]
+png = ["svg", "merman/png"]
+jpeg = ["svg", "merman/jpeg"]
+pdf = ["svg", "merman/pdf"]
+layout-cytoscape = ["svg", "merman/layout-cytoscape"]
+layout-elk = ["svg", "merman/layout-elk"]
+math = ["svg", "merman/math"]
+system-clock = ["merman/system-clock", "merman-analysis?/system-clock"]
+system-timezone = ["merman/system-timezone", "merman-analysis?/system-timezone"]
+system-random = ["merman/system-random", "merman-analysis?/system-random"]
+system-timing = ["merman/system-timing", "merman-analysis?/system-timing"]
+
+# Tool leaves own both their user-visible surface and their direct dependency.
+icons = ["svg", "dep:url"]
+markdown = [
+    "svg",
+    "dep:atomic-write-file",
+    "dep:rustix",
+    "dep:same-file",
+    "dep:unicode-normalization",
+    "dep:windows-sys",
+]
+network-icons = ["icons", "dep:hickory-resolver", "dep:reqwest", "dep:tokio"]
+parallel-markdown = ["markdown", "dep:rayon"]
+shell-completions = ["dep:clap_complete"]
+
 
 [dependencies]
+atomic-write-file = { workspace = true, optional = true }
 clap.workspace = true
-clap_complete.workspace = true
+clap_complete = { workspace = true, optional = true }
 chrono.workspace = true
-merman = { workspace = true, features = ["core-full", "core-host", "raster"] }
-merman-analysis.workspace = true
-rayon.workspace = true
-reqwest.workspace = true
+hickory-resolver = { workspace = true, optional = true }
+merman = { workspace = true, default-features = false }
+merman-analysis = { workspace = true, optional = true, default-features = false }
+rayon = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
+same-file = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+similar = { workspace = true, optional = true }
 thiserror.workspace = true
+tokio = { workspace = true, optional = true, features = ["rt", "time"] }
+url = { workspace = true, optional = true }
+unicode-normalization = { workspace = true, optional = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
-tempfile = "3.27.0"
+clap_mangen.workspace = true
 png.workspace = true
+roxmltree.workspace = true
+tempfile = "3.27.0"
+
+[target.'cfg(unix)'.dev-dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, optional = true, features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[[test]]
+name = "cli_native_contract"
+required-features = [
+    "analysis",
+    "svg",
+    "ascii",
+    "png",
+    "jpeg",
+    "pdf",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+    "shell-completions",
+    "system-clock",
+    "system-timezone",
+    "system-random",
+    "system-timing",
+]
+
+[[test]]
+name = "distribution_assets"
+required-features = [
+    "analysis",
+    "svg",
+    "ascii",
+    "png",
+    "jpeg",
+    "pdf",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+    "shell-completions",
+    "system-clock",
+    "system-timezone",
+    "system-random",
+    "system-timing",
+]
+
+[[test]]
+name = "cli_analysis_contract"
+required-features = ["analysis", "svg"]
+
+[[test]]
+name = "cli_output_contract"
+required-features = ["png", "pdf", "shell-completions"]
+
+[[test]]
+name = "mmdc_contract"
+required-features = [
+    "svg",
+    "png",
+    "pdf",
+    "layout-cytoscape",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+]
+
+[[test]]
+name = "cli_contract"
+required-features = [
+    "analysis",
+    "svg",
+    "ascii",
+    "png",
+    "jpeg",
+    "pdf",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+    "shell-completions",
+]
+
+[[test]]
+name = "process_contract"
+required-features = [
+    "analysis",
+    "svg",
+    "ascii",
+    "png",
+    "jpeg",
+    "pdf",
+    "layout-cytoscape",
+    "layout-elk",
+    "math",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+    "shell-completions",
+]
+
+[[test]]
+name = "resource_limits"
+required-features = [
+    "analysis",
+    "svg",
+    "png",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+]
+
+[[test]]
+name = "output_integrity"
+required-features = [
+    "analysis",
+    "svg",
+    "icons",
+    "markdown",
+    "network-icons",
+    "parallel-markdown",
+]
+
+[[test]]
+name = "ascii_smoke"
+required-features = ["ascii"]
+
+[[test]]
+name = "svg_smoke"
+required-features = ["svg"]
+
+[[test]]
+name = "fix_cli"
+required-features = ["analysis"]
+
+[[test]]
+name = "markdown_scanner"
+required-features = ["markdown"]
+
+[[test]]
+name = "jpeg_smoke"
+required-features = ["jpeg"]
+
+[[test]]
+name = "pdf_smoke"
+required-features = ["pdf"]
+
+[[test]]
+name = "png_smoke"
+required-features = ["png"]
+
+[[test]]
+name = "ratex_math"
+required-features = ["math"]

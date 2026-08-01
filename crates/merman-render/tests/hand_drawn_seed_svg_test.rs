@@ -3,29 +3,33 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::{Value, json};
 
 fn render_svg(diagram_id: &str, source: &str) -> String {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
 
-    render_layouted_svg(
-        &out,
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            diagram_id: Some(diagram_id.to_string()),
-            apply_root_overrides: false,
-            ..SvgRenderOptions::default()
-        },
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 fn source_with_init(init: Value, diagram: &str) -> String {
@@ -328,6 +332,46 @@ fn flowchart_svg_hand_drawn_seed_controls_visible_rough_paths() {
             r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0""##,
             r##"stroke="#ef4444" stroke-width="1.2999999523162842" fill="none" stroke-dasharray="0 0""##,
         ],
+    );
+}
+
+#[test]
+fn flowchart_svg_preserves_javascript_seed_arithmetic_before_imul_coercion() {
+    let source_for_seed = |seed: Value| {
+        source_with_init(
+            json!({
+                "look": "handDrawn",
+                "handDrawnSeed": seed
+            }),
+            "flowchart TD\n  A[Start]\n",
+        )
+    };
+
+    let negative = render_svg("flowchart-js-seed", &source_for_seed(serde_json::json!(-1)));
+    let uint32_equivalent = render_svg(
+        "flowchart-js-seed",
+        &source_for_seed(serde_json::json!(u32::MAX)),
+    );
+    assert_eq!(
+        negative, uint32_equivalent,
+        "this rectangle path does not create RoughJS' second-stroke clone, so -1 and u32::MAX share the same base Math.imul stream"
+    );
+
+    let fractional = render_svg(
+        "flowchart-js-seed",
+        &source_for_seed(serde_json::json!(1.75)),
+    );
+    let truncated = render_svg("flowchart-js-seed", &source_for_seed(serde_json::json!(1)));
+    assert_eq!(fractional, truncated);
+
+    let power_of_two = render_svg(
+        "flowchart-js-seed",
+        &source_for_seed(serde_json::json!(4_294_967_296_u64)),
+    );
+    let falsy_zero = render_svg("flowchart-js-seed", &source_for_seed(serde_json::json!(0)));
+    assert_ne!(
+        power_of_two, falsy_zero,
+        "2^32 is truthy and yields one zero imul sample before fallback; zero is operation-owned"
     );
 }
 

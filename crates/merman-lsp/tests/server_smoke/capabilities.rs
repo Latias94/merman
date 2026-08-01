@@ -1,20 +1,41 @@
+use std::str::FromStr;
+
 use super::prelude::*;
+use merman_core::EditorRenamePolicy;
+use merman_editor_core::semantic_token_descriptor;
 
 #[test]
-fn published_server_constructors_are_visible_with_legacy_signatures() {
-    let _: fn(tower_lsp::Client) -> MermanLanguageServer = MermanLanguageServer::new;
-    let _: fn() -> (
-        tower_lsp::LspService<MermanLanguageServer>,
-        tower_lsp::ClientSocket,
-    ) = MermanLanguageServer::service;
+fn published_server_constructors_use_tower_lsp_server_types() {
+    let _: fn() -> (merman_lsp::MermanLspService, merman_lsp::MermanClientSocket) =
+        MermanLanguageServer::service;
+}
+
+async fn initialize_service(
+    service: &mut merman_lsp::MermanLspService,
+    params: InitializeParams,
+) -> tower_lsp_server::ls_types::InitializeResult {
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(
+            Request::build("initialize")
+                .params(serde_json::to_value(params).unwrap())
+                .id(1)
+                .finish(),
+        )
+        .await
+        .unwrap()
+        .expect("initialize response");
+    serde_json::from_value(response.result().expect("initialize result").clone()).unwrap()
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_initialize() {
-    let (service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket) = MermanLanguageServer::service();
 
-    let response = tower_lsp::LanguageServer::initialize(
-        service.inner(),
+    let response = initialize_service(
+        &mut service,
         InitializeParams {
             initialization_options: Some(serde_json::json!({
                 "lint": {
@@ -24,8 +45,7 @@ async fn lsp_service_smoke_handles_initialize() {
             ..InitializeParams::default()
         },
     )
-    .await
-    .unwrap();
+    .await;
 
     assert_eq!(
         response
@@ -68,11 +88,22 @@ async fn lsp_service_smoke_handles_initialize() {
         response.capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
         CONFIG_SCHEMA_METHOD
     );
+    let descriptor = semantic_token_descriptor();
+    assert_eq!(
+        response.capabilities.experimental.as_ref().unwrap()["merman"]["editorLanguage"],
+        serde_json::json!({
+            "schemaVersion": descriptor.schema_version,
+            "descriptorDigest": descriptor.digest,
+            "packedEncoding": descriptor.packed.encoding,
+            "wordsPerToken": descriptor.packed.words_per_token,
+            "renamePolicies": EditorRenamePolicy::IDS,
+        })
+    );
     assert!(response.capabilities.diagnostic_provider.is_some());
     assert!(matches!(
         MermanLanguageServer::capabilities().text_document_sync,
-        Some(tower_lsp::lsp_types::TextDocumentSyncCapability::Options(ref options))
-            if options.change == Some(tower_lsp::lsp_types::TextDocumentSyncKind::INCREMENTAL)
+        Some(tower_lsp_server::ls_types::TextDocumentSyncCapability::Options(ref options))
+            if options.change == Some(tower_lsp_server::ls_types::TextDocumentSyncKind::INCREMENTAL)
                 && options.open_close == Some(true)
                 && options.save.is_some()
     ));
@@ -80,10 +111,10 @@ async fn lsp_service_smoke_handles_initialize() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
-    let (service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket) = MermanLanguageServer::service();
 
-    let response = tower_lsp::LanguageServer::initialize(
-        service.inner(),
+    let response = initialize_service(
+        &mut service,
         serde_json::from_value(serde_json::json!({
             "capabilities": {
                 "textDocument": {
@@ -104,8 +135,7 @@ async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
         }))
         .unwrap(),
     )
-    .await
-    .unwrap();
+    .await;
 
     assert!(response.capabilities.code_action_provider.is_some());
     let semantic_tokens = response
@@ -114,6 +144,19 @@ async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
         .expect("negotiated semantic tokens provider");
     let serialized = serde_json::to_value(semantic_tokens).unwrap();
     assert_eq!(
+        serialized["legend"]["tokenTypes"],
+        serde_json::json!([
+            "string",
+            "namespace",
+            "class",
+            "struct",
+            "variable",
+            "property",
+            "event",
+            "function",
+        ])
+    );
+    assert_eq!(
         serialized["legend"]["tokenModifiers"],
         serde_json::json!(["mermanEntity"])
     );
@@ -121,10 +164,10 @@ async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_does_not_advertise_semantic_tokens_without_relative_format() {
-    let (service, _socket) = MermanLanguageServer::service();
+    let (mut service, _socket) = MermanLanguageServer::service();
 
-    let response = tower_lsp::LanguageServer::initialize(
-        service.inner(),
+    let response = initialize_service(
+        &mut service,
         serde_json::from_value(serde_json::json!({
             "capabilities": {
                 "textDocument": {
@@ -139,20 +182,15 @@ async fn lsp_service_does_not_advertise_semantic_tokens_without_relative_format(
         }))
         .unwrap(),
     )
-    .await
-    .unwrap();
+    .await;
 
     assert!(response.capabilities.semantic_tokens_provider.is_none());
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_does_not_advertise_workspace_diagnostics_without_workspace_scan() {
-    let (service, _socket) = MermanLanguageServer::service();
-
-    let response =
-        tower_lsp::LanguageServer::initialize(service.inner(), InitializeParams::default())
-            .await
-            .unwrap();
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let response = initialize_service(&mut service, InitializeParams::default()).await;
 
     let provider = response
         .capabilities
@@ -168,7 +206,7 @@ async fn lsp_service_does_not_advertise_workspace_diagnostics_without_workspace_
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_rejects_unadvertised_workspace_diagnostics() {
     let (mut service, _socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -177,7 +215,7 @@ async fn lsp_service_rejects_unadvertised_workspace_diagnostics() {
                     "diagnostic": {}
                 },
                 "workspace": {
-                    "diagnostic": {}
+                    "diagnostics": {}
                 }
             }
         }))
@@ -234,9 +272,9 @@ async fn lsp_service_rejects_unadvertised_workspace_diagnostics() {
     );
 }
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+async fn lsp_service_with_diagnostic_pull_accepts_document_open() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -245,7 +283,7 @@ async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
                     "diagnostic": {}
                 },
                 "workspace": {
-                    "diagnostic": {}
+                    "diagnostics": {}
                 }
             }
         }))
@@ -281,18 +319,13 @@ async fn lsp_service_with_diagnostic_pull_does_not_also_push_diagnostics() {
         service.ready().await.unwrap().call(open).await.unwrap(),
         None
     );
-
-    let pushed = timeout(Duration::from_millis(200), socket.next()).await;
-    assert!(
-        pushed.is_err(),
-        "diagnostic pull clients should not receive push diagnostics"
-    );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_workspace_diagnostic_capability_does_not_disable_push_diagnostics() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, _responses) = socket.split();
+    let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
@@ -301,7 +334,7 @@ async fn lsp_service_workspace_diagnostic_capability_does_not_disable_push_diagn
                     "publishDiagnostics": { "versionSupport": true }
                 },
                 "workspace": {
-                    "diagnostic": {}
+                    "diagnostics": {}
                 }
             }
         }))

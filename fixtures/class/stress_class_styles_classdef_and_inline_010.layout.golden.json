@@ -1,21 +1,21 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Client",
-          "x": 55.148,
+          "x": 54.761,
           "y": 63.0,
-          "width": 110.297,
+          "width": 109.522,
           "height": 126.0,
           "is_cluster": false
         },
         {
           "id": "Server",
-          "x": 55.148,
+          "x": 54.761,
           "y": 263.0,
-          "width": 99.766,
+          "width": 98.16,
           "height": 126.0,
           "is_cluster": false
         }
@@ -29,20 +29,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 55.148,
+              "x": 54.761,
               "y": 126.0
             },
             {
-              "x": 55.148,
+              "x": 54.761,
               "y": 163.0
             },
             {
-              "x": 55.148,
+              "x": 54.761,
               "y": 200.0
             }
           ],
           "label": {
-            "x": 55.148,
+            "x": 54.761,
             "y": 163.0,
             "width": 55.04,
             "height": 24.0
@@ -60,7 +60,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 110.297,
+        "max_x": 109.522,
         "max_y": 326.0
       }
     }

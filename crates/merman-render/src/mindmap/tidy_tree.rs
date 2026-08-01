@@ -7,6 +7,7 @@ const CONNECTION_PADDING: f64 = 40.0;
 const TREE_GAP: f64 = 30.0;
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone, PartialEq))]
 struct TidyNode {
     original_index: Option<usize>,
     width: f64,
@@ -50,10 +51,16 @@ impl TidyNode {
 }
 
 #[derive(Debug)]
-struct IndexedYList {
+struct IndexedYEntry {
     low_y: f64,
     index: usize,
-    next: Option<Box<IndexedYList>>,
+    next: Option<usize>,
+}
+
+#[derive(Debug)]
+struct IndexedYList {
+    entries: Vec<IndexedYEntry>,
+    head: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,19 +105,29 @@ fn set_extremes(nodes: &mut [TidyNode], index: usize) {
     nodes[index].modifier_sum_extreme_right = modifier_sum_extreme_right;
 }
 
-fn update_indexed_y_list(
-    min_y: f64,
-    index: usize,
-    mut head: Option<Box<IndexedYList>>,
-) -> Box<IndexedYList> {
-    while head.as_ref().is_some_and(|item| min_y >= item.low_y) {
-        head = head.and_then(|item| item.next);
+impl IndexedYList {
+    fn with_capacity(capacity: usize) -> Self {
+        Self {
+            entries: Vec::with_capacity(capacity),
+            head: None,
+        }
     }
-    Box::new(IndexedYList {
-        low_y: min_y,
-        index,
-        next: head,
-    })
+
+    fn update(&mut self, min_y: f64, index: usize) {
+        while self
+            .head
+            .is_some_and(|head| min_y >= self.entries[head].low_y)
+        {
+            self.head = self.head.and_then(|head| self.entries[head].next);
+        }
+        let entry = self.entries.len();
+        self.entries.push(IndexedYEntry {
+            low_y: min_y,
+            index,
+            next: self.head,
+        });
+        self.head = Some(entry);
+    }
 }
 
 fn distribute_extra(nodes: &mut [TidyNode], parent: usize, index: usize, sibling: usize, d: f64) {
@@ -199,17 +216,18 @@ fn separate(
     let mut modifier_sum_sibling_right = nodes[initial_sibling_right].modifier;
     let mut contour_left = Some(initial_contour_left);
     let mut modifier_sum_contour_left = nodes[initial_contour_left].modifier;
-    let mut indexed_y = Some(indexed_y_list);
+    let mut indexed_y = indexed_y_list.head;
 
     while let (Some(sr), Some(cl)) = (sibling_right, contour_left) {
-        if indexed_y.is_some_and(|item| bottom(nodes, sr) > item.low_y) {
-            indexed_y = indexed_y.and_then(|item| item.next.as_deref());
+        if indexed_y.is_some_and(|item| bottom(nodes, sr) > indexed_y_list.entries[item].low_y) {
+            indexed_y = indexed_y.and_then(|item| indexed_y_list.entries[item].next);
         }
-        let Some(indexed_y) = indexed_y else {
+        let Some(indexed_y_index) = indexed_y else {
             return Err(Error::InvalidModel {
                 message: "tidy-tree contour index invariant was violated".to_string(),
             });
         };
+        let indexed_y = &indexed_y_list.entries[indexed_y_index];
 
         let distance = modifier_sum_sibling_right + nodes[sr].prelim + nodes[sr].width
             - (modifier_sum_contour_left + nodes[cl].prelim);
@@ -254,51 +272,72 @@ fn position_root(nodes: &mut [TidyNode], index: usize) {
         - nodes[index].width / 2.0;
 }
 
-fn first_walk(nodes: &mut [TidyNode], index: usize) -> Result<()> {
-    let children = nodes[index].children.clone();
-    if children.is_empty() {
-        set_extremes(nodes, index);
-        return Ok(());
+fn postorder(nodes: &[TidyNode], root: usize) -> Vec<usize> {
+    let mut order = Vec::with_capacity(nodes.len());
+    let mut stack = vec![(root, false)];
+    while let Some((index, expanded)) = stack.pop() {
+        if expanded {
+            order.push(index);
+            continue;
+        }
+        stack.push((index, true));
+        for child in nodes[index].children.iter().rev().copied() {
+            stack.push((child, false));
+        }
     }
+    order
+}
 
-    first_walk(nodes, children[0])?;
-    let first_extreme_left = nodes[children[0]].extreme_left;
-    let mut indexed_y = update_indexed_y_list(bottom(nodes, first_extreme_left), 0, None);
-    for (child_index, child) in children.iter().copied().enumerate().skip(1) {
-        first_walk(nodes, child)?;
-        let min_y = bottom(nodes, nodes[child].extreme_right);
-        separate(nodes, index, child_index, &indexed_y)?;
-        indexed_y = update_indexed_y_list(min_y, child_index, Some(indexed_y));
+fn first_walk(nodes: &mut [TidyNode], root: usize) -> Result<()> {
+    for index in postorder(nodes, root) {
+        let child_count = nodes[index].children.len();
+        if child_count == 0 {
+            set_extremes(nodes, index);
+            continue;
+        }
+
+        let first_child = nodes[index].children[0];
+        let first_extreme_left = nodes[first_child].extreme_left;
+        let mut indexed_y = IndexedYList::with_capacity(child_count);
+        indexed_y.update(bottom(nodes, first_extreme_left), 0);
+        for child_index in 1..child_count {
+            let child = nodes[index].children[child_index];
+            let min_y = bottom(nodes, nodes[child].extreme_right);
+            separate(nodes, index, child_index, &indexed_y)?;
+            indexed_y.update(min_y, child_index);
+        }
+        position_root(nodes, index);
+        set_extremes(nodes, index);
     }
-    position_root(nodes, index);
-    set_extremes(nodes, index);
     Ok(())
 }
 
 fn add_child_spacing(nodes: &mut [TidyNode], index: usize) {
     let mut distance = 0.0;
     let mut modifier_delta = 0.0;
-    let children = nodes[index].children.clone();
-    for child in children {
+    for child_index in 0..nodes[index].children.len() {
+        let child = nodes[index].children[child_index];
         distance += nodes[child].shift;
         modifier_delta += distance + nodes[child].change;
         nodes[child].modifier += modifier_delta;
     }
 }
 
-fn second_walk(nodes: &mut [TidyNode], index: usize, parent_modifier_sum: f64) {
-    let modifier_sum = parent_modifier_sum + nodes[index].modifier;
-    nodes[index].x = nodes[index].prelim + modifier_sum;
-    add_child_spacing(nodes, index);
-    let children = nodes[index].children.clone();
-    for child in children {
-        second_walk(nodes, child, modifier_sum);
+fn second_walk(nodes: &mut [TidyNode], root: usize) {
+    let mut stack = vec![(root, 0.0)];
+    while let Some((index, parent_modifier_sum)) = stack.pop() {
+        let modifier_sum = parent_modifier_sum + nodes[index].modifier;
+        nodes[index].x = nodes[index].prelim + modifier_sum;
+        add_child_spacing(nodes, index);
+        for child in nodes[index].children.iter().rev().copied() {
+            stack.push((child, modifier_sum));
+        }
     }
 }
 
 fn run_layout(nodes: &mut [TidyNode], root: usize) -> Result<()> {
     first_walk(nodes, root)?;
-    second_walk(nodes, root, 0.0);
+    second_walk(nodes, root);
     Ok(())
 }
 
@@ -310,36 +349,61 @@ fn build_tidy_node(
     ancestors: &mut [bool],
     tidy_nodes: &mut Vec<TidyNode>,
 ) -> Result<usize> {
-    if ancestors[original_index] {
-        return Err(Error::InvalidModel {
-            message: format!(
-                "tidy-tree layout cannot contain a cycle through node {}",
-                layout_nodes[original_index].id
-            ),
-        });
+    struct BuildFrame {
+        original_index: usize,
+        tidy_index: usize,
+        next_child: usize,
     }
-    ancestors[original_index] = true;
 
-    // The upstream plugin transposes dimensions before rotating the vertical tidy tree.
-    let width = layout_nodes[original_index].height + SIBLING_GAP;
-    let height = layout_nodes[original_index].width + CONNECTION_PADDING;
-    let index = tidy_nodes.len();
-    tidy_nodes.push(TidyNode::new(Some(original_index), width, height, y));
+    fn push_node(
+        original_index: usize,
+        y: f64,
+        layout_nodes: &[LayoutNode],
+        ancestors: &mut [bool],
+        tidy_nodes: &mut Vec<TidyNode>,
+    ) -> Result<usize> {
+        if ancestors[original_index] {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "tidy-tree layout cannot contain a cycle through node {}",
+                    layout_nodes[original_index].id
+                ),
+            });
+        }
+        ancestors[original_index] = true;
 
-    let mut children = Vec::with_capacity(child_indices[original_index].len());
-    for child in child_indices[original_index].iter().copied() {
-        children.push(build_tidy_node(
-            child,
-            y + height,
-            layout_nodes,
-            child_indices,
-            ancestors,
-            tidy_nodes,
-        )?);
+        // The upstream plugin transposes dimensions before rotating the vertical tidy tree.
+        let width = layout_nodes[original_index].height + SIBLING_GAP;
+        let height = layout_nodes[original_index].width + CONNECTION_PADDING;
+        let index = tidy_nodes.len();
+        tidy_nodes.push(TidyNode::new(Some(original_index), width, height, y));
+        Ok(index)
     }
-    tidy_nodes[index].children = children;
-    ancestors[original_index] = false;
-    Ok(index)
+
+    let root = push_node(original_index, y, layout_nodes, ancestors, tidy_nodes)?;
+    let mut stack = vec![BuildFrame {
+        original_index,
+        tidy_index: root,
+        next_child: 0,
+    }];
+    while let Some(frame) = stack.last_mut() {
+        let children = &child_indices[frame.original_index];
+        if let Some(child) = children.get(frame.next_child).copied() {
+            frame.next_child += 1;
+            let child_y = tidy_nodes[frame.tidy_index].y + tidy_nodes[frame.tidy_index].height;
+            let child_index = push_node(child, child_y, layout_nodes, ancestors, tidy_nodes)?;
+            tidy_nodes[frame.tidy_index].children.push(child_index);
+            stack.push(BuildFrame {
+                original_index: child,
+                tidy_index: child_index,
+                next_child: 0,
+            });
+        } else {
+            let completed = stack.pop().expect("checked tidy-tree build frame");
+            ancestors[completed.original_index] = false;
+        }
+    }
+    Ok(root)
 }
 
 fn build_virtual_tree(
@@ -379,28 +443,31 @@ fn collect_positioned_nodes(
     offset_x: f64,
     out: &mut Vec<(usize, PositionedNode)>,
 ) {
-    let node = &tidy_nodes[index];
-    if let Some(original_index) = node.original_index {
-        let distance_from_root = node.y;
-        let vertical_position = node.x + SIBLING_GAP / 2.0;
-        let x = match section {
-            TreeSection::Left => offset_x - distance_from_root,
-            TreeSection::Right => offset_x + distance_from_root,
-            TreeSection::Root => offset_x,
-        };
-        out.push((
-            original_index,
-            PositionedNode {
-                x,
-                y: vertical_position,
-                width: 0.0,
-                height: 0.0,
-                section,
-            },
-        ));
-    }
-    for child in node.children.iter().copied() {
-        collect_positioned_nodes(tidy_nodes, child, section, offset_x, out);
+    let mut stack = vec![index];
+    while let Some(index) = stack.pop() {
+        let node = &tidy_nodes[index];
+        if let Some(original_index) = node.original_index {
+            let distance_from_root = node.y;
+            let vertical_position = node.x + SIBLING_GAP / 2.0;
+            let x = match section {
+                TreeSection::Left => offset_x - distance_from_root,
+                TreeSection::Right => offset_x + distance_from_root,
+                TreeSection::Root => offset_x,
+            };
+            out.push((
+                original_index,
+                PositionedNode {
+                    x,
+                    y: vertical_position,
+                    width: 0.0,
+                    height: 0.0,
+                    section,
+                },
+            ));
+        }
+        for child in node.children.iter().rev().copied() {
+            stack.push(child);
+        }
     }
 }
 
@@ -413,10 +480,15 @@ fn center_tree(
         return;
     }
 
+    let mut is_first_level = vec![false; layout_nodes.len()];
+    for index in first_level.iter().copied() {
+        is_first_level[index] = true;
+    }
+
     let mut min_y = f64::INFINITY;
     let mut max_y = f64::NEG_INFINITY;
     for (original_index, node) in positioned.iter() {
-        if first_level.contains(original_index) {
+        if is_first_level[*original_index] {
             let height = layout_nodes[*original_index].height;
             min_y = min_y.min(node.y - height / 2.0);
             max_y = max_y.max(node.y + height / 2.0);
@@ -775,4 +847,183 @@ pub(super) fn layout(
         edges.push(build_edge(edge, source, target, source_round, target_round));
     }
     Ok(edges)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn recursive_first_walk(nodes: &mut [TidyNode], index: usize) -> Result<()> {
+        let children = nodes[index].children.clone();
+        if children.is_empty() {
+            set_extremes(nodes, index);
+            return Ok(());
+        }
+
+        recursive_first_walk(nodes, children[0])?;
+        let first_extreme_left = nodes[children[0]].extreme_left;
+        let mut indexed_y = IndexedYList::with_capacity(children.len());
+        indexed_y.update(bottom(nodes, first_extreme_left), 0);
+        for (child_index, child) in children.iter().copied().enumerate().skip(1) {
+            recursive_first_walk(nodes, child)?;
+            let min_y = bottom(nodes, nodes[child].extreme_right);
+            separate(nodes, index, child_index, &indexed_y)?;
+            indexed_y.update(min_y, child_index);
+        }
+        position_root(nodes, index);
+        set_extremes(nodes, index);
+        Ok(())
+    }
+
+    fn recursive_second_walk(nodes: &mut [TidyNode], index: usize, parent_modifier_sum: f64) {
+        let modifier_sum = parent_modifier_sum + nodes[index].modifier;
+        nodes[index].x = nodes[index].prelim + modifier_sum;
+        add_child_spacing(nodes, index);
+        let children = nodes[index].children.clone();
+        for child in children {
+            recursive_second_walk(nodes, child, modifier_sum);
+        }
+    }
+
+    fn layout_nodes(count: usize) -> Vec<LayoutNode> {
+        (0..count)
+            .map(|index| LayoutNode {
+                id: index.to_string(),
+                x: 0.0,
+                y: 0.0,
+                width: 80.0,
+                height: 30.0,
+                is_cluster: false,
+                label_width: None,
+                label_height: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn iterative_walks_preserve_recursive_tidy_tree_state() {
+        let mut layout_nodes = layout_nodes(13);
+        for (index, node) in layout_nodes.iter_mut().enumerate() {
+            node.width += (index % 5) as f64 * 11.0;
+            node.height += (index % 3) as f64 * 7.0;
+        }
+        let mut child_indices = vec![Vec::new(); layout_nodes.len()];
+        child_indices[0] = vec![1, 2, 3, 4];
+        child_indices[1] = vec![5, 6];
+        child_indices[2] = vec![7];
+        child_indices[3] = vec![8, 9, 10];
+        child_indices[9] = vec![11, 12];
+        let mut ancestors = vec![false; layout_nodes.len()];
+        let mut iterative = Vec::new();
+        let root = build_virtual_tree(
+            &[0],
+            &layout_nodes,
+            &child_indices,
+            &mut ancestors,
+            &mut iterative,
+        )
+        .expect("build reference tidy tree");
+        let mut recursive = iterative.clone();
+
+        run_layout(&mut iterative, root).expect("iterative layout");
+        recursive_first_walk(&mut recursive, root).expect("recursive reference first walk");
+        recursive_second_walk(&mut recursive, root, 0.0);
+
+        assert_eq!(iterative, recursive);
+    }
+
+    #[test]
+    fn iterative_builder_preserves_cycle_rejection() {
+        let layout_nodes = layout_nodes(2);
+        let child_indices = vec![vec![1], vec![0]];
+        let mut ancestors = vec![false; layout_nodes.len()];
+        let mut tidy_nodes = Vec::new();
+
+        let error = build_virtual_tree(
+            &[0],
+            &layout_nodes,
+            &child_indices,
+            &mut ancestors,
+            &mut tidy_nodes,
+        )
+        .expect_err("cycle must be rejected");
+
+        assert!(error.to_string().contains("cycle through node 0"));
+    }
+
+    #[test]
+    fn tidy_tree_pipeline_handles_deep_chains_on_a_small_stack() {
+        const DEPTH: usize = 16_384;
+        std::thread::Builder::new()
+            .stack_size(64 * 1024)
+            .spawn(|| {
+                let layout_nodes = layout_nodes(DEPTH);
+                let mut child_indices = vec![Vec::new(); DEPTH];
+                for (index, children) in child_indices.iter_mut().enumerate().take(DEPTH - 1) {
+                    children.push(index + 1);
+                }
+                let mut ancestors = vec![false; DEPTH];
+                let mut tidy_nodes = Vec::with_capacity(DEPTH + 1);
+
+                let root = build_virtual_tree(
+                    &[0],
+                    &layout_nodes,
+                    &child_indices,
+                    &mut ancestors,
+                    &mut tidy_nodes,
+                )
+                .expect("build deep tidy tree");
+                run_layout(&mut tidy_nodes, root).expect("layout deep tidy tree");
+                let mut positioned = Vec::with_capacity(DEPTH);
+                collect_positioned_nodes(
+                    &tidy_nodes,
+                    tidy_nodes[root].children[0],
+                    TreeSection::Right,
+                    0.0,
+                    &mut positioned,
+                );
+
+                assert_eq!(tidy_nodes.len(), DEPTH + 1);
+                assert_eq!(positioned.len(), DEPTH);
+                assert_eq!(positioned.last().map(|pair| pair.0), Some(DEPTH - 1));
+                assert!(
+                    positioned
+                        .iter()
+                        .all(|(_, node)| node.x.is_finite() && node.y.is_finite())
+                );
+            })
+            .expect("spawn small-stack tidy-tree test")
+            .join()
+            .expect("tidy-tree pipeline must not overflow the native stack");
+    }
+
+    #[test]
+    fn tidy_tree_centers_a_wide_first_level_in_linear_space() {
+        const WIDTH: usize = 20_000;
+        let layout_nodes = layout_nodes(WIDTH);
+        let child_indices = vec![Vec::new(); WIDTH];
+        let roots = (0..WIDTH).collect::<Vec<_>>();
+        let mut ancestors = vec![false; WIDTH];
+        let mut tidy_nodes = Vec::with_capacity(WIDTH + 1);
+        let root = build_virtual_tree(
+            &roots,
+            &layout_nodes,
+            &child_indices,
+            &mut ancestors,
+            &mut tidy_nodes,
+        )
+        .expect("build wide tidy tree");
+        run_layout(&mut tidy_nodes, root).expect("layout wide tidy tree");
+        let mut positioned = Vec::with_capacity(WIDTH);
+        collect_positioned_nodes(&tidy_nodes, root, TreeSection::Right, 0.0, &mut positioned);
+
+        center_tree(&mut positioned, &roots, &layout_nodes);
+
+        assert_eq!(positioned.len(), WIDTH);
+        assert!(
+            positioned
+                .iter()
+                .all(|(_, node)| node.x.is_finite() && node.y.is_finite())
+        );
+    }
 }

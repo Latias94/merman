@@ -1,29 +1,29 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Bike",
-          "x": 69.051,
+          "x": 68.64,
           "y": 266.0,
-          "width": 132.102,
+          "width": 131.203,
           "height": 144.0,
           "is_cluster": false
         },
         {
           "id": "IdCard",
-          "x": 69.051,
+          "x": 68.64,
           "y": 72.0,
-          "width": 138.102,
+          "width": 137.281,
           "height": 144.0,
           "is_cluster": false
         },
         {
           "id": "Student",
-          "x": 311.178,
+          "x": 309.68,
           "y": 169.0,
-          "width": 154.633,
+          "width": 153.277,
           "height": 120.0,
           "is_cluster": false
         }
@@ -37,33 +37,33 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 233.862,
-              "y": 109.097
+              "x": 233.041,
+              "y": 109.298
             },
             {
-              "x": 185.982,
+              "x": 185.161,
               "y": 72.0
             },
             {
-              "x": 138.102,
+              "x": 137.281,
               "y": 72.0
             }
           ],
           "label": {
-            "x": 185.982,
+            "x": 185.161,
             "y": 72.0,
             "width": 45.76,
             "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": {
-            "x": 229.215,
-            "y": 86.521,
+            "x": 228.454,
+            "y": 86.711,
             "width": 8.96,
             "height": 24.0
           },
           "end_label_left": {
-            "x": 150.602,
+            "x": 149.781,
             "y": 82.0,
             "width": 8.96,
             "height": 24.0
@@ -81,33 +81,33 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 233.862,
-              "y": 228.903
+              "x": 233.041,
+              "y": 228.702
             },
             {
-              "x": 185.982,
+              "x": 185.161,
               "y": 266.0
             },
             {
-              "x": 135.102,
+              "x": 134.242,
               "y": 266.0
             }
           ],
           "label": {
-            "x": 185.982,
+            "x": 185.161,
             "y": 266.0,
             "width": 32.0,
             "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": {
-            "x": 210.841,
-            "y": 227.764,
+            "x": 210.017,
+            "y": 227.623,
             "width": 8.96,
             "height": 24.0
           },
           "end_label_left": {
-            "x": 147.602,
+            "x": 146.742,
             "y": 276.0,
             "width": 8.96,
             "height": 24.0
@@ -120,9 +120,9 @@
       ],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
+        "min_x": -0.0,
         "min_y": 0.0,
-        "max_x": 388.494,
+        "max_x": 386.318,
         "max_y": 338.0
       }
     }

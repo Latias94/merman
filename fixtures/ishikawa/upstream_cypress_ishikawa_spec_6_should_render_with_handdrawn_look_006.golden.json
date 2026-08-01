@@ -1,0 +1,54 @@
+{
+  "diagramType": "ishikawa",
+  "model": {
+    "type": "ishikawa",
+    "title": "Blurry Photo",
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "text": "Blurry Photo",
+      "children": [
+        {
+          "text": "Process",
+          "children": [
+            {
+              "text": "Out of focus",
+              "children": []
+            }
+          ]
+        },
+        {
+          "text": "User",
+          "children": [
+            {
+              "text": "Shaky hands",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "text": "Blurry Photo",
+        "depth": 0
+      },
+      {
+        "text": "Process",
+        "depth": 1
+      },
+      {
+        "text": "Out of focus",
+        "depth": 2
+      },
+      {
+        "text": "User",
+        "depth": 1
+      },
+      {
+        "text": "Shaky hands",
+        "depth": 2
+      }
+    ]
+  }
+}

@@ -5,9 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 541.234,
+        "max_x": 541.24,
         "max_y": 450.0
       },
+      "title": "Default text position: Animal adoption",
       "center_x": 225.0,
       "center_y": 225.0,
       "radius": 185.0,

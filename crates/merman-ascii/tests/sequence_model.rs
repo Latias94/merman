@@ -35,7 +35,7 @@ fn render_sequence(input: &str, options: &AsciiRenderOptions) -> merman_ascii::R
         .expect("sequence diagram should parse")
         .expect("sequence diagram should be detected");
 
-    render_model(&parsed.model, options)
+    render_model(parsed.model(), options)
 }
 
 fn read_local_semantic_fixture(path: &str) -> String {
@@ -59,7 +59,7 @@ fn parse_sequence_render_model(input: &str) -> SequenceDiagramRenderModel {
         .expect("sequence diagram should parse")
         .expect("sequence diagram should be detected");
 
-    match parsed.model {
+    match parsed.into_parts().1 {
         RenderSemanticModel::Sequence(model) => model,
         other => panic!("expected sequence render model, got {}", other.kind()),
     }

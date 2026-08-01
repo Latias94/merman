@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Textual periods + multi-event forms",
     "accTitle": null,
     "accDescr": null,

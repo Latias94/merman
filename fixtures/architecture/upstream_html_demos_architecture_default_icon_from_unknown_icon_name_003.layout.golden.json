@@ -6,7 +6,7 @@
         {
           "id": "unknown",
           "x": 0.0,
-          "y": 0.0,
+          "y": 17.0,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
@@ -18,34 +18,33 @@
           "id": "unknown",
           "body_bounds": {
             "min_x": 0.0,
-            "min_y": 0.0,
+            "min_y": 17.0,
             "max_x": 80.0,
-            "max_y": 80.0
+            "max_y": 97.0
           },
           "label_bounds": {
             "min_x": -7.0,
-            "min_y": 0.0,
+            "min_y": 17.0,
             "max_x": 87.0,
-            "max_y": 97.0
+            "max_y": 114.0
           },
           "label_metrics": {
-            "text_width": 89.12,
-            "half_width": 47.0,
-            "applied_scale": 1.055
+            "text_width": 90.0,
+            "half_width": 45.0
           },
           "union_bounds": {
-            "min_x": -7.0,
-            "min_y": 0.0,
-            "max_x": 87.0,
-            "max_y": 97.0
+            "min_x": -8.0,
+            "min_y": 16.0,
+            "max_x": 88.0,
+            "max_y": 115.0
           }
         }
       ],
       "bounds": {
         "min_x": 0.0,
-        "min_y": 0.0,
+        "min_y": 17.0,
         "max_x": 80.0,
-        "max_y": 80.0
+        "max_y": 97.0
       }
     }
   }

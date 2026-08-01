@@ -1,0 +1,92 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "direction": "LR",
+      "nodes": [
+        {
+          "id": "A",
+          "label": "Start",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "__swimlane_default__",
+          "top_lane_id": "__swimlane_default__",
+          "x": 36.0,
+          "y": 0.0,
+          "width": 97.12,
+          "height": 54.0,
+          "label_width": 37.12,
+          "label_height": 24.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "B",
+          "label": "Done",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "__swimlane_default__",
+          "top_lane_id": "__swimlane_default__",
+          "x": 216.421,
+          "y": 0.0,
+          "width": 90.24,
+          "height": 54.0,
+          "label_width": 30.24,
+          "label_height": 24.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        }
+      ],
+      "lanes": [
+        {
+          "id": "__swimlane_default__",
+          "title": "",
+          "parent_id": null,
+          "x": 106.49,
+          "y": 0.0,
+          "width": 350.101,
+          "height": 126.0,
+          "padding": 20.0,
+          "title_label_width": 0.0,
+          "title_label_height": 0.0,
+          "content_top": -27.0,
+          "title_rect": {
+            "left": -68.56,
+            "right": -32.56,
+            "top": -63.0,
+            "bottom": 63.0
+          },
+          "requested_dir": "LR"
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_A_B_0",
+          "from": "A",
+          "to": "B",
+          "points": [
+            {
+              "x": 84.56,
+              "y": 0.0
+            },
+            {
+              "x": 171.301,
+              "y": 0.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        }
+      ],
+      "bounds": {
+        "min_x": -68.56,
+        "min_y": -63.0,
+        "max_x": 281.541,
+        "max_y": 63.0
+      }
+    }
+  }
+}

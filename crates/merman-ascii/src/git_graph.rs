@@ -14,6 +14,9 @@ pub fn render_git_graph_diagram(
         "gitGraph direction={} current={}",
         model.direction, model.current_branch
     ));
+    if let Some(title) = normalize_optional_text(model.title.as_deref()) {
+        lines.push(title);
+    }
     if let Some(title) = normalize_optional_text(model.acc_title.as_deref()) {
         lines.push(format!("accTitle: {title}"));
     }

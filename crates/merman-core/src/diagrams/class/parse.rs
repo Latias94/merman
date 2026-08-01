@@ -1,111 +1,275 @@
 use crate::models::class_diagram as class_typed;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    editor::{
+        editor_keyword_value_span, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
+        lalrpop_recovery_span,
+    },
 };
 use serde_json::Value;
+#[cfg(test)]
+use std::cell::Cell;
 
 use super::class_grammar;
 use super::db::ClassDb;
-use super::fast::parse_class_fast_db;
 use super::lexer::Lexer;
 use super::{MERMAID_DOM_ID_PREFIX, Tok};
 
-fn prefer_fast_class_parser() -> bool {
-    match std::env::var("MERMAN_CLASS_PARSER").as_deref() {
-        Ok("slow") | Ok("0") | Ok("false") => false,
-        Ok("fast") | Ok("1") | Ok("true") => true,
-        // Default to "auto": attempt the fast parser and fall back to LALRPOP when it declines.
-        _ => true,
+const CLASS_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
+    EditorCompletionCandidate::keyword("TB", "top to bottom"),
+    EditorCompletionCandidate::keyword("BT", "bottom to top"),
+    EditorCompletionCandidate::keyword("LR", "left to right"),
+    EditorCompletionCandidate::keyword("RL", "right to left"),
+];
+
+const CLASS_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
+    EditorCompletionVocabulary::new(&[], CLASS_COMPLETION_DIRECTIONS);
+
+#[cfg(test)]
+thread_local! {
+    static CLASS_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_class_syntax_construction_count() {
+    CLASS_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn class_syntax_construction_count() -> usize {
+    CLASS_SYNTAX_CONSTRUCTION_COUNT.get()
+}
+
+type ClassLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
+type ClassGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
+
+struct ClassSyntax {
+    events: Vec<ClassLexicalEvent>,
+    lexemes: crate::editor::EditorLexemeBatchResult,
+}
+
+impl ClassSyntax {
+    fn lex(code: &str, control: &ParseControl) -> ParseControlResult<Self> {
+        #[cfg(test)]
+        CLASS_SYNTAX_CONSTRUCTION_COUNT.set(CLASS_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
+        let mut events = Vec::new();
+        let mut lexer = Lexer::new(code);
+        let mut last_position = lexer.position();
+        while let Some(event) = lexer.next() {
+            if events.len() % 128 == 0 {
+                control.checkpoint()?;
+            }
+            let current_position = lexer.position();
+            let must_stop = event.is_err() && current_position == last_position;
+            events.push(event);
+            if must_stop {
+                break;
+            }
+            last_position = current_position;
+        }
+        let lexemes = lexer.finish_lexemes();
+
+        control.checkpoint()?;
+        Ok(Self { events, lexemes })
+    }
+
+    fn into_editor_facts_and_actions(
+        self,
+        code: &str,
+        control: &ParseControl,
+    ) -> ParseControlResult<(
+        EditorSemanticFacts,
+        std::result::Result<Vec<super::Action>, ClassGrammarError>,
+    )> {
+        let Self { events, lexemes } = self;
+        let editor_facts = collect_class_editor_facts_from_events(&events, code, lexemes, control)?;
+        control.checkpoint()?;
+        let mut emitted = 0usize;
+        let controlled_events = events.into_iter().take_while(|_| {
+            let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+            emitted = emitted.saturating_add(1);
+            active
+        });
+        let actions = class_grammar::ActionsParser::new().parse(controlled_events);
+        control.checkpoint()?;
+        Ok((editor_facts, actions))
     }
 }
 
-pub(super) fn parse_class_via_lalrpop_db<'a>(
+struct ClassSemanticSource<'a> {
+    db: ClassDb<'a>,
+    editor_facts: EditorSemanticFacts,
+}
+
+enum ClassSemanticFailure {
+    Grammar {
+        error: ClassGrammarError,
+        editor_facts: EditorSemanticFacts,
+    },
+    Db {
+        message: String,
+        editor_facts: EditorSemanticFacts,
+    },
+}
+
+impl ClassSemanticFailure {
+    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
+        self.into_error_and_editor_facts(meta, fallback_offset).0
+    }
+
+    fn into_error_and_editor_facts(
+        self,
+        meta: &ParseMetadata,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+    }
+
+    fn into_error_and_editor_facts_for_type(
+        self,
+        diagram_type: &str,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        match self {
+            Self::Grammar {
+                error,
+                mut editor_facts,
+            } => {
+                let parse_error = Error::diagram_parse_diagnostic(
+                    diagram_type.to_string(),
+                    lalrpop_parse_diagnostic(&error, fallback_offset),
+                );
+                let span = match &error {
+                    lalrpop_util::ParseError::User { error } => error.span,
+                    _ => lalrpop_recovery_span(&error, fallback_offset),
+                };
+                editor_facts.mark_recovered_from_parse_error(
+                    format!(
+                        "class parser recovered after parse error: {}",
+                        format_lalrpop_parse_error(&error)
+                    ),
+                    Some(span),
+                );
+                (parse_error, editor_facts)
+            }
+            Self::Db {
+                message,
+                mut editor_facts,
+            } => {
+                let parse_error =
+                    Error::diagram_parse_fallback(diagram_type.to_string(), message.clone());
+                editor_facts.mark_recovered_from_parse_error(
+                    format!("class semantic construction failed: {message}"),
+                    None,
+                );
+                (parse_error, editor_facts)
+            }
+        }
+    }
+}
+
+fn construct_class_semantic_source<'a>(
     code: &str,
     meta: &'a ParseMetadata,
-) -> Result<ClassDb<'a>> {
-    let actions = class_grammar::ActionsParser::new()
-        .parse(Lexer::new(code))
-        .map_err(|e| {
-            Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(&e, code.len()),
-            )
-        })?;
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>>> {
+    let syntax = ClassSyntax::lex(code, control)?;
+    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
+    let actions = match actions {
+        Ok(actions) => actions,
+        Err(error) => {
+            return Ok(Err(Box::new(ClassSemanticFailure::Grammar {
+                error,
+                editor_facts,
+            })));
+        }
+    };
 
     let mut db = ClassDb::new(&meta.effective_config);
-    for a in actions {
-        db.apply(a)
-            .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e))?;
-    }
-    Ok(db)
-}
-
-pub(super) fn parse_class_via_lalrpop(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let db = parse_class_via_lalrpop_db(code, meta)?;
-    Ok(db.into_model(meta))
-}
-
-pub fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    if prefer_fast_class_parser()
-        && let Some(db) = parse_class_fast_db(code, meta)?
-    {
-        return Ok(db.into_model(meta));
+    for (index, action) in actions.into_iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        if let Err(message) = db.apply(action) {
+            return Ok(Err(Box::new(ClassSemanticFailure::Db {
+                message,
+                editor_facts,
+            })));
+        }
     }
 
-    parse_class_via_lalrpop(code, meta)
+    control.checkpoint()?;
+    Ok(Ok(ClassSemanticSource { db, editor_facts }))
 }
 
-pub fn parse_class_typed(code: &str, meta: &ParseMetadata) -> Result<class_typed::ClassDiagram> {
-    if prefer_fast_class_parser()
-        && let Some(db) = parse_class_fast_db(code, meta)?
-    {
-        return Ok(db.into_typed_model(meta));
-    }
-
-    let db = parse_class_via_lalrpop_db(code, meta)?;
-    Ok(db.into_typed_model(meta))
+fn parse_class_semantic_source<'a>(
+    code: &str,
+    meta: &'a ParseMetadata,
+) -> Result<ClassSemanticSource<'a>> {
+    construct_class_semantic_source(code, meta, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+        .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
 }
 
-pub fn parse_class_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let parse_result = class_grammar::ActionsParser::new().parse(Lexer::new(code));
-    let mut facts = collect_class_editor_facts_from_tokens(code);
-    if let Err(error) = parse_result {
-        let span = lalrpop_recovery_span(&error, code.len());
-        facts.mark_recovered_from_parse_error(
-            format!(
-                "class parser recovered after parse error: {}",
-                format_lalrpop_parse_error(&error)
-            ),
-            Some(span),
-        );
-    }
-
-    facts
+pub(crate) fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    Ok(parse_class_semantic_source(code, meta)?.db.into_model(meta))
 }
 
-fn collect_class_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
+pub(crate) fn parse_class_typed(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<class_typed::ClassDiagram> {
+    Ok(parse_class_semantic_source(code, meta)?
+        .db
+        .into_typed_model(meta))
+}
+
+pub(crate) fn parse_class_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_class_semantic_source(code, meta, control)?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |ClassSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
+        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
+    );
+    control.checkpoint()?;
+    Ok(parsed)
+}
+
+fn collect_class_editor_facts_from_events(
+    events: &[ClassLexicalEvent],
+    code: &str,
+    lexemes: crate::editor::EditorLexemeBatchResult,
+    control: &ParseControl,
+) -> ParseControlResult<EditorSemanticFacts> {
+    let mut facts =
+        EditorSemanticFacts::new().with_completion_vocabulary(CLASS_COMPLETION_VOCABULARY);
+    facts.replace_family_lexemes(lexemes);
     let mut collector = ClassEditorFactCollector::new(code);
 
-    let mut lexer = Lexer::new(code);
-    let mut last_position = lexer.position();
-    while let Some(result) = lexer.next() {
-        let current_position = lexer.position();
-        match result {
-            Ok((start, token, end)) => collector.accept(token, start, end, &mut facts),
-            Err(_) => {
+    for (index, event) in events.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        match event {
+            Ok((start, token, end)) => collector.accept(token, *start, *end, &mut facts),
+            Err(error) => {
                 facts.mark_recovered();
-                if current_position == last_position {
-                    break;
+                if let Some(expected) = error.expected_syntax.as_ref() {
+                    facts.push_expected_syntax(expected.clone());
                 }
             }
         }
-        last_position = current_position;
     }
 
-    facts
+    control.checkpoint()?;
+    Ok(facts)
 }
 
 #[derive(Debug)]
@@ -171,7 +335,7 @@ impl<'a> ClassEditorFactCollector<'a> {
         }
     }
 
-    fn accept(&mut self, token: Tok, start: usize, end: usize, facts: &mut EditorSemanticFacts) {
+    fn accept(&mut self, token: &Tok, start: usize, end: usize, facts: &mut EditorSemanticFacts) {
         match token {
             Tok::Newline | Tok::ClassDiagram | Tok::StructStop => self.reset_line_state(),
             Tok::ClassKw => {
@@ -240,11 +404,11 @@ impl<'a> ClassEditorFactCollector<'a> {
             Tok::Label(label) => {
                 if let Some(symbol) = self.pending_relation_source.take() {
                     self.push_symbol(facts, symbol, ExpectedClassName::MemberOwner);
-                    self.push_label_member_symbol(facts, &label, SourceSpan::new(start, end));
+                    self.push_label_member_symbol(facts, label, SourceSpan::new(start, end));
                 } else {
                     self.push_label_payload_symbol(
                         facts,
-                        &label,
+                        label,
                         SourceSpan::new(start, end),
                         "class relation label",
                     );
@@ -252,7 +416,7 @@ impl<'a> ClassEditorFactCollector<'a> {
             }
             Tok::Name(name) => {
                 let symbol = ClassTokenSymbol {
-                    name,
+                    name: name.clone(),
                     span: SourceSpan::new(start, end),
                 };
                 if self.after_annotation_start {
@@ -284,7 +448,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                     self.css_class_targets_pending = false;
                     self.push_class_target_list_symbols(
                         facts,
-                        &text,
+                        text,
                         SourceSpan::new(start, end),
                         "class css target",
                     );
@@ -296,7 +460,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                     self.class_label_pending = false;
                     self.push_string_payload_symbol(
                         facts,
-                        &text,
+                        text,
                         SourceSpan::new(start, end),
                         "class display label",
                         EditorSemanticKind::String,
@@ -308,7 +472,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                     self.note_text_pending = false;
                     self.push_string_payload_symbol(
                         facts,
-                        &text,
+                        text,
                         SourceSpan::new(start, end),
                         "class note",
                         EditorSemanticKind::String,
@@ -321,7 +485,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                 {
                     self.push_string_payload_symbol(
                         facts,
-                        &text,
+                        text,
                         SourceSpan::new(start, end),
                         "class relation multiplicity",
                         EditorSemanticKind::String,
@@ -335,7 +499,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                     self.callback_statement_function_seen = true;
                     self.push_string_payload_symbol(
                         facts,
-                        &text,
+                        text,
                         SourceSpan::new(start, end),
                         "class callback",
                         EditorSemanticKind::Function,
@@ -346,7 +510,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                 if self.interaction.is_some() {
                     self.push_string_payload_symbol(
                         facts,
-                        &text,
+                        text,
                         SourceSpan::new(start, end),
                         "class interaction string",
                         EditorSemanticKind::String,
@@ -358,7 +522,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                     self.push_payload_symbol(
                         facts,
                         ClassTokenSymbol {
-                            name: target,
+                            name: target.clone(),
                             span: SourceSpan::new(start, end),
                         },
                         "class link target",
@@ -371,7 +535,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                     self.push_payload_symbol(
                         facts,
                         ClassTokenSymbol {
-                            name: function,
+                            name: function.clone(),
                             span: SourceSpan::new(start, end),
                         },
                         "class callback",
@@ -383,7 +547,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                 if self.interaction.is_some() {
                     self.push_payload_symbol_from_token(
                         facts,
-                        &args,
+                        args,
                         SourceSpan::new(start, end),
                         "class callback args",
                         EditorSemanticKind::String,
@@ -398,7 +562,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                     };
                     self.push_payload_symbol_from_token(
                         facts,
-                        &raw,
+                        raw,
                         SourceSpan::new(start, end),
                         detail,
                         EditorSemanticKind::String,
@@ -409,7 +573,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                 facts.push_directive_prefix("accTitle");
                 self.push_payload_symbol_from_token(
                     facts,
-                    &value,
+                    value,
                     SourceSpan::new(start, end),
                     "class accessibility title",
                     EditorSemanticKind::String,
@@ -419,13 +583,21 @@ impl<'a> ClassEditorFactCollector<'a> {
                 facts.push_directive_prefix("accDescr");
                 self.push_payload_symbol_from_token(
                     facts,
-                    &value,
+                    value,
                     SourceSpan::new(start, end),
                     "class accessibility description",
                     EditorSemanticKind::String,
                 );
             }
-            Tok::Direction(_) | Tok::HrefKw | Tok::StructStart => {}
+            Tok::Direction(_) => {
+                if let Some(span) = editor_keyword_value_span(self.code, start, end, "direction") {
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::DirectionValue,
+                        span,
+                    ));
+                }
+            }
+            Tok::HrefKw | Tok::StructStart => {}
             Tok::SquareStart => {
                 self.class_label_pending = true;
             }
@@ -603,13 +775,8 @@ impl<'a> ClassEditorFactCollector<'a> {
         }
     }
 
-    fn push_member_symbol(
-        &self,
-        facts: &mut EditorSemanticFacts,
-        member: String,
-        span: SourceSpan,
-    ) {
-        let Some((name, selection)) = class_member_selection(&member, span) else {
+    fn push_member_symbol(&self, facts: &mut EditorSemanticFacts, member: &str, span: SourceSpan) {
+        let Some((name, selection)) = class_member_selection(member, span) else {
             return;
         };
         facts.push_symbol(EditorSemanticSymbol::outline(

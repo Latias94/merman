@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 292.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 292.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -35,7 +35,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -43,7 +43,7 @@
           "index": 4.0,
           "x": 0.0,
           "y": 144.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -51,7 +51,7 @@
           "index": 5.0,
           "x": 0.0,
           "y": 168.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -59,7 +59,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -67,7 +67,7 @@
           "index": 6.0,
           "x": 0.0,
           "y": 192.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -75,7 +75,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -83,7 +83,7 @@
           "index": 7.0,
           "x": 0.0,
           "y": 216.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -91,7 +91,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -136,7 +136,7 @@
             "id": "onboarding",
             "x": 75.0,
             "y": 122.0,
-            "width": 165.0,
+            "width": 103.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -147,7 +147,7 @@
             "text": "onboarding           ",
             "font_size": 11.0,
             "width": 45.65,
-            "x": 157.5,
+            "x": 126.5,
             "y": 135.5,
             "class": "taskText taskText1 width-45.650000000000006"
           }
@@ -167,7 +167,7 @@
             "id": "litreview",
             "x": 75.0,
             "y": 146.0,
-            "width": 235.0,
+            "width": 148.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -178,7 +178,7 @@
             "text": "literature review    ",
             "font_size": 11.0,
             "width": 78.21,
-            "x": 192.5,
+            "x": 149.0,
             "y": 159.5,
             "class": "taskText taskText1 width-78.21"
           }
@@ -196,9 +196,9 @@
           "vert": false,
           "bar": {
             "id": "projectA",
-            "x": 310.0,
+            "x": 223.0,
             "y": 170.0,
-            "width": 376.0,
+            "width": 236.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -209,7 +209,7 @@
             "text": "project A            ",
             "font_size": 11.0,
             "width": 43.34,
-            "x": 498.0,
+            "x": 341.0,
             "y": 183.5,
             "class": "taskText taskText1 width-43.34"
           }
@@ -227,9 +227,9 @@
           "vert": false,
           "bar": {
             "id": "bossaway",
-            "x": 686.0,
+            "x": 459.0,
             "y": 98.0,
-            "width": 329.0,
+            "width": 207.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -240,7 +240,7 @@
             "text": "boss on leave        ",
             "font_size": 11.0,
             "width": 57.64,
-            "x": 850.5,
+            "x": 562.5,
             "y": 111.5,
             "class": "taskText taskText0 width-57.64"
           }
@@ -258,9 +258,9 @@
           "vert": false,
           "bar": {
             "id": "chilling",
-            "x": 686.0,
+            "x": 459.0,
             "y": 194.0,
-            "width": 94.0,
+            "width": 59.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -271,7 +271,7 @@
             "text": "chilling             ",
             "font_size": 11.0,
             "width": 31.24,
-            "x": 733.0,
+            "x": 488.5,
             "y": 207.5,
             "class": "taskText taskText1 width-31.240000000000002"
           }
@@ -289,7 +289,7 @@
           "vert": false,
           "bar": {
             "id": "deadlineA",
-            "x": 770.0,
+            "x": 508.0,
             "y": 50.0,
             "width": 20.0,
             "height": 20.0,
@@ -302,7 +302,7 @@
             "text": "deadline A           ",
             "font_size": 11.0,
             "width": 44.77,
-            "x": 795.0,
+            "x": 533.0,
             "y": 63.5,
             "class": "taskTextOutsideRight taskTextOutside0 width-44.77"
           }
@@ -320,9 +320,9 @@
           "vert": false,
           "bar": {
             "id": "projectB",
-            "x": 780.0,
+            "x": 518.0,
             "y": 218.0,
-            "width": 329.0,
+            "width": 207.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -333,7 +333,7 @@
             "text": "project B            ",
             "font_size": 11.0,
             "width": 43.34,
-            "x": 944.5,
+            "x": 621.5,
             "y": 231.5,
             "class": "taskText taskText1 width-43.34"
           }
@@ -351,7 +351,7 @@
           "vert": false,
           "bar": {
             "id": "deadlineB",
-            "x": 1099.0,
+            "x": 715.0,
             "y": 74.0,
             "width": 20.0,
             "height": 20.0,
@@ -364,7 +364,7 @@
             "text": "deadline B           ",
             "font_size": 11.0,
             "width": 44.77,
-            "x": 1094.0,
+            "x": 710.0,
             "y": 87.5,
             "class": "taskTextOutsideLeft taskTextOutside0"
           }
@@ -375,38 +375,38 @@
       "bottom_ticks": [
         {
           "time_ms": 1704585600000.0,
-          "x": 193.0,
+          "x": 149.0,
           "label": " 07/01"
         },
         {
           "time_ms": 1705190400000.0,
-          "x": 357.0,
+          "x": 252.0,
           "label": " 14/01"
         },
         {
           "time_ms": 1705795200000.0,
-          "x": 522.0,
+          "x": 356.0,
           "label": " 21/01"
         },
         {
           "time_ms": 1706400000000.0,
-          "x": 686.0,
+          "x": 459.0,
           "label": " 28/01"
         },
         {
           "time_ms": 1707004800000.0,
-          "x": 851.0,
+          "x": 563.0,
           "label": " 04/02"
         },
         {
           "time_ms": 1707609600000.0,
-          "x": 1015.0,
+          "x": 666.0,
           "label": " 11/02"
         }
       ],
       "top_ticks": [],
       "title": "Adding GANTT diagram to mermaid",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

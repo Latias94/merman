@@ -5,14 +5,14 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 802.0,
+        "max_x": 782.0,
         "max_y": 1070.0
       },
-      "width": 852.0,
+      "width": 832.0,
       "height": 1080.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Context",
       "title": "System Context diagram for Internet Banking System",
       "boundaries": [
@@ -21,7 +21,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 652.0,
+          "width": 632.0,
           "height": 954.0,
           "image": {
             "width": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -52,7 +52,7 @@
           "type_c4_shape": "system",
           "x": 150.0,
           "y": 166.0,
-          "width": 552.0,
+          "width": 518.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -70,17 +70,17 @@
           "label": {
             "text": "Internet Banking System",
             "y": 38.0,
-            "width": 188.0,
-            "height": 17.0,
+            "width": 165.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Allows customers to view information about their bank accounts, and make payments.",
-            "y": 75.0,
-            "width": 532.0,
-            "height": 16.0,
+            "y": 76.0,
+            "width": 498.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -109,16 +109,16 @@
             "text": "System DB",
             "y": 38.0,
             "width": 76.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Database system",
-            "y": 75.0,
+            "y": 76.0,
             "width": 98.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -147,16 +147,16 @@
             "text": "System Queue",
             "y": 38.0,
             "width": 94.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Queue system",
-            "y": 75.0,
+            "y": 76.0,
             "width": 80.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -184,17 +184,17 @@
           "label": {
             "text": "External System",
             "y": 38.0,
-            "width": 125.0,
-            "height": 17.0,
+            "width": 112.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "External system",
-            "y": 75.0,
+            "y": 76.0,
             "width": 96.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -222,17 +222,17 @@
           "label": {
             "text": "External System DB",
             "y": 38.0,
-            "width": 153.0,
-            "height": 17.0,
+            "width": 137.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "External database system",
-            "y": 75.0,
+            "y": 76.0,
             "width": 149.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -260,17 +260,17 @@
           "label": {
             "text": "External System Queue",
             "y": 38.0,
-            "width": 179.0,
-            "height": 17.0,
+            "width": 155.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "External queue system",
-            "y": 75.0,
+            "y": 76.0,
             "width": 130.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -299,7 +299,7 @@
             "text": "",
             "y": 38.0,
             "width": 0.0,
-            "height": 17.0,
+            "height": 0.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -331,7 +331,7 @@
             "text": "",
             "y": 38.0,
             "width": 0.0,
-            "height": 17.0,
+            "height": 0.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -363,7 +363,7 @@
             "text": "",
             "y": 38.0,
             "width": 0.0,
-            "height": 17.0,
+            "height": 0.0,
             "line_count": 1.0
           },
           "ty": null,

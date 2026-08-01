@@ -1,0 +1,104 @@
+{
+  "diagramType": "venn",
+  "layout": {
+    "VennDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 800.0,
+        "max_y": 450.0
+      },
+      "width": 800.0,
+      "height": 450.0,
+      "diagram_height": 426.0,
+      "title_height": 24.0,
+      "scale": 0.5,
+      "padding": 8.0,
+      "use_max_width": true,
+      "use_debug_layout": false,
+      "areas": [
+        {
+          "sets": [
+            "JavaScript"
+          ],
+          "size": 10.0,
+          "text_x": 101.0,
+          "text_y": 213.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "JavaScript",
+              "x": 154.96,
+              "y": 213.0,
+              "radius": 146.96
+            }
+          ],
+          "path": "\nM 154.96 213 \nm -146.96 0 \na 146.96 146.96 0 1 0 293.92 0 \na 146.96 146.96 0 1 0 -293.92 0"
+        },
+        {
+          "sets": [
+            "Python"
+          ],
+          "size": 10.0,
+          "text_x": 645.0,
+          "text_y": 213.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "Python",
+              "x": 645.04,
+              "y": 213.0,
+              "radius": 146.96
+            }
+          ],
+          "path": "\nM 645.04 213 \nm -146.96 0 \na 146.96 146.96 0 1 0 293.92 0 \na 146.96 146.96 0 1 0 -293.92 0"
+        },
+        {
+          "sets": [
+            "TypeScript"
+          ],
+          "size": 10.0,
+          "text_x": 395.0,
+          "text_y": 213.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "TypeScript",
+              "x": 341.512,
+              "y": 213.0,
+              "radius": 146.96
+            }
+          ],
+          "path": "\nM 341.51 213 \nm -146.96 0 \na 146.96 146.96 0 1 0 293.92 0 \na 146.96 146.96 0 1 0 -293.92 0"
+        },
+        {
+          "sets": [
+            "JavaScript",
+            "TypeScript"
+          ],
+          "size": 2.5,
+          "text_x": 248.0,
+          "text_y": 212.0,
+          "text_disjoint": false,
+          "circles": [
+            {
+              "set": "JavaScript",
+              "x": 154.96,
+              "y": 213.0,
+              "radius": 146.96
+            },
+            {
+              "set": "TypeScript",
+              "x": 341.512,
+              "y": 213.0,
+              "radius": 146.96
+            }
+          ],
+          "path": "\nM 248.24 326.56 \nA 146.96 146.96 0 0 1 248.24 99.44 \nA 146.96 146.96 0 0 1 248.24 326.56"
+        }
+      ],
+      "text_areas": [],
+      "text_nodes": []
+    }
+  }
+}

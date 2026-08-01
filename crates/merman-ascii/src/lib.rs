@@ -35,11 +35,15 @@ pub use capability::{
 };
 pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, AsciiTerminalPalette};
 pub use error::{AsciiError, Result};
-pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions};
+pub use options::{
+    ASCII_RESOURCE_LIMIT_DESCRIPTORS, AsciiCharset, AsciiDirection, AsciiRenderOptions,
+    AsciiResourceLimitDescriptor, MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
+    ascii_resource_profile_value,
+};
 
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
-use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::diagrams::gantt::GanttDiagramRenderModel;
 use merman_core::diagrams::git_graph::GitGraphRenderModel;
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
@@ -74,12 +78,27 @@ impl AsciiRenderer {
 }
 
 pub fn render_model(model: &RenderSemanticModel, options: &AsciiRenderOptions) -> Result<String> {
+    render_model_with_local_time_zone(model, options, &merman_core::time::LocalTimeZone::utc())
+}
+
+/// Renders a typed model with one explicitly captured local-time resolver.
+///
+/// Most families are timezone independent. Gantt uses this resolver for user-visible dates so a
+/// caller can keep parse and render semantics on the same operation context without thread-local
+/// ambient state.
+pub fn render_model_with_local_time_zone(
+    model: &RenderSemanticModel,
+    options: &AsciiRenderOptions,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Result<String> {
     options.validate()?;
     match model {
         RenderSemanticModel::Class(model) => render_class(model, options),
         RenderSemanticModel::Er(model) => render_er(model, options),
         RenderSemanticModel::Flowchart(model) => render_flowchart(model, options),
-        RenderSemanticModel::Gantt(model) => render_gantt(model, options),
+        RenderSemanticModel::Gantt(model) => {
+            render_gantt_with_local_time_zone(model, options, local_time_zone)
+        }
         RenderSemanticModel::GitGraph(model) => render_git_graph(model, options),
         RenderSemanticModel::Journey(model) => render_journey(model, options),
         RenderSemanticModel::Kanban(model) => render_kanban(model, options),
@@ -106,7 +125,7 @@ pub fn render_er(model: &ErDiagramRenderModel, options: &AsciiRenderOptions) -> 
     er::render_er_diagram(model, options)
 }
 
-pub fn render_flowchart(model: &FlowchartV2Model, options: &AsciiRenderOptions) -> Result<String> {
+pub fn render_flowchart(model: &FlowchartModel, options: &AsciiRenderOptions) -> Result<String> {
     options.validate()?;
     let graph = graph::from_flowchart_model(model, options)?;
     graph::render_graph(&graph, options)
@@ -124,8 +143,16 @@ pub fn render_gantt(
     model: &GanttDiagramRenderModel,
     options: &AsciiRenderOptions,
 ) -> Result<String> {
+    render_gantt_with_local_time_zone(model, options, &merman_core::time::LocalTimeZone::utc())
+}
+
+pub fn render_gantt_with_local_time_zone(
+    model: &GanttDiagramRenderModel,
+    options: &AsciiRenderOptions,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Result<String> {
     options.validate()?;
-    Ok(gantt::render_gantt_diagram(model, options))
+    Ok(gantt::render_gantt_diagram(model, options, local_time_zone))
 }
 
 pub fn render_git_graph(
@@ -205,12 +232,13 @@ pub fn render_tree_view(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartV2Model};
+    use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartModel};
     use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
     use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 
-    fn empty_flowchart() -> FlowchartV2Model {
-        FlowchartV2Model {
+    fn empty_flowchart() -> FlowchartModel {
+        FlowchartModel {
+            keyword: "graph".to_string(),
             acc_descr: None,
             acc_title: None,
             class_defs: Default::default(),
@@ -231,6 +259,7 @@ mod tests {
             label: Some(id.to_string()),
             label_type: None,
             layout_shape: None,
+            shape: None,
             icon: None,
             form: None,
             pos: None,
@@ -254,6 +283,8 @@ mod tests {
             label: None,
             label_type: None,
             edge_type: None,
+            arrow: "-->".to_string(),
+            is_user_defined_id: false,
             stroke: None,
             interpolate: None,
             classes: Vec::new(),

@@ -62,22 +62,18 @@ SVG parity matrix:
 
 ## Root Viewport Residuals
 
-Structural parity is green for all four families. Each family has one root-only `viewBox` height
-residual because upstream Chromium derives the SVG height from browser font `getBBox().height`,
-while the headless renderer uses deterministic text metrics:
+Normal parity is green for all four families. The current 11.16 corpus has eight root-only width
+residuals: four Railroad, two EBNF, one ABNF, and one PEG. Normalized descendants and root heights
+match in every case. The signed width differences range from `-0.016px` to `+0.047px`, matching the
+Chromium text-bbox lattice used by upstream `measureText()`; the deterministic vendored profile is
+within three `1/64px` steps.
 
-| Family | Fixture | Upstream height | Local height |
-|---|---|---:|---:|
-| `railroad` | `basic_ir` | 194.5 | 192.25 |
-| `railroadEbnf` | `choice_optional_repetition` | 174 | 171.25 |
-| `railroadAbnf` | `repetition_optional_numval` | 221 | 216.75 |
-| `railroadPeg` | `prefix_suffix_any` | 107 | 105.5 |
-
-The strict global `parity-root` sweep accepts only these exact family, fixture, descendant-match,
-and `viewBox` fragments through `RootParityResidualPolicy`. A changed value, a new fixture, or any
-descendant DOM difference remains a failure. Do not close this browser-bounded residual with
-character-count width floors, fixture-specific viewport pins, or other viewport magic; revisit it
-only with a source-backed browser measurement model.
+The strict global `parity-root` sweep accepts only the exact family, fixture, descendant profile,
+artifact hashes, and root attributes recorded by `RootParityResidualPolicy`. A changed value, a new
+fixture, or any descendant DOM difference remains a failure. See
+`docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md` for the current counts and source audit. Do not
+close this browser-bounded residual with character-count width floors, fixture-specific viewport
+pins, or other viewport magic; revisit it only with a general browser measurement model.
 
 ## Known Gaps
 

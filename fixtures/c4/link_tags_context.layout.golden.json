@@ -5,14 +5,14 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 665.0,
+        "max_x": 645.0,
         "max_y": 928.0
       },
-      "width": 715.0,
+      "width": 695.0,
       "height": 938.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Context",
       "title": "C4Context link/tags (kv fields)",
       "boundaries": [
@@ -21,7 +21,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 515.0,
+          "width": 495.0,
           "height": 812.0,
           "image": {
             "width": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -49,7 +49,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 406.0,
-          "width": 415.0,
+          "width": 395.0,
           "height": 422.0,
           "image": {
             "width": 0.0,
@@ -59,15 +59,15 @@
           "label": {
             "text": "BankBoundary0",
             "y": 8.0,
-            "width": 123.0,
-            "height": 17.0,
+            "width": 101.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[ENTERPRISE]",
-            "y": 30.0,
-            "width": 97.0,
-            "height": 16.0,
+            "y": 31.0,
+            "width": 89.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -98,17 +98,17 @@
           "label": {
             "text": "Customer",
             "y": 86.0,
-            "width": 75.0,
-            "height": 17.0,
+            "width": 63.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank.",
-            "y": 123.0,
-            "width": 148.0,
-            "height": 16.0,
+            "y": 124.0,
+            "width": 140.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -118,7 +118,7 @@
           "type_c4_shape": "system",
           "x": 200.0,
           "y": 506.0,
-          "width": 265.0,
+          "width": 250.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -136,17 +136,17 @@
           "label": {
             "text": "Internet Banking System",
             "y": 38.0,
-            "width": 188.0,
-            "height": 17.0,
+            "width": 165.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Allows customers to view account data.",
-            "y": 75.0,
-            "width": 245.0,
-            "height": 16.0,
+            "y": 76.0,
+            "width": 230.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -156,7 +156,7 @@
           "type_c4_shape": "external_system",
           "x": 200.0,
           "y": 692.0,
-          "width": 315.0,
+          "width": 295.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -174,17 +174,17 @@
           "label": {
             "text": "E-mail system",
             "y": 38.0,
-            "width": 108.0,
-            "height": 17.0,
+            "width": 97.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "The internal Microsoft Exchange e-mail system.",
-            "y": 75.0,
-            "width": 295.0,
-            "height": 16.0,
+            "y": 76.0,
+            "width": 275.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         }
@@ -195,11 +195,11 @@
           "to": "s1",
           "rel_type": "rel",
           "start_point": {
-            "x": 289.926,
+            "x": 288.614,
             "y": 300.0
           },
           "end_point": {
-            "x": 341.636,
+            "x": 334.136,
             "y": 506.0
           },
           "offset_x": null,
@@ -207,15 +207,15 @@
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 27.0,
-            "height": 14.0,
+            "width": 23.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": {
             "text": "HTTPS",
             "y": 0.0,
             "width": 36.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": null
@@ -225,11 +225,11 @@
           "to": "s2",
           "rel_type": "rel",
           "start_point": {
-            "x": 362.074,
+            "x": 352.697,
             "y": 592.0
           },
           "end_point": {
-            "x": 397.343,
+            "x": 385.087,
             "y": 692.0
           },
           "offset_x": null,
@@ -237,15 +237,15 @@
           "label": {
             "text": "Sends e-mails",
             "y": 0.0,
-            "width": 76.0,
-            "height": 14.0,
+            "width": 67.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": {
             "text": "SMTP",
             "y": 0.0,
             "width": 29.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": null

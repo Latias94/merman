@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "HTML entities in text",
     "accTitle": null,
     "accDescr": null,

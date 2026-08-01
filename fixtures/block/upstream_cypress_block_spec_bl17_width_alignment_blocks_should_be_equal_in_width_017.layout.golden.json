@@ -5,34 +5,84 @@
       "nodes": [
         {
           "id": "A",
-          "x": 57.906,
+          "x": 55.6,
           "y": 0.0,
-          "width": 115.813,
+          "width": 111.2,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 181.719,
+          "x": 174.8,
           "y": 0.0,
-          "width": 115.813,
+          "width": 111.2,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 305.531,
+          "x": 294.0,
           "y": 0.0,
-          "width": 115.813,
+          "width": 111.2,
           "height": 32.0,
           "is_cluster": false
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "A",
+          "allocated": {
+            "x": 55.6,
+            "y": 0.0,
+            "width": 111.2,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 111.2,
+            "height": 32.0,
+            "radius": 5.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "B",
+          "allocated": {
+            "x": 174.8,
+            "y": 0.0,
+            "width": 111.2,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 111.2,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "C",
+          "allocated": {
+            "x": 294.0,
+            "y": 0.0,
+            "width": 111.2,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 111.2,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,
-        "max_x": 363.438,
+        "max_x": 349.6,
         "max_y": 16.0
       }
     }

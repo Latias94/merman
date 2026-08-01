@@ -3,7 +3,7 @@
   "layout": {
     "GitGraphDiagram": {
       "bounds": {
-        "min_x": -141.797,
+        "min_x": -141.8,
         "min_y": -20.0,
         "max_x": 58.0,
         "max_y": 96.0
@@ -20,14 +20,14 @@
           "name": "main",
           "index": 0.0,
           "pos": 0.0,
-          "bbox_width": 30.719,
+          "bbox_width": 30.72,
           "bbox_height": 17.6
         },
         {
           "name": "azAZ_-./test",
           "index": 1.0,
           "pos": 90.0,
-          "bbox_width": 80.797,
+          "bbox_width": 80.8,
           "bbox_height": 17.6
         }
       ],

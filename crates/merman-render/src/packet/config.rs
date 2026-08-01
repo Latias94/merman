@@ -1,4 +1,5 @@
 use crate::config::{config_bool, config_css_number_or_string, config_f64};
+use merman_core::diagrams::packet::{PacketBitsPerRowError, validate_packet_bits_per_row};
 use serde_json::Value;
 
 const DEFAULT_SHOW_BITS: bool = true;
@@ -7,7 +8,6 @@ const DEFAULT_PADDING_X: f64 = 5.0;
 const DEFAULT_PADDING_Y: f64 = 5.0;
 const SHOW_BITS_PADDING_Y_EXTRA: f64 = 10.0;
 const DEFAULT_BIT_WIDTH: f64 = 32.0;
-const DEFAULT_BITS_PER_ROW: i64 = 32;
 
 const DEFAULT_BYTE_FONT_SIZE: &str = "10px";
 const DEFAULT_START_BYTE_COLOR: &str = "black";
@@ -31,7 +31,9 @@ impl<'a> PacketConfigView<'a> {
         }
     }
 
-    pub(crate) fn layout_settings(&self) -> PacketLayoutSettings {
+    pub(crate) fn layout_settings(
+        &self,
+    ) -> std::result::Result<PacketLayoutSettings, PacketBitsPerRowError> {
         let show_bits = self.packet_bool("showBits").unwrap_or(DEFAULT_SHOW_BITS);
         let padding_y = self
             .packet_f64("paddingY")
@@ -43,7 +45,7 @@ impl<'a> PacketConfigView<'a> {
                 0.0
             };
 
-        PacketLayoutSettings {
+        Ok(PacketLayoutSettings {
             show_bits,
             row_height: self
                 .packet_f64("rowHeight")
@@ -58,11 +60,8 @@ impl<'a> PacketConfigView<'a> {
                 .packet_f64("bitWidth")
                 .unwrap_or(DEFAULT_BIT_WIDTH)
                 .max(1.0),
-            bits_per_row: self
-                .packet_i64("bitsPerRow")
-                .unwrap_or(DEFAULT_BITS_PER_ROW)
-                .max(1),
-        }
+            bits_per_row: validate_packet_bits_per_row(self.packet_i64("bitsPerRow"))?,
+        })
     }
 
     pub(crate) fn style_settings(&self) -> PacketStyleSettings {
@@ -124,12 +123,13 @@ pub(crate) struct PacketStyleSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::diagrams::packet::DEFAULT_PACKET_BITS_PER_ROW;
     use serde_json::json;
 
     #[test]
     fn packet_layout_settings_preserve_defaults_and_show_bits_padding() {
         let cfg = json!({});
-        let settings = PacketConfigView::new(&cfg).layout_settings();
+        let settings = PacketConfigView::new(&cfg).layout_settings().unwrap();
 
         assert!(settings.show_bits);
         assert_eq!(settings.row_height, DEFAULT_ROW_HEIGHT);
@@ -139,7 +139,7 @@ mod tests {
             DEFAULT_PADDING_Y + SHOW_BITS_PADDING_Y_EXTRA
         );
         assert_eq!(settings.bit_width, DEFAULT_BIT_WIDTH);
-        assert_eq!(settings.bits_per_row, DEFAULT_BITS_PER_ROW);
+        assert_eq!(settings.bits_per_row, DEFAULT_PACKET_BITS_PER_ROW);
     }
 
     #[test]
@@ -154,7 +154,7 @@ mod tests {
                 "bitsPerRow": 16
             }
         });
-        let settings = PacketConfigView::new(&cfg).layout_settings();
+        let settings = PacketConfigView::new(&cfg).layout_settings().unwrap();
 
         assert!(!settings.show_bits);
         assert_eq!(settings.row_height, 40.0);
@@ -175,13 +175,22 @@ mod tests {
                 "bitsPerRow": "16"
             }
         });
-        let settings = PacketConfigView::new(&cfg).layout_settings();
+        let settings = PacketConfigView::new(&cfg).layout_settings().unwrap();
 
         assert_eq!(settings.row_height, 1.0);
         assert_eq!(settings.padding_x, 0.0);
         assert_eq!(settings.padding_y, SHOW_BITS_PADDING_Y_EXTRA);
         assert_eq!(settings.bit_width, 1.0);
-        assert_eq!(settings.bits_per_row, DEFAULT_BITS_PER_ROW);
+        assert_eq!(settings.bits_per_row, DEFAULT_PACKET_BITS_PER_ROW);
+    }
+
+    #[test]
+    fn packet_layout_settings_reject_nonpositive_bits_per_row() {
+        let cfg = json!({ "packet": { "bitsPerRow": 0 } });
+
+        let error = PacketConfigView::new(&cfg).layout_settings().unwrap_err();
+
+        assert_eq!(error.value, 0);
     }
 
     #[test]

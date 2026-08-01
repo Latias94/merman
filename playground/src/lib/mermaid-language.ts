@@ -1,48 +1,56 @@
-import type { editor, languages } from "monaco-editor";
-import type {
-  MermanWasm,
-  ValidationResult,
-} from "@/src/lib/wasm-loader";
+import type { editor, IDisposable, languages } from "monaco-editor";
 import type {
   EditorCodeAction,
   EditorCompletionItem,
   EditorDiagnostic,
-  EditorDiagnosticsResult,
   EditorDocumentSymbol,
   EditorLocation,
   EditorRange,
-  EditorSemanticToken,
+  EditorSemanticTokenLegend,
   EditorSymbolKind,
   EditorWorkspaceEdit,
 } from "@mermanjs/web";
+import type {
+  EditorDocumentSnapshot,
+  EditorWorkerQuery,
+} from "@/src/editor/protocol";
+import {
+  EditorWorkerProtocolError,
+  type EditorCancellationToken,
+  type EditorLanguageIdentity,
+  type MermanLanguageWorkerClient,
+} from "../editor/worker-client";
 
 export const MERMAID_LANGUAGE_ID = "mermaid";
+export const MERMAID_DOCUMENT_URI = "file:///merman/playground.mmd";
 
 const MARKER_OWNER = "merman";
+const DIAGNOSTIC_DELAY_MS = 180;
 
-export interface MermaidSemanticTokenLegend {
-  tokenTypes: string[];
-  tokenModifiers: string[];
+export type MermaidSemanticTokenLegend = EditorSemanticTokenLegend;
+
+export interface MermaidLanguageRegistration extends IDisposable {
+  bindModel(model: editor.ITextModel): Promise<IDisposable>;
 }
 
-const STATIC_SEMANTIC_TOKEN_LEGEND: MermaidSemanticTokenLegend = {
-  tokenTypes: [
-    "namespace",
-    "class",
-    "struct",
-    "variable",
-    "property",
-    "event",
-    "function",
-    "string",
-  ],
-  tokenModifiers: ["entity", "outline", "payload"],
-};
+export interface MermaidLanguageRequestRejection {
+  readonly detail: string | null;
+  readonly message: string;
+  readonly nativeCode: string | null;
+  readonly operation: "rename";
+}
+
+export interface MermaidLanguageCallbacks {
+  readonly onRequestRejected?: (
+    rejection: MermaidLanguageRequestRejection
+  ) => void;
+  readonly onUnavailable?: (error: Error) => void;
+}
+
+const configuredMonacoInstances = new WeakSet<object>();
 
 const mermaidLanguageConfig: languages.LanguageConfiguration = {
-  comments: {
-    lineComment: "%%",
-  },
+  comments: { lineComment: "%%" },
   brackets: [
     ["{", "}"],
     ["[", "]"],
@@ -57,296 +65,104 @@ const mermaidLanguageConfig: languages.LanguageConfiguration = {
   ],
 };
 
-const mermaidTokensProvider: languages.IMonarchLanguage = {
-  keywords: [
-    "flowchart",
-    "graph",
-    "sequenceDiagram",
-    "classDiagram",
-    "stateDiagram",
-    "stateDiagram-v2",
-    "erDiagram",
-    "gantt",
-    "pie",
-    "mindmap",
-    "timeline",
-    "eventmodeling",
-    "gitGraph",
-    "xychart",
-    "architecture-beta",
-    "block-beta",
-    "packet",
-    "kanban",
-    "quadrantChart",
-    "sankey",
-    "radar-beta",
-    "treemap-beta",
-    "requirementDiagram",
-    "subgraph",
-    "end",
-    "participant",
-    "actor",
-    "note",
-    "loop",
-    "alt",
-    "else",
-    "opt",
-    "par",
-    "critical",
-    "break",
-    "rect",
-    "class",
-    "section",
-    "title",
-    "dateFormat",
-    "axisFormat",
-    "excludes",
-    "includes",
-    "todayMarker",
-    "showData",
-    "direction",
-    "TB",
-    "TD",
-    "BT",
-    "RL",
-    "LR",
-  ],
-  operators: [
-    "-->",
-    "---",
-    "-.->",
-    "==>",
-    "->>",
-    "-->>",
-    "-x",
-    "--x",
-    "-)",
-    "--)",
-  ],
-  tokenizer: {
-    root: [
-      [/%%.*$/, "comment"],
-      [
-        /[a-zA-Z][\w-]*/,
-        {
-          cases: {
-            "@keywords": "keyword",
-            "@default": "identifier",
-          },
-        },
-      ],
-      [/"[^"]*"/, "string"],
-      [/'[^']*'/, "string"],
-      [/\|[^|]*\|/, "string"],
-      [/\[[^\]]*\]/, "type"],
-      [/\([^)]*\)/, "type"],
-      [/\{[^}]*\}/, "type"],
-      [/-->|---|-\.->|==>|->>|-->>|-x|--x|-\)|-\-\)/, "operator"],
-      [/[{}()[\]]/, "delimiter"],
-      [/[0-9]+(?:\.[0-9]+)?/, "number"],
-    ],
-  },
-};
-
-interface CompletionSpec {
-  label: string;
-  insertText: string;
-  detail?: string;
-  documentation?: string;
-  snippet?: boolean;
-}
-
-const keywordCompletions: CompletionSpec[] = [
-  keyword("flowchart"),
-  keyword("sequenceDiagram"),
-  keyword("classDiagram"),
-  keyword("stateDiagram-v2"),
-  keyword("erDiagram"),
-  keyword("eventmodeling"),
-  keyword("xychart"),
-  keyword("architecture-beta"),
-  keyword("block-beta"),
-  keyword("packet"),
-  keyword("kanban"),
-  keyword("quadrantChart"),
-  keyword("sankey"),
-  keyword("radar-beta"),
-  keyword("treemap-beta"),
-  keyword("requirementDiagram"),
-  keyword("participant"),
-  keyword("subgraph"),
-  keyword("autonumber"),
-  keyword("alt"),
-  keyword("loop"),
-  keyword("classDef"),
-];
-
-const snippetCompletions: CompletionSpec[] = [
-  snippet(
-    "flowchart TD",
-    "flowchart TD\n  ${1:A}[${2:Start}] --> ${3:B}{${4:Condition?}}\n  ${3:B} -->|Yes| ${5:C}[${6:Done}]"
-  ),
-  snippet(
-    "sequenceDiagram",
-    "sequenceDiagram\n  participant ${1:A} as ${2:Client}\n  participant ${3:B} as ${4:Server}\n  ${1:A}->>${3:B}: ${5:Request}\n  ${3:B}-->>${1:A}: ${6:Response}"
-  ),
-  snippet(
-    "classDiagram",
-    "classDiagram\n  class ${1:Renderer} {\n    +${2:renderSvg}()\n  }\n  class ${3:Parser}\n  ${3:Parser} --> ${1:Renderer} : ${4:feeds}"
-  ),
-  snippet(
-    "requirementDiagram",
-    "requirementDiagram\n  requirement ${1:api} {\n    id: ${2:1}\n    text: ${3:Stable render API}\n    risk: medium\n    verifymethod: test\n  }\n  element ${4:wasm} {\n    type: library\n  }\n  ${4:wasm} - satisfies -> ${1:api}"
-  ),
-  snippet(
-    "eventmodeling",
-    "eventmodeling\n  tf ${1:01} ui ${2:CartScreen}\n  tf ${3:02} cmd ${4:AddItem} ->> ${1:01}\n  tf ${5:03} evt ${6:ItemAdded} ->> ${3:02}"
-  ),
-  snippet(
-    "xychart",
-    "xychart\n  title \"${1:Render timings}\"\n  x-axis [\"${2:Parse}\", \"${3:Layout}\", \"${4:SVG}\"]\n  y-axis \"${5:ms}\" 0 --> ${6:100}\n  bar [${7:12}, ${8:34}, ${9:58}]"
-  ),
-  snippet(
-    "kanban",
-    "kanban\n  ${1:backlog}[${2:Backlog}]\n    ${3:item}[${4:Task}]@{ assigned: \"${5:Team}\", priority: \"${6:High}\" }"
-  ),
-  snippet(
-    "packet",
-    "packet\n  +4: \"${1:Version}\"\n  +4: \"${2:IHL}\"\n  +8: \"${3:DSCP}\"\n  +16: \"${4:Total Length}\""
-  ),
-  snippet(
-    "sankey",
-    "sankey\n  ${1:Editor},${2:Parser},${3:8}\n  ${2:Parser},${4:Layout},${5:7}\n  ${4:Layout},${6:SVG},${7:6}"
-  ),
-];
-
-let hoverDocs: Record<string, string> = {};
-let editorService: MermanWasm | null = null;
-
-let registered = false;
-
-export function setMermaidEditorService(service: MermanWasm | null): void {
-  editorService = service;
-}
-
 export function registerMermaidLanguage(
-  monaco: typeof import("monaco-editor")
-): void {
-  if (registered) return;
+  monaco: typeof import("monaco-editor"),
+  client: MermanLanguageWorkerClient,
+  identity: EditorLanguageIdentity,
+  callbacks: MermaidLanguageCallbacks = {}
+): MermaidLanguageRegistration {
+  ensureMermaidLanguageRegistered(monaco);
+  const disposables: IDisposable[] = [];
+  const modelBindings = new Set<IDisposable>();
+  const semanticListeners = new Set<() => void>();
+  let managedModel: editor.ITextModel | null = null;
+  let disposed = false;
+  let unavailable = false;
+  const notifyUnavailable = (error: unknown) => {
+    if (disposed || unavailable || isExpectedDiscard(error)) return;
+    unavailable = true;
+    if (managedModel && !managedModel.isDisposed()) {
+      clearMermaidMarkers(monaco, managedModel);
+    }
+    const failure = error instanceof Error ? error : new Error(String(error));
+    console.error("Merman editor language worker failed", failure);
+    callbacks.onUnavailable?.(failure);
+  };
+  const rejectRename = (
+    message: string,
+    detail: string | null = null,
+    nativeCode: string | null = null
+  ) => {
+    callbacks.onRequestRejected?.({
+      detail,
+      message,
+      nativeCode,
+      operation: "rename",
+    });
+    const nativeCodeSuffix = nativeCode ? ` (${nativeCode})` : "";
+    return { edits: [], rejectReason: `${message}${nativeCodeSuffix}` };
+  };
+  const query = <Query extends EditorWorkerQuery, Fallback>(
+    model: editor.ITextModel,
+    request: Query,
+    token: EditorCancellationToken | undefined,
+    fallback: Fallback
+  ) => queryOr(client, model, request, token, fallback, notifyUnavailable);
+  const legend = identity.legend;
 
-  if (
-    !monaco.languages
-      .getLanguages()
-      .some((lang) => lang.id === MERMAID_LANGUAGE_ID)
-  ) {
-    monaco.languages.register({ id: MERMAID_LANGUAGE_ID });
-  }
-
-  monaco.languages.setLanguageConfiguration(
-    MERMAID_LANGUAGE_ID,
-    mermaidLanguageConfig
-  );
-  monaco.languages.setMonarchTokensProvider(
-    MERMAID_LANGUAGE_ID,
-    mermaidTokensProvider
-  );
-  monaco.languages.registerCompletionItemProvider(MERMAID_LANGUAGE_ID, {
-    triggerCharacters: [" ", "\n", "-", "@", ":"],
-    provideCompletionItems(model, position) {
-      const service = editorService;
-      if (service) {
-        try {
-          const completions = service.editor_completions(model.getValue(), {
-            line: position.lineNumber - 1,
-            character: position.column - 1,
-          });
-          return {
-            suggestions: completions.items.map((item) =>
-              toEditorCompletionItem(monaco, item, position)
-            ),
-          };
-        } catch {
-          // Static snippets remain useful while the WASM artifact is loading or stale.
-        }
-      }
-
-      const word = model.getWordUntilPosition(position);
-      const range = new monaco.Range(
-        position.lineNumber,
-        word.startColumn,
-        position.lineNumber,
-        word.endColumn
-      );
-      return {
-        suggestions: [
-          ...keywordCompletions.map((item) =>
-            toCompletionItem(monaco, item, range, false)
+  disposables.push(
+    monaco.languages.registerCompletionItemProvider(MERMAID_LANGUAGE_ID, {
+      triggerCharacters: [" ", "\n", "-", "@", ":"],
+      async provideCompletionItems(model, position, _context, token) {
+        const completions = await query(
+          model,
+          {
+            kind: "completions",
+            position: toEditorPosition(position),
+          },
+          token,
+          null
+        );
+        if (!completions) return { suggestions: [] };
+        return {
+          incomplete: completions.is_incomplete,
+          suggestions: completions.items.map((item) =>
+            toEditorCompletionItem(monaco, item, position)
           ),
-          ...snippetCompletions.map((item) =>
-            toCompletionItem(monaco, item, range, true)
-          ),
-        ],
-      };
-    },
-  });
-  monaco.languages.registerHoverProvider(MERMAID_LANGUAGE_ID, {
-    provideHover(model, position) {
-      const service = editorService;
-      if (service) {
-        try {
-          const hover = service.editor_hover(model.getValue(), {
-            line: position.lineNumber - 1,
-            character: position.column - 1,
-          });
-          if (hover) {
-            return {
-              range: hover.range
-                ? toMonacoRange(monaco, hover.range)
-                : undefined,
-              contents: [{ value: hover.contents.value }],
-            };
-          }
-        } catch {
-          // Fall through to lightweight keyword docs.
-        }
-      }
+        };
+      },
+    })
+  );
 
-      const token = tokenAtPosition(
-        model.getLineContent(position.lineNumber),
-        position.column
-      );
-      if (!token) return null;
+  disposables.push(
+    monaco.languages.registerHoverProvider(MERMAID_LANGUAGE_ID, {
+      async provideHover(model, position, token) {
+        const hover = await query(
+          model,
+          { kind: "hover", position: toEditorPosition(position) },
+          token,
+          null
+        );
+        if (!hover) return null;
+        return {
+          range: hover.range ? toMonacoRange(monaco, hover.range) : undefined,
+          contents: [{ value: hover.contents.value }],
+        };
+      },
+    })
+  );
 
-      const documentation = hoverDocs[token.value];
-      if (!documentation) return null;
-
-      return {
-        range: new monaco.Range(
-          position.lineNumber,
-          token.startColumn,
-          position.lineNumber,
-          token.endColumn
-        ),
-        contents: [{ value: `**${token.value}**\n\n${documentation}` }],
-      };
-    },
-  });
-  monaco.languages.registerDocumentFormattingEditProvider(MERMAID_LANGUAGE_ID, {
-    provideDocumentFormattingEdits(model) {
-      const formatted = formatMermaidCode(model.getValue());
-      if (formatted === model.getValue()) return [];
-      return [{ range: model.getFullModelRange(), text: formatted }];
-    },
-  });
-  monaco.languages.registerCodeActionProvider(MERMAID_LANGUAGE_ID, {
-    provideCodeActions(model, _range, context) {
-      const service = editorService;
-      if (!service) {
-        return { actions: [], dispose() {} };
-      }
-      try {
-          const actions = service
-            .editor_code_actions(model.getValue())
+  disposables.push(
+    monaco.languages.registerCodeActionProvider(MERMAID_LANGUAGE_ID, {
+      async provideCodeActions(model, _range, context, token) {
+        const actions = await query(
+          model,
+          { kind: "codeActions" },
+          token,
+          []
+        );
+        return {
+          actions: actions
             .filter((action) =>
               action.diagnostics.some((diagnostic) =>
                 context.markers.some((marker) =>
@@ -354,257 +170,300 @@ export function registerMermaidLanguage(
                 )
               )
             )
-            .map((action) => toMonacoCodeAction(monaco, model, action));
-        return { actions, dispose() {} };
-      } catch {
-        return { actions: [], dispose() {} };
-      }
-    },
-  });
-  monaco.languages.registerDocumentSymbolProvider(MERMAID_LANGUAGE_ID, {
-    provideDocumentSymbols(model) {
-      const service = editorService;
-      if (!service) return [];
-      try {
-        return service
-          .editor_document_symbols(model.getValue())
-          .map((symbol) => toMonacoDocumentSymbol(monaco, symbol));
-      } catch {
-        return [];
-      }
-    },
-  });
-  monaco.languages.registerDefinitionProvider(MERMAID_LANGUAGE_ID, {
-    provideDefinition(model, position) {
-      const service = editorService;
-      if (!service) return null;
-      try {
-        const location = service.editor_definition(model.getValue(), {
-          line: position.lineNumber - 1,
-          character: position.column - 1,
-        });
-        return location ? toMonacoLocation(monaco, model, location) : null;
-      } catch {
-        return null;
-      }
-    },
-  });
-  monaco.languages.registerReferenceProvider(MERMAID_LANGUAGE_ID, {
-    provideReferences(model, position, context) {
-      const service = editorService;
-      if (!service) return [];
-      try {
-        return service
-          .editor_references(
-            model.getValue(),
-            {
-              line: position.lineNumber - 1,
-              character: position.column - 1,
-            },
-            context.includeDeclaration
-          )
-          .map((location) => toMonacoLocation(monaco, model, location));
-      } catch {
-        return [];
-      }
-    },
-  });
-  monaco.languages.registerRenameProvider(MERMAID_LANGUAGE_ID, {
-    resolveRenameLocation(model, position) {
-      const service = editorService;
-      if (!service) return null;
-      try {
-        const prepare = service.editor_prepare_rename(model.getValue(), {
-          line: position.lineNumber - 1,
-          character: position.column - 1,
-        });
-        if (!prepare) {
-          return null;
-        }
-        return {
-          range: toMonacoRange(monaco, prepare.range),
-          text: prepare.placeholder,
+            .map((action) => toMonacoCodeAction(monaco, model, action)),
+          dispose() {},
         };
-      } catch {
-        return null;
-      }
-    },
-    provideRenameEdits(model, position, newName) {
-      const service = editorService;
-      if (!service) {
-        return { edits: [], rejectReason: "No Mermaid symbol at cursor." };
-      }
-      try {
-        const edit = service.editor_rename(
-          model.getValue(),
-          {
-            line: position.lineNumber - 1,
-            character: position.column - 1,
-          },
-          newName
+      },
+    })
+  );
+
+  disposables.push(
+    monaco.languages.registerDocumentSymbolProvider(MERMAID_LANGUAGE_ID, {
+      async provideDocumentSymbols(model, token) {
+        const symbols = await query(
+          model,
+          { kind: "documentSymbols" },
+          token,
+          []
         );
-        if (!edit) {
-          return { edits: [], rejectReason: "No Mermaid symbol at cursor." };
+        return symbols.map((symbol) =>
+          toMonacoDocumentSymbol(monaco, symbol)
+        );
+      },
+    })
+  );
+
+  disposables.push(
+    monaco.languages.registerDefinitionProvider(MERMAID_LANGUAGE_ID, {
+      async provideDefinition(model, position, token) {
+        const location = await query(
+          model,
+          { kind: "definition", position: toEditorPosition(position) },
+          token,
+          null
+        );
+        return location
+          ? toMonacoLocation(monaco, model, location)
+          : null;
+      },
+    })
+  );
+
+  disposables.push(
+    monaco.languages.registerReferenceProvider(MERMAID_LANGUAGE_ID, {
+      async provideReferences(model, position, context, token) {
+        const locations = await query(
+          model,
+          {
+            kind: "references",
+            position: toEditorPosition(position),
+            includeDeclaration: context.includeDeclaration,
+          },
+          token,
+          []
+        );
+        return locations.map((location) =>
+          toMonacoLocation(monaco, model, location)
+        );
+      },
+    })
+  );
+
+  disposables.push(
+    monaco.languages.registerRenameProvider(MERMAID_LANGUAGE_ID, {
+      async resolveRenameLocation(model, position, token) {
+        const prepare = await query(
+          model,
+          { kind: "prepareRename", position: toEditorPosition(position) },
+          token,
+          null
+        );
+        return prepare
+          ? {
+              range: toMonacoRange(monaco, prepare.range),
+              text: prepare.placeholder,
+            }
+          : null;
+      },
+      async provideRenameEdits(model, position, newName, token) {
+        let edit: EditorWorkspaceEdit | null;
+        try {
+          edit = await client.query(
+            snapshotForModel(model),
+            {
+              kind: "rename",
+              position: toEditorPosition(position),
+              newName,
+            },
+            token
+          );
+        } catch (error) {
+          if (isExpectedDiscard(error)) {
+            return { edits: [], rejectReason: "Rename request was canceled." };
+          }
+          if (isRequestLocalWorkerError(error)) {
+            return rejectRename(error.message, error.detail, error.nativeCode);
+          }
+          notifyUnavailable(error);
+          return {
+            edits: [],
+            rejectReason: "Mermaid language tools are unavailable.",
+          };
         }
-        return toMonacoWorkspaceEdit(monaco, model, edit);
-      } catch (error) {
-        return {
-          edits: [],
-          rejectReason:
-            error instanceof Error ? error.message : "Rename is not available.",
-        };
-      }
-    },
-  });
-  monaco.languages.registerDocumentSemanticTokensProvider(MERMAID_LANGUAGE_ID, {
-    getLegend() {
-      return semanticTokenLegendForService(editorService);
-    },
-    provideDocumentSemanticTokens(model) {
-      const service = editorService;
-      if (!service) {
-        return { data: new Uint32Array(0), resultId: undefined };
-      }
-      try {
-        const legend = semanticTokenLegendForService(service);
-        const tokens = service.editor_semantic_tokens(model.getValue());
-        return {
-          data: encodeSemanticTokensForLegend(tokens, legend),
-          resultId: undefined,
-        };
-      } catch {
-        return { data: new Uint32Array(0), resultId: undefined };
-      }
-    },
-    releaseDocumentSemanticTokens() {},
-  });
+        if (!edit) {
+          return rejectRename("No Mermaid symbol at cursor.");
+        }
+        try {
+          return toMonacoWorkspaceEdit(monaco, model, edit);
+        } catch (error) {
+          if (error instanceof UnmanagedDocumentEditError) {
+            return rejectRename(error.message);
+          }
+          throw error;
+        }
+      },
+    })
+  );
 
-  registered = true;
-}
+  disposables.push(
+    monaco.languages.registerDocumentSemanticTokensProvider(
+      MERMAID_LANGUAGE_ID,
+      {
+        getLegend: () => legend,
+        onDidChange(listener) {
+          semanticListeners.add(listener);
+          return { dispose: () => semanticListeners.delete(listener) };
+        },
+        async provideDocumentSemanticTokens(model, _lastResultId, token) {
+          const tokens = await query(
+            model,
+            { kind: "semanticTokens" },
+            token,
+            new Uint32Array()
+          );
+          return {
+            data: tokens,
+            resultId: undefined,
+          };
+        },
+        releaseDocumentSemanticTokens() {},
+      }
+    )
+  );
 
-export function setMermaidHoverDocs(docs: Record<string, string>): void {
-  hoverDocs = docs;
-}
-
-export function getMermaidHoverDocs(
-  t: (key: string) => string
-): Record<string, string> {
   return {
-    flowchart: t("editor.hover.flowchart"),
-    graph: t("editor.hover.graph"),
-    sequenceDiagram: t("editor.hover.sequenceDiagram"),
-    classDiagram: t("editor.hover.classDiagram"),
-    "stateDiagram-v2": t("editor.hover.stateDiagram"),
-    erDiagram: t("editor.hover.erDiagram"),
-    xychart: t("editor.hover.xychart"),
-    "architecture-beta": t("editor.hover.architecture"),
-    "block-beta": t("editor.hover.block"),
-    packet: t("editor.hover.packet"),
-    kanban: t("editor.hover.kanban"),
-    quadrantChart: t("editor.hover.quadrant"),
-    sankey: t("editor.hover.sankey"),
-    "radar-beta": t("editor.hover.radar"),
-    "treemap-beta": t("editor.hover.treemap"),
-    requirementDiagram: t("editor.hover.requirement"),
-    eventmodeling: t("editor.hover.eventmodeling"),
-    participant: t("editor.hover.participant"),
-    subgraph: t("editor.hover.subgraph"),
-    autonumber: t("editor.hover.autonumber"),
+    async bindModel(model) {
+      if (disposed) throw new Error("Mermaid language registration is disposed.");
+      if (managedModel) {
+        throw new Error("Mermaid language registration already owns a model.");
+      }
+      const snapshot = snapshotForModel(model);
+      if (snapshot.uri !== MERMAID_DOCUMENT_URI) {
+        throw new Error(
+          `Mermaid editor model must use ${MERMAID_DOCUMENT_URI}; received ${snapshot.uri}.`
+        );
+      }
+      managedModel = model;
+      let opening: Promise<void>;
+      try {
+        opening = client.openDocument(snapshot);
+      } catch (error) {
+        managedModel = null;
+        throw error;
+      }
+
+      let diagnosticTimer: ReturnType<typeof setTimeout> | null = null;
+      let bindingDisposed = false;
+      const publishDiagnostics = async () => {
+        const current = snapshotForModel(model);
+        const result = await query(
+          model,
+          { kind: "diagnostics" },
+          undefined,
+          null
+        );
+        if (
+          result &&
+          !bindingDisposed &&
+          !model.isDisposed() &&
+          model.getVersionId() === current.version
+        ) {
+          updateMermaidEditorMarkers(monaco, model, result.diagnostics);
+        }
+      };
+      const scheduleDiagnostics = () => {
+        if (diagnosticTimer !== null) clearTimeout(diagnosticTimer);
+        diagnosticTimer = setTimeout(() => {
+          diagnosticTimer = null;
+          void publishDiagnostics().catch(notifyUnavailable);
+        }, DIAGNOSTIC_DELAY_MS);
+      };
+      const contentListener = model.onDidChangeContent(() => {
+        try {
+          void client
+            .changeDocument(snapshotForModel(model))
+            .catch(notifyUnavailable);
+        } catch (error) {
+          notifyUnavailable(error);
+        }
+        for (const listener of semanticListeners) listener();
+        scheduleDiagnostics();
+      });
+      const binding: IDisposable = {
+        dispose() {
+          if (bindingDisposed) return;
+          bindingDisposed = true;
+          contentListener.dispose();
+          if (diagnosticTimer !== null) clearTimeout(diagnosticTimer);
+          if (!model.isDisposed()) clearMermaidMarkers(monaco, model);
+          if (managedModel === model) managedModel = null;
+          modelBindings.delete(binding);
+        },
+      };
+      modelBindings.add(binding);
+      try {
+        await opening;
+        if (disposed || bindingDisposed || model.isDisposed()) {
+          throw new Error("Mermaid editor model was disposed while opening.");
+        }
+        for (const listener of semanticListeners) listener();
+        void publishDiagnostics().catch(notifyUnavailable);
+        return binding;
+      } catch (error) {
+        binding.dispose();
+        throw error;
+      }
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      for (const binding of [...modelBindings]) binding.dispose();
+      for (const disposable of disposables.reverse()) disposable.dispose();
+      semanticListeners.clear();
+      client.dispose();
+    },
   };
 }
 
-export function formatMermaidCode(source: string): string {
-  if (!source.trim()) return "";
-
-  const lines = source
-    .replace(/\r\n?/g, "\n")
-    .split("\n")
-    .map((line) => line.trimEnd());
-
-  while (lines.length > 1 && lines[lines.length - 1]?.trim() === "") {
-    lines.pop();
+export function ensureMermaidLanguageRegistered(
+  monaco: typeof import("monaco-editor")
+): void {
+  if (configuredMonacoInstances.has(monaco)) return;
+  if (
+    !monaco.languages
+      .getLanguages()
+      .some((language) => language.id === MERMAID_LANGUAGE_ID)
+  ) {
+    // Monaco keeps language IDs for the realm lifetime and returns no handle.
+    monaco.languages.register({ id: MERMAID_LANGUAGE_ID });
   }
-
-  return `${lines.join("\n")}\n`;
+  monaco.languages.setLanguageConfiguration(
+    MERMAID_LANGUAGE_ID,
+    mermaidLanguageConfig
+  );
+  configuredMonacoInstances.add(monaco);
 }
 
-export function updateMermaidMarkers(
-  monaco: typeof import("monaco-editor"),
+async function queryOr<Query extends EditorWorkerQuery, Fallback>(
+  client: MermanLanguageWorkerClient,
   model: editor.ITextModel,
-  validation: ValidationResult
-): void {
-  if (validation.valid) {
-    clearMermaidMarkers(monaco, model);
-    return;
+  query: Query,
+  token: EditorCancellationToken | undefined,
+  fallback: Fallback,
+  onFailure: (error: unknown) => void
+) {
+  try {
+    return await client.query(snapshotForModel(model), query, token);
+  } catch (error) {
+    if (isExpectedDiscard(error)) return fallback;
+    if (isRequestLocalWorkerError(error)) return fallback;
+    onFailure(error);
+    return fallback;
   }
-
-  const message = validation.error || "Mermaid syntax error";
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, [
-    {
-      ...rangeFromError(model, message),
-      severity: monaco.MarkerSeverity.Error,
-      message,
-      source: "Merman",
-    },
-  ]);
 }
 
-export function updateMermaidEditorMarkers(
-  monaco: typeof import("monaco-editor"),
-  model: editor.ITextModel,
-  diagnostics: EditorDiagnosticsResult
-): void {
-  monaco.editor.setModelMarkers(
-    model,
-    MARKER_OWNER,
-    diagnostics.diagnostics.map((diagnostic) =>
-      toMarkerData(monaco, model, diagnostic)
-    )
+function isRequestLocalWorkerError(
+  error: unknown
+): error is EditorWorkerProtocolError {
+  return (
+    error instanceof EditorWorkerProtocolError &&
+    error.code === "OPERATION_REJECTED"
   );
 }
 
-export function clearMermaidMarkers(
-  monaco: typeof import("monaco-editor"),
-  model: editor.ITextModel
-): void {
-  monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
-}
-
-function keyword(label: string): CompletionSpec {
+function snapshotForModel(model: editor.ITextModel): EditorDocumentSnapshot {
   return {
-    label,
-    insertText: label,
+    uri: model.uri.toString(),
+    version: model.getVersionId(),
+    source: model.getValue(),
   };
 }
 
-function snippet(label: string, insertText: string): CompletionSpec {
-  return {
-    label,
-    insertText,
-    snippet: true,
-  };
-}
-
-function toCompletionItem(
-  monaco: typeof import("monaco-editor"),
-  item: CompletionSpec,
-  range: languages.CompletionItem["range"],
-  snippetItem: boolean
-): languages.CompletionItem {
-  return {
-    label: item.label,
-    kind: snippetItem
-      ? monaco.languages.CompletionItemKind.Snippet
-      : monaco.languages.CompletionItemKind.Keyword,
-    insertText: item.insertText,
-    insertTextRules:
-      item.snippet || snippetItem
-        ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
-        : undefined,
-    detail: item.detail,
-    documentation: item.documentation,
-    range,
-  };
+function toEditorPosition(position: {
+  lineNumber: number;
+  column: number;
+}): { line: number; character: number } {
+  return { line: position.lineNumber - 1, character: position.column - 1 };
 }
 
 function toEditorCompletionItem(
@@ -612,50 +471,46 @@ function toEditorCompletionItem(
   item: EditorCompletionItem,
   position: { lineNumber: number; column: number }
 ): languages.CompletionItem {
-  const fallbackRange = (() => {
-    const lineNumber = position.lineNumber;
-    const column = position.column;
-    return new monaco.Range(lineNumber, column, lineNumber, column);
-  })();
+  const fallbackRange = new monaco.Range(
+    position.lineNumber,
+    position.column,
+    position.lineNumber,
+    position.column
+  );
   return {
-    label: item.label,
-    kind:
-      item.kind === "variable"
-        ? monaco.languages.CompletionItemKind.Variable
-        : monaco.languages.CompletionItemKind.Keyword,
+    label: item.label_details
+      ? {
+          label: item.label,
+          detail: item.label_details.detail ?? undefined,
+          description: item.label_details.description ?? undefined,
+        }
+      : item.label,
+    kind: completionKind(monaco, item.kind),
     insertText: item.text_edit?.new_text ?? item.insert_text ?? item.label,
     insertTextRules:
       item.insert_text_format === "snippet"
         ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
         : undefined,
     detail: item.detail ?? undefined,
-    documentation: item.data
-      ? {
-          value: completionDocumentation(item.data.kind, item.data.label),
-        }
-      : undefined,
     range: item.text_edit?.range
-      ? toMonacoEditRange(monaco, item.text_edit.range)
+      ? toMonacoRange(monaco, item.text_edit.range)
       : fallbackRange,
   };
 }
 
-function completionDocumentation(kind: string, label: string): string {
+function completionKind(
+  monaco: typeof import("monaco-editor"),
+  kind: EditorCompletionItem["kind"]
+): languages.CompletionItemKind {
   switch (kind) {
-    case "diagram_header":
-      return `Starts a Mermaid \`${label}\` diagram.`;
-    case "operator":
-      return `Inserts the Mermaid \`${label}\` relationship operator.`;
-    case "direction":
-      return `Sets flow direction with \`${label}\`.`;
-    case "directive":
-      return `Inserts \`${label}\` as a Mermaid directive or comment helper.`;
-    case "shape":
-      return `Inserts Mermaid flowchart shape syntax for \`${label}\`.`;
-    case "node_identifier":
-      return `Reuses the \`${label}\` identifier in this diagram.`;
-    default:
-      return label;
+    case "class":
+      return monaco.languages.CompletionItemKind.Class;
+    case "snippet":
+      return monaco.languages.CompletionItemKind.Snippet;
+    case "variable":
+      return monaco.languages.CompletionItemKind.Variable;
+    case "keyword":
+      return monaco.languages.CompletionItemKind.Keyword;
   }
 }
 
@@ -670,18 +525,7 @@ function toMonacoCodeAction(
     diagnostics: action.diagnostics.map((diagnostic) =>
       toMarkerData(monaco, model, diagnostic)
     ),
-    edit: {
-      edits: Object.values(action.edit.changes).flatMap((edits) =>
-        edits.map((edit) => ({
-          resource: model.uri,
-          versionId: model.getVersionId(),
-          textEdit: {
-            range: toMonacoEditRange(monaco, edit.range),
-            text: edit.newText,
-          },
-        }))
-      ),
-    },
+    edit: toMonacoWorkspaceEdit(monaco, model, action.edit),
     isPreferred: action.isPreferred,
   };
 }
@@ -691,13 +535,21 @@ function toMonacoWorkspaceEdit(
   model: editor.ITextModel,
   edit: EditorWorkspaceEdit
 ): languages.WorkspaceEdit {
+  const managedUri = model.uri.toString();
+  const entries = Object.entries(edit.changes);
+  const unmanaged = entries.find(([uri]) => uri !== managedUri);
+  if (unmanaged) {
+    throw new UnmanagedDocumentEditError(
+      `Rename is limited to the current document; received an edit for ${unmanaged[0]}.`
+    );
+  }
   return {
-    edits: Object.values(edit.changes).flatMap((edits) =>
+    edits: entries.flatMap(([, edits]) =>
       edits.map((textEdit) => ({
         resource: model.uri,
         versionId: model.getVersionId(),
         textEdit: {
-          range: toMonacoEditRange(monaco, textEdit.range),
+          range: toMonacoRange(monaco, textEdit.range),
           text: textEdit.newText,
         },
       }))
@@ -710,10 +562,12 @@ function toMonacoLocation(
   model: editor.ITextModel,
   location: EditorLocation
 ): languages.Location {
-  return {
-    uri: model.uri,
-    range: toMonacoRange(monaco, location.range),
-  };
+  if (location.uri !== model.uri.toString()) {
+    throw new UnmanagedDocumentEditError(
+      `Navigation is limited to the current document; received ${location.uri}.`
+    );
+  }
+  return { uri: model.uri, range: toMonacoRange(monaco, location.range) };
 }
 
 function toMonacoDocumentSymbol(
@@ -733,43 +587,23 @@ function toMonacoDocumentSymbol(
   };
 }
 
-export function semanticTokenLegendForService(
-  service: Pick<MermanWasm, "editor_semantic_token_legend"> | null,
-): MermaidSemanticTokenLegend {
-  try {
-    return service?.editor_semantic_token_legend() ?? STATIC_SEMANTIC_TOKEN_LEGEND;
-  } catch {
-    return STATIC_SEMANTIC_TOKEN_LEGEND;
-  }
+function updateMermaidEditorMarkers(
+  monaco: typeof import("monaco-editor"),
+  model: editor.ITextModel,
+  diagnostics: EditorDiagnostic[]
+): void {
+  monaco.editor.setModelMarkers(
+    model,
+    MARKER_OWNER,
+    diagnostics.map((diagnostic) => toMarkerData(monaco, model, diagnostic))
+  );
 }
 
-export function encodeSemanticTokensForLegend(
-  tokens: EditorSemanticToken[],
-  legend: MermaidSemanticTokenLegend,
-): Uint32Array {
-  const data: number[] = [];
-  let previousLine = 0;
-  let previousStart = 0;
-  const sorted = [...tokens].sort(
-    (left, right) =>
-      left.line - right.line ||
-      left.start - right.start ||
-      left.length - right.length
-  );
-
-  for (const token of sorted) {
-    const deltaLine = token.line - previousLine;
-    const deltaStart = deltaLine === 0 ? token.start - previousStart : token.start;
-    const tokenType = Math.max(0, legend.tokenTypes.indexOf(token.tokenType));
-    const modifierIndex = legend.tokenModifiers.indexOf(token.tokenModifier);
-    const tokenModifiers = modifierIndex >= 0 ? 1 << modifierIndex : 0;
-
-    data.push(deltaLine, deltaStart, token.length, tokenType, tokenModifiers);
-    previousLine = token.line;
-    previousStart = token.start;
-  }
-
-  return new Uint32Array(data);
+function clearMermaidMarkers(
+  monaco: typeof import("monaco-editor"),
+  model: editor.ITextModel
+): void {
+  monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
 }
 
 function toMarkerData(
@@ -794,13 +628,13 @@ function toMarkerData(
       typeof diagnostic.code === "number"
         ? String(diagnostic.code)
         : diagnostic.code,
-    relatedInformation: relatedRanges.map(({ related, range }) => ({
+    relatedInformation: relatedRanges.map(({ related, range: relatedRange }) => ({
       resource: model.uri,
       message: related.message,
-      startLineNumber: range.startLineNumber,
-      startColumn: range.startColumn,
-      endLineNumber: range.endLineNumber,
-      endColumn: range.endColumn,
+      startLineNumber: relatedRange.startLineNumber,
+      startColumn: relatedRange.startColumn,
+      endLineNumber: relatedRange.endLineNumber,
+      endColumn: relatedRange.endColumn,
     })),
   };
 }
@@ -824,36 +658,20 @@ function markerMatchesDiagnostic(
 }
 
 function normalizeMarkerCode(code: editor.IMarkerData["code"]): string {
-  if (code === undefined) {
-    return "";
-  }
-  if (typeof code === "object") {
-    return String(code.value);
-  }
-  return String(code);
+  if (code === undefined) return "";
+  return typeof code === "object" ? String(code.value) : String(code);
 }
 
 function toMonacoRange(
   monaco: typeof import("monaco-editor"),
   range: EditorRange
 ): InstanceType<typeof monaco.Range> {
-  const startLineNumber = range.start.line + 1;
-  const startColumn = range.start.character + 1;
-  const endLineNumber = range.end.line + 1;
-  const endColumn = Math.max(range.end.character + 1, 1);
   return new monaco.Range(
-    startLineNumber,
-    startColumn,
-    endLineNumber,
-    endColumn
+    range.start.line + 1,
+    range.start.character + 1,
+    range.end.line + 1,
+    Math.max(range.end.character + 1, 1)
   );
-}
-
-function toMonacoEditRange(
-  monaco: typeof import("monaco-editor"),
-  range: EditorRange
-): InstanceType<typeof monaco.Range> {
-  return toMonacoRange(monaco, range);
 }
 
 function toMonacoDisplayRange(
@@ -887,7 +705,6 @@ function diagnosticSeverity(
     case "warning":
       return monaco.MarkerSeverity.Warning;
     case "error":
-    default:
       return monaco.MarkerSeverity.Error;
   }
 }
@@ -918,88 +735,15 @@ function symbolKind(
     case "struct":
       return monaco.languages.SymbolKind.Struct;
     case "variable":
-    default:
       return monaco.languages.SymbolKind.Variable;
   }
 }
 
-function tokenAtPosition(
-  line: string,
-  column: number
-): { value: string; startColumn: number; endColumn: number } | null {
-  const index = Math.max(0, column - 1);
-  const tokenPattern = /[A-Za-z][\w-]*/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = tokenPattern.exec(line))) {
-    const startIndex = match.index;
-    const endIndex = startIndex + match[0].length;
-    if (index >= startIndex && index <= endIndex) {
-      return {
-        value: match[0],
-        startColumn: startIndex + 1,
-        endColumn: endIndex + 1,
-      };
-    }
-  }
-
-  return null;
+function isExpectedDiscard(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || error.name === "StaleLanguageSnapshotError")
+  );
 }
 
-function rangeFromError(
-  model: editor.ITextModel,
-  message: string
-): Pick<
-  editor.IMarkerData,
-  "startLineNumber" | "startColumn" | "endLineNumber" | "endColumn"
-> {
-  const offsetMatch = message.match(/offset:?\s*(\d+)/i);
-  if (offsetMatch) {
-    const offset = Number(offsetMatch[1]);
-    const position = model.getPositionAt(Number.isFinite(offset) ? offset : 0);
-    return markerRangeAt(model, position.lineNumber, position.column);
-  }
-
-  const lineMatch = message.match(/line\s+(\d+)/i);
-  if (lineMatch) {
-    const lineNumber = clampLineNumber(model, Number(lineMatch[1]));
-    return markerRangeAt(model, lineNumber, 1);
-  }
-
-  return markerRangeAt(model, firstNonEmptyLine(model), 1);
-}
-
-function markerRangeAt(
-  model: editor.ITextModel,
-  lineNumber: number,
-  column: number
-): Pick<
-  editor.IMarkerData,
-  "startLineNumber" | "startColumn" | "endLineNumber" | "endColumn"
-> {
-  const startLineNumber = clampLineNumber(model, lineNumber);
-  const maxColumn = model.getLineMaxColumn(startLineNumber);
-  const startColumn = Math.max(1, Math.min(column, maxColumn));
-  const endColumn = Math.max(startColumn + 1, maxColumn);
-
-  return {
-    startLineNumber,
-    startColumn,
-    endLineNumber: startLineNumber,
-    endColumn,
-  };
-}
-
-function firstNonEmptyLine(model: editor.ITextModel): number {
-  for (let lineNumber = 1; lineNumber <= model.getLineCount(); lineNumber += 1) {
-    if (model.getLineContent(lineNumber).trim()) {
-      return lineNumber;
-    }
-  }
-  return 1;
-}
-
-function clampLineNumber(model: editor.ITextModel, value: number): number {
-  if (!Number.isFinite(value)) return 1;
-  return Math.max(1, Math.min(model.getLineCount(), Math.floor(value)));
-}
+class UnmanagedDocumentEditError extends Error {}

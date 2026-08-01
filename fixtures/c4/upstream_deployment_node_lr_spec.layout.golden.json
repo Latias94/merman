@@ -6,13 +6,13 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 932.0,
-        "max_y": 834.0
+        "max_y": 836.0
       },
       "width": 982.0,
-      "height": 844.0,
+      "height": 846.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Deployment",
       "title": "Deployment nodes",
       "boundaries": [
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 782.0,
-          "height": 718.0,
+          "height": 720.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -50,7 +50,7 @@
           "x": 150.0,
           "y": 122.0,
           "width": 316.0,
-          "height": 253.0,
+          "height": 254.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -59,15 +59,15 @@
           "label": {
             "text": "NL",
             "y": 8.0,
-            "width": 22.0,
-            "height": 17.0,
+            "width": 19.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[node]",
-            "y": 30.0,
-            "width": 39.0,
-            "height": 16.0,
+            "y": 31.0,
+            "width": 33.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -78,7 +78,7 @@
           "x": 516.0,
           "y": 122.0,
           "width": 316.0,
-          "height": 253.0,
+          "height": 254.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -87,15 +87,15 @@
           "label": {
             "text": "NR",
             "y": 8.0,
-            "width": 24.0,
-            "height": 17.0,
+            "width": 19.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[node]",
-            "y": 30.0,
-            "width": 39.0,
-            "height": 16.0,
+            "y": 31.0,
+            "width": 33.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -104,9 +104,9 @@
           "alias": "nd",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 481.0,
+          "y": 482.0,
           "width": 316.0,
-          "height": 253.0,
+          "height": 254.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -115,15 +115,15 @@
           "label": {
             "text": "ND",
             "y": 8.0,
-            "width": 24.0,
-            "height": 17.0,
+            "width": 19.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[node]",
-            "y": 30.0,
-            "width": 39.0,
-            "height": 16.0,
+            "y": 31.0,
+            "width": 33.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -137,7 +137,7 @@
           "x": 200.0,
           "y": 222.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -154,8 +154,8 @@
           "label": {
             "text": "P1",
             "y": 86.0,
-            "width": 20.0,
-            "height": 17.0,
+            "width": 19.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -169,7 +169,7 @@
           "x": 566.0,
           "y": 222.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -186,8 +186,8 @@
           "label": {
             "text": "P2",
             "y": 86.0,
-            "width": 20.0,
-            "height": 17.0,
+            "width": 19.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -199,9 +199,9 @@
           "parent_boundary": "nd",
           "type_c4_shape": "person",
           "x": 200.0,
-          "y": 581.0,
+          "y": 582.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -218,8 +218,8 @@
           "label": {
             "text": "P3",
             "y": 86.0,
-            "width": 20.0,
-            "height": 17.0,
+            "width": 19.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,

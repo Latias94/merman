@@ -1,0 +1,79 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory",
+      "children": [
+        {
+          "id": 1,
+          "level": 12,
+          "name": "🚀 rocket-app",
+          "nodeType": "directory",
+          "children": [
+            {
+              "id": 2,
+              "level": 16,
+              "name": "📦 packages",
+              "nodeType": "directory",
+              "children": [
+                {
+                  "id": 3,
+                  "level": 20,
+                  "name": "🎨 ui",
+                  "nodeType": "directory",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": 4,
+              "level": 16,
+              "name": "📝 README.md",
+              "nodeType": "file",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/",
+        "nodeType": "directory"
+      },
+      {
+        "id": 1,
+        "level": 12,
+        "name": "🚀 rocket-app",
+        "nodeType": "directory"
+      },
+      {
+        "id": 2,
+        "level": 16,
+        "name": "📦 packages",
+        "nodeType": "directory"
+      },
+      {
+        "id": 3,
+        "level": 20,
+        "name": "🎨 ui",
+        "nodeType": "directory"
+      },
+      {
+        "id": 4,
+        "level": 16,
+        "name": "📝 README.md",
+        "nodeType": "file"
+      }
+    ]
+  }
+}

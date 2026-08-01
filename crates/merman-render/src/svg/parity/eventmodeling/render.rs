@@ -1,61 +1,61 @@
 use super::super::theme::EventModelingTheme;
 use super::super::*;
+use merman_core::diagrams::eventmodeling::EventModelingDiagramRenderModel;
 
 const BOX_TEXT_PADDING: f64 = 10.0;
 
 pub(crate) fn render_eventmodeling_diagram_svg(
     layout: &EventModelingDiagramLayout,
-    _semantic: &serde_json::Value,
+    model: &EventModelingDiagramRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("eventmodeling");
+    let diagram_id_esc = escape_xml(diagram_id);
+    let acc_title = model
+        .acc_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let acc_descr = model
+        .acc_descr
+        .as_deref()
+        .map(|description| description.trim_end_matches('\n'))
+        .filter(|description| !description.trim().is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let theme = PresentationTheme::new(effective_config).eventmodeling();
-    let mut viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(layout.viewbox_x),
-        fmt(layout.viewbox_y),
-        fmt(layout.total_width),
-        fmt(layout.total_height)
+    let mut out = String::new();
+    let root_bounds = root_svg::DiagramBounds::from_view_box(
+        layout.viewbox_x,
+        layout.viewbox_y,
+        layout.total_width,
+        layout.total_height,
     );
-    let mut fixed_width = fmt_string(layout.total_width);
-    let mut fixed_height = fmt_string(layout.total_height);
-    let mut max_width = fmt_string(layout.total_width);
-    if options.apply_root_overrides {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut viewbox_attr,
-            &mut fixed_width,
-            &mut fixed_height,
-            &mut max_width,
-            crate::generated::eventmodeling_root_overrides_11_15_0::lookup_eventmodeling_root_viewport_override,
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
+        .with_max_width(root_svg::RootMaxWidth::SvgNumber(layout.total_width));
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "eventmodeling");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    let root_document = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::EventModeling,
+        diagram_id,
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
+
+    if let Some(title) = acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            escape_xml(title)
         );
     }
-    let style_attr = format!("max-width: {max_width}px; background-color: white;");
-
-    let mut out = String::new();
-    if layout.use_max_width {
-        root_svg::push_svg_root_open(
+    if let Some(description) = acc_descr {
+        let _ = write!(
             &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "eventmodeling")
-            },
-        );
-    } else {
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(fixed_width.as_str()),
-                height_attr: Some(fixed_height.as_str()),
-                style_attr: Some("background-color: white;"),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "eventmodeling")
-            },
+            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            escape_xml(description)
         );
     }
 
@@ -122,7 +122,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     escape_xml_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_box_html_label(out: &mut String, text: &str) {

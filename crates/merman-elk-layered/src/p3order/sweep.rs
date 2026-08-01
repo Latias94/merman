@@ -3110,11 +3110,11 @@ impl GreedySwitchHeuristic {
     }
 }
 
-pub fn minimize_crossings_layer_sweep(graph: &mut LGraph) -> bool {
+pub(crate) fn minimize_crossings_layer_sweep(graph: &mut LGraph) -> bool {
     minimize_crossings_layer_sweep_with_type(graph, CrossMinType::Barycenter)
 }
 
-pub fn minimize_crossings_layer_sweep_with_type(
+pub(crate) fn minimize_crossings_layer_sweep_with_type(
     graph: &mut LGraph,
     cross_min_type: CrossMinType,
 ) -> bool {
@@ -3133,7 +3133,7 @@ pub fn minimize_crossings_layer_sweep_with_type(
     }
 }
 
-pub fn minimize_crossings_layer_sweep_hierarchical_with_type(
+pub(crate) fn minimize_crossings_layer_sweep_hierarchical_with_type(
     graph: &mut LGraph,
     cross_min_type: CrossMinType,
 ) -> bool {
@@ -3156,7 +3156,7 @@ pub fn minimize_crossings_layer_sweep_hierarchical_with_type(
     sweep.minimize(graph)
 }
 
-pub fn debug_crossings_layer_sweep_hierarchical_with_type(
+pub(crate) fn debug_crossings_layer_sweep_hierarchical_with_type(
     graph: &mut LGraph,
     cross_min_type: CrossMinType,
 ) -> Option<HierarchySweepDebugTrace> {
@@ -4965,7 +4965,7 @@ mod tests {
         graph.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
         crate::compound::preprocess_source_ported_compound_graph(&mut graph);
-        crate::configurator::configure_graph_properties(&mut graph);
+        crate::configurator::configure_graph_properties(&mut graph).unwrap();
 
         crate::pipeline::execute_ported_compound_processors_until(
             &mut graph,
@@ -5012,7 +5012,7 @@ mod tests {
         graph.options.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
         crate::compound::preprocess_source_ported_compound_graph(&mut graph);
-        crate::configurator::configure_graph_properties(&mut graph);
+        crate::configurator::configure_graph_properties(&mut graph).unwrap();
         crate::pipeline::execute_ported_compound_processors_until(
             &mut graph,
             crate::pipeline::LayeredPhase::P3NodeOrdering,

@@ -7,12 +7,14 @@ use merman_editor_core::{
 #[test]
 fn completion_offers_known_node_ids_with_text_edits() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA-->B\nB-->C\nC-->".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA-->B\nB-->C\nC-->".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(3, 4));
 
     let item = list.items.iter().find(|item| item.label == "B").unwrap();
@@ -26,12 +28,14 @@ fn completion_offers_known_node_ids_with_text_edits() {
 #[test]
 fn completion_offers_node_ids_for_directive_targets() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA-->B\nstyle \n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA-->B\nstyle \n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, 6));
 
     let item = list.items.iter().find(|item| item.label == "A").unwrap();
@@ -46,12 +50,14 @@ fn completion_offers_node_ids_for_directive_targets() {
 #[test]
 fn completion_offers_class_names_for_class_references() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA-->B\nclassDef hot fill:#f00\nclass A h\n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA-->B\nclassDef hot fill:#f00\nclass A h\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(3, 9));
 
     let item = list.items.iter().find(|item| item.label == "hot").unwrap();
@@ -71,12 +77,14 @@ fn completion_offers_class_names_for_class_references() {
 fn completion_does_not_offer_class_names_inside_node_payload() {
     let mut workspace = DocumentWorkspace::new();
     let line = "A[\"docs :::h\"]";
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        format!("flowchart TD\nclassDef hot fill:#f00\n{line}\n"),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            format!("flowchart TD\nclassDef hot fill:#f00\n{line}\n"),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, line.find('h').unwrap() + 1));
 
     assert!(
@@ -95,12 +103,14 @@ fn completion_does_not_offer_class_names_inside_node_payload() {
 #[test]
 fn completion_offers_style_snippets_after_style_targets() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA-->B\nstyle A \n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA-->B\nstyle A \n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, 8));
 
     let item = list
@@ -117,12 +127,14 @@ fn completion_offers_style_snippets_after_style_targets() {
 #[test]
 fn completion_offers_interaction_snippets_after_click_targets() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA-->B\nclick A \n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA-->B\nclick A \n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, 8));
 
     let item = list
@@ -141,26 +153,28 @@ fn completion_offers_interaction_snippets_after_click_targets() {
 #[test]
 fn completion_stays_fence_local_in_markdown_documents() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.markdown",
-        1,
-        concat!(
-            "before\n",
-            "```mermaid\n",
-            "flowchart TD\n",
-            "A-->B\n",
-            "C-->\n",
-            "```\n",
-            "middle\n",
-            "```mermaid\n",
-            "sequenceDiagram\n",
-            "Alice->>Bob: Hi\n",
-            "```\n",
-            "after\n",
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.markdown",
+            1,
+            concat!(
+                "before\n",
+                "```mermaid\n",
+                "flowchart TD\n",
+                "A-->B\n",
+                "C-->\n",
+                "```\n",
+                "middle\n",
+                "```mermaid\n",
+                "sequenceDiagram\n",
+                "Alice->>Bob: Hi\n",
+                "```\n",
+                "after\n",
+            )
+            .to_string(),
+            DocumentKind::Markdown,
         )
-        .to_string(),
-        DocumentKind::Markdown,
-    );
+        .expect("test source should be accepted");
 
     let flowchart_list = completion_for_snapshot(&snapshot, Position::new(4, 4));
     assert!(flowchart_list.items.iter().any(|item| item.label == "A"));
@@ -179,20 +193,22 @@ fn completion_stays_fence_local_in_markdown_documents() {
 #[test]
 fn completion_ignores_markdown_fence_delimiter_lines() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.markdown",
-        1,
-        concat!(
-            "before\n",
-            "```mermaid\n",
-            "flowchart TD\n",
-            "A-->B\n",
-            "```\n",
-            "after\n",
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.markdown",
+            1,
+            concat!(
+                "before\n",
+                "```mermaid\n",
+                "flowchart TD\n",
+                "A-->B\n",
+                "```\n",
+                "after\n",
+            )
+            .to_string(),
+            DocumentKind::Markdown,
         )
-        .to_string(),
-        DocumentKind::Markdown,
-    );
+        .expect("test source should be accepted");
 
     assert!(CompletionContext::from_snapshot(&snapshot, Position::new(1, 3)).is_none());
     assert!(
@@ -211,12 +227,14 @@ fn completion_ignores_markdown_fence_delimiter_lines() {
 #[test]
 fn completion_allows_unclosed_markdown_fence_body() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.markdown",
-        1,
-        concat!("```mermaid\n", "flowchart TD\n", "A-->\n").to_string(),
-        DocumentKind::Markdown,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.markdown",
+            1,
+            concat!("```mermaid\n", "flowchart TD\n", "A-->\n").to_string(),
+            DocumentKind::Markdown,
+        )
+        .expect("test source should be accepted");
 
     assert!(CompletionContext::from_snapshot(&snapshot, Position::new(2, 4)).is_some());
     assert!(
@@ -230,12 +248,14 @@ fn completion_allows_unclosed_markdown_fence_body() {
 #[test]
 fn completion_uses_parser_identifier_context_after_operator() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA-->B\nC-->".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA-->B\nC-->".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, 4));
 
     assert!(list.items.iter().any(|item| item.label == "A"));
@@ -258,12 +278,14 @@ fn non_flowchart_parser_facts_do_not_offer_flowchart_body_completions() {
         ("A@{ shape: rou", CompletionDataKind::Shape),
     ] {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            "file:///tmp/history.mmd",
-            1,
-            format!("gitGraph\n{line}"),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/history.mmd",
+                1,
+                format!("gitGraph\n{line}"),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let list = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
 
         assert!(
@@ -286,14 +308,233 @@ fn non_flowchart_parser_facts_do_not_offer_flowchart_body_completions() {
 }
 
 #[test]
+fn directional_families_project_partial_values_from_recovery_facts() {
+    for (source, line, line_text, expected_labels) in [
+        (
+            "flowchart TD\nsubgraph group\ndirection L\nend\n",
+            2,
+            "direction L",
+            &["TB", "TD", "BT", "LR", "RL"][..],
+        ),
+        (
+            "C4Context\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+        (
+            "requirementDiagram\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+        (
+            "erDiagram\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+        (
+            "classDiagram\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+        (
+            "stateDiagram-v2\ndirection L",
+            1,
+            "direction L",
+            &["TB", "BT", "LR", "RL"],
+        ),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(line, line_text.len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "partial direction must remain a strict parse failure: {source}"
+        );
+        let labels = completion
+            .items
+            .iter()
+            .filter(|item| {
+                item.data
+                    .as_ref()
+                    .is_some_and(|data| data.kind == CompletionDataKind::Direction)
+            })
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, expected_labels, "{source}");
+        let edit = completion
+            .items
+            .iter()
+            .find(|item| item.label == "LR")
+            .and_then(|item| item.text_edit.as_ref())
+            .expect("partial direction must produce an LR text edit");
+        assert_eq!(edit.range.start.line, line, "{source}");
+        assert_eq!(edit.range.start.character, "direction ".len(), "{source}");
+        assert_eq!(edit.range.end.line, line, "{source}");
+        assert_eq!(edit.range.end.character, line_text.len(), "{source}");
+    }
+}
+
+#[test]
+fn directional_families_reject_prefixed_values_from_recovery_facts() {
+    for (source, line) in [
+        ("flowchart TD\nsubgraph group\ndirection LRfoo\nend\n", 2),
+        ("erDiagram\ndirection LRfoo", 1),
+        ("classDiagram\ndirection LRfoo", 1),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+        let line_text = source.lines().nth(line).expect("direction line");
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(line, line_text.len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "{source}"
+        );
+        let edit = completion
+            .items
+            .iter()
+            .find(|item| item.label == "LR")
+            .and_then(|item| item.text_edit.as_ref())
+            .expect("invalid direction must produce an LR text edit");
+
+        assert_eq!(edit.range.start.line, line, "{source}");
+        assert_eq!(edit.range.start.character, "direction ".len(), "{source}");
+        assert_eq!(edit.range.end.line, line, "{source}");
+        assert_eq!(edit.range.end.character, line_text.len(), "{source}");
+        assert_eq!(edit.new_text, "LR", "{source}");
+    }
+}
+
+#[test]
+fn flowchart_direction_keeps_legacy_trailing_text_compatibility() {
+    let source = "flowchart TD\nsubgraph group\ndirection LR trailing\nend\n";
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            source.to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
+
+    let completion = completion_for_snapshot(&snapshot, Position::new(2, "direction LR".len()));
+    assert_eq!(
+        completion.fact_source,
+        Some(FenceTextIndexSource::ParserComplete)
+    );
+}
+
+#[test]
+fn flowchart_partial_operator_completion_comes_from_recovery_facts() {
+    for source in ["flowchart TD\nA ->", "flowchart TD\nA --"] {
+        let line = source.lines().last().expect("edge line");
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "{source}"
+        );
+        let edit = completion
+            .items
+            .iter()
+            .find(|item| item.label == "-->")
+            .and_then(|item| item.text_edit.as_ref())
+            .expect("partial operator must produce an arrow text edit");
+
+        assert_eq!(edit.range.start.line, 1, "{source}");
+        assert_eq!(edit.range.start.character, "A ".len(), "{source}");
+        assert_eq!(edit.range.end.line, 1, "{source}");
+        assert_eq!(edit.range.end.character, line.len(), "{source}");
+        assert_eq!(edit.new_text, "-->", "{source}");
+    }
+}
+
+#[test]
+fn flowchart_partial_shape_completion_comes_from_recovery_facts() {
+    for (source, line, expected_start, expected_replacement) in [
+        ("flowchart TD\nA((", "A((", 1, "@{ shape: circle }"),
+        (
+            "flowchart TD\nA@{ shape: rou",
+            "A@{ shape: rou",
+            "A@{ shape: ".len(),
+            "circle }",
+        ),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserRecovered),
+            "{source}"
+        );
+        let edit = completion
+            .items
+            .iter()
+            .find(|item| item.label == "@{ shape: circle }")
+            .and_then(|item| item.text_edit.as_ref())
+            .expect("partial shape must produce a text edit");
+
+        assert_eq!(edit.range.start.line, 1, "{source}");
+        assert_eq!(edit.range.start.character, expected_start, "{source}");
+        assert_eq!(edit.range.end.line, 1, "{source}");
+        assert_eq!(edit.range.end.character, line.len(), "{source}");
+        assert_eq!(edit.new_text, expected_replacement, "{source}");
+    }
+}
+
+#[test]
 fn completion_after_pipe_edge_label_inserts_after_the_label() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA-->B\nA -->|go|".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA-->B\nA -->|go|".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, 9));
 
     let item = list.items.iter().find(|item| item.label == "B").unwrap();
@@ -308,12 +549,14 @@ fn completion_after_pipe_edge_label_inserts_after_the_label() {
 #[test]
 fn completion_after_pipe_edge_label_replaces_trailing_whitespace_slot() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA-->B\nA -->|go|   ".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA-->B\nA -->|go|   ".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, 12));
 
     let item = list.items.iter().find(|item| item.label == "B").unwrap();
@@ -329,12 +572,14 @@ fn completion_after_pipe_edge_label_replaces_trailing_whitespace_slot() {
 #[test]
 fn completion_keeps_known_node_ids_when_parser_recovers() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nsubgraph group\nA-->B\nC-->".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nsubgraph group\nA-->B\nC-->".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let context = CompletionContext::from_snapshot(&snapshot, Position::new(3, 4)).unwrap();
     let list = completion_for_snapshot(&snapshot, Position::new(3, 4));
 
@@ -376,12 +621,14 @@ fn completion_payload_contexts_return_no_body_items() {
         ),
     ] {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            "file:///tmp/example.mmd",
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let list = completion_for_snapshot(&snapshot, position);
 
         assert!(
@@ -396,18 +643,20 @@ fn completion_payload_contexts_return_no_body_items() {
 }
 
 #[test]
-fn completion_bounds_text_scan_fallback_to_source_start() {
+fn completion_bounds_unavailable_facts_to_source_start() {
     let mut workspace = DocumentWorkspace::new();
-    let source_start = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flow".to_string(),
-        DocumentKind::Diagram,
-    );
+    let source_start = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flow".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let context = CompletionContext::from_snapshot(&source_start, Position::new(0, 4)).unwrap();
     let list = completion_for_snapshot(&source_start, Position::new(0, 4));
 
-    assert_eq!(context.fact_source(), FenceTextIndexSource::TextScan);
+    assert_eq!(context.fact_source(), FenceTextIndexSource::Unavailable);
     assert!(list.items.iter().any(|item| {
         item.data
             .as_ref()
@@ -419,28 +668,32 @@ fn completion_bounds_text_scan_fallback_to_source_start() {
             .is_some_and(|data| data.kind == CompletionDataKind::Template)
     }));
 
-    let body = workspace.upsert(
-        "file:///tmp/unknown.mmd",
-        1,
-        "unknownDiagram\nA-".to_string(),
-        DocumentKind::Diagram,
-    );
+    let body = workspace
+        .upsert(
+            "file:///tmp/unknown.mmd",
+            1,
+            "unknownDiagram\nA-".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let context = CompletionContext::from_snapshot(&body, Position::new(1, 2)).unwrap();
     let list = completion_for_snapshot(&body, Position::new(1, 2));
 
-    assert_eq!(context.fact_source(), FenceTextIndexSource::TextScan);
+    assert_eq!(context.fact_source(), FenceTextIndexSource::Unavailable);
     assert!(list.items.is_empty());
 }
 
 #[test]
 fn context_uses_parser_expected_syntax_for_shape_values() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA@{\n  shape: rou\n}\n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA@{\n  shape: rou\n}\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let context = CompletionContext::from_snapshot(&snapshot, Position::new(2, 11)).unwrap();
     let edit = context.shape_value_edit("circle").expect("shape edit");
 
@@ -453,12 +706,14 @@ fn context_uses_parser_expected_syntax_for_shape_values() {
 #[test]
 fn shape_value_completion_does_not_duplicate_existing_closing_brace() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA@{ shape: rou }\n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA@{ shape: rou }\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let context = CompletionContext::from_snapshot(&snapshot, Position::new(1, 14)).unwrap();
     let edit = context.shape_value_edit("circle").expect("shape edit");
 
@@ -477,12 +732,14 @@ fn shape_value_completion_accepts_mermaid_whitespace_variants() {
         "flowchart TD\nA@{ shape : rou }\n",
     ] {
         let mut workspace = DocumentWorkspace::new();
-        let snapshot = workspace.upsert(
-            "file:///tmp/example.mmd",
-            1,
-            source.to_string(),
-            DocumentKind::Diagram,
-        );
+        let snapshot = workspace
+            .upsert(
+                "file:///tmp/example.mmd",
+                1,
+                source.to_string(),
+                DocumentKind::Diagram,
+            )
+            .expect("test source should be accepted");
         let cursor = source.find("rou").unwrap() + "rou".len() - "flowchart TD\n".len();
         let context = CompletionContext::from_snapshot(&snapshot, Position::new(1, cursor))
             .expect("completion context");
@@ -502,20 +759,22 @@ fn shape_value_completion_accepts_mermaid_whitespace_variants() {
 #[test]
 fn shape_value_completion_appends_missing_brace_before_markdown_fence_close() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.markdown",
-        1,
-        concat!(
-            "before\n",
-            "```mermaid\n",
-            "flowchart TD\n",
-            "A@{ shape: rou\n",
-            "```\n",
-            "after\n",
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.markdown",
+            1,
+            concat!(
+                "before\n",
+                "```mermaid\n",
+                "flowchart TD\n",
+                "A@{ shape: rou\n",
+                "```\n",
+                "after\n",
+            )
+            .to_string(),
+            DocumentKind::Markdown,
         )
-        .to_string(),
-        DocumentKind::Markdown,
-    );
+        .expect("test source should be accepted");
     let context = CompletionContext::from_snapshot(&snapshot, Position::new(3, 14)).unwrap();
     let edit = context.shape_value_edit("circle").expect("shape edit");
 
@@ -529,20 +788,22 @@ fn shape_value_completion_appends_missing_brace_before_markdown_fence_close() {
 #[test]
 fn shape_value_completion_ignores_host_document_tail_after_markdown_fence() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.markdown",
-        1,
-        concat!(
-            "before\n",
-            "```mermaid\n",
-            "flowchart TD\n",
-            "A@{ shape: rou\n",
-            "```\n",
-            "host markdown } should not close the active shape\n",
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.markdown",
+            1,
+            concat!(
+                "before\n",
+                "```mermaid\n",
+                "flowchart TD\n",
+                "A@{ shape: rou\n",
+                "```\n",
+                "host markdown } should not close the active shape\n",
+            )
+            .to_string(),
+            DocumentKind::Markdown,
         )
-        .to_string(),
-        DocumentKind::Markdown,
-    );
+        .expect("test source should be accepted");
     let context = CompletionContext::from_snapshot(&snapshot, Position::new(3, 14)).unwrap();
     let edit = context.shape_value_edit("circle").expect("shape edit");
 
@@ -552,12 +813,14 @@ fn shape_value_completion_ignores_host_document_tail_after_markdown_fence() {
 #[test]
 fn shape_value_completion_appends_missing_brace_before_next_diagram_statement() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA@{ shape: rou\nB --> C\n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA@{ shape: rou\nB --> C\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let context = CompletionContext::from_snapshot(&snapshot, Position::new(1, 14)).unwrap();
     let edit = context.shape_value_edit("circle").expect("shape edit");
 
@@ -571,12 +834,14 @@ fn shape_value_completion_appends_missing_brace_before_next_diagram_statement() 
 #[test]
 fn completion_offers_parser_accepted_flowchart_shapes() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nA@{\n  shape: rou\n}\n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nA@{\n  shape: rou\n}\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, 11));
     let labels = list
         .items
@@ -612,12 +877,14 @@ fn completion_resolve_documentation_is_protocol_neutral() {
 #[test]
 fn completion_offers_snippet_templates_at_diagram_start() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flow".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flow".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
 
     let item = list
@@ -642,12 +909,14 @@ fn completion_offers_snippet_templates_at_diagram_start() {
 #[test]
 fn completion_offers_icon_template_from_icon_prefix() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "icon".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "icon".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(0, 4));
 
     let item = list
@@ -662,12 +931,14 @@ fn completion_offers_icon_template_from_icon_prefix() {
 #[test]
 fn completion_offers_frontmatter_templates_at_document_start() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        String::new(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            String::new(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(0, 0));
 
     let item = list
@@ -683,12 +954,14 @@ fn completion_offers_frontmatter_templates_at_document_start() {
 #[test]
 fn completion_offers_themecss_inside_frontmatter() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "---\nconfig:\n  theme\n---\nflowchart TD\nA-->B\n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "---\nconfig:\n  theme\n---\nflowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, 7));
 
     let item = list
@@ -707,12 +980,14 @@ fn completion_offers_themecss_inside_frontmatter() {
 #[test]
 fn completion_does_not_offer_frontmatter_items_in_diagram_body() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\n  theme".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\n  theme".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(1, 7));
 
     assert!(!list.items.iter().any(|item| {
@@ -725,12 +1000,14 @@ fn completion_does_not_offer_frontmatter_items_in_diagram_body() {
 #[test]
 fn completion_uses_core_frontmatter_semantics_for_indented_frontmatter() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "  ---\n  config:\n    theme\n  ---\nflowchart TD\nA-->B\n".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "  ---\n  config:\n    theme\n  ---\nflowchart TD\nA-->B\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(2, 9));
 
     let item = list
@@ -749,12 +1026,14 @@ fn completion_uses_core_frontmatter_semantics_for_indented_frontmatter() {
 #[test]
 fn directive_helpers_use_snippet_placeholders() {
     let mut workspace = DocumentWorkspace::new();
-    let snapshot = workspace.upsert(
-        "file:///tmp/example.mmd",
-        1,
-        "flowchart TD\nclassDef ".to_string(),
-        DocumentKind::Diagram,
-    );
+    let snapshot = workspace
+        .upsert(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nclassDef ".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
     let list = completion_for_snapshot(&snapshot, Position::new(1, 9));
 
     let item = list

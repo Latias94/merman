@@ -34,6 +34,7 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_3_should_render_with_deeply_nested_causes_003.mmd`
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_4_should_render_with_a_single_cause_004.mmd`
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_5_should_render_with_no_children_root_only_005.mmd`
+  - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_6_should_render_with_handdrawn_look_006.mmd`
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_7_should_render_with_forest_theme_007.mmd`
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_8_should_render_with_dark_theme_008.mmd`
   - `fixtures/ishikawa/upstream_cypress_ishikawa_spec_9_should_render_with_custom_diagrampadding_009.mmd`
@@ -49,6 +50,7 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_3_should_render_with_deeply_nested_causes_003.svg`
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_4_should_render_with_a_single_cause_004.svg`
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_5_should_render_with_no_children_root_only_005.svg`
+- `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_6_should_render_with_handdrawn_look_006.svg`
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_7_should_render_with_forest_theme_007.svg`
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_8_should_render_with_dark_theme_008.svg`
 - `fixtures/upstream-svgs/ishikawa/upstream_cypress_ishikawa_spec_9_should_render_with_custom_diagrampadding_009.svg`
@@ -60,15 +62,20 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
 - Family-local command: `cargo run -p xtask -- compare-ishikawa-svgs`
 - Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram ishikawa --check-dom --dom-mode parity --dom-decimals 3`
-- Current DOM gates pass all 12 committed baselines:
-  - `compare-ishikawa-svgs --check-dom --dom-mode structure --dom-decimals 3`
-  - `compare-ishikawa-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `compare-ishikawa-svgs --check-dom --dom-mode structure --dom-decimals 3` passes all 13
+  baselines.
+- `compare-ishikawa-svgs --check-dom --dom-mode parity --dom-decimals 3` remains green for the 12
+  classic-look baselines. The hand-drawn baseline has matching DOM ownership and paint attributes,
+  but retains exact path-coordinate differences between JavaScript RoughJS and Rust `roughr`.
 - Structure convergence comes from the typed layout/render tree matching Mermaid 11.16's
   `ishikawa-pair`, `ishikawa-label-group`, and `ishikawa-sub-group` ownership. It does not use
   comparator normalization or fixture-specific exceptions.
+- Cypress case 6 uses `handDrawnSeed: 1` in the local `.mmd` so independent upstream generations
+  are reproducible. Mermaid's default seed `0` selects a random RoughJS seed, so this is an explicit
+  baseline-policy adaptation rather than a verbatim copy of the Cypress configuration.
 
 ## Not Yet Covered
 
-- Hand-drawn / rough.js renderer branch.
-- Very deep nested Cypress image snapshot case.
-- Full strict DOM parity for the current Cypress image snapshot corpus.
+- Exact JavaScript RoughJS path geometry for the hand-drawn fixture.
+- Browser image-pixel comparison for Cypress snapshots; the repository verifies SVG structure and
+  bounded parity instead.

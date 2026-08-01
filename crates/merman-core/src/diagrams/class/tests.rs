@@ -11,7 +11,7 @@ fn meta() -> ParseMetadata {
 }
 
 #[test]
-fn fast_parser_matches_lalrpop_for_basic_class_diagram() {
+fn authoritative_parser_preserves_the_former_fast_subset() {
     let code = r#"classDiagram
 class C1 {
   +String field1
@@ -20,12 +20,9 @@ class C1 {
 C1 <|-- C2 : inherits
 "#;
     let meta = meta();
-    let slow = parse::parse_class_via_lalrpop(code, &meta).expect("slow parse");
-    let fast = fast::parse_class_fast_db(code, &meta)
-        .expect("fast parse")
-        .expect("fast parser applicable")
-        .into_model(&meta);
-    assert_eq!(fast, slow);
+    let compat = parse::parse_class(code, &meta).expect("compat parse");
+    let typed = parse::parse_class_typed(code, &meta).expect("typed parse");
+    assert_eq!(compat, render_model_to_compat_json(&typed, &meta).unwrap());
 }
 
 #[test]

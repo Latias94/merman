@@ -488,34 +488,6 @@ pub const ASCII_CAPABILITIES: &[AsciiCapability] = &[
             },
         ],
     },
-    AsciiCapability {
-        diagram_type: "zenuml",
-        display_name: "ZenUML",
-        support_level: AsciiSupportLevel::Partial,
-        summary_fallback: false,
-        supported_semantics: &[
-            "participants",
-            "messages",
-            "basic conditional frames",
-            "sequence-like output",
-        ],
-        limits: &[
-            "external ZenUML compatibility is a subset",
-            "unsupported syntax is rejected before terminal output",
-        ],
-        evidence: &[
-            AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "docs/alignment/ZENUML_UPSTREAM_TEST_COVERAGE.md",
-                note: "headless ZenUML subset translates through typed sequence rendering",
-            },
-            AsciiCapabilityEvidence {
-                kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#supported-families",
-                note: "support matrix classifies ZenUML as partial output",
-            },
-        ],
-    },
 ];
 
 pub fn ascii_capabilities() -> &'static [AsciiCapability] {
@@ -565,7 +537,6 @@ mod tests {
                 "timeline",
                 "treeView",
                 "xychart",
-                "zenuml",
             ]
         );
     }
@@ -586,7 +557,6 @@ mod tests {
         assert_eq!(find("treeView").support_level, AsciiSupportLevel::Full);
         assert_eq!(find("gantt").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);
-        assert_eq!(find("zenuml").support_level, AsciiSupportLevel::Partial);
     }
 
     #[test]

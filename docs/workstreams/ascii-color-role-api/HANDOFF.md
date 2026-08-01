@@ -37,7 +37,7 @@ Default plain output remains unchanged.
 - `AsciiColorRole` should be non-exhaustive.
 - `AsciiColorTheme` should have private fields and builder methods.
 - Mermaid style mapping should not be bundled with the first role-canvas slice.
-- ADR 0067 accepts a pre-1.0 `AsciiRenderOptions` migration: add color fields, keep `Copy`, add
+- ADR 0067 accepts a breaking `AsciiRenderOptions` migration: add color fields, keep `Copy`, add
   builder methods, and mark the struct `#[non_exhaustive]`.
 - ACR-030 keeps diagram layout role-agnostic. The graph renderer now uses `Canvas::finish_with_options`
   only at final output boundaries, while transformed intermediate canvases still use plain

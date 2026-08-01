@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 196.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 196.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -35,7 +35,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -43,7 +43,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -51,7 +51,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -59,7 +59,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -164,7 +164,7 @@
           "vert": false,
           "bar": {
             "id": "a1",
-            "x": 1109.0,
+            "x": 725.0,
             "y": 50.0,
             "width": 0.0,
             "height": 20.0,
@@ -177,7 +177,7 @@
             "text": "A task           ",
             "font_size": 11.0,
             "width": 30.47,
-            "x": 1114.0,
+            "x": 730.0,
             "y": 63.5,
             "class": "taskTextOutsideRight taskTextOutside0 width-30.469999999999995"
           }
@@ -195,7 +195,7 @@
           "vert": false,
           "bar": {
             "id": "task1",
-            "x": 1109.0,
+            "x": 725.0,
             "y": 74.0,
             "width": 0.0,
             "height": 20.0,
@@ -208,7 +208,7 @@
             "text": "Another task     ",
             "font_size": 11.0,
             "width": 58.85,
-            "x": 1104.0,
+            "x": 720.0,
             "y": 87.5,
             "class": "taskTextOutsideLeft taskTextOutside0"
           }
@@ -219,43 +219,43 @@
       "bottom_ticks": [
         {
           "time_ms": 32503680000000.0,
-          "x": 202.0,
+          "x": 155.0,
           "label": "  01-01"
         },
         {
           "time_ms": 64060588800000.0,
-          "x": 331.0,
+          "x": 236.0,
           "label": "  01-01"
         },
         {
           "time_ms": 95617584000000.0,
-          "x": 461.0,
+          "x": 318.0,
           "label": "  01-01"
         },
         {
           "time_ms": 127174492800000.0,
-          "x": 591.0,
+          "x": 399.0,
           "label": "  01-01"
         },
         {
           "time_ms": 158731488000000.0,
-          "x": 720.0,
+          "x": 481.0,
           "label": "  01-01"
         },
         {
           "time_ms": 190288396800000.0,
-          "x": 850.0,
+          "x": 562.0,
           "label": "  01-01"
         },
         {
           "time_ms": 221845392000000.0,
-          "x": 979.0,
+          "x": 644.0,
           "label": "  01-01"
         }
       ],
       "top_ticks": [],
       "title": "A long Gantt Diagram",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

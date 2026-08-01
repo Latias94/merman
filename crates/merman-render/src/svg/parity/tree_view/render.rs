@@ -2,6 +2,7 @@ use super::super::*;
 use crate::model::TreeViewNodeLayout;
 use crate::svg::icon_registry::mermaid_unknown_icon_svg;
 use crate::tree_view::{
+    TREE_VIEW_DESCRIPTION_FONT_STYLE, TREE_VIEW_DIRECTORY_FONT_WEIGHT,
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION, TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_SIZE,
     is_tree_view_highlight_class,
 };
@@ -11,22 +12,12 @@ use std::collections::{BTreeMap, BTreeSet};
 const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 
-pub(crate) fn render_tree_view_diagram_svg(
-    layout: &TreeViewDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: TreeViewDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_tree_view_diagram_svg_model(layout, &model, effective_config, options)
-}
-
 pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treeView");
     let diagram_id_esc = escape_xml(diagram_id);
     let acc_title = model
@@ -39,36 +30,24 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         .as_deref()
         .map(str::trim)
         .filter(|d| !d.is_empty());
-    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id_esc}"));
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         -layout.line_thickness / 2.0,
         0.0,
         layout.total_width,
         layout.total_height,
     );
-    let root_overrides = if options.apply_root_overrides {
-        root_svg::resolve_root_overrides(None, None)
-    } else {
-        None
-    };
-    let viewport_plan = root_svg::build_root_viewport_plan(
-        root_bounds,
-        root_overrides.as_ref(),
-        layout.use_max_width,
-    );
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
 
     let mut out = String::new();
-    root_svg::push_svg_root_open_with_viewport_plan(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "treeView")
-        },
-        &viewport_plan,
-    );
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "treeView");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::TreeView, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
 
     let css = tree_view_css(effective_config);
     if let Some(title) = acc_title {
@@ -89,7 +68,9 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     }
     let _ = write!(&mut out, "<style>{css}</style>");
     let icon_symbol_ids = tree_view_icon_symbol_ids(layout, diagram_id);
-    push_tree_view_icon_defs(&mut out, &icon_symbol_ids, options.icon_registry.as_deref());
+    push_tree_view_icon_defs(&mut out, &icon_symbol_ids, options.icon_registry());
+    let emit_icon_use =
+        config_string(effective_config, &["securityLevel"]).as_deref() == Some("loose");
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
     let mut next_node = 0usize;
@@ -109,6 +90,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
                 node,
                 layout,
                 &icon_symbol_ids,
+                emit_icon_use,
                 &mut width_before_highlight,
             );
             next_node += 1;
@@ -129,11 +111,12 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             node,
             layout,
             &icon_symbol_ids,
+            emit_icon_use,
             &mut width_before_highlight,
         );
     }
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_tree_view_node(
@@ -141,6 +124,7 @@ fn push_tree_view_node(
     node: &TreeViewNodeLayout,
     layout: &TreeViewDiagramLayout,
     icon_symbol_ids: &BTreeMap<&str, String>,
+    emit_icon_use: bool,
     width_before_highlight: &mut f64,
 ) {
     out.push_str("<g>");
@@ -158,10 +142,11 @@ fn push_tree_view_node(
         );
         *width_before_highlight += TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     }
-    if let Some(symbol_id) = node
-        .resolved_icon
-        .as_deref()
-        .and_then(|icon| icon_symbol_ids.get(icon))
+    if emit_icon_use
+        && let Some(symbol_id) = node
+            .resolved_icon
+            .as_deref()
+            .and_then(|icon| icon_symbol_ids.get(icon))
     {
         let _ = write!(
             out,
@@ -197,13 +182,15 @@ fn tree_view_css(effective_config: &serde_json::Value) -> String {
     let theme = PresentationTheme::new(effective_config).tree_view();
 
     format!(
-        ".treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} .treeView-node-dir {{ font-weight: bold; }} .treeView-node-line {{ stroke: {}; }} .treeView-node-icon {{ color: {}; }} .treeView-node-description {{ font-size: {}; fill: {}; font-style: italic; white-space: pre; }} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
+        ".treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} .treeView-node-dir {{ font-weight: {}; }} .treeView-node-line {{ stroke: {}; }} .treeView-node-icon {{ color: {}; }} .treeView-node-description {{ font-size: {}; fill: {}; font-style: {}; white-space: pre; }} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
         theme.label_font_size_css,
         theme.label_color,
+        TREE_VIEW_DIRECTORY_FONT_WEIGHT,
         theme.line_color,
         theme.icon_color,
         theme.label_font_size_css,
         theme.description_color,
+        TREE_VIEW_DESCRIPTION_FONT_STYLE,
         theme.highlight_bg,
         theme.highlight_stroke
     )

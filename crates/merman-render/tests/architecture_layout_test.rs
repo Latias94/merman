@@ -1,19 +1,26 @@
+#![cfg(feature = "layout-cytoscape")]
+
 use merman_core::{Engine, ParseOptions};
-use merman_render::model::{ArchitectureDiagramLayout, LayoutDiagram};
-use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::model::ArchitectureDiagramLayout;
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
     let engine = Engine::new();
+    layout_architecture_with_engine(&engine, text)
+}
+
+fn layout_architecture_with_engine(engine: &Engine, text: &str) -> ArchitectureDiagramLayout {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::headless_svg_defaults())
-        .expect("layout ok");
-    match layout {
-        LayoutDiagram::ArchitectureDiagram(layout) => *layout,
-        other => panic!("expected architecture layout, got {other:?}"),
-    }
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize layout");
+    serde_json::from_value(projection["layout"]["ArchitectureDiagram"].clone())
+        .expect("architecture layout projection")
 }
 
 fn node_center(layout: &ArchitectureDiagramLayout, id: &str) -> (f64, f64) {
@@ -119,14 +126,78 @@ fn disconnected_diagram() -> &'static str {
 }
 
 #[test]
+fn architecture_default_layout_options_execute_fcose_layout() {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(chain_diagram(), ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let json = artifact.layout_json().expect("serialize layout");
+    let layout: ArchitectureDiagramLayout =
+        serde_json::from_value(json["layout"]["ArchitectureDiagram"].clone())
+            .expect("architecture layout projection");
+
+    assert!(
+        layout
+            .nodes
+            .iter()
+            .any(|node| node.x.abs() > f64::EPSILON || node.y.abs() > f64::EPSILON),
+        "default options must execute FCoSE instead of leaving every node at the origin"
+    );
+    for (index, left) in layout.nodes.iter().enumerate() {
+        for right in &layout.nodes[index + 1..] {
+            let overlaps = left.x < right.x + right.width
+                && right.x < left.x + left.width
+                && left.y < right.y + right.height
+                && right.y < left.y + left.height;
+            assert!(
+                !overlaps,
+                "default FCoSE layout must separate {} and {}",
+                left.id, right.id
+            );
+        }
+    }
+}
+
+#[test]
+fn architecture_conflicting_row_hints_fail_before_svg_projection() {
+    let source = r#"architecture-beta
+  service a(server)[A]
+  service b(server)[B]
+  align row a b
+  align row b a
+"#;
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+        Ok(_) => panic!("contradictory row constraints must fail at layout"),
+        Err(error) => error,
+    };
+
+    assert!(
+        error
+            .to_string()
+            .contains("horizontal constraints are infeasible"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
 fn architecture_parse_for_render_model_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);
+    let engine = Engine::new();
     let handle = std::thread::Builder::new()
         .name("architecture-deep-group-parse".to_string())
         .stack_size(128 * 1024)
         .spawn(move || {
-            let engine = Engine::new();
             engine
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .expect("parse ok")
@@ -142,10 +213,11 @@ fn architecture_parse_for_render_model_handles_deep_group_chain() {
 fn architecture_layout_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);
+    let engine = Engine::new();
     let handle = std::thread::Builder::new()
         .name("architecture-deep-group-layout".to_string())
         .stack_size(128 * 1024)
-        .spawn(move || layout_architecture(&source))
+        .spawn(move || layout_architecture_with_engine(&engine, &source))
         .expect("spawn architecture deep group layout test");
     let layout = handle
         .join()
@@ -209,11 +281,7 @@ fn architecture_layout_exposes_cytoscape_service_child_bounds_by_service_id() {
         metrics.text_width,
         metrics.half_width
     );
-    assert!(
-        metrics.applied_scale >= 1.0,
-        "expected service label metric scale to be recorded, got {:.3}",
-        metrics.applied_scale
-    );
+    assert_eq!(metrics.half_width, metrics.text_width / 2.0);
     let (width, height) = cytoscape_service_union_size(&layout, "gateway");
     assert!(
         width > 80.0 && height > 80.0,
@@ -293,4 +361,28 @@ fn architecture_edge_elasticity_changes_same_group_layout() {
         position_signature(&stiff),
         "expected edgeElasticity to affect same-group Architecture FCoSE layout"
     );
+}
+
+#[test]
+fn architecture_fcose_rerun_resets_repulsion_deduplication_scratch() {
+    let layout = layout_architecture(include_str!(
+        "../../../fixtures/architecture/stress_architecture_many_small_groups_025.mmd"
+    ));
+    let min_x = layout
+        .nodes
+        .iter()
+        .map(|node| node.x)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = layout
+        .nodes
+        .iter()
+        .map(|node| node.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    // The bundled Mermaid 11.16 SVG places the outer services at
+    // x=-277.2026220743501 and x=277.2026220743501. Reusing the first run's FR-grid
+    // visit markers in the second run silently drops compound repulsion pairs and
+    // contracts this span by about 135px.
+    let span_millipixels = ((max_x - min_x) * 1000.0).round() as i64;
+    assert_eq!(span_millipixels, 554_405);
 }

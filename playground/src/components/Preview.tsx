@@ -4,50 +4,69 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { assertSafeSvgForDom } from "@mermanjs/web";
 import { toast } from "sonner";
 import {
-  mermanRuntimeErrorI18nKey,
-  useMerman,
-} from "@/src/hooks/useMerman";
+  selectMermanFacade,
+  selectMermanFailure,
+  selectMermanLoadStage,
+  selectMermanStatus,
+  useMermanRuntime,
+} from "@/src/runtime/use-merman-runtime";
+import { retryMermanRuntime } from "@/src/runtime/merman";
+import type { MermanRuntimeFailure } from "@/src/runtime/merman-core";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import {
   asciiSupportDescription,
   asciiSupportLabelKey,
   type AsciiCapability,
 } from "@/src/lib/ascii-support";
-import { detectDiagramType } from "@/src/lib/diagram-detection";
-import {
-  bindRenderArtifact,
-  createPreviewRenderKey,
-  freshRenderArtifactValue,
-  type RenderArtifact,
-} from "@/src/lib/render-artifacts";
-import { prewarmWasmRenderer } from "@/src/lib/wasm-loader";
 import { useAppStore } from "@/src/store";
+import { MERMAID_JS_VERSION } from "@/src/runtime/mermaid-requirements";
 import {
-  getMermaidLoadSource,
-  isMermaidLoaded,
-  mermaidRuntimeErrorI18nKey,
-  prewarmMermaidRenderer,
-  renderMermaidSvg,
-  MERMAID_JS_VERSION,
-} from "@/src/lib/mermaid-renderer";
-import { exportPNG, exportSVG } from "@/src/lib/export";
+  markRenderCoordinatorPresented,
+  refreshRenderCoordinator,
+  setCompareEnabled,
+  setDiagnosticsEnabled,
+} from "@/src/runtime/render-coordinator-browser";
+import {
+  selectCompletedRenderBatch,
+  selectCurrentDiagramType,
+  selectRenderPending,
+  selectVisibleRenderBatch,
+  useRenderCoordinator,
+} from "@/src/runtime/use-render-coordinator";
+import type {
+  DiagnosticArtifact,
+  EngineRenderFailure,
+  MermanRenderSuccess,
+  MermaidRenderSuccess,
+} from "@/src/runtime/render-coordinator";
+import {
+  copySVGToClipboard,
+  exportPNG,
+  exportSVG,
+} from "@/src/lib/export";
+import type { SafeInlineSvg } from "@/src/runtime/render-artifact";
+import { pngExportErrorMessage } from "@/src/components/png-export-feedback";
 import {
   SvgViewport,
   useSvgViewport,
-  type SvgViewportController,
 } from "@/src/components/SvgViewport";
+import {
+  CompareView,
+  type CompareArtifact,
+  type CompareEngineKey,
+} from "@/src/components/CompareView";
+import {
+  SvgSourceEditor,
+  ViewportControls,
+} from "@/src/components/PreviewArtifactViews";
 import { cn } from "@/lib/utils";
 import {
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
-  Maximize2,
   Loader2,
   AlertCircle,
   Copy,
@@ -58,6 +77,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -71,71 +91,30 @@ interface PreviewProps {
 
 type PreviewMode = "svg" | "ascii" | "compare" | "diagnostics";
 type SvgDisplayMode = "visual" | "source";
-type EngineKey = "merman" | "mermaid";
+type EngineKey = CompareEngineKey;
 type DiagnosticKey = "parse" | "layout";
-type MermaidStatus = "idle" | "preparing" | "rendering";
-
-interface CompareArtifact {
-  key: EngineKey;
-  artifactKey: string;
-  renderKey: string;
-  title: string;
-  version: string;
-  svg: string | null;
-  renderArtifact: SvgRenderArtifact | null;
-  error: string | null;
-  renderTime: number | null;
-  loading: boolean;
-  loadingLabel: string | null;
-  unavailableLabel: string | null;
-}
-
-interface DiagnosticArtifact {
-  json: string | null;
-  error: string | null;
-  elapsedMs: number | null;
-}
-
-interface MermanRenderArtifact {
-  svg: string | null;
-  ascii: string | null;
-  error: string | null;
-  renderTime: number | null;
-}
-
-interface MermaidRenderArtifact {
-  svg: string | null;
-  error: string | null;
-  renderTime: number | null;
-}
-
-type SvgRenderArtifact = RenderArtifact<MermanRenderArtifact | MermaidRenderArtifact>;
 
 const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
-  parse: { json: null, error: null, elapsedMs: null },
-  layout: { json: null, error: null, elapsedMs: null },
+  parse: { json: null, error: null, errorDetail: null, elapsedMs: null },
+  layout: { json: null, error: null, errorDetail: null, elapsedMs: null },
 };
 
 export function Preview({ className }: PreviewProps) {
   const { t } = useTranslation();
-  const {
-    code,
-    diagramTheme,
-    hostThemePreset,
-    mermaidConfig,
-    textMeasurementMode,
-    diagramFont,
-    setLastRenderTime,
-    setDiagramType,
-    isDarkMode,
-  } = useAppStore();
-  const { ready, loading, render, renderAscii, parseJson, layoutJson } = useMerman();
+  const code = useAppStore((state) => state.code);
+  const isDarkMode = useAppStore((state) => state.resolvedTheme === "dark");
+  const previewMode = useAppStore((state) => state.previewMode);
+  const setPreviewMode = useAppStore((state) => state.setPreviewMode);
+  const renderState = useRenderCoordinator((state) => state);
+  const currentBatch = selectCompletedRenderBatch(renderState);
+  const visibleBatch = selectVisibleRenderBatch(renderState);
+  const facade = useMermanRuntime(selectMermanFacade);
+  const runtimeStatus = useMermanRuntime(selectMermanStatus);
+  const runtimeFailure = useMermanRuntime(selectMermanFailure);
+  const runtimeLoadStage = useMermanRuntime(selectMermanLoadStage);
+  const ready = facade !== null;
+  const loading = runtimeStatus === "idle" || runtimeStatus === "loading";
   const asciiSupport = useAsciiSupport();
-  const [mermanRenderArtifact, setMermanRenderArtifact] =
-    useState<RenderArtifact<MermanRenderArtifact> | null>(null);
-  const [mermaidRenderArtifact, setMermaidRenderArtifact] =
-    useState<RenderArtifact<MermaidRenderArtifact> | null>(null);
-  const [previewMode, setPreviewMode] = useState<PreviewMode>("svg");
   const [svgDisplayMode, setSvgDisplayMode] =
     useState<SvgDisplayMode>("visual");
   const [copiedAsciiKey, setCopiedAsciiKey] = useState<string | null>(null);
@@ -146,53 +125,11 @@ export function Preview({ className }: PreviewProps) {
   );
   const exportingPngEnginesRef = useRef<Set<EngineKey>>(new Set());
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticKey>("parse");
-  const [diagnostics, setDiagnostics] =
-    useState<Record<DiagnosticKey, DiagnosticArtifact>>(EMPTY_DIAGNOSTICS);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
-  const [mermaidStatus, setMermaidStatus] = useState<MermaidStatus>("idle");
-  const [refreshNonce, setRefreshNonce] = useState(0);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const diagnosticsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const asciiCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diagnosticCopyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const activeHostThemePreset =
-    hostThemePreset === "none" ? undefined : hostThemePreset;
-  const renderOptions = useMemo(
-    () => ({
-      hostThemePreset: activeHostThemePreset,
-      textMeasurementMode,
-      diagramFont,
-    }),
-    [activeHostThemePreset, diagramFont, textMeasurementMode]
-  );
-
-  const detectedDiagramType = useMemo(
-    () => (code.trim() ? detectDiagramType(code) : "flowchart"),
-    [code]
-  );
-  const previewRenderKey = useMemo(
-    () =>
-      createPreviewRenderKey({
-        code,
-        diagramTheme,
-        mermaidConfig,
-        hostThemePreset: activeHostThemePreset ?? null,
-        textMeasurementMode,
-        diagramFont,
-        refreshNonce,
-      }),
-    [
-      activeHostThemePreset,
-      code,
-      diagramFont,
-      diagramTheme,
-      mermaidConfig,
-      refreshNonce,
-      textMeasurementMode,
-    ]
-  );
+  const previewRenderKey = currentBatch?.snapshot.key ?? "render-unavailable";
   const mermanSvgActionKey = useMemo(
     () => artifactActionKey("merman-svg", previewRenderKey),
     [previewRenderKey]
@@ -205,249 +142,51 @@ export function Preview({ className }: PreviewProps) {
     () => artifactActionKey("merman-ascii", previewRenderKey),
     [previewRenderKey]
   );
-  const freshMermanArtifact = freshRenderArtifactValue(
-    mermanRenderArtifact,
-    previewRenderKey
-  );
-  const freshMermaidArtifact = freshRenderArtifactValue(
-    mermaidRenderArtifact,
-    previewRenderKey
-  );
-  const svg = freshMermanArtifact?.svg ?? null;
-  const ascii = freshMermanArtifact?.ascii ?? null;
-  const error = freshMermanArtifact?.error ?? null;
-  const mermanRenderTime = freshMermanArtifact?.renderTime ?? null;
-  const mermaidSvg = freshMermaidArtifact?.svg ?? null;
-  const mermaidError = freshMermaidArtifact?.error ?? null;
-  const mermaidRenderTime = freshMermaidArtifact?.renderTime ?? null;
-  const mermanRendering = Boolean(code.trim() && ready && !svg && !error);
+  const detectedDiagramType = selectCurrentDiagramType(renderState);
+  const currentMerman = successfulMerman(currentBatch?.merman ?? null);
+  const svgArtifact = currentMerman?.artifact ?? null;
+  const svg = svgArtifact?.svg ?? null;
+  const ascii = currentMerman?.ascii ?? null;
+  const asciiError = currentMerman?.asciiError ?? null;
+  const error = failedMessage(currentBatch?.merman ?? null);
+  const errorDetail = failedDetail(currentBatch?.merman ?? null);
+  const errorStage = failedStage(currentBatch?.merman ?? null);
+  const visibleMerman = successfulMerman(visibleBatch?.merman ?? null);
+  const visibleMermaid = successfulMermaid(visibleBatch?.mermaid ?? null);
+  const mermaidSvgArtifact = visibleMermaid?.artifact ?? null;
+  const mermaidError = failedMessage(visibleBatch?.mermaid ?? null);
+  const mermaidErrorDetail = failedDetail(visibleBatch?.mermaid ?? null);
+  const mermaidRenderTime = visibleMermaid?.renderTimeMs ?? null;
+  const renderPending = selectRenderPending(renderState);
+  const mermanRendering = Boolean(code.trim() && ready && renderPending);
+  const actionsEnabled = currentBatch?.actionsEnabled ?? false;
+  const compareStale = renderState.status === "updating";
+  const diagnostics = currentBatch?.diagnostics ?? EMPTY_DIAGNOSTICS;
+  const diagnosticsLoading = previewMode === "diagnostics" && renderPending;
   const isAsciiSupported = asciiSupport.isSupported(detectedDiagramType);
   const asciiCapability = asciiSupport.capabilityFor(detectedDiagramType);
   const asciiSupportLabel = t(asciiSupportLabelKey(asciiCapability));
   const asciiSupportLimit = asciiSupportDescription(asciiCapability);
   const svgViewport = useSvgViewport({
-    svg,
-    enabled: previewMode === "svg",
+    artifact: svgArtifact,
+    enabled: previewMode === "svg" && svgDisplayMode === "visual",
   });
-  const mermanCompareViewport = useSvgViewport({
-    svg,
-    enabled: previewMode === "compare",
-  });
-  const mermaidCompareViewport = useSvgViewport({
-    svg: mermaidSvg,
-    enabled: previewMode === "compare",
-  });
-  const localizeMermanError = useCallback(
-    (message: string | null): string | null => {
-      if (!message) return null;
-      const key = mermanRuntimeErrorI18nKey(message);
-      return key ? t(key) : message;
-    },
-    [t]
-  );
-  const localizeMermaidError = useCallback(
-    (message: string | null): string | null => {
-      if (!message) return null;
-      const key = mermaidRuntimeErrorI18nKey(message);
-      return key ? t(key) : message;
-    },
-    [t]
-  );
-  const warmCompareRenderer = useCallback(() => {
-    void prewarmMermaidRenderer(diagramTheme, mermaidConfig, {
-      diagramFont,
-    });
-  }, [diagramFont, diagramTheme, mermaidConfig]);
-  useEffect(() => {
-    let cancelled = false;
-
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
-    debounceRef.current = setTimeout(() => {
-      if (ready && code.trim()) {
-        const diagramType = detectedDiagramType;
-        setDiagramType(diagramType);
-
-        void (async () => {
-          await prewarmWasmRenderer(
-            diagramTheme,
-            mermaidConfig,
-            renderOptions
-          ).catch(() => undefined);
-          if (cancelled) return;
-
-          const result = render(code, diagramTheme, mermaidConfig, renderOptions);
-          if (cancelled) return;
-
-          const renderedAscii = asciiSupport.isSupported(diagramType)
-            ? renderAscii(code, diagramTheme, mermaidConfig)
-            : null;
-          setMermanRenderArtifact(
-            bindRenderArtifact(previewRenderKey, {
-              svg: result.svg,
-              ascii: renderedAscii,
-              error: localizeMermanError(result.error),
-              renderTime: result.error ? null : result.renderTime,
-            })
-          );
-          setLastRenderTime(result.renderTime);
-
-        })();
-      } else if (!code.trim()) {
-        setMermanRenderArtifact(null);
-      }
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, [
-    code,
-    asciiSupport,
-    detectedDiagramType,
-    diagramTheme,
-    localizeMermanError,
-    mermaidConfig,
-    previewRenderKey,
-    ready,
-    render,
-    renderOptions,
-    renderAscii,
-    setDiagramType,
-    setLastRenderTime,
-  ]);
-
   useEffect(() => {
     if (previewMode === "ascii" && !isAsciiSupported) {
       setPreviewMode("svg");
     }
-  }, [isAsciiSupported, previewMode]);
+  }, [isAsciiSupported, previewMode, setPreviewMode]);
 
   useEffect(() => {
-    if (previewMode !== "compare" || !code.trim()) {
-      setMermaidStatus("idle");
-      if (!code.trim()) {
-        setMermaidRenderArtifact(null);
-      }
-      return;
-    }
-
-    let cancelled = false;
-    setMermaidStatus(isMermaidLoaded() ? "rendering" : "preparing");
-    const timeout = setTimeout(() => {
-      void (async () => {
-        await prewarmMermaidRenderer(diagramTheme, mermaidConfig, {
-          diagramFont,
-        });
-        if (cancelled) return;
-        setMermaidStatus("rendering");
-        const result = await renderMermaidSvg(code, diagramTheme, mermaidConfig, {
-          diagramFont,
-        });
-        if (cancelled) return;
-        setMermaidRenderArtifact(
-          bindRenderArtifact(previewRenderKey, {
-            svg: result.svg,
-            error: localizeMermaidError(result.error),
-            renderTime: result.renderTime,
-          })
-        );
-        setMermaidStatus("idle");
-      })();
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-    };
-  }, [
-    code,
-    diagramFont,
-    diagramTheme,
-    localizeMermaidError,
-    mermaidConfig,
-    previewRenderKey,
-    previewMode,
-  ]);
+    setDiagnosticsEnabled(previewMode === "diagnostics");
+    return () => setDiagnosticsEnabled(false);
+  }, [previewMode]);
 
   useEffect(() => {
-    if (diagnosticsDebounceRef.current) {
-      clearTimeout(diagnosticsDebounceRef.current);
-    }
-
-    setDiagnostics(EMPTY_DIAGNOSTICS);
-
-    if (previewMode !== "diagnostics") {
-      setDiagnosticsLoading(false);
-      return;
-    }
-
-    if (!code.trim()) {
-      setDiagnostics(EMPTY_DIAGNOSTICS);
-      setDiagnosticsLoading(false);
-      return;
-    }
-
-    if (!ready) {
-      setDiagnostics(
-        diagnosticsError(
-          loading ? t("preview.loading") : t("preview.diagnosticsUnavailable")
-        )
-      );
-      setDiagnosticsLoading(false);
-      return;
-    }
-
-    setDiagnosticsLoading(true);
-    diagnosticsDebounceRef.current = setTimeout(() => {
-      setDiagnostics({
-        parse: collectDiagnostic(
-          () =>
-            parseJson(
-              code,
-              diagramTheme,
-              mermaidConfig,
-              renderOptions
-            ),
-          localizeMermanError
-        ),
-        layout: collectDiagnostic(
-          () =>
-            layoutJson(
-              code,
-              diagramTheme,
-              mermaidConfig,
-              renderOptions
-            ),
-          localizeMermanError
-        ),
-      });
-      setDiagnosticsLoading(false);
-    }, 300);
-
-    return () => {
-      if (diagnosticsDebounceRef.current) {
-        clearTimeout(diagnosticsDebounceRef.current);
-      }
-    };
-  }, [
-    code,
-    diagramTheme,
-    layoutJson,
-    loading,
-    localizeMermanError,
-    mermaidConfig,
-    parseJson,
-    previewMode,
-    ready,
-    renderOptions,
-    t,
-  ]);
+    const enabled = previewMode === "compare";
+    setCompareEnabled(enabled);
+    return () => setCompareEnabled(false);
+  }, [previewMode]);
 
   useEffect(() => {
     return () => {
@@ -465,14 +204,10 @@ export function Preview({ className }: PreviewProps) {
 
   const handleCopyAscii = useCallback(async () => {
     try {
-      const artifact = requireFreshRenderArtifact(
-        mermanRenderArtifact,
-        previewRenderKey
-      );
-      if (!artifact.ascii) {
+      if (!actionsEnabled || !ascii) {
         throw new Error("Current ASCII artifact is unavailable.");
       }
-      await navigator.clipboard.writeText(artifact.ascii);
+      await navigator.clipboard.writeText(ascii);
       setCopiedAsciiKey(asciiActionKey);
       if (asciiCopyTimeoutRef.current) {
         clearTimeout(asciiCopyTimeoutRef.current);
@@ -485,26 +220,27 @@ export function Preview({ className }: PreviewProps) {
     } catch {
       toast.error(t("share.copyFailed"));
     }
-  }, [asciiActionKey, mermanRenderArtifact, previewRenderKey, t]);
+  }, [actionsEnabled, ascii, asciiActionKey, t]);
 
-  const handleCopySvg = useCallback(async (
-    artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string,
-    actionKey: string
-  ) => {
-    try {
-      const safeSvg = requireFreshSvgArtifact(artifact, expectedRenderKey);
-      await navigator.clipboard.writeText(safeSvg);
-      setCopiedSvgKey(actionKey);
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
+  const handleCopySvg = useCallback(
+    async (artifact: SafeInlineSvg | null, actionKey: string) => {
+      try {
+        if (!actionsEnabled || !artifact) {
+          throw new Error("Current SVG artifact is unavailable.");
+        }
+        await copySVGToClipboard(artifact);
+        setCopiedSvgKey(actionKey);
+        if (copyTimeoutRef.current) {
+          clearTimeout(copyTimeoutRef.current);
+        }
+        copyTimeoutRef.current = setTimeout(() => setCopiedSvgKey(null), 2000);
+        toast.success(t("share.copied"));
+      } catch {
+        toast.error(t("share.copyFailed"));
       }
-      copyTimeoutRef.current = setTimeout(() => setCopiedSvgKey(null), 2000);
-      toast.success(t("share.copied"));
-    } catch {
-      toast.error(t("share.copyFailed"));
-    }
-  }, [t]);
+    },
+    [actionsEnabled, t]
+  );
 
   const handleCopyDiagnosticJson = useCallback(async () => {
     const json = diagnostics[diagnosticTab].json;
@@ -525,61 +261,89 @@ export function Preview({ className }: PreviewProps) {
     }
   }, [diagnosticTab, diagnostics]);
 
-  const handleExportSvg = useCallback((
-    engine: EngineKey,
-    artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string
-  ) => {
-    try {
-      const safeSvg = requireFreshSvgArtifact(artifact, expectedRenderKey);
-      exportSVG(safeSvg, `merman-compare-${engine}`);
-      toast.success(t("export.svgSuccess"));
-    } catch {
-      toast.error(t("export.failed"));
-    }
-  }, [t]);
+  const handleExportSvg = useCallback(
+    (engine: EngineKey, artifact: SafeInlineSvg | null) => {
+      try {
+        if (!actionsEnabled || !artifact) {
+          throw new Error("Current SVG artifact is unavailable.");
+        }
+        exportSVG(artifact, `merman-compare-${engine}`);
+        toast.success(t("export.svgSuccess"));
+      } catch {
+        toast.error(t("export.failed"));
+      }
+    },
+    [actionsEnabled, t]
+  );
 
   const handleExportPng = useCallback(async (
     engine: EngineKey,
-    artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string
+    artifact: SafeInlineSvg | null
   ) => {
     if (exportingPngEnginesRef.current.has(engine)) {
       return;
     }
     exportingPngEnginesRef.current.add(engine);
     setExportingPngEngines(new Set(exportingPngEnginesRef.current));
+    let notificationId: string | number | undefined;
     try {
-      const safeValue = requireFreshSvgArtifact(artifact, expectedRenderKey);
-      let exportSvg = safeValue;
+      if (!actionsEnabled || !artifact || !currentBatch) {
+        throw new Error("Current SVG artifact is unavailable.");
+      }
+      let exportArtifact = artifact;
       if (engine === "merman") {
-        const pngResult = render(code, diagramTheme, mermaidConfig, {
-          ...renderOptions,
-          pipeline: "resvg-safe",
-        });
-        if (!pngResult.svg) {
-          throw new Error(pngResult.error ?? "Failed to render PNG SVG");
+        const snapshot = currentBatch.snapshot;
+        const pngResult = facade?.render(
+          snapshot.source,
+          snapshot.theme,
+          snapshot.configJson,
+          { ...snapshot.options, pipeline: "resvg-safe" }
+        );
+        if (!pngResult || pngResult.status === "failure") {
+          throw new Error(
+            pngResult?.error.summary ?? "Failed to render PNG SVG"
+          );
         }
-        exportSvg = requireSafeSvgString(pngResult.svg);
+        exportArtifact = pngResult.artifact;
       }
 
-      await exportPNG(exportSvg, `merman-compare-${engine}`, 2);
-      toast.success(t("export.pngSuccess"));
-    } catch {
-      toast.error(t("export.failed"));
+      const plan = await exportPNG(
+        exportArtifact,
+        `merman-compare-${engine}`,
+        2,
+        {
+          onPlan: ({ outputWidth, outputHeight }) => {
+            notificationId = toast.loading(
+              t("export.pngPreparing", {
+                width: outputWidth,
+                height: outputHeight,
+              })
+            );
+          },
+        }
+      );
+      toast.success(
+        t("export.pngSuccess", {
+          width: plan.outputWidth,
+          height: plan.outputHeight,
+        }),
+        { id: notificationId }
+      );
+    } catch (error) {
+      toast.error(pngExportErrorMessage(error, t), { id: notificationId });
     } finally {
       exportingPngEnginesRef.current.delete(engine);
       setExportingPngEngines(new Set(exportingPngEnginesRef.current));
     }
-  }, [code, diagramTheme, mermaidConfig, render, renderOptions, t]);
+  }, [actionsEnabled, currentBatch, facade, t]);
 
   const handleRefreshCompare = useCallback(() => {
-    setRefreshNonce((value) => value + 1);
+    refreshRenderCoordinator();
   }, []);
 
   const copiedAscii = copiedAsciiKey === asciiActionKey;
   const mermanSvgUnavailableLabel = artifactUnavailableLabel({
-    value: svg,
+    available: Boolean(svg),
     error,
     loading: mermanRendering,
     t,
@@ -587,18 +351,13 @@ export function Preview({ className }: PreviewProps) {
   const mermaidRendering = Boolean(
     previewMode === "compare" &&
       code.trim() &&
-      (mermaidStatus !== "idle" || (!mermaidSvg && !mermaidError))
+      renderPending
   );
-  const mermaidLoadingLabel =
-    mermaidStatus === "preparing"
-      ? t("preview.preparingMermaid")
-      : mermaidStatus === "rendering"
-        ? t("preview.renderingMermaid")
-        : mermaidRendering
-          ? t("preview.renderingCurrent")
-          : null;
+  const mermaidLoadingLabel = mermaidRendering
+    ? t("preview.renderingCurrent")
+    : null;
   const mermaidSvgUnavailableLabel = artifactUnavailableLabel({
-    value: mermaidSvg,
+    available: Boolean(mermaidSvgArtifact),
     error: mermaidError,
     loading: mermaidRendering,
     t,
@@ -608,7 +367,7 @@ export function Preview({ className }: PreviewProps) {
     <TabBar
       mode={previewMode}
       onModeChange={setPreviewMode}
-      onCompareWarmup={warmCompareRenderer}
+      runtimeReady={ready}
       isAsciiSupported={isAsciiSupported}
       asciiCapability={asciiCapability}
       asciiSupportLabel={asciiSupportLabel}
@@ -622,9 +381,34 @@ export function Preview({ className }: PreviewProps) {
     return (
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
-        <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
-          {t("preview.loading")}
-        </CenteredMessage>
+        <div
+          id="preview-mode-panel"
+          role="tabpanel"
+          aria-labelledby={`preview-${previewMode}-tab`}
+          className="min-h-0 flex-1"
+        >
+          <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
+            {runtimeLoadStage
+              ? `${t("preview.loading")} (${runtimeLoadStage})`
+              : t("preview.loading")}
+          </CenteredMessage>
+        </div>
+      </div>
+    );
+  }
+
+  if (runtimeFailure) {
+    return (
+      <div className={cn("flex flex-col h-full", className)}>
+        {renderTabBar()}
+        <div
+          id="preview-mode-panel"
+          role="tabpanel"
+          aria-labelledby={`preview-${previewMode}-tab`}
+          className="min-h-0 flex-1"
+        >
+          <RuntimeFailureView failure={runtimeFailure} t={t} />
+        </div>
       </div>
     );
   }
@@ -633,10 +417,14 @@ export function Preview({ className }: PreviewProps) {
     return (
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
-        <div className="flex-1 flex items-center justify-center">
+        <div
+          id="preview-mode-panel"
+          role="tabpanel"
+          aria-labelledby={`preview-${previewMode}-tab`}
+          className="flex min-h-0 flex-1 items-center justify-center"
+        >
           <div className="text-center text-muted-foreground">
             <p className="text-sm">{t("preview.empty")}</p>
-            <p className="text-xs mt-1">{t("preview.emptyHint")}</p>
           </div>
         </div>
       </div>
@@ -647,7 +435,20 @@ export function Preview({ className }: PreviewProps) {
     return (
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
-        <RenderError message={error} t={t} />
+        <div
+          id="preview-mode-panel"
+          role="tabpanel"
+          aria-labelledby={`preview-${previewMode}-tab`}
+          className="min-h-0 flex-1"
+        >
+          <RenderError
+            engine={t("preview.mermanEngine")}
+            stage={errorStage}
+            message={error}
+            detail={errorDetail}
+            t={t}
+          />
+        </div>
       </div>
     );
   }
@@ -655,34 +456,36 @@ export function Preview({ className }: PreviewProps) {
   const mermanArtifact: CompareArtifact = {
     key: "merman",
     artifactKey: mermanSvgActionKey,
-    renderKey: previewRenderKey,
+    presentationKey: visibleBatch?.snapshot.requestId ?? null,
+    actionsEnabled,
     title: t("preview.mermanEngine"),
-    version: "WASM",
-    svg,
-    renderArtifact: mermanRenderArtifact,
-    error,
-    renderTime: svg ? mermanRenderTime : null,
+    version: visibleBatch?.snapshot.mermanVersion ?? facade?.packageVersion ?? "-",
+    svgArtifact: visibleMerman?.artifact ?? null,
+    error: failedMessage(visibleBatch?.merman ?? null),
+    errorDetail: failedDetail(visibleBatch?.merman ?? null),
+    errorStage: failedStage(visibleBatch?.merman ?? null),
+    renderTime: visibleMerman?.renderTimeMs ?? null,
     loading: mermanRendering,
     loadingLabel: mermanRendering ? t("preview.renderingCurrent") : null,
     unavailableLabel: mermanSvgUnavailableLabel,
+    stale: compareStale,
   };
-  const mermaidLoadSource = getMermaidLoadSource();
   const mermaidArtifact: CompareArtifact = {
     key: "mermaid",
     artifactKey: mermaidSvgActionKey,
-    renderKey: previewRenderKey,
+    presentationKey: visibleBatch?.snapshot.requestId ?? null,
+    actionsEnabled,
     title: t("preview.mermaidEngine"),
-    version:
-      mermaidLoadSource === "cdn"
-        ? t("preview.mermaidVersionCdn", { version: MERMAID_JS_VERSION })
-        : MERMAID_JS_VERSION,
-    svg: mermaidSvg,
-    renderArtifact: mermaidRenderArtifact,
+    version: visibleMermaid?.version ?? MERMAID_JS_VERSION,
+    svgArtifact: mermaidSvgArtifact,
     error: mermaidError,
+    errorDetail: mermaidErrorDetail,
+    errorStage: failedStage(visibleBatch?.mermaid ?? null),
     renderTime: mermaidRenderTime,
     loading: mermaidRendering,
     loadingLabel: mermaidLoadingLabel,
     unavailableLabel: mermaidSvgUnavailableLabel,
+    stale: compareStale,
   };
 
   return (
@@ -701,13 +504,9 @@ export function Preview({ className }: PreviewProps) {
                     : (mermanSvgUnavailableLabel ?? t("preview.copySvg"))
                 }
                 onClick={() =>
-                  handleCopySvg(
-                    mermanRenderArtifact,
-                    previewRenderKey,
-                    mermanSvgActionKey
-                  )
+                  handleCopySvg(svgArtifact, mermanSvgActionKey)
                 }
-                disabled={Boolean(mermanSvgUnavailableLabel)}
+                disabled={!actionsEnabled || Boolean(mermanSvgUnavailableLabel)}
               >
                 {copiedSvgKey === mermanSvgActionKey ? (
                   <Check className="size-4 text-green-500" />
@@ -739,7 +538,14 @@ export function Preview({ className }: PreviewProps) {
           {previewMode === "ascii" && ascii && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon-sm" onClick={handleCopyAscii}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleCopyAscii}
+                  aria-label={
+                    copiedAscii ? t("preview.copied") : t("preview.copyAscii")
+                  }
+                >
                   {copiedAscii ? (
                     <Check className="size-4 text-green-500" />
                   ) : (
@@ -782,27 +588,58 @@ export function Preview({ className }: PreviewProps) {
         </>
       )}
 
-      <div className="flex-1 min-h-0 relative overflow-hidden">
+      <div
+        id="preview-mode-panel"
+        role="tabpanel"
+        aria-labelledby={`preview-${previewMode}-tab`}
+        className="relative min-h-0 flex-1 overflow-hidden"
+      >
         {previewMode === "svg" && (
           svgDisplayMode === "source" ? (
             <SvgSourceEditor svg={svg} isDarkMode={isDarkMode} />
           ) : (
-            <SvgViewport svg={svg} controller={svgViewport} />
+            <SvgViewport
+              presentationKey={currentBatch?.snapshot.requestId ?? null}
+              controller={svgViewport}
+              onPresentationReady={(at) => {
+                if (currentBatch) {
+                  markRenderCoordinatorPresented(
+                    currentBatch.snapshot.requestId,
+                    "merman",
+                    at
+                  );
+                }
+              }}
+            />
           )
         )}
 
         {previewMode === "compare" && (
           <CompareView
-            mermanArtifact={mermanArtifact}
-            mermaidArtifact={mermaidArtifact}
-            mermanController={mermanCompareViewport}
-            mermaidController={mermaidCompareViewport}
-            copiedSvgKey={copiedSvgKey}
-            exportingPngEngines={exportingPngEngines}
+            merman={{
+              artifact: mermanArtifact,
+            }}
+            mermaid={{
+              artifact: mermaidArtifact,
+            }}
+            actions={{
+              copiedSvgKey,
+              exportingPngEngines,
+              onCopySvg: handleCopySvg,
+              onExportPng: handleExportPng,
+              onExportSvg: handleExportSvg,
+              onRetry: handleRefreshCompare,
+              onPresentationReady: (engine, at) => {
+                if (visibleBatch) {
+                  markRenderCoordinatorPresented(
+                    visibleBatch.snapshot.requestId,
+                    engine,
+                    at
+                  );
+                }
+              },
+            }}
             isDarkMode={isDarkMode}
-            onCopySvg={handleCopySvg}
-            onExportSvg={handleExportSvg}
-            onExportPng={handleExportPng}
             t={t}
           />
         )}
@@ -852,6 +689,15 @@ export function Preview({ className }: PreviewProps) {
                   />
                 </div>
               </div>
+            ) : asciiError ? (
+              <RenderError
+                engine={t("preview.mermanEngine")}
+                stage="ascii-render"
+                message={asciiError.summary}
+                detail={asciiError.detail}
+                t={t}
+                compact
+              />
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 <div className="max-w-sm text-center">
@@ -872,7 +718,7 @@ export function Preview({ className }: PreviewProps) {
 interface TabBarProps {
   mode: PreviewMode;
   onModeChange: (mode: PreviewMode) => void;
-  onCompareWarmup: () => void;
+  runtimeReady: boolean;
   isAsciiSupported: boolean;
   asciiCapability: AsciiCapability | null;
   asciiSupportLabel: string;
@@ -884,7 +730,7 @@ interface TabBarProps {
 function TabBar({
   mode,
   onModeChange,
-  onCompareWarmup,
+  runtimeReady,
   isAsciiSupported,
   asciiCapability,
   asciiSupportLabel,
@@ -894,21 +740,39 @@ function TabBar({
 }: TabBarProps) {
   return (
     <div className="flex h-10 shrink-0 items-center justify-between gap-2 overflow-hidden border-b bg-muted/30 px-2">
-      <div className="scrollbar-thin flex min-w-0 items-center gap-1 overflow-x-auto">
-        <TabButton active={mode === "svg"} onClick={() => onModeChange("svg")}>
+      <div
+        role="tablist"
+        aria-label={t("preview.title")}
+        aria-orientation="horizontal"
+        className="scrollbar-thin flex min-w-0 items-center gap-1 overflow-x-auto"
+        onKeyDown={handleTabListKeyDown}
+      >
+        <TabButton
+          value="svg"
+          active={mode === "svg"}
+          onClick={() => onModeChange("svg")}
+        >
           SVG
         </TabButton>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              onClick={() => isAsciiSupported && onModeChange("ascii")}
-              disabled={!isAsciiSupported}
+              id="preview-ascii-tab"
+              type="button"
+              role="tab"
+              tabIndex={mode === "ascii" ? 0 : -1}
+              aria-selected={mode === "ascii"}
+              aria-controls="preview-mode-panel"
+              onClick={() =>
+                runtimeReady && isAsciiSupported && onModeChange("ascii")
+              }
+              disabled={!runtimeReady || !isAsciiSupported}
               className={cn(
                 "shrink-0 px-3 py-1.5 text-sm rounded-md transition-colors",
                 mode === "ascii"
                   ? "bg-background text-foreground shadow-sm font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-background/50",
-                !isAsciiSupported &&
+                (!runtimeReady || !isAsciiSupported) &&
                   "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-muted-foreground"
               )}
             >
@@ -927,16 +791,18 @@ function TabBar({
           </span>
         )}
         <TabButton
+          value="compare"
           active={mode === "compare"}
           onClick={() => onModeChange("compare")}
-          onFocus={onCompareWarmup}
-          onPointerEnter={onCompareWarmup}
+          disabled={!runtimeReady}
         >
           {t("preview.compareMode")}
         </TabButton>
         <TabButton
+          value="diagnostics"
           active={mode === "diagnostics"}
           onClick={() => onModeChange("diagnostics")}
+          disabled={!runtimeReady}
         >
           {t("preview.diagnosticsMode")}
         </TabButton>
@@ -990,35 +856,63 @@ function asciiSupportTooltip(
 }
 
 interface TabButtonProps {
+  value: PreviewMode;
   active: boolean;
   onClick(): void;
-  onFocus?: () => void;
-  onPointerEnter?: () => void;
+  disabled?: boolean;
   children: ReactNode;
 }
 
 function TabButton({
+  value,
   active,
   onClick,
-  onFocus,
-  onPointerEnter,
+  disabled = false,
   children,
 }: TabButtonProps) {
   return (
     <button
+      id={`preview-${value}-tab`}
+      type="button"
+      role="tab"
+      tabIndex={active ? 0 : -1}
+      aria-selected={active}
+      aria-controls="preview-mode-panel"
       onClick={onClick}
-      onFocus={onFocus}
-      onPointerEnter={onPointerEnter}
+      disabled={disabled}
       className={cn(
         "shrink-0 px-3 py-1.5 text-sm rounded-md transition-colors",
         active
           ? "bg-background text-foreground shadow-sm font-medium"
-          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+          : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent"
       )}
     >
       {children}
     </button>
   );
+}
+
+function handleTabListKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+  if (!(event.target instanceof HTMLButtonElement)) return;
+  const tabs = Array.from(
+    event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      '[role="tab"]:not(:disabled)'
+    )
+  );
+  const currentIndex = tabs.indexOf(event.target);
+  if (currentIndex < 0) return;
+
+  let nextIndex: number | null = null;
+  if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+  if (event.key === "ArrowLeft") {
+    nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+  }
+  if (event.key === "Home") nextIndex = 0;
+  if (event.key === "End") nextIndex = tabs.length - 1;
+  if (nextIndex === null) return;
+  event.preventDefault();
+  tabs[nextIndex]?.focus();
 }
 
 function DiagnosticsView({
@@ -1039,22 +933,24 @@ function DiagnosticsView({
   const current = diagnostics[activeTab];
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => onActiveTabChange(value as DiagnosticKey)}
+      activationMode="manual"
+      className="h-full gap-0 bg-background"
+    >
       <div className="flex min-h-10 items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
-        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-          <TabButton
-            active={activeTab === "parse"}
-            onClick={() => onActiveTabChange("parse")}
-          >
+        <TabsList
+          aria-label={t("preview.diagnosticsMode")}
+          className="h-8 bg-muted/70 p-0.5"
+        >
+          <TabsTrigger value="parse" className="px-2.5 text-xs">
             {t("preview.parseJson")}
-          </TabButton>
-          <TabButton
-            active={activeTab === "layout"}
-            onClick={() => onActiveTabChange("layout")}
-          >
+          </TabsTrigger>
+          <TabsTrigger value="layout" className="px-2.5 text-xs">
             {t("preview.layoutJson")}
-          </TabButton>
-        </div>
+          </TabsTrigger>
+        </TabsList>
         <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
           {loading
             ? t("preview.runningDiagnostics")
@@ -1064,381 +960,76 @@ function DiagnosticsView({
         </p>
       </div>
 
-      <div className="min-h-0 flex-1">
-        {loading ? (
-          <CenteredMessage icon={<Loader2 className="size-6 animate-spin" />}>
-            {t("preview.runningDiagnostics")}
-          </CenteredMessage>
-        ) : current.error ? (
-          <RenderError message={current.error} t={t} compact />
-        ) : current.json ? (
-          <Editor
-            height="100%"
-            language="json"
-            value={current.json}
-            theme={isDarkMode ? "vs-dark" : "light"}
-            options={{
-              readOnly: true,
-              domReadOnly: true,
-              minimap: { enabled: false },
-              fontSize: 13,
-              fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-              scrollBeyondLastLine: false,
-              wordWrap: "on",
-              renderLineHighlight: "none",
-              selectionHighlight: false,
-              occurrencesHighlight: "off",
-              folding: true,
-              automaticLayout: true,
-              padding: { top: 16, bottom: 16 },
-            }}
+      {(["parse", "layout"] as const).map((tab) => (
+        <TabsContent
+          key={tab}
+          value={tab}
+          forceMount
+          className="mt-0 min-h-0 data-[state=inactive]:hidden"
+        >
+          <DiagnosticArtifactView
+            artifact={diagnostics[tab]}
+            stage={tab}
+            loading={loading}
+            isDarkMode={isDarkMode}
+            t={t}
           />
-        ) : (
-          <CenteredMessage icon={<FileCode className="size-8" />}>
-            {t("preview.diagnosticsEmpty")}
-          </CenteredMessage>
-        )}
-      </div>
-    </div>
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }
 
-function ViewportControls({
-  controller,
-  t,
-}: {
-  controller: SvgViewportController;
-  t: (key: string) => string;
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      <IconButton label={t("preview.zoomOut")} onClick={controller.zoomOut}>
-        <ZoomOut className="size-4" />
-      </IconButton>
-      <span className="text-xs text-muted-foreground w-12 text-center tabular-nums">
-        {Math.round(controller.zoom * 100)}%
-      </span>
-      <IconButton label={t("preview.zoomIn")} onClick={controller.zoomIn}>
-        <ZoomIn className="size-4" />
-      </IconButton>
-      <IconButton label={t("preview.fitToView")} onClick={controller.fitToView}>
-        <Maximize2 className="size-4" />
-      </IconButton>
-      <IconButton label={t("preview.reset")} onClick={controller.reset}>
-        <RotateCcw className="size-4" />
-      </IconButton>
-    </div>
-  );
-}
-
-function CompareView({
-  mermanArtifact,
-  mermaidArtifact,
-  mermanController,
-  mermaidController,
-  copiedSvgKey,
-  exportingPngEngines,
-  isDarkMode,
-  onCopySvg,
-  onExportSvg,
-  onExportPng,
-  t,
-}: {
-  mermanArtifact: CompareArtifact;
-  mermaidArtifact: CompareArtifact;
-  mermanController: SvgViewportController;
-  mermaidController: SvgViewportController;
-  copiedSvgKey: string | null;
-  exportingPngEngines: ReadonlySet<EngineKey>;
-  isDarkMode: boolean;
-  onCopySvg(
-    artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string,
-    actionKey: string
-  ): void;
-  onExportSvg(
-    engine: EngineKey,
-    artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string
-  ): void;
-  onExportPng(
-    engine: EngineKey,
-    artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string
-  ): void;
-  t: (key: string) => string;
-}) {
-  return (
-    <div className="h-full overflow-auto p-3">
-      <div className="grid min-h-full grid-cols-1 gap-3 xl:grid-cols-2">
-        <ComparePane
-          artifact={mermanArtifact}
-          controller={mermanController}
-          copied={copiedSvgKey === mermanArtifact.artifactKey}
-          exporting={exportingPngEngines.has(mermanArtifact.key)}
-          isDarkMode={isDarkMode}
-          onCopySvg={onCopySvg}
-          onExportSvg={onExportSvg}
-          onExportPng={onExportPng}
-          t={t}
-        />
-        <ComparePane
-          artifact={mermaidArtifact}
-          controller={mermaidController}
-          copied={copiedSvgKey === mermaidArtifact.artifactKey}
-          exporting={exportingPngEngines.has(mermaidArtifact.key)}
-          isDarkMode={isDarkMode}
-          onCopySvg={onCopySvg}
-          onExportSvg={onExportSvg}
-          onExportPng={onExportPng}
-          t={t}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ComparePane({
+function DiagnosticArtifactView({
   artifact,
-  controller,
-  copied,
-  exporting,
-  isDarkMode,
-  onCopySvg,
-  onExportSvg,
-  onExportPng,
-  t,
-}: {
-  artifact: CompareArtifact;
-  controller: SvgViewportController;
-  copied: boolean;
-  exporting: boolean;
-  isDarkMode: boolean;
-  onCopySvg(
-    artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string,
-    actionKey: string
-  ): void;
-  onExportSvg(
-    engine: EngineKey,
-    artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string
-  ): void;
-  onExportPng(
-    engine: EngineKey,
-    artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string
-  ): void;
-  t: (key: string) => string;
-}) {
-  const hasSvg = Boolean(artifact.svg);
-  const actionsDisabled = Boolean(artifact.unavailableLabel);
-  const [svgDisplayMode, setSvgDisplayMode] =
-    useState<SvgDisplayMode>("visual");
-
-  return (
-    <section className="flex min-h-[320px] flex-col overflow-hidden rounded-md border bg-background xl:min-h-0">
-      <div className="border-b bg-muted/30 px-3 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-medium">{artifact.title}</span>
-            <span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-              {artifact.version}
-            </span>
-          </div>
-          <p className="shrink-0 text-xs text-muted-foreground">
-            {artifact.loading
-              ? (artifact.loadingLabel ?? t("preview.renderingMermaid"))
-              : artifact.renderTime !== null
-                ? `${artifact.renderTime.toFixed(1)}ms`
-                : "-"}
-          </p>
-        </div>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          {hasSvg && <ViewportControls controller={controller} t={t} />}
-          {!hasSvg && <div />}
-          <div className="flex items-center gap-1">
-            <IconButton
-              label={
-                copied
-                  ? t("preview.copied")
-                  : (artifact.unavailableLabel ?? t("preview.copySvg"))
-              }
-              onClick={() =>
-                onCopySvg(
-                  artifact.renderArtifact,
-                  artifact.renderKey,
-                  artifact.artifactKey
-                )
-              }
-              disabled={actionsDisabled}
-            >
-              {copied ? (
-                <Check className="size-4 text-green-500" />
-              ) : (
-                <Copy className="size-4" />
-              )}
-            </IconButton>
-            <IconButton
-              label={artifact.unavailableLabel ?? t("preview.exportSvg")}
-              onClick={() =>
-                onExportSvg(
-                  artifact.key,
-                  artifact.renderArtifact,
-                  artifact.renderKey
-                )
-              }
-              disabled={actionsDisabled}
-            >
-              <FileCode className="size-4" />
-            </IconButton>
-            <IconButton
-              label={
-                svgDisplayMode === "visual"
-                  ? t("preview.viewSvgSource")
-                  : t("preview.viewSvgPreview")
-              }
-              onClick={() =>
-                setSvgDisplayMode((value) =>
-                  value === "visual" ? "source" : "visual"
-                )
-              }
-              disabled={!hasSvg}
-            >
-              {svgDisplayMode === "visual" ? (
-                <Code2 className="size-4" />
-              ) : (
-                <ImageIcon className="size-4" />
-              )}
-            </IconButton>
-            <IconButton
-              label={
-                exporting
-                  ? t("preview.exporting")
-                  : (artifact.unavailableLabel ?? t("preview.exportPng"))
-              }
-              onClick={() =>
-                onExportPng(
-                  artifact.key,
-                  artifact.renderArtifact,
-                  artifact.renderKey
-                )
-              }
-              disabled={actionsDisabled || exporting}
-            >
-              {exporting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <ImageIcon className="size-4" />
-              )}
-            </IconButton>
-          </div>
-        </div>
-      </div>
-      <div className="min-h-0 flex-1">
-        {artifact.loading ? (
-          <CenteredMessage icon={<Loader2 className="size-6 animate-spin" />}>
-            {artifact.loadingLabel ?? t("preview.renderingMermaid")}
-          </CenteredMessage>
-        ) : artifact.error ? (
-          <RenderError message={artifact.error} t={t} compact />
-        ) : svgDisplayMode === "source" ? (
-          <SvgSourceEditor svg={artifact.svg} isDarkMode={isDarkMode} />
-        ) : (
-          <SvgViewport
-            svg={artifact.svg}
-            controller={controller}
-            empty={
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                {t("preview.empty")}
-              </div>
-            }
-          />
-        )}
-      </div>
-    </section>
-  );
-}
-
-function artifactActionKey(kind: string, renderKey: string): string {
-  return JSON.stringify([kind, renderKey]);
-}
-
-function requireFreshRenderArtifact<T>(
-  artifact: RenderArtifact<T> | null,
-  expectedKey: string
-): T {
-  if (!artifact || artifact.key !== expectedKey) {
-    throw new Error("Rendered artifact is not current.");
-  }
-  return artifact.value;
-}
-
-function requireFreshSvgArtifact(
-  artifact: SvgRenderArtifact | null,
-  expectedKey: string
-): string {
-  const value = requireFreshRenderArtifact(artifact, expectedKey);
-  if (!value.svg) {
-    throw new Error("Current SVG artifact is unavailable.");
-  }
-  return requireSafeSvgString(value.svg);
-}
-
-function requireSafeSvgString(svg: string): string {
-  assertSafeSvgForDom(svg);
-  return svg;
-}
-
-function artifactUnavailableLabel({
-  value,
-  error,
+  stage,
   loading,
+  isDarkMode,
   t,
 }: {
-  value: string | null;
-  error: string | null;
+  artifact: DiagnosticArtifact;
+  stage: DiagnosticKey;
   loading: boolean;
-  t: (key: string) => string;
-}): string | null {
-  if (value) {
-    return null;
-  }
-  if (loading) {
-    return t("preview.renderingCurrent");
-  }
-  if (error) {
-    return t("preview.currentRenderFailed");
-  }
-  return t("preview.noCurrentArtifact");
-}
-
-function SvgSourceEditor({
-  svg,
-  isDarkMode,
-}: {
-  svg: string | null;
   isDarkMode: boolean;
+  t: (key: string) => string;
 }) {
-  if (!svg) {
+  if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        -
-      </div>
+      <CenteredMessage icon={<Loader2 className="size-6 animate-spin" />}>
+        {t("preview.runningDiagnostics")}
+      </CenteredMessage>
     );
   }
-
+  if (artifact.error) {
+    return (
+      <RenderError
+        engine="Merman"
+        stage={stage}
+        message={artifact.error}
+        detail={artifact.errorDetail}
+        t={t}
+        compact
+      />
+    );
+  }
+  if (!artifact.json) {
+    return (
+      <CenteredMessage icon={<FileCode className="size-8" />}>
+        {t("preview.diagnosticsEmpty")}
+      </CenteredMessage>
+    );
+  }
   return (
     <Editor
       height="100%"
-      language="xml"
-      value={svg}
+      language="json"
+      value={artifact.json}
       theme={isDarkMode ? "vs-dark" : "light"}
       options={{
         readOnly: true,
         domReadOnly: true,
         minimap: { enabled: false },
-        fontSize: 12,
+        fontSize: 13,
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
         scrollBeyondLastLine: false,
         wordWrap: "on",
@@ -1451,6 +1042,33 @@ function SvgSourceEditor({
       }}
     />
   );
+}
+
+function artifactActionKey(kind: string, renderKey: string): string {
+  return JSON.stringify([kind, renderKey]);
+}
+
+function artifactUnavailableLabel({
+  available,
+  error,
+  loading,
+  t,
+}: {
+  available: boolean;
+  error: string | null;
+  loading: boolean;
+  t: (key: string) => string;
+}): string | null {
+  if (available) {
+    return null;
+  }
+  if (loading) {
+    return t("preview.renderingCurrent");
+  }
+  if (error) {
+    return t("preview.currentRenderFailed");
+  }
+  return t("preview.noCurrentArtifact");
 }
 
 function IconButton({
@@ -1500,62 +1118,144 @@ function CenteredMessage({
 }
 
 function RenderError({
+  engine,
+  stage,
   message,
+  detail,
   t,
   compact = false,
 }: {
+  engine?: string;
+  stage?: string | null;
   message: string;
+  detail?: string | null;
   t: (key: string) => string;
   compact?: boolean;
 }) {
   return (
-    <div className="flex h-full flex-1 items-center justify-center p-6">
+    <div
+      className="flex h-full flex-1 items-center justify-center p-6"
+      data-merman-render-error="true"
+      data-merman-error-engine={engine}
+      data-merman-error-stage={stage ?? undefined}
+      role="alert"
+    >
       <div className={cn("text-center", compact ? "max-w-sm" : "max-w-md")}>
         <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
           <AlertCircle className="size-6 text-destructive" />
         </div>
-        <h3 className="mb-2 font-medium text-foreground">{t("preview.error")}</h3>
+        <h3 className="mb-1 font-medium text-foreground">
+          {engine ? `${engine} · ${t("preview.error")}` : t("preview.error")}
+        </h3>
+        {stage && (
+          <p className="mb-2 font-mono text-xs text-muted-foreground">{stage}</p>
+        )}
         <p className="rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
           {message}
         </p>
+        {detail && (
+          <details className="mt-3 text-left text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none text-center">
+              {t("preview.errorDetails")}
+            </summary>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono">
+              {detail}
+            </pre>
+          </details>
+        )}
       </div>
     </div>
   );
 }
 
-function collectDiagnostic(
-  createJson: () => string,
-  localizeError: (message: string | null) => string | null
-): DiagnosticArtifact {
-  const start = performance.now();
-
-  try {
-    const json = formatDiagnosticJson(createJson());
-    return {
-      json,
-      error: null,
-      elapsedMs: performance.now() - start,
-    };
-  } catch (err) {
-    return {
-      json: null,
-      error: localizeError(err instanceof Error ? err.message : String(err)),
-      elapsedMs: null,
-    };
-  }
-}
-
-function diagnosticsError(message: string): Record<DiagnosticKey, DiagnosticArtifact> {
-  return {
-    parse: { json: null, error: message, elapsedMs: null },
-    layout: { json: null, error: message, elapsedMs: null },
+function RuntimeFailureView({
+  failure,
+  t,
+}: {
+  failure: MermanRuntimeFailure;
+  t: (key: string) => string;
+}) {
+  const handleRecovery = () => {
+    if (failure.recovery === "reload") {
+      window.location.reload();
+      return;
+    }
+    void retryMermanRuntime().catch(() => undefined);
   };
+
+  return (
+    <div
+      className="flex h-full flex-1 items-center justify-center p-6"
+      role="alert"
+    >
+      <div className="max-w-md text-center">
+        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
+          <AlertCircle className="size-6 text-destructive" />
+        </div>
+        <h3 className="mb-2 font-medium text-foreground">
+          {t("preview.error")}
+        </h3>
+        <p className="mb-4 text-xs text-muted-foreground">{failure.stage}</p>
+        <p className="mb-4 rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
+          {failure.message}
+        </p>
+        {failure.detail && (
+          <details className="mb-4 text-left text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none text-center">
+              {t("preview.errorDetails")}
+            </summary>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-3 font-mono">
+              {failure.detail}
+            </pre>
+          </details>
+        )}
+        <Button onClick={handleRecovery}>
+          {t(failure.recovery === "reload" ? "wasm.reload" : "wasm.retry")}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
-function formatDiagnosticJson(rawJson: string): string {
-  try {
-    return `${JSON.stringify(JSON.parse(rawJson), null, 2)}\n`;
-  } catch {
-    return rawJson;
-  }
+
+function successfulMerman(
+  artifact: MermanRenderSuccess | EngineRenderFailure | null
+): MermanRenderSuccess | null {
+  return artifact?.status === "success" ? artifact : null;
+}
+
+function successfulMermaid(
+  artifact: MermaidRenderSuccess | EngineRenderFailure | null
+): MermaidRenderSuccess | null {
+  return artifact?.status === "success" ? artifact : null;
+}
+
+function failedMessage(
+  artifact:
+    | MermanRenderSuccess
+    | MermaidRenderSuccess
+    | EngineRenderFailure
+    | null
+): string | null {
+  return artifact?.status === "failure" ? artifact.message : null;
+}
+
+function failedDetail(
+  artifact:
+    | MermanRenderSuccess
+    | MermaidRenderSuccess
+    | EngineRenderFailure
+    | null
+): string | null {
+  return artifact?.status === "failure" ? artifact.detail : null;
+}
+
+function failedStage(
+  artifact:
+    | MermanRenderSuccess
+    | MermaidRenderSuccess
+    | EngineRenderFailure
+    | null
+): string | null {
+  return artifact?.status === "failure" ? artifact.stage : null;
 }

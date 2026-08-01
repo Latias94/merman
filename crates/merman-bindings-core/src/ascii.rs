@@ -1,14 +1,16 @@
 use crate::common::{
-    BindingError, BindingStatus, binding_fixed_local_offset_minutes, binding_fixed_today,
-    binding_site_config, no_diagram_error, parse_options, source_text,
+    BindingError, BindingStatus, binding_ascii_grid_cells, binding_input_resource_policy,
+    binding_site_config, no_diagram_error, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    let options = parse_options(options_json)?;
-    let renderer = build_ascii_renderer(&options)?;
-
-    render_ascii_with_renderer(&renderer, source)
+    crate::execute_once(crate::BindingOperationRequest {
+        operation_id: "ascii",
+        source,
+        uri: None,
+        options_json,
+    })
+    .map(|result| result.data)
 }
 
 #[derive(Clone)]
@@ -16,44 +18,61 @@ pub(crate) struct CachedAsciiEngine {
     renderer: merman::ascii::HeadlessAsciiRenderer,
 }
 
-impl CachedAsciiEngine {
-    pub(crate) fn new(options: &crate::common::BindingOptions) -> Result<Self, BindingError> {
-        Ok(Self {
-            renderer: build_ascii_renderer(options)?,
-        })
-    }
+pub(crate) struct AsciiOperationConfig {
+    runtime_policy: merman::runtime::RuntimePolicy,
+    parse_options: merman::ParseOptions,
+    render_options: merman::ascii::AsciiRenderOptions,
+    resources: merman::resources::InputResourcePolicy,
+    site_config: Option<merman::MermaidConfig>,
+}
 
+impl CachedAsciiEngine {
     pub(crate) fn render_ascii(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         render_ascii_with_renderer(&self.renderer, source)
     }
 }
 
-fn build_ascii_renderer(
-    options: &crate::common::BindingOptions,
-) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
-    let parse = if options
-        .analysis
-        .parse
-        .as_ref()
-        .and_then(|parse| parse.suppress_errors)
-        .unwrap_or(false)
-    {
-        merman::ParseOptions::lenient()
-    } else {
-        merman::ParseOptions::strict()
-    };
-
-    let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
-        .with_fixed_today(binding_fixed_today(options)?)
-        .with_fixed_local_offset_minutes(binding_fixed_local_offset_minutes(options)?)
-        .with_parse_options(parse)
-        .with_ascii_options(ascii_options_from_json(options)?);
-    if let Some(site_config) = binding_site_config(options)? {
-        renderer = renderer.with_site_config(site_config);
+impl AsciiOperationConfig {
+    pub(crate) fn compile(
+        options: &crate::common::BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
+        let parse_options = if options
+            .parse
+            .as_ref()
+            .and_then(|parse| parse.suppress_errors)
+            .unwrap_or(false)
+        {
+            merman::ParseOptions::lenient()
+        } else {
+            merman::ParseOptions::strict()
+        };
+        let mut render_options = ascii_options_from_json(options)?;
+        render_options.max_grid_cells =
+            binding_ascii_grid_cells(options.analysis.resources.as_ref())?;
+        let resources = binding_input_resource_policy(options.analysis.resources.as_ref())?;
+        let site_config = binding_site_config(options)?;
+        Ok(Self {
+            runtime_policy,
+            parse_options,
+            render_options,
+            resources,
+            site_config,
+        })
     }
 
-    Ok(renderer)
+    pub(crate) fn materialize(self) -> CachedAsciiEngine {
+        let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
+            .with_runtime_policy(self.runtime_policy)
+            .with_parse_options(self.parse_options)
+            .with_ascii_options(self.render_options)
+            .with_resource_policy(self.resources);
+        if let Some(site_config) = self.site_config {
+            renderer = renderer.with_site_config(site_config);
+        }
+        CachedAsciiEngine { renderer }
+    }
 }
 
 fn ascii_options_from_json(
@@ -76,6 +95,24 @@ fn ascii_options_from_json(
     if let Some(theme) = ascii_theme(ascii)? {
         render_options.color_theme = theme;
     }
+    if let Some(padding) = ascii.box_border_padding {
+        render_options.box_border_padding = padding;
+    }
+    if let Some(padding) = ascii.graph_padding_x {
+        render_options.graph_padding_x = padding;
+    }
+    if let Some(padding) = ascii.graph_padding_y {
+        render_options.graph_padding_y = padding;
+    }
+    if let Some(spacing) = ascii.sequence_participant_spacing {
+        render_options.sequence_participant_spacing = spacing;
+    }
+    if let Some(spacing) = ascii.sequence_message_spacing {
+        render_options.sequence_message_spacing = spacing;
+    }
+    if let Some(width) = ascii.sequence_self_message_width {
+        render_options.sequence_self_message_width = width;
+    }
     if let Some(sequence_mirror_actors) = ascii.sequence_mirror_actors {
         render_options.sequence_mirror_actors = sequence_mirror_actors;
     }
@@ -87,9 +124,6 @@ fn ascii_options_from_json(
     }
     if let Some(width) = ascii.xychart_horizontal_plot_width {
         render_options.xychart_horizontal_plot_width = width;
-    }
-    if let Some(max_grid_cells) = ascii.max_grid_cells {
-        render_options.max_grid_cells = max_grid_cells;
     }
     if let Some(relation_summary_diagnostics) = ascii.relation_summary_diagnostics {
         render_options.relation_summary_diagnostics = relation_summary_diagnostics;
@@ -199,14 +233,13 @@ fn ascii_direction(value: &str) -> Result<merman::ascii::AsciiDirection, Binding
 fn ascii_color_mode(value: &str) -> Result<merman::ascii::AsciiColorMode, BindingError> {
     match option_key(value).as_str() {
         "plain" | "none" => Ok(merman::ascii::AsciiColorMode::Plain),
-        "auto" => Ok(merman::ascii::AsciiColorMode::Auto),
         "ansi16" | "ansi-16" | "ansi_16" => Ok(merman::ascii::AsciiColorMode::Ansi16),
         "ansi256" | "ansi-256" | "ansi_256" => Ok(merman::ascii::AsciiColorMode::Ansi256),
         "truecolor" | "true-color" | "true_color" => Ok(merman::ascii::AsciiColorMode::TrueColor),
         "html" => Ok(merman::ascii::AsciiColorMode::Html),
         _ => Err(invalid_ascii_option(
             "ascii.color_mode",
-            "expected `plain`, `auto`, `ansi16`, `ansi256`, `truecolor`, or `html`",
+            "expected `plain`, `ansi16`, `ansi256`, `truecolor`, or `html`",
         )),
     }
 }
@@ -223,18 +256,28 @@ fn render_ascii_with_renderer(
     renderer: &merman::ascii::HeadlessAsciiRenderer,
     source: &str,
 ) -> Result<Vec<u8>, BindingError> {
+    let resource_profile = renderer.resource_policy().profile();
     let rendered = renderer
         .render_ascii_sync(source)
-        .map_err(classify_ascii_error)?
+        .map_err(|error| classify_ascii_error(error, resource_profile))?
         .ok_or_else(no_diagram_error)?;
 
     Ok(rendered.into_bytes())
 }
 
-fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError {
+fn classify_ascii_error(
+    err: merman::ascii::HeadlessAsciiError,
+    resource_profile: merman::resources::ResourceProfile,
+) -> BindingError {
     match err {
+        merman::ascii::HeadlessAsciiError::RuntimePolicy(err) => {
+            crate::common::runtime_policy_error(err)
+        }
         merman::ascii::HeadlessAsciiError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
+        }
+        merman::ascii::HeadlessAsciiError::Resource(err) => {
+            crate::common::input_resource_limit_error(err)
         }
         merman::ascii::HeadlessAsciiError::Ascii(err) => match err {
             merman::ascii::AsciiError::InvalidOption { .. } => {
@@ -242,10 +285,19 @@ fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError 
             }
             merman::ascii::AsciiError::UnsupportedDiagram { .. }
             | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
-                BindingError::new(BindingStatus::UnsupportedFormat, err.to_string())
+                BindingError::new(BindingStatus::UnsupportedOperation, err.to_string())
             }
-            merman::ascii::AsciiError::RenderLimitExceeded { .. } => {
-                BindingError::new(BindingStatus::RenderError, err.to_string())
+            merman::ascii::AsciiError::RenderLimitExceeded { actual, limit } => {
+                BindingError::resource_limit(
+                    merman::ascii::ASCII_RESOURCE_LIMIT_DESCRIPTORS[0].phase,
+                    merman::ascii::MAX_ASCII_GRID_CELLS_RESOURCE_LIMIT_ID,
+                    actual as u64,
+                    limit as u64,
+                    resource_profile.id(),
+                    format!(
+                        "ASCII render grid has {actual} cells, exceeding configured limit {limit}"
+                    ),
+                )
             }
             _ => BindingError::new(BindingStatus::RenderError, err.to_string()),
         },
@@ -267,13 +319,12 @@ mod tests {
     }
 
     #[test]
-    fn shared_parse_options_are_stored_under_analysis_options() {
+    fn shared_parse_options_are_stored_as_operation_options() {
         let options =
             crate::common::parse_options(br#"{ "parse": { "suppress_errors": true } }"#).unwrap();
 
         assert_eq!(
             options
-                .analysis
                 .parse
                 .as_ref()
                 .and_then(|parse| parse.suppress_errors),
@@ -315,6 +366,31 @@ mod tests {
     }
 
     #[test]
+    fn ascii_layout_options_compile_through_the_public_json_shape() {
+        let options = crate::common::parse_options(
+            br#"{
+                "ascii": {
+                    "boxBorderPadding": 2,
+                    "graph_padding_x": 3,
+                    "graphPaddingY": 4,
+                    "sequence_participant_spacing": 6,
+                    "sequenceMessageSpacing": 7,
+                    "sequence_self_message_width": 8
+                }
+            }"#,
+        )
+        .expect("valid ASCII layout options");
+
+        let compiled = ascii_options_from_json(&options).expect("ASCII options compile");
+        assert_eq!(compiled.box_border_padding, 2);
+        assert_eq!(compiled.graph_padding_x, 3);
+        assert_eq!(compiled.graph_padding_y, 4);
+        assert_eq!(compiled.sequence_participant_spacing, 6);
+        assert_eq!(compiled.sequence_message_spacing, 7);
+        assert_eq!(compiled.sequence_self_message_width, 8);
+    }
+
+    #[test]
     fn render_ascii_accepts_camel_case_default_direction_values() {
         let text = String::from_utf8(
             render_ascii(
@@ -334,7 +410,7 @@ mod tests {
         let text = String::from_utf8(
             render_ascii(
                 b"classDiagram\nclass Gateway\nclass Service\nclass Repo\nGateway --> Service : routes\nService --> Repo : stores",
-                br#"{ "ascii": { "charset": "ascii", "maxGridCells": 1, "relationSummaryDiagnostics": true } }"#,
+                br#"{ "resources": { "limits": { "max_ascii_grid_cells": 1 } }, "ascii": { "charset": "ascii", "relationSummaryDiagnostics": true } }"#,
             )
             .unwrap(),
         )
@@ -388,6 +464,18 @@ mod tests {
     }
 
     #[test]
+    fn render_ascii_rejects_environment_dependent_auto_color_mode() {
+        let err = render_ascii(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "ascii": { "color_mode": "auto" } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("ascii.color_mode"), "{err:?}");
+    }
+
+    #[test]
     fn render_ascii_rejects_invalid_ascii_numeric_options() {
         let err = render_ascii(
             b"xychart\nx-axis [A]\ny-axis 0 --> 1\nbar [1]",
@@ -403,6 +491,21 @@ mod tests {
     }
 
     #[test]
+    fn render_ascii_rejects_invalid_sequence_self_message_width() {
+        let err = render_ascii(
+            b"sequenceDiagram\nA->>A: Hello",
+            br#"{ "ascii": { "sequenceSelfMessageWidth": 1 } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(
+            err.message().contains("sequence_self_message_width"),
+            "{err:?}"
+        );
+    }
+
+    #[test]
     fn render_ascii_rejects_invalid_fixed_time_options() {
         let err = render_ascii(
             b"flowchart TD\nA[Hello]",
@@ -412,5 +515,89 @@ mod tests {
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(err.message().contains("fixed_today"), "{err:?}");
+    }
+
+    #[test]
+    fn render_ascii_enforces_shared_source_limit_before_parsing() {
+        let error = render_ascii(
+            b"flowchart TD\nA --> B",
+            br#"{ "resources": { "profile": "constrained", "limits": { "max_source_bytes": 4 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("max_source_bytes"), "{error:?}");
+        let details = error
+            .resource_details()
+            .expect("structured resource details");
+        assert_eq!(details.limit_id, "max_source_bytes");
+        assert_eq!(details.phase, "source");
+        assert_eq!(details.max, 4);
+        assert_eq!(details.profile, "constrained");
+    }
+
+    #[test]
+    fn render_ascii_enforces_shared_model_cardinality_limit() {
+        let error = render_ascii(
+            b"flowchart TD\nA --> B",
+            br#"{ "resources": { "profile": "constrained", "limits": { "max_model_items": 1 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("max_model_items"), "{error:?}");
+        let details = error
+            .resource_details()
+            .expect("structured resource details");
+        assert_eq!(details.limit_id, "max_model_items");
+        assert_eq!(details.phase, "layout_model");
+        assert_eq!(details.max, 1);
+        assert_eq!(details.profile, "constrained");
+    }
+
+    #[test]
+    fn ascii_resource_options_reject_svg_limits() {
+        let error = render_ascii(
+            b"flowchart TD\nA --> B",
+            br#"{ "resources": { "profile": "constrained", "limits": { "max_svg_bytes": 1 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("max_svg_bytes"), "{error:?}");
+    }
+
+    #[test]
+    fn render_ascii_grid_limit_uses_resource_limit_status() {
+        let error = render_ascii(
+            b"flowchart TD\nA[Hello] --> B[World]",
+            br#"{ "resources": { "limits": { "max_ascii_grid_cells": 1 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(error.message().contains("ASCII render grid"), "{error:?}");
+        let details = error
+            .resource_details()
+            .expect("structured resource details");
+        assert_eq!(details.limit_id, "max_ascii_grid_cells");
+        assert_eq!(details.phase, "ascii_layout");
+        assert_eq!(details.max, 1);
+        assert_eq!(details.profile, "interactive");
+    }
+
+    #[test]
+    fn render_ascii_rejects_removed_grid_limit_field() {
+        let error = render_ascii(
+            b"flowchart TD\nA --> B",
+            br#"{ "ascii": { "maxGridCells": 1 } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error.message().contains("max_ascii_grid_cells"),
+            "{error:?}"
+        );
     }
 }

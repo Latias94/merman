@@ -1,49 +1,7 @@
 pub(super) fn escape_xml_ampersands_preserving_xml_entities(
     raw: &str,
 ) -> std::borrow::Cow<'_, str> {
-    fn is_xml_predefined_entity(entity: &str) -> bool {
-        matches!(entity, "amp" | "lt" | "gt" | "quot" | "apos")
-    }
-
-    fn is_xml_numeric_entity(entity: &str) -> bool {
-        if let Some(hex) = entity
-            .strip_prefix("#x")
-            .or_else(|| entity.strip_prefix("#X"))
-        {
-            return !hex.is_empty() && hex.chars().all(|c| c.is_ascii_hexdigit());
-        }
-        if let Some(dec) = entity.strip_prefix('#') {
-            return !dec.is_empty() && dec.chars().all(|c| c.is_ascii_digit());
-        }
-        false
-    }
-
-    if !raw.as_bytes().contains(&b'&') {
-        return std::borrow::Cow::Borrowed(raw);
-    }
-
-    let mut out = String::with_capacity(raw.len());
-    let mut i = 0usize;
-    while let Some(rel) = raw[i..].find('&') {
-        let amp = i + rel;
-        out.push_str(&raw[i..amp]);
-
-        let tail = &raw[amp + 1..];
-        if let Some(semi_rel) = tail.find(';') {
-            let semi = amp + 1 + semi_rel;
-            let entity = &raw[amp + 1..semi];
-            if is_xml_predefined_entity(entity) || is_xml_numeric_entity(entity) {
-                out.push_str(&raw[amp..=semi]);
-                i = semi + 1;
-                continue;
-            }
-        }
-
-        out.push_str("&amp;");
-        i = amp + 1;
-    }
-    out.push_str(&raw[i..]);
-    std::borrow::Cow::Owned(out)
+    crate::xml::normalize_html_entities_for_xml(raw)
 }
 
 #[derive(Debug, Clone)]

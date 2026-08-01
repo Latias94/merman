@@ -1,29 +1,29 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Class1",
-          "x": 98.32,
+          "x": 97.702,
           "y": 131.0,
-          "width": 121.641,
+          "width": 120.404,
           "height": 192.0,
           "is_cluster": false
         },
         {
           "id": "Class2",
-          "x": 98.32,
+          "x": 97.702,
           "y": 319.0,
-          "width": 70.188,
+          "width": 67.688,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Namespace1",
-          "x": 98.32,
+          "x": 97.702,
           "y": 198.0,
-          "width": 196.641,
+          "width": 195.404,
           "height": 396.0,
           "is_cluster": true
         }
@@ -32,15 +32,15 @@
       "clusters": [
         {
           "id": "Namespace1",
-          "x": 98.32,
+          "x": 97.702,
           "y": 198.0,
-          "width": 196.641,
+          "width": 195.404,
           "height": 396.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Namespace1",
           "title_label": {
-            "x": 98.32,
+            "x": 97.702,
             "y": 12.0,
             "width": 79.2,
             "height": 24.0
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 196.641,
+        "max_x": 195.404,
         "max_y": 396.0
       }
     }

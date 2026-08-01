@@ -6,7 +6,7 @@ use merman_editor_core::{
     CompletionResolveData, completion_documentation,
     completion_for_snapshot as core_completion_for_snapshot,
 };
-use tower_lsp::lsp_types::{
+use tower_lsp_server::ls_types::{
     CompletionItem, CompletionItemKind as LspCompletionItemKind, CompletionItemLabelDetails,
     CompletionList, CompletionTextEdit, Documentation, InsertTextFormat, MarkupContent, MarkupKind,
     Position, TextEdit,
@@ -124,15 +124,15 @@ pub(crate) fn resolve_completion_item_with_profile(
 #[cfg(test)]
 mod tests {
     use super::completion_for_snapshot;
-    use crate::document_store::DocumentStore;
-    use merman_core::{diagram_header_facts_for_profile, selected_baseline_registry_profile};
-    use tower_lsp::lsp_types::{Position, Url};
+    use crate::snapshot::snapshot_for_test;
+    use merman_core::diagram_header_facts;
+    use std::str::FromStr;
+    use tower_lsp_server::ls_types::{Position, Uri};
 
     #[test]
     fn diagram_header_items_follow_core_header_facts() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(uri, 1, "flow".to_string());
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let snapshot = snapshot_for_test(uri, 1, "flow");
         let labels: Vec<_> = completion_for_snapshot(&snapshot, Position::new(0, 4))
             .items
             .into_iter()
@@ -145,11 +145,10 @@ mod tests {
             })
             .map(|item| item.label)
             .collect();
-        let expected: Vec<_> =
-            diagram_header_facts_for_profile(selected_baseline_registry_profile())
-                .iter()
-                .map(|fact| fact.label.to_string())
-                .collect();
+        let expected: Vec<_> = diagram_header_facts()
+            .iter()
+            .map(|fact| fact.label.to_string())
+            .collect();
 
         assert_eq!(labels, expected);
     }

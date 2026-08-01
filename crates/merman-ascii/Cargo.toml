@@ -13,10 +13,12 @@ readme = "README.md"
 keywords = ["mermaid", "diagrams", "ascii", "unicode", "headless"]
 categories = ["visualization", "command-line-utilities"]
 
+[package.metadata.merman]
+artifact-profile-required = true
+fixed-capabilities = ["ascii"]
+
 [features]
-default = ["core-full", "core-host"]
-core-full = ["merman-core/full"]
-core-host = ["merman-core/host"]
+default = []
 
 [dependencies]
 chrono.workspace = true

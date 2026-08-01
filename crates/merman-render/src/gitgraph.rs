@@ -77,29 +77,13 @@ fn commit_axis_start_pos(dir: &str) -> f64 {
     }
 }
 
-fn branch_label_bbox_width_px(
-    direction: &str,
-    text: &str,
-    style: &TextStyle,
-    measurer: &dyn TextMeasurer,
-) -> f64 {
-    if direction == "TB" || direction == "BT" {
-        // Mermaid measures GitGraph branch labels with `drawText(name).getBBox()` before placing
-        // the background rect and, for vertical layouts, before advancing the next branch lane.
-        // Chromium's bbox for these unrotated labels behaves like the centered SVG bbox path with
-        // 1/64px ties-to-even quantization; including ASCII glyph overhang makes vertical roots
-        // systematically too wide.
-        let (left, right) = measurer.measure_svg_text_bbox_x(text, style);
-        crate::text::round_to_1_64_px_ties_to_even((left + right).max(0.0))
-    } else {
-        // Horizontal branch labels line up with the text advance rather than ASCII-overhang bbox
-        // width; upstream rects match `<text>.getComputedTextLength()`.
-        crate::text::round_to_1_64_px(
-            measurer
-                .measure_svg_text_computed_length_px(text, style)
-                .max(0.0),
-        )
-    }
+fn branch_label_bbox_width_px(text: &str, style: &TextStyle, measurer: &dyn TextMeasurer) -> f64 {
+    // Mermaid creates the same `<text><tspan>` node for every direction and reads its `getBBox()`.
+    // Keep that DOM measurement semantic intact so a host SvgBBox route can provide the exact
+    // system-font result. The vendored profile remains a deterministic fallback.
+    measurer
+        .measure_svg_tspan_text_bbox_width_px(text, style)
+        .max(0.0)
 }
 
 fn should_reroute_arrow(
@@ -562,16 +546,7 @@ fn draw_arrow(
     })
 }
 
-pub fn layout_gitgraph_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<GitGraphDiagramLayout> {
-    let model: GitGraphRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_gitgraph_diagram_typed(&model, effective_config, measurer)
-}
-
-pub fn layout_gitgraph_diagram_typed(
+pub(crate) fn layout_gitgraph_diagram_typed(
     model: &GitGraphRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
@@ -613,6 +588,7 @@ pub fn layout_gitgraph_diagram_typed(
         font_family: Some(font_family),
         font_size,
         font_weight: None,
+        font_style: None,
     };
 
     let mut branches: Vec<GitGraphBranchLayout> = Vec::new();
@@ -621,7 +597,7 @@ pub fn layout_gitgraph_diagram_typed(
     let mut pos = 0.0;
     for (i, b) in model.branches.iter().enumerate() {
         let metrics = measurer.measure(&b.name, &label_style);
-        let bbox_w = branch_label_bbox_width_px(&direction, &b.name, &label_style, measurer);
+        let bbox_w = branch_label_bbox_width_px(&b.name, &label_style, measurer);
         branch_pos.insert(b.name.as_str(), pos);
         branch_index.insert(b.name.as_str(), i);
 
@@ -852,6 +828,7 @@ mod tests {
         GitGraphBranchRenderModel, GitGraphCommitRenderModel, GitGraphRenderModel,
     };
     use serde_json::json;
+    use std::cell::RefCell;
 
     fn commit(id: &str, seq: i64, parents: &[&str], branch: &str) -> GitGraphCommitRenderModel {
         GitGraphCommitRenderModel {
@@ -902,30 +879,44 @@ mod tests {
     }
 
     #[test]
-    fn vertical_branch_label_widths_use_centered_bbox_ties_to_even() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+    fn branch_label_widths_use_rendered_tspan_bbox() {
+        #[derive(Default)]
+        struct BranchLabelMeasurer {
+            calls: RefCell<Vec<String>>,
+        }
+
+        impl TextMeasurer for BranchLabelMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+                panic!("GitGraph branch labels must use the rendered tspan DOM operation")
+            }
+
+            fn measure_svg_text_computed_length_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+                panic!("getComputedTextLength must not stand in for tspan getBBox")
+            }
+
+            fn measure_svg_raw_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+                panic!("a direct text-node bbox must not stand in for a child-tspan bbox")
+            }
+
+            fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                self.calls.borrow_mut().push(text.to_string());
+                123.456_789
+            }
+        }
+
+        let measurer = BranchLabelMeasurer::default();
         let style = TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size: 16.0,
             font_weight: None,
+            font_style: None,
         };
 
         assert_eq!(
-            branch_label_bbox_width_px("TB", "main", &style, &measurer),
-            35.0
+            branch_label_bbox_width_px("main", &style, &measurer),
+            123.456_789
         );
-        assert_eq!(
-            branch_label_bbox_width_px("TB", "branch1", &style, &measurer),
-            57.34375
-        );
-        assert_eq!(
-            branch_label_bbox_width_px("TB", "branch4", &style, &measurer),
-            57.34375
-        );
-        assert_eq!(
-            branch_label_bbox_width_px("LR", "branch4", &style, &measurer),
-            57.359375
-        );
+        assert_eq!(&*measurer.calls.borrow(), &["main"]);
     }
 
     #[test]
@@ -941,6 +932,7 @@ mod tests {
                 commits: vec![commit("1", 0, &[], "main"), commit("2", 1, &["1"], "main")],
                 current_branch: "main".to_string(),
                 direction: "LR".to_string(),
+                title: None,
                 acc_title: None,
                 acc_descr: None,
                 warning_facts: Vec::new(),
@@ -984,6 +976,7 @@ mod tests {
             ],
             current_branch: "main".to_string(),
             direction: "LR".to_string(),
+            title: None,
             acc_title: None,
             acc_descr: None,
             warning_facts: Vec::new(),
@@ -1029,6 +1022,7 @@ mod tests {
             ],
             current_branch: "main".to_string(),
             direction: "BT".to_string(),
+            title: None,
             acc_title: None,
             acc_descr: None,
             warning_facts: Vec::new(),

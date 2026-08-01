@@ -1,7 +1,7 @@
 use crate::dagre::self_loop::compact_self_loop_geometry;
 use crate::math::MathRenderer;
 use crate::model::{
-    FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+    FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -15,13 +15,11 @@ use std::collections::{HashMap, HashSet};
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
-use super::{FlowEdge, FlowSubgraph, FlowchartV2Model};
+use super::{FlowEdge, FlowSubgraph, FlowchartModel};
 use super::{
-    FlowchartLabelMetricsRequest, flowchart_effective_font_style_for_classes,
-    flowchart_effective_font_style_for_node_classes, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
-    flowchart_label_plain_text_for_layout, flowchart_node_has_span_css_height_parity,
-    flowchart_whole_label_font_style_requests_italic,
+    FlowchartLabelMetricsRequest, flowchart_apply_html_node_class_box_metrics,
+    flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
+    flowchart_label_metrics_for_layout,
 };
 
 pub(super) fn flowchart_svg_plain_computed_width_px(
@@ -36,7 +34,7 @@ pub(super) fn flowchart_svg_plain_computed_width_px(
     for line in wrapped_lines {
         width = width.max(measurer.measure_svg_text_computed_length_px(line.trim_end(), style));
     }
-    crate::text::round_to_1_64_px(width)
+    width
 }
 
 fn rank_dir_from_flow(direction: &str) -> RankDir {
@@ -956,89 +954,53 @@ fn extract_clusters_recursively(
     }
 }
 
-pub fn layout_flowchart_v2(
-    semantic: &Value,
+pub(crate) fn layout_flowchart_typed(
+    model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<FlowchartV2Layout> {
-    let timing_enabled = std::env::var("MERMAN_FLOWCHART_LAYOUT_TIMING")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-    let total_start = timing_enabled.then(web_time::Instant::now);
-
-    let deserialize_start = timing_enabled.then(web_time::Instant::now);
-    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
-    let deserialize = deserialize_start.map(|s| s.elapsed()).unwrap_or_default();
-
-    layout_flowchart_v2_with_model(
-        &model,
-        effective_config,
-        measurer,
-        math_renderer,
-        timing_enabled,
-        total_start,
-        deserialize,
-    )
+) -> Result<FlowchartLayout> {
+    layout_flowchart_with_model(model, effective_config, measurer, math_renderer)
 }
 
-pub fn layout_flowchart_v2_typed(
-    model: &FlowchartV2Model,
-    effective_config: &MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<FlowchartV2Layout> {
-    let timing_enabled = std::env::var("MERMAN_FLOWCHART_LAYOUT_TIMING")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-    let total_start = timing_enabled.then(web_time::Instant::now);
-
-    layout_flowchart_v2_with_model(
-        model,
-        effective_config,
-        measurer,
-        math_renderer,
-        timing_enabled,
-        total_start,
-        web_time::Duration::default(),
-    )
-}
-
-fn layout_flowchart_v2_with_model(
-    model: &FlowchartV2Model,
-    effective_config: &MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    timing_enabled: bool,
-    total_start: Option<web_time::Instant>,
-    deserialize: web_time::Duration,
-) -> Result<FlowchartV2Layout> {
-    #[derive(Debug, Default, Clone)]
-    struct FlowchartLayoutTimings {
-        total: web_time::Duration,
-        deserialize: web_time::Duration,
-        expand_self_loops: web_time::Duration,
-        build_graph: web_time::Duration,
-        extract_clusters: web_time::Duration,
-        dom_order: web_time::Duration,
-        layout_recursive: web_time::Duration,
-        dagre_calls: u32,
-        dagre_total: web_time::Duration,
-        place_graph: web_time::Duration,
-        build_output: web_time::Duration,
+/// Estimates the graphlib pre-pass work performed for flowchart clusters.
+///
+/// `adjust_flowchart_clusters_and_edges` scans every edge for every cluster and the recursive
+/// extractor scans the edge set again while copying each cluster's descendants. The estimate
+/// intentionally charges only those source-backed inspections (plus a small linear layout
+/// baseline); the Dagre/ELK kernels remain responsible for their own internal work.
+pub(crate) fn flowchart_layout_work_units(model: &FlowchartModel) -> usize {
+    let nodes = model.nodes.len().saturating_add(model.subgraphs.len());
+    let edges = model.edges.len();
+    let subgraphs = model.subgraphs.len();
+    let baseline = nodes.saturating_add(edges).saturating_mul(4);
+    if subgraphs == 0 || edges == 0 {
+        return baseline;
     }
 
-    let mut timings = FlowchartLayoutTimings {
-        deserialize,
-        ..Default::default()
-    };
+    let depth = merman_core::resources::FlowchartComplexity::from_model(model)
+        .subgraph_depth
+        .max(1);
+    let cluster_edge_scans = subgraphs.saturating_mul(edges).saturating_mul(depth);
+    let extraction_edge_scans = nodes.saturating_mul(edges);
 
+    baseline
+        .saturating_add(cluster_edge_scans)
+        .saturating_add(extraction_edge_scans)
+}
+
+fn layout_flowchart_with_model(
+    model: &FlowchartModel,
+    effective_config: &MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Result<FlowchartLayout> {
+    super::validate_flowchart_model_shapes(model)?;
     let effective_config_value = effective_config.as_value();
 
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid
     // uses `*-cyclic-special-*` ids when rendering self-loops).
-    let expand_self_loops_start = timing_enabled.then(web_time::Instant::now);
     let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
     let mut render_edges: Vec<std::borrow::Cow<'_, FlowEdge>> =
         Vec::with_capacity(model.edges.len() + self_loop_count * 3);
@@ -1083,12 +1045,6 @@ fn layout_flowchart_v2_with_model(
             order: 2,
         }));
     }
-    if let Some(s) = expand_self_loops_start {
-        timings.expand_self_loops = s.elapsed();
-    }
-
-    let build_graph_start = timing_enabled.then(web_time::Instant::now);
-
     let FlowchartLayoutSettings {
         nodesep,
         ranksep,
@@ -1098,7 +1054,6 @@ fn layout_flowchart_v2_with_model(
         edge_label_wrapping_width,
         cluster_title_wrapping_width,
         edge_html_labels,
-        node_html_label_css_parity,
         node_wrap_mode,
         edge_wrap_mode,
         cluster_wrap_mode,
@@ -1191,11 +1146,6 @@ fn layout_flowchart_v2_with_model(
             &n.classes,
             &n.styles,
         );
-        let node_font_style = flowchart_effective_font_style_for_node_classes(
-            &model.class_defs,
-            &n.classes,
-            &n.styles,
-        );
         let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
             raw_label,
@@ -1205,25 +1155,12 @@ fn layout_flowchart_v2_with_model(
             wrap_mode: node_wrap_mode,
             config: effective_config,
             math_renderer,
-            preserve_string_whitespace_height: node_html_label_css_parity,
-            whole_label_font_style: node_font_style.as_deref(),
         });
-        let span_css_height_parity =
-            flowchart_node_has_span_css_height_parity(&model.class_defs, &n.classes);
-        if node_html_label_css_parity && span_css_height_parity {
-            crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                &mut metrics,
-                node_text_style.as_ref(),
-            );
-        }
         if node_wrap_mode == WrapMode::SvgLike
             && label_type != "markdown"
             && !raw_label.contains('<')
             && !raw_label.contains('>')
-            && matches!(
-                n.layout_shape.as_deref().unwrap_or("squareRect"),
-                "squareRect"
-            )
+            && super::is_flowchart_process_shape(n.layout_shape.as_deref().unwrap_or("squareRect"))
         {
             let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
                 raw_label, label_type, false,
@@ -1235,6 +1172,16 @@ fn layout_flowchart_v2_with_model(
                 Some(wrapping_width),
             );
         }
+        if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
+            flowchart_apply_html_node_class_box_metrics(
+                &mut metrics,
+                raw_label,
+                label_type,
+                node_text_style.as_ref(),
+                &model.class_defs,
+                &n.classes,
+            );
+        }
         leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
             layout_shape: n.layout_shape.as_deref(),
@@ -1243,7 +1190,6 @@ fn layout_flowchart_v2_with_model(
             padding: node_padding,
             look_is_neo,
             state_padding,
-            wrap_mode: node_wrap_mode,
             node_icon: n.icon.as_deref(),
             node_img: n.img.as_deref(),
             node_pos: n.pos.as_deref(),
@@ -1270,9 +1216,7 @@ fn layout_flowchart_v2_with_model(
             &sg.classes,
             &sg.styles,
         );
-        let sg_font_style =
-            flowchart_effective_font_style_for_classes(&model.class_defs, &sg.classes, &sg.styles);
-        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+        let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
             raw_label: &sg.title,
             label_type,
@@ -1281,9 +1225,17 @@ fn layout_flowchart_v2_with_model(
             wrap_mode: node_wrap_mode,
             config: effective_config,
             math_renderer,
-            preserve_string_whitespace_height: node_html_label_css_parity,
-            whole_label_font_style: sg_font_style.as_deref(),
         });
+        if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
+            flowchart_apply_html_node_class_box_metrics(
+                &mut metrics,
+                &sg.title,
+                label_type,
+                sg_text_style.as_ref(),
+                &model.class_defs,
+                &sg.classes,
+            );
+        }
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
             layout_shape: Some("squareRect"),
@@ -1292,7 +1244,6 @@ fn layout_flowchart_v2_with_model(
             padding: cluster_padding,
             look_is_neo: false,
             state_padding,
-            wrap_mode: node_wrap_mode,
             node_icon: None,
             node_img: None,
             node_pos: None,
@@ -1447,31 +1398,14 @@ fn layout_flowchart_v2_with_model(
                 &e.classes,
                 &e.style,
             );
-            let edge_font_style =
-                flowchart_effective_font_style_for_classes(&model.class_defs, &e.classes, &e.style);
             let metrics = if label_type == "markdown" && edge_wrap_mode != WrapMode::HtmlLike {
-                let mut metrics = crate::text::measure_wrapped_markdown_with_flowchart_bold_deltas(
+                crate::text::measure_wrapped_markdown_with_inline_styles(
                     measurer,
                     label_text,
                     edge_text_style.as_ref(),
                     Some(edge_label_wrapping_width),
                     edge_wrap_mode,
-                );
-                if flowchart_whole_label_font_style_requests_italic(edge_font_style.as_deref()) {
-                    let plain = flowchart_label_plain_text_for_layout(
-                        label_text,
-                        label_type,
-                        edge_wrap_mode == WrapMode::HtmlLike,
-                    );
-                    let italic_delta = crate::text::mermaid_default_italic_width_delta_px(
-                        &plain,
-                        edge_text_style.as_ref(),
-                    );
-                    if italic_delta > 0.0 {
-                        metrics.width = crate::text::round_to_1_64_px(metrics.width + italic_delta);
-                    }
-                }
-                metrics
+                )
             } else {
                 flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
                     measurer,
@@ -1482,8 +1416,6 @@ fn layout_flowchart_v2_with_model(
                     wrap_mode: edge_wrap_mode,
                     config: effective_config,
                     math_renderer,
-                    preserve_string_whitespace_height: false,
-                    whole_label_font_style: edge_font_style.as_deref(),
                 })
             };
             let (label_width, label_height) = if edge_html_labels {
@@ -1549,16 +1481,11 @@ fn layout_flowchart_v2_with_model(
         edge_endpoints_by_id.insert(edge_id, (ek.v.clone(), ek.w.clone()));
     }
 
-    if let Some(s) = build_graph_start {
-        timings.build_graph = s.elapsed();
-    }
-
     let mut extracted_graphs: std::collections::HashMap<
         String,
         Graph<NodeLabel, EdgeLabel, GraphLabel>,
     > = std::collections::HashMap::new();
     if has_subgraphs {
-        let extract_start = timing_enabled.then(web_time::Instant::now);
         extract_clusters_recursively(
             &mut g,
             &subgraphs_by_id,
@@ -1566,10 +1493,6 @@ fn layout_flowchart_v2_with_model(
             &mut extracted_graphs,
             0,
         );
-        if let Some(s) = extract_start {
-            timings.extract_clusters = s.elapsed();
-        }
-
         // Explicit-direction extraction can rebind a cross-boundary edge to the cluster node.
         // Refresh root endpoints after extraction so output lookup uses the surviving nodes.
         for ek in g.edge_keys() {
@@ -1589,15 +1512,10 @@ fn layout_flowchart_v2_with_model(
     // insertion order per root so the headless SVG matches strict DOM expectations.
     let mut dom_node_order_by_root: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
-    let dom_order_start = timing_enabled.then(web_time::Instant::now);
     dom_node_order_by_root.insert(String::new(), g.node_ids());
     for (id, cg) in &extracted_graphs {
         dom_node_order_by_root.insert(id.clone(), cg.node_ids());
     }
-    if let Some(s) = dom_order_start {
-        timings.dom_order = s.elapsed();
-    }
-
     type Rect = merman_core::geom::Box2;
 
     struct ClusterTitleMetricsContext<'a> {
@@ -1618,24 +1536,27 @@ fn layout_flowchart_v2_with_model(
     ) -> Option<(f64, f64)> {
         let sg = ctx.subgraphs_by_id.get(id)?;
         let label_type = sg.label_type.as_deref().unwrap_or("text");
-        let title_font_style =
-            flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
         let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
+        let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
+            ctx.html_label_text_style
+        } else {
+            ctx.text_style
+        };
+        let text_style = flowchart_effective_text_style_for_classes(
+            base_style,
+            ctx.class_defs,
+            &sg.classes,
+            &sg.styles,
+        );
         let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: &sg.title,
             label_type,
-            style: if ctx.wrap_mode == WrapMode::HtmlLike {
-                ctx.html_label_text_style
-            } else {
-                ctx.text_style
-            },
+            style: text_style.as_ref(),
             max_width_px: title_width_limit,
             wrap_mode: ctx.wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
-            preserve_string_whitespace_height: false,
-            whole_label_font_style: title_font_style.as_deref(),
         });
         Some((metrics.width.max(1.0), metrics.height.max(1.0)))
     }
@@ -1782,8 +1703,6 @@ fn layout_flowchart_v2_with_model(
         title_total_margin: f64,
         title_metrics_ctx: &'a ClusterTitleMetricsContext<'a>,
         cluster_padding: f64,
-        timings: &'a mut FlowchartLayoutTimings,
-        timing_enabled: bool,
     }
 
     fn layout_graph_with_recursive_clusters(
@@ -1875,14 +1794,7 @@ fn layout_flowchart_v2_with_model(
             graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
             ctx: &mut RecursiveLayoutContext<'_>,
         ) {
-            if ctx.timing_enabled {
-                ctx.timings.dagre_calls += 1;
-                let start = web_time::Instant::now();
-                dugong::layout_dagreish(graph);
-                ctx.timings.dagre_total += start.elapsed();
-            } else {
-                dugong::layout_dagreish(graph);
-            }
+            dugong::layout(graph);
             apply_mermaid_subgraph_title_shifts(
                 graph,
                 ctx.extracted,
@@ -1952,7 +1864,6 @@ fn layout_flowchart_v2_with_model(
         }
     }
 
-    let layout_start = timing_enabled.then(web_time::Instant::now);
     {
         let title_metrics_ctx = ClusterTitleMetricsContext {
             subgraphs_by_id: &subgraphs_by_id,
@@ -1973,13 +1884,8 @@ fn layout_flowchart_v2_with_model(
             title_total_margin,
             title_metrics_ctx: &title_metrics_ctx,
             cluster_padding,
-            timings: &mut timings,
-            timing_enabled,
         };
         layout_graph_with_recursive_clusters(&mut g, None, 0, &mut recursive_layout_ctx);
-    }
-    if let Some(s) = layout_start {
-        timings.layout_recursive = s.elapsed();
     }
 
     let mut leaf_rects: std::collections::HashMap<String, Rect> = std::collections::HashMap::new();
@@ -2251,7 +2157,6 @@ fn layout_flowchart_v2_with_model(
         std::collections::HashMap::new();
     let mut extracted_cluster_base_widths: std::collections::HashMap<String, f64> =
         std::collections::HashMap::new();
-    let place_start = timing_enabled.then(web_time::Instant::now);
     {
         let place_graph_inputs = PlaceGraphInputs {
             edge_id_by_key: &edge_id_by_key,
@@ -2280,11 +2185,6 @@ fn layout_flowchart_v2_with_model(
             &mut place_graph_outputs,
         );
     }
-    if let Some(s) = place_start {
-        timings.place_graph = s.elapsed();
-    }
-
-    let build_output_start = timing_enabled.then(web_time::Instant::now);
 
     let mut extra_children: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
@@ -2565,23 +2465,26 @@ fn layout_flowchart_v2_with_model(
 
             let label_type = sg.label_type.as_deref().unwrap_or("text");
             let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
-            let title_font_style =
-                flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
+            let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
+                ctx.html_label_text_style
+            } else {
+                ctx.text_style
+            };
+            let text_style = flowchart_effective_text_style_for_classes(
+                base_style,
+                ctx.class_defs,
+                &sg.classes,
+                &sg.styles,
+            );
             let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
                 raw_label: &sg.title,
                 label_type,
-                style: if ctx.wrap_mode == WrapMode::HtmlLike {
-                    ctx.html_label_text_style
-                } else {
-                    ctx.text_style
-                },
+                style: text_style.as_ref(),
                 max_width_px: title_width_limit,
                 wrap_mode: ctx.wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
-                preserve_string_whitespace_height: false,
-                whole_label_font_style: title_font_style.as_deref(),
             });
             let mut rect = if let Some(r) = content {
                 r
@@ -2601,9 +2504,8 @@ fn layout_flowchart_v2_with_model(
             // rect to fit the label bbox during rendering.
             let base_width = rect.width();
 
-            // Mermaid cluster "rect" rendering widens to fit the raw title bbox, plus a small
-            // horizontal inset. Empirically (Mermaid@11.12.2 fixtures), this behaves like
-            // `title_width + cluster_padding` when the title is wider than the content.
+            // Mermaid 11.16 `rendering-elements/clusters.js` sets the rect width to
+            // `max(node.width, labelBBox.width + node.padding)`.
             let min_width = title_metrics.width.max(1.0) + ctx.cluster_padding;
             if rect.width() < min_width {
                 let (cx, cy) = rect.center();
@@ -2666,23 +2568,26 @@ fn layout_flowchart_v2_with_model(
         ctx: &ClusterTitleAdjustContext<'_>,
     ) -> Rect {
         let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
-        let title_font_style =
-            flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
+        let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
+            ctx.html_label_text_style
+        } else {
+            ctx.text_style
+        };
+        let text_style = flowchart_effective_text_style_for_classes(
+            base_style,
+            ctx.class_defs,
+            &sg.classes,
+            &sg.styles,
+        );
         let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: title,
             label_type,
-            style: if ctx.wrap_mode == WrapMode::HtmlLike {
-                ctx.html_label_text_style
-            } else {
-                ctx.text_style
-            },
+            style: text_style.as_ref(),
             max_width_px: title_width_limit,
             wrap_mode: ctx.wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
-            preserve_string_whitespace_height: false,
-            whole_label_font_style: title_font_style.as_deref(),
         });
         let title_w = title_metrics.width.max(1.0);
         let title_h = title_metrics.height.max(1.0);
@@ -2792,50 +2697,27 @@ fn layout_flowchart_v2_with_model(
 
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let title_width_limit = (label_type == "markdown").then_some(cluster_title_wrapping_width);
-        let title_font_style =
-            flowchart_effective_font_style_for_classes(&model.class_defs, &sg.classes, &sg.styles);
-        let mut title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+        let base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
+            &html_label_text_style
+        } else {
+            &text_style
+        };
+        let title_text_style = flowchart_effective_text_style_for_classes(
+            base_style,
+            &model.class_defs,
+            &sg.classes,
+            &sg.styles,
+        );
+        let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
             raw_label: &sg.title,
             label_type,
-            style: if cluster_wrap_mode == WrapMode::HtmlLike {
-                &html_label_text_style
-            } else {
-                &text_style
-            },
+            style: title_text_style.as_ref(),
             max_width_px: title_width_limit,
             wrap_mode: cluster_wrap_mode,
             config: effective_config,
             math_renderer,
-            preserve_string_whitespace_height: false,
-            whole_label_font_style: title_font_style.as_deref(),
         });
-        if cluster_wrap_mode == crate::text::WrapMode::SvgLike && label_type == "markdown" {
-            // Cluster titles with markdown emphasis are rendered as SVG `<text>/<tspan>` runs and
-            // measured via browser `getBBox()` in upstream Mermaid. For italic `<em>` titles, the
-            // 1/64px-snapped markdown width can be just enough to shift the left-aligned label
-            // transform across a strict-XML rounding boundary; use a tighter lattice width probe.
-            let has_emphasis = crate::text::mermaid_markdown_to_wrapped_word_lines(
-                measurer,
-                &sg.title,
-                &text_style,
-                title_width_limit,
-                cluster_wrap_mode,
-            )
-            .iter()
-            .any(|line| {
-                line.iter()
-                    .any(|(_, ty)| *ty == crate::text::MermaidMarkdownWordType::Em)
-            });
-            if has_emphasis {
-                title_metrics.width = crate::text::measure_markdown_svg_like_precise_width_px(
-                    measurer,
-                    &sg.title,
-                    &text_style,
-                    title_width_limit,
-                );
-            }
-        }
         let title_label = LayoutLabel {
             x: cx,
             y: cy - rect.height() / 2.0 + title_margin_top + title_metrics.height / 2.0,
@@ -3102,50 +2984,99 @@ fn layout_flowchart_v2_with_model(
 
     let bounds = compute_bounds(&out_nodes, &out_edges);
 
-    if let Some(s) = build_output_start {
-        timings.build_output = s.elapsed();
-    }
-    if let Some(s) = total_start {
-        timings.total = s.elapsed();
-        let dagre_overhead = timings
-            .layout_recursive
-            .checked_sub(timings.dagre_total)
-            .unwrap_or_default();
-        eprintln!(
-            "[layout-timing] diagram=flowchart-v2 total={:?} deserialize={:?} expand_self_loops={:?} build_graph={:?} extract_clusters={:?} dom_order={:?} layout_recursive={:?} dagre_calls={} dagre_total={:?} dagre_overhead={:?} place_graph={:?} build_output={:?}",
-            timings.total,
-            timings.deserialize,
-            timings.expand_self_loops,
-            timings.build_graph,
-            timings.extract_clusters,
-            timings.dom_order,
-            timings.layout_recursive,
-            timings.dagre_calls,
-            timings.dagre_total,
-            dagre_overhead,
-            timings.place_graph,
-            timings.build_output,
-        );
-    }
-
-    Ok(FlowchartV2Layout {
+    Ok(FlowchartLayout {
         nodes: out_nodes,
         edges: out_edges,
         clusters,
         bounds,
         dom_node_order_by_root,
-        source_backed_edge_label_bboxes: false,
-        source_ported_elk_rendering: false,
+        uses_elk_adapter_dom: false,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::sync::mpsc;
     use std::time::Duration;
 
     const DEEP_SUBGRAPH_DEPTH: usize = 10_000;
+    const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
+
+    struct NonLatticeComputedLengthMeasurer;
+
+    impl TextMeasurer for NonLatticeComputedLengthMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+            crate::text::TextMetrics {
+                width: 40.0,
+                height: 18.0,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_text_computed_length_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            NON_LATTICE_COMPUTED_LENGTH_PX
+        }
+    }
+
+    #[test]
+    fn dagre_preserves_operation_computed_length_precision() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
+                ParseOptions::default(),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let layout = layout_flowchart_typed(
+            model,
+            &parsed.metadata().effective_config,
+            &NonLatticeComputedLengthMeasurer,
+            None,
+        )
+        .expect("layout ok");
+        let node = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "A")
+            .expect("node A");
+
+        assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
+    }
+
+    #[test]
+    fn unknown_shape_is_rejected_instead_of_becoming_a_rectangle() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart TB\nA[known]\n",
+                ParseOptions::default(),
+            )
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart render model");
+        };
+        let mut model = model.clone();
+        model.nodes[0].layout_shape = Some("definitely-unknown".to_string());
+        let error = layout_flowchart_typed(
+            &model,
+            &parsed.metadata().effective_config,
+            &crate::text::DeterministicTextMeasurer::default(),
+            None,
+        )
+        .expect_err("unknown Flowchart shapes must not silently become rectangles");
+        let Error::InvalidModel { message } = error else {
+            panic!("expected InvalidModel for unknown Flowchart shape");
+        };
+        assert_eq!(
+            message,
+            "No such shape: definitely-unknown. Please check your syntax."
+        );
+    }
 
     #[derive(Debug)]
     struct DeepTraversalOutcome {
@@ -3173,6 +3104,8 @@ mod tests {
             label: Some(String::new()),
             label_type: None,
             edge_type: None,
+            arrow: "-->".to_string(),
+            is_user_defined_id: false,
             stroke: None,
             interpolate: None,
             classes: Vec::new(),

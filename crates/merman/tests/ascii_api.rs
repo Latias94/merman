@@ -11,7 +11,8 @@ fn render_model_for(source: &str) -> RenderSemanticModel {
         .parse_diagram_for_render_model_sync(source, merman::ParseOptions::strict())
         .unwrap()
         .unwrap()
-        .model
+        .into_parts()
+        .1
 }
 
 fn deeply_nested_flowchart(depth: usize) -> String {

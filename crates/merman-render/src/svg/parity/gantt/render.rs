@@ -3,18 +3,6 @@ use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
 // Gantt diagram SVG renderer implementation (split from parity.rs).
 
-fn gantt_section_num(task_type: &str, categories: &[String], number_section_styles: i64) -> i64 {
-    if number_section_styles <= 0 {
-        return 0;
-    }
-    for (idx, c) in categories.iter().enumerate() {
-        if c == task_type {
-            return (idx as i64) % number_section_styles;
-        }
-    }
-    0
-}
-
 fn gantt_scale_time_round(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
     if max_ms <= min_ms {
         // D3 scaleTime returns the midpoint of the range for degenerate domains.
@@ -24,13 +12,16 @@ fn gantt_scale_time_round(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 
     (t * range).round()
 }
 
-fn gantt_start_of_day_ms(ms: i64) -> Option<i64> {
+fn gantt_start_of_day_ms(
+    ms: i64,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
     let dt_fixed_utc = dt_utc.with_timezone(&merman_core::time::utc_fixed_offset());
-    let dt = merman_core::time::datetime_to_local_fixed(dt_fixed_utc);
+    let dt = local_time_zone.datetime_to_local_fixed(dt_fixed_utc)?;
     let d = dt.date_naive();
-    let local_midnight = merman_core::time::datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
-    Some(local_midnight.timestamp_millis())
+    let local_midnight = local_time_zone.datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
+    Some(local_midnight?.timestamp_millis())
 }
 
 fn fmt_allow_nan(v: f64) -> String {
@@ -134,30 +125,17 @@ fn render_gantt_axis_group(
     out.push_str("</g>");
 }
 
-pub(crate) fn render_gantt_diagram_svg(
-    layout: &crate::model::GanttDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: GanttDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_gantt_diagram_svg_model(layout, &model, effective_config, options)
-}
-
 pub(crate) fn render_gantt_diagram_svg_model(
     layout: &crate::model::GanttDiagramLayout,
     model: &GanttDiagramRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
     let w = layout.width.max(1.0);
     let h = layout.height.max(1.0);
-    // Upstream viewBox dimensions frequently match an `f32` lattice.
-    let w_attr = (w as f32) as f64;
-    let h_attr = (h as f32) as f64;
 
     let acc_title = model
         .acc_title
@@ -173,25 +151,21 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let mut out = String::new();
     let aria_labelledby = acc_title
         .as_ref()
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr
         .as_ref()
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    let viewbox_attr = format!("0 0 {} {}", fmt(w_attr), fmt(h_attr));
-    let style_attr = format!("max-width: {}px; background-color: white;", fmt(w_attr));
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "gantt")
-        },
-    );
+        .map(|_| format!("chart-desc-{diagram_id}"));
+    let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, w, h);
+    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
+        .with_max_width(root_svg::RootMaxWidth::SvgNumber(w));
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "gantt");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+    root_chrome.dom.trailing_newline = false;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Gantt, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -223,7 +197,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
     };
     let range = (w - layout.left_padding - layout.right_padding).max(1.0);
     let gap = layout.bar_height + layout.bar_gap;
-    let min_day_start_ms = gantt_start_of_day_ms(min_ms).unwrap_or(min_ms);
+    let local_time_zone = options.local_time_zone();
+    let min_day_start_ms = gantt_start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
     let min_in_day_offset_ms = (min_ms - min_day_start_ms).max(0);
 
     // Exclude layer (drawn before the grid in Mermaid).
@@ -241,8 +216,10 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 //
                 // This matters when date-only inputs are parsed with a timezone-derived offset
                 // (e.g. `YYYY-MM-DD` treated as UTC midnight and shifted when rendered locally).
-                let start_day_start_ms = gantt_start_of_day_ms(r.start_ms).unwrap_or(r.start_ms);
-                let end_day_start_ms = gantt_start_of_day_ms(r.end_ms).unwrap_or(r.end_ms);
+                let start_day_start_ms =
+                    gantt_start_of_day_ms(r.start_ms, local_time_zone).unwrap_or(r.start_ms);
+                let end_day_start_ms =
+                    gantt_start_of_day_ms(r.end_ms, local_time_zone).unwrap_or(r.end_ms);
                 let start_raw_ms = start_day_start_ms.saturating_add(min_in_day_offset_ms);
                 let end_raw_ms = end_day_start_ms.saturating_add(min_in_day_offset_ms);
 
@@ -348,7 +325,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             let base_class = &t.label.class;
             let mut task_type_class = String::new();
             if let Some(st) = semantic_task_by_id.get(t.id.as_str()) {
-                let sec_num = gantt_section_num(
+                let sec_num = crate::gantt::gantt_section_class_suffix(
                     &st.task_type,
                     &layout.categories,
                     layout.number_section_styles,
@@ -450,7 +427,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         let today_x = if layout.tasks.is_empty() {
             f64::NAN
         } else {
-            let now_ms = options.now_ms_override.unwrap_or_else(default_now_ms);
+            let now_ms = options.unix_ms();
             gantt_scale_time_round(now_ms, min_ms, max_ms, range) + layout.left_padding
         };
         let y1 = layout.title_top_margin;
@@ -478,7 +455,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         out.push_str("/></g>");
     }
 
-    let title = model.title.as_deref().unwrap_or_default();
+    let title = layout.title.as_deref().unwrap_or_default();
     let _ = write!(
         &mut out,
         r#"<text x="{x}" y="{y}" class="titleText">{txt}</text>"#,
@@ -488,17 +465,5 @@ pub(crate) fn render_gantt_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
-    Ok(out)
-}
-
-fn default_now_ms() -> i64 {
-    #[cfg(feature = "host")]
-    {
-        chrono::Local::now().timestamp_millis()
-    }
-
-    #[cfg(not(feature = "host"))]
-    {
-        0
-    }
+    root_document.complete(out)
 }

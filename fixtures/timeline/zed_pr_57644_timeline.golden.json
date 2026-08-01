@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "History of Web Development Frameworks",
     "accTitle": null,
     "accDescr": null,

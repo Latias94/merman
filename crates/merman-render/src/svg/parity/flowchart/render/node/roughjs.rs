@@ -4,6 +4,7 @@
 //! roughness is zero. These helpers mirror Mermaid's RoughJS call ordering to keep SVG DOM parity.
 
 use crate::svg::parity::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
+use roughr::core::RoughRandomness;
 
 pub(in crate::svg::parity) use crate::svg::parity::roughjs_common::{
     RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect,
@@ -27,13 +28,13 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
-    seed: u64,
+    randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     let fill = parse_hex_color_to_srgba(fill)?;
     let stroke = parse_hex_color_to_srgba(stroke)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let base_options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.0)
         .bowing(1.0)
         .fill(fill)
@@ -114,7 +115,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
-    seed: u64,
+    randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     // Variant of `roughjs_paths_for_svg_path(...)` that always takes RoughJS' `sets.length === 1`
     // branch (fill path via `svgPath(...)` with `disableMultiStroke=true`), avoiding the
@@ -123,7 +124,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path_single_set(
     let stroke = parse_hex_color_to_srgba(stroke)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let base_options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.0)
         .bowing(1.0)
         .fill(fill)
@@ -178,12 +179,12 @@ pub(in crate::svg::parity) fn roughjs_stroke_path_for_svg_path(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
-    seed: u64,
+    randomness: &RoughRandomness,
 ) -> Option<String> {
     let stroke = parse_hex_color_to_srgba(stroke)?;
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let mut options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.0)
         .bowing(1.0)
         .stroke(stroke)
@@ -201,10 +202,10 @@ pub(in crate::svg::parity) fn roughjs_stroke_path_for_svg_path(
 pub(in crate::svg::parity) fn roughjs_hand_drawn_stroke_path_for_svg_path(
     svg_path_data: &str,
     roughness: f32,
-    seed: u64,
+    randomness: &RoughRandomness,
 ) -> Option<String> {
     let mut options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(roughness)
         .disable_multi_stroke(false)
         .build()
@@ -224,7 +225,7 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
     fill_weight: f32,
     hachure_gap: f32,
     roughness: f32,
-    seed: u64,
+    randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     let fill =
         parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
@@ -232,7 +233,7 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_svg_path(
         parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(roughness)
         .fill(fill)
         .fill_style(roughr::core::FillStyle::Hachure)
@@ -282,7 +283,7 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
     fill_weight: f32,
     hachure_gap: f32,
     roughness: f32,
-    seed: u64,
+    randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     let fill =
         parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
@@ -290,7 +291,7 @@ pub(in crate::svg::parity) fn roughjs_hachure_paths_for_rect(
         parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(roughness)
         .fill(fill)
         .fill_style(roughr::core::FillStyle::Hachure)
@@ -332,14 +333,14 @@ pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
     fill: &str,
     stroke: &str,
     stroke_width: f32,
-    seed: u64,
+    randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     // Mirror RoughJS `generator.polygon(...)` generation order: outline first, then fill, then
     // emit fill before outline.
     let fill = parse_hex_color_to_srgba(fill)?;
     let stroke = parse_hex_color_to_srgba(stroke)?;
     let mut opts = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.0)
         .fill_style(roughr::core::FillStyle::Solid)
         .fill(fill)
@@ -366,4 +367,58 @@ pub(in crate::svg::parity) fn roughjs_paths_for_polygon(
         ops_to_svg_path_d(&fill_opset),
         ops_to_svg_path_d(&outline_opset),
     ))
+}
+
+pub(in crate::svg::parity) fn roughjs_paths_for_circle(
+    diameter: f64,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    hand_drawn: bool,
+    randomness: &RoughRandomness,
+) -> Option<(String, String)> {
+    let fill = parse_hex_color_to_srgba(fill)?;
+    let stroke = parse_hex_color_to_srgba(stroke)?;
+    let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
+    let options = roughr::core::OptionsBuilder::default()
+        .randomness(randomness.clone())
+        .roughness(if hand_drawn { 0.7 } else { 0.0 })
+        .fill(fill)
+        .fill_style(if hand_drawn {
+            roughr::core::FillStyle::Hachure
+        } else {
+            roughr::core::FillStyle::Solid
+        })
+        .fill_weight(4.0)
+        .hachure_gap(5.2)
+        .stroke(stroke)
+        .stroke_width(stroke_width)
+        .stroke_line_dash(vec![dash0, dash1])
+        .stroke_line_dash_offset(0.0)
+        .fill_line_dash(vec![0.0, 0.0])
+        .fill_line_dash_offset(0.0)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .ok()?;
+
+    let generator = roughr::generator::Generator::default();
+    let drawable = generator.circle::<f64>(0.0, 0.0, diameter, &Some(options.clone()));
+    let mut fill_d = None;
+    let mut stroke_d = None;
+
+    for set in drawable.sets {
+        let d = ops_to_svg_path_d(&set);
+        match set.op_set_type {
+            roughr::core::OpSetType::FillPath | roughr::core::OpSetType::FillSketch => {
+                fill_d = Some(d);
+            }
+            roughr::core::OpSetType::Path => {
+                stroke_d = Some(d);
+            }
+        }
+    }
+
+    Some((fill_d?, stroke_d?))
 }

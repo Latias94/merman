@@ -1,0 +1,226 @@
+{
+  "diagramType": "railroad",
+  "model": {
+    "type": "railroad",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "json",
+        "definition": {
+          "type": "nonterminal",
+          "name": "element"
+        }
+      },
+      {
+        "name": "element",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "nonterminal",
+              "name": "object"
+            },
+            {
+              "type": "nonterminal",
+              "name": "array"
+            },
+            {
+              "type": "nonterminal",
+              "name": "string"
+            },
+            {
+              "type": "nonterminal",
+              "name": "number"
+            },
+            {
+              "type": "terminal",
+              "value": "true"
+            },
+            {
+              "type": "terminal",
+              "value": "false"
+            },
+            {
+              "type": "terminal",
+              "value": "null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "object",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "terminal",
+              "value": "{"
+            },
+            {
+              "type": "optional",
+              "element": {
+                "type": "sequence",
+                "elements": [
+                  {
+                    "type": "nonterminal",
+                    "name": "member"
+                  },
+                  {
+                    "type": "repetition",
+                    "element": {
+                      "type": "sequence",
+                      "elements": [
+                        {
+                          "type": "terminal",
+                          "value": ","
+                        },
+                        {
+                          "type": "nonterminal",
+                          "name": "member"
+                        }
+                      ]
+                    },
+                    "min": 0,
+                    "max": null
+                  }
+                ]
+              }
+            },
+            {
+              "type": "terminal",
+              "value": "}"
+            }
+          ]
+        }
+      },
+      {
+        "name": "array",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "terminal",
+              "value": "["
+            },
+            {
+              "type": "optional",
+              "element": {
+                "type": "sequence",
+                "elements": [
+                  {
+                    "type": "nonterminal",
+                    "name": "element"
+                  },
+                  {
+                    "type": "repetition",
+                    "element": {
+                      "type": "sequence",
+                      "elements": [
+                        {
+                          "type": "terminal",
+                          "value": ","
+                        },
+                        {
+                          "type": "nonterminal",
+                          "name": "element"
+                        }
+                      ]
+                    },
+                    "min": 0,
+                    "max": null
+                  }
+                ]
+              }
+            },
+            {
+              "type": "terminal",
+              "value": "]"
+            }
+          ]
+        }
+      },
+      {
+        "name": "member",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "nonterminal",
+              "name": "string"
+            },
+            {
+              "type": "terminal",
+              "value": ":"
+            },
+            {
+              "type": "nonterminal",
+              "name": "element"
+            }
+          ]
+        }
+      },
+      {
+        "name": "number",
+        "definition": {
+          "type": "repetition",
+          "element": {
+            "type": "nonterminal",
+            "name": "digit"
+          },
+          "min": 1,
+          "max": null
+        }
+      },
+      {
+        "name": "digit",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "terminal",
+              "value": "0"
+            },
+            {
+              "type": "terminal",
+              "value": "1"
+            },
+            {
+              "type": "terminal",
+              "value": "2"
+            },
+            {
+              "type": "terminal",
+              "value": "3"
+            },
+            {
+              "type": "terminal",
+              "value": "4"
+            },
+            {
+              "type": "terminal",
+              "value": "5"
+            },
+            {
+              "type": "terminal",
+              "value": "6"
+            },
+            {
+              "type": "terminal",
+              "value": "7"
+            },
+            {
+              "type": "terminal",
+              "value": "8"
+            },
+            {
+              "type": "terminal",
+              "value": "9"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -2,24 +2,13 @@ use super::*;
 use crate::model::RailroadElementLayout;
 use merman_core::diagrams::railroad::RailroadDiagramRenderModel;
 
-pub(crate) fn render_railroad_diagram_svg(
-    layout: &RailroadDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: RailroadDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_railroad_diagram_svg_model(layout, &model, effective_config, measurer, options)
-}
-
 pub(crate) fn render_railroad_diagram_svg_model(
     layout: &RailroadDiagramLayout,
     model: &RailroadDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("railroad");
     let diagram_id_esc = escape_xml(diagram_id);
     let acc_title = model
@@ -32,24 +21,21 @@ pub(crate) fn render_railroad_diagram_svg_model(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id_esc}"));
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
-    let viewport_plan = root_svg::build_root_viewport_plan(root_bounds, None, layout.use_max_width);
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
     let style = crate::railroad::railroad_style(effective_config);
 
     let mut out = String::new();
-    root_svg::push_svg_root_open_with_viewport_plan(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            class: Some("railroad-diagram"),
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, &layout.diagram_type)
-        },
-        &viewport_plan,
-    );
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, &layout.diagram_type);
+    root_chrome.class = Some("railroad-diagram");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Railroad, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -67,7 +53,11 @@ pub(crate) fn render_railroad_diagram_svg_model(
             escape_xml_display(descr)
         );
     }
-    let _ = write!(&mut out, "<style>{}</style>", railroad_css(&style));
+    let _ = write!(
+        &mut out,
+        "<style>{}</style>",
+        railroad_css(&style, diagram_id)
+    );
     out.push_str("<g/>");
 
     for (rule_index, rule) in layout.rules.iter().enumerate() {
@@ -119,7 +109,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
     }
 
     out.push_str("</svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_render_node(out: &mut String, node: &crate::railroad::RailroadRenderNode) {
@@ -200,21 +190,34 @@ fn push_element(out: &mut String, element: &RailroadElementLayout, transform: Op
     );
 }
 
-fn railroad_css(style: &crate::railroad::RailroadStyle) -> String {
+fn railroad_css_scope(diagram_id: &str) -> String {
+    let mut scope = String::with_capacity(diagram_id.len() + 1);
+    scope.push('#');
+    for ch in diagram_id.chars() {
+        if matches!(ch, '.' | ':') {
+            scope.push('\\');
+        }
+        scope.push(ch);
+    }
+    scope
+}
+
+fn railroad_css(style: &crate::railroad::RailroadStyle, diagram_id: &str) -> String {
+    let scope = railroad_css_scope(diagram_id);
     format!(
-        ".railroad-diagram{{font-family:{};font-size:{}px;}}\
-.railroad-terminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
-.railroad-terminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
-.railroad-nonterminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
-.railroad-nonterminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
-.railroad-line{{stroke:{};stroke-width:{}px;fill:none;}}\
-.railroad-start circle,.railroad-end circle{{fill:{};}}\
-.railroad-comment ellipse{{fill:{};stroke:{};stroke-width:{}px;}}\
-.railroad-comment text{{fill:{};font-style:italic;font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
-.railroad-special rect{{fill:{};stroke:{};stroke-width:{}px;stroke-dasharray:5,3;}}\
-.railroad-special text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
-.railroad-rule-name{{font-weight:bold;fill:{};font-family:{};font-size:{}px;}}\
-.railroad-group{{}}",
+        "{scope} .railroad-diagram{{font-family:{};font-size:{}px;}}\
+{scope} .railroad-terminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
+{scope} .railroad-terminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
+{scope} .railroad-nonterminal rect{{fill:{};stroke:{};stroke-width:{}px;}}\
+{scope} .railroad-nonterminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
+{scope} .railroad-line{{stroke:{};stroke-width:{}px;fill:none;}}\
+{scope} .railroad-start circle,{scope} .railroad-end circle{{fill:{};}}\
+{scope} .railroad-comment ellipse{{fill:{};stroke:{};stroke-width:{}px;}}\
+{scope} .railroad-comment text{{fill:{};font-style:italic;font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
+{scope} .railroad-special rect{{fill:{};stroke:{};stroke-width:{}px;stroke-dasharray:5,3;}}\
+{scope} .railroad-special text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}\
+{scope} .railroad-rule-name{{font-weight:bold;fill:{};font-family:{};font-size:{}px;}}\
+{scope} .railroad-group{{}}",
         style.font_family,
         fmt(style.font_size),
         style.terminal_fill,
@@ -248,4 +251,18 @@ fn railroad_css(style: &crate::railroad::RailroadStyle) -> String {
         style.font_family,
         fmt(style.font_size)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_font_rule_matches_mermaid_namespacing() {
+        let style = crate::railroad::railroad_style(&serde_json::json!({}));
+        let css = railroad_css(&style, "railroad.fixture");
+
+        assert!(css.starts_with("#railroad\\.fixture .railroad-diagram{"));
+        assert!(!css.starts_with("#railroad\\.fixture.railroad-diagram{"));
+    }
 }

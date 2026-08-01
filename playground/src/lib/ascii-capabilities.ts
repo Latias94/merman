@@ -1,25 +1,28 @@
 import { useMemo } from "react";
-import { useMerman } from "@/src/hooks/useMerman";
 import {
   FALLBACK_ASCII_CAPABILITIES,
+  FALLBACK_ASCII_SUPPORTED_TYPES,
   type AsciiCapability,
-  normalizeAsciiDiagramType,
 } from "@/src/lib/ascii-support";
+import {
+  selectMermanFacade,
+  useMermanRuntime,
+} from "@/src/runtime/use-merman-runtime";
 
 export function useAsciiSupport() {
-  const { ready, getAsciiCapabilities, getAsciiSupportedDiagrams } = useMerman();
+  const facade = useMermanRuntime(selectMermanFacade);
   const capabilities = useMemo(
     () =>
-      ready
-        ? getAsciiCapabilities().map(normalizeCapability)
+      facade
+        ? facade.getAsciiCapabilities().map(normalizeCapability)
         : FALLBACK_ASCII_CAPABILITIES.map(normalizeCapability),
-    [getAsciiCapabilities, ready]
+    [facade]
   );
 
   const capabilityMap = useMemo(() => {
     const map = new Map<string, AsciiCapability>();
     for (const capability of capabilities) {
-      map.set(normalizeAsciiDiagramType(capability.diagram_type), capability);
+      map.set(capability.diagram_type, capability);
     }
     return map;
   }, [capabilities]);
@@ -27,11 +30,11 @@ export function useAsciiSupport() {
   const supportedTypes = useMemo(() => {
     const fromCapabilities = capabilities
       .filter((capability) => capability.support_level !== "unsupported")
-      .map((capability) => normalizeAsciiDiagramType(capability.diagram_type));
+      .map((capability) => capability.diagram_type);
     return fromCapabilities.length > 0
       ? fromCapabilities
-      : getAsciiSupportedDiagrams().map(normalizeAsciiDiagramType);
-  }, [capabilities, getAsciiSupportedDiagrams]);
+      : (facade?.getAsciiSupportedDiagrams() ?? FALLBACK_ASCII_SUPPORTED_TYPES);
+  }, [capabilities, facade]);
 
   const supportedTypeSet = useMemo(() => new Set(supportedTypes), [supportedTypes]);
 
@@ -41,9 +44,9 @@ export function useAsciiSupport() {
       capabilityMap,
       supportedTypes,
       capabilityFor: (diagramType: string) =>
-        capabilityMap.get(normalizeAsciiDiagramType(diagramType)) ?? null,
+        capabilityMap.get(diagramType) ?? null,
       isSupported: (diagramType: string) =>
-        supportedTypeSet.has(normalizeAsciiDiagramType(diagramType)),
+        supportedTypeSet.has(diagramType),
     }),
     [capabilities, capabilityMap, supportedTypeSet, supportedTypes]
   );
@@ -52,7 +55,6 @@ export function useAsciiSupport() {
 function normalizeCapability(capability: AsciiCapability): AsciiCapability {
   return {
     ...capability,
-    diagram_type: normalizeAsciiDiagramType(capability.diagram_type),
     supported_semantics: [...capability.supported_semantics],
     limits: [...capability.limits],
     evidence: capability.evidence.map((evidence) => ({ ...evidence })),

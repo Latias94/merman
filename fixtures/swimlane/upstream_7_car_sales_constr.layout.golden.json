@@ -1,0 +1,692 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "direction": "TB",
+      "nodes": [
+        {
+          "id": "A",
+          "label": "A",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Car",
+          "top_lane_id": "Car",
+          "x": -264.2,
+          "y": 27.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "B",
+          "label": "B",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Sales",
+          "top_lane_id": "Sales",
+          "x": -94.6,
+          "y": 27.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "C",
+          "label": "C",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Constr",
+          "top_lane_id": "Constr",
+          "x": 75.0,
+          "y": 27.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "D",
+          "label": "D",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Constr",
+          "top_lane_id": "Constr",
+          "x": 75.0,
+          "y": 131.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "E",
+          "label": "E",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Constr",
+          "top_lane_id": "Constr",
+          "x": 75.0,
+          "y": 413.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 4.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "F",
+          "label": "F",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Fun",
+          "top_lane_id": "Fun",
+          "x": 414.2,
+          "y": 413.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 4.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "G",
+          "label": "G",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Fun",
+          "top_lane_id": "Fun",
+          "x": 414.2,
+          "y": 517.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 5.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "H",
+          "label": "H",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Constr",
+          "top_lane_id": "Constr",
+          "x": 75.0,
+          "y": 235.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "I",
+          "label": "I",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Legal",
+          "top_lane_id": "Legal",
+          "x": 244.6,
+          "y": 235.0,
+          "width": 64.8,
+          "height": 54.0,
+          "label_width": 4.8,
+          "label_height": 24.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "J",
+          "label": "J",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Legal",
+          "top_lane_id": "Legal",
+          "x": 244.6,
+          "y": 413.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 4.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "K",
+          "label": "K",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Legal",
+          "top_lane_id": "Legal",
+          "x": 244.6,
+          "y": 621.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 6.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "L",
+          "label": "L",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Constr",
+          "top_lane_id": "Constr",
+          "x": 75.0,
+          "y": 621.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 6.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "M",
+          "label": "M",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Sales",
+          "top_lane_id": "Sales",
+          "x": -94.6,
+          "y": 621.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 6.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "N",
+          "label": "N",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Constr",
+          "top_lane_id": "Constr",
+          "x": 75.0,
+          "y": 725.0,
+          "width": 69.6,
+          "height": 54.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 7.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "edge-label-I-J-L_I_J_0",
+          "label": "Yes",
+          "label_type": "text",
+          "shape": "labelRect",
+          "parent_id": "Legal",
+          "top_lane_id": "Legal",
+          "x": 244.6,
+          "y": 324.0,
+          "width": 23.36,
+          "height": 24.0,
+          "label_width": 23.36,
+          "label_height": 24.0,
+          "layer": 3.0,
+          "order": 0.0,
+          "is_edge_label": true
+        },
+        {
+          "id": "edge-label-I-K-L_I_K_0",
+          "label": "N",
+          "label_type": "text",
+          "shape": "labelRect",
+          "parent_id": "Fun",
+          "top_lane_id": "Fun",
+          "x": 373.0,
+          "y": 235.0,
+          "width": 9.6,
+          "height": 24.0,
+          "label_width": 9.6,
+          "label_height": 24.0,
+          "layer": 5.0,
+          "order": 0.0,
+          "is_edge_label": true
+        }
+      ],
+      "lanes": [
+        {
+          "id": "Fun",
+          "title": "Fun",
+          "parent_id": null,
+          "x": 414.2,
+          "y": 376.0,
+          "width": 169.6,
+          "height": 824.0,
+          "padding": 8.0,
+          "title_label_width": 23.36,
+          "title_label_height": 24.0,
+          "content_top": 0.0,
+          "title_rect": {
+            "left": 329.4,
+            "right": 499.0,
+            "top": -36.0,
+            "bottom": -15.0
+          },
+          "requested_dir": "TB"
+        },
+        {
+          "id": "Legal",
+          "title": "Legal",
+          "parent_id": null,
+          "x": 244.6,
+          "y": 376.0,
+          "width": 169.6,
+          "height": 824.0,
+          "padding": 8.0,
+          "title_label_width": 34.72,
+          "title_label_height": 24.0,
+          "content_top": 0.0,
+          "title_rect": {
+            "left": 159.8,
+            "right": 329.4,
+            "top": -36.0,
+            "bottom": -15.0
+          },
+          "requested_dir": "TB"
+        },
+        {
+          "id": "Constr",
+          "title": "Constr",
+          "parent_id": null,
+          "x": 75.0,
+          "y": 376.0,
+          "width": 169.6,
+          "height": 824.0,
+          "padding": 8.0,
+          "title_label_width": 44.0,
+          "title_label_height": 24.0,
+          "content_top": 0.0,
+          "title_rect": {
+            "left": -9.8,
+            "right": 159.8,
+            "top": -36.0,
+            "bottom": -15.0
+          },
+          "requested_dir": "TB"
+        },
+        {
+          "id": "Sales",
+          "title": "Sales",
+          "parent_id": null,
+          "x": -94.6,
+          "y": 376.0,
+          "width": 169.6,
+          "height": 824.0,
+          "padding": 8.0,
+          "title_label_width": 34.72,
+          "title_label_height": 24.0,
+          "content_top": 0.0,
+          "title_rect": {
+            "left": -179.4,
+            "right": -9.8,
+            "top": -36.0,
+            "bottom": -15.0
+          },
+          "requested_dir": "TB"
+        },
+        {
+          "id": "Car",
+          "title": "Car",
+          "parent_id": null,
+          "x": -264.2,
+          "y": 376.0,
+          "width": 169.6,
+          "height": 824.0,
+          "padding": 8.0,
+          "title_label_width": 23.36,
+          "title_label_height": 24.0,
+          "content_top": 0.0,
+          "title_rect": {
+            "left": -349.0,
+            "right": -179.4,
+            "top": -36.0,
+            "bottom": -15.0
+          },
+          "requested_dir": "TB"
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_A_B_0",
+          "from": "A",
+          "to": "B",
+          "points": [
+            {
+              "x": -229.4,
+              "y": 27.0
+            },
+            {
+              "x": -129.4,
+              "y": 27.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_B_C_0",
+          "from": "B",
+          "to": "C",
+          "points": [
+            {
+              "x": -59.8,
+              "y": 27.0
+            },
+            {
+              "x": 40.2,
+              "y": 27.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_C_D_0",
+          "from": "C",
+          "to": "D",
+          "points": [
+            {
+              "x": 75.0,
+              "y": 54.0
+            },
+            {
+              "x": 75.0,
+              "y": 104.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_D_E_0",
+          "from": "D",
+          "to": "E",
+          "points": [
+            {
+              "x": 40.2,
+              "y": 131.0
+            },
+            {
+              "x": 40.2,
+              "y": 131.0
+            },
+            {
+              "x": 20.2,
+              "y": 131.0
+            },
+            {
+              "x": 20.2,
+              "y": 413.0
+            },
+            {
+              "x": 40.2,
+              "y": 413.0
+            },
+            {
+              "x": 40.2,
+              "y": 413.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_E_F_0",
+          "from": "E",
+          "to": "F",
+          "points": [
+            {
+              "x": 75.0,
+              "y": 386.0
+            },
+            {
+              "x": 75.0,
+              "y": 386.0
+            },
+            {
+              "x": 75.0,
+              "y": 366.0
+            },
+            {
+              "x": 414.2,
+              "y": 366.0
+            },
+            {
+              "x": 414.2,
+              "y": 386.0
+            },
+            {
+              "x": 414.2,
+              "y": 386.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_F_G_0",
+          "from": "F",
+          "to": "G",
+          "points": [
+            {
+              "x": 414.2,
+              "y": 440.0
+            },
+            {
+              "x": 414.2,
+              "y": 490.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_D_H_0",
+          "from": "D",
+          "to": "H",
+          "points": [
+            {
+              "x": 75.0,
+              "y": 158.0
+            },
+            {
+              "x": 75.0,
+              "y": 208.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_H_I_0",
+          "from": "H",
+          "to": "I",
+          "points": [
+            {
+              "x": 109.8,
+              "y": 235.0
+            },
+            {
+              "x": 212.2,
+              "y": 235.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_I_J_0",
+          "from": "I",
+          "to": "J",
+          "points": [
+            {
+              "x": 244.6,
+              "y": 262.0
+            },
+            {
+              "x": 244.6,
+              "y": 386.0
+            }
+          ],
+          "label_node_id": "edge-label-I-J-L_I_J_0",
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_J_E_0",
+          "from": "J",
+          "to": "E",
+          "points": [
+            {
+              "x": 209.8,
+              "y": 413.0
+            },
+            {
+              "x": 109.8,
+              "y": 413.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_I_K_0",
+          "from": "I",
+          "to": "K",
+          "points": [
+            {
+              "x": 277.0,
+              "y": 235.0
+            },
+            {
+              "x": 277.0,
+              "y": 235.0
+            },
+            {
+              "x": 469.0,
+              "y": 235.0
+            },
+            {
+              "x": 469.0,
+              "y": 621.0
+            },
+            {
+              "x": 279.4,
+              "y": 621.0
+            },
+            {
+              "x": 279.4,
+              "y": 621.0
+            }
+          ],
+          "label_node_id": "edge-label-I-K-L_I_K_0",
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_K_L_0",
+          "from": "K",
+          "to": "L",
+          "points": [
+            {
+              "x": 209.8,
+              "y": 621.0
+            },
+            {
+              "x": 109.8,
+              "y": 621.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_L_M_0",
+          "from": "L",
+          "to": "M",
+          "points": [
+            {
+              "x": 40.2,
+              "y": 621.0
+            },
+            {
+              "x": -59.8,
+              "y": 621.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_L_N_0",
+          "from": "L",
+          "to": "N",
+          "points": [
+            {
+              "x": 75.0,
+              "y": 648.0
+            },
+            {
+              "x": 75.0,
+              "y": 698.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        }
+      ],
+      "bounds": {
+        "min_x": -349.0,
+        "min_y": -36.0,
+        "max_x": 499.0,
+        "max_y": 788.0
+      }
+    }
+  }
+}

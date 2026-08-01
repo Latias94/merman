@@ -1,4 +1,4 @@
-use merman::render::HeadlessRenderer;
+use merman::svg::HeadlessRenderer;
 use std::fs;
 use std::path::Path;
 

@@ -117,12 +117,6 @@ const FALLBACK_ASCII_CAPABILITY_INPUTS: readonly FallbackCapabilityInput[] = [
       "dense data uses terminal-compact layout",
     ],
   },
-  {
-    diagramType: "zenuml",
-    displayName: "ZenUML",
-    supportLevel: "partial",
-    limits: ["external ZenUML compatibility is a subset"],
-  },
 ] as const;
 
 export const FALLBACK_ASCII_CAPABILITIES: readonly AsciiCapability[] =
@@ -142,15 +136,11 @@ export const FALLBACK_ASCII_CAPABILITIES: readonly AsciiCapability[] =
     ],
   }));
 
-export function normalizeAsciiDiagramType(diagramType: string): string {
-  return diagramType === "gitGraph" ? "gitgraph" : diagramType;
-}
-
 export function isAsciiSupported(
   diagramType: string,
   supportedTypes: readonly string[] = FALLBACK_ASCII_SUPPORTED_TYPES
 ): boolean {
-  return supportedTypes.includes(normalizeAsciiDiagramType(diagramType));
+  return supportedTypes.includes(diagramType);
 }
 
 export function asciiSupportLabelKey(

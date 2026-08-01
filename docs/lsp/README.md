@@ -3,92 +3,89 @@ type: Skill Contract
 status: active
 ---
 
-# Merman LSP
+# Merman LSP Maintainer Architecture
 
-`merman-lsp` is the canonical LSP transport for diagnostics, completion, structure-aware
-navigation, code-action, and semantic-token surfaces. The semantic editor queries are shared with
-browser integrations through `merman-editor-core`; editor-core owns protocol-neutral document
-snapshots, UTF-16 ranges, completion, symbols, navigation, rename, and semantic-token selection.
-`merman-lsp` keeps the LSP lifecycle, capability negotiation, diagnostics publication,
-semantic-token delta state, custom requests, and `tower_lsp::lsp_types` projection.
+> This is a maintainer-facing architecture contract. Users installing or embedding the server should start with the [`merman-lsp` crate guide](../../crates/merman-lsp/README.md). Plugin authors should use the [extension protocol](EXTENSION_PROTOCOL.md) and [capability matrix](CAPABILITIES.md) as their public contracts.
 
-## Responsibilities
+## Scope
 
-- Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, `completion`, `hover`,
-  `completionItem/resolve`, `documentSymbol`, `definition`, `references`, `prepareRename`,
-  `rename`, `selectionRange`, `foldingRange`, `codeAction`, `semanticTokens/full`, and
-  `semanticTokens/range`.
-- Advertise editor-agnostic Merman extension requests under `ServerCapabilities.experimental`,
-  including `merman/ruleCatalog` for rule metadata discovery and `merman/configSchema` for
-  analysis/lint settings discovery.
-- Publish diagnostics from `merman-analysis` and answer standard pull diagnostic requests from the
-  same analysis payloads.
-- Keep document state versioned so diagnostics from stale analysis snapshots are suppressed before
-  publication.
-- Project `merman-editor-core` completion, hover, document symbols, selection ranges, folding
-  ranges, definition, references, prepare-rename, rename, workspace symbols, and semantic tokens
-  into LSP types.
-- Provide workspace symbols from tracked document snapshots.
-- Preserve parser-backed semantic items from `merman-analysis` so semantic tokens, future lint, and
-  code actions can consume payload roles without LSP-local parsing.
-- Use entity-only semantic queries for definition, references, prepare-rename, and rename.
-- Resolve references and rename through typed semantic groups keyed by semantic kind, not just
-  raw names.
-- Serve full-document semantic tokens from parser-backed semantic items with stable
-  entity/outline/payload role modifiers.
-- Serve range and delta semantic-token requests from the same parser-backed token stream.
-- Serve quickfix code actions only from `DiagnosticFix` metadata carried by merman diagnostics.
-- Stay Markdown-fence aware and UTF-16 correct for plain Mermaid, Markdown, and MDX documents.
+`merman-lsp` is the canonical LSP adapter for Merman diagnostics and editor intelligence. It does not parse Mermaid through an LSP-specific grammar and does not render previews.
+
+`merman-editor-core` owns protocol-neutral document snapshots, UTF-16 ranges, completion, hover, document symbols, selection and folding ranges, navigation, rename, and semantic-token planning. `merman-lsp` owns:
+
+- LSP initialization, lifecycle, capability negotiation, and `tower_lsp_server::ls_types` projection;
+- synchronous message admission plus ordered document and configuration transactions;
+- generation acquisition, singleflight execution, weighted caching, stale-result suppression, and diagnostics publication;
+- semantic-token result IDs and delta state;
+- standard request handlers and Merman-specific extension requests; and
+- client effects, refresh coordination, cancellation, and bounded session shutdown.
+
+Preview, export, and editor UI stay in their host integrations.
+
+## Advertised Protocol Surface
+
+The server handles document lifecycle notifications and advertises the supported subset of:
+
+- completion and `completionItem/resolve`;
+- hover, document symbols, selection ranges, and folding ranges;
+- definition, references, prepare rename, and rename;
+- push diagnostics or standard pull diagnostics according to client capabilities;
+- fix-backed quick-fix code actions; and
+- full-document, range, and delta semantic tokens when the client supports them.
+
+Capabilities are negotiated. Code actions require compatible diagnostic-data and quick-fix literal support, while semantic-token legends and modifiers are projected onto the client's supported set.
+
+Workspace symbols are not part of the current protocol surface: `ServerCapabilities.workspace_symbol_provider` is `None`, and `workspace/symbol` requests return JSON-RPC `MethodNotFound`.
+
+The server advertises editor-agnostic Merman requests under `ServerCapabilities.experimental.merman`, including `merman/ruleCatalog` and `merman/configSchema`. Clients must feature-detect these requests instead of assuming that a particular server version exposes them.
+
+## Document And State Model
+
+Plain Mermaid files and Mermaid fences in Markdown and MDX use the same typed `DocumentSnapshot`/`FenceTextIndex` model. Host-document positions remain UTF-16 correct, including diagnostics, fixes, completion edits, navigation, rename, and semantic tokens.
+
+`MermanLspService` synchronously admits each JSON-RPC message before transport futures can run concurrently. State mutations are ordered by arrival, while reads wait for every earlier mutation to commit or abort. One private `LanguageSession` versions source and analyzer configuration independently and owns generation acquisition, singleflight execution, weighted LRU entries, guarded commits, client effects, refresh coordination, cancellation, and endpoint lifetime. Typed session operations capture a short-lived state ticket, perform parsing or projection outside the session mutex, then commit only if the captured epoch and configuration remain current. Handlers do not own transaction choreography.
+
+Resource admission distinguishes retained text from analyzable text. Source-byte rejection drops the oversized buffer and requires full synchronization before analysis can resume. A Markdown/MDX fence-count rejection retains the buffer and canonical `AnalysisRejection`, blocks snapshot creation, and can recover through ranged edits or revision-guarded configuration reclassification. The default session ceilings are 4 MiB and 256 Mermaid fences respectively.
+
+The service and client socket are two endpoints of that same session. Embedded hosts split the socket into the named request-stream and response-sink halves before driving it; the unsplit socket deliberately implements neither `Stream` nor `Sink`. Dropping the service, the unsplit socket, or either split half terminates the shared lifecycle and cancels child work exactly once. Request EOF, response close, and response errors terminate both directions, and closing the response half wakes a pending request poll. The bundled stdio transport synchronously admits every message before polling its handler, separates four ordinary handlers from four reserved control handlers, and keeps cancellation and valid `exit` notifications reachable under ordinary saturation. `exit` requests are rejected, `shutdown` notifications are ignored, and a valid `exit` notification performs its session effects during admission so its response-less future can be dropped. One absolute deadline bounds handler, write, flush, and output-shutdown drain work.
+
+- Push diagnostics re-check currentness immediately before publication.
+- Pull diagnostics retry bounded stale computations against the latest context.
+- Semantic-token state is committed only for the captured current snapshot.
+- A matching previous result ID can produce a delta; a stale ID falls back to full tokens.
+- Snapshot-affecting configuration clears snapshot-dependent state.
+- Diagnostic-only rule changes refresh diagnostics without rebuilding semantic snapshots.
+
+Initialization and workspace settings can provide deterministic `fixed_today` and `fixed_local_offset_minutes` values. The LSP does not expose a native runtime selector or forward the facade's `system-*` Cargo features.
+
+## Semantic Ownership
+
+Language behavior is driven by parser-backed facts from `merman-analysis` and queries from `merman-editor-core`:
+
+- definition, references, prepare rename, and rename operate on typed entity groups rather than raw text matches;
+- payload facts may feed hover, lint, semantic tokens, and code actions without becoming navigation or rename targets;
+- code actions use explicit `DiagnosticFix` metadata, never invent edits for diagnostics without a safe fix, and materialize one workspace edit when several requested diagnostics share the same fix allocation; and
+- completion uses editor-core replacement ranges, while resolve adds documentation without changing the selected insert edit.
+
+`Unavailable` provenance means no parser-backed body facts exist. Unknown or unrecoverable body text therefore receives no guessed body symbols, navigation, rename, or semantic tokens. Source-start diagram headers and templates remain available from the static family catalog.
+
+The LSP consumes typed snapshots directly; it does not serialize and decode `AnalysisFactsPayload` for normal requests. The separately exposed binding facts payload and diagnostics payload are independent schema-v1 wire contracts, not LSP document versions or Mermaid grammar IDs.
+
+Family-level maturity is defined only by [CAPABILITIES.md](CAPABILITIES.md). A family may parse or render without being a first-class LSP commitment. Payload-first families can be mature while intentionally exposing few rename or reference targets, and `error` remains an internal fallback family.
+
+## Diagnostics And Extensions
+
+Diagnostics stay analysis-driven; the LSP layer does not reimplement parser, compatibility, resource, or authoring rules. Rule metadata, configuration discovery, diagnostic payload behavior, and fix transport are documented in:
+
+- [Diagnostic protocol](DIAGNOSTIC_PROTOCOL.md)
+- [Extension protocol](EXTENSION_PROTOCOL.md)
+- [Integration and coexistence guide](../integrations/README.md)
+
+Configuration changes request `workspace/semanticTokens/refresh` or `workspace/diagnostic/refresh` only when the client advertises the corresponding support.
 
 ## Deferred
 
-- Additional fix-producing lint rules and configuration
+- Advertised workspace symbols and ownership of unopened workspace-file discovery
 - Formatting
+- Additional source-backed, fix-producing rules
 - Deeper completion documentation for family-specific syntax variants
-
-## Product Direction
-
-- LSP behavior is driven by parser-backed semantic facts.
-- Text-scan results are visible fallback provenance, not a mature capability signal.
-- `docs/lsp/CAPABILITIES.md` is the maturity contract. Families outside that matrix may still
-  parse or render, but they are not first-class LSP commitments yet.
-- The current supported product-family set is first-class in the capability matrix. `error`
-  remains an internal fallback diagram rather than a user-facing LSP family.
-- Payload-first families such as Info, Pie, Packet, and XY Chart can be mature without exposing
-  many rename/reference targets; sparse navigation is a family property, not a server defect.
-- Workspace symbols reuse the tracked outline projection from snapshots instead of a separate
-  parser path.
-- Payload facts should be retained in the analysis index but excluded from completion, outline, and
-  rename unless a role explicitly allows projection.
-- Payload facts can feed hover, lint, semantic tokens, and code actions without becoming navigation
-  or rename targets.
-- Code actions are fix-metadata driven; LSP does not invent edits for diagnostics without explicit
-  safe fixes.
-- Recommended-profile authoring rules such as `merman.authoring.config.prefer_init_directive`,
-  `merman.authoring.config.prefer_frontmatter_config`, and
-  `merman.authoring.flowchart.explicit_direction` are available through the shared lint
-  configuration, but remain opt-in through `recommended` or explicit rule enablement. The
-  frontmatter-config rule carries a migration quickfix that rewrites init/initialize directive
-  config into YAML frontmatter.
-- Mermaid-backed compatibility rules such as
-  `merman.compatibility.config.deprecated_flowchart_html_labels` and
-  `merman.compatibility.config.deprecated_external_diagram_loading` can be core-profile warnings
-  when the pinned Mermaid source or docs expose the same warning. The flowchart htmlLabels rule
-  reports deprecated `flowchart.htmlLabels` but does not provide an automatic migration quickfix,
-  because moving it to root `htmlLabels` can change Mermaid rendering semantics.
-- Full-document, range, and delta semantic tokens are role-aware and parser-backed; configuration
-  changes trigger `workspace/semanticTokens/refresh` when the client advertises refresh support,
-  and delta requests reuse cached snapshot token state when the previous result id matches.
-- Capability maturity is tracked in `CAPABILITIES.md`.
-- Merman-specific custom requests are documented in `EXTENSION_PROTOCOL.md`; editor plugins should
-  feature-detect those requests, use the config schema for settings completion/validation hints,
-  and keep UI outside the LSP server.
-
-## Notes
-
-- Plain Mermaid files and Markdown/MDX fenced Mermaid blocks are both supported.
-- Diagnostics remain analysis-driven; the LSP layer does not reimplement parse or render rules.
-- Completion uses editor-core replacement ranges, so header, operator, direction, shape, and node
-  completions replace the current token instead of blindly inserting at the cursor.
-- Completion items carry stable resolve data and `completionItem/resolve` adds Markdown
-  documentation without changing insert text or text edits.

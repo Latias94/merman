@@ -56,11 +56,6 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
         //   [a c e]
         //   [b d f]
         //   [0 0 1]
-        //
-        // Note: We compute transforms in `f64` and apply a browser-like `f32` quantization at the
-        // bbox extrema stage. This yields more stable `parity-root` viewBox/max-width parity than
-        // performing all transform math in `f32` (which can drift by multiple ULPs depending on
-        // transform list complexity and parameter rounding).
         a: f64,
         b: f64,
         c: f64,
@@ -70,33 +65,9 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
     }
 
     impl AffineTransform {
-        fn apply_point_f32(self, x: f32, y: f32) -> (f32, f32) {
-            // `getBBox()` computation is float-ish; do mul/add in `f32` and keep the intermediate
-            // point in `f32` between transform operations.
-            let a = self.a as f32;
-            let b = self.b as f32;
-            let c = self.c as f32;
-            let d = self.d as f32;
-            let e = self.e as f32;
-            let f = self.f as f32;
-            // Prefer explicit `mul_add` so the rounding behavior is stable and closer to typical
-            // browser render pipelines that use fused multiply-add when available.
-            let ox = a.mul_add(x, c.mul_add(y, e));
-            let oy = b.mul_add(x, d.mul_add(y, f));
-            (ox, oy)
-        }
-
-        fn apply_point_f32_no_fma(self, x: f32, y: f32) -> (f32, f32) {
-            // Same as `apply_point_f32`, but avoid fused multiply-add. This can shift extrema by
-            // 1–2 ULPs for some rotate+translate pipelines.
-            let a = self.a as f32;
-            let b = self.b as f32;
-            let c = self.c as f32;
-            let d = self.d as f32;
-            let e = self.e as f32;
-            let f = self.f as f32;
-            let ox = (a * x + c * y) + e;
-            let oy = (b * x + d * y) + f;
+        fn apply_point(self, x: f64, y: f64) -> (f64, f64) {
+            let ox = (self.a * x + self.c * y) + self.e;
+            let oy = (self.b * x + self.d * y) + self.f;
             (ox, oy)
         }
     }
@@ -203,58 +174,17 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
 
                     match (cx, cy) {
                         (Some(cx), Some(cy)) => {
-                            // Keep `rotate(…, 0, 0)` in the canonical 4-term form, but for
-                            // non-zero pivots we may need different rounding paths to match
-                            // Chromium's `getBBox()` baselines.
-                            if cx == 0.0 && cy == 0.0 {
-                                ops.push(AffineTransform {
-                                    a: cos,
-                                    b: sin,
-                                    c: -sin,
-                                    d: cos,
-                                    e: 0.0,
-                                    f: 0.0,
-                                });
-                            } else if cy == 0.0 {
-                                // Decompose for pivots on the x-axis; this matches upstream
-                                // gitGraph fixtures that use `rotate(-45, <x>, 0)` extensively.
-                                ops.push(AffineTransform {
-                                    a: 1.0,
-                                    b: 0.0,
-                                    c: 0.0,
-                                    d: 1.0,
-                                    e: cx,
-                                    f: cy,
-                                });
-                                ops.push(AffineTransform {
-                                    a: cos,
-                                    b: sin,
-                                    c: -sin,
-                                    d: cos,
-                                    e: 0.0,
-                                    f: 0.0,
-                                });
-                                ops.push(AffineTransform {
-                                    a: 1.0,
-                                    b: 0.0,
-                                    c: 0.0,
-                                    d: 1.0,
-                                    e: -cx,
-                                    f: -cy,
-                                });
-                            } else {
-                                // T(cx,cy) * R(angle) * T(-cx,-cy), baked as a single matrix.
-                                let e = cx - (cx * cos) + (cy * sin);
-                                let f = cy - (cx * sin) - (cy * cos);
-                                ops.push(AffineTransform {
-                                    a: cos,
-                                    b: sin,
-                                    c: -sin,
-                                    d: cos,
-                                    e,
-                                    f,
-                                });
-                            }
+                            // T(cx,cy) * R(angle) * T(-cx,-cy), represented as one matrix.
+                            let e = cx - (cx * cos) + (cy * sin);
+                            let f = cy - (cx * sin) - (cy * cos);
+                            ops.push(AffineTransform {
+                                a: cos,
+                                b: sin,
+                                c: -sin,
+                                d: cos,
+                                e,
+                                f,
+                            });
                         }
                         _ => {
                             ops.push(AffineTransform {
@@ -432,43 +362,41 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
         }
     }
 
-    fn include_path_d(
-        bounds: &mut Option<Bounds>,
-        extrema_kinds: &mut ExtremaKinds,
-        d: &str,
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-    ) {
-        if let Some(pb) = svg_path_bounds_from_d(d) {
-            let b = apply_ops_bounds(
-                cur_ops,
-                el_ops,
-                Bounds {
-                    min_x: pb.min_x,
-                    min_y: pb.min_y,
-                    max_x: pb.max_x,
-                    max_y: pb.max_y,
-                },
-            );
-            include_rect_inexact(
-                bounds,
-                extrema_kinds,
-                b.min_x,
-                b.min_y,
-                b.max_x,
-                b.max_y,
-                ExtremaKind::Path,
-            );
+    #[derive(Default)]
+    struct BoundsAccumulator {
+        bounds: Option<Bounds>,
+    }
+
+    impl BoundsAccumulator {
+        fn include(&mut self, candidate: Bounds) {
+            // Empty placeholder geometry does not expand an SVG bbox. Non-empty Mermaid
+            // placeholders, including 0.1 by 0.1 rects, remain part of emitted geometry.
+            let width = (candidate.max_x - candidate.min_x).abs();
+            let height = (candidate.max_y - candidate.min_y).abs();
+            if width < 1e-9 && height < 1e-9 {
+                return;
+            }
+
+            if let Some(bounds) = self.bounds.as_mut() {
+                bounds.min_x = bounds.min_x.min(candidate.min_x);
+                bounds.min_y = bounds.min_y.min(candidate.min_y);
+                bounds.max_x = bounds.max_x.max(candidate.max_x);
+                bounds.max_y = bounds.max_y.max(candidate.max_y);
+            } else {
+                self.bounds = Some(candidate);
+            }
+        }
+
+        fn finish(self) -> Option<Bounds> {
+            self.bounds
         }
     }
 
     fn include_points(
-        bounds: &mut Option<Bounds>,
-        extrema_kinds: &mut ExtremaKinds,
+        bounds: &mut BoundsAccumulator,
         points: &str,
         cur_ops: &[AffineTransform],
         el_ops: &[AffineTransform],
-        kind: ExtremaKind,
     ) {
         let mut min_x = f64::INFINITY;
         let mut min_y = f64::INFINITY;
@@ -497,184 +425,25 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
                     max_y,
                 },
             );
-            include_rect_inexact(
-                bounds,
-                extrema_kinds,
-                b.min_x,
-                b.min_y,
-                b.max_x,
-                b.max_y,
-                kind,
-            );
+            bounds.include(b);
         }
     }
 
-    let mut bounds: Option<Bounds> = None;
-
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    enum ExtremaKind {
-        #[default]
-        Exact,
-        Rotated,
-        RotatedDecomposedPivot,
-        RotatedPivot,
-        Path,
-    }
-
-    #[derive(Clone, Copy, Debug, Default)]
-    struct ExtremaKinds {
-        min_x: ExtremaKind,
-        min_y: ExtremaKind,
-        max_x: ExtremaKind,
-        max_y: ExtremaKind,
-    }
-
-    let mut extrema_kinds = ExtremaKinds::default();
-
-    fn include_rect_inexact(
-        bounds: &mut Option<Bounds>,
-        extrema_kinds: &mut ExtremaKinds,
-        min_x: f64,
-        min_y: f64,
-        max_x: f64,
-        max_y: f64,
-        kind: ExtremaKind,
-    ) {
-        // Chromium's `getBBox()` does not expand the effective bbox for empty/degenerate placeholder
-        // geometry (e.g. Mermaid's `<rect/>` stubs under label groups).
-        //
-        // Note: Mermaid frequently emits `0.1 x 0.1` placeholder rects (e.g. under edge label
-        // groups). Those placeholders *can* influence the upstream root viewport, so we must
-        // include them for `viewBox/max-width` parity.
-        let w = (max_x - min_x).abs();
-        let h = (max_y - min_y).abs();
-        if w < 1e-9 && h < 1e-9 {
-            return;
-        }
-
-        if let Some(cur) = bounds.as_mut() {
-            if min_x < cur.min_x {
-                cur.min_x = min_x;
-                extrema_kinds.min_x = kind;
-            }
-            if min_y < cur.min_y {
-                cur.min_y = min_y;
-                extrema_kinds.min_y = kind;
-            }
-            if max_x > cur.max_x {
-                cur.max_x = max_x;
-                extrema_kinds.max_x = kind;
-            }
-            if max_y > cur.max_y {
-                cur.max_y = max_y;
-                extrema_kinds.max_y = kind;
-            }
-        } else {
-            *bounds = Some(Bounds {
-                min_x,
-                min_y,
-                max_x,
-                max_y,
-            });
-            *extrema_kinds = ExtremaKinds {
-                min_x: kind,
-                min_y: kind,
-                max_x: kind,
-                max_y: kind,
-            };
-        }
-    }
+    let mut bounds = BoundsAccumulator::default();
 
     fn apply_ops_point(
         cur_ops: &[AffineTransform],
         el_ops: &[AffineTransform],
-        x: f64,
-        y: f64,
+        mut x: f64,
+        mut y: f64,
     ) -> (f64, f64) {
-        let mut x = x as f32;
-        let mut y = y as f32;
         for op in el_ops.iter().rev() {
-            (x, y) = op.apply_point_f32(x, y);
+            (x, y) = op.apply_point(x, y);
         }
         for op in cur_ops.iter().rev() {
-            (x, y) = op.apply_point_f32(x, y);
+            (x, y) = op.apply_point(x, y);
         }
-        (x as f64, y as f64)
-    }
-
-    fn apply_ops_point_no_fma(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-        x: f64,
-        y: f64,
-    ) -> (f64, f64) {
-        let mut x = x as f32;
-        let mut y = y as f32;
-        for op in el_ops.iter().rev() {
-            (x, y) = op.apply_point_f32_no_fma(x, y);
-        }
-        for op in cur_ops.iter().rev() {
-            (x, y) = op.apply_point_f32_no_fma(x, y);
-        }
-        (x as f64, y as f64)
-    }
-
-    fn apply_ops_point_f64_then_f32(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-        x: f64,
-        y: f64,
-    ) -> (f64, f64) {
-        // Alternate transform path: apply ops in `f64`, then quantize the final point to `f32`.
-        // Some Chromium `getBBox()` baselines behave closer to this (notably gitGraph label
-        // rotations around the x-axis).
-        let mut x = x;
-        let mut y = y;
-        for op in el_ops.iter().rev() {
-            let ox = (op.a * x + op.c * y) + op.e;
-            let oy = (op.b * x + op.d * y) + op.f;
-            x = ox;
-            y = oy;
-        }
-        for op in cur_ops.iter().rev() {
-            let ox = (op.a * x + op.c * y) + op.e;
-            let oy = (op.b * x + op.d * y) + op.f;
-            x = ox;
-            y = oy;
-        }
-        let xf = x as f32;
-        let yf = y as f32;
-        (xf as f64, yf as f64)
-    }
-
-    fn apply_ops_point_f64_then_f32_fma(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-        x: f64,
-        y: f64,
-    ) -> (f64, f64) {
-        // Alternate transform path: apply ops in `f64` using `mul_add`, then quantize the final
-        // point to `f32`.
-        //
-        // Depending on the platform and browser, some `getBBox()` extrema baselines line up more
-        // closely with a fused multiply-add pipeline.
-        let mut x = x;
-        let mut y = y;
-        for op in el_ops.iter().rev() {
-            let ox = op.a.mul_add(x, op.c.mul_add(y, op.e));
-            let oy = op.b.mul_add(x, op.d.mul_add(y, op.f));
-            x = ox;
-            y = oy;
-        }
-        for op in cur_ops.iter().rev() {
-            let ox = op.a.mul_add(x, op.c.mul_add(y, op.e));
-            let oy = op.b.mul_add(x, op.d.mul_add(y, op.f));
-            x = ox;
-            y = oy;
-        }
-        let xf = x as f32;
-        let yf = y as f32;
-        (xf as f64, yf as f64)
+        (x, y)
     }
 
     fn apply_ops_bounds(
@@ -692,185 +461,6 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
             max_x: x0.max(x1).max(x2).max(x3),
             max_y: y0.max(y1).max(y2).max(y3),
         }
-    }
-
-    fn apply_ops_bounds_no_fma(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-        b: Bounds,
-    ) -> Bounds {
-        let (x0, y0) = apply_ops_point_no_fma(cur_ops, el_ops, b.min_x, b.min_y);
-        let (x1, y1) = apply_ops_point_no_fma(cur_ops, el_ops, b.min_x, b.max_y);
-        let (x2, y2) = apply_ops_point_no_fma(cur_ops, el_ops, b.max_x, b.min_y);
-        let (x3, y3) = apply_ops_point_no_fma(cur_ops, el_ops, b.max_x, b.max_y);
-        Bounds {
-            min_x: x0.min(x1).min(x2).min(x3),
-            min_y: y0.min(y1).min(y2).min(y3),
-            max_x: x0.max(x1).max(x2).max(x3),
-            max_y: y0.max(y1).max(y2).max(y3),
-        }
-    }
-
-    fn apply_ops_bounds_f64_then_f32(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-        b: Bounds,
-    ) -> Bounds {
-        let (x0, y0) = apply_ops_point_f64_then_f32(cur_ops, el_ops, b.min_x, b.min_y);
-        let (x1, y1) = apply_ops_point_f64_then_f32(cur_ops, el_ops, b.min_x, b.max_y);
-        let (x2, y2) = apply_ops_point_f64_then_f32(cur_ops, el_ops, b.max_x, b.min_y);
-        let (x3, y3) = apply_ops_point_f64_then_f32(cur_ops, el_ops, b.max_x, b.max_y);
-        Bounds {
-            min_x: x0.min(x1).min(x2).min(x3),
-            min_y: y0.min(y1).min(y2).min(y3),
-            max_x: x0.max(x1).max(x2).max(x3),
-            max_y: y0.max(y1).max(y2).max(y3),
-        }
-    }
-
-    fn apply_ops_bounds_f64_then_f32_fma(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-        b: Bounds,
-    ) -> Bounds {
-        let (x0, y0) = apply_ops_point_f64_then_f32_fma(cur_ops, el_ops, b.min_x, b.min_y);
-        let (x1, y1) = apply_ops_point_f64_then_f32_fma(cur_ops, el_ops, b.min_x, b.max_y);
-        let (x2, y2) = apply_ops_point_f64_then_f32_fma(cur_ops, el_ops, b.max_x, b.min_y);
-        let (x3, y3) = apply_ops_point_f64_then_f32_fma(cur_ops, el_ops, b.max_x, b.max_y);
-        Bounds {
-            min_x: x0.min(x1).min(x2).min(x3),
-            min_y: y0.min(y1).min(y2).min(y3),
-            max_x: x0.max(x1).max(x2).max(x3),
-            max_y: y0.max(y1).max(y2).max(y3),
-        }
-    }
-
-    fn has_non_axis_aligned_ops(cur_ops: &[AffineTransform], el_ops: &[AffineTransform]) -> bool {
-        cur_ops
-            .iter()
-            .chain(el_ops.iter())
-            .any(|t| t.b.abs() > 1e-12 || t.c.abs() > 1e-12)
-    }
-
-    fn has_pivot_baked_ops(cur_ops: &[AffineTransform], el_ops: &[AffineTransform]) -> bool {
-        // Detect an affine op that includes both rotation/shear (b/c) and translation (e/f).
-        // This typically comes from parsing `rotate(angle, cx, cy)` into a single matrix op.
-        cur_ops.iter().chain(el_ops.iter()).any(|t| {
-            (t.b.abs() > 1e-12 || t.c.abs() > 1e-12) && (t.e.abs() > 1e-12 || t.f.abs() > 1e-12)
-        })
-    }
-
-    fn is_translate_op(t: &AffineTransform) -> bool {
-        t.a == 1.0 && t.b == 0.0 && t.c == 0.0 && t.d == 1.0
-    }
-
-    fn is_rotate_like_op(t: &AffineTransform) -> bool {
-        // Accept any non-axis-aligned op without baked translation.
-        (t.b.abs() > 1e-12 || t.c.abs() > 1e-12) && t.e.abs() <= 1e-12 && t.f.abs() <= 1e-12
-    }
-
-    fn is_near_integer(v: f64) -> bool {
-        (v - v.round()).abs() <= 1e-9
-    }
-
-    fn translate_params_quantized_to_0_01(t: &AffineTransform) -> bool {
-        if !is_translate_op(t) {
-            return false;
-        }
-        // Some upstream fixtures use 2-decimal translate params (e.g. `translate(-14.34, 12.72)`).
-        // Those can land on slightly different float extrema baselines versus high-precision / dyadic
-        // translates. Detect this case so we can apply the alternate bbox path more selectively.
-        is_near_integer(t.e * 100.0) && is_near_integer(t.f * 100.0)
-    }
-
-    fn has_translate_quantized_to_0_01(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-    ) -> bool {
-        cur_ops
-            .iter()
-            .chain(el_ops.iter())
-            .any(translate_params_quantized_to_0_01)
-    }
-
-    fn has_translate_close(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-        ex: f64,
-        fy: f64,
-    ) -> bool {
-        cur_ops
-            .iter()
-            .chain(el_ops.iter())
-            .filter(|t| is_translate_op(t))
-            .any(|t| (t.e - ex).abs() <= 1e-6 && (t.f - fy).abs() <= 1e-6)
-    }
-
-    fn pivot_from_baked_rotate_op(t: &AffineTransform) -> Option<(f64, f64)> {
-        // For a baked `rotate(angle, cx, cy)` op we have:
-        //   e = (1-cos)*cx + sin*cy
-        //   f = -sin*cx + (1-cos)*cy
-        // Solve for (cx, cy).
-        let cos = t.a;
-        let sin = t.b;
-        let k = 1.0 - cos;
-        let det = k.mul_add(k, sin * sin);
-        if det.abs() <= 1e-12 {
-            return None;
-        }
-        let cx = (k.mul_add(t.e, -sin * t.f)) / det;
-        let cy = (sin.mul_add(t.e, k * t.f)) / det;
-        Some((cx, cy))
-    }
-
-    fn has_pivot_cy_close(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-        target_cy: f64,
-    ) -> bool {
-        cur_ops
-            .iter()
-            .chain(el_ops.iter())
-            .filter(|t| {
-                (t.b.abs() > 1e-12 || t.c.abs() > 1e-12) && (t.e.abs() > 1e-12 || t.f.abs() > 1e-12)
-            })
-            .filter_map(pivot_from_baked_rotate_op)
-            .any(|(_cx, cy)| (cy - target_cy).abs() <= 1.0)
-    }
-
-    fn has_pivot_close(
-        cur_ops: &[AffineTransform],
-        el_ops: &[AffineTransform],
-        target_cx: f64,
-        target_cy: f64,
-    ) -> bool {
-        cur_ops
-            .iter()
-            .chain(el_ops.iter())
-            .filter(|t| {
-                (t.b.abs() > 1e-12 || t.c.abs() > 1e-12) && (t.e.abs() > 1e-12 || t.f.abs() > 1e-12)
-            })
-            .filter_map(pivot_from_baked_rotate_op)
-            .any(|(cx, cy)| (cx - target_cx).abs() <= 1e-3 && (cy - target_cy).abs() <= 1e-3)
-    }
-
-    fn has_decomposed_pivot_ops(cur_ops: &[AffineTransform], el_ops: &[AffineTransform]) -> bool {
-        // `rotate(angle, cx, cy)` can be represented as `translate(cx,cy) rotate(angle) translate(-cx,-cy)`.
-        // When Mermaid emits `rotate(-45, <x>, 0)` heavily (gitGraph), this decomposed form matches
-        // upstream `getBBox()` baselines well.
-        let ops: Vec<AffineTransform> = cur_ops.iter().chain(el_ops.iter()).copied().collect();
-        for w in ops.windows(3) {
-            let t0 = &w[0];
-            let r = &w[1];
-            let t1 = &w[2];
-            if !is_translate_op(t0) || !is_rotate_like_op(r) || !is_translate_op(t1) {
-                continue;
-            }
-            if t1.e == -t0.e && t1.f == -t0.f {
-                return true;
-            }
-        }
-        false
     }
 
     // Elements under `<defs>` and other non-rendered containers (e.g. `<marker>`) must be ignored
@@ -983,17 +573,6 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
             parse_transform_ops_into(transform, &mut el_ops_buf);
         }
         let el_ops: &[AffineTransform] = &el_ops_buf;
-        let tf_kind = if has_non_axis_aligned_ops(&cur_ops, el_ops) {
-            if has_pivot_baked_ops(&cur_ops, el_ops) {
-                ExtremaKind::RotatedPivot
-            } else if has_decomposed_pivot_ops(&cur_ops, el_ops) {
-                ExtremaKind::RotatedDecomposedPivot
-            } else {
-                ExtremaKind::Rotated
-            }
-        } else {
-            ExtremaKind::Exact
-        };
 
         if tag == "g" || tag == "a" {
             tf_stack.push(cur_ops.len());
@@ -1045,7 +624,7 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
                     let h = attr_value(attrs, "height")
                         .and_then(parse_f64)
                         .unwrap_or(0.0);
-                    let mut b = apply_ops_bounds(
+                    let b = apply_ops_bounds(
                         &cur_ops,
                         el_ops,
                         Bounds {
@@ -1055,70 +634,10 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
                             max_y: y + h,
                         },
                     );
-
-                    // For some rotated rects, Chromium `getBBox()` behaves closer to applying the
-                    // transform in `f64` and quantizing at the end rather than keeping the point
-                    // in `f32` between ops. Use the larger max-y so we don't under-size the root
-                    // viewport (gitGraph baselines are sensitive to 1–2 ULP drift).
-                    let allow_alt_max_y = tf_kind == ExtremaKind::Rotated
-                        || tf_kind == ExtremaKind::RotatedDecomposedPivot
-                        || (tf_kind == ExtremaKind::RotatedPivot
-                            && has_translate_quantized_to_0_01(&cur_ops, el_ops));
-                    if allow_alt_max_y {
-                        let base = Bounds {
-                            min_x: x,
-                            min_y: y,
-                            max_x: x + w,
-                            max_y: y + h,
-                        };
-                        let b_alt = apply_ops_bounds_f64_then_f32(
-                            &cur_ops,
-                            el_ops,
-                            Bounds {
-                                min_x: x,
-                                min_y: y,
-                                max_x: x + w,
-                                max_y: y + h,
-                            },
-                        );
-                        let b_alt_fma =
-                            apply_ops_bounds_f64_then_f32_fma(&cur_ops, el_ops, base.clone());
-                        let mut alt_max_y = b_alt.max_y.max(b_alt_fma.max_y);
-
-                        if tf_kind == ExtremaKind::RotatedPivot
-                            && has_translate_quantized_to_0_01(&cur_ops, el_ops)
-                            && has_pivot_cy_close(&cur_ops, el_ops, 90.0)
-                        {
-                            let b_no_fma = apply_ops_bounds_no_fma(&cur_ops, el_ops, base);
-                            alt_max_y = alt_max_y.max(b_no_fma.max_y);
-                        }
-                        if alt_max_y > b.max_y {
-                            b.max_y = alt_max_y;
-                        }
-                    }
-
-                    if tf_kind == ExtremaKind::RotatedPivot
-                        && has_translate_close(&cur_ops, el_ops, -14.34, 12.72)
-                        && has_pivot_close(&cur_ops, el_ops, 50.0, 90.0)
-                    {
-                        // Upstream `getBBox()` + JS padding for this specific rotate+translate
-                        // combination can round the final viewBox height up by 1 ULP. Bias the
-                        // extrema slightly upward so `f32_round_up` in the gitGraph viewport
-                        // computation lands on the same f32 value.
-                        b.max_y += 1e-9;
-                    }
                     if w != 0.0 || h != 0.0 {
                         maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                     }
-                    include_rect_inexact(
-                        &mut bounds,
-                        &mut extrema_kinds,
-                        b.min_x,
-                        b.min_y,
-                        b.max_x,
-                        b.max_y,
-                        tf_kind,
-                    );
+                    bounds.include(b);
                 }
                 "circle" => {
                     let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0);
@@ -1137,15 +656,7 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
                     if r != 0.0 {
                         maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                     }
-                    include_rect_inexact(
-                        &mut bounds,
-                        &mut extrema_kinds,
-                        b.min_x,
-                        b.min_y,
-                        b.max_x,
-                        b.max_y,
-                        tf_kind,
-                    );
+                    bounds.include(b);
                 }
                 "ellipse" => {
                     let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0);
@@ -1165,15 +676,7 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
                     if rx != 0.0 || ry != 0.0 {
                         maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                     }
-                    include_rect_inexact(
-                        &mut bounds,
-                        &mut extrema_kinds,
-                        b.min_x,
-                        b.min_y,
-                        b.max_x,
-                        b.max_y,
-                        tf_kind,
-                    );
+                    bounds.include(b);
                 }
                 "line" => {
                     let x1 = attr_value(attrs, "x1").and_then(parse_f64).unwrap_or(0.0);
@@ -1189,54 +692,29 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
                         max_y: ty1.max(ty2),
                     };
                     maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
-                    include_rect_inexact(
-                        &mut bounds,
-                        &mut extrema_kinds,
-                        b.min_x,
-                        b.min_y,
-                        b.max_x,
-                        b.max_y,
-                        tf_kind,
-                    );
+                    bounds.include(b);
                 }
                 "path" => {
-                    if let Some(d) = attr_value(attrs, "d") {
-                        if let Some(pb) = svg_path_bounds_from_d(d) {
-                            let b0 = apply_ops_bounds(
-                                &cur_ops,
-                                el_ops,
-                                Bounds {
-                                    min_x: pb.min_x,
-                                    min_y: pb.min_y,
-                                    max_x: pb.max_x,
-                                    max_y: pb.max_y,
-                                },
-                            );
-                            maybe_record_dbg(&mut dbg, tag, attrs, b0.clone());
-                            include_rect_inexact(
-                                &mut bounds,
-                                &mut extrema_kinds,
-                                b0.min_x,
-                                b0.min_y,
-                                b0.max_x,
-                                b0.max_y,
-                                ExtremaKind::Path,
-                            );
-                        } else {
-                            include_path_d(&mut bounds, &mut extrema_kinds, d, &cur_ops, el_ops);
-                        }
+                    if let Some(d) = attr_value(attrs, "d")
+                        && let Some(pb) = svg_path_bounds_from_d(d)
+                    {
+                        let b0 = apply_ops_bounds(
+                            &cur_ops,
+                            el_ops,
+                            Bounds {
+                                min_x: pb.min_x,
+                                min_y: pb.min_y,
+                                max_x: pb.max_x,
+                                max_y: pb.max_y,
+                            },
+                        );
+                        maybe_record_dbg(&mut dbg, tag, attrs, b0.clone());
+                        bounds.include(b0);
                     }
                 }
                 "polygon" | "polyline" => {
                     if let Some(pts) = attr_value(attrs, "points") {
-                        include_points(
-                            &mut bounds,
-                            &mut extrema_kinds,
-                            pts,
-                            &cur_ops,
-                            el_ops,
-                            tf_kind,
-                        );
+                        include_points(&mut bounds, pts, &cur_ops, el_ops);
                     }
                 }
                 "foreignObject" => {
@@ -1261,15 +739,7 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
                     if w != 0.0 || h != 0.0 {
                         maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                     }
-                    include_rect_inexact(
-                        &mut bounds,
-                        &mut extrema_kinds,
-                        b.min_x,
-                        b.min_y,
-                        b.max_x,
-                        b.max_y,
-                        tf_kind,
-                    );
+                    bounds.include(b);
                 }
                 _ => {}
             }
@@ -1278,7 +748,7 @@ pub(in crate::svg::parity) fn svg_emitted_bounds_from_svg_inner(
         i = gt + 1;
     }
 
-    bounds
+    bounds.finish()
 }
 
 #[cfg(test)]
@@ -1403,6 +873,87 @@ mod svg_bbox_tests {
             (dbg.bounds.max_y - 15.0).abs() < 1e-9,
             "max_y: {}",
             dbg.bounds.max_y
+        );
+    }
+
+    #[test]
+    fn svg_emitted_bounds_preserves_f64_affine_precision() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><rect x="0.1" y="0.2" width="1.3" height="2.4" transform="translate(0.2, 0.3)"/></svg>"#;
+        let bounds = svg_emitted_bounds_from_svg(svg).expect("emitted bounds");
+
+        assert!(
+            (bounds.min_x - 0.3).abs() < 1e-12,
+            "min_x: {}",
+            bounds.min_x
+        );
+        assert!(
+            (bounds.min_y - 0.5).abs() < 1e-12,
+            "min_y: {}",
+            bounds.min_y
+        );
+        assert!(
+            (bounds.max_x - 1.6).abs() < 1e-12,
+            "max_x: {}",
+            bounds.max_x
+        );
+        assert!(
+            (bounds.max_y - 2.9).abs() < 1e-12,
+            "max_y: {}",
+            bounds.max_y
+        );
+    }
+
+    #[test]
+    fn svg_emitted_bounds_preserves_transform_list_and_group_order() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(10, 20)"><rect x="1" y="2" width="3" height="4" transform="scale(2, 3) translate(5, 7)"/></g></svg>"#;
+        let bounds = svg_emitted_bounds_from_svg(svg).expect("emitted bounds");
+
+        assert!(
+            (bounds.min_x - 22.0).abs() < 1e-12,
+            "min_x: {}",
+            bounds.min_x
+        );
+        assert!(
+            (bounds.min_y - 47.0).abs() < 1e-12,
+            "min_y: {}",
+            bounds.min_y
+        );
+        assert!(
+            (bounds.max_x - 28.0).abs() < 1e-12,
+            "max_x: {}",
+            bounds.max_x
+        );
+        assert!(
+            (bounds.max_y - 59.0).abs() < 1e-12,
+            "max_y: {}",
+            bounds.max_y
+        );
+    }
+
+    #[test]
+    fn svg_emitted_bounds_maps_nested_svg_viewport() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(3, 4)"><svg x="10" y="20" width="200" height="100" viewBox="0 0 100 50"><rect x="5" y="6" width="10" height="8"/></svg></g></svg>"#;
+        let bounds = svg_emitted_bounds_from_svg(svg).expect("emitted bounds");
+
+        assert!(
+            (bounds.min_x - 23.0).abs() < 1e-12,
+            "min_x: {}",
+            bounds.min_x
+        );
+        assert!(
+            (bounds.min_y - 36.0).abs() < 1e-12,
+            "min_y: {}",
+            bounds.min_y
+        );
+        assert!(
+            (bounds.max_x - 43.0).abs() < 1e-12,
+            "max_x: {}",
+            bounds.max_x
+        );
+        assert!(
+            (bounds.max_y - 52.0).abs() < 1e-12,
+            "max_y: {}",
+            bounds.max_y
         );
     }
 }

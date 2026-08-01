@@ -1,47 +1,71 @@
 use super::{
-    ByteSpan, EditorSymbolKind, FenceExpectedSyntax, FenceExpectedSyntaxKind, FenceReferenceGroup,
-    FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+    ByteSpan, EditorSymbolKind, FenceExpectedSyntax, FenceExpectedSyntaxKind, FenceLexeme,
+    FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier, FenceReferenceGroup,
+    FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexData, FenceTextIndexSource,
     is_class_definition_detail,
 };
 
+#[cfg(test)]
 pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceTextIndex {
-    let mut index = FenceTextIndex::default();
-    let source_mapped_spans = facts.span_coordinate_space.is_original_source();
-    index.completion_dialect = facts.completion_dialect;
+    let cancellation = crate::AnalysisCancellationToken::new();
+    from_core_facts_cancellable(&facts, &cancellation)
+        .expect("a private analysis cancellation token cannot be cancelled")
+}
 
-    index.source = match (facts.completeness, source_mapped_spans) {
-        (merman_core::EditorSemanticCompleteness::Complete, true) => {
-            FenceTextIndexSource::ParserComplete
-        }
-        (merman_core::EditorSemanticCompleteness::Complete, false) => {
-            FenceTextIndexSource::ParserCompleteDegradedSpans
-        }
-        (merman_core::EditorSemanticCompleteness::Recovered, true) => {
-            FenceTextIndexSource::ParserRecovered
-        }
-        (merman_core::EditorSemanticCompleteness::Recovered, false) => {
-            FenceTextIndexSource::ParserRecoveredDegradedSpans
-        }
+pub(super) fn from_core_facts_cancellable(
+    facts: &merman_core::EditorSemanticFacts,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<FenceTextIndex, crate::AnalysisCancelled> {
+    cancellation.checkpoint()?;
+    let source = match facts.completeness {
+        merman_core::EditorSemanticCompleteness::Complete => FenceTextIndexSource::ParserComplete,
+        merman_core::EditorSemanticCompleteness::Recovered => FenceTextIndexSource::ParserRecovered,
     };
-    index.directive_prefixes.extend(facts.directive_prefixes);
-    if source_mapped_spans {
-        index
-            .expected_syntax
-            .extend(
-                facts
-                    .expected_syntax
-                    .into_iter()
-                    .map(|expected| FenceExpectedSyntax {
-                        kind: expected_syntax_kind_from_core(expected.kind),
-                        span: ByteSpan {
-                            start: expected.span.start,
-                            end: expected.span.end,
-                        },
-                    }),
-            );
+    let mut index = FenceTextIndexData {
+        completion_vocabulary: facts.completion_vocabulary,
+        source,
+        ..FenceTextIndexData::default()
+    };
+    index.lexeme_failure = facts.lexeme_failure().map(lexeme_failure_from_core);
+    index.lexemes.reserve(facts.lexemes().len());
+    for (lexeme_index, lexeme) in facts.lexemes().iter().enumerate() {
+        if lexeme_index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        index.lexemes.push(FenceLexeme {
+            kind: lexeme_kind_from_core(lexeme.kind()),
+            modifiers: lexeme
+                .modifiers()
+                .iter()
+                .map(lexeme_modifier_from_core)
+                .collect(),
+            span: ByteSpan {
+                start: lexeme.span().start,
+                end: lexeme.span().end,
+            },
+        });
+    }
+    index
+        .directive_prefixes
+        .extend(facts.directive_prefixes.iter().cloned());
+    index.expected_syntax.reserve(facts.expected_syntax.len());
+    for (expected_index, expected) in facts.expected_syntax.iter().enumerate() {
+        if expected_index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        index.expected_syntax.push(FenceExpectedSyntax {
+            kind: expected_syntax_kind_from_core(expected.kind),
+            span: ByteSpan {
+                start: expected.span.start,
+                end: expected.span.end,
+            },
+        });
     }
 
-    for symbol in facts.symbols {
+    for (symbol_index, symbol) in facts.symbols.iter().enumerate() {
+        if symbol_index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
         let role = symbol.role;
         let kind = editor_kind_from_core(symbol.kind);
         let is_class_definition = is_class_definition_detail(symbol.detail.as_deref());
@@ -51,13 +75,9 @@ pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceT
         if role.contributes_completion() && !is_class_definition {
             index.node_ids.insert(symbol.name.clone());
         }
-        if !source_mapped_spans {
-            continue;
-        }
-
         let item = FenceSemanticItem::new(
-            symbol.name,
-            symbol.detail,
+            symbol.name.clone(),
+            symbol.detail.clone(),
             kind,
             semantic_role_from_core(role),
             ByteSpan {
@@ -69,7 +89,7 @@ pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceT
                 end: symbol.selection.end,
             },
         )
-        .with_rename_domain(symbol.rename_domain);
+        .with_rename_policy(symbol.rename_policy);
         if role.contributes_references() {
             index
                 .references
@@ -83,6 +103,7 @@ pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceT
         index.semantic_items.push(item);
     }
 
+    cancellation.checkpoint()?;
     index.outline_items.sort_by(|left, right| {
         (
             left.span.start,
@@ -115,7 +136,70 @@ pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceT
                 right.selection.end,
             ))
     });
-    index
+    index.build_point_indexes(cancellation)?;
+    cancellation.checkpoint()?;
+    Ok(FenceTextIndex::from_data(index))
+}
+
+fn lexeme_kind_from_core(kind: merman_core::EditorLexemeKind) -> FenceLexemeKind {
+    match kind {
+        merman_core::EditorLexemeKind::Keyword => FenceLexemeKind::Keyword,
+        merman_core::EditorLexemeKind::Comment => FenceLexemeKind::Comment,
+        merman_core::EditorLexemeKind::Operator => FenceLexemeKind::Operator,
+        merman_core::EditorLexemeKind::Delimiter => FenceLexemeKind::Delimiter,
+        merman_core::EditorLexemeKind::Identifier => FenceLexemeKind::Identifier,
+        merman_core::EditorLexemeKind::Number => FenceLexemeKind::Number,
+        merman_core::EditorLexemeKind::Date => FenceLexemeKind::Date,
+        merman_core::EditorLexemeKind::Duration => FenceLexemeKind::Duration,
+        merman_core::EditorLexemeKind::Boolean => FenceLexemeKind::Boolean,
+        merman_core::EditorLexemeKind::String => FenceLexemeKind::String,
+        merman_core::EditorLexemeKind::Style => FenceLexemeKind::Style,
+        merman_core::EditorLexemeKind::Color => FenceLexemeKind::Color,
+        merman_core::EditorLexemeKind::Literal => FenceLexemeKind::Literal,
+        merman_core::EditorLexemeKind::Frontmatter => FenceLexemeKind::Frontmatter,
+        merman_core::EditorLexemeKind::Directive => FenceLexemeKind::Directive,
+    }
+}
+
+fn lexeme_modifier_from_core(modifier: merman_core::EditorLexemeModifier) -> FenceLexemeModifier {
+    match modifier {
+        merman_core::EditorLexemeModifier::Declaration => FenceLexemeModifier::Declaration,
+        merman_core::EditorLexemeModifier::Definition => FenceLexemeModifier::Definition,
+        merman_core::EditorLexemeModifier::Reference => FenceLexemeModifier::Reference,
+        merman_core::EditorLexemeModifier::Readonly => FenceLexemeModifier::Readonly,
+        merman_core::EditorLexemeModifier::Documentation => FenceLexemeModifier::Documentation,
+        merman_core::EditorLexemeModifier::DefaultLibrary => FenceLexemeModifier::DefaultLibrary,
+    }
+}
+
+fn lexeme_failure_from_core(failure: merman_core::EditorLexemeFailure) -> FenceLexemeFailure {
+    match failure {
+        merman_core::EditorLexemeFailure::InvalidSpan { span } => FenceLexemeFailure::InvalidSpan {
+            span: ByteSpan {
+                start: span.start,
+                end: span.end,
+            },
+        },
+        merman_core::EditorLexemeFailure::Overlap { left, right } => FenceLexemeFailure::Overlap {
+            left: ByteSpan {
+                start: left.start,
+                end: left.end,
+            },
+            right: ByteSpan {
+                start: right.start,
+                end: right.end,
+            },
+        },
+        merman_core::EditorLexemeFailure::InvalidProvenance => {
+            FenceLexemeFailure::InvalidProvenance
+        }
+        merman_core::EditorLexemeFailure::UnknownModifierBits { bits } => {
+            FenceLexemeFailure::UnknownModifierBits { bits }
+        }
+        merman_core::EditorLexemeFailure::DuplicateModifiers { bits } => {
+            FenceLexemeFailure::DuplicateModifiers { bits }
+        }
+    }
 }
 
 fn editor_kind_from_core(kind: merman_core::EditorSemanticKind) -> EditorSymbolKind {
@@ -150,6 +234,7 @@ fn expected_syntax_kind_from_core(
         merman_core::EditorExpectedSyntaxKind::NodeIdentifier => {
             FenceExpectedSyntaxKind::NodeIdentifier
         }
+        merman_core::EditorExpectedSyntaxKind::Operator => FenceExpectedSyntaxKind::Operator,
         merman_core::EditorExpectedSyntaxKind::ShapeValue => FenceExpectedSyntaxKind::Shape,
         merman_core::EditorExpectedSyntaxKind::ShapeTrigger => {
             FenceExpectedSyntaxKind::ShapeTrigger

@@ -21,7 +21,6 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
     edge: &crate::flowchart::FlowEdge,
     origin_x: f64,
     origin_y: f64,
-    normalize_cyclic_special: bool,
     base_points: &[crate::model::LayoutPoint],
     out: &mut Vec<crate::model::LayoutPoint>,
 ) -> ElkEndpointAdapterCorners {
@@ -31,22 +30,10 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
         return ElkEndpointAdapterCorners::default();
     }
 
-    let Some(start_bounds) = boundary_for_node(
-        ctx,
-        edge.from.as_str(),
-        origin_x,
-        origin_y,
-        normalize_cyclic_special,
-    ) else {
+    let Some(start_bounds) = boundary_for_node(ctx, edge.from.as_str(), origin_x, origin_y) else {
         return ElkEndpointAdapterCorners::default();
     };
-    let Some(end_bounds) = boundary_for_node(
-        ctx,
-        edge.to.as_str(),
-        origin_x,
-        origin_y,
-        normalize_cyclic_special,
-    ) else {
+    let Some(end_bounds) = boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y) else {
         return ElkEndpointAdapterCorners::default();
     };
 
@@ -116,7 +103,6 @@ pub(in crate::svg::parity::flowchart) fn align_elk_endpoint_adapters_to_route(
     edge: &crate::flowchart::FlowEdge,
     origin_x: f64,
     origin_y: f64,
-    normalize_cyclic_special: bool,
     adapters: &mut ElkEndpointAdapterCorners,
     points: &mut Vec<crate::model::LayoutPoint>,
 ) {
@@ -187,13 +173,7 @@ pub(in crate::svg::parity::flowchart) fn align_elk_endpoint_adapters_to_route(
     }
 
     if adapters.source && points.len() >= 3 {
-        let bounds = boundary_for_node(
-            ctx,
-            edge.from.as_str(),
-            origin_x,
-            origin_y,
-            normalize_cyclic_special,
-        );
+        let bounds = boundary_for_node(ctx, edge.from.as_str(), origin_x, origin_y);
         let shape = ctx
             .nodes_by_id
             .get(edge.from.as_str())
@@ -215,13 +195,7 @@ pub(in crate::svg::parity::flowchart) fn align_elk_endpoint_adapters_to_route(
     }
 
     if adapters.target && points.len() >= 3 {
-        let bounds = boundary_for_node(
-            ctx,
-            edge.to.as_str(),
-            origin_x,
-            origin_y,
-            normalize_cyclic_special,
-        );
+        let bounds = boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y);
         let shape = ctx
             .nodes_by_id
             .get(edge.to.as_str())

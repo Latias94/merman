@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Non-ASCII punctuation “quotes” and dashes — test",
     "accTitle": null,
     "accDescr": null,

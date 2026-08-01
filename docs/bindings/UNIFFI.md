@@ -1,108 +1,129 @@
 # UniFFI Bindings
 
-Status: experimental generated-binding surface.
+`merman-uniffi` is Merman's direct object binding for Swift, Kotlin, and Python hosts. It calls
+`merman-bindings-core` directly and has its own binding API version. It is not a wrapper around the
+C ABI, and applications must not mix a generated UniFFI source projection with a different native
+library build.
 
-`merman-uniffi` exposes a small UniFFI object API over `merman-bindings-core`:
+The current direct binding API is `3`. Its runtime contract is schema `1`; the C ABI and the
+text-measurement protocol have separate version ownership.
 
-- `MermanEngine::new()`
-- `MermanEngine::abi_version()`
-- `MermanEngine::package_version()`
-- `MermanEngine::render_svg(source, options_json)`
-- `MermanEngine::render_ascii(source, options_json)`
-- `MermanEngine::parse_json(source, options_json)`
-- `MermanEngine::layout_json(source, options_json)`
-- `MermanEngine::validate(source, options_json)`
-- `MermanEngine::analyze_json(source, options_json)`
-- `MermanEngine::analyze_document_json(source, options_json, uri)`
-- `MermanEngine::analyze_document_facts_json(source, options_json, uri)`
-- `MermanEngine::reusable_engine(options_json)`
-- `MermanEngine::reusable_engine_with_text_measurer(options_json, measurer)`
-- `MermanEngine::supported_diagrams()`
-- `MermanEngine::ascii_capabilities()`
-- `MermanEngine::supported_themes()`
-- `MermanEngine::supported_host_theme_presets()`
-- `MermanEngine::diagram_family_capabilities()`
-- `MermanEngine::lint_rule_catalog()`
-- `MermanEngine::configurable_lint_rule_catalog()`
-- `MermanReusableEngine` render/parse/layout/validation methods
-- `MermanReusableEngine` analysis and document-analysis methods
-- `MermanReusableEngine::set_text_measurer(measurer)`
-- `MermanReusableEngine::clear_text_measurer()`
-- `MermanTextMeasurer` callback interface
-- `MermanError::Binding { code, code_name, message }`
+## Public Model
 
-`MermanEngine::ascii_capabilities()` returns typed records with `diagram_type`, `display_name`,
-`support_level`, `summary_fallback`, `supported_semantics`, `limits`, and `evidence`, so generated
-bindings can label `full`, `partial`, and summary-only ASCII support before rendering.
+The generated API exposes:
 
-The C ABI in `merman-ffi` remains the canonical low-level protocol. UniFFI is a convenience layer for
-Swift, Kotlin, Python, and Ruby package lanes.
-The optional `options_json` argument uses the shared contract documented in
-`docs/bindings/OPTIONS_JSON.md`.
-That contract includes the shared `lint` section for profiles, explicit rule enable/disable, and
-severity overrides, so UniFFI, CLI lint, FFI, and WASM can all drive the same analysis behavior.
-`lint_rule_catalog()` returns the same rule ids, evidence references, profiles, origins,
-configurability, and fixability exposed by the other metadata surfaces. Merman authoring
-recommendations remain opt-in through `recommended` or explicit rule enablement.
+- `MermanEngine` for one-shot operations;
+- `MermanReusableEngine` for operations that share baseline options and optional host text
+  measurement;
+- `MermanOperationRequest` and `MermanOperationResult` for generic descriptor-owned dispatch;
+- `resource_options_json` / generated `resourceOptionsJson` for Options JSON schema `2` profiles and request-local overrides;
+- `MermanTextMeasurer` for synchronous host measurement; and
+- structured `MermanError::Binding { code, code_name, kind, capability_id, resource, message }` failures, where `resource` is optional typed limit evidence.
 
-## Analysis And Validation
+`MermanEngine::binding_api_version()` reports `3`. Use `runtime_catalog_json()` to inspect the
+atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
+resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
+copy capability IDs into a language wrapper.
 
-`validate` is the current compatibility method. It returns the typed
-`MermanValidationResult` record with top-level `valid`, `error`, `code`, and `code_name` fields.
-Binding failures use `MermanError`, which carries `code`, `code_name`, and `message`.
+Every operation is available through `execute(request)`, and `MermanOperationRequest.options_json`
+owns the generic operation's options. Named methods such as
+`render_svg`, `render_png`, `render_jpeg`, `render_pdf`, `render_ascii`, `parse_json`,
+`layout_json`, `analyze_json`, and `validate` are convenience wrappers over that same operation
+catalog. An unavailable operation returns a structured missing-capability error instead of a
+transport-specific stub result.
 
-ADR 0070 makes diagnostics-first analysis the canonical method for linting, CI, editor integrations,
-and future LSP adapters. UniFFI exposes it as JSON rather than inventing a UniFFI-only diagnostic
-record model. Generated bindings may add typed helpers later, but the JSON payload should remain
-byte-for-byte compatible with the C ABI and WASM surfaces.
+The generated resource helper takes an optional profile. Leave it unset when a reusable request must inherit its constructor ceiling; only generated override IDs can be serialized into `resources.limits`. One-shot execution constructs a fresh engine from the request options, so a request may explicitly
+select `runtime_policy`. A reusable engine instead deeply merges each request's options over its
+construction baseline; nested objects merge recursively, while arrays and scalar leaves replace
+the baseline value. The reusable engine's baseline remains unchanged, and request options cannot
+change its constructor-owned runtime policy. Reusable named methods expose the same request-local
+`options_json` argument and follow the same merge rules.
 
-`validate` is implemented as a projection over analysis diagnostics so existing package users keep
-working while new integrations can consume `analyze_json`, `analyze_document_json`, or
-`analyze_document_facts_json`.
+`MermanErrorKind::UnknownOperation` identifies an operation outside the descriptor vocabulary and has no
+capability ID. `MermanErrorKind::MissingCapability` identifies a valid request whose artifact lacks
+the named descriptor capability. Other failures use `Generic` and a null capability ID.
 
-Generated bindings use Merman's built-in headless measurer by default. Hosts that need DOM,
-WebView, Core Text, Android, Flutter, or another platform font stack can use
-`MermanReusableEngine` with `MermanTextMeasurer`, either at construction time through
-`MermanEngine::reusable_engine_with_text_measurer` or later through
-`MermanReusableEngine::set_text_measurer`. `MermanReusableEngine::clear_text_measurer` restores the
-engine's original built-in measurer. The callback should return `None` for unsupported or uncached
-requests so Merman can fall back to vendored metrics. Callback `Err` values are treated as host
-failures: the reusable render/layout call records the first callback error and returns it as
-`MermanError` instead of silently accepting fallback output.
+The generated API shape is stable across feature profiles. A build without `analysis` still
+exposes `lint_rule_catalog()` and `configurable_lint_rule_catalog()`, but those calls return
+`MissingCapability` with capability ID `analysis`. A build without `svg` still exposes
+`MermanTextMeasurer` and the reusable-engine text-measurer constructor; that constructor returns
+`MissingCapability` with capability ID `svg`. Consumers can therefore use one generated projection
+and handle artifact capability differences as typed runtime errors.
 
-## Bindgen Smoke
+## Build Profiles
 
-Run:
+`merman-uniffi` has no default features. The complete native language SDK artifact lists analysis,
+ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, RaTeX math, and native
+clock/timezone/random adapters directly. Timing is not part of the UniFFI artifact contract.
+`bindgen-smoke` is only for foreign-language
+generation and does not belong in a distributed runtime artifact.
 
 ```bash
-cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
+cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
 ```
 
-This test builds the `merman-uniffi` cdylib, generates Python bindings from the embedded UniFFI
-metadata into a temporary package, copies the native library beside the generated module, imports
-the package with Python, and calls `MermanEngine.abi_version`, `MermanEngine.package_version`,
-`MermanEngine.render_svg`, `MermanEngine.render_ascii`, `MermanEngine.parse_json`,
-`MermanEngine.layout_json`, `MermanEngine.validate`, metadata methods,
-`MermanEngine.analyze_document_json`, `MermanEngine.analyze_document_facts_json`,
-`MermanEngine.ascii_capabilities`, `MermanEngine.diagram_family_capabilities`,
-`MermanEngine.reusable_engine_with_text_measurer`,
-`MermanReusableEngine.analyze_document_json`,
-`MermanReusableEngine.analyze_document_facts_json`, `MermanReusableEngine.set_text_measurer`,
-`MermanReusableEngine.clear_text_measurer`, plus a `MermanError.Binding` error-path check.
+Small artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
+`layout-cytoscape`, `layout-elk`, `math`, and the required system-adapter features explicitly.
+`png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, and `math` all imply `svg`.
 
-Generated Swift, Kotlin, Python, or Ruby files are not committed by this lane. Platform-specific
-package layouts should be split into follow-on lanes.
+## Python
 
-## Other UniFFI Targets
+The repository ships a Python package layout. Generate it from the exact cdylib that will be
+packaged:
 
-UniFFI 0.31.1 can generate Kotlin, Python, Ruby, and Swift bindings. Merman currently ships only the
-Python package scaffold through UniFFI. Android/Kotlin and Apple/Swift already have C ABI wrappers
-under `platforms/android` and `platforms/apple`, so generated UniFFI Kotlin or Swift should be a
-deliberate follow-on if the generated API is meant to replace or supplement those wrappers. Ruby is
-not currently a release surface.
+```bash
+cargo build -p merman-uniffi --release --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random'
+cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' \
+  --example generate_python_package -- \
+  --cdylib target/release/libmerman_uniffi.dylib \
+  --package-dir platforms/python/merman
+```
 
-## Python Package Scaffold
+Use `.so` on Linux and `merman_uniffi.dll` on Windows. The generator enables `bindgen-smoke`, but
+the copied production library is the separately built release artifact without that tool feature.
 
-See `docs/bindings/PYTHON_UNIFFI.md` for the current Python package layout and local generation
-command. The package scaffold lives under `platforms/python/merman`; generated Python source
-and native libraries are ignored.
+See [Python UniFFI](PYTHON_UNIFFI.md) for package and wheel details.
+
+## Apple Swift
+
+Apple is a direct UniFFI lane. Its checked-in generated `Merman.swift` imports the `MermanFFI`
+module inside the matching `Merman.xcframework`; no hand-written C façade remains. Generate the
+Swift source, header, and module map from the exact static library:
+
+```bash
+cargo run -p merman-uniffi --no-default-features --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' \
+  --example generate_swift_bindings -- \
+  --library target/aarch64-apple-darwin/release/libmerman_uniffi.a \
+  --output-dir platforms/apple/Sources/Merman/Generated
+```
+
+Use `scripts/build-apple-xcframework.sh` for normal packaging. It builds every selected slice,
+regenerates the three source artifacts, and embeds the generated header/module map in each slice.
+See [Apple Swift](APPLE_SWIFT.md) for the SwiftPM API and smoke command.
+
+## Text Measurement
+
+Merman uses a deterministic vendored text measurer by default. A UI host can pass a
+`MermanTextMeasurer` when it constructs a reusable engine whose Core Text, Android, or other
+platform font stack must determine layout. The callback is immutable for that engine. It receives
+the independent text-measurement protocol version `1` and a typed operation. Return `None`/`nil`
+for work that is unavailable or cannot be answered synchronously; Merman falls back to its
+vendored implementation for that operation.
+
+Callback-free reusable engines admit concurrent operations. A callback engine serializes operation
+admission and returns `Busy` to a competitor; an operation started while the same engine's callback
+is active returns `ReentrantCall`. UniFFI's generated trampoline can report a returned callback
+error to Rust, but Merman does not catch arbitrary foreign unwinds, exceptions, or longjmps that
+bypass that boundary. See [host text measurement](HOST_TEXT_MEASUREMENT.md) for the operation,
+result-shape, and lifecycle contract.
+
+## Verification
+
+```bash
+cargo nextest run -p merman-uniffi --no-default-features \
+  --features 'svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,system-clock,system-timezone,system-random,bindgen-smoke' --test bindgen_smoke
+```
+
+The binding smoke builds a library, generates foreign-language source from its embedded UniFFI
+metadata, and exercises the public API. Apple CI additionally rebuilds its XCFramework, compiles
+the Swift package and smoke, and rejects a changed checked-in Swift projection.

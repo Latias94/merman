@@ -1,106 +1,32 @@
 {
-  "name": "@mermanjs/web",
-  "version": "0.8.0-alpha.3",
-  "description": "Merman browser integration: WebAssembly renderer and TypeScript helpers.",
+  "name": "merman-web-workspace",
+  "version": "0.8.0-alpha.4",
+  "private": true,
+  "description": "Build workspace for the lockstep @mermanjs/browser package group.",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Latias94/merman.git"
-  },
-  "homepage": "https://github.com/Latias94/merman/tree/main/platforms/web#readme",
-  "keywords": [
-    "mermaid",
-    "diagram",
-    "wasm",
-    "svg",
-    "renderer"
+  "workspaces": [
+    "packages/*"
   ],
-  "license": "MIT OR Apache-2.0",
-  "publishConfig": {
-    "access": "public"
-  },
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./core": {
-      "import": "./dist/surfaces/core.js",
-      "types": "./dist/surfaces/core.d.ts"
-    },
-    "./render": {
-      "import": "./dist/surfaces/render.js",
-      "types": "./dist/surfaces/render.d.ts"
-    },
-    "./render-only": {
-      "import": "./dist/surfaces/render-only.js",
-      "types": "./dist/surfaces/render-only.d.ts"
-    },
-    "./ascii": {
-      "import": "./dist/surfaces/ascii.js",
-      "types": "./dist/surfaces/ascii.d.ts"
-    },
-    "./full": {
-      "import": "./dist/surfaces/full.js",
-      "types": "./dist/surfaces/full.d.ts"
-    },
-    "./pkg/merman_wasm.js": {
-      "import": "./pkg/merman_wasm.js",
-      "types": "./pkg/merman_wasm.d.ts"
-    },
-    "./pkg/merman_wasm_bg.wasm": "./pkg/merman_wasm_bg.wasm",
-    "./pkg/core/merman_wasm.js": {
-      "import": "./pkg/core/merman_wasm.js",
-      "types": "./pkg/core/merman_wasm.d.ts"
-    },
-    "./pkg/core/merman_wasm_bg.wasm": "./pkg/core/merman_wasm_bg.wasm",
-    "./pkg/render/merman_wasm.js": {
-      "import": "./pkg/render/merman_wasm.js",
-      "types": "./pkg/render/merman_wasm.d.ts"
-    },
-    "./pkg/render/merman_wasm_bg.wasm": "./pkg/render/merman_wasm_bg.wasm",
-    "./pkg/render-only/merman_wasm.js": {
-      "import": "./pkg/render-only/merman_wasm.js",
-      "types": "./pkg/render-only/merman_wasm.d.ts"
-    },
-    "./pkg/render-only/merman_wasm_bg.wasm": "./pkg/render-only/merman_wasm_bg.wasm",
-    "./pkg/ascii/merman_wasm.js": {
-      "import": "./pkg/ascii/merman_wasm.js",
-      "types": "./pkg/ascii/merman_wasm.d.ts"
-    },
-    "./pkg/ascii/merman_wasm_bg.wasm": "./pkg/ascii/merman_wasm_bg.wasm",
-    "./pkg/full/merman_wasm.js": {
-      "import": "./pkg/full/merman_wasm.js",
-      "types": "./pkg/full/merman_wasm.d.ts"
-    },
-    "./pkg/full/merman_wasm_bg.wasm": "./pkg/full/merman_wasm_bg.wasm"
-  },
   "scripts": {
-    "build": "npm run build:wasm && npm run build:surfaces && npm run build:ts",
-    "build:ts": "npm run check:contracts && tsc -p tsconfig.build.json",
-    "build:wasm": "node scripts/build-wasm.mjs",
-    "build:surfaces": "node scripts/build-surface-packages.mjs",
-    "build:wasm:core": "node scripts/build-wasm.mjs --preset browser-core",
-    "build:wasm:render": "node scripts/build-wasm.mjs --preset browser-render",
-    "build:wasm:render-only": "node scripts/build-wasm.mjs --preset browser-render-only",
-    "build:wasm:ascii": "node scripts/build-wasm.mjs --preset browser-ascii",
-    "build:wasm:full": "node scripts/build-wasm.mjs --preset browser-full",
-    "build:wasm:ratex-math": "node scripts/build-wasm.mjs --preset browser-ratex-math",
+    "build": "npm run build:wasm && npm run build:ts && npm run build:packages",
+    "build:entries": "node scripts/build-surface-packages.mjs --entries",
+    "build:ts": "npm run build:entries && node scripts/clean-dist.mjs && npm run check:contracts && tsc -p tsconfig.build.json",
+    "build:wasm": "node scripts/build-wasm.mjs --all-packages",
+    "build:wasm:full": "node scripts/build-wasm.mjs --package full",
+    "build:wasm:analysis": "node scripts/build-wasm.mjs --package analysis",
+    "build:wasm:render": "node scripts/build-wasm.mjs --package render",
+    "build:wasm:editor": "node scripts/build-wasm.mjs --package editor",
+    "build:wasm:ascii": "node scripts/build-wasm.mjs --package ascii",
+    "build:packages": "node scripts/build-surface-packages.mjs --assemble",
+    "verify:wasm-inputs": "node scripts/verify-wasm-inputs.mjs --all-packages",
+    "verify:packages": "node scripts/prepack-check.mjs",
+    "test": "npm run test:wasm-inputs",
+    "test:wasm-inputs": "node --test scripts/*.test.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",
     "smoke:dom-safety": "tsc -p tsconfig.build.json && node scripts/dom-safety-smoke.mjs",
-    "smoke": "node scripts/smoke.mjs && npm run smoke:dom-safety",
-    "prepack": "npm run check:contracts && node --test scripts/*.test.mjs && node scripts/prepack-check.mjs",
-    "prepublishOnly": "npm run build && npm run smoke"
+    "smoke": "npm run verify:wasm-inputs && npm run verify:packages && node scripts/smoke.mjs && npm run smoke:dom-safety",
+    "prepublishOnly": "node -e \"throw new Error('The Web workspace is private; publish an admitted package-group artifact instead.')\""
   },
-  "files": [
-    "LICENSE",
-    "dist",
-    "pkg",
-    "src",
-    "README.md"
-  ],
   "devDependencies": {
     "typescript": "5.7.3"
   }

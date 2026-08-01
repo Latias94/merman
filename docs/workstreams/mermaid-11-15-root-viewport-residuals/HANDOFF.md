@@ -1,7 +1,10 @@
 # Mermaid 11.15 Root Viewport Residuals - Handoff
 
-Status: Active
+Status: Superseded on 2026-07-15
 Last updated: 2026-06-05
+
+> Historical handoff for the former Mermaid 11.15 root-pin system. "Current" claims, override
+> inventories, flags, and generator commands below describe mechanisms removed under ADR-0062.
 
 ## Current State
 

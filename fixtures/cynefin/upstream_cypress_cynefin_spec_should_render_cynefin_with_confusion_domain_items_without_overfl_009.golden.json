@@ -1,0 +1,32 @@
+{
+  "diagramType": "cynefin",
+  "model": {
+    "type": "cynefin",
+    "title": "Confusion Items",
+    "accTitle": null,
+    "accDescr": null,
+    "domains": [
+      {
+        "name": "confusion",
+        "items": [
+          {
+            "label": "Unknown A"
+          },
+          {
+            "label": "Unknown B"
+          },
+          {
+            "label": "Unknown C"
+          },
+          {
+            "label": "Unknown D"
+          },
+          {
+            "label": "Unknown E"
+          }
+        ]
+      }
+    ],
+    "transitions": []
+  }
+}

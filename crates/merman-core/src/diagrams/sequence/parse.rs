@@ -1,49 +1,254 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, ParseControl, ParseControlResult, ParseMetadata, Result,
+    SourceSpan,
     editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use serde_json::Value;
+#[cfg(test)]
+use std::cell::Cell;
 
 use super::SequenceDiagramRenderModel;
 use super::Tok;
-use super::db::{SequenceDb, fast_parse_sequence_signals_only_db};
+use super::db::{SequenceDb, is_css_color_value, split_box_color_and_title};
 use super::lexer::Lexer;
 use super::sequence_grammar;
 
-pub fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let db = parse_sequence_db(code, meta)?;
-    Ok(db.into_model(meta))
+#[cfg(test)]
+thread_local! {
+    static SEQUENCE_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
-pub fn parse_sequence_model_for_render(
+#[cfg(test)]
+pub(crate) fn reset_sequence_syntax_construction_count() {
+    SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn sequence_syntax_construction_count() -> usize {
+    SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.get()
+}
+
+type SequenceLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
+type SequenceGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
+
+struct SequenceSyntax {
+    events: Vec<SequenceLexicalEvent>,
+    lexemes: crate::editor::EditorLexemeBatchResult,
+}
+
+impl SequenceSyntax {
+    fn lex(code: &str, control: &ParseControl) -> ParseControlResult<Self> {
+        #[cfg(test)]
+        SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.set(SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
+        let mut events = Vec::new();
+        let mut lexer = Lexer::new(code);
+        let mut last_position = lexer.position();
+        while let Some(event) = lexer.next() {
+            if events.len() % 128 == 0 {
+                control.checkpoint()?;
+            }
+            let current_position = lexer.position();
+            let must_stop = event.is_err() && current_position == last_position;
+            events.push(event);
+            if must_stop {
+                break;
+            }
+            last_position = current_position;
+        }
+        let lexemes = lexer.finish_lexemes();
+
+        control.checkpoint()?;
+        Ok(Self { events, lexemes })
+    }
+
+    fn into_editor_facts_and_actions(
+        self,
+        code: &str,
+        control: &ParseControl,
+    ) -> ParseControlResult<(
+        EditorSemanticFacts,
+        std::result::Result<Vec<super::Action>, SequenceGrammarError>,
+    )> {
+        let Self { events, lexemes } = self;
+        let editor_facts =
+            collect_sequence_editor_facts_from_events(&events, code, lexemes, control)?;
+        control.checkpoint()?;
+        let mut emitted = 0usize;
+        let controlled_events = events.into_iter().take_while(|_| {
+            let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+            emitted = emitted.saturating_add(1);
+            active
+        });
+        let actions = sequence_grammar::ActionsParser::new().parse(controlled_events);
+        control.checkpoint()?;
+        Ok((editor_facts, actions))
+    }
+}
+
+struct SequenceSemanticSource {
+    db: SequenceDb,
+    editor_facts: EditorSemanticFacts,
+}
+
+enum SequenceSemanticFailure {
+    Grammar {
+        error: SequenceGrammarError,
+        editor_facts: EditorSemanticFacts,
+    },
+    Db {
+        message: String,
+        editor_facts: EditorSemanticFacts,
+    },
+}
+
+impl SequenceSemanticFailure {
+    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
+        self.into_error_and_editor_facts(meta, fallback_offset).0
+    }
+
+    fn into_error_and_editor_facts(
+        self,
+        meta: &ParseMetadata,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+    }
+
+    fn into_error_and_editor_facts_for_type(
+        self,
+        diagram_type: &str,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        match self {
+            Self::Grammar {
+                error,
+                mut editor_facts,
+            } => {
+                let parse_error = Error::diagram_parse_diagnostic(
+                    diagram_type.to_string(),
+                    lalrpop_parse_diagnostic(&error, fallback_offset),
+                );
+                let span = match &error {
+                    lalrpop_util::ParseError::User { error } => error.span,
+                    _ => lalrpop_recovery_span(&error, fallback_offset),
+                };
+                editor_facts.mark_recovered_from_parse_error(
+                    format!(
+                        "sequence parser recovered after parse error: {}",
+                        format_lalrpop_parse_error(&error)
+                    ),
+                    Some(span),
+                );
+                (parse_error, editor_facts)
+            }
+            Self::Db {
+                message,
+                mut editor_facts,
+            } => {
+                let parse_error =
+                    Error::diagram_parse_fallback(diagram_type.to_string(), message.clone());
+                editor_facts.mark_recovered_from_parse_error(
+                    format!("sequence semantic construction failed: {message}"),
+                    None,
+                );
+                (parse_error, editor_facts)
+            }
+        }
+    }
+}
+
+pub(crate) fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    Ok(parse_sequence_semantic_source(code, meta)?
+        .db
+        .into_model(meta))
+}
+
+pub(crate) fn parse_sequence_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<SequenceDiagramRenderModel> {
-    let db = parse_sequence_db(code, meta)?;
-    Ok(db.into_render_model())
+    Ok(parse_sequence_semantic_source(code, meta)?
+        .db
+        .into_render_model())
 }
 
-pub fn parse_sequence_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let parse_result = sequence_grammar::ActionsParser::new().parse(Lexer::new(code));
-    let mut facts = collect_sequence_editor_facts_from_tokens(code);
-    if let Err(error) = parse_result {
-        let span = lalrpop_recovery_span(&error, code.len());
-        facts.mark_recovered_from_parse_error(
-            format!(
-                "sequence parser recovered after parse error: {}",
-                format_lalrpop_parse_error(&error)
-            ),
-            Some(span),
-        );
+pub(crate) fn parse_sequence_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction =
+        construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), control)?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |SequenceSemanticSource { db, editor_facts }| (Ok(db.into_model(meta)), editor_facts),
+        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
+    );
+    control.checkpoint()?;
+    Ok(parsed)
+}
+
+fn parse_sequence_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<SequenceSemanticSource> {
+    construct_sequence_semantic_source(code, sequence_wrap_enabled(meta), &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+        .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
+}
+
+fn construct_sequence_semantic_source(
+    code: &str,
+    wrap_enabled: Option<bool>,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<SequenceSemanticSource, Box<SequenceSemanticFailure>>> {
+    let syntax = SequenceSyntax::lex(code, control)?;
+    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
+    let actions = match actions {
+        Ok(actions) => actions,
+        Err(error) => {
+            return Ok(Err(Box::new(SequenceSemanticFailure::Grammar {
+                error,
+                editor_facts,
+            })));
+        }
+    };
+
+    let db = match build_sequence_db(actions, wrap_enabled, control)? {
+        Ok(db) => db,
+        Err(message) => {
+            return Ok(Err(Box::new(SequenceSemanticFailure::Db {
+                message,
+                editor_facts,
+            })));
+        }
+    };
+
+    control.checkpoint()?;
+    Ok(Ok(SequenceSemanticSource { db, editor_facts }))
+}
+
+fn build_sequence_db(
+    actions: Vec<super::Action>,
+    wrap_enabled: Option<bool>,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<SequenceDb, String>> {
+    let mut db = SequenceDb::new(wrap_enabled);
+    for (index, action) in actions.into_iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        if let Err(error) = db.apply_controlled(action, control)? {
+            return Ok(Err(error));
+        }
     }
-
-    facts
+    Ok(Ok(db))
 }
 
-fn parse_sequence_db(code: &str, meta: &ParseMetadata) -> Result<SequenceDb> {
-    let wrap_enabled = meta
-        .effective_config
+fn sequence_wrap_enabled(meta: &ParseMetadata) -> Option<bool> {
+    meta.effective_config
         .as_value()
         .get("wrap")
         .and_then(|v| v.as_bool())
@@ -53,59 +258,39 @@ fn parse_sequence_db(code: &str, meta: &ParseMetadata) -> Result<SequenceDb> {
                 .get("sequence")
                 .and_then(|v| v.get("wrap"))
                 .and_then(|v| v.as_bool())
-        });
-
-    if let Some(db) = fast_parse_sequence_signals_only_db(code, wrap_enabled) {
-        return Ok(db);
-    }
-
-    let actions = sequence_grammar::ActionsParser::new()
-        .parse(Lexer::new(code))
-        .map_err(|e| {
-            Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(&e, code.len()),
-            )
-        })?;
-
-    let mut db = SequenceDb::new(wrap_enabled);
-    for a in actions {
-        db.apply(a)
-            .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e))?;
-    }
-
-    Ok(db)
+        })
 }
 
-fn collect_sequence_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
+fn collect_sequence_editor_facts_from_events(
+    events: &[SequenceLexicalEvent],
+    code: &str,
+    lexemes: crate::editor::EditorLexemeBatchResult,
+    control: &ParseControl,
+) -> ParseControlResult<EditorSemanticFacts> {
     let mut facts = EditorSemanticFacts::new();
+    facts.replace_family_lexemes(lexemes);
     let mut collector = SequenceEditorFactCollector::default();
 
-    let mut lexer = Lexer::new(code);
-    let mut last_position = lexer.position();
-    while let Some(result) = lexer.next() {
-        let current_position = lexer.position();
-        match result {
-            Ok((start, token, end)) => collector.accept(token, start, end, code, &mut facts),
-            Err(_) => {
-                facts.mark_recovered();
-                if current_position == last_position {
-                    break;
-                }
-            }
+    for (index, event) in events.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
         }
-        last_position = current_position;
+        match event {
+            Ok((start, token, end)) => collector.accept(token, *start, *end, code, &mut facts),
+            Err(_) => facts.mark_recovered(),
+        }
     }
 
-    facts
+    control.checkpoint()?;
+    Ok(facts)
 }
 
 #[derive(Debug, Default)]
 struct SequenceEditorFactCollector {
     expected_actor: Option<ExpectedSequenceActor>,
     expected_text: Option<ExpectedSequenceText>,
+    expected_rest_of_line: Option<ExpectedSequenceRestOfLine>,
     pending_message_source: Option<PendingSequenceActor>,
-    after_box_keyword: bool,
 }
 
 #[derive(Debug)]
@@ -128,12 +313,20 @@ enum ExpectedSequenceText {
     Message,
     Note,
     Interaction,
+    ParticipantLabel,
+    FragmentLabel,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExpectedSequenceRestOfLine {
+    BoxLabel,
+    Text(ExpectedSequenceText),
 }
 
 impl SequenceEditorFactCollector {
     fn accept(
         &mut self,
-        token: Tok,
+        token: &Tok,
         start: usize,
         end: usize,
         code: &str,
@@ -170,7 +363,27 @@ impl SequenceEditorFactCollector {
                 self.expect_actor(ExpectedSequenceActor::NoteActor);
             }
             Tok::Box => {
-                self.after_box_keyword = true;
+                self.expected_rest_of_line = Some(ExpectedSequenceRestOfLine::BoxLabel);
+            }
+            Tok::As => {
+                self.expected_rest_of_line = Some(ExpectedSequenceRestOfLine::Text(
+                    ExpectedSequenceText::ParticipantLabel,
+                ));
+            }
+            Tok::Loop
+            | Tok::Rect
+            | Tok::Opt
+            | Tok::Alt
+            | Tok::Else
+            | Tok::Par
+            | Tok::ParOver
+            | Tok::And
+            | Tok::Critical
+            | Tok::Option
+            | Tok::Break => {
+                self.expected_rest_of_line = Some(ExpectedSequenceRestOfLine::Text(
+                    ExpectedSequenceText::FragmentLabel,
+                ));
             }
             Tok::SignalType(_) => {
                 self.push_pending_message_source(facts);
@@ -178,33 +391,43 @@ impl SequenceEditorFactCollector {
             }
             Tok::Actor(name) => {
                 if let Some(expected) = self.expected_actor {
-                    self.push_actor(name, expected, start, end, facts);
+                    self.push_actor(name.clone(), expected, start, end, facts);
                 } else {
                     self.pending_message_source = Some(PendingSequenceActor {
-                        name,
+                        name: name.clone(),
                         span: SourceSpan::new(start, end),
                     });
                 }
             }
-            Tok::RestOfLine(text) => {
-                if self.after_box_keyword {
-                    push_sequence_box_symbol(text, start, end, code, facts);
-                    self.after_box_keyword = false;
+            Tok::RestOfLine(text) => match self.expected_rest_of_line.take() {
+                Some(ExpectedSequenceRestOfLine::BoxLabel) => {
+                    push_sequence_box_symbol(text.clone(), start, end, code, facts);
                 }
-            }
+                Some(ExpectedSequenceRestOfLine::Text(expected)) => {
+                    push_sequence_text_payload(text.clone(), expected, start, end, code, facts);
+                }
+                None => {}
+            },
             Tok::Text(text) => {
                 if let Some(expected) = self.expected_text.take() {
-                    push_sequence_text_payload(text, expected, start, end, code, facts);
+                    push_sequence_text_payload(text.clone(), expected, start, end, code, facts);
                 }
             }
             Tok::Title(text) | Tok::CompatTitle(text) => {
                 facts.push_directive_prefix("title");
-                push_sequence_named_payload(text, "sequence title", start, end, code, facts);
+                push_sequence_named_payload(
+                    text.clone(),
+                    "sequence title",
+                    start,
+                    end,
+                    code,
+                    facts,
+                );
             }
             Tok::AccTitle(text) => {
                 facts.push_directive_prefix("accTitle");
                 push_sequence_named_payload(
-                    text,
+                    text.clone(),
                     "sequence accessibility title",
                     start,
                     end,
@@ -215,7 +438,7 @@ impl SequenceEditorFactCollector {
             Tok::AccDescr(text) | Tok::AccDescrMultiline(text) => {
                 facts.push_directive_prefix("accDescr");
                 push_sequence_named_payload(
-                    text,
+                    text.clone(),
                     "sequence accessibility description",
                     start,
                     end,
@@ -224,18 +447,6 @@ impl SequenceEditorFactCollector {
                 );
             }
             Tok::End
-            | Tok::Loop
-            | Tok::Rect
-            | Tok::Opt
-            | Tok::Alt
-            | Tok::Else
-            | Tok::Par
-            | Tok::ParOver
-            | Tok::And
-            | Tok::Critical
-            | Tok::Option
-            | Tok::Break
-            | Tok::As
             | Tok::Autonumber
             | Tok::Off
             | Tok::Plus
@@ -249,8 +460,8 @@ impl SequenceEditorFactCollector {
     fn reset_line_state(&mut self) {
         self.expected_actor = None;
         self.expected_text = None;
+        self.expected_rest_of_line = None;
         self.pending_message_source = None;
-        self.after_box_keyword = false;
     }
 
     fn expect_actor(&mut self, expected: ExpectedSequenceActor) {
@@ -321,6 +532,8 @@ fn push_sequence_text_payload(
         ExpectedSequenceText::Message => "sequence message",
         ExpectedSequenceText::Note => "sequence note",
         ExpectedSequenceText::Interaction => "sequence interaction payload",
+        ExpectedSequenceText::ParticipantLabel => "sequence participant label",
+        ExpectedSequenceText::FragmentLabel => "sequence fragment label",
     };
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
@@ -373,13 +586,17 @@ fn push_sequence_box_symbol(
     code: &str,
     facts: &mut EditorSemanticFacts,
 ) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        SourceSpan::new(start, end),
+    ));
     let Some((name, selection)) = sequence_box_name_and_selection(&text, start, end, code) else {
         return;
     };
-    facts.push_symbol(EditorSemanticSymbol::new(
+    facts.push_symbol(EditorSemanticSymbol::payload(
         name,
         Some("sequence box".to_string()),
-        EditorSemanticKind::Package,
+        EditorSemanticKind::String,
         SourceSpan::new(start, end),
         selection,
     ));
@@ -399,8 +616,8 @@ fn sequence_box_name_and_selection(
         return None;
     }
 
-    let (color, title_candidate) = split_sequence_box_color_and_title(trimmed);
-    let title_start = if looks_like_css_color(color) {
+    let (color, title_candidate) = split_box_color_and_title(trimmed);
+    let title_start = if is_css_color_value(color) {
         trimmed.len().saturating_sub(title_candidate.len())
     } else {
         0
@@ -417,38 +634,4 @@ fn sequence_box_name_and_selection(
         title.to_string(),
         SourceSpan::new(start + local_start, local_end),
     ))
-}
-
-fn looks_like_css_color(value: &str) -> bool {
-    let value = value.trim();
-    value.starts_with('#')
-        || value.starts_with("rgb(")
-        || value.starts_with("rgba(")
-        || value.starts_with("hsl(")
-        || value.starts_with("hsla(")
-        || matches!(
-            value,
-            "transparent" | "red" | "green" | "blue" | "white" | "black" | "grey" | "gray"
-        )
-}
-
-fn split_sequence_box_color_and_title(input: &str) -> (&str, &str) {
-    let lower = input.to_ascii_lowercase();
-    for prefix in ["rgba", "rgb", "hsla", "hsl"] {
-        if lower.starts_with(prefix)
-            && let Some(end) = input.find(')')
-        {
-            return (input[..=end].trim(), &input[end + 1..]);
-        }
-    }
-
-    let mut end = 0usize;
-    for (idx, ch) in input.char_indices() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            end = idx + ch.len_utf8();
-            continue;
-        }
-        break;
-    }
-    (&input[..end], &input[end..])
 }

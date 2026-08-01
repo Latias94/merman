@@ -1,5 +1,8 @@
 # Root Viewport Derivation Changelog
 
+> Historical changelog. Override inventories and commands below describe the implementation before
+> production root/text/SVG overrides and their tooling were removed under ADR-0062.
+
 ## 2026-05-19
 
 - Retained `stress_flowchart_icons_subgraph_mixed_061` after a focused disabled-root

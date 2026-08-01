@@ -17,7 +17,7 @@ body:
     id: benchmark
     attributes:
       label: Benchmark / report
-      placeholder: e.g. xychart_medium, docs/performance/COMPARISON.md, or a stage spotcheck path
+      placeholder: e.g. xychart_medium, target/bench/renderer_comparison.md, or a dated report path
     validations:
       required: true
   - type: input

@@ -5,6 +5,14 @@
 
 use std::borrow::Cow;
 
+/// Decodes Mermaid's preprocessor placeholders before text is emitted or measured.
+pub(crate) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str> {
+    if !text.contains('\u{fb02}') && !text.contains('\u{00b6}') && !text.contains('#') {
+        return Cow::Borrowed(text);
+    }
+    merman_core::entities::decode_mermaid_entities_to_unicode(text)
+}
+
 /// Decodes a minimal subset of entities used by Mermaid labels.
 ///
 /// This matches the historical replacement order used in this repo:
@@ -83,7 +91,17 @@ fn decode_stage2_quot_apos(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::decode_entities_minimal;
+    use super::{decode_entities_minimal, decode_mermaid_entities_for_render_text};
+
+    #[test]
+    fn mermaid_placeholders_share_one_render_text_decoder() {
+        assert_eq!(
+            decode_mermaid_entities_for_render_text(
+                "left \u{fb02}\u{00b0}lt\u{00b6}\u{00df} right"
+            ),
+            "left < right"
+        );
+    }
 
     #[test]
     fn decode_entities_minimal_direct_entities() {

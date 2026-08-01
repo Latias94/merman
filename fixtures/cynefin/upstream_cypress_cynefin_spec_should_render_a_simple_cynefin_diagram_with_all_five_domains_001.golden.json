@@ -1,0 +1,61 @@
+{
+  "diagramType": "cynefin",
+  "model": {
+    "type": "cynefin",
+    "title": "Incident Response",
+    "accTitle": null,
+    "accDescr": null,
+    "domains": [
+      {
+        "name": "complex",
+        "items": [
+          {
+            "label": "Investigate root cause"
+          },
+          {
+            "label": "Run chaos experiment"
+          }
+        ]
+      },
+      {
+        "name": "complicated",
+        "items": [
+          {
+            "label": "Analyze performance data"
+          },
+          {
+            "label": "Expert review needed"
+          }
+        ]
+      },
+      {
+        "name": "clear",
+        "items": [
+          {
+            "label": "Restart service"
+          },
+          {
+            "label": "Apply known fix"
+          }
+        ]
+      },
+      {
+        "name": "chaotic",
+        "items": [
+          {
+            "label": "Page on-call immediately"
+          }
+        ]
+      },
+      {
+        "name": "confusion",
+        "items": [
+          {
+            "label": "Unknown failure mode"
+          }
+        ]
+      }
+    ],
+    "transitions": []
+  }
+}

@@ -1,15 +1,23 @@
+import org.gradle.api.attributes.Bundling
+import org.gradle.api.attributes.Category
+import org.gradle.api.attributes.DocsType
+import org.gradle.api.attributes.Usage
+import org.gradle.api.component.AdhocComponentWithVariants
+
 plugins {
-    id("com.android.library") version "9.2.0"
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.dokka)
     id("maven-publish")
     id("signing")
 }
 
 group = "io.merman"
-version = "0.8.0-alpha.3"
+version = "0.8.0-alpha.4"
 
 android {
     namespace = "io.merman"
     compileSdk = 35
+    ndkVersion = libs.versions.ndk.get()
 
     defaultConfig {
         minSdk = 23
@@ -29,18 +37,52 @@ android {
     publishing {
         singleVariant("release") {
             withSourcesJar()
-            withJavadocJar()
         }
     }
 
     sourceSets {
         getByName("androidTest") {
             kotlin.directories += "examples"
+            assets.directories += "../../fixtures/bindings/assets"
+        }
+    }
+
+    packaging {
+        resources {
+            // AGP excludes this standard path by default, but release artifacts must carry it.
+            excludes -= "/META-INF/LICENSE"
         }
     }
 }
 
+dokka {
+    dokkaPublications.html {
+        moduleName.set("merman-android")
+        moduleVersion.set(project.version.toString())
+        offlineMode.set(true)
+    }
+}
+
+val dokkaHtmlJar = tasks.register<org.gradle.jvm.tasks.Jar>("dokkaHtmlJar") {
+    archiveClassifier.set("javadoc")
+    from(tasks.named("dokkaGeneratePublicationHtml"))
+}
+
+val dokkaHtmlElements = configurations.create("dokkaHtmlElements") {
+    isCanBeConsumed = true
+    isCanBeResolved = false
+    attributes {
+        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.DOCUMENTATION))
+        attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))
+        attribute(DocsType.DOCS_TYPE_ATTRIBUTE, objects.named(DocsType.JAVADOC))
+        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+    }
+    outgoing.artifact(dokkaHtmlJar)
+}
+
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }
@@ -96,6 +138,9 @@ publishing {
 }
 
 afterEvaluate {
+    (components["release"] as AdhocComponentWithVariants).addVariantsFromConfiguration(
+        dokkaHtmlElements,
+    ) {}
     publishing {
         publications.named<MavenPublication>("release") {
             from(components["release"])

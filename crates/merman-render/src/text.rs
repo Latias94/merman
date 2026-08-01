@@ -1,57 +1,61 @@
 mod deterministic;
 mod flowchart_parity;
 mod font_metrics;
+mod font_metrics_data;
 mod heuristic;
 mod icons;
+mod line_break;
 mod markdown;
 mod markdown_label;
 mod measure;
 mod metrics;
-mod overrides;
 mod svg_metrics;
 mod types;
 mod wrap;
 
 pub use deterministic::DeterministicTextMeasurer;
-pub use flowchart_parity::{
-    flowchart_apply_mermaid_string_whitespace_height_parity,
-    flowchart_apply_mermaid_styled_node_height_parity, flowchart_html_has_inline_style_tags,
-    flowchart_html_line_height_px,
-};
+pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
 pub use font_metrics::VendoredFontMetricsTextMeasurer;
-pub(crate) use heuristic::{estimate_char_width_em, estimate_line_width_px};
+pub(crate) use font_metrics::{
+    FontMetricsTable, FontMetricsVariant, SvgVerticalDomShape, SvgVerticalProfileSet,
+    SvgVerticalSizeProfile,
+};
+pub(crate) use font_metrics_data::decode_font_metrics_tables;
+#[doc(hidden)]
+pub use font_metrics_data::{
+    FontMetricsCodecError, FontMetricsTableData, FontMetricsVariantData, SvgVerticalDomShapeData,
+    SvgVerticalProfileSetData, SvgVerticalSizeProfileData, decode_font_metrics_profile,
+    encode_font_metrics_profile,
+};
+pub(crate) use heuristic::estimate_line_width_px;
 pub use icons::replace_fontawesome_icons;
+pub(crate) use line_break::html_has_soft_break_opportunity;
 pub(crate) use markdown::{
-    MermaidMarkdownWordType, mermaid_markdown_contains_html_tags, mermaid_markdown_to_lines,
+    MermaidMarkdownAnalysis, MermaidMarkdownWordType, analyze_mermaid_markdown,
+    mermaid_markdown_contains_html_tags, mermaid_markdown_to_lines,
 };
 pub(crate) use markdown_label::{
     mermaid_markdown_contains_raw_blocks, mermaid_markdown_to_html_label_fragment,
     mermaid_markdown_to_xhtml_label_fragment, mermaid_markdown_wants_paragraph_wrap,
+    mermaid_xhtml_label_plain_text, mermaid_xhtml_label_text_content,
 };
 pub use measure::TextMeasurer;
-#[cfg(test)]
-pub(crate) use metrics::measure_flowchart_svg_like_precise_width_px;
+pub(crate) use measure::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions};
+pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_styles};
 pub(crate) use metrics::{
-    flowchart_default_bold_delta_em, flowchart_default_bold_kern_delta_em,
-    flowchart_default_bold_svg_right_overhang_em, is_flowchart_default_font,
-    measure_wrapped_markdown_with_flowchart_bold_deltas, mermaid_markdown_to_wrapped_word_lines,
-    style_requests_bold_font_weight,
-};
-pub use metrics::{
-    measure_html_with_flowchart_bold_deltas, measure_markdown_svg_like_precise_width_px,
-    measure_markdown_with_flowchart_bold_deltas, mermaid_default_bold_width_delta_px,
-    mermaid_default_italic_width_delta_px,
+    measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
+    mermaid_markdown_to_wrapped_word_lines,
 };
 pub(crate) use svg_metrics::{
     FLOWCHART_DEFAULT_FONT_KEY, flowchart_svg_edge_label_background_y_px,
-    font_key_uses_courier_metrics, normalize_font_key, svg_create_text_bbox_y_offset_px,
-    svg_title_bbox_vertical_extents_px, svg_wrapped_first_line_bbox_height_px,
+    font_key_uses_courier_metrics, svg_title_bbox_vertical_extents_px,
+    svg_wrapped_first_line_bbox_height_px,
 };
 pub use types::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use wrap::wrap_svg_text_lines_by_measurement;
 pub use wrap::{
     ceil_to_1_64_px, round_to_1_64_px, round_to_1_64_px_ties_to_even, split_html_br_lines,
-    wrap_label_like_mermaid_lines, wrap_text_lines_measurer, wrap_text_lines_px,
+    wrap_label_like_mermaid_lines, wrap_text_lines_measurer,
 };
 
 #[cfg(test)]

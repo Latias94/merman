@@ -129,6 +129,7 @@ impl<'a> JourneyConfigView<'a> {
                 .unwrap_or(DEFAULT_TASK_FONT_SIZE)
                 .max(1.0),
             font_weight: None,
+            font_style: None,
         }
     }
 

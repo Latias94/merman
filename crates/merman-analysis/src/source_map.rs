@@ -1,15 +1,84 @@
-use crate::payload::{DiagnosticSpan, Utf16Position};
-use std::sync::{Arc, OnceLock};
+use crate::payload::{DiagnosticSpan, LspRange, SourcePosition, Utf16Position};
+use crate::retained_weight::{
+    ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
+};
+use std::collections::BTreeMap;
+use std::mem::size_of;
+use std::ops::Range;
+use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LineCol {
-    pub line: usize,
-    pub column: usize,
+pub type LineCol = SourcePosition;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedTextSlice {
+    source: Arc<str>,
+    start: usize,
+    end: usize,
 }
 
-impl LineCol {
-    pub const fn new(line: usize, column: usize) -> Self {
-        Self { line, column }
+impl SharedTextSlice {
+    pub fn whole(source: Arc<str>) -> Self {
+        let end = source.len();
+        Self {
+            source,
+            start: 0,
+            end,
+        }
+    }
+
+    pub fn from_range(source: Arc<str>, start: usize, end: usize) -> Option<Self> {
+        if start > end
+            || end > source.len()
+            || !source.is_char_boundary(start)
+            || !source.is_char_boundary(end)
+        {
+            return None;
+        }
+        Some(Self { source, start, end })
+    }
+
+    pub(crate) fn new(source: Arc<str>, start: usize, end: usize) -> Self {
+        Self::from_range(source, start, end)
+            .expect("document extraction should produce valid UTF-8 slice bounds")
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.source[self.start..self.end]
+    }
+
+    pub fn source_arc(&self) -> Arc<str> {
+        Arc::clone(&self.source)
+    }
+
+    pub fn to_owned_text(&self) -> String {
+        self.as_str().to_owned()
+    }
+
+    pub const fn start(&self) -> usize {
+        self.start
+    }
+
+    pub const fn end(&self) -> usize {
+        self.end
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_source_allocation_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.source, &other.source)
+    }
+}
+
+impl AsRef<str> for SharedTextSlice {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl std::ops::Deref for SharedTextSlice {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
     }
 }
 
@@ -25,39 +94,74 @@ pub enum SourceMapError {
 
 #[derive(Debug, Clone)]
 pub struct SourceMap {
-    source: Arc<str>,
+    source: SharedTextSlice,
     line_starts: Arc<[usize]>,
-    line_metrics: Arc<[OnceLock<LineMetric>]>,
+    line_metrics: Arc<Mutex<LineMetricCache>>,
 }
+
+/// Per-source allowance charged for lazily materialized UTF-16 line metrics.
+pub(crate) const SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES: usize = 256 * 1024;
 
 impl SourceMap {
     pub fn new(source: impl Into<Arc<str>>) -> Self {
-        let source = source.into();
-        let line_starts = line_starts(source.as_ref());
-        let line_metrics = (0..line_starts.len())
-            .map(|_| OnceLock::new())
-            .collect::<Vec<_>>();
+        Self::from_shared_text(SharedTextSlice::whole(source.into()))
+    }
+
+    pub(crate) fn from_shared_text(source: SharedTextSlice) -> Self {
+        let line_starts = line_starts(source.as_str());
+        Self::from_source_and_line_starts(source, line_starts)
+    }
+
+    pub(crate) fn new_cancellable(
+        source: impl Into<Arc<str>>,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        Self::from_shared_text_cancellable(SharedTextSlice::whole(source.into()), cancellation)
+    }
+
+    pub(crate) fn from_shared_text_cancellable(
+        source: SharedTextSlice,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Self, crate::AnalysisCancelled> {
+        let line_starts = line_starts_cancellable(source.as_str(), cancellation)?;
+        cancellation.checkpoint()?;
+        Ok(Self::from_source_and_line_starts(source, line_starts))
+    }
+
+    fn from_source_and_line_starts(source: SharedTextSlice, line_starts: Vec<usize>) -> Self {
         Self {
             source,
             line_starts: Arc::from(line_starts.into_boxed_slice()),
-            line_metrics: Arc::from(line_metrics.into_boxed_slice()),
+            line_metrics: Arc::new(Mutex::new(LineMetricCache::new(
+                SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES,
+            ))),
         }
     }
 
     pub fn source(&self) -> &str {
-        self.source.as_ref()
+        self.source.as_str()
     }
 
-    pub fn source_arc(&self) -> Arc<str> {
-        Arc::clone(&self.source)
+    pub fn shared_source(&self) -> &SharedTextSlice {
+        &self.source
     }
 
     pub fn source_len(&self) -> usize {
-        self.source.len()
+        self.source.as_str().len()
     }
 
     pub fn line_starts(&self) -> &[usize] {
         &self.line_starts
+    }
+
+    pub(crate) fn estimated_owned_heap_bytes_excluding_source(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add(ARC_ALLOCATION_OVERHEAD);
+        weight.add_array::<usize>(self.line_starts.len());
+        weight.add(ARC_ALLOCATION_OVERHEAD);
+        weight.add(size_of::<Mutex<LineMetricCache>>());
+        weight.add(SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES);
+        weight.finish()
     }
 
     pub fn line_col(&self, offset: usize) -> Result<LineCol, SourceMapError> {
@@ -81,51 +185,75 @@ impl SourceMap {
             return Err(SourceMapError::ReversedRange { start, end });
         }
 
-        let start_lc = self.line_col(start)?;
-        let end_lc = self.line_col(end)?;
-        let lsp_start = self.utf16_position(start)?;
-        let lsp_end = self.utf16_position(end)?;
-
-        Ok(DiagnosticSpan::new(
+        let (start_metrics, end_metrics) = self.offset_metrics_pair(start, end)?;
+        Ok(span_from_offset_metrics(
             start,
             end,
-            start_lc.line,
-            start_lc.column,
-            end_lc.line,
-            end_lc.column,
-            lsp_start,
-            lsp_end,
+            start_metrics,
+            end_metrics,
         ))
     }
 
+    pub(crate) fn span_cancellable(
+        &self,
+        start: usize,
+        end: usize,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Result<DiagnosticSpan, SourceMapError>, crate::AnalysisCancelled> {
+        if start > end {
+            return Ok(Err(SourceMapError::ReversedRange { start, end }));
+        }
+
+        let (start_metrics, end_metrics) =
+            match self.offset_metrics_pair_cancellable(start, end, cancellation)? {
+                Ok(metrics) => metrics,
+                Err(error) => return Ok(Err(error)),
+            };
+        Ok(Ok(span_from_offset_metrics(
+            start,
+            end,
+            start_metrics,
+            end_metrics,
+        )))
+    }
+
     pub fn whole_source_span(&self) -> Result<DiagnosticSpan, SourceMapError> {
-        self.span(0, self.source.len())
+        self.span(0, self.source_len())
+    }
+
+    pub(crate) fn whole_source_span_cancellable(
+        &self,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Result<DiagnosticSpan, SourceMapError>, crate::AnalysisCancelled> {
+        self.span_cancellable(0, self.source_len(), cancellation)
     }
 
     pub fn line_bounds(&self, line_index: usize) -> Option<(usize, usize)> {
-        let line = self.line_metric(line_index)?;
-        Some((line.start, line.content_end))
+        let start = *self.line_starts.get(line_index)?;
+        let next_start = self
+            .line_starts
+            .get(line_index + 1)
+            .copied()
+            .unwrap_or(self.source_len());
+        Some((
+            start,
+            line_content_end(self.source().as_bytes(), start, next_start),
+        ))
     }
 
     pub fn byte_offset_for_utf16_position(&self, position: Utf16Position) -> Option<usize> {
         let line = self.line_metric(position.line)?;
-        match line.utf16_columns.binary_search(&position.character) {
-            Ok(boundary_index) => Some(line.start + line.byte_boundaries[boundary_index]),
-            Err(boundary_index) if boundary_index >= line.utf16_columns.len() => {
-                Some(line.content_end)
-            }
-            Err(_) => None,
-        }
+        line.byte_offset_for_utf16_column(self.source(), position.character)
     }
 
     fn validate_offset(&self, offset: usize) -> Result<(), SourceMapError> {
-        if offset > self.source.len() {
+        if offset > self.source_len() {
             return Err(SourceMapError::OffsetOutOfBounds {
                 offset,
-                source_len: self.source.len(),
+                source_len: self.source_len(),
             });
         }
-        if !self.source.is_char_boundary(offset) {
+        if !self.source().is_char_boundary(offset) {
             return Err(SourceMapError::OffsetNotCharBoundary { offset });
         }
         Ok(())
@@ -145,56 +273,493 @@ impl SourceMap {
         let line = self
             .line_metric(line_index)
             .expect("validated source offset should map to a cached line");
-        let clamped = offset.clamp(line.start, line.content_end);
-        let relative = clamped - line.start;
-        let boundary_index = line
-            .byte_boundaries
-            .binary_search(&relative)
-            .expect("validated source offset should map to a cached line boundary");
-
-        Ok(OffsetMetrics {
-            line_index,
-            char_column: boundary_index,
-            utf16_column: line.utf16_columns[boundary_index],
-        })
+        Ok(self.offset_metrics_for_line(offset, line_index, &line))
     }
 
-    fn line_metric(&self, line_index: usize) -> Option<&LineMetric> {
-        let slot = self.line_metrics.get(line_index)?;
-        Some(slot.get_or_init(|| {
-            let start = self.line_starts[line_index];
-            let next_start = self
-                .line_starts
-                .get(line_index + 1)
-                .copied()
-                .unwrap_or(self.source.len());
-            line_metric(self.source.as_ref(), start, next_start)
-        }))
+    fn offset_metrics_pair(
+        &self,
+        start: usize,
+        end: usize,
+    ) -> Result<(OffsetMetrics, OffsetMetrics), SourceMapError> {
+        self.validate_offset(start)?;
+        self.validate_offset(end)?;
+        let start_line_index = self.line_index_for_offset(start);
+        let end_line_index = self.line_index_for_offset(end);
+        let start_line = self
+            .line_metric(start_line_index)
+            .expect("validated source offset should map to a cached line");
+        let end_line = if start_line_index == end_line_index {
+            Arc::clone(&start_line)
+        } else {
+            self.line_metric(end_line_index)
+                .expect("validated source offset should map to a cached line")
+        };
+        Ok((
+            self.offset_metrics_for_line(start, start_line_index, &start_line),
+            self.offset_metrics_for_line(end, end_line_index, &end_line),
+        ))
+    }
+
+    fn offset_metrics_for_line(
+        &self,
+        offset: usize,
+        line_index: usize,
+        line: &LineMetric,
+    ) -> OffsetMetrics {
+        let clamped = offset.clamp(line.start, line.content_end);
+        let relative = clamped - line.start;
+        let (char_column, utf16_column) = line
+            .columns_for_relative_offset(self.source(), relative)
+            .expect("validated source offset should map to a cached line boundary");
+        OffsetMetrics {
+            line_index,
+            char_column,
+            utf16_column,
+        }
+    }
+
+    fn offset_metrics_pair_cancellable(
+        &self,
+        start: usize,
+        end: usize,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Result<(OffsetMetrics, OffsetMetrics), SourceMapError>, crate::AnalysisCancelled>
+    {
+        if let Err(error) = self.validate_offset(start) {
+            return Ok(Err(error));
+        }
+        if let Err(error) = self.validate_offset(end) {
+            return Ok(Err(error));
+        }
+        let start_line_index = self.line_index_for_offset(start);
+        let end_line_index = self.line_index_for_offset(end);
+        let start_line = self
+            .line_metric_cancellable(start_line_index, cancellation)?
+            .expect("validated source offset should map to a cached line");
+        let end_line = if start_line_index == end_line_index {
+            Arc::clone(&start_line)
+        } else {
+            self.line_metric_cancellable(end_line_index, cancellation)?
+                .expect("validated source offset should map to a cached line")
+        };
+        Ok(Ok((
+            self.offset_metrics_for_line(start, start_line_index, &start_line),
+            self.offset_metrics_for_line(end, end_line_index, &end_line),
+        )))
+    }
+
+    fn line_metric(&self, line_index: usize) -> Option<Arc<LineMetric>> {
+        self.line_metric_with_checkpoint(line_index, || Ok::<_, std::convert::Infallible>(()))
+            .expect("infallible line-metric scan")
+    }
+
+    fn line_metric_cancellable(
+        &self,
+        line_index: usize,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Option<Arc<LineMetric>>, crate::AnalysisCancelled> {
+        self.line_metric_with_checkpoint(line_index, || cancellation.checkpoint())
+    }
+
+    fn line_metric_with_checkpoint<E>(
+        &self,
+        line_index: usize,
+        mut checkpoint: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<Arc<LineMetric>>, E> {
+        checkpoint()?;
+        let Some(&start) = self.line_starts.get(line_index) else {
+            return Ok(None);
+        };
+        if let Some(metric) = self.line_metric_cache().get(line_index) {
+            return Ok(Some(metric));
+        }
+
+        let next_start = self
+            .line_starts
+            .get(line_index + 1)
+            .copied()
+            .unwrap_or(self.source_len());
+        let computed = Arc::new(line_metric_with_checkpoint(
+            self.source(),
+            start,
+            next_start,
+            &mut checkpoint,
+        )?);
+        let mut cache = self.line_metric_cache();
+        checkpoint()?;
+        Ok(Some(cache.insert(line_index, computed)))
+    }
+
+    fn line_metric_cache(&self) -> std::sync::MutexGuard<'_, LineMetricCache> {
+        self.line_metrics
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     #[cfg(test)]
     fn cached_line_metric_count(&self) -> usize {
-        self.line_metrics
-            .iter()
-            .filter(|metric| metric.get().is_some())
-            .count()
+        self.line_metric_cache().entries.len()
     }
 
     #[cfg(test)]
-    fn cached_line_boundary_count(&self, line_index: usize) -> Option<usize> {
-        self.line_metrics
-            .get(line_index)
-            .and_then(OnceLock::get)
-            .map(|line| line.byte_boundaries.len())
+    fn cached_line_checkpoint_count(&self, line_index: usize) -> Option<usize> {
+        self.line_metric_cache()
+            .entries
+            .get(&line_index)
+            .map(|entry| entry.metric.stored_checkpoint_count())
+    }
+
+    #[cfg(test)]
+    fn cached_line_metric_bytes(&self) -> usize {
+        self.line_metric_cache().retained_bytes
+    }
+
+    #[cfg(test)]
+    fn estimated_line_metric_cache_allocation_bytes(&self) -> usize {
+        self.line_metric_cache().estimated_allocation_bytes()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_source_allocation_with(&self, source: &SharedTextSlice) -> bool {
+        self.source.shares_source_allocation_with(source)
     }
 }
+
+#[derive(Debug)]
+struct LineMetricCache {
+    budget_bytes: usize,
+    retained_bytes: usize,
+    oldest: Option<usize>,
+    newest: Option<usize>,
+    entries: BTreeMap<usize, LineMetricCacheEntry>,
+    #[cfg(test)]
+    statistics: LineMetricCacheStatistics,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct LineMetricCacheStatistics {
+    hits: usize,
+    misses: usize,
+    evictions: usize,
+    oversized_entries: usize,
+    current_weight: usize,
+    high_water_weight: usize,
+}
+
+#[derive(Debug)]
+struct LineMetricCacheEntry {
+    metric: Arc<LineMetric>,
+    weight: usize,
+    previous: Option<usize>,
+    next: Option<usize>,
+}
+
+impl LineMetricCache {
+    fn new(budget_bytes: usize) -> Self {
+        Self {
+            budget_bytes,
+            retained_bytes: 0,
+            oldest: None,
+            newest: None,
+            entries: BTreeMap::new(),
+            #[cfg(test)]
+            statistics: LineMetricCacheStatistics::default(),
+        }
+    }
+
+    fn get(&mut self, line_index: usize) -> Option<Arc<LineMetric>> {
+        let Some(entry) = self.entries.get(&line_index) else {
+            self.record_miss();
+            return None;
+        };
+        let metric = Arc::clone(&entry.metric);
+        self.record_hit();
+        self.touch(line_index);
+        Some(metric)
+    }
+
+    fn insert(&mut self, line_index: usize, computed: Arc<LineMetric>) -> Arc<LineMetric> {
+        if let Some(existing) = self
+            .entries
+            .get(&line_index)
+            .map(|entry| Arc::clone(&entry.metric))
+        {
+            self.touch(line_index);
+            return existing;
+        }
+
+        let weight = line_metric_cache_entry_weight(&computed);
+        if weight > self.budget_bytes {
+            self.record_oversized_entry();
+            return computed;
+        }
+
+        while self.retained_bytes > self.budget_bytes - weight {
+            self.remove_oldest();
+        }
+
+        let previous = self.newest;
+        self.entries.insert(
+            line_index,
+            LineMetricCacheEntry {
+                metric: Arc::clone(&computed),
+                weight,
+                previous,
+                next: None,
+            },
+        );
+        if let Some(previous) = previous {
+            self.entries
+                .get_mut(&previous)
+                .expect("newest line metric must still be cached")
+                .next = Some(line_index);
+        } else {
+            self.oldest = Some(line_index);
+        }
+        self.newest = Some(line_index);
+        self.retained_bytes = self
+            .retained_bytes
+            .checked_add(weight)
+            .expect("line metric cache weight must not overflow");
+        self.record_retained_weight();
+        debug_assert!(self.retained_bytes <= self.budget_bytes);
+        computed
+    }
+
+    fn touch(&mut self, line_index: usize) {
+        if self.newest == Some(line_index) {
+            return;
+        }
+
+        let (previous, next) = {
+            let entry = self
+                .entries
+                .get(&line_index)
+                .expect("touched line metric must be cached");
+            (entry.previous, entry.next)
+        };
+        if let Some(previous) = previous {
+            self.entries
+                .get_mut(&previous)
+                .expect("previous line metric must still be cached")
+                .next = next;
+        } else {
+            self.oldest = next;
+        }
+        if let Some(next) = next {
+            self.entries
+                .get_mut(&next)
+                .expect("next line metric must still be cached")
+                .previous = previous;
+        }
+
+        let newest = self
+            .newest
+            .expect("a non-newest cached line metric must have a newest peer");
+        self.entries
+            .get_mut(&newest)
+            .expect("newest line metric must still be cached")
+            .next = Some(line_index);
+        let entry = self
+            .entries
+            .get_mut(&line_index)
+            .expect("touched line metric must still be cached");
+        entry.previous = Some(newest);
+        entry.next = None;
+        self.newest = Some(line_index);
+    }
+
+    fn remove_oldest(&mut self) {
+        let oldest = self
+            .oldest
+            .expect("an over-budget line metric cache must have a victim");
+        let removed = self
+            .entries
+            .remove(&oldest)
+            .expect("oldest line metric must still be cached");
+        self.oldest = removed.next;
+        if let Some(next) = removed.next {
+            self.entries
+                .get_mut(&next)
+                .expect("next-oldest line metric must still be cached")
+                .previous = None;
+        } else {
+            self.newest = None;
+        }
+        self.retained_bytes = self
+            .retained_bytes
+            .checked_sub(removed.weight)
+            .expect("line metric cache weight must match its entries");
+        self.record_eviction();
+        self.record_retained_weight();
+    }
+
+    #[cfg(test)]
+    fn statistics(&self) -> LineMetricCacheStatistics {
+        self.statistics
+    }
+
+    #[cfg(test)]
+    fn estimated_allocation_bytes(&self) -> usize {
+        self.entries.values().fold(0usize, |bytes, entry| {
+            let checkpoints = match &entry.metric.columns {
+                LineColumns::Ascii => 0,
+                LineColumns::Unicode { checkpoints } => checkpoints
+                    .len()
+                    .saturating_mul(size_of::<ColumnCheckpoint>()),
+            };
+            bytes
+                .saturating_add(conservative_btree_entry_bytes::<usize, LineMetricCacheEntry>())
+                .saturating_add(size_of::<LineMetric>())
+                .saturating_add(ARC_ALLOCATION_OVERHEAD)
+                .saturating_add(checkpoints)
+        })
+    }
+
+    #[cfg(test)]
+    fn record_hit(&mut self) {
+        self.statistics.hits = self.statistics.hits.saturating_add(1);
+    }
+
+    #[cfg(not(test))]
+    fn record_hit(&mut self) {}
+
+    #[cfg(test)]
+    fn record_miss(&mut self) {
+        self.statistics.misses = self.statistics.misses.saturating_add(1);
+    }
+
+    #[cfg(not(test))]
+    fn record_miss(&mut self) {}
+
+    #[cfg(test)]
+    fn record_eviction(&mut self) {
+        self.statistics.evictions = self.statistics.evictions.saturating_add(1);
+    }
+
+    #[cfg(not(test))]
+    fn record_eviction(&mut self) {}
+
+    #[cfg(test)]
+    fn record_oversized_entry(&mut self) {
+        self.statistics.oversized_entries = self.statistics.oversized_entries.saturating_add(1);
+    }
+
+    #[cfg(not(test))]
+    fn record_oversized_entry(&mut self) {}
+
+    #[cfg(test)]
+    fn record_retained_weight(&mut self) {
+        self.statistics.current_weight = self.retained_bytes;
+        self.statistics.high_water_weight =
+            self.statistics.high_water_weight.max(self.retained_bytes);
+    }
+
+    #[cfg(not(test))]
+    fn record_retained_weight(&mut self) {}
+}
+
+fn line_metric_cache_entry_weight(metric: &LineMetric) -> usize {
+    let checkpoints = match &metric.columns {
+        LineColumns::Ascii => 0,
+        LineColumns::Unicode { checkpoints } => checkpoints
+            .len()
+            .saturating_mul(size_of::<ColumnCheckpoint>()),
+    };
+    conservative_btree_entry_bytes::<usize, LineMetricCacheEntry>()
+        .saturating_add(size_of::<LineMetric>())
+        .saturating_add(ARC_ALLOCATION_OVERHEAD)
+        .saturating_add(checkpoints)
+}
+
+const LINE_COLUMN_CHECKPOINT_BYTES: usize = 1024;
 
 #[derive(Debug, Clone)]
 struct LineMetric {
     start: usize,
     content_end: usize,
-    byte_boundaries: Vec<usize>,
-    utf16_columns: Vec<usize>,
+    columns: LineColumns,
+}
+
+#[derive(Debug, Clone)]
+enum LineColumns {
+    Ascii,
+    Unicode {
+        checkpoints: Box<[ColumnCheckpoint]>,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ColumnCheckpoint {
+    byte_offset: usize,
+    char_column: usize,
+    utf16_column: usize,
+}
+
+impl LineMetric {
+    fn byte_offset_for_utf16_column(&self, source: &str, column: usize) -> Option<usize> {
+        match &self.columns {
+            LineColumns::Ascii => Some(self.start.saturating_add(column).min(self.content_end)),
+            LineColumns::Unicode { checkpoints } => {
+                let line = source.get(self.start..self.content_end)?;
+                let checkpoint_index = checkpoints
+                    .partition_point(|checkpoint| checkpoint.utf16_column <= column)
+                    .saturating_sub(1);
+                let checkpoint = checkpoints[checkpoint_index];
+                let mut byte_offset = checkpoint.byte_offset;
+                let mut utf16_column = checkpoint.utf16_column;
+
+                if utf16_column == column {
+                    return Some(self.start + byte_offset);
+                }
+
+                for ch in line.get(byte_offset..)?.chars() {
+                    let next_utf16_column = utf16_column + ch.len_utf16();
+                    if column < next_utf16_column {
+                        return None;
+                    }
+                    byte_offset += ch.len_utf8();
+                    utf16_column = next_utf16_column;
+                    if utf16_column == column {
+                        return Some(self.start + byte_offset);
+                    }
+                }
+
+                Some(self.content_end)
+            }
+        }
+    }
+
+    fn columns_for_relative_offset(&self, source: &str, relative: usize) -> Option<(usize, usize)> {
+        match &self.columns {
+            LineColumns::Ascii => Some((relative, relative)),
+            LineColumns::Unicode { checkpoints } => {
+                let line = source.get(self.start..self.content_end)?;
+                let checkpoint_index = checkpoints
+                    .partition_point(|checkpoint| checkpoint.byte_offset <= relative)
+                    .saturating_sub(1);
+                let checkpoint = checkpoints[checkpoint_index];
+                let suffix = line.get(checkpoint.byte_offset..relative)?;
+                let (char_delta, utf16_delta) =
+                    suffix.chars().fold((0usize, 0usize), |(chars, utf16), ch| {
+                        (chars + 1, utf16 + ch.len_utf16())
+                    });
+                Some((
+                    checkpoint.char_column + char_delta,
+                    checkpoint.utf16_column + utf16_delta,
+                ))
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn stored_checkpoint_count(&self) -> usize {
+        match &self.columns {
+            LineColumns::Ascii => 0,
+            LineColumns::Unicode { checkpoints } => checkpoints.len(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -204,60 +769,162 @@ struct OffsetMetrics {
     utf16_column: usize,
 }
 
-pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
-    let mut end_line = 1usize;
-    let mut end_column = 1usize;
-    let mut end_lsp_line = 0usize;
-    let mut end_lsp_character = 0usize;
-    let mut chars = text.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        match ch {
-            '\r' => {
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
-                }
-                end_line += 1;
-                end_column = 1;
-                end_lsp_line += 1;
-                end_lsp_character = 0;
-            }
-            '\n' => {
-                end_line += 1;
-                end_column = 1;
-                end_lsp_line += 1;
-                end_lsp_character = 0;
-            }
-            _ => {
-                end_column += 1;
-                end_lsp_character += ch.len_utf16();
-            }
-        }
-    }
-
+fn span_from_offset_metrics(
+    start: usize,
+    end: usize,
+    start_metrics: OffsetMetrics,
+    end_metrics: OffsetMetrics,
+) -> DiagnosticSpan {
     DiagnosticSpan::new(
-        0,
-        text.len(),
-        1,
-        1,
-        end_line,
-        end_column,
-        Utf16Position {
-            line: 0,
-            character: 0,
-        },
-        Utf16Position {
-            line: end_lsp_line,
-            character: end_lsp_character,
-        },
+        start..end,
+        LineCol::new(start_metrics.line_index + 1, start_metrics.char_column + 1),
+        LineCol::new(end_metrics.line_index + 1, end_metrics.char_column + 1),
+        LspRange::new(
+            Utf16Position {
+                line: start_metrics.line_index,
+                character: start_metrics.utf16_column,
+            },
+            Utf16Position {
+                line: end_metrics.line_index,
+                character: end_metrics.utf16_column,
+            },
+        ),
     )
 }
 
+pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan {
+    byte_range_span_without_source_copy_with_checkpoint(text, 0..text.len(), || {
+        Ok::<_, std::convert::Infallible>(())
+    })
+    .expect("infallible whole-source span scan")
+}
+
+pub(crate) fn whole_text_span_without_source_copy_cancellable(
+    text: &str,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<DiagnosticSpan, crate::AnalysisCancelled> {
+    byte_range_span_without_source_copy_cancellable(text, 0..text.len(), cancellation)
+}
+
+pub(crate) fn byte_range_span_without_source_copy_cancellable(
+    text: &str,
+    range: Range<usize>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<DiagnosticSpan, crate::AnalysisCancelled> {
+    byte_range_span_without_source_copy_with_checkpoint(text, range, || cancellation.checkpoint())
+}
+
+fn byte_range_span_without_source_copy_with_checkpoint<E>(
+    text: &str,
+    range: Range<usize>,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
+) -> Result<DiagnosticSpan, E> {
+    assert!(range.start <= range.end, "diagnostic range must be ordered");
+    assert!(
+        text.get(range.clone()).is_some(),
+        "diagnostic range must be in bounds and on UTF-8 boundaries"
+    );
+
+    let mut metrics = OffsetMetrics {
+        line_index: 0,
+        char_column: 0,
+        utf16_column: 0,
+    };
+    let mut start_metrics = None;
+    let mut end_metrics = None;
+    let mut cursor = 0usize;
+    let mut bytes_since_checkpoint = 0usize;
+
+    checkpoint()?;
+    while cursor <= range.end {
+        if cursor == range.start {
+            start_metrics = Some(metrics);
+        }
+        if cursor == range.end {
+            end_metrics = Some(metrics);
+            break;
+        }
+
+        let ch = text[cursor..]
+            .chars()
+            .next()
+            .expect("validated range end must be reachable from the source start");
+        bytes_since_checkpoint += ch.len_utf8();
+        match ch {
+            '\r' => {
+                let after_carriage_return = cursor + 1;
+                if text.as_bytes().get(after_carriage_return) == Some(&b'\n') {
+                    if after_carriage_return == range.start {
+                        start_metrics = Some(metrics);
+                    }
+                    if after_carriage_return == range.end {
+                        end_metrics = Some(metrics);
+                        break;
+                    }
+                    cursor += 2;
+                    bytes_since_checkpoint += 1;
+                } else {
+                    cursor += 1;
+                }
+                metrics.line_index += 1;
+                metrics.char_column = 0;
+                metrics.utf16_column = 0;
+            }
+            '\n' => {
+                cursor += 1;
+                metrics.line_index += 1;
+                metrics.char_column = 0;
+                metrics.utf16_column = 0;
+            }
+            _ => {
+                cursor += ch.len_utf8();
+                metrics.char_column += 1;
+                metrics.utf16_column += ch.len_utf16();
+            }
+        }
+        if bytes_since_checkpoint >= 4096 {
+            checkpoint()?;
+            bytes_since_checkpoint = 0;
+        }
+    }
+    checkpoint()?;
+
+    Ok(span_from_offset_metrics(
+        range.start,
+        range.end,
+        start_metrics.expect("validated range start must be reached"),
+        end_metrics.expect("validated range end must be reached"),
+    ))
+}
+
 fn line_starts(source: &str) -> Vec<usize> {
+    line_starts_with_checkpoint(source, |_| Ok::<_, std::convert::Infallible>(()))
+        .expect("infallible line-start scan")
+}
+
+fn line_starts_cancellable(
+    source: &str,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<usize>, crate::AnalysisCancelled> {
+    line_starts_with_checkpoint(source, |_| {
+        cancellation.checkpoint()?;
+        Ok(())
+    })
+}
+
+fn line_starts_with_checkpoint<E>(
+    source: &str,
+    mut checkpoint: impl FnMut(usize) -> Result<(), E>,
+) -> Result<Vec<usize>, E> {
     let mut starts = vec![0];
     let bytes = source.as_bytes();
     let mut idx = 0usize;
+    let mut next_checkpoint = 0usize;
     while idx < bytes.len() {
+        if idx >= next_checkpoint {
+            checkpoint(idx)?;
+            next_checkpoint = idx.saturating_add(4096);
+        }
         match bytes[idx] {
             b'\r' => {
                 idx += 1;
@@ -275,31 +942,68 @@ fn line_starts(source: &str) -> Vec<usize> {
             }
         }
     }
-    starts
+    checkpoint(idx)?;
+    Ok(starts)
 }
 
-fn line_metric(source: &str, start: usize, next_start: usize) -> LineMetric {
+fn line_metric_with_checkpoint<E>(
+    source: &str,
+    start: usize,
+    next_start: usize,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
+) -> Result<LineMetric, E> {
     let content_end = line_content_end(source.as_bytes(), start, next_start);
     let line = &source[start..content_end];
-    let mut byte_boundaries = Vec::with_capacity(line.chars().count() + 1);
-    let mut utf16_columns = Vec::with_capacity(byte_boundaries.capacity());
-    let mut utf16 = 0usize;
-
-    byte_boundaries.push(0);
-    utf16_columns.push(0);
-
-    for (relative, ch) in line.char_indices() {
-        utf16 += ch.len_utf16();
-        byte_boundaries.push(relative + ch.len_utf8());
-        utf16_columns.push(utf16);
+    let mut ascii = true;
+    for chunk in line.as_bytes().chunks(4096) {
+        checkpoint()?;
+        if !chunk.is_ascii() {
+            ascii = false;
+            break;
+        }
+    }
+    checkpoint()?;
+    if ascii {
+        return Ok(LineMetric {
+            start,
+            content_end,
+            columns: LineColumns::Ascii,
+        });
     }
 
-    LineMetric {
+    let mut checkpoints = vec![ColumnCheckpoint {
+        byte_offset: 0,
+        char_column: 0,
+        utf16_column: 0,
+    }];
+    let mut utf16_column = 0usize;
+    let mut next_column_checkpoint = LINE_COLUMN_CHECKPOINT_BYTES;
+    let mut next_cancellation_checkpoint = 0usize;
+
+    for (char_column, (relative, ch)) in line.char_indices().enumerate() {
+        if relative >= next_cancellation_checkpoint {
+            checkpoint()?;
+            next_cancellation_checkpoint = relative.saturating_add(4096);
+        }
+        if relative >= next_column_checkpoint {
+            checkpoints.push(ColumnCheckpoint {
+                byte_offset: relative,
+                char_column,
+                utf16_column,
+            });
+            next_column_checkpoint = relative.saturating_add(LINE_COLUMN_CHECKPOINT_BYTES);
+        }
+        utf16_column += ch.len_utf16();
+    }
+    checkpoint()?;
+
+    Ok(LineMetric {
         start,
         content_end,
-        byte_boundaries,
-        utf16_columns,
-    }
+        columns: LineColumns::Unicode {
+            checkpoints: checkpoints.into_boxed_slice(),
+        },
+    })
 }
 
 fn line_content_end(bytes: &[u8], start: usize, next_start: usize) -> usize {
@@ -346,6 +1050,70 @@ mod tests {
                 line: 1,
                 character: 5
             }
+        );
+    }
+
+    #[test]
+    fn sparse_unicode_checkpoints_preserve_every_character_boundary() {
+        let source = format!(
+            "{}é{}🤓{}",
+            "a".repeat(LINE_COLUMN_CHECKPOINT_BYTES - 1),
+            "β".repeat(LINE_COLUMN_CHECKPOINT_BYTES),
+            "z".repeat(LINE_COLUMN_CHECKPOINT_BYTES + 1),
+        );
+        let map = SourceMap::new(source.clone());
+        let mut char_column = 0usize;
+        let mut utf16_column = 0usize;
+
+        for (byte_offset, ch) in source.char_indices() {
+            assert_eq!(
+                map.line_col(byte_offset).unwrap(),
+                LineCol::new(1, char_column + 1)
+            );
+            assert_eq!(
+                map.utf16_position(byte_offset).unwrap(),
+                Utf16Position {
+                    line: 0,
+                    character: utf16_column,
+                }
+            );
+            assert_eq!(
+                map.byte_offset_for_utf16_position(Utf16Position {
+                    line: 0,
+                    character: utf16_column,
+                }),
+                Some(byte_offset)
+            );
+            for interior_column in 1..ch.len_utf16() {
+                assert_eq!(
+                    map.byte_offset_for_utf16_position(Utf16Position {
+                        line: 0,
+                        character: utf16_column + interior_column,
+                    }),
+                    None
+                );
+            }
+            char_column += 1;
+            utf16_column += ch.len_utf16();
+        }
+
+        assert_eq!(
+            map.line_col(source.len()).unwrap(),
+            LineCol::new(1, char_column + 1)
+        );
+        assert_eq!(
+            map.utf16_position(source.len()).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: utf16_column,
+            }
+        );
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 0,
+                character: utf16_column,
+            }),
+            Some(source.len())
         );
     }
 
@@ -432,7 +1200,7 @@ mod tests {
         let map = SourceMap::new(source.clone());
 
         assert_eq!(map.cached_line_metric_count(), 0);
-        assert_eq!(map.cached_line_boundary_count(0), None);
+        assert_eq!(map.cached_line_checkpoint_count(0), None);
 
         for offset in source.match_indices('N').map(|(offset, _)| offset) {
             let end = source[offset..].find('[').map(|len| offset + len).unwrap();
@@ -441,10 +1209,462 @@ mod tests {
             assert!(span.lsp_range.end.character > span.lsp_range.start.character);
         }
         assert_eq!(map.cached_line_metric_count(), 1);
+        let checkpoint_count = map.cached_line_checkpoint_count(0).unwrap();
+        assert!(checkpoint_count > 0);
+        assert!(checkpoint_count <= source.len() / LINE_COLUMN_CHECKPOINT_BYTES + 2);
+    }
+
+    #[test]
+    fn dense_line_sources_cache_only_queried_line_metrics() {
+        let source = "\n".repeat(100_000);
+        let map = SourceMap::new(source);
+
+        assert_eq!(map.line_starts().len(), 100_001);
+        assert_eq!(map.cached_line_metric_count(), 0);
+        assert_eq!(map.line_bounds(99_999), Some((99_999, 99_999)));
+        assert_eq!(map.cached_line_metric_count(), 0);
         assert_eq!(
-            map.cached_line_boundary_count(0),
-            Some(source.chars().count() + 1)
+            map.utf16_position(99_999).unwrap(),
+            Utf16Position {
+                line: 99_999,
+                character: 0,
+            }
         );
+        assert_eq!(map.cached_line_metric_count(), 1);
+    }
+
+    #[test]
+    fn line_metric_cache_bounds_dense_ascii_lines() {
+        let line_count = 10_000;
+        let source = "a\n".repeat(line_count);
+        let map = SourceMap::new(source);
+
+        for line_index in 0..line_count {
+            let line_end = line_index * 2 + 1;
+            assert_eq!(
+                map.line_bounds(line_index),
+                Some((line_index * 2, line_end))
+            );
+            assert_eq!(
+                map.utf16_position(line_end).unwrap(),
+                Utf16Position {
+                    line: line_index,
+                    character: 1,
+                }
+            );
+        }
+
+        assert!(map.cached_line_metric_bytes() <= SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES);
+        assert!(
+            map.estimated_line_metric_cache_allocation_bytes()
+                <= SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES
+        );
+        assert!(map.cached_line_metric_count() < line_count);
+    }
+
+    #[test]
+    fn line_metric_cache_bounds_many_short_unicode_lines() {
+        let line_count = 10_000;
+        let source = "é\n".repeat(line_count);
+        let map = SourceMap::new(source);
+
+        for line_index in 0..line_count {
+            let line_end = line_index * 3 + 2;
+            assert_eq!(
+                map.line_bounds(line_index),
+                Some((line_index * 3, line_end))
+            );
+            assert_eq!(
+                map.utf16_position(line_end).unwrap(),
+                Utf16Position {
+                    line: line_index,
+                    character: 1,
+                }
+            );
+        }
+
+        assert!(map.cached_line_metric_bytes() <= SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES);
+        assert!(
+            map.estimated_line_metric_cache_allocation_bytes()
+                <= SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES
+        );
+        assert!(map.cached_line_metric_count() < line_count);
+    }
+
+    #[test]
+    fn oversized_unicode_line_metric_is_correct_but_not_cached() {
+        let character_count = 8 * 1024 * 1024;
+        let source = "é".repeat(character_count);
+        let map = SourceMap::new(source.clone());
+
+        let span = map.span(0, source.len()).unwrap();
+        assert_eq!(span.end_line, 1);
+        assert_eq!(span.end_column, character_count + 1);
+        assert_eq!(span.lsp_range.end.character, character_count);
+        assert_eq!(map.cached_line_metric_count(), 0);
+        assert_eq!(map.cached_line_metric_bytes(), 0);
+    }
+
+    #[test]
+    fn line_metric_cache_touch_changes_the_deterministic_victim() {
+        let metric = |start| {
+            Arc::new(LineMetric {
+                start,
+                content_end: start,
+                columns: LineColumns::Ascii,
+            })
+        };
+        let entry_weight = line_metric_cache_entry_weight(&metric(0));
+        let mut cache = LineMetricCache::new(entry_weight * 2);
+
+        cache.insert(0, metric(0));
+        cache.insert(1, metric(1));
+        assert!(cache.get(0).is_some());
+        cache.insert(2, metric(2));
+
+        assert!(cache.entries.contains_key(&0));
+        assert!(!cache.entries.contains_key(&1));
+        assert!(cache.entries.contains_key(&2));
+        assert!(cache.retained_bytes <= cache.budget_bytes);
+    }
+
+    #[test]
+    fn individually_oversized_line_metric_bypasses_the_cache() {
+        let metric = Arc::new(LineMetric {
+            start: 0,
+            content_end: 0,
+            columns: LineColumns::Ascii,
+        });
+        let mut cache = LineMetricCache::new(line_metric_cache_entry_weight(&metric) - 1);
+        let returned = cache.insert(0, Arc::clone(&metric));
+
+        assert!(Arc::ptr_eq(&returned, &metric));
+        assert!(cache.entries.is_empty());
+        assert_eq!(cache.retained_bytes, 0);
+        assert_eq!(cache.statistics().oversized_entries, 1);
+    }
+
+    #[test]
+    fn line_metric_cache_statistics_cover_lookups_admission_and_high_water() {
+        let metric = |start| {
+            Arc::new(LineMetric {
+                start,
+                content_end: start,
+                columns: LineColumns::Ascii,
+            })
+        };
+        let entry_weight = line_metric_cache_entry_weight(&metric(0));
+        let mut cache = LineMetricCache::new(entry_weight * 2);
+
+        assert!(cache.get(0).is_none());
+        cache.insert(0, metric(0));
+        assert!(cache.get(0).is_some());
+        cache.insert(1, metric(1));
+        cache.insert(2, metric(2));
+        let oversized = Arc::new(LineMetric {
+            start: 3,
+            content_end: 3,
+            columns: LineColumns::Unicode {
+                checkpoints: vec![
+                    ColumnCheckpoint {
+                        byte_offset: 0,
+                        char_column: 0,
+                        utf16_column: 0,
+                    };
+                    entry_weight
+                ]
+                .into_boxed_slice(),
+            },
+        });
+        cache.insert(3, oversized);
+
+        assert_eq!(
+            cache.statistics(),
+            LineMetricCacheStatistics {
+                hits: 1,
+                misses: 1,
+                evictions: 1,
+                oversized_entries: 1,
+                current_weight: entry_weight * 2,
+                high_water_weight: entry_weight * 2,
+            }
+        );
+    }
+
+    #[test]
+    fn mixed_metric_sizes_cannot_retain_historical_container_capacity_past_the_budget() {
+        let ascii_metric = |start| {
+            Arc::new(LineMetric {
+                start,
+                content_end: start,
+                columns: LineColumns::Ascii,
+            })
+        };
+        let mut cache = LineMetricCache::new(SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES);
+        for line_index in 0..4096 {
+            cache.insert(line_index, ascii_metric(line_index));
+        }
+
+        let checkpoint_count =
+            SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES / 2 / size_of::<ColumnCheckpoint>();
+        let large = Arc::new(LineMetric {
+            start: 4096,
+            content_end: 4096,
+            columns: LineColumns::Unicode {
+                checkpoints: vec![
+                    ColumnCheckpoint {
+                        byte_offset: 0,
+                        char_column: 0,
+                        utf16_column: 0,
+                    };
+                    checkpoint_count
+                ]
+                .into_boxed_slice(),
+            },
+        });
+        cache.insert(4096, large);
+
+        assert!(cache.retained_bytes <= cache.budget_bytes);
+        assert!(cache.estimated_allocation_bytes() <= cache.budget_bytes);
+    }
+
+    #[test]
+    fn cancelled_line_metric_commit_preserves_residents_and_recency() {
+        let map = SourceMap::new("a\nb");
+        assert_eq!(
+            map.utf16_position(1).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: 1,
+            }
+        );
+        let before = {
+            let cache = map.line_metric_cache();
+            (
+                cache.retained_bytes,
+                cache.oldest,
+                cache.newest,
+                cache.entries.len(),
+            )
+        };
+        let mut checkpoints = 0;
+
+        let result = map.line_metric_with_checkpoint(1, || {
+            checkpoints += 1;
+            if checkpoints == 4 { Err(()) } else { Ok(()) }
+        });
+
+        assert!(matches!(result, Err(())));
+        let cache = map.line_metric_cache();
+        assert_eq!(
+            (
+                cache.retained_bytes,
+                cache.oldest,
+                cache.newest,
+                cache.entries.len(),
+            ),
+            before
+        );
+        assert!(cache.entries.contains_key(&0));
+        assert!(!cache.entries.contains_key(&1));
+    }
+
+    #[test]
+    fn evicted_metric_lives_only_while_a_request_holds_it() {
+        let metric = |start| {
+            Arc::new(LineMetric {
+                start,
+                content_end: start,
+                columns: LineColumns::Ascii,
+            })
+        };
+        let entry_weight = line_metric_cache_entry_weight(&metric(0));
+        let mut cache = LineMetricCache::new(entry_weight);
+        let request_local = cache.insert(0, metric(0));
+        let evicted = Arc::downgrade(&request_local);
+
+        cache.insert(1, metric(1));
+
+        assert!(evicted.upgrade().is_some());
+        assert!(!cache.entries.contains_key(&0));
+        drop(request_local);
+        assert!(evicted.upgrade().is_none());
+    }
+
+    #[test]
+    fn source_map_clones_share_one_line_metric_budget() {
+        let map = SourceMap::new("a\né");
+        let clone = map.clone();
+
+        assert_eq!(
+            clone.utf16_position(4).unwrap(),
+            Utf16Position {
+                line: 1,
+                character: 1,
+            }
+        );
+        assert_eq!(map.cached_line_metric_count(), 1);
+        assert_eq!(
+            map.cached_line_metric_bytes(),
+            clone.cached_line_metric_bytes()
+        );
+    }
+
+    #[test]
+    fn retained_weight_excludes_source_and_reserves_the_full_metric_budget() {
+        let short = SourceMap::new("a");
+        let long = SourceMap::new("a".repeat(1024 * 1024));
+        assert_eq!(
+            short.estimated_owned_heap_bytes_excluding_source(),
+            long.estimated_owned_heap_bytes_excluding_source()
+        );
+
+        let before = long.estimated_owned_heap_bytes_excluding_source();
+        assert_eq!(
+            long.utf16_position(long.source_len()).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: long.source_len(),
+            }
+        );
+        assert_eq!(long.estimated_owned_heap_bytes_excluding_source(), before);
+
+        let many_lines = SourceMap::new("\n".repeat(1024));
+        assert!(many_lines.estimated_owned_heap_bytes_excluding_source() > before);
+    }
+
+    #[test]
+    fn concurrent_same_line_misses_are_admitted_once() {
+        let source = format!("{}é", "a".repeat(32 * 1024));
+        let end = source.len();
+        let map = SourceMap::new(source);
+        let barrier = Arc::new(std::sync::Barrier::new(8));
+        let handles = (0..8)
+            .map(|_| {
+                let map = map.clone();
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    map.utf16_position(end).unwrap()
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            assert_eq!(handle.join().unwrap().line, 0);
+        }
+        assert_eq!(map.cached_line_metric_count(), 1);
+        assert!(map.cached_line_metric_bytes() <= SOURCE_MAP_LINE_METRIC_CACHE_BUDGET_BYTES);
+    }
+
+    #[test]
+    fn long_ascii_lines_use_constant_size_column_metrics() {
+        let source = "a".repeat(64 * 1024);
+        let map = SourceMap::new(source.clone());
+
+        assert_eq!(
+            map.utf16_position(source.len()).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: source.len(),
+            }
+        );
+        assert_eq!(map.cached_line_checkpoint_count(0), Some(0));
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 0,
+                character: source.len() + 1,
+            }),
+            Some(source.len())
+        );
+
+        let non_initial_line = SourceMap::new("x\nabc");
+        assert_eq!(
+            non_initial_line.byte_offset_for_utf16_position(Utf16Position {
+                line: 1,
+                character: usize::MAX,
+            }),
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn long_mostly_ascii_unicode_lines_use_sparse_column_checkpoints() {
+        let prefix_len = 64 * 1024 - 1;
+        let suffix_len = 64 * 1024;
+        let source = format!("{}🤓{}", "a".repeat(prefix_len), "b".repeat(suffix_len));
+        let emoji_start = prefix_len;
+        let emoji_end = emoji_start + '🤓'.len_utf8();
+        let map = SourceMap::new(source.clone());
+
+        assert_eq!(
+            map.line_col(emoji_start).unwrap(),
+            LineCol::new(1, prefix_len + 1)
+        );
+        assert_eq!(
+            map.line_col(emoji_end).unwrap(),
+            LineCol::new(1, prefix_len + 2)
+        );
+        assert_eq!(
+            map.utf16_position(emoji_end).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: prefix_len + 2,
+            }
+        );
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 0,
+                character: prefix_len + 1,
+            }),
+            None
+        );
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 0,
+                character: prefix_len + 2,
+            }),
+            Some(emoji_end)
+        );
+        assert_eq!(
+            map.utf16_position(source.len()).unwrap(),
+            Utf16Position {
+                line: 0,
+                character: prefix_len + 2 + suffix_len,
+            }
+        );
+
+        let checkpoint_count = map.cached_line_checkpoint_count(0).unwrap();
+        assert!(checkpoint_count <= source.len() / LINE_COLUMN_CHECKPOINT_BYTES + 2);
+        assert!(checkpoint_count * 100 < source.chars().count());
+    }
+
+    #[test]
+    fn dense_line_scan_observes_scheduled_cancellation() {
+        let source = "\n".repeat(32 * 1024);
+        let cancellation = crate::AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            SourceMap::new_cancellable(source, &cancellation),
+            Err(crate::AnalysisCancelled)
+        ));
+        assert!(cancellation.is_cancelled());
+    }
+
+    #[test]
+    fn long_single_line_metric_observes_scheduled_cancellation() {
+        let source = "a".repeat(32 * 1024);
+        let map = SourceMap::new(source);
+        let cancellation = crate::AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            map.whole_source_span_cancellable(&cancellation),
+            Err(crate::AnalysisCancelled)
+        ));
+        assert!(cancellation.is_cancelled());
+        assert_eq!(map.cached_line_metric_count(), 0);
     }
 
     #[test]
@@ -491,5 +1711,32 @@ mod tests {
                 SourceMap::new(source).whole_source_span().unwrap()
             );
         }
+    }
+
+    #[test]
+    fn whole_text_span_without_source_copy_observes_scheduled_cancellation() {
+        let source = "a".repeat(32 * 1024);
+        let cancellation = crate::AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            whole_text_span_without_source_copy_cancellable(&source, &cancellation),
+            Err(crate::AnalysisCancelled)
+        ));
+        assert!(cancellation.is_cancelled());
+    }
+
+    #[test]
+    fn byte_range_span_without_source_copy_matches_source_map_span() {
+        let source = "intro 🤓\r\n  ```mermaid\nflowchart TD\nA-->B\n```\n";
+        let start = source.find("```").unwrap();
+        let end = start + 3;
+        let cancellation = crate::AnalysisCancellationToken::new();
+
+        assert_eq!(
+            byte_range_span_without_source_copy_cancellable(source, start..end, &cancellation,)
+                .unwrap(),
+            SourceMap::new(source).span(start, end).unwrap()
+        );
     }
 }

@@ -1,29 +1,29 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Class10",
-          "x": 295.219,
+          "x": 290.0,
           "y": 182.0,
-          "width": 90.984,
+          "width": 86.0,
           "height": 144.0,
           "is_cluster": false
         },
         {
           "id": "note0",
-          "x": 75.305,
+          "x": 71.922,
           "y": 30.0,
-          "width": 150.609,
+          "width": 143.844,
           "height": 60.0,
           "is_cluster": false
         },
         {
           "id": "note1",
-          "x": 295.219,
+          "x": 290.0,
           "y": 30.0,
-          "width": 189.219,
+          "width": 192.313,
           "height": 60.0,
           "is_cluster": false
         }
@@ -37,15 +37,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 295.219,
+              "x": 290.0,
               "y": 60.0
             },
             {
-              "x": 295.219,
+              "x": 290.0,
               "y": 85.0
             },
             {
-              "x": 295.219,
+              "x": 290.0,
               "y": 110.0
             }
           ],
@@ -63,7 +63,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 389.828,
+        "max_x": 386.156,
         "max_y": 254.0
       }
     }

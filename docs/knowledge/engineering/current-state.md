@@ -5,18 +5,13 @@ status: active
 
 # Current State
 
-- Active Mermaid parity focus: the repository is pinned to Mermaid 11.16.0, new 11.16 families are
-  detector-visible, `cynefin` now has a source-backed compatibility renderer slice with semantic
-  and layout fixture admission, and `swimlane` plus all four railroad variants have source-backed
-  semantic parsing/editor facts with parse-only fixture/golden admission. Primary SVG admission for
-  the new 11.16 families remains deferred until upstream SVG baselines and compare commands exist.
-  Shared frontmatter/config parsing now follows the 11.16
-  same-indent delimiter rule and accepts 11.16 diagram namespaces in the local top-level
-  frontmatter compatibility layer. Existing-family U4 deltas now include Pie highlight semantics,
-  XYChart point labels/axis rotation, Architecture align layout hints, ER nullable/backtick/comma
-  attribute parsing, State same-line composite diagnostics plus 11.16 State SVG DOM/layout
-  alignment, Flowchart subgraph `direction TD` preservation, and TreeView 11.16 node
-  annotations/box-drawing/icon DOM semantics.
+- Active Mermaid parity focus: the repository is pinned to Mermaid 11.16.0. The primary SVG matrix
+  contains 35 source-backed families; `zenuml` remains the sole compatibility-only family. The
+  11.16 TreeView, Ishikawa, EventModeling, Venn, Swimlane, four Railroad dialects, Wardley, and
+  Cynefin families now have typed semantics, editor facts where upstream provides them, layout,
+  SVG rendering, pinned baselines, and executable comparison facts. Shared frontmatter/config
+  parsing follows the 11.16 same-indent delimiter rule and projects configuration namespaces from
+  the family catalog.
 - Golden refresh focus: regenerate 11.16 baselines after source-backed code changes. Known upstream
   regressions such as Mermaid issue #7954 must be classified separately from local drift.
 - Stable focus: editor-language integration hardening spans SVG safety, platform binding lifecycle

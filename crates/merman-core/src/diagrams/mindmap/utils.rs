@@ -49,30 +49,101 @@ pub(super) struct NodeSpec {
     pub descr_raw: String,
     pub ty: i32,
     pub descr_is_markdown: bool,
-    pub id_span: SourceSpan,
-    pub payload_span: Option<SourceSpan>,
+    pub trace: NodeSpecTrace,
 }
 
-pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, String> {
+#[derive(Debug, Clone, Default)]
+pub(super) struct NodeSpecTrace {
+    pub id_span: Option<SourceSpan>,
+    pub description_span: Option<SourceSpan>,
+    pub shape_opening: Option<SourceSpan>,
+    pub shape_closing: Option<SourceSpan>,
+    pub text_opening: Option<SourceSpan>,
+    pub text_closing: Option<SourceSpan>,
+    pub explicit_id: bool,
+}
+
+pub(super) struct NodeSpecError {
+    pub message: String,
+    pub trace: NodeSpecTrace,
+    pub continuation: Option<NodeSpecContinuation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NodeSpecContinuation {
+    AwaitingClosingDelimiter {
+        expected: &'static str,
+        text: Option<NodeTextContinuation>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NodeTextContinuation {
+    Quoted,
+    QuotedMarkdown,
+    BareMarkdown,
+}
+
+impl NodeSpecContinuation {
+    pub fn expected_closing(self) -> &'static str {
+        match self {
+            Self::AwaitingClosingDelimiter { expected, .. } => expected,
+        }
+    }
+
+    pub fn has_open_text(self) -> bool {
+        match self {
+            Self::AwaitingClosingDelimiter { text, .. } => text.is_some(),
+        }
+    }
+}
+
+pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<NodeSpecError>> {
     let input = input.trim_end();
     if input.is_empty() {
-        return Err("expected node".to_string());
+        return Err(node_spec_error(
+            "expected node",
+            NodeSpecTrace::default(),
+            None,
+        ));
     }
 
     if let Some((start, end)) = node_delimiter_pair_at_start(input) {
-        let (inner, tail) = extract_delimited(input, start, end)?;
+        let opening = SourceSpan::new(0, start.len());
+        let (inner, tail, closing_start) =
+            extract_delimited(input, start, end).map_err(|failure| {
+                let text_opening = text_opening_span(&input[start.len()..], start.len());
+                node_spec_error(
+                    failure.message(),
+                    NodeSpecTrace {
+                        shape_opening: Some(opening),
+                        text_opening,
+                        ..NodeSpecTrace::default()
+                    },
+                    failure.continuation(),
+                )
+            })?;
+        let closing = SourceSpan::new(closing_start, closing_start + end.len());
+        let parsed_text = parse_node_text(inner, start.len());
+        let trace = NodeSpecTrace {
+            id_span: Some(parsed_text.content),
+            description_span: None,
+            shape_opening: Some(opening),
+            shape_closing: Some(closing),
+            text_opening: parsed_text.opening,
+            text_closing: parsed_text.closing,
+            explicit_id: false,
+        };
         if !tail.trim().is_empty() {
-            return Err("unexpected trailing input".to_string());
+            return Err(node_spec_error("unexpected trailing input", trace, None));
         }
-        let (descr, descr_is_markdown) = unquote_node_descr(inner);
         let ty = node_type_for(start, end);
         return Ok(NodeSpec {
-            id_raw: descr.clone(),
-            descr_raw: descr,
+            id_raw: parsed_text.value.clone(),
+            descr_raw: parsed_text.value,
             ty,
-            descr_is_markdown,
-            id_span: SourceSpan::new(start.len(), input.len().saturating_sub(end.len())),
-            payload_span: None,
+            descr_is_markdown: parsed_text.is_markdown,
+            trace,
         });
     }
 
@@ -80,37 +151,94 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Stri
     let id_raw = id_raw.to_string();
     let rest = rest.trim_end();
     if rest.is_empty() {
+        let id_end = id_raw.trim_end().len();
         return Ok(NodeSpec {
             id_raw: id_raw.clone(),
             descr_raw: id_raw,
             ty: NODE_TYPE_DEFAULT,
             descr_is_markdown: false,
-            id_span: SourceSpan::new(0, input.len()),
-            payload_span: None,
+            trace: NodeSpecTrace {
+                id_span: Some(SourceSpan::new(0, id_end)),
+                explicit_id: true,
+                ..NodeSpecTrace::default()
+            },
         });
     }
 
     let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
-        return Err("expected node delimiter".to_string());
+        let id_end = id_raw.trim_end().len();
+        return Err(node_spec_error(
+            "expected node delimiter",
+            NodeSpecTrace {
+                id_span: Some(SourceSpan::new(0, id_end)),
+                explicit_id: true,
+                ..NodeSpecTrace::default()
+            },
+            None,
+        ));
     };
 
-    let (inner, tail) = extract_delimited(rest, start, end)?;
+    let rest_start = input.len() - rest.len();
+    let opening = SourceSpan::new(rest_start, rest_start + start.len());
+    let (inner, tail, closing_start_in_rest) =
+        extract_delimited(rest, start, end).map_err(|failure| {
+            let text_opening = text_opening_span(&rest[start.len()..], rest_start + start.len());
+            node_spec_error(
+                failure.message(),
+                NodeSpecTrace {
+                    id_span: Some(SourceSpan::new(0, id_raw.trim_end().len())),
+                    shape_opening: Some(opening),
+                    text_opening,
+                    explicit_id: true,
+                    ..NodeSpecTrace::default()
+                },
+                failure.continuation(),
+            )
+        })?;
+    let closing_start = rest_start + closing_start_in_rest;
+    let closing = SourceSpan::new(closing_start, closing_start + end.len());
+    let parsed_text = parse_node_text(inner, rest_start + start.len());
+    let trace = NodeSpecTrace {
+        id_span: Some(SourceSpan::new(0, input[..rest_start].trim_end().len())),
+        description_span: Some(parsed_text.content),
+        shape_opening: Some(opening),
+        shape_closing: Some(closing),
+        text_opening: parsed_text.opening,
+        text_closing: parsed_text.closing,
+        explicit_id: true,
+    };
     if !tail.trim().is_empty() {
-        return Err("unexpected trailing input".to_string());
+        return Err(node_spec_error("unexpected trailing input", trace, None));
     }
 
-    let (descr, descr_is_markdown) = unquote_node_descr(inner);
     let ty = node_type_for(start, end);
-    let id_end = id_raw.len();
-    let payload_start = id_end + start.len();
-    let payload_end = input.len().saturating_sub(end.len());
     Ok(NodeSpec {
         id_raw,
-        descr_raw: descr,
+        descr_raw: parsed_text.value,
         ty,
-        descr_is_markdown,
-        id_span: SourceSpan::new(0, id_end),
-        payload_span: Some(SourceSpan::new(payload_start, payload_end)),
+        descr_is_markdown: parsed_text.is_markdown,
+        trace,
+    })
+}
+
+pub(super) fn starts_node_spec(input: &str) -> bool {
+    let input = input.trim_end();
+    if input.is_empty() || node_delimiter_pair_at_start(input).is_some() {
+        return !input.is_empty();
+    }
+    let (id, _) = split_node_id(input);
+    !id.trim_end().is_empty()
+}
+
+fn node_spec_error(
+    message: impl Into<String>,
+    trace: NodeSpecTrace,
+    continuation: Option<NodeSpecContinuation>,
+) -> Box<NodeSpecError> {
+    Box::new(NodeSpecError {
+        message: message.into(),
+        trace,
+        continuation,
     })
 }
 
@@ -145,67 +273,175 @@ fn node_delimiter_pair_at_start(input: &str) -> Option<(&'static str, &'static s
     None
 }
 
+enum DelimitedScanFailure {
+    ExpectedOpening,
+    AwaitingClosingDelimiter {
+        expected: &'static str,
+        text: Option<NodeTextContinuation>,
+    },
+}
+
+impl DelimitedScanFailure {
+    fn message(&self) -> &'static str {
+        match self {
+            Self::ExpectedOpening => "expected delimiter start",
+            Self::AwaitingClosingDelimiter { .. } => "unterminated node delimiter",
+        }
+    }
+
+    fn continuation(&self) -> Option<NodeSpecContinuation> {
+        match *self {
+            Self::ExpectedOpening => None,
+            Self::AwaitingClosingDelimiter { expected, text } => {
+                Some(NodeSpecContinuation::AwaitingClosingDelimiter { expected, text })
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NodeTextScanState {
+    Plain,
+    Quoted,
+    QuotedMarkdown,
+    BareMarkdown,
+}
+
+impl NodeTextScanState {
+    fn continuation(self) -> Option<NodeTextContinuation> {
+        match self {
+            Self::Plain => None,
+            Self::Quoted => Some(NodeTextContinuation::Quoted),
+            Self::QuotedMarkdown => Some(NodeTextContinuation::QuotedMarkdown),
+            Self::BareMarkdown => Some(NodeTextContinuation::BareMarkdown),
+        }
+    }
+}
+
 fn extract_delimited<'a>(
     input: &'a str,
-    start: &str,
-    end: &str,
-) -> std::result::Result<(&'a str, &'a str), String> {
+    start: &'static str,
+    end: &'static str,
+) -> std::result::Result<(&'a str, &'a str, usize), DelimitedScanFailure> {
     if !input.starts_with(start) {
-        return Err("expected delimiter start".to_string());
+        return Err(DelimitedScanFailure::ExpectedOpening);
     }
-    let mut in_quote = false;
-    let mut in_backtick_quote = false;
+    let mut text_state = NodeTextScanState::Plain;
 
     let start_len = start.len();
     let mut it = input[start_len..].char_indices().peekable();
     while let Some((off, ch)) = it.next() {
         let idx = start_len + off;
 
-        if in_backtick_quote {
-            if ch == '`' && it.peek().is_some_and(|(_, next)| *next == '"') {
-                in_backtick_quote = false;
-                it.next();
+        match text_state {
+            NodeTextScanState::QuotedMarkdown => {
+                if ch == '`' && it.peek().is_some_and(|(_, next)| *next == '"') {
+                    text_state = NodeTextScanState::Plain;
+                    it.next();
+                }
+                continue;
             }
-            continue;
+            NodeTextScanState::Quoted => {
+                if ch == '"' {
+                    text_state = NodeTextScanState::Plain;
+                }
+                continue;
+            }
+            NodeTextScanState::BareMarkdown => {
+                if ch == '`' {
+                    text_state = NodeTextScanState::Plain;
+                    continue;
+                }
+                if input[idx..].starts_with(end) {
+                    let inner = &input[start_len..idx];
+                    let tail = &input[idx + end.len()..];
+                    return Ok((inner, tail, idx));
+                }
+                continue;
+            }
+            NodeTextScanState::Plain => {}
         }
 
-        if in_quote {
-            if ch == '"' {
-                in_quote = false;
-            }
-            continue;
-        }
-
-        if ch == '"' {
-            if it.peek().is_some_and(|(_, next)| *next == '`') {
-                in_backtick_quote = true;
+        match ch {
+            '"' if it.peek().is_some_and(|(_, next)| *next == '`') => {
+                text_state = NodeTextScanState::QuotedMarkdown;
                 it.next();
                 continue;
             }
-            in_quote = true;
-            continue;
+            '"' => {
+                text_state = NodeTextScanState::Quoted;
+                continue;
+            }
+            '`' => {
+                text_state = NodeTextScanState::BareMarkdown;
+                continue;
+            }
+            _ => {}
         }
 
         if input[idx..].starts_with(end) {
             let inner = &input[start_len..idx];
             let tail = &input[idx + end.len()..];
-            return Ok((inner, tail));
+            return Ok((inner, tail, idx));
         }
     }
 
-    Err("unterminated node delimiter".to_string())
+    Err(DelimitedScanFailure::AwaitingClosingDelimiter {
+        expected: end,
+        text: text_state.continuation(),
+    })
 }
 
-fn unquote_node_descr(raw: &str) -> (String, bool) {
-    // Mermaid mindmap uses a special `"` + backtick quote form for Markdown strings, e.g.:
-    //   id1["`**Root** with\nsecond line`"]
+struct ParsedNodeText {
+    value: String,
+    content: SourceSpan,
+    opening: Option<SourceSpan>,
+    closing: Option<SourceSpan>,
+    is_markdown: bool,
+}
+
+fn parse_node_text(raw: &str, raw_start: usize) -> ParsedNodeText {
     if let Some(inner) = raw.strip_prefix("\"`").and_then(|s| s.strip_suffix("`\"")) {
-        return (inner.to_string(), true);
+        return ParsedNodeText {
+            value: inner.to_string(),
+            content: SourceSpan::new(raw_start + 2, raw_start + raw.len() - 2),
+            opening: Some(SourceSpan::new(raw_start, raw_start + 2)),
+            closing: Some(SourceSpan::new(
+                raw_start + raw.len() - 2,
+                raw_start + raw.len(),
+            )),
+            is_markdown: true,
+        };
     }
     if let Some(inner) = raw.strip_prefix('\"').and_then(|s| s.strip_suffix('\"')) {
-        return (inner.to_string(), false);
+        return ParsedNodeText {
+            value: inner.to_string(),
+            content: SourceSpan::new(raw_start + 1, raw_start + raw.len() - 1),
+            opening: Some(SourceSpan::new(raw_start, raw_start + 1)),
+            closing: Some(SourceSpan::new(
+                raw_start + raw.len() - 1,
+                raw_start + raw.len(),
+            )),
+            is_markdown: false,
+        };
     }
-    (raw.to_string(), false)
+    ParsedNodeText {
+        value: raw.to_string(),
+        content: SourceSpan::new(raw_start, raw_start + raw.len()),
+        opening: None,
+        closing: None,
+        is_markdown: false,
+    }
+}
+
+fn text_opening_span(raw: &str, raw_start: usize) -> Option<SourceSpan> {
+    if raw.starts_with("\"`") {
+        Some(SourceSpan::new(raw_start, raw_start + 2))
+    } else if raw.starts_with('"') {
+        Some(SourceSpan::new(raw_start, raw_start + 1))
+    } else {
+        None
+    }
 }
 
 fn node_type_for(start: &str, end: &str) -> i32 {

@@ -1,684 +1,216 @@
-# Alignment Status (Mermaid Parity Dashboard)
-
-Baseline: Mermaid `@11.16.0` for the implemented diagram matrix (see
-`tools/upstreams/REPOS.lock.json`). Unsupported upstream diagram families are scoped below.
-
-This file is a lightweight dashboard of what is currently implemented and what is covered by
-goldens/baselines. It is intentionally short and should stay true even as fixtures grow.
-
-## Golden Layers
-
-- Semantic snapshots (`fixtures/**/*.golden.json`):
-  - Scope: parsing + semantic model output.
-  - Validator: `cargo nextest run -p merman-core` (snapshot test) or full `cargo nextest run`.
-  - Maintenance: `cargo run -p xtask -- update-snapshots`.
-- Layout snapshots (`fixtures/**/*.layout.golden.json`):
-  - Scope: geometry layer (nodes/edges/clusters/labels/bounds).
-  - Validator: `cargo nextest run -p merman-render` (layout snapshot test) or full `cargo nextest run`.
-  - Maintenance: `cargo run -p xtask -- update-layout-snapshots [--diagram <name>]`.
-- Upstream SVG baselines (`fixtures/upstream-svgs/**`):
-  - Scope: authoritative Mermaid end-to-end SVG output (generated via official CLI).
-  - How-to: `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-- Current corpus (2026-06-22):
-  - semantic snapshots: 3694
-  - layout snapshots: 3673
-  - upstream SVG baselines: 3639 across 27 diagrams.
-- Raster previews (PNG/JPG/PDF via `merman-cli`):
-  - Scope: best-effort output for previews/integrations (not pixel-identical to upstream).
-  - Note: upstream uses browser rendering; pure-Rust rasterizers do not fully render SVG `<foreignObject>`.
-  - How-to: `docs/rendering/RASTER_OUTPUT.md` and `tools/preview/export-fixtures-png.ps1`.
-
-## CLI Surface
-
-- `merman-cli` now uses a clap-based entrypoint with top-level `mmdc`-style render/export flags:
-  `-i/--input`, `-o/--output`, `-e/--outputFormat`, `-t/--theme`, `-c/--configFile`,
-  `-C/--cssFile`, `-b/--backgroundColor`, `-w/--width`, `-H/--height`, `-I/--svgId`,
-  `-s/--scale`, `-f/--pdfFit`, `-q/--quiet`, `-p/--puppeteerConfigFile`, `--iconPacks`,
-  and `--iconPacksNamesAndUrls`.
-- Top-level rendering defaults to SVG, infers PNG/JPG/PDF/text formats from output extensions,
-  supports `-o -` for stdout, and keeps `parse`, `layout`, `detect`, and `render` as developer
-  subcommands.
-- CLI compatibility is functional under the `merman-cli` command name; the crate does not install
-  an `mmdc` binary alias.
-- Dynamic Iconify packs are loaded through the Rust SVG icon registry: local
-  `node_modules/<package>/icons.json`, local/file URLs, and explicit HTTP(S) icon JSON sources are
-  supported by the documented CLI compatibility path.
-- CLI default features include `ratex-math` and `ascii`; `--math-renderer ratex` and
-  ASCII/Unicode output work out of the box unless the binary is built with
-  `--no-default-features`.
-- No accepted-but-not-yet-complete `merman-cli` compatibility lane is currently open in the
-  documented CLI surface; remaining work is normal renderer parity hardening outside the CLI
-  compatibility matrix.
-  Detailed tracking lives in `docs/alignment/CLI_COMPATIBILITY.md`.
-
-## Diagram Coverage Matrix
-
-Legend:
-
-- Parse: `Engine::parse_diagram` supports the diagram and is covered by semantic snapshots.
-- Layout: `layout_parsed` supports the diagram and is covered by layout snapshots.
-- Render: a Rust SVG renderer exists (may be “debug” stage vs. “parity” stage).
-- Upstream SVG: upstream baselines are stored under `fixtures/upstream-svgs/<diagram>/`.
-- Compare: an automated compare report exists against upstream baselines.
-
-| Diagram | Parse | Layout | Render | Upstream SVG | Compare |
-|---|---:|---:|---|---:|---:|
-| ER | yes | yes | Stage B + debug | yes | yes (`xtask compare-er-svgs`) |
-| Flowchart | yes | yes | Stage B + debug | yes | yes (`xtask compare-flowchart-svgs`) |
-| State | yes | yes | Stage B + debug | yes | yes (`xtask compare-state-svgs`) |
-| Class | yes | yes | Stage B + debug | yes | yes (`xtask compare-class-svgs`) |
-| Sequence | yes | yes | Stage B + debug | yes | yes (`xtask compare-sequence-svgs`) |
-| Info | yes | yes | Stage B | yes | yes (`xtask compare-info-svgs`) |
-| Pie | yes | yes | Stage B | yes | yes (`xtask compare-pie-svgs`) |
-| Packet | yes | yes | Stage B | yes | yes (`xtask compare-packet-svgs`) |
-| Timeline | yes | yes | Stage B | yes | yes (`xtask compare-timeline-svgs`) |
-| Journey | yes | yes | Stage B | yes | yes (`xtask compare-journey-svgs`) |
-| Kanban | yes | yes | Stage B | yes | yes (`xtask compare-kanban-svgs`) |
-| GitGraph | yes | yes | Stage B | yes | yes (`xtask compare-gitgraph-svgs`) |
-| Gantt | yes | yes | Stage B | yes | yes (`xtask compare-gantt-svgs`) |
-| C4 | yes | yes | Stage B | yes | yes (`xtask compare-c4-svgs`) |
-| Block | yes | yes | Stage B | yes | yes (`xtask compare-block-svgs`) |
-| Radar | yes | yes | Stage B | yes | yes (`xtask compare-radar-svgs`) |
-| Treemap | yes | yes | Stage B | yes | yes (`xtask compare-treemap-svgs`) |
-| XYChart | yes | yes | Stage B | yes | yes (`xtask compare-xychart-svgs`) |
-| Mindmap | yes | yes | Stage B | yes | yes (`xtask compare-mindmap-svgs`) |
-| Architecture | yes | yes | Stage B | yes | yes (`xtask compare-architecture-svgs`) |
-| Requirement | yes | yes | Stage B | yes | yes (`xtask compare-requirement-svgs`) |
-| QuadrantChart | yes | yes | Stage B | yes | yes (`xtask compare-quadrantchart-svgs`) |
-| Sankey | yes | yes | Stage B | yes | yes (`xtask compare-sankey-svgs`, DOM parity-root mode) |
-| ZenUML | yes | yes | Sequence compatibility | no | no |
-
-Notes:
-
-- Mermaid `error` is a registered diagram type upstream, but it is currently tracked as parse/snapshot-only
-  (see `docs/alignment/ERROR_UPSTREAM_TEST_COVERAGE.md`). We do not yet maintain upstream SVG baselines for it.
-- Architecture: SVG parity currently compares in `dom-mode parity` (geometry numbers are normalized); compound/nesting
-  layout and XY edge routing are still being aligned to upstream Cytoscape/FCoSE, so expect occasional layout snapshot
-  churn as we tighten geometry-level fidelity.
-- Mermaid `zenuml` is provided as an external diagram plugin upstream and rendered via browser-only `@zenuml/core`.
-  `merman` provides a headless compatibility mode that translates a small ZenUML subset into a `sequenceDiagram` model.
-  This is not currently covered by upstream SVG baselines.
-  Coverage docs: `docs/alignment/ZENUML_MINIMUM.md`, `docs/alignment/ZENUML_UPSTREAM_TEST_COVERAGE.md`.
-
-## Mermaid 11.16 Diagram Family Scope
-
-The `mermaid-11-16-parity` workstream keeps implemented-family compatibility as the baseline bump
-path while making newly pinned upstream families explicit. The 11.16 baseline covers the diagram
-matrix above plus the implemented 11.13-11.16 deltas for those diagrams; it does not imply support
-for every upstream diagram directory. No new upstream family is promoted into the implemented
-matrix without a child workstream. Some families below now have Phase 1 local support.
-The Phase 2 Stage B families are admitted to the primary SVG DOM parity matrix once they have
-upstream SVG baselines and green family-local compare evidence; root viewport parity can remain a
-separate residual track when it is derived from browser text measurement or layout behavior.
-
-Admission policy and priority order are now tracked in
-`docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`. That rubric uses the locked Mermaid commit
-from `tools/upstreams/REPOS.lock.json` as source authority, not the current `repo-ref/mermaid`
-working tree if it has moved beyond the pinned baseline.
-The machine-readable admission projection is tracked in
-`docs/alignment/ADMISSION_INVENTORY.md` and implemented in `crates/xtask/src/cmd/admission.rs`;
-`compare-all-svgs` and `check-alignment` consume that projection instead of maintaining a separate
-main-matrix list.
-Phase 2 admission work for `treeView`, `ishikawa`, and `eventmodeling` is tracked in
-`docs/alignment/PHASE2_PARITY_BACKLOG.md`.
-Venn classic SVG admission is tracked separately in `docs/alignment/VENN_BETA_ADMISSION_PLAN.md`.
-
-| Upstream header or id | Pinned 11.16 source status | Local 11.16 status | Admission decision |
-|---|---|---|---|
-| `treeView-beta` header / `treeView` id | Present at `packages/mermaid/src/diagrams/treeView` | Phase 2 admission infrastructure exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixtures, upstream SVG baselines, and `compare-tree-view-svgs`. Family-local DOM parity mode is green for the committed baseline corpus. | Admitted to `compare-all-svgs` primary `parity` mode. Root viewport parity remains deferred in the global `parity-root` sweep because current residuals are browser `getBBox()` text-metric drift; see `TREEVIEW_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
-| `ishikawa` / `ishikawa-beta` | Present at `packages/mermaid/src/diagrams/ishikawa` | Phase 2 admission infrastructure exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixtures, upstream SVG baselines, config/theme coverage, and `compare-ishikawa-svgs`. Family-local DOM parity mode is green for the committed baseline corpus. | Admitted to `compare-all-svgs` primary `parity` mode. Root viewport parity and rough/handDrawn mode remain deferred; see `ISHIKAWA_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
-| `eventmodeling` | Present at `packages/mermaid/src/diagrams/eventmodeling` | Phase 2 admission infrastructure exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixtures, upstream SVG baselines, parser-source coverage, and `compare-eventmodeling-svgs`. Family-local DOM parity mode is green for the committed baseline corpus. | Admitted to `compare-all-svgs` primary `parity` mode. Root viewport parity, unsupported `entity`/`note`/`gwt` rendering, and strict data `foreignObject` HTML/browser text-metric parity remain deferred; see `EVENTMODELING_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
-| `venn-beta` | Present at `packages/mermaid/src/diagrams/venn` | Admitted classic SVG support exists: detector, typed parser/model, source-backed `@upsetjs/venn.js@2.0.0` / `fmin@0.0.4` Rust layout kernel, Stage B SVG renderer, `PresentationTheme::venn()` roles, semantic/layout fixtures, upstream SVG baselines, and `compare-venn-svgs`. | Admitted to `compare-all-svgs` primary `parity` mode. `look: "handDrawn"`/RoughJS Venn output remains deferred; see `VENN_BETA_ADMISSION_PLAN.md`. |
-| `swimlane-beta` header / `swimlane` id | Present at `packages/mermaid/src/diagrams/swimlanes` | Parse-only semantic fixture coverage exists. Flowchart parser/editor-facts reuse exists, matching upstream's grammar reuse, and effective config defaults `layout` to `swimlane` unless the user overrides it. Typed render parser, source-backed swimlane layout, SVG admission, and upstream SVG baselines are not admitted yet. | Parse-only admitted; layout/SVG admission is staged behind the 11.16 swimlane layout port. See `SWIMLANE_MINIMUM.md`. |
-| `wardley-beta` | Present at `packages/mermaid/src/diagrams/wardley` | Detector/header/admission visibility exists. No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Large family lane, not a starter task. |
-| `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, `railroad-peg-beta` | Present at `packages/mermaid/src/diagrams/railroad` | All four variants have parser/editor facts, a unified typed AST, the 11.16 recursive layout/SVG renderer, semantic/layout fixtures, pinned upstream SVG baselines with provenance manifests, and family compare commands. The primary structural DOM matrix is green. Raw SVG text width now follows upstream `getBBox().width`; the remaining root-height delta is bounded browser font `getBBox().height` behavior. | Admitted to the primary SVG matrix. Keep browser-derived root-height parity in the separate residual lane; do not restore character-count width floors or fixture viewport pins. See `RAILROAD_MINIMUM.md`. |
-| `cynefin-beta` | Present at `packages/mermaid/src/diagrams/cynefin` | Parser/editor facts model domains, items, transitions, common title/accessibility fields, and self-loop filtering; typed layout/SVG output ports the 11.16 geometry, boundary paths, labels, badges, transitions, config, and theme surface. Semantic/layout fixtures, pinned upstream SVG baselines with provenance manifests, and `compare-cynefin-svgs` are present. Family and full structural DOM parity are green. | Admitted to the primary SVG matrix. |
-
-These families should enter the main coverage matrix only after they have at least parse coverage
-and an accepted support plan for layout/render behavior.
-
-Known upstream Mermaid 11.16.0 regression: [mermaid-js/mermaid#7954](https://github.com/mermaid-js/mermaid/issues/7954)
-tracks arrows between Flowchart subgraphs being broken since 11.16.0. Treat affected Flowchart layout
-fixtures as upstream-known regression evidence, not as a signal to restore 11.15 behavior locally or
-to broaden comparator normalization.
-
-Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
-the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
-avoid sub-pixel gaps at the frame border.
-Recent progress (2026-06-22): Mermaid-reachable ELK support now covers Flowchart and Class public
-entry points. Flowchart docs `layout: elk` is admitted as
-`fixtures/flowchart/upstream_docs_layouts_how_to_use_001.mmd`, Class `layout: elk` and
-`class.defaultRenderer: elk` dispatch through the feature-gated Class ELK adapter, and
-`xtask audit-gaps` reports `0` deferred parse-OK fixtures with `2` absorbed ELK duplicates.
-`look: handDrawn` support remains family-specific; Flowchart, Class, ER, Requirement, and State
-have focused seed evidence, while Venn and Ishikawa RoughJS branches stay deferred.
-Recent progress (2026-02-11): imported an additional batch of Class docs fixtures (with upstream SVG baselines),
-keeping the global parity-root gate green.
-Recent progress (2026-02-11): imported an additional batch of GitGraph docs fixtures (with upstream SVG baselines),
-keeping the global parity-root gate green.
-Recent progress (2026-02-11): imported external fixtures from `mermaid-rs-renderer` for Mindmap and Kanban
-(with upstream SVG baselines), keeping the global parity-root gate green.
-Recent progress (2026-02-11): imported additional Flowchart docs fixtures (shapes + unicode + comments + custom icons
-+ small directive examples) with upstream SVG baselines, keeping the global parity-root gate green.
-Recent progress (2026-02-12): imported additional fixtures from Mermaid config docs (`packages/mermaid/src/docs/config/*.md`),
-including accessibility examples and mindmap `tidy-tree`, keeping `parity-root` green.
-Recent progress (2026-02-27): Architecture spatial-map BFS + relative-placement constraints now mirror upstream Mermaid
-(`architectureDb.ts` + `architectureRenderer.ts`), and the FCoSE port gained a compound graph model closer to upstream
-(`cytoscape-fcose` + `cose-base`). This fixes several stress-fixture layout and edge-label parity issues.
-As of 2026-02-10, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
-for the current fixture set (diagram subtree parity).
-Recent progress (2026-02-13): imported Sequence Cypress rendering fixtures (with upstream SVG baselines) and
-hardened Sequence note wrapping / actor menu properties / nested `rect` DOM ordering, keeping `parity-root` green.
-Recent progress (2026-02-13): imported Mindmap Cypress rendering fixtures (with upstream SVG baselines) and
-added fixture-derived Mindmap root viewport overrides to keep `parity-root` green.
-Recent progress (2026-02-13): imported Class Cypress rendering fixtures (with upstream SVG baselines) and
-hardened Class parity for multiline IDs (attribute `&#10;`), HTML label line breaks (`<br />`), themeVariables,
-and single-namespace wrapper DOM, keeping `parity-root` green.
-Recent progress (2026-02-13): imported Architecture Cypress rendering fixtures (with upstream SVG baselines) and
-refreshed Architecture root viewport overrides for the new fixture IDs, keeping `parity-root` green.
-As of 2026-02-26, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM
-mismatches for the current fixture set (diagram subtree parity).
-
-Root viewport parity (`--dom-mode parity-root`) is not currently enforced by the ordinary `xtask
-verify` path. The strict root sweep still enforces every family whose admission record marks root
-coverage as `Covered`; only exact `RootParityResidualPolicy` records may pass that gate.
-
-The 2026-07-12 Mermaid 11.16 global root sweep compared 29 families and left 3 root-deferred
-families out of the lane. Before Railroad residual admission, it accepted 5 exact policy records
-(Class 2, GitGraph 1, Mindmap 2) and reported 760 unaccepted residuals: Flowchart 118, State 26,
-Class 16, Sequence 309, Timeline 3, GitGraph 221, Requirement 20, Mindmap 12, Architecture 31, and
-one fixture in each of `railroad`, `railroadEbnf`, `railroadAbnf`, and `railroadPeg`. The four
-Railroad entries have matching descendants and differ only in browser-derived root `viewBox`
-height, so they are now admitted by family-, fixture-, marker-, and value-locked policies. The
-policy inventory is therefore 9 exact records; the other 756 observed residuals remain actionable.
-
-Recent progress (2026-07-12): a disabled-root audit proved that 37 fixture-scoped root viewport
-pins were obsolete and removed them: C4 33, Flowchart 2, State 1, and Timeline 1. The generated
-inventory is now 183 entries (C4 2, Flowchart 36, State 32, Timeline 7 for the affected tables).
-The audit preserved the exact 130 outside-table mismatch keys across those four families; this
-cleanup did not add root pins, comparator normalization, or residual-policy records.
-
-Recent progress (2026-02-16): imported an additional batch of Architecture stress fixtures (with upstream SVG
-baselines), expanding coverage for cross-group edges, labeled ports, icon-text fallbacks, and long edge label
-wrapping. Added Architecture root viewport overrides for the new fixture IDs and hardened one edge-label wrap
-corner case to keep the global `parity-root` gate green.
-
-Recent progress (2026-02-16): imported an additional batch of State stress fixtures (with upstream SVG baselines)
-and hardened State click directive semantics: multiple `click` statements on the same node now match upstream DOM
-(nested `<a>` wrappers) and `securityLevel=strict` correctly strips `javascript:`/`data:` URLs from SVG links,
-keeping the global `parity-root` gate green.
-
-Recent progress (2026-02-16): imported an additional batch of State stress fixtures (with upstream SVG baselines),
-expanding coverage for v1 multiline `accDescr { ... }`, `direction RL` + `scale` long-id layout, deep nesting, and
-note `<br>` normalization, keeping the global `parity-root` gate green.
-
-Recent progress (2026-02-16): imported additional Sequence Cypress fixtures that rely on init directive config
-(`wrap` + `mirrorActors=false`) and actor link/property menus. Implemented `sequence.mirrorActors` parity so
-bottom actors and actor-man footers are only rendered when enabled, and popup menu panel classes match upstream.
-
-Recent progress (2026-02-14): imported an additional batch of Gantt Cypress rendering fixtures (with upstream SVG
-baselines) and hardened Gantt parity for d3 axis format directives (`%L`) + exclude-layer edge cases + JS date-only
-parsing differences, keeping `parity-root` green.
-
-Recent progress (2026-02-16): imported additional Timeline stress fixtures (with upstream SVG baselines), including
-edge-case unicode (CJK/emoji) and config directives. Hardened text measurement fallback for wide glyphs and aligned
-Timeline `timeline.width` behavior with upstream (schema key exists; renderer treats it as a no-op), keeping the
-global `parity-root` gate green.
-
-Recent progress (2026-02-16): imported additional Gantt Cypress rendering fixtures (with upstream SVG baselines),
-expanding coverage for `excludes` rendering, numeric timestamp formats, and today marker variants. Hardened exclude
-layer `transform-origin` parity for timezone-shifted date-only inputs, keeping the global `parity-root` gate green.
-
-Recent progress (2026-02-15): imported an additional batch of upstream syntax docs fixtures (Block/ER/GitGraph/Pie/
-Requirement) with upstream SVG baselines; added fixture-derived root viewport overrides to keep `parity-root` green.
-
-Recent progress (2026-02-18): migrated Flowchart edge bbox/path computation from
-`crates/merman-render/src/svg/parity/flowchart.rs` into `crates/merman-render/src/svg/parity/flowchart/edge_bbox.rs`,
-reducing the size of the flowchart module while keeping the global `parity-root` DOM gate green.
-
-Recent progress (2026-02-18): started migrating Flowchart edge geometry helpers out of the monolithic
-`flowchart_compute_edge_path_geom_impl` by extracting boundary/self-loop normalization helpers into
-`crates/merman-render/src/svg/parity/flowchart/edge_geom/boundary.rs`, rect clipping + point dedup helpers into
-`crates/merman-render/src/svg/parity/flowchart/edge_geom/rect_clip.rs`, and shape intersection helpers into
-`crates/merman-render/src/svg/parity/flowchart/edge_geom/intersect.rs`.
-
-Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
-`docs/alignment/PARITY_HARDENING_PLAN.md`.
-
-## Roadmap (selected)
-
-- Performance regression tracking: `docs/performance/BENCHMARKING.md`.
-- Alignment milestones and release targets: `docs/alignment/MILESTONES.md`.
-- ZenUML: headless compatibility mode (ADR 0061).
-- Fixture expansion TODO list: `docs/alignment/FIXTURE_EXPANSION_TODO.md`.
-
-Recent progress (2026-02-08): SVG flowchart renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/flowchart.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG ER renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/er.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Sankey renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/sankey.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Packet renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/packet.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Timeline renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/timeline.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Journey renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/journey.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Kanban renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/kanban.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG GitGraph renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/gitgraph.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Gantt renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/gantt.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Block renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/block.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Radar renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/radar.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG QuadrantChart renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/quadrantchart.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG XYChart renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/xychart.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Treemap renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/treemap.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Error renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/error.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG sequence renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/sequence.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG state diagram renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/state.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Requirement renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/requirement.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Mindmap renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/mindmap.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG Architecture renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/architecture.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-08): SVG C4 renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/c4.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-09): Flowchart V2 SVG entry points were moved into the existing
-`crates/merman-render/src/svg/parity/flowchart.rs` module to keep `parity.rs` focused on shared helpers
-while preserving full DOM parity.
-
-Recent progress (2026-02-09): Shared SVG CSS helpers were extracted from `crates/merman-render/src/svg/parity.rs`
-into `crates/merman-render/src/svg/parity/css.rs` to reduce churn and make future renderer splits safer.
-
-Recent progress (2026-02-09): Shared SVG utility helpers (formatting, escaping, and config access) were extracted
-from `crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/util.rs`.
-
-Recent progress (2026-02-09): Radar diagram CSS helper (`radar_css`) was moved from
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/radar.rs` to reduce cross-module
-dependencies without affecting DOM parity.
-
-Recent progress (2026-02-09): Pie diagram helpers (`pie_polar_xy` and `pie_legend_rect_style`) were moved from
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/pie.rs` to keep the diagram module
-self-contained while preserving DOM parity.
-
-Recent progress (2026-02-09): C4 diagram SVG helpers (`c4_css` and config/font helpers) were moved from
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/c4.rs` to reduce shared-scope
-surface area while keeping DOM parity checks green.
-
-Recent progress (2026-02-09): Shared style parsing helpers (`parse_style_decl` and style key filters) were extracted
-from `crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/style.rs` to make future
-diagram splits less error-prone.
-
-Recent progress (2026-02-08): SVG class diagram renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/class.rs` to improve
-maintainability while keeping all parity checks green.
-
-Recent progress (2026-02-06): Phase A fixture expansion added three upstream-rendered SVG baselines
-(`upstream_architecture_svgdraw_ids_spec`, `upstream_docs_define_class_relationship`,
-`upstream_docs_unclear_indentation`) and maintained 0-mismatch full parity/parity-root checks.
-
-Recent progress (2026-02-06): Phase A architecture expansion added three demo-derived upstream baselines
-(`upstream_architecture_demo_arrow_mesh_bidirectional`, `upstream_architecture_demo_edge_label_long`,
-`upstream_architecture_demo_junction_groups_arrows`) and preserved 0-mismatch full parity/parity-root checks.
-
-Recent progress (2026-02-07): Treemap docs-derived fixtures now cover theme `forest` and currency `valueFormat`,
-and forest theme `cScale*` defaults are derived so treemap section fills match upstream SVG baselines.
-
-Recent progress (2026-02-07): Architecture demo coverage added short edge labels (`-[Label]-`) and a basic
-junction routing example, preserving 0-mismatch full parity-root checks.
-
-Recent progress (2026-02-07): Theme defaults now derive `cScale*` palettes for `dark` and `neutral`,
-and treemap now has theme-guard fixtures for both themes, preserving 0-mismatch full parity-root checks.
-
-Recent progress (2026-02-06): Phase A architecture expansion (third batch) added three additional upstream-rendered
-baselines (`upstream_architecture_demo_arrow_mesh_bidirectional_inverse`,
-`upstream_architecture_demo_group_edges_bidirectional`, `upstream_architecture_docs_icons_example`) and preserved
-0-mismatch full parity/parity-root checks.
-
-Recent progress (2026-02-06): state parity-root root viewport alignment is now 0-mismatch for the current fixture
-set (`xtask compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3`).
-
-Recent progress (2026-02-07): architecture parity-root root viewport alignment is now 0-mismatch for the current
-fixture set (`xtask compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) without relying on
-fixture-scoped root viewport overrides.
-
-Recent progress (2026-02-07): class parity-root root viewport alignment is now 0-mismatch for the current fixture
-set (`xtask compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) without relying on fixture-scoped
-root viewport overrides.
-
-Recent progress (2026-02-07): mindmap parity-root root viewport alignment is now 0-mismatch for the current fixture
-set (`xtask compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) without relying on fixture-scoped
-root viewport overrides (mindmap root viewport override map is now empty).
-
-Recent progress (2026-02-06): state note blocks now trim per-line indentation (matching Mermaid) and note label
-widths use additional upstream overrides. This reduced state `parity-root` mismatches from 13 → 11 (and total
-parity-root mismatches from 54 → 52).
-
-Recent progress (2026-02-06): state diagram edge endpoints now intersect `choice` diamonds (and other non-rect shapes),
-and state edge label positioning now mirrors Mermaid’s `insertEdge` / `positionEdgeLabel` behavior for `updatedPath`
-cluster cuts and the `isLabelCoordinateInPath(...)` heuristic. This reduced `compare-state-svgs` `parity-root`
-mismatches from 20 → 18.
-
-Recent progress (2026-02-06): state `classDef/style` sizing parity improved by applying additional node label width
-overrides (`fast`/`slow`) and matching Chromium `getBBox()` float32 quantization for the final root `viewBox/max-width`.
-This reduced `compare-state-svgs` `parity-root` mismatches from 18 → 17.
-
-Recent progress (2026-02-06): state edge label sizing parity improved by applying edge label width overrides
-(`Transition 1/2/3`) and sizing `stateEnd` nodes using the same path-derived `getBBox().width` as Mermaid@11.12.3.
-This reduced `compare-state-svgs` `parity-root` mismatches from 17 → 13.
-
-Recent progress (2026-02-04): Architecture XY edge label transforms now emit literal newlines (XML-normalized to
-spaces) rather than `&#10;` entities, restoring 0-mismatch DOM parity for `upstream_architecture_cypress_edge_labels_normalized`.
-
-Recent progress (2026-02-04): the headless emitted-SVG bbox pass now understands simple axis-aligned transforms
-(`translate(...)`, `scale(...)`, `rotate(...)`, `skewX(...)`, `skewY(...)`, and `matrix(a b c d e f)`), improving the
-fidelity of our `svg.getBBox()` approximation used for root `viewBox` / `max-width` calculations.
-As of 2026-02-04, the bbox pass also treats nested `<svg>` viewports as axis-aligned transforms (x/y + viewBox scaling),
-which is required for icon-heavy diagrams that embed built-in SVG icons.
-
-Recent progress (2026-02-04): `manatee` FCoSE spectral preprocessing now mirrors cytoscape-fcose `aux.connectComponents(...)`
-more closely by connecting disconnected components both at the top level and within each compound scope (by inserting
-dummy nodes into the transformed BFS graph). This improves determinism for sparse or compound-heavy graphs.
-
-Recent progress (2026-02-04): `manatee` now supports compound nodes (group parent metadata) and applies a small
-root-compound separation step in FCoSE to reduce Architecture group overlap.
-
-Recent progress (2026-02-04): `manatee` FCoSE now applies a `cose-base`-like pre-layout constraint handler
-(orthogonal Procrustes transform + vote-based reflection + position-space enforcement) and a closer port of
-`CoSELayout.updateDisplacements()` (relax-movement mode with deterministic shuffling). This fixes large orientation
-and constraint drift in Architecture parity-root runs.
-
-Recent progress (2026-02-04): `manatee` ConstraintHandler parity: when *only* relative-placement constraints are
-present (no alignments), we now match `cose-base` by using the dominant weakly-connected component to derive a
-relative-only Procrustes transform (plus reflection votes). This helps keep overall orientation stable for sparse
-graphs that rely on relative constraints but do not specify explicit alignments.
-
-Recent progress (2026-02-04): Architecture's top-level group separation post-pass now measures group bounds using
-the same service label bbox model as Stage B `getBBox()` approximation (wrapped SVG text metrics + group padding),
-reducing under-separation for long labels and bringing `upstream_architecture_layout_reasonable_height` closer
-to upstream in `parity-root` mode (max-width ~1826px local vs ~1860px upstream).
-
-Recent progress (2026-02-03): headless `svg.getBBox()` approximation now performs attribute lookup on whole attribute
-names (e.g. ` d="..."`) rather than naive substring matching. This fixes a critical bug where searching for `d="..."`
-would accidentally match inside `id="..."` and cause `<path>` bounds to be skipped, cascading into incorrect root
-`viewBox` / `style max-width` in parity-root mode (e.g. `upstream_architecture_simple_service_spec`).
-
-Recent progress (2026-02-03): Architecture root viewport estimation now unions headless service label bounds into the
-content bbox (labels are emitted as `<text>` without explicit geometry), per `docs/adr/0057-headless-svg-text-bbox.md`.
-
-Recent progress (2026-02-03): `manatee` FCoSE now matches `cose-base`'s repulsion cutoff behavior
-(`repulsionRange = 2 * (level + 1) * idealEdgeLength`) and uses JS-style `Math.floor(Math.random() * upper)` index
-selection for spectral sampling. This reduces `parity-root` viewport drift for sparse/disconnected Architecture
-fixtures (e.g. `upstream_architecture_docs_service_icon_text` max-width delta shrank from ~+50px to ~+8px).
-
-Recent progress (2026-02-03): Architecture Stage B edges now apply Mermaid's `{group}` and junction endpoint shifts
-(`padding + 4`, plus a `+18px` bottom-side label allowance), aligning both geometry and headless viewport estimation
-with `packages/mermaid/src/diagrams/architecture/svgDraw.ts` (notably `docs_group_edges`).
-
-Recent progress (2026-02-03): state layout now preserves Mermaid's hidden self-loop helper nodes
-(`${nodeId}---${nodeId}---{1|2}`), and the headless SVG viewport approximation now includes Mermaid's `0.1 x 0.1`
-placeholder rects to better match upstream `svg.getBBox()` behavior.
-Recent progress (2026-02-03): state node sizing now matches Mermaid's rounded `rect` padding behavior (rx/ry ->
-`roundedRect`), fixing a common `max-width`/x-offset drift in state diagram root parity.
-
-Recent progress (2026-02-03): `manatee` FCoSE now scales CoSE `minRepulsionDist` with the effective
-`idealEdgeLength` (avg / 10) when ideal edge lengths are configured, matching upstream Cytoscape behavior.
-
-Recent progress (2026-02-03): Architecture Stage B now applies a deterministic top-level group separation
-post-pass (derived from inter-group edge directions) to approximate Cytoscape compound node spacing and
-reduce severe `parity-root` root viewport drift for group-heavy fixtures.
-Recent progress (2026-02-03): Architecture top-level group separation now interprets `T/B` edge endpoints
-in SVG's y-down coordinate system, fixing the group order inversion observed in `docs_group_edges`.
-
-Recent progress (2026-02-03): `manatee` FCoSE now supports an explicit `defaultEdgeLength` knob (mirroring
-`layout-base`'s `DEFAULT_EDGE_LENGTH`) and uses it for repulsion/grid cutoffs and overlap separation buffers,
-which makes Architecture root viewport estimation less sensitive to cluster topology.
-Recent progress (2026-02-03): Architecture Stage B now approximates `layout-base`'s inter-graph ideal edge
-length adjustments (LCA depth factor + group-size-derived additive term) and adds extra separation for Mermaid
-`{group}` endpoints, improving `parity-root` deltas for group-heavy fixtures.
-Recent progress (2026-02-04): Architecture Stage B now infers missing junction `in_group` membership from
-incident non-junction neighbors (unique group or untied top frequency) and derives `{group}` separation gaps
-from Mermaid's `architecture.padding` rather than icon size. A tuned extra gap is applied for junction↔junction
-edges that also use `{group}` endpoints to better approximate Cytoscape compound repulsion in parity-root mode.
-Recent progress (2026-02-04): `manatee::Node` now carries optional `parent` metadata (compound node id) as
-groundwork for a future compound-aware FCoSE port (see ADR-0058).
-
-Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
-ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout
-behind `LayoutOptions.use_manatee_layout` (used by `xtask compare-all-svgs`).
-Recent progress (2026-02-03): the `manatee` FCoSE scaffold now applies a CoSE-like repulsion cutoff,
-a layout-base-like FR-grid repulsion surrounding cache (refreshed every 10 iterations), and a
-range-limited gravity pass on every tick, plus a deterministic collapsed start state for edgeless
-graphs to avoid preserving input-grid degeneracy.
-Recent progress (2026-02-03): `manatee` FCoSE now applies Mermaid/Cose-base constraints by updating
-per-node displacements (a relaxed constraint handling approach) rather than hard-projecting node
-positions after each tick. This significantly reduces over-separation in constrained layouts and
-brings Architecture `max-width` closer to upstream for several fixtures (e.g. `cypress_split_directioning_normalized`).
-Recent progress (2026-02-02): `manatee` FCoSE now includes the upstream spectral initialization
-(SVD + power iteration) and uses an explicit seed in place of `Math.random` to keep headless runs
-deterministic.
-
-Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
-sensitive to upstream sizing policy, layout extents (including edge labels/groups), and floating-point rounding.
-Recent progress (2026-02-02): Architecture upstream SVG baselines are now generated with a deterministic
-browser-side RNG seed (to remove `Math.random()` layout drift in Cytoscape FCoSE); see
-`docs/adr/0055-upstream-svg-determinism-for-cytoscape-layouts.md`.
-Recent progress (2026-02-02): mindmap headless layout now follows Mermaid node sizing rules (shape/padding/wrapping)
-instead of a placeholder grid layout, and `xtask debug-mindmap-svg-positions` was added to compare upstream/local node
-coordinates; the remaining parity-root mindmap mismatches are currently dominated by root `<svg>` viewport sizing.
-Recent progress (2026-02-04): `manatee` COSE-Bilkent now applies the upstream gravitation pass for disconnected graphs
-(`calculateNodesToApplyGravitationTo`), keeping multi-component layouts from drifting too far apart.
-Recent progress (2026-02-01): state diagram Stage B now derives root `viewBox`/`max-width` by parsing the emitted
-SVG and approximating `svg.getBBox()` (ignoring placeholder boxes like `0x0` and `0.1x0.1` rects), fixing large
-viewport blow-ups (e.g. floating notes fixtures) and reducing parity-root state mismatches.
-Recent progress (2026-02-02): state diagram nested roots shift their local origin by Dagre's fixed 8px graph margin,
-matching Mermaid’s recursive `dagre-wrapper` structure where nested cluster frames start at x/y=8 in the nested
-coordinate space.
-Recent progress (2026-02-01): state diagram dagre layout now uses Mermaid margins (`marginx/marginy=8`) for both the
-top-level graph and extracted cluster graphs.
-Recent progress (2026-02-01): state diagram dagre cluster extraction now matches Mermaid's `dagre-wrapper` more
-closely by extracting any disconnected cluster (not only root-level), and by injecting the parent cluster node into
-the extracted graph during the recursive layout pass so Dagre's compound border sizing yields Mermaid-like padding.
-Recent progress (2026-02-02): state diagram layout now excludes historical floating-note syntaxes that Mermaid parses but
-does not render, so they no longer affect node/edge placement or root viewport sizing.
-Recent progress (2026-02-02): state diagram label measurement now honors compiled CSS font overrides
-(weight/size/family/italic), improving classDef-styled label width parity.
-Recent progress (2026-02-02): C4 diagram Stage B now matches upstream root `viewBox` (DOM parity-root mode) by
-mirroring Mermaid's `calculateTextWidth/Height` sizing and the `techn` measurement quirk in `c4Renderer.js`.
-Recent progress (2026-02-02): pie Stage B now matches upstream root `viewBox` and root `style max-width` in
-DOM parity-root mode by mirroring Mermaid's legend width sizing (BCR-like) rather than `getComputedTextLength()`,
-including a small bbox overhang correction for a few glyph edge cases.
-Recent progress (2026-02-01): state diagram cluster rendering no longer double-applies the 8px dagre margin during
-SVG emission, aligning cluster frame placement with Mermaid and reducing parity-root mismatches.
-Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
-`architecture.padding`/`iconSize`/`fontSize`, fixing previously clipped non-empty Architecture SVG outputs. Root parity
-still depends on matching upstream Cytoscape/FCoSE layout behavior.
-Recent progress (2026-02-01): block diagram layout now models Mermaid’s mixed label metrics (HTML width + SVG bbox
-height) and the block Stage B renderer now emits root `viewBox`/`max-width` using Mermaid-like diagram padding.
-Recent progress: `xychart` headless layout and Stage B parity renderer exist and are validated against
-upstream SVG baselines via `xtask compare-xychart-svgs` (DOM parity mode).
-Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode
-(`cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`).
-Recent progress: flowchart-v2 stadium/cylinder geometry now matches upstream more closely in strict SVG XML parity
-(`xtask compare-svg-xml --diagram flowchart --dom-mode strict`) by modeling Chromium bbox quirks for cylinders and
-using stadium render-dimensions for edge intersections.
-Recent progress: flowchart-v2 hexagon edge intersections now mirror Mermaid `hexagon.ts` by generating polygon
-points from render dimensions (text bbox + padding) while still using `updateNodeBounds(...)`-derived node sizes
-for the `intersect.polygon(...)` transform, eliminating hexagon-related `data-points` drift.
-Recent progress: flowchart-v2 `classDef` CSS rules now preserve Mermaid insertion order (IndexMap), matching upstream
-`<style>` rule ordering in strict SVG XML parity (e.g. `bigger_font_from_classes_spec`).
-Recent progress: flowchart-v2 strict SVG XML parity now stringifies `data-points` using ECMAScript-compatible float
-formatting (via `ryu-js`) to match V8 tie-breaking in shortest round-trippable decimals.
-Recent progress: flowchart-v2 `linkStyle ... interpolate ...` now trims the whitespace between the curve name and the
-first style token so rendered edge `style="...;;;..."` matches upstream strict SVG XML output.
-Recent progress: flowchart-v2 cluster label positioning now derives the SVG title bbox width from the rendered
-`<text>/<tspan>` lines (not the layout placeholder metrics), improving strict SVG XML parity for wrapped titles.
-Recent progress: flowchart-v2 cluster edge labels are positioned using the cut edge polyline midpoint (mirroring
-Mermaid’s `cutPathAtIntersect` + `calcLabelPosition`), improving strict SVG XML parity for subgraph outgoing links.
-Recent progress: flowchart Dagre config now uses Mermaid margins (`marginx/marginy=8`) for both the top-level
-graph and extracted cluster graphs, improving subgraph/cluster geometry parity.
-Recent progress: `dugong` now matches dagrejs graph defaults (`edgesep=20`), improving multiedge routing parity
-and reducing Flowchart root viewport drift.
-Recent progress: flowchart-v2 headless text measurement strips `fa:fa-*` / `fas:fa-*` tokens for HTML labels so
-icon placeholders don’t inflate node/cluster bbox in exported SVG baselines where FontAwesome CSS is absent.
-Recent progress: flowchart-v2 strict SVG XML parity now matches Mermaid’s DOM insertion order more closely by
-partitioning cluster endpoint edges to the end (mirroring `adjustClustersAndEdges` remove+readd behavior) and by
-ordering cluster boxes consistently (ancestor-first, then reverse subgraph registration order).
-Recent progress: flowchart-v2 renders empty subgraphs (node-like subgraph declarations) before extracted cluster
-root groups inside `.nodes`, matching upstream DOM order in `outgoing_links_4_spec`.
-Recent progress: flowchart-v2 now renders self-loop label placeholder nodes for cluster nodes (e.g. `C1---C1---{1,2}`)
-before the nested extracted cluster `.root` group, matching upstream DOM order in `upstream_flowchart_v2_self_loops_spec`.
-Recent progress: flowchart HTML `<img>` labels now contribute to foreignObject sizing (instead of being treated as
-empty text), matching upstream SVG baselines for image-only and mixed image+text nodes.
-Recent progress: flowchart Markdown measurement in HTML-like mode now accounts for `<strong>/<em>` styling deltas
-(including nested tags) and updates a few vendored HTML override widths, fixing `upstream_markdown_strings` and
-`upstream_markdown_subgraphs` in strict SVG XML parity.
-Recent progress: flowchart-v2 extracted cluster root groups now follow Mermaid’s sibling ordering more closely by
-sorting in reverse subgraph definition order (mirrors Dagre child registration behavior in upstream SVG DOM).
-Recent progress: flowchart-v2 subgraph `style` statements now apply to the cluster `<rect>` and title `<span>`
-styles (including `color: ... !important` on the label), matching Mermaid’s styled subgraph semantics.
-Recent progress: flowchart-v2 `theme: base` now derives missing `themeVariables` (colors and dark mode) and feeds
-them into the generated CSS (cluster/title/edgeLabel), fixing `subgraph_title_themeable_spec` in strict SVG XML parity.
-Recent progress: flowchart-v2 `data-points` strict parity no longer relies on a global fixed-point quantization;
-instead we normalize Dagre self-loop control points (snapping dummy placement to the common 1/64px grid when it is
-already extremely close) and apply a very narrow truncation heuristic only for coordinates extremely close to `1/3`
-or `2/3` remainders at the 2^18 scale, preserving prior Markdown strict parity fixes.
-Recent progress: flowchart-v2 cluster title HTML label widths now include a few additional Trebuchet metrics overrides
-("Foo SubGraph", "Bar SubGraph", "Main") so `foreignObject width` and `cluster-label translate(...)` match upstream.
-Recent progress: flowchart-v2 `data-points` now snaps coordinates that are extremely close to their f32-rounded value,
-while preserving the common `next_up(f32)` rounding artifacts seen in upstream baselines (e.g. `...0001`).
-As of 2026-01-27, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 0 flowchart
-mismatches.
-As of 2026-01-29, `xtask compare-svg-xml --diagram requirement --dom-mode strict --dom-decimals 3` reports 0
-requirement mismatches (for the pinned Mermaid@11.12.3 upstream baselines).
-As of 2026-01-29, `xtask compare-svg-xml --diagram gantt --dom-mode strict --dom-decimals 3` reports 0 gantt mismatches.
-As of 2026-02-05, `xtask compare-svg-xml --dom-mode strict --dom-decimals 3` reports 175 total strict XML mismatches
-(state=43, architecture=25, block=22, class=16, kanban=15, gitgraph=14, mindmap=11, pie=11, xychart=11, c4=7).
-As of 2026-03-09, `xtask compare-svg-xml --diagram block --dom-mode strict --dom-decimals 3` reports 0 block
-mismatches. The final strict-XML closure reduced the focused block diff set `34 -> 27 -> 14 -> 8 -> 1 -> 0` by
-extending upstream-derived HTML label width/height overrides, applying direct `style` / `class` parity to block nodes and
-labels, merging later nested-node styling updates, preserving Mermaid's malformed style tokens after entity decode,
-distinguishing plain-space-only block-arrow labels from `&nbsp;` placeholders, and aligning the font-size precedence
-probe `stress_block_font_size_precedence_001`.
-Recent progress: gitGraph strict XML compares are now deterministic by seeding auto commit ids (`gitGraph.seed=1`)
-in `xtask` and by routing Stage B SVG label measurement through the pipeline `TextMeasurer` (vs an internal
-deterministic fallback). Remaining strict mismatches are dominated by CSS/style parity gaps.
-Recent progress (2026-02-05): gitGraph `parity-root` root viewport (`viewBox` / `style max-width`) matches upstream by
-applying fixture-derived bbox width corrections for branch labels and a couple of auto-generated commit ids.
-Recent progress (2026-02-05): state diagram HTML label measurement now matches upstream italic-only `classDef` nodes
-(fixes the `Moving` label width and eliminates small Dagre coordinate drift that bubbled into root `viewBox` / `max-width`).
-Strict XML 0-mismatch diagrams: er, flowchart, gantt, info, journey, packet, quadrantchart, radar, requirement, sankey,
-timeline, treemap.
-See `docs/alignment/FLOWCHART_SVG_STRICT_XML_GAPS.md` for a workflow to debug float-level `data-points` drift when
-new fixtures are introduced.
-Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more
-thoroughly (style/class edge cases, click syntax matrix, and `securityLevel: loose` callback gating).
-Recent progress: flowchart edge curves now cover `monotoneX`/`monotoneY` and `step`/`stepBefore` in addition to
-`linear`/`stepAfter`/`basis`/`cardinal`, and the fixture set covers `linkStyle ... stroke-width:1px;` variants.
-Recent progress: sequence headless layout now models notes and `rect` blocks as layout nodes (`note-*`, `rect-*`),
-so SVG viewBox/bounds can expand to match upstream baselines (e.g. left-of notes and nested rect blocks).
-Recent progress: sequence headless layout now models self-messages with `startx == stopx` and adds the extra
-vertical bump Mermaid applies for the loop curve; Stage B SVG renders self-messages as `<path>` and renders
-participant types (`boundary`, `control`, `entity`, `database`, `collections`, `queue`) with Mermaid-like DOM
-structure (the `participant_types` upstream baseline now matches in DOM parity mode).
-Recent progress: sequence Stage B now renders `opt`/`par` blocks (including `par over`) and `box` frames;
-empty block labels are rendered as a zero-width space (matching upstream SVG behavior).
-Recent progress: sequence Stage B now treats HTML `<br>` variants as line breaks in participant labels, notes,
-and message texts, matching upstream DOM structure in `html_br_variants_and_wrap`; empty message labels
-(trailing colon) now still produce a message text node like upstream.
-Recent progress: sequence Stage B now matches upstream SVG DOM for the current fixture set in parity mode
-(`cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`).
-Recent progress: `info` and `pie` Stage B parity renderers exist and are validated against upstream
-SVG baselines via `xtask compare-info-svgs` / `xtask compare-pie-svgs`.
-Recent progress: `packet` Stage B parity renderer exists and is validated against upstream SVG
-baselines via `xtask compare-packet-svgs`.
-Recent progress: `timeline` Stage B parity renderer exists and is validated against upstream SVG
-baselines via `xtask compare-timeline-svgs`.
-Recent progress: `journey` Stage B parity renderer exists and is validated against upstream SVG
-baselines via `xtask compare-journey-svgs`.
-Recent progress: `kanban` Stage B parity renderer exists and is validated against upstream SVG
-baselines via `xtask compare-kanban-svgs`.
-Recent progress: `gitGraph` Stage B parity renderer exists and is validated against upstream SVG
-baselines via `xtask compare-gitgraph-svgs`.
-Recent progress: `gantt` Stage B parity renderer exists and is validated against upstream SVG
-baselines via `xtask compare-gantt-svgs`.
-Recent progress: `block` headless layout and Stage B SVG renderer exist and are validated against
-upstream SVG baselines via `xtask compare-block-svgs` (DOM parity mode).
-Recent progress: `radar` headless layout and Stage B SVG renderer exist and are validated against
-upstream SVG baselines via `xtask compare-radar-svgs` (DOM parity mode).
-Recent progress: `sankey` headless layout and Stage B SVG renderer exist and are validated against
-upstream SVG baselines via `xtask compare-sankey-svgs` (DOM parity-root mode).
-Recent progress: `xtask compare-all-svgs --check-dom` now runs end-to-end (class/state/gantt
-compare tasks now honor `--check-dom`), and the state layout goldens were refreshed after
-aligning default text style (16px) and node padding behavior.
-Recent progress: Architecture Cypress fixtures that use shorthand syntax now have
-CLI-compatible `*_normalized` variants so we can store upstream CLI SVG baselines and run DOM parity
-checks without losing the original Cypress strings.
-Recent progress (2026-02-09): extracted shared D3 curve/path helpers and layout/debug SVG helpers out of
-`crates/merman-render/src/svg/parity.rs` into `curve.rs` and `layout_debug.rs` to keep refactors localized;
-`xtask compare-all-svgs --check-dom --dom-mode parity-root` remains 0-mismatch.
-Recent progress (2026-02-09): extracted `svg_path_bounds_from_d` into `path_bounds.rs` (fields are `pub(super)` to
-preserve sibling-module access) and kept DOM parity-root gate green.
-Recent progress (2026-02-09): improved CLI raster `<foreignObject>` fallback by accounting for parent `<g transform="translate(...)">`
-wrappers so kanban/mindmap previews render readable labels (still best-effort; SVG output remains authoritative).
-
-## Alignment Sanity Checks
-
-- Internal consistency: `cargo run -p xtask -- check-alignment`
-  - ensures every fixture has a `.golden.json`
-  - ensures coverage docs reference existing local paths
-- Full SVG parity sweep (aggregated): `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
-- Debug viewport bounds for a single SVG: `cargo run -p xtask -- debug-svg-bbox --svg <path> --padding 8`
+# Alignment Status
+
+This document is the human-readable parity dashboard. It records current support and verification
+boundaries; it is not a progress log. Historical implementation notes belong in workstream,
+planning, or coverage documents.
+
+## Current Read
+
+| Item | Current state |
+| --- | --- |
+| Dashboard | Active |
+| Upstream baseline | Mermaid `@11.16.0` |
+| Reference graph | Generated bundle verifies Mermaid and companion source, package, lock, and provenance evidence |
+| Evidence audit | Inventory and corpus counts checked against the worktree on 2026-07-19 |
+| Admission | 35 families in the primary SVG matrix; `zenuml` has a separate external-renderer comparison lane |
+| Root viewport | Every primary-matrix family has covered root-viewport evidence |
+| Language catalog | All 35 built-in families are available independently of optional render backends |
+| Editor facts | All 35 built-in families emit parser-owned lexemes through one token planner; facts use schema `1` |
+| Verification boundary | Capability projections and exact artifact recipes are checked in normal CI; a strict result belongs to the exact revision that ran it |
+
+Admission describes available capability and required evidence. It does not certify that every
+gate passes after the latest uncommitted changes.
+
+## Sources of Truth
+
+| Concern | Authority |
+| --- | --- |
+| Pinned Mermaid source | `tools/upstreams/REPOS.lock.json` |
+| Family parser and typed-render capabilities | `crates/merman-core/src/family.rs` |
+| Admission and fixture coverage policy | `crates/xtask/src/cmd/admission.rs` |
+| Generated admission overview | `docs/alignment/ADMISSION_INVENTORY.md` |
+| Executable SVG compare facts | `crates/xtask/src/cmd/compare/diagrams.rs` |
+| Parity and residual policy | `docs/workstreams/PARITY_BOUNDARY.md` |
+| Family-specific scope and gaps | `docs/alignment/*_MINIMUM.md` and `*_UPSTREAM_TEST_COVERAGE.md` |
+
+If this dashboard disagrees with executable inventory or capability facts, the executable facts
+win and this file must be corrected.
+
+## Support Vocabulary
+
+| Admission state | Contract |
+| --- | --- |
+| Primary SVG matrix | All required evidence layers and an executable compare fact are present. |
+| External comparison lane | Full local behavior plus exact companion/browser evidence, kept separate from built-in upstream SVG baselines. |
+
+Primary admission does not mean pixel identity with Chromium or support for every upstream branch.
+It means the family has source-backed local behavior and participates in the repository's
+structural/parity verification contract. Browser text measurement, `foreignObject`, RoughJS, and
+other explicitly documented residuals remain bounded by the parity policy.
+
+## Primary SVG Matrix
+
+Every row below is semantic-, layout-, and SVG-covered in the admission inventory. `N` means a
+normalized fixture corpus; `N+D` means normalized fixtures plus an explicitly deferred
+investigation corpus. The default DOM mode is the family command's configured comparison boundary,
+not a quality ranking. Callers may select another supported mode explicitly.
+
+| Family | Corpus | Compare command | Default DOM mode |
+| --- | ---: | --- | --- |
+| `er` | N+D | `compare-er-svgs` | `parity` |
+| `flowchart` | N+D | `compare-flowchart-svgs` | `parity` |
+| `state` | N+D | `compare-state-svgs` | `structure` |
+| `class` | N+D | `compare-class-svgs` | `parity` |
+| `sequence` | N+D | `compare-sequence-svgs` | `structure` |
+| `info` | N+D | `compare-info-svgs` | `parity` |
+| `pie` | N+D | `compare-pie-svgs` | `structure` |
+| `sankey` | N+D | `compare-sankey-svgs` | `parity-root` |
+| `packet` | N+D | `compare-packet-svgs` | `structure` |
+| `timeline` | N | `compare-timeline-svgs` | `structure` |
+| `journey` | N | `compare-journey-svgs` | `parity` |
+| `kanban` | N | `compare-kanban-svgs` | `structure` |
+| `gitgraph` | N+D | `compare-gitgraph-svgs` | `parity` |
+| `gantt` | N | `compare-gantt-svgs` | `structure` |
+| `c4` | N+D | `compare-c4-svgs` | `parity` |
+| `block` | N+D | `compare-block-svgs` | `structure` |
+| `radar` | N+D | `compare-radar-svgs` | `parity` |
+| `requirement` | N+D | `compare-requirement-svgs` | `parity` |
+| `mindmap` | N | `compare-mindmap-svgs` | `parity` |
+| `architecture` | N+D | `compare-architecture-svgs` | `parity` |
+| `quadrantchart` | N | `compare-quadrantchart-svgs` | `parity` |
+| `treemap` | N+D | `compare-treemap-svgs` | `parity` |
+| `xychart` | N+D | `compare-xychart-svgs` | `parity` |
+| `treeView` | N | `compare-tree-view-svgs` | `parity` |
+| `ishikawa` | N+D | `compare-ishikawa-svgs` | `parity` |
+| `eventmodeling` | N | `compare-eventmodeling-svgs` | `parity` |
+| `error` | N | `compare-error-svgs` | `parity` |
+| `venn` | N | `compare-venn-svgs` | `parity` |
+| `swimlane` | N | `compare-swimlane-svgs` | `parity` |
+| `railroad` | N | `compare-railroad-svgs` | `parity` |
+| `railroadEbnf` | N | `compare-railroad-ebnf-svgs` | `parity` |
+| `railroadAbnf` | N | `compare-railroad-abnf-svgs` | `parity` |
+| `railroadPeg` | N | `compare-railroad-peg-svgs` | `parity` |
+| `wardley` | N | `compare-wardley-svgs` | `parity` |
+| `cynefin` | N | `compare-cynefin-svgs` | `parity` |
+
+## Non-Primary Families
+
+| Family | State | Current boundary |
+| --- | --- | --- |
+| `zenuml` | External comparison lane | Full grammar, semantic/editor model, typed layout, and headless SVG are implemented against the admitted ZenUML Core behavior source. The exact external plugin graph is tested in an opaque browser realm and publishes only strict-validated native SVG; it remains outside the built-in upstream-SVG matrix. |
+
+LSP/editor support is tracked independently in the family capability registry. SVG admission must
+not be used to infer completions, navigation, diagnostics, or source-span support for a family.
+
+## Mermaid 11.16 Scope
+
+The pinned baseline includes families that were absent from older dashboards. All families below
+are in the primary matrix, with these boundaries:
+
+- `treeView-beta`: browser text metrics remain a family-documented residual.
+- `ishikawa` / `ishikawa-beta`: classic SVG passes parity for 12 fixtures. Hand-drawn output is
+  implemented and all 13 fixtures pass structure; JavaScript RoughJS versus Rust `roughr` path
+  geometry remains a documented residual.
+- `eventmodeling`: `entity`, `note`, and `gwt` remain in the single semantic source and editor
+  facts, then the render projection omits them because Mermaid's DB/renderer does not consume them.
+  Strict browser HTML behavior remains a documented residual.
+- `venn-beta`: classic SVG retains parity comparison. Hand-drawn output is deterministic and three
+  pinned Cypress fixtures cover the exact structure-only boundary; JavaScript RoughJS versus Rust
+  `roughr` path geometry remains a documented residual.
+- `swimlane-beta`: reuses Flowchart semantics but owns source-backed swimlane layout and routing.
+- `railroad-*-beta`: four dialects share a typed model and renderer; browser font-height
+  differences remain measurable residuals.
+- `cynefin-beta`: deterministic headless text and path formatting replace browser-specific
+  measurements.
+- `wardley-beta`: ten source-backed Cypress fixtures cover typed semantics, editor facts, layout,
+  SVG, theme, and root-viewport behavior.
+
+The raw Mermaid `11.15.0..11.16.0` added-file corpus is preserved under
+`fixtures/_upstream/mermaid-11.16.0/`:
+
+- 122 upstream source paths;
+- 121 unique contents;
+- 122 verbatim managed `.mmd` files.
+
+This corpus is evidence, not automatic fixture admission. Its leading underscore keeps raw inputs
+out of ordinary snapshot sweeps. Family-specific fixtures and upstream SVG baselines remain the
+promotion mechanism.
+
+Five exact parser-only fixtures remain: one Flowchart parser case, two Sankey circular-link cases,
+and two XYChart inputs without plot data. Pinned Mermaid 11.16 fails to render all five, so
+`cargo run -p xtask -- audit-gaps --check-upstream-render` reports zero actionable parser-only
+gaps. Exact family-scoped capability facts own these exclusions; filename patterns do not.
+
+The 30 Mermaid 11.16 Swimlane DDLT inputs follow the same evidence boundary under
+`fixtures/swimlane/_upstream_ddlt/`. A dedicated layout test checks their finite geometry,
+orthogonal routing, and valid SVG output; they are intentionally excluded from ordinary snapshot
+admission.
+
+## Evidence Layers
+
+| Layer | Scope | Current worktree count |
+| --- | --- | ---: |
+| Semantic goldens | Parse and semantic JSON | 3,747 |
+| Layout goldens | Typed geometry and bounds | 3,744 |
+| Upstream SVG baselines | Pinned Mermaid CLI output | 3,696 |
+
+Counts are an audit snapshot, not an API contract. `check-alignment` validates required evidence
+for each admission record rather than relying on these totals.
+
+Refresh semantic and layout goldens with `cargo run -p xtask -- update-snapshots` and
+`cargo run -p xtask -- update-layout-snapshots`. The upstream baseline procedure lives in
+`docs/rendering/UPSTREAM_SVG_BASELINES.md`.
+
+Raster PNG/JPG/PDF output is best-effort integration output, not a pixel-parity layer. Pure-Rust
+rasterizers do not reproduce every browser `foreignObject` behavior; see
+`docs/rendering/RASTER_OUTPUT.md`.
+
+## Current Boundaries
+
+- Parser, semantic model, config precedence, layout, routing, sanitizer, and DOM-order differences
+  require source-backed fixes. Comparator normalization must not hide them.
+- Runtime fixture IDs and complete fixture-label lookup tables are not accepted measurement or
+  viewport mechanisms. Root bounds must come from family geometry or emitted content.
+- General font/DOM-shape facts may be generated from repeatable browser or font evidence, but they
+  must generalize beyond fixture strings.
+- Browser `getBBox()` floats, font fallback, `foreignObject`, HTML serialization, and RoughJS may
+  remain visible residuals when a robust headless derivation is unavailable.
+- Architecture compound layout remains a source-backed approximation of upstream
+  Cytoscape/FCoSE behavior; family coverage documents own its geometry residuals.
+- Mermaid 11.16 has a known upstream Flowchart regression for arrows between subgraphs
+  ([mermaid-js/mermaid#7954](https://github.com/mermaid-js/mermaid/issues/7954)). Do not restore
+  11.15 behavior locally to make affected fixtures look different from the pinned upstream.
+
+CLI compatibility details live in `docs/alignment/CLI_COMPATIBILITY.md`. The CLI supports the
+documented `mmdc@11.16.0` render/export flags through `merman-cli mmdc`; it does not install an
+`mmdc` binary alias. Native rendering uses the separate `render` and `batch` commands.
+
+## Verification
+
+Run the smallest gate that proves the change, then widen according to blast radius:
+
+```sh
+# Admission records, owner docs, capability facts, fixtures, and compare facts.
+cargo run -p xtask -- check-alignment
+
+# One admitted family.
+cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-decimals 3
+
+# Standard repository contract: fmt, nextest, structure, and parity.
+cargo run -p xtask -- verify
+
+# Release-strength contract, including all features, clippy, feature matrix, and root parity.
+cargo run -p xtask -- verify --strict
+
+# Mermaid 11.16 added-MMD corpus integrity.
+cargo run -p xtask -- sync-upstream-mmd-corpus \
+  --from mermaid@11.15.0 \
+  --to mermaid@11.16.0 \
+  --check
+```
+
+For a single SVG bounds investigation:
+
+```sh
+cargo run -p xtask -- debug-svg-bbox --svg <path> --padding 8
+```

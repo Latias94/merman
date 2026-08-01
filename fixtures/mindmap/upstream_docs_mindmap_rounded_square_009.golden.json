@@ -7,6 +7,7 @@
         "id": "0",
         "domId": "node_0",
         "label": "I am a rounded square",
+        "labelType": "markdown",
         "isGroup": false,
         "shape": "rounded",
         "width": 200,

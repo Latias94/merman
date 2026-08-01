@@ -9,7 +9,6 @@ pub(super) struct ArchitectureRenderSettings {
     pub(super) half_icon: f64,
     pub(super) padding_px: f64,
     pub(super) arch_font_size_px: f64,
-    pub(super) svg_font_size_px: f64,
     pub(super) use_max_width: bool,
     pub(super) text_style: TextStyle,
     pub(super) compound_text_style: TextStyle,
@@ -34,9 +33,6 @@ impl ArchitectureRenderSettings {
         let arch_font_size_px = config_f64(effective_config, &["architecture", "fontSize"])
             .unwrap_or(16.0)
             .max(1.0);
-        let svg_font_size_px =
-            crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0)
-                .max(1.0);
         let use_max_width = effective_config
             .get("architecture")
             .and_then(|v| v.get("useMaxWidth"))
@@ -47,11 +43,13 @@ impl ArchitectureRenderSettings {
             font_family: Some(css_parts.font_family),
             font_size: css_parts.font_size,
             font_weight: None,
+            font_style: None,
         };
         let compound_text_style = TextStyle {
             font_family: text_style.font_family.clone(),
             font_size: arch_font_size_px,
             font_weight: None,
+            font_style: None,
         };
 
         Self {
@@ -60,7 +58,6 @@ impl ArchitectureRenderSettings {
             half_icon,
             padding_px,
             arch_font_size_px,
-            svg_font_size_px,
             use_max_width,
             text_style,
             compound_text_style,

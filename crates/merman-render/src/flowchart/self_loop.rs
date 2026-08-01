@@ -67,6 +67,8 @@ fn flowchart_self_loop_edge_from_base(
         label,
         label_type,
         edge_type,
+        arrow: base.arrow.clone(),
+        is_user_defined_id: false,
         stroke: base.stroke.clone(),
         interpolate: base.interpolate.clone(),
         classes: base.classes.clone(),

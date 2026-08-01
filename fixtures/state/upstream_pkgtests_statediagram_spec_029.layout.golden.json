@@ -7,7 +7,7 @@
           "id": "Configuring",
           "x": 158.0,
           "y": 357.5,
-          "width": 142.031,
+          "width": 128.0,
           "height": 40.0,
           "is_cluster": false
         },
@@ -15,7 +15,7 @@
           "id": "Idle",
           "x": 158.0,
           "y": 218.5,
-          "width": 87.141,
+          "width": 77.44,
           "height": 40.0,
           "is_cluster": false
         },
@@ -23,7 +23,7 @@
           "id": "NotShooting",
           "x": 158.0,
           "y": 243.5,
-          "width": 233.133,
+          "width": 226.12,
           "height": 343.0,
           "is_cluster": true
         },
@@ -160,22 +160,22 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 147.266,
+              "x": 147.265,
               "y": 239.0
             },
             {
-              "x": 118.961,
+              "x": 118.96,
               "y": 288.0
             },
             {
-              "x": 147.266,
+              "x": 147.265,
               "y": 338.0
             }
           ],
           "label": {
-            "x": 118.961,
+            "x": 118.96,
             "y": 288.0,
-            "width": 58.078,
+            "width": 58.08,
             "height": 24.0
           },
           "start_label_left": null,
@@ -194,22 +194,22 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 169.734,
+              "x": 169.735,
               "y": 338.0
             },
             {
-              "x": 197.039,
+              "x": 197.04,
               "y": 288.0
             },
             {
-              "x": 169.734,
+              "x": 169.735,
               "y": 239.0
             }
           ],
           "label": {
-            "x": 197.039,
+            "x": 197.04,
             "y": 288.0,
-            "width": 58.078,
+            "width": 58.08,
             "height": 24.0
           },
           "start_label_left": null,
@@ -226,7 +226,7 @@
           "id": "NotShooting",
           "x": 158.0,
           "y": 243.5,
-          "width": 233.133,
+          "width": 226.12,
           "height": 343.0,
           "diff": -8.0,
           "offset_y": 20.0,
@@ -234,7 +234,7 @@
           "title_label": {
             "x": 158.0,
             "y": 85.0,
-            "width": 126.406,
+            "width": 126.4,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -254,9 +254,9 @@
           "title": "This is a note on a composite state",
           "title_label": {
             "x": 158.0,
-            "y": 478.0,
-            "width": 230.719,
-            "height": 24.0
+            "y": 490.0,
+            "width": 200.0,
+            "height": 48.0
           },
           "requested_dir": null,
           "effective_dir": "TB",

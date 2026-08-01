@@ -1,10 +1,28 @@
 use crate::diagrams::scan::strip_line_ending;
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
+    SourceSpan, editor::EditorLexemeJournal,
 };
 use serde_json::{Map, Value, json};
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    static ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_ishikawa_syntax_construction_count() {
+    ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn ishikawa_syntax_construction_count() -> usize {
+    ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.get()
+}
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct IshikawaNodeRenderModel {
@@ -35,6 +53,8 @@ impl IshikawaDiagramRenderModel {
 struct FlatNode {
     raw_level: usize,
     text: String,
+    span: SourceSpan,
+    selection: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -43,70 +63,62 @@ struct ArenaNode {
     children: Vec<usize>,
 }
 
-#[derive(Debug, Clone)]
-struct IshikawaNodeLine {
-    text: String,
-    span: SourceSpan,
-    selection: SourceSpan,
+struct IshikawaSemanticSource {
+    nodes: Vec<FlatNode>,
+    editor_facts: EditorSemanticFacts,
 }
 
-pub fn parse_ishikawa_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
-    let mut offset = 0usize;
-    let mut header_seen = false;
-    let mut emitted_root = false;
+struct IshikawaParseFailure {
+    error: Box<Error>,
+    editor_facts: Box<EditorSemanticFacts>,
+}
 
-    while let Some(segment) = lines.next() {
-        let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
-        if is_space_or_comment_line(line) {
-            continue;
-        }
-
-        if !header_seen {
-            match parse_ishikawa_header_line(line, line_start, meta) {
-                Ok(Some(root)) => {
-                    header_seen = true;
-                    push_ishikawa_node_fact(&mut facts, root, true);
-                    emitted_root = true;
-                }
-                Ok(None) => {
-                    header_seen = true;
-                }
-                Err(err) => {
-                    facts.mark_recovered_with_diagnostic(
-                        format!("ishikawa parser recovered after parse error: {err}"),
-                        Some(SourceSpan::new(line_start, line_start + line.len())),
-                    );
-                    return facts;
-                }
-            }
-            continue;
-        }
-
-        match parse_ishikawa_node_line(line, line_start, meta) {
-            Ok(node) => {
-                let is_root = !emitted_root;
-                push_ishikawa_node_fact(&mut facts, node, is_root);
-                emitted_root = true;
-            }
-            Err(err) => {
-                facts.mark_recovered_with_diagnostic(
-                    format!("ishikawa parser recovered after parse error: {err}"),
-                    Some(SourceSpan::new(line_start, line_start + line.len())),
-                );
-                return facts;
-            }
-        }
+impl IshikawaSemanticSource {
+    fn editor_facts(&self) -> EditorSemanticFacts {
+        self.editor_facts.clone()
     }
 
-    facts
+    fn into_render_model(mut self, meta: &ParseMetadata) -> IshikawaDiagramRenderModel {
+        for node in &mut self.nodes {
+            node.text = sanitize_text(&node.text, &meta.effective_config);
+        }
+        nodes_to_render_model(self.nodes)
+    }
+
+    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
+        let model = self.into_render_model(meta);
+        render_model_to_compat_json(&model, meta)
+    }
 }
 
-pub fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let model = parse_ishikawa_model_for_render(code, meta)?;
+pub(crate) fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    construct_ishikawa_semantic_source(code, meta)
+        .map_err(|failure| *failure.error)?
+        .into_compat_json(meta)
+}
+
+pub(crate) fn parse_ishikawa_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_ishikawa_semantic_source_controlled(code, meta, control)?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |source| {
+            let editor_facts = source.editor_facts();
+            (source.into_compat_json(meta), editor_facts)
+        },
+        IshikawaParseFailure::into_error_and_editor_facts,
+    );
+    control.checkpoint()?;
+    Ok(parsed)
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &IshikawaDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
     let mut nodes = Vec::new();
     let root = if let Some(root) = &model.root {
         flatten_nodes(root, 0, &mut nodes);
@@ -119,76 +131,170 @@ pub fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert(
         "title".to_string(),
-        model.title.map(Value::String).unwrap_or(Value::Null),
+        model
+            .title
+            .as_ref()
+            .cloned()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     out.insert(
         "accTitle".to_string(),
-        model.acc_title.map(Value::String).unwrap_or(Value::Null),
+        model
+            .acc_title
+            .as_ref()
+            .cloned()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     out.insert(
         "accDescr".to_string(),
-        model.acc_descr.map(Value::String).unwrap_or(Value::Null),
+        model
+            .acc_descr
+            .as_ref()
+            .cloned()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     out.insert("root".to_string(), root);
     out.insert("nodes".to_string(), Value::Array(nodes));
     Ok(Value::Object(out))
 }
 
-pub fn parse_ishikawa_model_for_render(
+pub(crate) fn parse_ishikawa_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<IshikawaDiagramRenderModel> {
-    let nodes = parse_ishikawa_nodes(code, meta)?;
-    Ok(nodes_to_render_model(nodes))
+    Ok(construct_ishikawa_semantic_source(code, meta)
+        .map_err(|failure| *failure.error)?
+        .into_render_model(meta))
 }
 
-fn parse_ishikawa_nodes(code: &str, meta: &ParseMetadata) -> Result<Vec<FlatNode>> {
-    let mut lines = code.lines();
-    let trailing_root = loop {
-        let Some(line) = lines.next() else {
-            return Err(parse_error(meta, "expected ishikawa"));
-        };
+impl IshikawaParseFailure {
+    fn into_error_and_editor_facts(self) -> (Error, EditorSemanticFacts) {
+        (*self.error, *self.editor_facts)
+    }
+}
+
+struct IshikawaHeader {
+    keyword_span: SourceSpan,
+    root: Option<FlatNode>,
+}
+
+fn construct_ishikawa_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<IshikawaSemanticSource, IshikawaParseFailure> {
+    construct_ishikawa_semantic_source_controlled(code, meta, &crate::ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+}
+
+fn construct_ishikawa_semantic_source_controlled(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &crate::ParseControl,
+) -> crate::ParseControlResult<std::result::Result<IshikawaSemanticSource, IshikawaParseFailure>> {
+    control.checkpoint()?;
+    #[cfg(test)]
+    ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.set(ISHIKAWA_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
+    let mut nodes = Vec::new();
+    let mut lexemes = EditorLexemeJournal::family_parser(code);
+    let mut offset = 0usize;
+    let mut header_seen = false;
+    let mut first_error = None;
+
+    for segment in code.split_inclusive('\n') {
+        control.checkpoint()?;
+        let line_start = offset;
+        offset += segment.len();
+        let line = strip_line_ending(segment);
         if is_space_or_comment_line(line) {
             continue;
         }
-        break parse_header(line, meta)?;
-    };
 
-    let mut nodes = Vec::new();
-    if let Some(text) = trailing_root {
-        nodes.push(FlatNode {
-            raw_level: 0,
-            text: sanitize_text(&text, &meta.effective_config),
-        });
-    }
-
-    for raw in lines {
-        let raw = raw.trim_end_matches('\r');
-        if is_space_or_comment_line(raw) {
+        if !header_seen {
+            match parse_ishikawa_header_line(line, line_start, meta) {
+                Ok(header) => {
+                    header_seen = true;
+                    lexemes.push(
+                        EditorLexemeKind::Keyword,
+                        EditorLexemeModifiers::NONE,
+                        header.keyword_span,
+                    );
+                    if let Some(root) = header.root {
+                        lexemes.push(
+                            EditorLexemeKind::String,
+                            EditorLexemeModifiers::NONE,
+                            root.selection,
+                        );
+                        nodes.push(root);
+                    }
+                }
+                Err(error) => {
+                    let span = SourceSpan::new(line_start, line_start + line.len());
+                    lexemes.push(EditorLexemeKind::Literal, EditorLexemeModifiers::NONE, span);
+                    first_error.get_or_insert((error, span));
+                }
+            }
             continue;
         }
-        let indent = raw
-            .chars()
-            .take_while(|ch| matches!(ch, ' ' | '\t'))
-            .count();
-        let text = raw[indent..].trim().to_string();
-        if text.is_empty() {
-            continue;
+
+        match parse_ishikawa_node_line(line, line_start, meta) {
+            Ok(node) => {
+                lexemes.push(
+                    EditorLexemeKind::String,
+                    EditorLexemeModifiers::NONE,
+                    node.selection,
+                );
+                nodes.push(node);
+            }
+            Err(error) => {
+                let span = SourceSpan::new(line_start, line_start + line.len());
+                lexemes.push(EditorLexemeKind::Literal, EditorLexemeModifiers::NONE, span);
+                first_error.get_or_insert((error, span));
+            }
         }
-        nodes.push(FlatNode {
-            raw_level: indent,
-            text: sanitize_text(&text, &meta.effective_config),
-        });
     }
 
-    Ok(nodes)
+    if !header_seen {
+        first_error.get_or_insert((
+            Error::diagram_parse_insertion_point(meta.diagram_type.clone(), "expected ishikawa", 0),
+            SourceSpan::new(0, 0),
+        ));
+    }
+
+    let mut editor_facts = EditorSemanticFacts::new();
+    for (index, node) in nodes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        push_ishikawa_node_fact(&mut editor_facts, node, index == 0);
+    }
+    if let Some((error, span)) = first_error {
+        editor_facts.mark_recovered_from_parse_error(
+            format!("ishikawa parser recovered after parse error: {error}"),
+            Some(span),
+        );
+        editor_facts.replace_family_lexemes(lexemes.finish());
+        return Ok(Err(IshikawaParseFailure {
+            error: Box::new(error),
+            editor_facts: Box::new(editor_facts),
+        }));
+    }
+    editor_facts.replace_family_lexemes(lexemes.finish());
+    control.checkpoint()?;
+    Ok(Ok(IshikawaSemanticSource {
+        nodes,
+        editor_facts,
+    }))
 }
 
 fn parse_ishikawa_header_line(
     line: &str,
     line_start: usize,
     meta: &ParseMetadata,
-) -> Result<Option<IshikawaNodeLine>> {
+) -> Result<IshikawaHeader> {
     let trimmed_start = line.len().saturating_sub(line.trim_start().len());
     let trimmed = &line[trimmed_start..];
     for header in ["ishikawa-beta", "ishikawa"] {
@@ -204,27 +310,42 @@ fn parse_ishikawa_header_line(
             continue;
         }
         let text = rest.trim();
+        let keyword_span = SourceSpan::new(
+            line_start + trimmed_start,
+            line_start + trimmed_start + header.len(),
+        );
         if text.is_empty() {
-            return Ok(None);
+            return Ok(IshikawaHeader {
+                keyword_span,
+                root: None,
+            });
         }
-        let rel = rest.find(text).unwrap_or(0);
+        let rel = rest.len().saturating_sub(rest.trim_start().len());
         let start = line_start + trimmed_start + header.len() + rel;
         let end = start + text.len();
-        return Ok(Some(IshikawaNodeLine {
-            text: text.to_string(),
-            span: SourceSpan::new(line_start, line_start + line.len()),
-            selection: SourceSpan::new(start, end),
-        }));
+        return Ok(IshikawaHeader {
+            keyword_span,
+            root: Some(FlatNode {
+                raw_level: 0,
+                text: text.to_string(),
+                span: SourceSpan::new(line_start, line_start + line.len()),
+                selection: SourceSpan::new(start, end),
+            }),
+        });
     }
 
-    Err(parse_error(meta, "expected ishikawa"))
+    Err(Error::diagram_parse_exact(
+        meta.diagram_type.clone(),
+        "expected ishikawa",
+        SourceSpan::new(line_start, line_start + line.len()),
+    ))
 }
 
 fn parse_ishikawa_node_line(
     line: &str,
     line_start: usize,
     meta: &ParseMetadata,
-) -> Result<IshikawaNodeLine> {
+) -> Result<FlatNode> {
     let indent = line
         .chars()
         .take_while(|ch| matches!(ch, ' ' | '\t'))
@@ -232,20 +353,25 @@ fn parse_ishikawa_node_line(
     let body = &line[indent..];
     let text = body.trim();
     if text.is_empty() {
-        return Err(parse_error(meta, "expected ishikawa node"));
+        return Err(Error::diagram_parse_exact(
+            meta.diagram_type.clone(),
+            "expected ishikawa node",
+            SourceSpan::new(line_start, line_start + line.len()),
+        ));
     }
 
-    let rel = body.find(text).unwrap_or(0);
+    let rel = body.len().saturating_sub(body.trim_start().len());
     let start = line_start + indent + rel;
     let end = start + text.len();
-    Ok(IshikawaNodeLine {
+    Ok(FlatNode {
+        raw_level: indent,
         text: text.to_string(),
         span: SourceSpan::new(line_start, line_start + line.len()),
         selection: SourceSpan::new(start, end),
     })
 }
 
-fn push_ishikawa_node_fact(facts: &mut EditorSemanticFacts, node: IshikawaNodeLine, is_root: bool) {
+fn push_ishikawa_node_fact(facts: &mut EditorSemanticFacts, node: &FlatNode, is_root: bool) {
     let detail = if is_root {
         "ishikawa effect"
     } else {
@@ -256,33 +382,12 @@ fn push_ishikawa_node_fact(facts: &mut EditorSemanticFacts, node: IshikawaNodeLi
         node.selection,
     ));
     facts.push_symbol(EditorSemanticSymbol::new(
-        node.text,
+        node.text.clone(),
         Some(detail.to_string()),
         EditorSemanticKind::Namespace,
         node.span,
         node.selection,
     ));
-}
-
-fn parse_header(line: &str, meta: &ParseMetadata) -> Result<Option<String>> {
-    let trimmed = line.trim_start();
-    for header in ["ishikawa-beta", "ishikawa"] {
-        if !starts_with_ignore_ascii_case(trimmed, header) {
-            continue;
-        }
-        let rest = &trimmed[header.len()..];
-        if rest
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-        {
-            continue;
-        }
-        let trailing = rest.trim();
-        return Ok((!trailing.is_empty()).then(|| trailing.to_string()));
-    }
-
-    Err(parse_error(meta, "expected ishikawa"))
 }
 
 fn nodes_to_render_model(nodes: Vec<FlatNode>) -> IshikawaDiagramRenderModel {
@@ -422,16 +527,13 @@ fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
         .is_some_and(|actual| actual.eq_ignore_ascii_case(prefix))
 }
 
-fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
-    Error::diagram_parse_fallback(meta.diagram_type.clone(), message.into())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticKind,
-        EditorSemanticRole, Engine, MermaidConfig, ParseMetadata, ParseOptions, SourceSpan,
+        EditorExpectedSyntaxKind, EditorLexemeProducerKind, EditorSemanticCompleteness,
+        EditorSemanticKind, EditorSemanticRole, Engine, MermaidConfig, ParseDiagnosticSpanKind,
+        ParseMetadata, SourceSpan,
     };
 
     const DEEP_ISHIKAWA_DEPTH: usize = 1_500;
@@ -452,6 +554,21 @@ mod tests {
             source.push_str(&format!("Node {i}\n"));
         }
         source
+    }
+
+    #[test]
+    fn controlled_parse_can_cancel_between_ishikawa_lines() {
+        let control = crate::ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            construct_ishikawa_semantic_source_controlled(
+                "ishikawa-beta Problem\n  Cause A\n  Cause B\n",
+                &meta(),
+                &control,
+            ),
+            Err(crate::ParseCancelled)
+        ));
     }
 
     #[test]
@@ -509,6 +626,73 @@ Cause B
     }
 
     #[test]
+    fn combined_parse_constructs_syntax_once_and_preserves_all_projections() {
+        let text = "ishikawa-beta Problem\r\n  Cause A\r\n    Cause A1\r\n  Cause B\r\n";
+        let expected_json = parse_ishikawa(text, &meta()).unwrap();
+        let expected_model = parse_ishikawa_model_for_render(text, &meta()).unwrap();
+
+        reset_ishikawa_syntax_construction_count();
+        let (json, facts) = crate::family::test_support::into_result(
+            parse_ishikawa_json_and_editor_facts(text, &meta(), &crate::ParseControl::new()),
+        )
+        .unwrap();
+
+        assert_eq!(ishikawa_syntax_construction_count(), 1);
+        assert_eq!(json, expected_json);
+        assert_eq!(
+            render_model_to_compat_json(&expected_model, &meta()).unwrap(),
+            expected_json
+        );
+        assert_eq!(
+            json["root"],
+            serde_json::to_value(&expected_model.root).unwrap()
+        );
+        assert_eq!(json["title"].as_str(), expected_model.title.as_deref());
+
+        for name in ["Problem", "Cause A", "Cause A1", "Cause B"] {
+            let start = text.find(name).unwrap();
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.selection == SourceSpan::new(start, start + name.len())
+            }));
+        }
+    }
+
+    #[test]
+    fn editor_recovery_reports_invalid_or_incomplete_headers() {
+        for (text, span, span_kind) in [
+            (
+                "not-ishikawa\n  Cause\n",
+                SourceSpan::new(0, 12),
+                ParseDiagnosticSpanKind::Exact,
+            ),
+            (
+                "",
+                SourceSpan::new(0, 0),
+                ParseDiagnosticSpanKind::InsertionPoint,
+            ),
+        ] {
+            let Error::DiagramParse { diagnostic, .. } = parse_ishikawa(text, &meta()).unwrap_err()
+            else {
+                panic!("expected ishikawa parse error");
+            };
+            assert_eq!(diagnostic.span(), Some(span));
+            assert_eq!(diagnostic.span_kind(), span_kind);
+
+            reset_ishikawa_syntax_construction_count();
+            let facts = crate::family::test_support::editor_facts(
+                parse_ishikawa_json_and_editor_facts,
+                text,
+                &meta(),
+            );
+            assert_eq!(ishikawa_syntax_construction_count(), 1);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert_eq!(facts.diagnostics.len(), 1);
+            assert_eq!(facts.diagnostics[0].span, Some(span));
+        }
+    }
+
+    #[test]
     fn parses_deep_hierarchy_without_recursive_stack_growth() {
         let source = deep_ishikawa_source(DEEP_ISHIKAWA_DEPTH);
         let model = parse_ishikawa_model_for_render(&source, &meta()).unwrap();
@@ -546,7 +730,7 @@ Cause A
   Subcause A1
 "#;
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("ishikawa", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", text)
             .unwrap()
             .expect("ishikawa editor facts");
 
@@ -595,7 +779,7 @@ Cause A
         let engine = Engine::new();
         let text = "ishikawa Problem\n  Cause\n";
         let facts = engine
-            .parse_editor_semantic_facts_with_type_sync("ishikawa", text, ParseOptions::strict())
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", text)
             .unwrap()
             .expect("ishikawa editor facts");
 
@@ -610,5 +794,59 @@ Cause A
             effect.selection,
             SourceSpan::new(effect_start, effect_start + "Problem".len())
         );
+    }
+
+    #[test]
+    fn ishikawa_line_parser_emits_crlf_and_unicode_lexemes() {
+        let source = "  ishikawa-beta 主要问题\r\n    原因一\r\n\t子原因\r\n";
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", source)
+            .unwrap()
+            .expect("ishikawa facts");
+
+        assert_eq!(facts.lexeme_failure(), None);
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
+                && lexeme.producer().family().map(|family| family.as_str()) == Some("ishikawa")
+        }));
+        for (kind, text) in [
+            (EditorLexemeKind::Keyword, "ishikawa-beta"),
+            (EditorLexemeKind::String, "主要问题"),
+            (EditorLexemeKind::String, "原因一"),
+            (EditorLexemeKind::String, "子原因"),
+        ] {
+            assert!(facts.lexemes().iter().any(|lexeme| {
+                let span = lexeme.span();
+                lexeme.kind() == kind && &source[span.start..span.end] == text
+            }));
+        }
+    }
+
+    #[test]
+    fn ishikawa_recovery_keeps_lexemes_after_an_invalid_leading_statement() {
+        let source = "not-ishikawa\r\nishikawa-beta Problem\r\n  Later cause\r\n";
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("ishikawa", source)
+            .unwrap()
+            .expect("ishikawa recovery facts");
+
+        assert_eq!(facts.lexeme_failure(), None);
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
+                && lexeme.producer().family().map(|family| family.as_str()) == Some("ishikawa")
+        }));
+        for (kind, text) in [
+            (EditorLexemeKind::Literal, "not-ishikawa"),
+            (EditorLexemeKind::Keyword, "ishikawa-beta"),
+            (EditorLexemeKind::String, "Problem"),
+            (EditorLexemeKind::String, "Later cause"),
+        ] {
+            assert!(facts.lexemes().iter().any(|lexeme| {
+                let span = lexeme.span();
+                lexeme.kind() == kind && &source[span.start..span.end] == text
+            }));
+        }
     }
 }

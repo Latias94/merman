@@ -19,7 +19,7 @@ the next enabling layer for:
 
 The current `AsciiRenderOptions` is a public `Copy` struct with public fields. Adding color fields is
 a public API change for callers that construct the struct with literals. Because `merman-ascii` is
-still pre-1.0, this is the right time to harden the options API instead of accumulating ad hoc color
+all workspace consumers can migrate atomically, this is the right time to harden the options API instead of accumulating ad hoc color
 switches in renderer-specific code.
 
 ## Decision
@@ -41,7 +41,7 @@ Add an opt-in foreground color role API to `merman-ascii`.
    - `AsciiColorTheme`: private-field `Copy` theme with `default_light`, `default_dark`,
      `color_for`, and `with_role`.
 
-3. Harden `AsciiRenderOptions` during this pre-1.0 API change.
+3. Harden `AsciiRenderOptions` during this breaking API change.
    - Add `color_mode: AsciiColorMode` and `color_theme: AsciiColorTheme`.
    - Keep `AsciiRenderOptions` `Copy` by keeping all color types `Copy`.
    - Add builder-style methods such as `with_color_mode` and `with_color_theme`.
@@ -166,13 +166,13 @@ terminal. Tests should not snapshot `Auto`; they should force `Ansi16`, `Ansi256
 5. Avoid changing `AsciiRenderOptions` by adding separate colored render functions.
    - Pros: avoids an immediate struct-field break.
    - Cons: creates parallel public APIs and makes color composition with existing options awkward.
-     Pre-1.0 is the right moment to harden the options struct.
+     The coordinated breaking release is the right moment to harden the options struct.
 
 ## Consequences
 
 - Default plain output remains stable and semver-sensitive.
 - The color API becomes one shared substrate for flowchart, sequence, class, ER, and XYChart.
-- `AsciiRenderOptions` gets one intentional pre-1.0 breaking change and is hardened against future
+- `AsciiRenderOptions` gets one intentional breaking change and is hardened against future
   field additions.
 - Renderer code will need a disciplined role assignment pass, starting with one flowchart slice.
 - Mermaid style/class/linkStyle parity is unlocked but not automatically implemented by this ADR.

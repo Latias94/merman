@@ -13,11 +13,6 @@ readme = "README.md"
 keywords = ["mermaid", "elk", "layout", "diagrams"]
 categories = ["visualization"]
 
-[features]
-default = ["layered"]
-# First admission target for Mermaid's `layout: elk` / `flowchart-elk` support.
-layered = []
-
 [dependencies]
 merman-elk-layered.workspace = true
 thiserror.workspace = true

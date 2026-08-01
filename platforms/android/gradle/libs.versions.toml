@@ -1,0 +1,9 @@
+[versions]
+android-gradle-plugin = "9.2.0"
+dokka = "2.2.0"
+java = "17"
+ndk = "29.0.14206865"
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "android-gradle-plugin" }
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }

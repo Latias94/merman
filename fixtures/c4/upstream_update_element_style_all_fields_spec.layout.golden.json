@@ -11,8 +11,8 @@
       "width": 616.0,
       "height": 810.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Context",
       "title": "Element style updates",
       "boundaries": [
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -60,14 +60,14 @@
             "text": "B1",
             "y": 56.0,
             "width": 19.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[system]",
-            "y": 78.0,
+            "y": 79.0,
             "width": 52.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -98,16 +98,16 @@
           "label": {
             "text": "P1",
             "y": 134.0,
-            "width": 20.0,
-            "height": 17.0,
+            "width": 19.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[Rust]",
-            "y": 156.0,
+            "y": 157.0,
             "width": 31.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": null
@@ -137,7 +137,7 @@
             "text": "S1",
             "y": 38.0,
             "width": 19.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,

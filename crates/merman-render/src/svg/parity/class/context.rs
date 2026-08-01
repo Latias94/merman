@@ -1,7 +1,7 @@
 use super::super::timing::RenderTimings;
 use super::*;
 use rustc_hash::FxHashMap;
-use web_time::Duration;
+use std::time::Duration;
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct ClassRenderDetails {
@@ -70,7 +70,7 @@ impl<'a> ClassRenderLookups<'a> {
 pub(super) fn emit_class_render_timing(
     timings: &RenderTimings,
     detail: &ClassRenderDetails,
-    layout: &ClassDiagramV2Layout,
+    layout: &ClassDiagramLayout,
 ) {
     eprintln!(
         "[render-timing] diagram=classDiagram total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?} clusters={:?} edge_paths={:?} edge_curve={:?} edge_points_json={:?} edge_points_b64={:?} edge_labels={:?} nodes={:?} notes_sanitize={:?} path_bounds={:?} path_bounds_calls={} nodes_count={} edges_count={} clusters_count={}",

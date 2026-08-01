@@ -13,6 +13,7 @@ on:
       - ".github/workflows/performance.yml"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "docs/performance/**"
       - "tools/bench/**"
       - "tools/mermaid-cli/**"
       - "crates/merman/**"
@@ -68,14 +69,21 @@ on:
         description: "Head repository for manual runs"
         required: false
         default: ""
-      warn_threshold_percent:
-        description: "Warn threshold percentage"
-        required: false
-        default: "5"
-      fail_threshold_percent:
-        description: "Fail threshold percentage"
+      relative_threshold_percent:
+        description: "Relative regression threshold percentage"
         required: false
         default: "10"
+      evidence_mode:
+        description: "Evidence quality for self comparisons"
+        type: choice
+        default: confirmation
+        options:
+          - diagnostic
+          - confirmation
+      absolute_threshold_ns:
+        description: "Absolute regression threshold in nanoseconds (50000 = 50 us)"
+        required: false
+        default: "50000"
       include_mermaid_js:
         description: "Also run Mermaid JS comparison"
         type: boolean
@@ -83,7 +91,7 @@ on:
       mmdr_ref:
         description: "Pinned mermaid-rs-renderer ref"
         required: false
-        default: "859253415e69dce28bd65cd5a7c1d1ae8b39f4a1"
+        default: "7ff1196ed297c32a65a6b3cdc28f3ca3787fb65e"
       mmdr_toolchain:
         description: "Rust toolchain for mermaid-rs-renderer"
         required: false
@@ -100,6 +108,9 @@ jobs:
   contracts:
     name: perf-contracts
     runs-on: ubuntu-24.04
+    env:
+      CARGO_BUILD_JOBS: "1"
+      CARGO_INCREMENTAL: "0"
     steps:
       - name: Checkout head
         uses: actions/checkout@v6
@@ -110,6 +121,9 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
       - name: Check Python performance scripts
         working-directory: head
         run: |
@@ -117,14 +131,38 @@ jobs:
             tools/bench/compare_mermaid_renderers.py \
             tools/bench/compare_self.py \
             tools/bench/corpus_utils.py \
+            tools/bench/freeze_perf_baseline.py \
+            tools/bench/native_memory.py \
             tools/bench/perf_runner.py \
             tools/bench/render_perf_comment.py \
+            tools/bench/run_native_memory.py \
             tools/bench/stage_spotcheck.py \
-            tools/bench/test_perf_contracts.py
+            tools/bench/test_perf_baseline_manifest.py \
+            tools/bench/test_native_memory_contracts.py \
+            tools/bench/test_native_memory_driver_contracts.py \
+            tools/bench/test_perf_contracts.py \
+            tools/bench/verify_pipeline_bench_list.py
 
       - name: Check performance helper contracts
         working-directory: head
-        run: python3 tools/bench/test_perf_contracts.py
+        run: |
+          python3 tools/bench/test_perf_baseline_manifest.py
+          python3 tools/bench/test_native_memory_contracts.py
+          python3 tools/bench/test_native_memory_driver_contracts.py
+          python3 tools/bench/test_perf_contracts.py
+
+      - name: Verify compiled pipeline benchmark list
+        working-directory: head
+        run: python3 tools/bench/verify_pipeline_bench_list.py
+
+      - name: Build native memory probe contract
+        working-directory: head
+        run: |
+          cargo test --locked -p merman --test native_memory_allocator
+          python3 tools/bench/run_native_memory.py --smoke \
+            --json-out target/bench/native_memory_smoke.json
+          python3 tools/bench/test_native_memory_driver_contracts.py \
+            --verify-smoke-report target/bench/native_memory_smoke.json
 
   regression:
     name: perf-regression
@@ -159,40 +197,55 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Run self regression comparison
+        id: regression_comparison
         working-directory: head
         env:
           PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}
           SUITE: ${{ github.event_name == 'pull_request' && 'canary' || inputs.suite }}
-          WARN_THRESHOLD: ${{ inputs.warn_threshold_percent || '5' }}
-          FAIL_THRESHOLD: ${{ inputs.fail_threshold_percent || '10' }}
+          EVIDENCE_MODE: ${{ github.event_name == 'pull_request' && 'diagnostic' || inputs.evidence_mode || 'confirmation' }}
+          RELATIVE_THRESHOLD_PERCENT: ${{ inputs.relative_threshold_percent || '10' }}
+          ABSOLUTE_THRESHOLD_NS: ${{ inputs.absolute_threshold_ns || '50000' }}
           BASE_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}
           HEAD_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
+          set +e
           python3 tools/bench/compare_self.py \
             --base-dir ../base \
             --head-dir . \
             --base-target-dir target/performance/base \
             --head-target-dir target/performance/head \
+            --base-features svg \
+            --head-features svg \
             --base-label "$BASE_LABEL" \
             --head-label "$HEAD_LABEL" \
             --preset "$PRESET" \
             --suite "$SUITE" \
-            --warn-threshold-percent "$WARN_THRESHOLD" \
-            --fail-threshold-percent "$FAIL_THRESHOLD" \
+            --evidence-mode "$EVIDENCE_MODE" \
+            --relative-threshold-percent "$RELATIVE_THRESHOLD_PERCENT" \
+            --absolute-threshold-ns "$ABSOLUTE_THRESHOLD_NS" \
             --out target/performance/self_comparison.md \
             --json-out target/performance/self_comparison.json
+          comparison_exit=$?
+          set -e
+          echo "comparison_exit=$comparison_exit" >> "$GITHUB_OUTPUT"
 
       - name: Render regression PR comment
-        if: ${{ always() && github.event_name == 'pull_request' }}
+        id: regression_comment_render
+        if: ${{ always() }}
         working-directory: head
         run: |
           set -euo pipefail
+          set +e
           python3 tools/bench/render_perf_comment.py \
             --json target/performance/self_comparison.json \
             --out target/performance/pr_comment.md \
             --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --artifact perf-regression
+            --artifact perf-regression \
+            --process-exit-code "${{ steps.regression_comparison.outputs.comparison_exit || '2' }}"
+          comment_render_exit=$?
+          set -e
+          echo "comment_render_exit=$comment_render_exit" >> "$GITHUB_OUTPUT"
 
       - name: Upload regression artifacts
         if: ${{ always() }}
@@ -219,6 +272,39 @@ jobs:
               echo "The performance comment body was not generated. Check the job logs and artifact upload step."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Enforce regression performance result
+        if: ${{ always() }}
+        env:
+          REGRESSION_COMPARISON_EXIT: ${{ steps.regression_comparison.outputs.comparison_exit || '2' }}
+          REGRESSION_COMMENT_RENDER_EXIT: ${{ steps.regression_comment_render.outputs.comment_render_exit || '2' }}
+        run: |
+          set -euo pipefail
+          if [ "$REGRESSION_COMMENT_RENDER_EXIT" -ne 0 ]; then
+            echo "::error::The performance report consumer rejected the evidence contract."
+            exit 2
+          fi
+          case "$REGRESSION_COMPARISON_EXIT" in
+            0)
+              exit 0
+              ;;
+            1)
+              echo "::error::Decision-grade evidence confirmed a performance regression."
+              exit "$REGRESSION_COMPARISON_EXIT"
+              ;;
+            2)
+              echo "::error::The performance comparison evidence contract failed."
+              exit "$REGRESSION_COMPARISON_EXIT"
+              ;;
+            3)
+              echo "::error::The performance comparison was statistically inconclusive."
+              exit "$REGRESSION_COMPARISON_EXIT"
+              ;;
+            *)
+              echo "::error::Unexpected performance comparison exit code: $REGRESSION_COMPARISON_EXIT"
+              exit 2
+              ;;
+          esac
 
   regression-comment:
     name: perf-regression-comment
@@ -322,42 +408,57 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Run frontmatter regression comparison
+        id: frontmatter_comparison
         working-directory: head
         env:
           PRESET: ${{ github.event_name == 'pull_request' && 'quick' || inputs.preset }}
-          WARN_THRESHOLD: ${{ inputs.warn_threshold_percent || '5' }}
-          FAIL_THRESHOLD: ${{ inputs.fail_threshold_percent || '10' }}
+          EVIDENCE_MODE: ${{ github.event_name == 'pull_request' && 'diagnostic' || inputs.evidence_mode || 'confirmation' }}
+          RELATIVE_THRESHOLD_PERCENT: ${{ inputs.relative_threshold_percent || '10' }}
+          ABSOLUTE_THRESHOLD_NS: ${{ inputs.absolute_threshold_ns || '50000' }}
           BASE_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref || 'main' }}
           HEAD_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
+          set +e
           python3 tools/bench/compare_self.py \
             --base-dir ../base \
             --head-dir . \
             --base-target-dir target/performance/base \
             --head-target-dir target/performance/head \
+            --base-features svg \
+            --head-features svg \
             --base-label "$BASE_LABEL" \
             --head-label "$HEAD_LABEL" \
             --preset "$PRESET" \
             --suite frontmatter \
             --group frontmatter_preprocess \
-            --warn-threshold-percent "$WARN_THRESHOLD" \
-            --fail-threshold-percent "$FAIL_THRESHOLD" \
+            --evidence-mode "$EVIDENCE_MODE" \
+            --relative-threshold-percent "$RELATIVE_THRESHOLD_PERCENT" \
+            --absolute-threshold-ns "$ABSOLUTE_THRESHOLD_NS" \
             --out target/performance/frontmatter_comparison.md \
             --json-out target/performance/frontmatter_comparison.json
+          comparison_exit=$?
+          set -e
+          echo "comparison_exit=$comparison_exit" >> "$GITHUB_OUTPUT"
 
       - name: Render frontmatter PR comment
-        if: ${{ always() && github.event_name == 'pull_request' }}
+        id: frontmatter_comment_render
+        if: ${{ always() }}
         working-directory: head
         run: |
           set -euo pipefail
+          set +e
           python3 tools/bench/render_perf_comment.py \
             --json target/performance/frontmatter_comparison.json \
             --out target/performance/frontmatter_pr_comment.md \
             --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             --artifact perf-frontmatter \
             --marker "<!-- merman-perf-frontmatter -->" \
-            --title "Merman Frontmatter Performance Regression"
+            --title "Merman Frontmatter Performance Regression" \
+            --process-exit-code "${{ steps.frontmatter_comparison.outputs.comparison_exit || '2' }}"
+          comment_render_exit=$?
+          set -e
+          echo "comment_render_exit=$comment_render_exit" >> "$GITHUB_OUTPUT"
 
       - name: Upload frontmatter artifacts
         if: ${{ always() }}
@@ -384,6 +485,39 @@ jobs:
               echo "The frontmatter performance comment body was not generated. Check the job logs and artifact upload step."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Enforce frontmatter performance result
+        if: ${{ always() }}
+        env:
+          FRONTMATTER_COMPARISON_EXIT: ${{ steps.frontmatter_comparison.outputs.comparison_exit || '2' }}
+          FRONTMATTER_COMMENT_RENDER_EXIT: ${{ steps.frontmatter_comment_render.outputs.comment_render_exit || '2' }}
+        run: |
+          set -euo pipefail
+          if [ "$FRONTMATTER_COMMENT_RENDER_EXIT" -ne 0 ]; then
+            echo "::error::The frontmatter performance report consumer rejected the evidence contract."
+            exit 2
+          fi
+          case "$FRONTMATTER_COMPARISON_EXIT" in
+            0)
+              exit 0
+              ;;
+            1)
+              echo "::error::Decision-grade evidence confirmed a frontmatter performance regression."
+              exit "$FRONTMATTER_COMPARISON_EXIT"
+              ;;
+            2)
+              echo "::error::The frontmatter performance comparison evidence contract failed."
+              exit "$FRONTMATTER_COMPARISON_EXIT"
+              ;;
+            3)
+              echo "::error::The frontmatter performance comparison was statistically inconclusive."
+              exit "$FRONTMATTER_COMPARISON_EXIT"
+              ;;
+            *)
+              echo "::error::Unexpected frontmatter performance comparison exit code: $FRONTMATTER_COMPARISON_EXIT"
+              exit 2
+              ;;
+          esac
 
   frontmatter-comment:
     name: perf-frontmatter-comment
@@ -476,7 +610,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: 1jehuang/mermaid-rs-renderer
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '859253415e69dce28bd65cd5a7c1d1ae8b39f4a1' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '7ff1196ed297c32a65a6b3cdc28f3ca3787fb65e' }}
           path: head/repo-ref/mermaid-rs-renderer
           fetch-depth: 1
           persist-credentials: false
@@ -547,6 +681,8 @@ jobs:
             --suite "$SUITE"
             --mmdr-dir repo-ref/mermaid-rs-renderer
             --mmdr-toolchain "$MMDR_TOOLCHAIN"
+            --expected-merman-rev "$(git rev-parse HEAD)"
+            --expected-mmdr-rev "$(git -C repo-ref/mermaid-rs-renderer rev-parse HEAD)"
             --out target/performance/reference_comparison.md
             --json-out target/performance/reference_comparison.json
           )

@@ -6,7 +6,7 @@
 
 use crate::graph::LGraph;
 use crate::options::{EdgeRouting, ElkDirection, LayeredOptions};
-use crate::random::JavaRandom;
+use crate::random::{JavaRandom, RandomSeedError};
 
 const MIN_EDGE_SPACING: f64 = 2.0;
 
@@ -28,7 +28,7 @@ impl Default for LayeredSpacings {
 /// This mirrors the non-mutating Rust subset of `GraphConfigurator.configureGraphProperties(...)`:
 /// keep discovered graph properties synchronized with options, normalize undefined direction, enforce
 /// minimum edge-edge spacing, and set the default straight-edge preference based on edge routing.
-pub fn configure_graph_properties(graph: &mut LGraph) {
+pub fn configure_graph_properties(graph: &mut LGraph) -> Result<(), RandomSeedError> {
     graph.sync_graph_properties_to_options();
     if graph.options.direction == ElkDirection::Undefined {
         graph.options.direction = ElkDirection::Right;
@@ -40,13 +40,14 @@ pub fn configure_graph_properties(graph: &mut LGraph) {
         graph.options.node_placement_favor_straight_edges =
             Some(graph.options.edge_routing == EdgeRouting::Orthogonal);
     }
-    graph.random = JavaRandom::from_layout_seed(graph.options.random_seed);
+    graph.random = JavaRandom::new(graph.resolve_random_seed_for_configuration()?);
 
     for node in &mut graph.layerless_nodes {
         if let Some(nested_graph) = node.nested_graph.as_mut() {
-            configure_graph_properties(nested_graph);
+            configure_graph_properties(nested_graph)?;
         }
     }
+    Ok(())
 }
 
 pub fn configured_options(graph: &LGraph) -> LayeredOptions {
@@ -63,4 +64,26 @@ pub fn configured_options(graph: &LGraph) -> LayeredOptions {
             Some(options.edge_routing == EdgeRouting::Orthogonal);
     }
     options
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::LGraph;
+
+    #[test]
+    fn raw_graph_with_upstream_zero_fails_closed_at_the_configurator_boundary() {
+        let options = LayeredOptions {
+            random_seed: 0,
+            ..Default::default()
+        };
+        let mut graph = LGraph::new("root", options);
+
+        assert_eq!(
+            configure_graph_properties(&mut graph),
+            Err(RandomSeedError::Unresolved {
+                graph_path: "root".to_string(),
+            })
+        );
+    }
 }

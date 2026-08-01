@@ -1,27 +1,25 @@
 use crate::client_profile::ClientProtocolProfile;
-use crate::code_actions::code_actions_for_params_with_profile;
+use crate::code_actions::code_actions_for_snapshot_diagnostics_with_profile;
 use crate::completion::{
     completion_for_snapshot_with_profile, resolve_completion_item_with_profile,
 };
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics_with_profile;
-use crate::document_store::{
-    AnalyzerConfigurationChange, DiagnosticContext, DocumentDiagnosticState, DocumentStore,
-    DocumentSyncError, SemanticTokensState, StoredDocument, WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
-    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
-};
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, DiagnosticVersionData, RULE_CATALOG_METHOD,
     RuleCatalogResponse, experimental_capabilities,
 };
-use crate::refresh_coordinator::RefreshCoordinator;
 use crate::refresh_transport::{MermanClientSocket, RefreshClient};
 use crate::semantic_tokens::{
     semantic_tokens_delta_result, semantic_tokens_for_snapshot_range_with_profile,
     semantic_tokens_for_snapshot_with_profile, semantic_tokens_options_with_profile,
     semantic_tokens_result_id,
 };
-use crate::snapshot::{DocumentSnapshot, SnapshotContext};
-use crate::snapshot_context::{self, SnapshotContextKind};
+use crate::session::{ClientEffectKey, LanguageSession, MermanLspService, commit_active_mutation};
+use crate::session::{
+    DiagnosticContext, DocumentDiagnosticState, DocumentSyncError, SemanticTokensState,
+    StoredDocument, analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
+};
+use crate::snapshot::DocumentSnapshot;
 use crate::structure::{
     document_symbols_with_hierarchy_support as structure_document_symbols_with_hierarchy_support,
     folding_ranges as structure_folding_ranges, goto_definition as structure_goto_definition,
@@ -29,21 +27,19 @@ use crate::structure::{
     references as structure_references,
     rename_with_workspace_edit_encoding as structure_rename_with_workspace_edit_encoding,
     selection_ranges as structure_selection_ranges,
-    workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
-    AnalysisOptions, AnalysisPayload, SourceKind, options_json::analysis_options_from_json_value,
-    source_descriptor_for_kind, source_discarded_after_limit_change_diagnostic,
-    source_limit_diagnostic_for_len,
+    AnalysisPayload, options_json::analysis_options_from_json_value, source_descriptor_for_kind,
+    source_discarded_after_limit_change_diagnostic_with_span,
+    source_limit_diagnostic_for_len_and_span,
 };
 #[cfg(test)]
-use merman_analysis::{Analyzer, analyze_document_result_shared};
-use merman_editor_core::DocumentKind;
+use merman_analysis::{Analyzer, analyze_document};
+use merman_editor_core::{DocumentKind, TokenPlanError, analysis_payload_to_diagnostics};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
-use tokio::sync::Mutex;
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::ls_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
     CodeActionResponse, CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
     Diagnostic, DiagnosticOptions, DiagnosticServerCapabilities, DiagnosticSeverity,
@@ -60,61 +56,84 @@ use tower_lsp::lsp_types::{
     SemanticTokensRangeResult, SemanticTokensResult, SemanticTokensServerCapabilities,
     ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
     TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions,
-    UnchangedDocumentDiagnosticReport, WorkspaceEdit, WorkspaceSymbolParams,
+    UnchangedDocumentDiagnosticReport, WorkspaceEdit,
 };
-use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
+use tower_lsp_server::{Client, LanguageServer, LspService};
 
-const MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS: usize = 3;
+const MAX_CLIENT_LOG_MESSAGE_BYTES: usize = 4 * 1024;
+const CLIENT_LOG_TRUNCATION_SUFFIX: &str = " [truncated]";
 
-#[derive(Debug)]
+fn bounded_client_log_message(message: impl Into<String>) -> String {
+    let message = message.into();
+    let (prefix, suffix) = if message.len() <= MAX_CLIENT_LOG_MESSAGE_BYTES {
+        (message.as_str(), "")
+    } else {
+        let mut end = MAX_CLIENT_LOG_MESSAGE_BYTES - CLIENT_LOG_TRUNCATION_SUFFIX.len();
+        while !message.is_char_boundary(end) {
+            end -= 1;
+        }
+        (&message[..end], CLIENT_LOG_TRUNCATION_SUFFIX)
+    };
+    let mut bounded = String::with_capacity(prefix.len() + suffix.len());
+    bounded.push_str(prefix);
+    bounded.push_str(suffix);
+    bounded
+}
+
+#[derive(Clone)]
+struct DiagnosticPublisher {
+    client: Client,
+    session: LanguageSession,
+    profile: ClientProtocolProfile,
+}
+
+#[derive(Debug, Clone)]
 pub struct MermanLanguageServer {
     client: Client,
-    store: Arc<Mutex<DocumentStore>>,
-    client_profile: OnceLock<ClientProtocolProfile>,
-    refresh_coordinator: RefreshCoordinator,
+    session: LanguageSession,
+    client_profile: Arc<OnceLock<ClientProtocolProfile>>,
 }
 
 impl MermanLanguageServer {
-    /// Creates a language server for hosts that construct the tower-lsp transport themselves.
-    pub fn new(client: Client) -> Self {
-        let refresh_coordinator = RefreshCoordinator::from_tower_client(client.clone());
-        Self::with_refresh_coordinator(client, refresh_coordinator)
-    }
-
-    fn new_with_refresh(client: Client, refresh_client: RefreshClient) -> Self {
-        let refresh_coordinator = RefreshCoordinator::new(refresh_client);
-        Self::with_refresh_coordinator(client, refresh_coordinator)
-    }
-
-    fn with_refresh_coordinator(client: Client, refresh_coordinator: RefreshCoordinator) -> Self {
+    fn new(client: Client, session: LanguageSession) -> Self {
         Self {
             client,
-            store: Arc::new(Mutex::new(DocumentStore::new())),
-            client_profile: OnceLock::new(),
-            refresh_coordinator,
+            session,
+            client_profile: Arc::new(OnceLock::new()),
         }
     }
 
-    /// Builds the source-compatible tower-lsp service and client socket.
-    pub fn service() -> (LspService<Self>, ClientSocket) {
-        LspService::build(Self::new)
-            .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
-            .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
-            .finish()
+    /// Builds the service with a cancellation-safe, supervised client socket.
+    pub fn service() -> (MermanLspService, MermanClientSocket) {
+        let (service, socket, _) = Self::service_components();
+        (service, socket)
     }
 
-    /// Builds the production service with cancellation-safe, supervised refresh requests.
-    pub fn service_with_refresh() -> (LspService<Self>, MermanClientSocket) {
+    fn service_components() -> (MermanLspService, MermanClientSocket, RefreshClient) {
         let (refresh_client, refresh_requests, refresh_responses) = RefreshClient::channel();
+        let refresh_handle = refresh_client.clone();
+        let session = LanguageSession::with_refresh_client(refresh_client);
+        let (service, socket) = Self::protocol_service(session.clone());
+        let service = MermanLspService::new(service, session.clone());
+        let socket = MermanClientSocket::new(
+            socket,
+            refresh_requests,
+            refresh_responses,
+            session.endpoint_guard(),
+        );
+        (service, socket, refresh_handle)
+    }
+
+    fn protocol_service(
+        session: LanguageSession,
+    ) -> (LspService<Self>, tower_lsp_server::ClientSocket) {
+        let backend_session = session.clone();
         let (service, socket) =
-            LspService::build(move |client| Self::new_with_refresh(client, refresh_client))
+            LspService::build(move |client| Self::new(client, backend_session.clone()))
                 .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
                 .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
                 .finish();
-        (
-            service,
-            MermanClientSocket::new(socket, refresh_requests, refresh_responses),
-        )
+        (service, socket)
     }
 
     /// Returns the server's full capability envelope without client-side negotiation.
@@ -188,11 +207,11 @@ impl MermanLanguageServer {
         }
     }
 
-    pub async fn rule_catalog(&self) -> Result<RuleCatalogResponse> {
+    async fn rule_catalog(&self) -> Result<RuleCatalogResponse> {
         Ok(RuleCatalogResponse::current())
     }
 
-    pub async fn config_schema(&self) -> Result<ConfigSchemaResponse> {
+    async fn config_schema(&self) -> Result<ConfigSchemaResponse> {
         Ok(ConfigSchemaResponse::current())
     }
 
@@ -208,34 +227,9 @@ impl MermanLanguageServer {
     #[cfg(test)]
     async fn snapshot_for_uri(
         &self,
-        uri: &tower_lsp::lsp_types::Url,
+        uri: &tower_lsp_server::ls_types::Uri,
     ) -> Option<Arc<DocumentSnapshot>> {
-        snapshot_context::snapshot_context_for_uri(&self.store, uri, SnapshotContextKind::Structure)
-            .await
-            .ok()
-            .flatten()
-            .map(|context| context.snapshot)
-    }
-
-    async fn structure_snapshot_result<T>(
-        &self,
-        uri: &tower_lsp::lsp_types::Url,
-        compute: impl FnOnce(&DocumentSnapshot) -> Result<Option<T>>,
-    ) -> Result<Option<T>> {
-        snapshot_context::snapshot_result(&self.store, uri, SnapshotContextKind::Structure, compute)
-            .await
-    }
-
-    async fn semantic_snapshot_context_for_uri(
-        &self,
-        uri: &tower_lsp::lsp_types::Url,
-    ) -> Result<Option<SnapshotContext>> {
-        snapshot_context::snapshot_context_for_uri(
-            &self.store,
-            uri,
-            SnapshotContextKind::SemanticTokens,
-        )
-        .await
+        self.session.structure_snapshot(uri).await
     }
 
     #[cfg(test)]
@@ -248,25 +242,41 @@ impl MermanLanguageServer {
         }
 
         let source = source_descriptor_for_document(&document.uri, document.kind);
-        let analysis = analyze_document_result_shared(Arc::clone(&document.text), analyzer, source);
-        Self::analysis_payload_diagnostics_with_profile(document, analysis.payload(), &profile)
+        let payload = analyze_document(
+            document
+                .text()
+                .expect("available document diagnostics require retained source"),
+            analyzer,
+            source,
+        );
+        Self::analysis_payload_diagnostics_with_profile(document, &payload, &profile)
     }
 
     fn unavailable_document_diagnostics_with_profile(
         document: &StoredDocument,
         profile: &ClientProtocolProfile,
     ) -> Option<Vec<Diagnostic>> {
-        let diagnostic = if let Some(resource_limit) = document.resource_limit {
-            source_limit_diagnostic_for_len(
+        if let Some(rejection) = document.analysis_rejection() {
+            return Some(Self::analysis_payload_diagnostics_with_profile(
+                document,
+                rejection.payload(),
+                profile,
+            ));
+        }
+
+        let diagnostic = if let Some(resource_limit) = document.resource_limit() {
+            source_limit_diagnostic_for_len_and_span(
                 resource_limit.source_len,
                 resource_limit.max_source_bytes,
+                resource_limit.span,
             )
-        } else if let Some(discarded_source) = document.discarded_source {
-            source_discarded_after_limit_change_diagnostic(
+        } else if let Some(discarded_source) = document.discarded_source() {
+            source_discarded_after_limit_change_diagnostic_with_span(
                 discarded_source.source_len,
                 discarded_source.previous_max_source_bytes,
+                discarded_source.span,
             )
-        } else if let Some(sync_error) = document.sync_error {
+        } else if let Some(sync_error) = document.sync_error_state() {
             return Some(vec![document_sync_error_diagnostic(
                 sync_error,
                 document.version,
@@ -298,7 +308,7 @@ impl MermanLanguageServer {
         )
     }
 
-    fn diagnostic_result_id(diagnostics: &[tower_lsp::lsp_types::Diagnostic]) -> String {
+    fn diagnostic_result_id(diagnostics: &[tower_lsp_server::ls_types::Diagnostic]) -> String {
         let serialized = serde_json::to_vec(diagnostics).unwrap_or_default();
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         serialized.hash(&mut hasher);
@@ -306,7 +316,7 @@ impl MermanLanguageServer {
     }
 
     fn document_diagnostic_report(
-        diagnostics: Vec<tower_lsp::lsp_types::Diagnostic>,
+        diagnostics: Vec<tower_lsp_server::ls_types::Diagnostic>,
         result_id: Option<String>,
         previous_result_id: Option<&str>,
     ) -> DocumentDiagnosticReportResult {
@@ -334,222 +344,140 @@ impl MermanLanguageServer {
         ))
     }
 
-    async fn diagnostics_for_current_context(
-        &self,
-        context: &DiagnosticContext,
-    ) -> Option<Vec<tower_lsp::lsp_types::Diagnostic>> {
+    fn diagnostic_publisher(&self) -> Option<DiagnosticPublisher> {
         let profile = self.client_profile();
-        let (diagnostics, analysis_context) =
-            match Self::unavailable_document_diagnostics_with_profile(&context.document, profile) {
-                Some(diagnostics) => (diagnostics, None),
-                None => {
-                    let analysis_context = snapshot_context::snapshot_context_for_uri(
-                        &self.store,
-                        &context.document.uri,
-                        SnapshotContextKind::Diagnostics,
-                    )
-                    .await
-                    .ok()
-                    .flatten()?;
-                    let payload = analysis_context.analysis_payload()?;
-                    let diagnostics = Self::analysis_payload_diagnostics_with_profile(
-                        &context.document,
-                        payload,
-                        profile,
-                    );
-                    (diagnostics, Some(analysis_context))
-                }
-            };
-        let store = self.store.lock().await;
-        (store.is_diagnostic_context_current(context)
-            && analysis_context
-                .as_ref()
-                .is_none_or(|context| store.is_analysis_context_current(context)))
-        .then_some(diagnostics)
+        if profile.diagnostic_pull {
+            return None;
+        }
+        Some(DiagnosticPublisher {
+            client: self.client.clone(),
+            session: self.session.clone(),
+            profile: profile.clone(),
+        })
     }
 
-    async fn diagnostics_or_recompute_latest(
-        &self,
-        mut context: DiagnosticContext,
-    ) -> Result<(DiagnosticContext, Vec<tower_lsp::lsp_types::Diagnostic>)> {
-        for _ in 0..MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS {
-            if let Some(diagnostics) = self.diagnostics_for_current_context(&context).await {
-                return Ok((context, diagnostics));
-            }
-
-            let Some(latest_context) = ({
-                let store = self.store.lock().await;
-                store.diagnostic_context(&context.document.uri)
-            }) else {
-                return Ok((context, Vec::new()));
-            };
-            context = latest_context;
-        }
-
-        Err(stale_diagnostic_recompute_error())
-    }
-
-    async fn commit_diagnostic_state_if_current(
-        &self,
-        context: &DiagnosticContext,
-        state: DocumentDiagnosticState,
-    ) -> Result<()> {
-        let mut store = self.store.lock().await;
-        if store.set_diagnostic_state_if_current(context, state) {
-            Ok(())
-        } else {
-            Err(stale_diagnostic_recompute_error())
-        }
-    }
-
-    async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url) {
-        if self.client_profile().diagnostic_pull {
-            return;
-        }
-
-        let context = {
-            let store = self.store.lock().await;
-            store.diagnostic_context(uri)
-        };
-
-        let Some(context) = context else {
+    async fn enqueue_diagnostic_sync(&self, uri: tower_lsp_server::ls_types::Uri) {
+        let Some(publisher) = self.diagnostic_publisher() else {
             return;
         };
-
-        self.publish_current_diagnostics(&context).await;
+        let key = ClientEffectKey::Document(uri.clone());
+        self.session
+            .enqueue_latest_client_effect(key, async move {
+                publisher.synchronize_uri(uri).await;
+            })
+            .await;
     }
 
-    async fn publish_current_diagnostics(&self, context: &DiagnosticContext) {
-        if let Some(diagnostics) = self.diagnostics_for_current_context(context).await {
-            let profile = self.client_profile();
-            self.client
-                .publish_diagnostics(
-                    context.document.uri.clone(),
-                    diagnostics,
-                    profile
-                        .diagnostics
-                        .version
-                        .then_some(context.document.version),
-                )
-                .await;
-        }
+    async fn enqueue_republish_all(&self) {
+        let Some(publisher) = self.diagnostic_publisher() else {
+            return;
+        };
+        self.session
+            .enqueue_latest_client_effect(ClientEffectKey::AllDiagnostics, async move {
+                publisher.publish_all().await;
+            })
+            .await;
     }
 
-    async fn record_semantic_tokens_state(
-        &self,
-        context: &SnapshotContext,
-        tokens: Vec<tower_lsp::lsp_types::SemanticToken>,
-        result_id: Option<String>,
-    ) -> Result<()> {
-        let mut store = self.store.lock().await;
-        if store.set_semantic_tokens_state_if_current(
-            context,
-            SemanticTokensState::new(result_id, tokens),
-        ) {
-            Ok(())
-        } else {
-            Err(SnapshotContextKind::SemanticTokens.stale_error())
-        }
-    }
-
-    async fn ensure_workspace_symbol_snapshots_current(
-        &self,
-        contexts: &[SnapshotContext],
-    ) -> Result<()> {
-        let store = self.store.lock().await;
-        if store.workspace_symbol_snapshot_contexts_current(contexts) {
-            Ok(())
-        } else {
-            Err(SnapshotContextKind::WorkspaceSymbols.stale_error())
-        }
-    }
-
-    async fn workspace_symbol_snapshot_contexts(&self) -> Result<Vec<SnapshotContext>> {
-        loop {
-            let (plan, executor) = {
-                let store = self.store.lock().await;
-                (
-                    store
-                        .workspace_symbol_snapshot_build_plan(WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE),
-                    store.analysis_executor(),
-                )
-            };
-
-            if plan.batches.is_empty() {
-                return Ok(plan.contexts);
-            }
-
-            for batch in plan.batches {
-                let built = futures::future::join_all(batch.into_iter().map(|request| {
-                    let executor = executor.clone();
-                    async move {
-                        let analysis = executor.execute(&request).await?;
-                        Ok::<_, crate::analysis_executor::AnalysisExecutionError>((
-                            request, analysis,
-                        ))
-                    }
-                }))
-                .await
-                .into_iter()
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(snapshot_context::analysis_execution_error)?;
-                let commit = self
-                    .store
-                    .lock()
-                    .await
-                    .snapshot_contexts_for_requests(built);
-                if commit.stale_open_documents {
-                    return Err(SnapshotContextKind::WorkspaceSymbols.stale_error());
-                }
-                // The current tower-lsp handler path exposes no explicit cancel token here.
-                tokio::task::yield_now().await;
-            }
-        }
-    }
-
-    async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
-        let mut store = self.store.lock().await;
-        store.apply_analyzer_options(options)
+    async fn enqueue_log_message(&self, kind: MessageType, message: impl Into<String>) {
+        let client = self.client.clone();
+        let message = bounded_client_log_message(message);
+        self.session
+            .enqueue_latest_client_effect(ClientEffectKey::LogMessage, async move {
+                client.log_message(kind, message).await;
+            })
+            .await;
     }
 
     async fn apply_initialization_options(
         &self,
         initialization_options: Option<serde_json::Value>,
-    ) -> tower_lsp::jsonrpc::Result<()> {
-        match initialization_options {
-            None => {
-                self.replace_analyzer(default_lsp_analysis_options()).await;
-                Ok(())
-            }
-            Some(value) => {
-                let options = analysis_options_with_lsp_resource_defaults(
-                    analysis_options_from_json_value(&value).map_err(|err| {
-                        tower_lsp::jsonrpc::Error::invalid_params(err.to_string())
-                    })?,
-                );
-                self.replace_analyzer(options).await;
-                Ok(())
-            }
-        }
-    }
-
-    async fn republish_all(&self) {
-        if self.client_profile().diagnostic_pull {
-            return;
-        }
-
-        let contexts = {
-            let store = self.store.lock().await;
-            store.diagnostic_contexts()
+    ) -> tower_lsp_server::jsonrpc::Result<()> {
+        let options = match initialization_options {
+            None => default_lsp_analysis_options(),
+            Some(value) => analysis_options_with_lsp_resource_defaults(
+                analysis_options_from_json_value(&value).map_err(|err| {
+                    tower_lsp_server::jsonrpc::Error::invalid_params(err.to_string())
+                })?,
+            ),
         };
-
-        for context in contexts {
-            self.publish_current_diagnostics(&context).await;
+        if self.session.update_configuration(options).await.accepted() {
+            Ok(())
+        } else {
+            let mut error = tower_lsp_server::jsonrpc::Error::internal_error();
+            error.message = "analysis configuration did not commit".into();
+            Err(error)
         }
     }
 }
 
-#[tower_lsp::async_trait]
+impl DiagnosticPublisher {
+    async fn diagnostics_for_current_context(
+        &self,
+        context: &DiagnosticContext,
+    ) -> Result<Option<Vec<tower_lsp_server::ls_types::Diagnostic>>> {
+        self.session
+            .query_push_diagnostics(context, |document, payload| {
+                MermanLanguageServer::unavailable_document_diagnostics_with_profile(
+                    document,
+                    &self.profile,
+                )
+                .unwrap_or_else(|| {
+                    MermanLanguageServer::analysis_payload_diagnostics_with_profile(
+                        document,
+                        payload.expect("available documents require an analysis payload"),
+                        &self.profile,
+                    )
+                })
+            })
+            .await
+    }
+
+    async fn synchronize_uri(&self, uri: tower_lsp_server::ls_types::Uri) {
+        match self.session.diagnostic_context(&uri).await {
+            Some(context) => self.publish_current(&context).await,
+            None => self.clear(uri).await,
+        }
+    }
+
+    async fn publish_all(&self) {
+        let contexts = self.session.diagnostic_contexts().await;
+        for context in contexts {
+            self.publish_current(&context).await;
+        }
+    }
+
+    async fn publish_current(&self, context: &DiagnosticContext) {
+        match self.diagnostics_for_current_context(context).await {
+            Ok(Some(diagnostics)) => {
+                self.client
+                    .publish_diagnostics(
+                        context.document.uri.clone(),
+                        diagnostics,
+                        self.profile
+                            .diagnostics
+                            .version
+                            .then_some(context.document.version),
+                    )
+                    .await;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::error!(
+                    uri = %context.document.uri.as_str(),
+                    code = ?error.code,
+                    message = %error.message,
+                    "failed to compute push diagnostics"
+                );
+            }
+        }
+    }
+
+    async fn clear(&self, uri: tower_lsp_server::ls_types::Uri) {
+        self.client.publish_diagnostics(uri, Vec::new(), None).await;
+    }
+}
+
 impl LanguageServer for MermanLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let profile = ClientProtocolProfile::negotiate(&params.capabilities);
@@ -558,16 +486,16 @@ impl LanguageServer for MermanLanguageServer {
             .await?;
         self.client_profile
             .set(profile)
-            .map_err(|_| tower_lsp::jsonrpc::Error::invalid_request())?;
+            .map_err(|_| tower_lsp_server::jsonrpc::Error::invalid_request())?;
         Ok(InitializeResult {
             capabilities,
             ..InitializeResult::default()
         })
     }
 
-    async fn initialized(&self, _: tower_lsp::lsp_types::InitializedParams) {
-        self.client
-            .log_message(MessageType::INFO, "merman-lsp initialized")
+    async fn initialized(&self, _: tower_lsp_server::ls_types::InitializedParams) {
+        commit_active_mutation();
+        self.enqueue_log_message(MessageType::INFO, "merman-lsp initialized")
             .await;
     }
 
@@ -578,41 +506,45 @@ impl LanguageServer for MermanLanguageServer {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let doc = params.text_document;
         let kind = document_kind_for_language_id(&doc.language_id, &doc.uri);
-        self.store
-            .lock()
-            .await
-            .open_text(doc.uri.clone(), doc.version, doc.text, kind);
-        self.publish_for_uri(&doc.uri).await;
+        let uri = doc.uri;
+        let committed = self
+            .session
+            .open_document(uri.clone(), doc.version, doc.text, kind)
+            .await;
+        commit_active_mutation();
+        if committed {
+            self.enqueue_diagnostic_sync(uri).await;
+        }
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let doc = params.text_document;
-        let update = self.store.lock().await.apply_text_changes(
-            doc.uri.clone(),
-            doc.version,
-            params.content_changes,
-        );
-        if update.affects_document_state() {
-            self.publish_for_uri(&doc.uri).await;
+        let update = self
+            .session
+            .change_document(doc.uri.clone(), doc.version, params.content_changes)
+            .await;
+        commit_active_mutation();
+        if update.is_some_and(|update| update.affects_document_state()) {
+            self.enqueue_diagnostic_sync(doc.uri).await;
         }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
-        self.publish_for_uri(&uri).await;
+        commit_active_mutation();
+        self.enqueue_diagnostic_sync(uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
-        self.store.lock().await.remove(&uri);
-        if !self.client_profile().diagnostic_pull {
-            self.client.publish_diagnostics(uri, Vec::new(), None).await;
-        }
+        self.session.close_document(&uri).await;
+        commit_active_mutation();
+        self.enqueue_diagnostic_sync(uri).await;
     }
 
     async fn did_change_configuration(
         &self,
-        params: tower_lsp::lsp_types::DidChangeConfigurationParams,
+        params: tower_lsp_server::ls_types::DidChangeConfigurationParams,
     ) {
         let options = if params.settings.is_null() {
             default_lsp_analysis_options()
@@ -620,24 +552,35 @@ impl LanguageServer for MermanLanguageServer {
             match analysis_options_from_json_value(&params.settings) {
                 Ok(options) => analysis_options_with_lsp_resource_defaults(options),
                 Err(err) => {
-                    self.client
-                        .log_message(
-                            MessageType::ERROR,
-                            format!("invalid merman analysis settings: {err}"),
-                        )
-                        .await;
+                    commit_active_mutation();
+                    self.enqueue_log_message(
+                        MessageType::ERROR,
+                        format!("invalid merman analysis settings: {err}"),
+                    )
+                    .await;
                     return;
                 }
             }
         };
 
-        let change = self.replace_analyzer(options).await;
+        let change = self.session.update_configuration(options).await;
+        commit_active_mutation();
+        if change.failed() {
+            self.enqueue_log_message(
+                MessageType::ERROR,
+                "failed to apply merman analysis settings",
+            )
+            .await;
+            return;
+        }
         if change.affects_diagnostics() {
-            self.republish_all().await;
+            self.enqueue_republish_all().await;
         }
         let profile = self.client_profile();
-        self.refresh_coordinator.request(
-            change.affects_snapshots() && profile.semantic_tokens_refresh,
+        self.session.request_refresh(
+            change.affects_snapshots()
+                && profile.semantic_tokens.is_some()
+                && profile.semantic_tokens_refresh,
             change.affects_diagnostics() && profile.diagnostic_pull && profile.diagnostic_refresh,
         );
     }
@@ -648,19 +591,26 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<DocumentDiagnosticReportResult> {
         let uri = params.text_document.uri;
         let previous_result_id = params.previous_result_id.as_deref();
-        let (context, cached) = {
-            let store = self.store.lock().await;
-            (store.diagnostic_context(&uri), store.diagnostic_state(&uri))
-        };
-        if let Some(cached) = cached {
-            return Ok(Self::document_diagnostic_report(
-                cached.diagnostics,
-                Some(cached.result_id),
-                previous_result_id,
-            ));
-        }
-
-        let Some(context) = context else {
+        let profile = self.client_profile();
+        let state = self
+            .session
+            .pull_diagnostics(&uri, |document, payload| {
+                let diagnostics =
+                    Self::unavailable_document_diagnostics_with_profile(document, profile)
+                        .unwrap_or_else(|| {
+                            Self::analysis_payload_diagnostics_with_profile(
+                                document,
+                                payload.expect("available documents require an analysis payload"),
+                                profile,
+                            )
+                        });
+                DocumentDiagnosticState {
+                    result_id: Self::diagnostic_result_id(&diagnostics),
+                    diagnostics,
+                }
+            })
+            .await?;
+        let Some(state) = state else {
             let diagnostics = Vec::new();
             let result_id = Some(Self::diagnostic_result_id(&diagnostics));
             return Ok(Self::document_diagnostic_report(
@@ -670,13 +620,6 @@ impl LanguageServer for MermanLanguageServer {
             ));
         };
 
-        let (context, diagnostics) = self.diagnostics_or_recompute_latest(context).await?;
-        let state = DocumentDiagnosticState {
-            result_id: Self::diagnostic_result_id(&diagnostics),
-            diagnostics,
-        };
-        self.commit_diagnostic_state_if_current(&context, state.clone())
-            .await?;
         Ok(Self::document_diagnostic_report(
             state.diagnostics,
             Some(state.result_id),
@@ -689,12 +632,13 @@ impl LanguageServer for MermanLanguageServer {
         let position = params.text_document_position.position;
         let profile = self.client_profile();
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(Some(CompletionResponse::List(
-                completion_for_snapshot_with_profile(snapshot, position, profile),
-            )))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(Some(CompletionResponse::List(
+                    completion_for_snapshot_with_profile(snapshot, position, profile),
+                )))
+            })
+            .await
     }
 
     async fn completion_resolve(&self, item: CompletionItem) -> Result<CompletionItem> {
@@ -706,17 +650,18 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         let profile = self.client_profile();
-        let current_document_version = {
-            let store = self.store.lock().await;
-            store
-                .get(&params.text_document.uri)
-                .map(|document| document.version)
-        };
-        Ok(code_actions_for_params_with_profile(
-            &params,
-            current_document_version,
-            profile,
-        ))
+        let uri = params.text_document.uri.clone();
+        self.session
+            .query_code_actions(&uri, |context| {
+                let diagnostics = analysis_payload_to_diagnostics(context.analysis_payload());
+                Ok(code_actions_for_snapshot_diagnostics_with_profile(
+                    &context.snapshot,
+                    &diagnostics,
+                    &params,
+                    profile,
+                ))
+            })
+            .await
     }
 
     async fn semantic_tokens_full(
@@ -724,23 +669,20 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
         let uri = params.text_document.uri;
-        let snapshot_context = self.semantic_snapshot_context_for_uri(&uri).await?;
-
-        let Some(snapshot_context) = snapshot_context else {
-            return Ok(None);
-        };
-        let snapshot = &snapshot_context.snapshot;
         let profile = self.client_profile();
-
-        let Some(mut tokens) = semantic_tokens_for_snapshot_with_profile(snapshot, profile) else {
-            return Ok(None);
-        };
-        let result_id = semantic_tokens_result_id(snapshot, &tokens.data);
-        tokens.result_id = Some(result_id.clone());
-        self.record_semantic_tokens_state(&snapshot_context, tokens.data.clone(), Some(result_id))
-            .await?;
-
-        Ok(Some(SemanticTokensResult::Tokens(tokens)))
+        self.session
+            .query_semantic_tokens(&uri, None, |snapshot, _| {
+                let Some(mut tokens) = semantic_tokens_for_snapshot_with_profile(snapshot, profile)
+                    .map_err(|error| semantic_token_planning_error(snapshot, error))?
+                else {
+                    return Ok(None);
+                };
+                let result_id = semantic_tokens_result_id(snapshot, &tokens.data);
+                tokens.result_id = Some(result_id.clone());
+                let state = SemanticTokensState::new(tokens.result_id.clone(), tokens.data.clone());
+                Ok(Some((SemanticTokensResult::Tokens(tokens), Some(state))))
+            })
+            .await
     }
 
     async fn semantic_tokens_full_delta(
@@ -748,43 +690,38 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensDeltaParams,
     ) -> Result<Option<SemanticTokensFullDeltaResult>> {
         let uri = params.text_document.uri;
-        let snapshot_context = self.semantic_snapshot_context_for_uri(&uri).await?;
-        let Some(snapshot_context) = snapshot_context else {
-            return Ok(None);
-        };
-        let snapshot = &snapshot_context.snapshot;
         let profile = self.client_profile();
-
-        let Some(current_tokens) = semantic_tokens_for_snapshot_with_profile(snapshot, profile)
-        else {
-            return Ok(None);
-        };
-        let current_result_id = semantic_tokens_result_id(snapshot, &current_tokens.data);
-        let previous = {
-            let store = self.store.lock().await;
-            store.semantic_tokens_state_for_delta(&uri, params.previous_result_id.as_str())
-        };
-        let delta = match previous {
-            Some(previous) => semantic_tokens_delta_result(
-                &previous.tokens,
-                &current_tokens.data,
-                current_result_id.clone(),
-            ),
-            _ => {
-                let mut tokens = current_tokens.clone();
-                tokens.result_id = Some(current_result_id.clone());
-                SemanticTokensFullDeltaResult::Tokens(tokens)
-            }
-        };
-
-        self.record_semantic_tokens_state(
-            &snapshot_context,
-            current_tokens.data,
-            Some(current_result_id),
-        )
-        .await?;
-
-        Ok(Some(delta))
+        self.session
+            .query_semantic_tokens(
+                &uri,
+                Some(params.previous_result_id.as_str()),
+                |snapshot, previous| {
+                    let Some(current_tokens) =
+                        semantic_tokens_for_snapshot_with_profile(snapshot, profile)
+                            .map_err(|error| semantic_token_planning_error(snapshot, error))?
+                    else {
+                        return Ok(None);
+                    };
+                    let current_result_id =
+                        semantic_tokens_result_id(snapshot, &current_tokens.data);
+                    let delta = match previous {
+                        Some(previous) => semantic_tokens_delta_result(
+                            &previous.tokens,
+                            &current_tokens.data,
+                            current_result_id.clone(),
+                        ),
+                        None => {
+                            let mut tokens = current_tokens.clone();
+                            tokens.result_id = Some(current_result_id.clone());
+                            SemanticTokensFullDeltaResult::Tokens(tokens)
+                        }
+                    };
+                    let state =
+                        SemanticTokensState::new(Some(current_result_id), current_tokens.data);
+                    Ok(Some((delta, Some(state))))
+                },
+            )
+            .await
     }
 
     async fn semantic_tokens_range(
@@ -792,27 +729,21 @@ impl LanguageServer for MermanLanguageServer {
         params: SemanticTokensRangeParams,
     ) -> Result<Option<SemanticTokensRangeResult>> {
         let uri = params.text_document.uri;
-        let snapshot_context = self.semantic_snapshot_context_for_uri(&uri).await?;
-
-        let Some(snapshot_context) = snapshot_context else {
-            return Ok(None);
-        };
         let profile = self.client_profile();
-        let Some(result) = semantic_tokens_for_snapshot_range_with_profile(
-            &snapshot_context.snapshot,
-            params.range,
-            profile,
-        ) else {
-            return Ok(None);
-        };
-        snapshot_context::ensure_snapshot_current(
-            &self.store,
-            &snapshot_context,
-            SnapshotContextKind::SemanticTokens,
-        )
-        .await?;
-
-        Ok(Some(result.into()))
+        self.session
+            .query_semantic_tokens(&uri, None, |snapshot, _| {
+                let Some(result) = semantic_tokens_for_snapshot_range_with_profile(
+                    snapshot,
+                    params.range,
+                    profile,
+                )
+                .map_err(|error| semantic_token_planning_error(snapshot, error))?
+                else {
+                    return Ok(None);
+                };
+                Ok(Some((SemanticTokensRangeResult::from(result), None)))
+            })
+            .await
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -820,10 +751,11 @@ impl LanguageServer for MermanLanguageServer {
         let position = params.text_document_position_params.position;
         let profile = self.client_profile();
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_hover_with_profile(snapshot, position, profile))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_hover_with_profile(snapshot, position, profile))
+            })
+            .await
     }
 
     async fn selection_range(
@@ -832,19 +764,21 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<Vec<SelectionRange>>> {
         let uri = params.text_document.uri;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_selection_ranges(snapshot, &params.positions))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_selection_ranges(snapshot, &params.positions))
+            })
+            .await
     }
 
     async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
         let uri = params.text_document.uri;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(Some(structure_folding_ranges(snapshot)))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(Some(structure_folding_ranges(snapshot)))
+            })
+            .await
     }
 
     async fn document_symbol(
@@ -854,13 +788,14 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document.uri;
         let hierarchical_supported = self.client_profile().hierarchical_document_symbols;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(Some(structure_document_symbols_with_hierarchy_support(
-                snapshot,
-                hierarchical_supported,
-            )))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(Some(structure_document_symbols_with_hierarchy_support(
+                    snapshot,
+                    hierarchical_supported,
+                )))
+            })
+            .await
     }
 
     async fn goto_definition(
@@ -870,27 +805,29 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_goto_definition(snapshot, position))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_goto_definition(snapshot, position))
+            })
+            .await
     }
 
     async fn references(
         &self,
         params: ReferenceParams,
-    ) -> Result<Option<Vec<tower_lsp::lsp_types::Location>>> {
+    ) -> Result<Option<Vec<tower_lsp_server::ls_types::Location>>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_references(
-                snapshot,
-                position,
-                params.context.include_declaration,
-            ))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_references(
+                    snapshot,
+                    position,
+                    params.context.include_declaration,
+                ))
+            })
+            .await
     }
 
     async fn prepare_rename(
@@ -900,45 +837,50 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document.uri;
         let position = params.position;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_prepare_rename(snapshot, position))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_prepare_rename(snapshot, position))
+            })
+            .await
     }
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri.clone();
         let workspace_edit_encoding = self.client_profile().workspace_edit_encoding;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            structure_rename_with_workspace_edit_encoding(snapshot, params, workspace_edit_encoding)
-        })
-        .await
-    }
-
-    async fn symbol(
-        &self,
-        params: WorkspaceSymbolParams,
-    ) -> Result<Option<Vec<tower_lsp::lsp_types::SymbolInformation>>> {
-        let contexts = self.workspace_symbol_snapshot_contexts().await?;
-
-        let snapshots = contexts
-            .iter()
-            .map(|context| Arc::clone(&context.snapshot))
-            .collect::<Vec<_>>();
-        let symbols = structure_workspace_symbols_for_snapshots(&snapshots, &params.query);
-
-        self.ensure_workspace_symbol_snapshots_current(&contexts)
-            .await?;
-
-        Ok(Some(symbols))
+        self.session
+            .query_structure(&uri, |snapshot| {
+                structure_rename_with_workspace_edit_encoding(
+                    snapshot,
+                    params,
+                    workspace_edit_encoding,
+                )
+            })
+            .await
     }
 }
 
-fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
-    let mut error = tower_lsp::jsonrpc::Error::content_modified();
-    error.message = "diagnostic document changed while recomputing".into();
-    error
+fn semantic_token_planning_error(
+    snapshot: &DocumentSnapshot,
+    error: TokenPlanError,
+) -> tower_lsp_server::jsonrpc::Error {
+    if error.is_invalid_range() {
+        return tower_lsp_server::jsonrpc::Error::invalid_params(error.to_string());
+    }
+
+    tracing::error!(
+        uri = snapshot.uri().as_str(),
+        version = snapshot.version(),
+        %error,
+        "semantic token planning failed"
+    );
+    let mut response = tower_lsp_server::jsonrpc::Error::internal_error();
+    response.message = "semantic token planning failed".into();
+    response.data = Some(serde_json::json!({
+        "code": "merman.lsp.semantic_token_planning_failed",
+        "detail": error.to_string(),
+    }));
+    response
 }
 
 fn document_sync_error_diagnostic(
@@ -948,8 +890,14 @@ fn document_sync_error_diagnostic(
 ) -> Diagnostic {
     let message = match sync_error {
         DocumentSyncError::InvalidIncrementalRange => {
-            "document text is out of sync after an invalid incremental edit range; send a full document replacement or reopen the document"
+            "document text is out of sync after an invalid incremental edit range; send a full document replacement or reopen the document".to_string()
         }
+        DocumentSyncError::FullReplacementRequired {
+            source_len,
+            last_max_source_bytes,
+        } => format!(
+            "document text is unavailable after rejecting a {source_len}-byte source with a {last_max_source_bytes}-byte limit; ranged edits cannot recover discarded text, so send a full document replacement or reopen the document"
+        ),
     };
     Diagnostic {
         range: Range::new(Position::new(0, 0), Position::new(0, 0)),
@@ -958,7 +906,7 @@ fn document_sync_error_diagnostic(
             "merman.lsp.document_sync_lost".to_string(),
         )),
         source: Some("merman".to_string()),
-        message: message.to_string(),
+        message,
         related_information: None,
         tags: None,
         code_description: None,
@@ -971,28 +919,25 @@ fn document_sync_error_diagnostic(
 }
 
 fn source_descriptor_for_document(
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &tower_lsp_server::ls_types::Uri,
     kind: DocumentKind,
 ) -> merman_analysis::SourceDescriptor {
-    let source_kind = match kind {
-        DocumentKind::Diagram => SourceKind::Diagram,
-        DocumentKind::Markdown => SourceKind::Markdown,
-        DocumentKind::Mdx => SourceKind::Mdx,
-    };
-    source_descriptor_for_kind(Some(uri.as_str()), source_kind)
+    source_descriptor_for_kind(Some(uri.as_str()), kind.source_kind())
 }
 
 fn document_kind_for_language_id(
     language_id: &str,
-    uri: &tower_lsp::lsp_types::Url,
+    uri: &tower_lsp_server::ls_types::Uri,
 ) -> DocumentKind {
     match language_id {
         "markdown" => DocumentKind::Markdown,
         "mdx" => DocumentKind::Mdx,
         "mermaid" => DocumentKind::Diagram,
-        _ => DocumentKind::from_path(uri.path()),
+        _ => DocumentKind::from_path(uri.path().as_str()),
     }
 }
 
+#[cfg(test)]
+pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;

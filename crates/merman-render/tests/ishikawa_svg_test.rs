@@ -2,9 +2,12 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
-use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::model::IshikawaDiagramLayout;
+use merman_render::resources::RenderResourcePolicy;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 const DEEP_ISHIKAWA_RENDER_DEPTH: usize = 1_200;
 
@@ -19,6 +22,7 @@ fn deep_ishikawa_source(depth: usize) -> String {
 
 #[test]
 fn ishikawa_typed_render_model_outputs_svg() {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let input = r##"---
 config:
   ishikawa:
@@ -43,12 +47,12 @@ ishikawa-beta
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    assert_eq!(parsed.meta.diagram_type, "ishikawa");
+    assert_eq!(parsed.metadata().diagram_type, "ishikawa");
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
-    let LayoutDiagram::IshikawaDiagram(ishikawa_layout) = &layout else {
-        panic!("expected Ishikawa layout");
-    };
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let projection = artifact.layout_json().unwrap();
+    let ishikawa_layout: IshikawaDiagramLayout =
+        serde_json::from_value(projection["layout"]["IshikawaDiagram"].clone()).unwrap();
     assert!(ishikawa_layout.spine.is_some());
     assert_eq!(ishikawa_layout.pairs.len(), 1);
     assert_eq!(ishikawa_layout.pairs[0].upper.sub_groups.len(), 2);
@@ -62,18 +66,17 @@ ishikawa-beta
         1
     );
 
-    let svg = render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
-        &SvgRenderOptions {
-            diagram_id: Some("ishikawa-test".to_string()),
-            ..Default::default()
-        },
-    )
-    .unwrap();
+    let svg = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("ishikawa-test".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap()
+        .svg()
+        .to_owned();
 
     assert!(svg.contains(r#"aria-roledescription="ishikawa""#));
     assert!(svg.contains(r#"width="100%""#));
@@ -172,32 +175,235 @@ ishikawa-beta
 }
 
 #[test]
-fn ishikawa_deep_hierarchy_layout_uses_heap_traversal() {
+fn ishikawa_hand_drawn_renders_rough_primitives_in_mermaid_dom_order() {
+    let render = |seed| {
+        let input = format!(
+            r##"---
+config:
+  look: handDrawn
+  handDrawnSeed: {seed}
+  themeVariables:
+    lineColor: '#123456'
+    mainBkg: '#abcdef'
+---
+ishikawa-beta
+    Root cause
+    Process
+        First detail
+"##
+        );
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let parsed = legacy_init_theme_compat_engine()
+            .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("ishikawa-hand-drawn".to_string()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap()
+            .svg()
+            .to_owned()
+    };
+
+    let svg = render(7);
+    assert_eq!(
+        svg,
+        render(7),
+        "a fixed handDrawnSeed must be deterministic"
+    );
+    assert_ne!(
+        svg,
+        render(8),
+        "a different handDrawnSeed must change visible rough paths"
+    );
+    assert!(!svg.contains("<defs>"));
+    assert!(!svg.contains("<marker"));
+    assert!(!svg.contains("<line"));
+    assert!(!svg.contains("<rect"));
+    assert!(!svg.contains("marker-start"));
+
+    let document = roxmltree::Document::parse(&svg).expect("valid hand-drawn Ishikawa SVG");
+    let diagram_group = document
+        .descendants()
+        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa"))
+        .expect("Ishikawa diagram group");
+    let root_children = diagram_group
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .map(|node| (node.tag_name().name(), node.attribute("class")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        root_children,
+        vec![
+            ("g", Some("ishikawa-head-group")),
+            ("g", Some("ishikawa-pair")),
+            ("g", Some("ishikawa-spine")),
+        ]
+    );
+
+    let head = diagram_group
+        .descendants()
+        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa-head"))
+        .expect("rough Ishikawa head");
+    assert_eq!(head.tag_name().name(), "g");
+    let head_paths = head
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .filter(|node| node.tag_name().name() == "path")
+        .collect::<Vec<_>>();
+    assert_eq!(head_paths.len(), 2);
+    assert_eq!(
+        (
+            head_paths[0].attribute("stroke"),
+            head_paths[0].attribute("stroke-width"),
+            head_paths[0].attribute("fill"),
+        ),
+        (Some("#abcdef"), Some("2.5"), Some("none"))
+    );
+    assert_eq!(
+        (
+            head_paths[1].attribute("stroke"),
+            head_paths[1].attribute("stroke-width"),
+            head_paths[1].attribute("fill"),
+        ),
+        (Some("#123456"), Some("2"), Some("none"))
+    );
+
+    let pair = diagram_group
+        .children()
+        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa-pair"))
+        .expect("Ishikawa pair group");
+    let pair_children = pair
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .map(|node| (node.tag_name().name(), node.attribute("class")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pair_children,
+        vec![
+            ("g", Some("ishikawa-branch")),
+            ("g", None),
+            ("g", Some("ishikawa-label-group")),
+            ("g", Some("ishikawa-sub-group")),
+        ]
+    );
+    let branch = pair
+        .children()
+        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa-branch"))
+        .expect("rough branch");
+    let branch_path = branch
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "path")
+        .expect("rough branch path");
+    assert_eq!(
+        (
+            branch_path.attribute("stroke"),
+            branch_path.attribute("stroke-width"),
+            branch_path.attribute("fill"),
+        ),
+        (Some("#123456"), Some("2"), Some("none"))
+    );
+    let branch_arrow = pair
+        .children()
+        .find(|node| node.is_element() && node.attribute("class").is_none())
+        .expect("rough branch arrow");
+    let branch_arrow_paths = branch_arrow
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .filter(|node| node.tag_name().name() == "path")
+        .collect::<Vec<_>>();
+    assert_eq!(branch_arrow_paths.len(), 2);
+    assert_eq!(
+        (
+            branch_arrow_paths[0].attribute("stroke"),
+            branch_arrow_paths[0].attribute("stroke-width"),
+            branch_arrow_paths[0].attribute("fill"),
+        ),
+        (Some("none"), Some("0"), Some("#123456"))
+    );
+    assert_eq!(
+        (
+            branch_arrow_paths[1].attribute("stroke"),
+            branch_arrow_paths[1].attribute("stroke-width"),
+            branch_arrow_paths[1].attribute("fill"),
+        ),
+        (Some("#123456"), Some("1"), Some("none"))
+    );
+
+    let label_box = pair
+        .descendants()
+        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa-label-box"))
+        .expect("rough cause label box");
+    assert_eq!(label_box.tag_name().name(), "g");
+    let label_box_paths = label_box
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .filter(|node| node.tag_name().name() == "path")
+        .collect::<Vec<_>>();
+    assert_eq!(label_box_paths.len(), 2);
+    assert_eq!(
+        (
+            label_box_paths[0].attribute("stroke"),
+            label_box_paths[0].attribute("stroke-width"),
+            label_box_paths[0].attribute("fill"),
+        ),
+        (Some("#abcdef"), Some("2.5"), Some("none"))
+    );
+    assert_eq!(
+        (
+            label_box_paths[1].attribute("stroke"),
+            label_box_paths[1].attribute("stroke-width"),
+            label_box_paths[1].attribute("fill"),
+        ),
+        (Some("#123456"), Some("2"), Some("none"))
+    );
+
+    let sub_group = pair
+        .descendants()
+        .find(|node| node.is_element() && node.attribute("class") == Some("ishikawa-sub-group"))
+        .expect("Ishikawa sub group");
+    let sub_children = sub_group
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .map(|node| (node.tag_name().name(), node.attribute("class")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sub_children,
+        vec![
+            ("g", Some("ishikawa-sub-branch")),
+            ("g", None),
+            ("text", Some("ishikawa-label align")),
+        ]
+    );
+}
+
+#[test]
+fn ishikawa_deep_hierarchy_is_rejected_before_recursive_projection() {
     let input = deep_ishikawa_source(DEEP_ISHIKAWA_RENDER_DEPTH);
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .unwrap()
         .unwrap();
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
-    let LayoutDiagram::IshikawaDiagram(layout) = layout else {
-        panic!("expected Ishikawa layout");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .begin_session()
+        .unwrap();
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+        Ok(_) => panic!("deep recursive Ishikawa model must be rejected before projection"),
+        Err(error) => error,
+    };
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected typed resource-limit error, got {error}");
     };
 
-    assert!(layout.total_width.is_finite());
-    assert!(layout.total_height.is_finite());
-    assert!(layout.head.is_some());
-    let label_count = layout
-        .pairs
-        .iter()
-        .map(|pair| {
-            1 + pair.upper.sub_groups.len()
-                + pair
-                    .lower
-                    .as_ref()
-                    .map(|branch| 1 + branch.sub_groups.len())
-                    .unwrap_or(0)
-        })
-        .sum::<usize>();
-    assert!(label_count >= DEEP_ISHIKAWA_RENDER_DEPTH);
+    assert_eq!(limit.limit, "typed_model_tree_depth");
+    assert_eq!(limit.actual, DEEP_ISHIKAWA_RENDER_DEPTH);
+    assert!(limit.actual > limit.max);
 }

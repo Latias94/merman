@@ -11,22 +11,26 @@ mod fallback;
 mod icon_registry;
 mod parity;
 mod pipeline;
+pub(crate) mod scanner;
 mod theme_profile;
 
+#[cfg(feature = "layout-cytoscape")]
+pub(crate) use parity::render_architecture_family_artifact;
+pub(crate) use parity::render_builtin_family_artifact;
 pub(crate) use parity::theme as render_theme;
 
 pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{IconRegistry, IconRegistryError, IconSvg};
 pub use parity::*;
 pub use pipeline::{
-    CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
-    ForeignObjectFallbackPostprocessor, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
+    CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
+    ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
-    SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, resvg_safe_svg,
+    SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
+    SvgPostprocessor, SvgReferencePlan, finalize_resvg_svg,
 };
 pub use theme_profile::{
-    CompiledHostTheme, CompiledHostThemeOutput, HostThemeAppearance, HostThemeOutput,
-    HostThemePipelinePreset, HostThemePreset, HostThemeProfile, HostThemeProfileBuilder,
-    HostThemeRoles, HostThemeRootBackground, supported_host_theme_presets,
+    CompiledHostTheme, HostThemeAppearance, HostThemeOutput, HostThemePipelinePreset,
+    HostThemePreset, HostThemeProfile, HostThemeProfileBuilder, HostThemeRoles,
+    HostThemeRootBackground, supported_host_theme_presets,
 };

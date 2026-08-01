@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "VeryLongUnbrokenWords",
     "accTitle": null,
     "accDescr": null,

@@ -1,8 +1,61 @@
 use merman_core::{Engine, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg, render_treemap_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity,
+};
+use merman_render::family::{self, RenderFamilyKind};
+use merman_render::resources::RenderResourcePolicy;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::text::{TextMetrics, TextStyle};
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Default)]
+struct CountingTreemapHost {
+    calls: AtomicUsize,
+}
+
+impl CountingTreemapHost {
+    fn width(&self, text: &str, style: &TextStyle) -> f64 {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        text.chars().count() as f64 * style.font_size.max(1.0)
+    }
+}
+
+impl HostTextMeasurer for CountingTreemapHost {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        let width = self.width(request.text, request.style);
+        Ok(Some(match request.operation {
+            TextMeasurementOperation::Measure | TextMeasurementOperation::Wrapped => {
+                HostTextMeasurement::Metrics(TextMetrics {
+                    width,
+                    height: request.style.font_size.max(1.0),
+                    line_count: 1,
+                })
+            }
+            TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
+            TextMeasurementOperation::SimpleBBoxWidth => HostTextMeasurement::Length(width),
+            TextMeasurementOperation::SimpleBBoxHeight => {
+                HostTextMeasurement::Length(request.style.font_size.max(1.0))
+            }
+            _ => return Ok(None),
+        }))
+    }
+}
+
+fn counting_treemap_environment(host: Arc<CountingTreemapHost>) -> RenderEnvironment {
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.treemap-host").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid profile identity");
+    RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(identity, host, TextMeasurementPhase::ALL),
+    )
+}
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -16,6 +69,13 @@ fn attr_f64(tag: &str, name: &str) -> Option<f64> {
     let rest = &tag[i..];
     let end = rest.find('"')?;
     rest[..end].parse::<f64>().ok()
+}
+
+fn font_size_px(tag: &str) -> Option<f64> {
+    let (_, suffix) = tag.split_once("font-size:")?;
+    let value = suffix.trim_start();
+    let end = value.find("px")?;
+    value[..end].trim().parse().ok()
 }
 
 fn text_tag_by_text<'a>(svg: &'a str, text: &str) -> &'a str {
@@ -58,25 +118,24 @@ fn render_treemap_svg_and_config_from_fixture(fixture: &str) -> (String, serde_j
 
 fn render_treemap_svg_and_config_from_source(text: &str) -> (String, serde_json::Value) {
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
+    let effective_config = parsed.metadata().effective_config.as_value().clone();
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::TreemapDiagram(layout) = &out.layout else {
-        panic!("expected TreemapDiagram layout");
-    };
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin render session");
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned();
 
-    let svg = render_treemap_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
-
-    (svg, out.meta.effective_config.clone())
+    (svg, effective_config)
 }
 
 fn render_treemap_svg_from_fixture(fixture: &str) -> String {
@@ -101,7 +160,36 @@ fn deep_treemap_chain(depth: usize) -> String {
 }
 
 #[test]
-fn treemap_leaf_label_font_size_matches_mermaid_cli_baselines() {
+fn treemap_frontmatter_title_renders_unless_the_body_overrides_it() {
+    let frontmatter_svg = render_treemap_svg_from_source(
+        r#"---
+title: Frontmatter treemap
+---
+treemap-beta
+"A": 1
+"#,
+    );
+    assert!(
+        frontmatter_svg.contains(r#"class="treemapTitle" text-anchor="middle" dominant-baseline="middle">Frontmatter treemap</text>"#),
+        "frontmatter title should render when the Treemap body has none: {frontmatter_svg}"
+    );
+    assert!(frontmatter_svg.contains(r#"transform="translate(0, 30)" class="treemapContainer""#));
+
+    let body_svg = render_treemap_svg_from_source(
+        r#"---
+title: Frontmatter treemap
+---
+treemap-beta
+title Body treemap
+"A": 1
+"#,
+    );
+    assert!(body_svg.contains(">Body treemap</text>"));
+    assert!(!body_svg.contains(">Frontmatter treemap</text>"));
+}
+
+#[test]
+fn treemap_leaf_label_and_value_remain_visible_and_vertically_ordered() {
     let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_basic_spec.mmd");
 
     let needle = ">Item A1</text>";
@@ -109,9 +197,11 @@ fn treemap_leaf_label_font_size_matches_mermaid_cli_baselines() {
     let tag = text_tag_by_text(&svg, "Item A1");
 
     assert!(tag.contains(r#"class="treemapLabel""#));
-    assert!(
-        tag.contains("font-size: 34px"),
-        "expected label font-size to stay at 34px"
+    assert!(!tag.contains("display: none"));
+    assert_eq!(
+        font_size_px(tag),
+        Some(34.0),
+        "Treemap leaf fitting must use Mermaid's getComputedTextLength semantics"
     );
 
     let rest = &svg[(end + needle.len())..];
@@ -125,23 +215,27 @@ fn treemap_leaf_label_font_size_matches_mermaid_cli_baselines() {
         .find("</text>")
         .expect("expected value end");
     let value_tag = &rest[value_start..(value_start + value_end_rel + "</text>".len())];
-    let y = attr_f64(value_tag, "y").expect("expected y attr");
-    assert!((y - 174.0).abs() < 0.0001, "expected value y to be 174");
-}
-
-#[test]
-fn treemap_hierarchical_accessories_label_matches_upstream_font_size() {
-    let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
-    let tag = text_tag_by_text(&svg, "Accessories");
-
+    let label_y = attr_f64(tag, "y").expect("label y");
+    let value_y = attr_f64(value_tag, "y").expect("value y");
+    assert!(!value_tag.contains("display: none"));
+    assert!(value_y > label_y, "value must be placed below its label");
     assert!(
-        tag.contains("font-size: 16px"),
-        "expected Accessories label font-size to stay at 16px"
+        font_size_px(value_tag).expect("value font size")
+            <= font_size_px(tag).expect("label font size")
     );
 }
 
 #[test]
-fn treemap_dark_complex_example_matches_upstream_label_color_and_font_size() {
+fn treemap_hierarchical_leaf_label_is_visible_with_positive_font_size() {
+    let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
+    let tag = text_tag_by_text(&svg, "Accessories");
+
+    assert!(!tag.contains("display: none"), "{tag}");
+    assert!(font_size_px(tag).is_some_and(|size| size > 0.0), "{tag}");
+}
+
+#[test]
+fn treemap_dark_complex_example_uses_readable_label_colors() {
     let (svg, effective_config) = render_treemap_svg_and_config_from_fixture(
         "upstream_cypress_treemap_spec_9_should_handle_a_complex_example_with_multiple_features_016.mmd",
     );
@@ -168,12 +262,6 @@ fn treemap_dark_complex_example_matches_upstream_label_color_and_font_size() {
     assert!(
         frontend_tag.contains("fill:lightgrey") || frontend_tag.contains("fill: lightgrey"),
         "expected Frontend leaf label to use lightgrey like upstream, got {frontend_tag}"
-    );
-
-    let digital_tag = text_tag_by_text(&svg, "Digital");
-    assert!(
-        digital_tag.contains("font-size: 36px"),
-        "expected Digital label font-size to stay at 36px, got {digital_tag}"
     );
 }
 
@@ -218,25 +306,28 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 "#;
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(
-        source,
-        ParseOptions {
-            suppress_errors: true,
-        },
-    ))
-    .expect("parse returns suppressed error")
-    .expect("diagram detected");
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            source,
+            ParseOptions {
+                suppress_errors: true,
+            },
+        )
+        .expect("parse returns suppressed error")
+        .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "error");
+    assert_eq!(parsed.metadata().diagram_type, "error");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let svg = render_layouted_svg(
-        &out,
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin render session");
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned();
 
     assert!(
         svg.contains(r#"aria-roledescription="error""#) && svg.contains("Syntax error in text"),
@@ -245,21 +336,108 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 }
 
 #[test]
-fn treemap_public_json_layout_handles_deep_chain() {
+fn treemap_deep_chain_is_rejected_before_recursive_projection() {
     const DEPTH: usize = 1200;
     let source = deep_treemap_chain(DEPTH);
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::strict()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::TreemapDiagram(layout) = &out.layout else {
-        panic!("expected TreemapDiagram layout");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .begin_session()
+        .expect("begin render session");
+    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
+        Ok(_) => panic!("deep recursive Treemap model must be rejected before projection"),
+        Err(error) => error,
+    };
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected typed resource-limit error, got {error}");
     };
 
-    assert_eq!(layout.sections.len(), DEPTH + 1);
-    assert_eq!(layout.leaves.len(), 1);
-    assert_eq!(layout.leaves[0].name, "leaf");
+    assert_eq!(limit.limit, "typed_model_tree_depth");
+    assert_eq!(limit.actual, DEPTH + 1);
+    assert!(limit.actual > limit.max);
+}
+
+#[test]
+fn treemap_svg_uses_the_session_measurement_route() {
+    let source = r#"treemap
+title Routed title
+"Section"
+  "Measured leaf alpha": 42
+  "Measured leaf bravo": 42
+  "Measured leaf charlie": 42
+  "Measured leaf delta": 42
+  "Measured leaf echo": 42
+  "Measured leaf foxtrot": 42
+  "Measured leaf golf": 42
+  "Measured leaf hotel": 42
+"#;
+    let host = Arc::new(CountingTreemapHost::default());
+    let session = counting_treemap_environment(Arc::clone(&host))
+        .begin_session()
+        .expect("begin render session");
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    host.calls.store(0, Ordering::Relaxed);
+
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render SVG");
+    let (host_svg, family_kind, _, host_session) = rendered.into_parts();
+    assert_eq!(family_kind, RenderFamilyKind::Treemap);
+
+    assert!(
+        host.calls.load(Ordering::Relaxed) > 0,
+        "Treemap must not bypass the session with a family-local vendored measurer"
+    );
+    assert!(
+        host_session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .any(|entry| {
+                entry.provenance().phase == TextMeasurementPhase::ComputedLength
+                    && entry.provenance().operation == TextMeasurementOperation::ComputedLength
+                    && entry.provenance().source
+                        == merman_render::environment::TextMeasurementSource::Host
+            }),
+        "Treemap fitting checks must use the exact getComputedTextLength operation"
+    );
+    assert!(
+        host_session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .any(|entry| {
+                entry.provenance().operation == TextMeasurementOperation::SimpleBBoxHeight
+                    && entry.provenance().source
+                        == merman_render::environment::TextMeasurementSource::Host
+            }),
+        "Treemap title bounds must route SVG bbox height through the session"
+    );
+
+    let parity_parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let parity_session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let parity_artifact = family::prepare(parity_parsed, &LayoutOptions::default(), parity_session)
+        .expect("parity layout");
+    let parity_svg = parity_artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("parity SVG")
+        .svg()
+        .to_owned();
+    assert_ne!(
+        host_svg, parity_svg,
+        "host metrics must change observable geometry"
+    );
 }

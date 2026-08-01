@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Mixed inline and continuation events",
     "accTitle": null,
     "accDescr": null,

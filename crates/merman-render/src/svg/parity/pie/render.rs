@@ -1,116 +1,14 @@
 use super::super::*;
 use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX};
 use merman_core::diagrams::pie::PieDiagramRenderModel;
-const EMPTY_PIE_VIEWBOX: &str = "0 0 225 450";
-const EMPTY_PIE_MAX_WIDTH: &str = "225";
+const EMPTY_PIE_WIDTH: f64 = 225.0;
+const EMPTY_PIE_HEIGHT: f64 = 450.0;
 
 fn pie_legend_rect_style(fill: &str) -> String {
     // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
     // The compare tooling ignores `style`, but we keep this for human inspection parity.
-    let color = css_color_to_rgb_string(fill).unwrap_or_else(|| fill.to_string());
+    let color = super::super::util::cssom_color_value(fill);
     format!("fill: {color}; stroke: {color};")
-}
-
-fn parse_hex_rgb(s: &str) -> Option<(u8, u8, u8)> {
-    let t = s.trim().strip_prefix('#').unwrap_or(s.trim());
-    if t.len() != 6 || !t.chars().all(|c| c.is_ascii_hexdigit()) {
-        return None;
-    }
-    let r = u8::from_str_radix(&t[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&t[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&t[4..6], 16).ok()?;
-    Some((r, g, b))
-}
-
-fn parse_rgb_css(s: &str) -> Option<(u8, u8, u8)> {
-    let inner = s.trim().strip_prefix("rgb(")?.strip_suffix(')')?;
-    let mut parts = inner.split(',').map(|p| p.trim());
-    let parse_channel = |part: &str| -> Option<u8> {
-        let value = part.parse::<f64>().ok()?;
-        if !value.is_finite() {
-            return None;
-        }
-        Some(value.round().clamp(0.0, 255.0) as u8)
-    };
-    let r = parse_channel(parts.next()?)?;
-    let g = parse_channel(parts.next()?)?;
-    let b = parse_channel(parts.next()?)?;
-    Some((r, g, b))
-}
-
-fn parse_hsl_css(s: &str) -> Option<(f64, f64, f64)> {
-    let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
-    let mut parts = inner.split(',').map(|p| p.trim());
-    let h = parts.next()?.parse::<f64>().ok()?;
-    let s = parts
-        .next()?
-        .strip_suffix('%')
-        .unwrap_or_default()
-        .parse::<f64>()
-        .ok()?;
-    let l = parts
-        .next()?
-        .strip_suffix('%')
-        .unwrap_or_default()
-        .parse::<f64>()
-        .ok()?;
-    Some((h, s, l))
-}
-
-fn hsl_to_rgb_u8(h_deg: f64, s_pct: f64, l_pct: f64) -> Option<(u8, u8, u8)> {
-    if !(h_deg.is_finite() && s_pct.is_finite() && l_pct.is_finite()) {
-        return None;
-    }
-
-    let h = (h_deg / 360.0).rem_euclid(1.0);
-    let s = (s_pct / 100.0).clamp(0.0, 1.0);
-    let l = (l_pct / 100.0).clamp(0.0, 1.0);
-
-    if s == 0.0 {
-        let v = (l * 255.0).round().clamp(0.0, 255.0) as u8;
-        return Some((v, v, v));
-    }
-
-    let q = if l < 0.5 {
-        l * (1.0 + s)
-    } else {
-        l + s - l * s
-    };
-    let p = 2.0 * l - q;
-
-    fn hue_to_rgb(p: f64, q: f64, mut t: f64) -> f64 {
-        if t < 0.0 {
-            t += 1.0;
-        }
-        if t > 1.0 {
-            t -= 1.0;
-        }
-        if t < 1.0 / 6.0 {
-            return p + (q - p) * 6.0 * t;
-        }
-        if t < 1.0 / 2.0 {
-            return q;
-        }
-        if t < 2.0 / 3.0 {
-            return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
-        }
-        p
-    }
-
-    let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
-    let g = hue_to_rgb(p, q, h);
-    let b = hue_to_rgb(p, q, h - 1.0 / 3.0);
-
-    let to_u8 = |v: f64| (v * 255.0).round().clamp(0.0, 255.0) as u8;
-    Some((to_u8(r), to_u8(g), to_u8(b)))
-}
-
-fn css_color_to_rgb_string(s: &str) -> Option<String> {
-    let t = s.trim();
-    let (r, g, b) = parse_rgb_css(t)
-        .or_else(|| parse_hex_rgb(t))
-        .or_else(|| parse_hsl_css(t).and_then(|(h, s, l)| hsl_to_rgb_u8(h, s, l)))?;
-    Some(format!("rgb({r}, {g}, {b})"))
 }
 
 fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
@@ -131,47 +29,37 @@ fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String 
     class_name
 }
 
-fn apply_empty_pie_root_viewport(
+fn empty_pie_root_viewport_fallback(
     model: &PieDiagramRenderModel,
-    viewbox_attr: &mut String,
-    max_width_attr: &mut String,
-) -> bool {
+    min_x: f64,
+    min_y: f64,
+    width: f64,
+    height: f64,
+) -> Option<(root_svg::DiagramBounds, root_svg::RootMaxWidth)> {
     if !model.sections.is_empty() {
-        return false;
+        return None;
     }
 
-    let computed_root_is_finite = !viewbox_attr.contains("Infinity")
-        && !viewbox_attr.contains("NaN")
-        && !max_width_attr.contains("Infinity")
-        && !max_width_attr.contains("NaN");
+    let computed_root_is_finite =
+        min_x.is_finite() && min_y.is_finite() && width.is_finite() && height.is_finite();
     if computed_root_is_finite {
-        return false;
+        return None;
     }
 
-    // Empty pie roots used to inherit upstream's invalid `-Infinity` viewport when no sections
-    // were drawn. Keep a finite fallback for that legacy path, but do not clobber valid title-
-    // widened roots that now come from layout bounds directly.
-    *viewbox_attr = EMPTY_PIE_VIEWBOX.to_string();
-    *max_width_attr = EMPTY_PIE_MAX_WIDTH.to_string();
-    true
-}
-
-pub(crate) fn render_pie_diagram_svg(
-    layout: &PieDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: PieDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_pie_diagram_svg_model(layout, &model, effective_config, options)
+    // Mermaid can produce an invalid `-Infinity` viewport when no sections are drawn. Root
+    // Viewport requires finite bounds, but valid title-widened layout bounds remain authoritative.
+    Some((
+        root_svg::DiagramBounds::from_view_box(0.0, 0.0, EMPTY_PIE_WIDTH, EMPTY_PIE_HEIGHT),
+        root_svg::RootMaxWidth::SvgNumber(EMPTY_PIE_WIDTH),
+    ))
 }
 
 pub(crate) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -186,71 +74,46 @@ pub(crate) fn render_pie_diagram_svg_model(
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
-    let mut max_w_attr = fmt_max_width_px(vb_w);
-    let mut viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    apply_empty_pie_root_viewport(model, &mut viewbox_attr, &mut max_w_attr);
-    let mut w_attr = fmt_string(vb_w);
-    let mut h_attr = fmt_string(vb_h);
-    if options.apply_root_overrides {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut viewbox_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_attr,
-            crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override,
-        );
-    }
     let render_settings = crate::pie::PieConfigView::new(effective_config).render_settings();
+    let (root_bounds, root_max_width) = empty_pie_root_viewport_fallback(
+        model, vb_min_x, vb_min_y, vb_w, vb_h,
+    )
+    .unwrap_or_else(|| {
+        (
+            root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
+            root_svg::RootMaxWidth::CssSixSignificant(vb_w),
+        )
+    });
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, render_settings.use_max_width)
+        .with_max_width(root_max_width);
 
     let mut out = String::new();
     let aria_labelledby = model
         .acc_title
         .as_deref()
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = model
         .acc_descr
         .as_deref()
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    if render_settings.use_max_width {
-        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "pie")
-            },
-        );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&w_attr),
-                height_attr: Some(&h_attr),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                tail_attrs: &tail_attrs,
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "pie")
-            },
-        );
-    }
+        .map(|_| format!("chart-desc-{diagram_id}"));
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Pie, diagram_id)
+            .write_open(
+                &mut out,
+                root_spec,
+                root_svg::RootChrome {
+                    aria_labelledby: aria_labelledby.as_deref(),
+                    aria_describedby: aria_describedby.as_deref(),
+                    dom: root_svg::RootDomProfile {
+                        style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                        trailing_newline: false,
+                        ..Default::default()
+                    },
+                    ..root_svg::RootChrome::new(diagram_id, "pie")
+                },
+            )?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -391,7 +254,7 @@ pub(crate) fn render_pie_diagram_svg_model(
 
     out.push_str("</g>");
 
-    match model.title.as_deref() {
+    match layout.title.as_deref() {
         Some(t) => {
             let _ = write!(
                 &mut out,
@@ -442,7 +305,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]
@@ -453,43 +316,47 @@ mod tests {
     #[test]
     fn pie_legend_rect_style_serializes_default_palette_colors_as_rgb() {
         assert_eq!(
-            pie_legend_rect_style("hsl(60, 100%, 57.0588235294%)"),
-            "fill: rgb(255, 255, 36); stroke: rgb(255, 255, 36);"
+            pie_legend_rect_style("hsl(60, 100%, 63.5294117647%)"),
+            "fill: rgb(255, 255, 69); stroke: rgb(255, 255, 69);"
         );
         assert_eq!(
             pie_legend_rect_style("#ECECFF"),
             "fill: rgb(236, 236, 255); stroke: rgb(236, 236, 255);"
+        );
+        assert_eq!(
+            pie_legend_rect_style("hsla(210 65.3846153846% 20.3921568627% / .5)"),
+            "fill: rgba(18, 52, 86, 0.5); stroke: rgba(18, 52, 86, 0.5);"
+        );
+        assert_eq!(
+            pie_legend_rect_style("ReBeccAPurple"),
+            "fill: rebeccapurple; stroke: rebeccapurple;"
         );
     }
 
     #[test]
     fn empty_pie_root_viewport_fallback_only_repairs_non_finite_roots() {
         let model = PieDiagramRenderModel::default();
-        let mut viewbox = "0 0 -Infinity 450".to_string();
-        let mut max_width = "NaN".to_string();
+        let (bounds, max_width) =
+            empty_pie_root_viewport_fallback(&model, 0.0, 0.0, f64::INFINITY, 450.0)
+                .expect("non-finite empty pie should use fallback");
 
-        assert!(apply_empty_pie_root_viewport(
-            &model,
-            &mut viewbox,
-            &mut max_width,
-        ));
-        assert_eq!(viewbox, EMPTY_PIE_VIEWBOX);
-        assert_eq!(max_width, EMPTY_PIE_MAX_WIDTH);
+        assert_eq!(
+            bounds,
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, EMPTY_PIE_WIDTH, EMPTY_PIE_HEIGHT,)
+        );
+        assert_eq!(
+            max_width,
+            root_svg::RootMaxWidth::SvgNumber(EMPTY_PIE_WIDTH)
+        );
     }
 
     #[test]
     fn empty_pie_root_viewport_fallback_preserves_finite_title_bounds() {
         let model = PieDiagramRenderModel::default();
-        let mut viewbox = "0 0 292.400390625 450".to_string();
-        let mut max_width = "292.4".to_string();
-
-        assert!(!apply_empty_pie_root_viewport(
-            &model,
-            &mut viewbox,
-            &mut max_width,
-        ));
-        assert_eq!(viewbox, "0 0 292.400390625 450");
-        assert_eq!(max_width, "292.4");
+        assert_eq!(
+            empty_pie_root_viewport_fallback(&model, 0.0, 0.0, 292.400390625, 450.0),
+            None
+        );
     }
 
     #[test]
@@ -501,6 +368,7 @@ mod tests {
                 max_x: 490.0,
                 max_y: 450.0,
             }),
+            title: None,
             center_x: 225.0,
             center_y: 225.0,
             radius: 185.0,
@@ -513,15 +381,19 @@ mod tests {
         };
         let options = SvgRenderOptions {
             diagram_id: Some("pieFixed".to_string()),
-            apply_root_overrides: false,
             ..SvgRenderOptions::default()
         };
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("render session");
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&options, &debug, &session).expect("SVG execution");
 
         let svg = render_pie_diagram_svg_model(
             &layout,
             &PieDiagramRenderModel::default(),
             &serde_json::json!({"pie": {"useMaxWidth": false}}),
-            &options,
+            &execution,
         )
         .unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;

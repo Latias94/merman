@@ -48,9 +48,7 @@ fn parse_diagram_pie_rejects_negative_slice_values_like_upstream() {
 #[test]
 fn parse_pie_exposes_11_16_config_defaults_and_overrides() {
     let engine = Engine::new();
-    let default = block_on(engine.parse_metadata("pie\n\"A\": 1", ParseOptions::default()))
-        .unwrap()
-        .unwrap();
+    let default = block_on(engine.parse_metadata("pie\n\"A\": 1")).unwrap();
     let pie = &default.effective_config.as_value()["pie"];
     assert_eq!(pie["textPosition"], json!(0.75));
     assert_eq!(pie["donutHole"], json!(0));
@@ -61,9 +59,7 @@ fn parse_pie_exposes_11_16_config_defaults_and_overrides() {
         r#"%%{init: {"pie": {"textPosition": 0.5, "donutHole": 0.4, "legendPosition": "bottom", "highlightSlice": "A"}}}%%
 pie
 "A": 1"#,
-        ParseOptions::default(),
     ))
-    .unwrap()
     .unwrap();
     let pie = &configured.effective_config.as_value()["pie"];
     assert_eq!(pie["textPosition"], json!(0.5));
@@ -83,7 +79,7 @@ fn parse_pie_editor_facts_expose_parser_backed_spans() {
   "Dogs": 3
 "#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("pie", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("pie", text)
         .unwrap()
         .unwrap();
 

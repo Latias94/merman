@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "mermaidRelease": "11.16.0",
+  "plugin": "@mermaid-js/mermaid-zenuml@0.2.3",
+  "oracle": {
+    "version": "3.47.8",
+    "commit": "c81406671c0833baebb9fac08a0cbcdc99b3907d"
+  },
+  "candidate": {
+    "version": "3.50.1",
+    "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36"
+  },
+  "decision": "candidate-selected",
+  "candidateStatus": "pass",
+  "executableEvidence": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json",
+  "matrix": [
+    {
+      "gate": "plugin-contract",
+      "status": "pass",
+      "evidence": {
+        "kind": "artifact",
+        "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#pluginContract",
+        "summary": "The executable harness verifies both published Core ranges admit 3.50.1."
+      }
+    },
+    {
+      "gate": "corpus",
+      "status": "pass",
+      "evidence": {
+        "kind": "command",
+        "reference": "cd playground && npm run verify:zenuml-candidate",
+        "summary": "The harness materializes both packages with scripts disabled and proves complete-corpus parse agreement.",
+        "fixtureCount": 22
+      }
+    },
+    {
+      "gate": "semantic",
+      "status": "pass",
+      "evidence": {
+        "kind": "artifact",
+        "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#semantic",
+        "summary": "Participant, message, fragment, group, return, and creation counts agree across the complete corpus; recovery expansions are classified.",
+        "fixtureCount": 22
+      }
+    },
+    {
+      "gate": "render",
+      "status": "pass",
+      "evidence": {
+        "kind": "artifact",
+        "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#render",
+        "summary": "Oracle and candidate renderToSvg SHA-256 values agree across the complete corpus in the same Chromium process.",
+        "fixtureCount": 22
+      }
+    },
+    {
+      "gate": "strict-inline-artifact",
+      "status": "pass",
+      "evidence": {
+        "kind": "artifact",
+        "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#strictInlineSvg",
+        "summary": "Every candidate native SVG passes the same strict inline publication policy used by the Playground.",
+        "fixtureCount": 22
+      }
+    },
+    {
+      "gate": "execution-isolation",
+      "status": "pass",
+      "evidence": {
+        "kind": "artifact",
+        "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#executionIsolation",
+        "summary": "Desktop and mobile Chromium prove opaque execution, authenticated containment, navigation poisoning, failure replacement, and strict ZenUML parent publication.",
+        "projectCount": 2,
+        "probeCount": 13,
+        "observationCount": 26,
+        "passedObservationCount": 26
+      }
+    },
+    {
+      "gate": "security",
+      "status": "pass",
+      "evidence": {
+        "kind": "artifact",
+        "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#security",
+        "summary": "Desktop and mobile Chromium prove ambient authority denial, zero server egress, and bounded ephemeral storage with machine-recorded probe observations.",
+        "projectCount": 2,
+        "probeCount": 18,
+        "observationCount": 36,
+        "passedObservationCount": 36
+      }
+    },
+    {
+      "gate": "dependency-isolation",
+      "status": "pass",
+      "evidence": {
+        "kind": "command",
+        "reference": "cd playground && npm run verify:dependencies",
+        "summary": "The application runtime and browser-test toolchain use separate manifests, locks, and node_modules trees; both complete npm dependency inventories pass without peer overrides or ignored conflicts."
+      }
+    },
+    {
+      "gate": "resource",
+      "status": "pass",
+      "evidence": {
+        "kind": "artifact",
+        "reference": "tools/upstreams/ZENUML_CORE_CANDIDATE_EVIDENCE.json#resource",
+        "summary": "The browser runtime entry delta is 15,850 bytes (65 basis points); larger CLI/LSP artifacts are outside the imported entry."
+      }
+    }
+  ],
+  "classifiedDeltas": [
+    {
+      "area": "grammar",
+      "source": "src/g4/sequenceLexer.g4, src/g4/sequenceParser.g4",
+      "classification": "intentional-compatible-expansion",
+      "owner": "U4",
+      "summary": "Fix title lookahead and divider predicates; admit Unicode and digit-leading names, known number units, and tolerant incomplete blocks."
+    },
+    {
+      "area": "parser",
+      "source": "src/parser/index.js, src/parser/MessageCollector.ts, src/parser/OrderedParticipants.ts",
+      "classification": "observable-performance-and-recovery",
+      "owner": "U4",
+      "summary": "Memoize immutable parse/model results and preserve full recovery diagnostics."
+    },
+    {
+      "area": "model-and-render",
+      "source": "src/parser/ir, src/svg, src/positioning",
+      "classification": "owned-behavior-port",
+      "owner": "U4",
+      "summary": "New IR/Langium and geometry evidence is ported only where it changes the selected headless semantic contract."
+    },
+    {
+      "area": "tooling",
+      "source": "src/cli, src/parser-langium, src/lsp",
+      "classification": "lazy-companion-surface",
+      "owner": "U3/U4",
+      "summary": "CLI/LSP/browser assets are not part of the normal Mermaid plugin chunk; they receive separate capability and security gates."
+    }
+  ],
+  "excludedLatestMajor": {
+    "version": "4.2.0",
+    "commit": "377f6002edac0e7591d6f788bc2d925e0e8a6f85",
+    "reason": "Rejected from Mermaid 11.16 graph: plugin range ^3.47.0 and Mermaid workspace range ^3.47.8 both exclude major 4.",
+    "nextAdmission": "separate-major-zenuml-v4",
+    "artifact": "tools/upstreams/ZENUML_CORE_V4_DEFERRED_ADMISSION.json",
+    "artifactSha256": "c86e5a8aa45c64404e9e4bfb6decd923e107ce1258cdcaba39c22be4082a9fa0"
+  }
+}

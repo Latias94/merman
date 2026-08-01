@@ -1,0 +1,112 @@
+{
+  "diagramType": "wardley",
+  "model": {
+    "type": "wardley",
+    "title": "Link Features Demo",
+    "accTitle": null,
+    "accDescr": null,
+    "nodes": [
+      {
+        "id": "User",
+        "label": "User",
+        "x": 90.0,
+        "y": 95.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "App",
+        "label": "App",
+        "x": 75.0,
+        "y": 75.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "API",
+        "label": "API",
+        "x": 60.0,
+        "y": 60.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Cache",
+        "label": "Cache",
+        "x": 45.0,
+        "y": 65.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Database",
+        "label": "Database",
+        "x": 80.0,
+        "y": 15.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Service",
+        "label": "Service",
+        "x": 50.0,
+        "y": 45.0,
+        "className": "component",
+        "inertia": false
+      }
+    ],
+    "links": [
+      {
+        "source": "User",
+        "target": "App",
+        "dashed": false
+      },
+      {
+        "source": "App",
+        "target": "API",
+        "dashed": false,
+        "label": "+>",
+        "flow": "forward"
+      },
+      {
+        "source": "API",
+        "target": "Database",
+        "dashed": false,
+        "label": "constraint"
+      },
+      {
+        "source": "API",
+        "target": "Cache",
+        "dashed": false,
+        "label": "+<>",
+        "flow": "bidirectional"
+      },
+      {
+        "source": "Cache",
+        "target": "Service",
+        "dashed": false,
+        "label": "+<",
+        "flow": "backward"
+      },
+      {
+        "source": "Service",
+        "target": "Database",
+        "dashed": false,
+        "label": "backup",
+        "flow": "forward"
+      }
+    ],
+    "trends": [],
+    "pipelines": [],
+    "annotations": [],
+    "notes": [],
+    "accelerators": [],
+    "deaccelerators": [],
+    "annotationsBox": null,
+    "axes": {},
+    "size": {
+      "width": 1100.0,
+      "height": 800.0
+    }
+  }
+}
