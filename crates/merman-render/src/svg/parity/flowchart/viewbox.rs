@@ -266,11 +266,7 @@ where
                         edge: e,
                         origin_x: off.origin_x,
                         origin_y: off.origin_y,
-                        abs_top_transform: off.abs_top_transform,
                         trace_enabled: false,
-                        viewbox_current_bounds: Some((
-                            bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y,
-                        )),
                     },
                     &mut scratch,
                 )

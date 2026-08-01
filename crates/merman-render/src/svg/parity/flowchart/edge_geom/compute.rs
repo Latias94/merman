@@ -11,9 +11,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
         edge,
         origin_x,
         origin_y,
-        abs_top_transform,
         trace_enabled,
-        viewbox_current_bounds,
     } = request;
 
     fn mermaid_round_number(num: f64, precision: i32) -> f64 {
@@ -406,9 +404,6 @@ pub(super) fn flowchart_compute_edge_path_geom(
     let (d, raw_pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
         &line_data,
         interpolate,
-        origin_x,
-        abs_top_transform,
-        viewbox_current_bounds,
         ctx.edge_corner_radius,
         ctx.compact_edge_corners,
         rounded_corner_mask.as_deref(),

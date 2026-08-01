@@ -9,9 +9,6 @@ use super::*;
 pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
     line_data: &[crate::model::LayoutPoint],
     interpolate: &str,
-    origin_x: f64,
-    abs_top_transform: f64,
-    viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
     rounded_radius: f64,
     compact_edge_corners: bool,
     rounded_corner_mask: Option<&[bool]>,
@@ -32,7 +29,6 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
     );
 
     if curve_is_basis {
-        let _ = (origin_x, abs_top_transform, viewbox_current_bounds);
         let (d, raw_pb) = crate::svg::parity::curve::curve_basis_path_d_and_bounds(line_data);
         let d = maybe_close_single_point_path(d, line_data);
         let pb = svg_path_bounds_from_d(&d).or(raw_pb);
@@ -137,10 +133,8 @@ mod tests {
             },
         ];
 
-        let (parity, _, _) =
-            curve_path_d_and_bounds(&line_data, "rounded", 0.0, 0.0, None, 12.0, false, None);
-        let (compact, _, _) =
-            curve_path_d_and_bounds(&line_data, "rounded", 0.0, 0.0, None, 12.0, true, None);
+        let (parity, _, _) = curve_path_d_and_bounds(&line_data, "rounded", 12.0, false, None);
+        let (compact, _, _) = curve_path_d_and_bounds(&line_data, "rounded", 12.0, true, None);
 
         assert!(
             parity.starts_with("M130.484,214.303L133.134,222.253Q135.784,230.203 135.784,238.583"),
@@ -152,16 +146,8 @@ mod tests {
         );
 
         let corner_mask = [true, false, true, true];
-        let (adapter_linear, _, _) = curve_path_d_and_bounds(
-            &line_data,
-            "rounded",
-            0.0,
-            0.0,
-            None,
-            12.0,
-            true,
-            Some(&corner_mask),
-        );
+        let (adapter_linear, _, _) =
+            curve_path_d_and_bounds(&line_data, "rounded", 12.0, true, Some(&corner_mask));
         assert!(
             adapter_linear
                 .starts_with("M130.484,214.303L135.784,230.203L135.784,240.203Q135.784,250.203"),

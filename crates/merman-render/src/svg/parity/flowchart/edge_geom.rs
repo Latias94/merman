@@ -40,9 +40,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeomRequest<'a> {
     pub(super) edge: &'a crate::flowchart::FlowEdge,
     pub(super) origin_x: f64,
     pub(super) origin_y: f64,
-    pub(super) abs_top_transform: f64,
     pub(super) trace_enabled: bool,
-    pub(super) viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
 }
 
 pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
