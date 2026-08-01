@@ -121,7 +121,7 @@ ARTIFACT_DEPENDENCY_APPROVALS: ApprovalCatalog = {
         ("x86_64-unknown-linux-gnu", "sha256:76ecb9fd46caf33f7546df61f7981717f92e6b4d3795686e114300f7ad60f92d"),
     ),
     "rustdoc-static-svg": (
-        ("x86_64-unknown-linux-gnu", "sha256:a74c6a7961cf855a7904ec753f38628ffa8b908f820a1252b7de7d4b5bcffe14"),
+        ("x86_64-unknown-linux-gnu", "sha256:f582425fb2779b7adedfd0767bf556bc875c5063fdc00f253ddba76dc3e16182"),
     ),
     "typst-wasm": (
         ("wasm32-unknown-unknown", "sha256:5a2ccdfe3568d99efa3bb0f55463483f0e533918d342fc2f1aa11e55423573a8"),
