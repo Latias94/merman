@@ -139,7 +139,7 @@ describe("generated semantic-token contract", () => {
     );
     assert.throws(
       () => assertLanguageServerEditorContract(unnegotiatedLegendItem),
-      /not declared by vscode-languageclient@10\.0\.1/,
+      /not declared by vscode-languageclient@10\.1\.0/,
     );
 
     const unnegotiatedModifier = validInitializeResult();
@@ -150,7 +150,7 @@ describe("generated semantic-token contract", () => {
     );
     assert.throws(
       () => assertLanguageServerEditorContract(unnegotiatedModifier),
-      /not declared by vscode-languageclient@10\.0\.1/,
+      /not declared by vscode-languageclient@10\.1\.0/,
     );
 
     const missingStandardLegendItem = validInitializeResult();

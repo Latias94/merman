@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-vscode
 Generator: generate-license-file 4.2.1
-package-lock.json SHA-256: 9aa10f0ad68363ff4d860d9a6b5a627bfa3afb0b541429ec806c252073db9535
+package-lock.json SHA-256: 99b1a4bfa3a4678ef11e0dceff9e6a436fea52f943aa5cb559d5734ac756f1b2
 
 This file was generated with the generate-license-file npm package!
 https://www.npmjs.com/package/generate-license-file
@@ -104,9 +104,9 @@ software or this license, under any kind of legal claim._**
 
 The following npm packages may be included in this product:
 
- - vscode-jsonrpc@9.0.0
- - vscode-languageclient@10.0.1
- - vscode-languageserver-protocol@3.18.1
+ - vscode-jsonrpc@9.0.1
+ - vscode-languageclient@10.1.0
+ - vscode-languageserver-protocol@3.18.2
  - vscode-languageserver-textdocument@1.0.13
  - vscode-languageserver-types@3.18.0
 
@@ -128,7 +128,7 @@ THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 The following npm package may be included in this product:
 
- - brace-expansion@5.0.6
+ - brace-expansion@5.0.9
 
 This package contains the following license:
 

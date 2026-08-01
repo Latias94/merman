@@ -7,6 +7,8 @@ import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { runTests } from "@vscode/test-electron";
 
+import { vscodeTestVersion } from "./vscode-test-version.mjs";
+
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 if (isMainModule()) {
@@ -45,6 +47,7 @@ export async function runSmoke({
     await testRunner({
       extensionDevelopmentPath: extensionRoot,
       extensionTestsPath: path.join(packageRoot, "dist", "extension-host-smoke.js"),
+      version: vscodeTestVersion,
       launchArgs: buildLaunchArgs({
         fixturePath: path.join(packageRoot, "test-fixtures", "extension-host"),
         tempRoot,

@@ -5,6 +5,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
+import { vscodeTestVersion } from "./vscode-test-version.mjs";
+
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const extensionDevelopmentPath =
   process.env.MERMAN_VSCODE_EXTENSION_DEVELOPMENT_PATH ?? packageRoot;
@@ -14,7 +16,7 @@ async function downloadVsCode() {
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await downloadAndUnzipVSCode({
-        extensionDevelopmentPath,
+        version: vscodeTestVersion,
         timeout: 30_000,
       });
     } catch (error) {

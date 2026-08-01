@@ -6,7 +6,7 @@ import {
   SEMANTIC_TOKEN_TYPE_LSP_NAMES,
 } from "./generated/token-descriptor.js";
 
-// `SemanticTokensFeature.fillClientCapabilities` in vscode-languageclient@10.0.1
+// `SemanticTokensFeature.fillClientCapabilities` in vscode-languageclient@10.1.0
 // announces these standard LSP names. The extension pins that dependency, so this
 // is the client capability against which the server's descriptor projection is
 // validated at startup.
@@ -162,7 +162,7 @@ function assertCanonicalDescriptorProjection(
     }
     if (!requiredNames.includes(value)) {
       throw contractError(
-        `${name} contain ${JSON.stringify(value)} not declared by vscode-languageclient@10.0.1`,
+        `${name} contain ${JSON.stringify(value)} not declared by vscode-languageclient@10.1.0`,
       );
     }
     if (descriptorIndex < nextDescriptorIndex) {

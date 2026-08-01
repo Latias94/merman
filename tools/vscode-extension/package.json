@@ -194,6 +194,14 @@
             "minimum": 0,
             "order": 40
           },
+          "merman.analysis.resources.limits.max_document_diagrams": {
+            "type": "integer",
+            "default": 0,
+            "markdownDescription": "Optional Mermaid fence count cap for Markdown and MDX documents. `0` uses the server default.",
+            "scope": "window",
+            "minimum": 0,
+            "order": 41
+          },
           "merman.analysis.lint.profile": {
             "type": "string",
             "enum": [
@@ -690,7 +698,7 @@
     "licenses:generate": "node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --write"
   },
   "dependencies": {
-    "vscode-languageclient": "10.0.1"
+    "vscode-languageclient": "10.1.0"
   },
   "devDependencies": {
     "@types/node": "26.0.1",
