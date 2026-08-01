@@ -3,12 +3,12 @@
 This matrix records the current product readiness bar for Mermaid families and editor features.
 It is intentionally conservative: only parser-backed facts count as mature body semantics.
 
-This table is the maturity contract for first-class LSP families. The parser and render registries
-also include additional diagram types, but they are not treated as mature LSP commitments unless
-they appear here.
-
-Families outside this table can still be parser-backed in the core engine. That is useful for
-rendering and compatibility, but it is not enough to count as a mature editor contract.
+This table is the explicit maturity contract for 35 admitted public diagram types. Every public
+type in the current release is admitted, but the LSP contract remains independent from the render
+catalog: a future type returned by `merman_core::supported_diagrams()` requires its own editor-evidence
+review before joining this matrix. The lower-level family catalog also contains syntax aliases,
+layout variants, and the internal error fallback. Aliases and layout variants inherit their public
+product row instead of creating a second LSP maturity claim.
 
 ## Ownership Boundary
 
@@ -29,7 +29,7 @@ theme supertypes, source-owned TextMate fallback scopes, and Mermaid semantic-hi
 standard VS Code types and modifiers are not redeclared. Editor-only theme metadata is excluded from
 the packed-protocol digest and guarded by the generated manifest drift check instead, so a scope or
 description change cannot create a false LSP/WASM incompatibility.
-`editor-language/token-equivalence-v1.json` records the exact planner output for the 35-family
+`editor-language/token-equivalence-v1.json` records the exact planner output for the 35-public-type
 baseline plus malformed recovery, and LSP, Web WASM, Monaco, and VS Code gates consume that one
 generated evidence artifact without transport-local sorting or token name lookup.
 
@@ -83,50 +83,64 @@ semantic tokens. Legal source-start header and template completion remains catal
 
 ## Family Coverage
 
-| Family | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Flowchart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, subgraphs, directive prefixes, payload roles, and parser-backed authoring hints when enabled. |
-| Sequence | Yes | Yes | Yes | Yes | Yes | Yes | Mature for participants, actors, message endpoints, notes, boxes, directive payloads, and interaction payload prefixes. |
-| State | Yes | Yes | Yes | Yes | Yes | Yes | Mature for state ids, references, outlines, and role-aware payloads. |
-| Class | Yes | Yes | Yes | Yes | Yes | Yes | Mature for class ids, members, annotations, directives, and style payload roles. |
-| ER | Yes | Yes | Yes | Yes | Yes | Yes | Mature for entities, relationships, attributes, and directive payload roles. |
-| Mindmap | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, explicit labels, directives, and role-separated payloads. |
-| Gantt | Yes | Yes | Yes | Yes | Yes | Yes | Mature for task ids, dependency refs, click targets, section outlines, directives, and accessibility payloads. |
-| Architecture | Yes | Yes | Yes | Yes | Yes | Yes | Mature for groups, services, junctions, edges, and accessibility/title payloads. |
-| GitGraph | Yes | Yes | Yes | Yes | Yes | Yes | Mature for commits, branches, merges, cherry-picks, and accessibility/title payloads. |
-| Kanban | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, items, icons, classes, and role-separated payloads. |
-| Radar | Yes | Yes | Yes | Yes | Yes | Yes | Mature for axes, curves, options, and accessibility/title payloads. |
-| Treemap | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, leaves, class defs, values, and accessibility/title payloads. |
-| Block | Yes | Yes | Yes | Yes | Yes | Yes | Mature for block ids, nested composites, edges, class/style targets, arrow directions, and role-separated payload spans. |
-| C4 | Yes | Yes | Yes | Yes | Yes | Yes | Mature for C4 aliases, boundaries, relations, style/update targets, layout values, and role-separated title/accessibility/payload spans. |
-| ZenUML | Yes | Yes | Yes | Yes | Yes | Yes | Grammar-derived family facts cover source-mapped participants, groups, messages, creation, calls, assignments, returns, references, fragments, titles, and payload spans. |
-| Journey | Yes | Yes | Yes | Yes | Yes | Yes | Mature for section outlines, task rows, scores, and actor payloads. |
-| Info | Yes | Yes | Yes | Yes | Yes | Yes | Mature for free-form metadata payloads and directive prefixes. |
-| Timeline | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, accessibility text, section outlines, and event payloads. |
-| Pie | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title and slice payloads. |
-| Packet | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title, accessibility text, and bit-field payloads. |
-| Sankey | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node and link payloads. |
-| Tree View | Yes | Yes | Yes | Yes | Yes | Yes | Mature for tree node ids, labels, and structural outline roles. |
-| Ishikawa | Yes | Yes | Yes | Yes | Yes | Yes | Mature for effect/cause ids, outline entries, and parser-backed payload spans. |
-| Event Modeling | Yes | Yes | Yes | Yes | Yes | Yes | Mature for timeline entities, time frames, and event payloads. |
-| Quadrant Chart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for quadrant labels, axes, and point payloads. |
-| Requirement | Yes | Yes | Yes | Yes | Yes | Yes | Mature for requirements, elements, relationships, and traced payloads. |
-| Venn | Yes | Yes | Yes | Yes | Yes | Yes | Mature for set ids, unions, text nodes, and styling payloads. |
-| XY Chart | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, axes, and series payloads. |
+Rows follow the catalog-owned public diagram-type order. `Yes` means the feature is correctly wired
+to parser-backed facts, including returning no target when a valid position has no applicable
+entity. It does not mean that every family grammar exposes renameable entities at every position.
+
+| Family | Public diagram type | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Architecture | `architecture` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for groups, services, junctions, edges, and accessibility/title payloads. |
+| Block | `block` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for block ids, nested composites, edges, class/style targets, arrow directions, and role-separated payload spans. |
+| C4 | `c4` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for C4 aliases, boundaries, relations, style/update targets, layout values, and role-separated title/accessibility/payload spans. |
+| Class | `class` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for class ids, members, annotations, directives, and style payload roles. |
+| Cynefin | `cynefin` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for domain outlines, transitions, titles, and source-mapped payloads; the current grammar intentionally exposes no addressable rename group. |
+| ER | `er` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for entities, relationships, attributes, and directive payload roles. |
+| Event Modeling | `eventmodeling` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for timeline entities, time frames, and event payloads. |
+| Flowchart | `flowchart` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, subgraphs, directive prefixes, payload roles, and parser-backed authoring hints when enabled. |
+| Gantt | `gantt` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for task ids, dependency refs, click targets, section outlines, directives, and accessibility payloads. |
+| GitGraph | `gitgraph` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for commits, branches, merges, cherry-picks, and accessibility/title payloads. |
+| Info | `info` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for free-form metadata payloads and directive prefixes. |
+| Ishikawa | `ishikawa` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for effect/cause ids, outline entries, and parser-backed payload spans. |
+| Journey | `journey` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for section outlines, task rows, scores, and actor payloads. |
+| Kanban | `kanban` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, items, icons, classes, and role-separated payloads. |
+| Mindmap | `mindmap` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node ids, explicit labels, directives, and role-separated payloads. |
+| Packet | `packet` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title, accessibility text, and bit-field payloads. |
+| Pie | `pie` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for title and slice payloads. |
+| Quadrant Chart | `quadrantchart` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for quadrant labels, axes, and point payloads. |
+| Radar | `radar` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for axes, curves, options, and accessibility/title payloads. |
+| Railroad IR | `railroad` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for rule definitions, nonterminal references, expression constructors, titles, comments, and IR-specific rename validation. |
+| Railroad ABNF | `railroadAbnf` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for ABNF rules, references, repetitions, alternatives, comments, and ABNF-specific rename validation. |
+| Railroad EBNF | `railroadEbnf` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for EBNF rules, references, choices, optional/repeated terms, comments, and EBNF-specific rename validation. |
+| Railroad PEG | `railroadPeg` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for PEG rules, references, predicates, suffix operators, comments, and PEG-specific rename validation. |
+| Requirement | `requirement` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for requirements, elements, relationships, and traced payloads. |
+| Sankey | `sankey` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for node and link payloads. |
+| Sequence | `sequence` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for participants, actors, message endpoints, notes, boxes, directive payloads, and interaction payload prefixes. |
+| State | `state` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for state ids, references, outlines, and role-aware payloads. |
+| Swimlane | `swimlane` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for lane/subgraph structure, node ids, edges, payload roles, and the independent Swimlane layout/config identity. |
+| Timeline | `timeline` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, accessibility text, section outlines, and event payloads. |
+| Tree View | `treeView` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for tree node ids, labels, and structural outline roles. |
+| Treemap | `treemap` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for sections, leaves, class defs, values, and accessibility/title payloads. |
+| Venn | `venn` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for set ids, unions, text nodes, and styling payloads. |
+| Wardley | `wardley` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for anchors, components, pipelines, links, evolution references, notes, and source-mapped coordinates. |
+| XY Chart | `xychart` | Yes | Yes | Yes | Yes | Yes | Yes | Mature for titles, axes, and series payloads. |
+| ZenUML | `zenuml` | Yes | Yes | Yes | Yes | Yes | Yes | Grammar-derived family facts cover source-mapped participants, groups, messages, creation, calls, assignments, returns, references, fragments, titles, and payload spans. |
 
 ## Coverage Boundary
 
-The matrix above is intentionally narrower than the full parser/render registry. The following
-entries are still outside the first-class LSP product-family contract:
+The matrix above explicitly admits all 35 public types in the current release. Lower-level catalog
+ids such as `flowchart-v2`, `flowchart-elk`, `stateDiagram`, and `classDiagram` inherit the matching
+public product row. Source headers such as `stateDiagram-v2` and `classDiagram-v2` map to the latter
+two catalog ids; they are not separate product types. The following logical family is the only
+catalog entry outside the first-class LSP product contract:
 
 | Family | Status | Why |
 | --- | --- | --- |
 | Error | Internal only | Fallback diagram only; not a product-family commitment. |
 
-Payload-first first-class families deserve a separate note: Info, Pie, Packet, and XY Chart are
-intentionally sparse on rename/reference targets. They still belong in the first-class contract
-because completion, hover, diagnostics, and semantic indexing are wired, but the family itself
-does not expose many entity-bearing spans.
+Payload- or outline-first first-class families deserve a separate note: Cynefin, Info, Pie, Packet,
+and XY Chart are intentionally sparse on rename/reference targets. They still belong in the
+first-class contract because completion, hover, diagnostics, and semantic indexing are wired, but
+the family itself does not expose many entity-bearing spans.
 
 ## Semantic Fact Provenance
 
