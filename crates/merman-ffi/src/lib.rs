@@ -9,9 +9,9 @@
 #[cfg(feature = "svg")]
 use merman_bindings_core::HostMeasurementResult;
 use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError, BindingEngineAdmissionMode,
-    BindingError, BindingErrorKind, BindingOperationRequest, BindingResourceErrorDetails,
-    BindingStatus,
+    ArtifactCapabilitySurface, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionError,
+    BindingEngineAdmissionMode, BindingError, BindingErrorKind, BindingOperationRequest,
+    BindingResourceErrorDetails, BindingStatus, TextMeasurementProviderProjection,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -297,6 +297,17 @@ fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, Bi
     BindingEngine::from_options(options_json)
 }
 
+fn native_transport_capability_surface() -> ArtifactCapabilitySurface {
+    #[cfg(feature = "svg")]
+    let text_measurement = TextMeasurementProviderProjection::PreserveCompiled;
+    #[cfg(not(feature = "svg"))]
+    let text_measurement = TextMeasurementProviderProjection::VendoredOnly;
+
+    merman_bindings_core::binding_transport_capability_surface()
+        .project_to_descriptor_target("native", text_measurement)
+        .expect("the C transport exposes a valid native capability surface")
+}
+
 fn engine_registry() -> &'static Mutex<NativeEngineRegistry> {
     ENGINE_REGISTRY.get_or_init(|| Mutex::new(NativeEngineRegistry::default()))
 }
@@ -310,9 +321,12 @@ fn runtime_catalog_bytes() -> Result<&'static [u8], NativeFailure> {
         return Ok(bytes);
     }
 
-    let candidate = merman_bindings_core::runtime_catalog_json(MERMAN_NATIVE_ABI_VERSION)
-        .map_err(native_failure_from_binding)?
-        .into_boxed_slice();
+    let candidate = merman_bindings_core::runtime_catalog_json_for(
+        MERMAN_NATIVE_ABI_VERSION,
+        native_transport_capability_surface(),
+    )
+    .map_err(native_failure_from_binding)?
+    .into_boxed_slice();
     let _ = RUNTIME_CATALOG.set(candidate);
     Ok(RUNTIME_CATALOG
         .get()
@@ -2040,10 +2054,8 @@ mod tests {
         assert!(catalog.get("capability_vocabulary").is_none());
         assert_eq!(
             catalog["capabilities"],
-            serde_json::to_value(
-                merman_bindings_core::binding_transport_capability_surface().runtime_capabilities()
-            )
-            .unwrap()
+            serde_json::to_value(native_transport_capability_surface().runtime_capabilities())
+                .unwrap()
         );
         assert!(
             !catalog["capabilities"]["system_adapter_ids"]
@@ -2163,33 +2175,20 @@ mod tests {
                     assert_eq!(actual, expected, "{metadata_id}");
                 }
                 Err(expected) => {
+                    let expected_status = native_failure_from_binding(expected.clone()).status;
+                    assert_eq!(status, expected_status, "{metadata_id}");
+                    assert_ne!(result.allocation_token, 0, "{metadata_id}");
+                    let error = result_json(&result);
+                    assert_eq!(error["kind"], expected.kind().id(), "{metadata_id}");
                     assert_eq!(
-                        status,
-                        native_failure_from_binding(expected).status,
+                        error["capability_id"],
+                        serde_json::json!(expected.capability_id()),
                         "{metadata_id}"
                     );
-                    assert_ne!(result.allocation_token, 0, "{metadata_id}");
                 }
             }
             unsafe { api.result_free.unwrap()(&mut result) };
         }
-    }
-
-    #[cfg(not(feature = "analysis"))]
-    #[test]
-    fn metadata_collect_preserves_missing_capability_failures() {
-        let api = api_table();
-        let mut result = native_result();
-        assert_eq!(
-            unsafe {
-                api.metadata_collect.unwrap()(borrowed_slice(b"lint-rule-catalog"), &mut result)
-            },
-            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
-        );
-        let error = result_json(&result);
-        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
-        assert_eq!(error["capability_id"], "analysis");
-        unsafe { api.result_free.unwrap()(&mut result) };
     }
 
     #[test]
@@ -2545,9 +2544,8 @@ mod tests {
         );
     }
 
-    #[cfg(not(feature = "svg"))]
     #[test]
-    fn missing_capability_failure_is_an_owned_result() {
+    fn svg_operation_follows_the_resolved_dependency_surface_and_owns_its_result() {
         let api = api_table();
         let mut config_result = native_result();
         let mut token = 0;
@@ -2559,14 +2557,21 @@ mod tests {
 
         let request = native_request(MERMAN_NATIVE_OPERATION_SVG, b"flowchart TD\nA --> B");
         let mut result = native_result();
-        assert_eq!(
-            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
-            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
-        );
+        let status = unsafe { api.execute_collect.unwrap()(token, &request, &mut result) };
         assert_ne!(result.allocation_token, 0);
-        let error = result_json(&result);
-        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
-        assert_eq!(error["capability_id"], "svg");
+        if native_transport_capability_surface()
+            .runtime_capabilities()
+            .has_operation("svg")
+        {
+            assert_eq!(status, MERMAN_NATIVE_STATUS_OK);
+            let data = unsafe { std::slice::from_raw_parts(result.data.data, result.data.len) };
+            assert!(data.starts_with(b"<svg"));
+        } else {
+            assert_eq!(status, MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION);
+            let error = result_json(&result);
+            assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
+            assert_eq!(error["capability_id"], "svg");
+        }
         unsafe { api.result_free.unwrap()(&mut result) };
         assert_eq!(result.allocation_token, 0);
         assert_eq!(
@@ -2934,36 +2939,6 @@ mod tests {
             unsafe { api.result_free.unwrap()(&mut result) };
         }
 
-        assert_eq!(
-            unsafe { api.engine_try_close.unwrap()(token) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-    }
-
-    #[cfg(not(feature = "svg"))]
-    #[test]
-    fn unavailable_svg_is_a_typed_native_error() {
-        let api = api_table();
-        let mut config_result = native_result();
-        let mut token = 0;
-        let config = native_config();
-        assert_eq!(
-            unsafe { api.engine_new.unwrap()(&config, &mut token, &mut config_result) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-        unsafe { api.result_free.unwrap()(&mut config_result) };
-
-        let request = native_request(MERMAN_NATIVE_OPERATION_SVG, b"flowchart TD\nA --> B");
-        let mut result = native_result();
-        assert_eq!(
-            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
-            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
-        );
-        assert_eq!(result.status, MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION);
-        let error = result_json(&result);
-        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_MISSING_CAPABILITY);
-        assert_eq!(error["capability_id"], "svg");
-        unsafe { api.result_free.unwrap()(&mut result) };
         assert_eq!(
             unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK

@@ -1503,7 +1503,7 @@ class CiWorkflowSecurityTests(unittest.TestCase):
         self.assertEqual(verify["run"], "npm test --prefix platforms/node")
         self.assertLess(job["steps"].index(install), job["steps"].index(verify))
 
-    def test_ci_proves_binding_catalog_resists_external_timing_unification(self) -> None:
+    def test_ci_proves_binding_catalog_resists_external_feature_unification(self) -> None:
         workflow = parse_workflow_structure(WORKFLOW_ROOT / "ci.yml")
         job = workflow_job(workflow, "build-test")
         binding_step = workflow_step(
@@ -1513,7 +1513,7 @@ class CiWorkflowSecurityTests(unittest.TestCase):
 
         for contract in (
             "cargo nextest run --locked -p merman-bindings-core --no-default-features",
-            "--features merman-bindings-core/svg,merman/math,merman/system-timing",
+            "--features merman-bindings-core/svg,merman/layout-cytoscape,merman/layout-elk,merman/math,merman/system-timing",
             "artifact_profile_recipe.py apple-uniffi-native",
             'qualified_features="merman-uniffi/${features//,/,merman-uniffi/}"',
             "cargo nextest run --locked -p merman-uniffi -p merman --no-default-features",

@@ -47,7 +47,7 @@ pub use metadata::{
     configurable_lint_rule_catalog_json, diagram_family_capabilities,
     diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
     runtime_capabilities_json, runtime_capabilities_json_for, runtime_catalog, runtime_catalog_for,
-    runtime_catalog_json, supported_diagrams, supported_diagrams_json,
+    runtime_catalog_json, runtime_catalog_json_for, supported_diagrams, supported_diagrams_json,
     supported_host_theme_presets, supported_host_theme_presets_json, supported_themes,
     supported_themes_json,
 };

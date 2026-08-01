@@ -166,20 +166,101 @@ fn typst_result_payload(
 }
 
 fn typst_options_json(options_json: &[u8]) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
-    if typst_fixed_resource_options().is_none() {
-        return Ok(options_json.to_vec());
+    let normalized =
+        merman_bindings_core::apply_resource_ceiling_json(options_json, "constrained", &[])?;
+    let mut options = serde_json::from_slice::<Value>(&normalized).map_err(|error| {
+        merman_bindings_core::BindingError::new(
+            merman_bindings_core::BindingStatus::InternalError,
+            format!("failed to decode normalized Typst options: {error}"),
+        )
+    })?;
+    let root = options.as_object_mut().ok_or_else(|| {
+        merman_bindings_core::BindingError::new(
+            merman_bindings_core::BindingStatus::InternalError,
+            "normalized Typst options must be an object",
+        )
+    })?;
+
+    match root.get("runtime_policy") {
+        Some(Value::String(policy)) if policy.trim().eq_ignore_ascii_case("native") => {
+            return Err(merman_bindings_core::BindingError::missing_capability(
+                "system-clock",
+                "runtime_policy=native is not available in the Typst transport",
+            ));
+        }
+        Some(Value::String(policy)) if policy.trim().eq_ignore_ascii_case("deterministic") => {
+            root.insert(
+                "runtime_policy".to_string(),
+                Value::String("deterministic".to_string()),
+            );
+        }
+        Some(_) => {}
+        None => {
+            root.insert(
+                "runtime_policy".to_string(),
+                Value::String("deterministic".to_string()),
+            );
+        }
     }
-    merman_bindings_core::apply_resource_ceiling_json(options_json, "constrained", &[])
+
+    if typst_capability_surface()
+        .runtime_capabilities()
+        .has_operation("svg")
+    {
+        let environment = root
+            .entry("environment".to_string())
+            .or_insert_with(|| json!({}));
+        let environment = environment.as_object_mut().ok_or_else(|| {
+            merman_bindings_core::BindingError::new(
+                merman_bindings_core::BindingStatus::OptionsJsonError,
+                "invalid options_json: `environment` must be an object",
+            )
+        })?;
+        match environment.get("math_renderer") {
+            Some(Value::String(renderer)) if renderer.trim().eq_ignore_ascii_case("ratex") => {
+                return Err(merman_bindings_core::BindingError::missing_capability(
+                    "math",
+                    "environment.math_renderer=ratex is not available in the Typst transport",
+                ));
+            }
+            Some(Value::String(renderer)) if renderer.trim().eq_ignore_ascii_case("none") => {
+                environment.insert(
+                    "math_renderer".to_string(),
+                    Value::String("none".to_string()),
+                );
+            }
+            Some(Value::String(renderer)) => {
+                return Err(merman_bindings_core::BindingError::new(
+                    merman_bindings_core::BindingStatus::InvalidArgument,
+                    format!("unsupported environment.math_renderer: {renderer}"),
+                ));
+            }
+            Some(_) => {
+                return Err(merman_bindings_core::BindingError::new(
+                    merman_bindings_core::BindingStatus::OptionsJsonError,
+                    "invalid options_json: `environment.math_renderer` must be a string",
+                ));
+            }
+            None => {
+                environment.insert(
+                    "math_renderer".to_string(),
+                    Value::String("none".to_string()),
+                );
+            }
+        }
+    }
+
+    serde_json::to_vec(&options).map_err(|error| {
+        merman_bindings_core::BindingError::new(
+            merman_bindings_core::BindingStatus::InternalError,
+            format!("failed to encode normalized Typst options: {error}"),
+        )
+    })
 }
 
-#[cfg(any(feature = "svg", feature = "analysis"))]
-fn typst_fixed_resource_options() -> Option<Value> {
-    Some(json!({ "profile": "constrained" }))
-}
-
-#[cfg(not(any(feature = "svg", feature = "analysis")))]
-fn typst_fixed_resource_options() -> Option<Value> {
-    None
+#[cfg(test)]
+fn typst_fixed_resource_options() -> Value {
+    json!({ "profile": "constrained" })
 }
 
 #[cfg(test)]
@@ -235,20 +316,20 @@ mod tests {
     }
 
     #[test]
-    fn typst_target_projection_preserves_descriptor_allowed_layouts() {
+    fn typst_target_projection_tracks_resolved_backend_and_closed_operation_set() {
         let projected = typst_capability_surface().runtime_capabilities();
         let backend = merman_bindings_core::compiled_runtime_capabilities();
-        let expected_operation_ids: &[&str] = &[
-            #[cfg(feature = "analysis")]
-            "analysis-json",
-            #[cfg(feature = "svg")]
-            "svg",
-        ];
-        assert_eq!(projected.operation_ids.as_slice(), expected_operation_ids);
         assert!(projected
             .operation_ids
             .iter()
             .all(|operation| TYPST_BINDING_OPERATION_IDS.contains(operation)));
+        for operation in TYPST_BINDING_OPERATION_IDS {
+            assert_eq!(
+                projected.has_operation(operation),
+                backend.has_operation(operation),
+                "the Typst projection must follow the resolved backend for {operation}"
+            );
+        }
         for layout in ["layout-cytoscape", "layout-elk"] {
             assert_eq!(
                 projected.capability_ids.contains(&layout),
@@ -258,16 +339,27 @@ mod tests {
         }
     }
 
-    #[cfg(any(feature = "layout-cytoscape", feature = "layout-elk"))]
     #[test]
-    fn layout_features_keep_the_fixed_constrained_resource_policy() {
+    fn typst_transport_keeps_a_fixed_constrained_resource_policy() {
         assert_eq!(
             typst_fixed_resource_options(),
-            Some(json!({ "profile": "constrained" }))
+            json!({ "profile": "constrained" })
         );
+
+        let options = typst_options_json(b"").expect("default Typst options");
+        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+        assert_eq!(payload["runtime_policy"], "deterministic");
+        assert_eq!(payload["resources"]["profile"], "constrained");
+        if typst_capability_surface()
+            .runtime_capabilities()
+            .has_operation("svg")
+        {
+            assert_eq!(payload["environment"]["math_renderer"], "none");
+        } else {
+            assert!(payload.get("environment").is_none());
+        }
     }
 
-    #[cfg(any(feature = "svg", feature = "analysis"))]
     #[test]
     fn typst_resource_policy_preserves_stricter_caller_limits() {
         let options = typst_options_json(br#"{"resources":{"limits":{"max_source_bytes":4096}}}"#)
@@ -281,7 +373,6 @@ mod tests {
         );
     }
 
-    #[cfg(any(feature = "svg", feature = "analysis"))]
     #[test]
     fn typst_resource_policy_preserves_analysis_wrapper_shape() {
         for wrapper in ["analysis", "merman"] {
@@ -291,13 +382,52 @@ mod tests {
 
             assert_eq!(
                 payload[wrapper]["resources"],
-                typst_fixed_resource_options().expect("fixed resource policy")
+                typst_fixed_resource_options()
             );
+            assert_eq!(payload["runtime_policy"], "deterministic");
+            assert!(payload[wrapper].get("runtime_policy").is_none());
+            assert!(payload[wrapper].get("environment").is_none());
+            if typst_capability_surface()
+                .runtime_capabilities()
+                .has_operation("svg")
+            {
+                assert_eq!(payload["environment"]["math_renderer"], "none");
+            }
             assert!(payload.get("resources").is_none());
         }
     }
 
-    #[cfg(any(feature = "svg", feature = "analysis"))]
+    #[test]
+    fn typst_target_policy_rejects_native_runtime_and_ratex_math() {
+        let native = typst_options_json(br#"{"runtime_policy":"native"}"#).unwrap_err();
+        assert_eq!(
+            native.status(),
+            merman_bindings_core::BindingStatus::UnsupportedOperation
+        );
+        assert_eq!(
+            native.kind(),
+            merman_bindings_core::BindingErrorKind::MissingCapability
+        );
+        assert_eq!(native.capability_id(), Some("system-clock"));
+
+        if typst_capability_surface()
+            .runtime_capabilities()
+            .has_operation("svg")
+        {
+            let ratex =
+                typst_options_json(br#"{"environment":{"math_renderer":"ratex"}}"#).unwrap_err();
+            assert_eq!(
+                ratex.status(),
+                merman_bindings_core::BindingStatus::UnsupportedOperation
+            );
+            assert_eq!(
+                ratex.kind(),
+                merman_bindings_core::BindingErrorKind::MissingCapability
+            );
+            assert_eq!(ratex.capability_id(), Some("math"));
+        }
+    }
+
     #[test]
     fn explicit_looser_resource_profile_is_rejected() {
         let error =
@@ -309,7 +439,6 @@ mod tests {
         assert!(error.message().contains("loosen the transport ceiling"));
     }
 
-    #[cfg(any(feature = "svg", feature = "analysis"))]
     #[test]
     fn null_resource_profile_cannot_bypass_the_typst_limits() {
         let options = typst_options_json(
@@ -325,7 +454,6 @@ mod tests {
         );
     }
 
-    #[cfg(any(feature = "svg", feature = "analysis"))]
     #[test]
     fn malformed_wrappers_fail_closed_before_resource_policy_selection() {
         for options in [

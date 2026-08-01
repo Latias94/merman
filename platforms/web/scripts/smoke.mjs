@@ -375,31 +375,17 @@ const resourceLimitIds = runtimeCatalog.resources.limits
   .map((limit) => limit.id)
   .sort();
 assert.ok(resourceLimitIds.includes("max_source_bytes"));
-if (hasCapability("svg")) {
-  assert.deepEqual(resourceLimitIds, [
-    "max_layout_work_units",
-    "max_model_items",
-    "max_model_nesting_depth",
-    "max_model_text_bytes",
-    "max_source_bytes",
-    "max_svg_bytes",
-    "max_svg_elements",
-  ]);
-} else if (hasCapability("ascii")) {
-  assert.deepEqual(resourceLimitIds, [
-    "max_model_items",
-    "max_model_nesting_depth",
-    "max_model_text_bytes",
-    "max_source_bytes",
-  ]);
-} else {
-  assert.deepEqual(resourceLimitIds, [
-    "max_model_items",
-    "max_model_nesting_depth",
-    "max_model_text_bytes",
-    "max_source_bytes",
-  ]);
-}
+const expectedResourceLimitIds = [
+  ...(hasCapability("ascii") ? ["max_ascii_grid_cells"] : []),
+  ...(hasCapability("analysis") ? ["max_document_diagrams"] : []),
+  ...(hasCapability("svg") ? ["max_layout_work_units"] : []),
+  "max_model_items",
+  "max_model_nesting_depth",
+  "max_model_text_bytes",
+  "max_source_bytes",
+  ...(hasCapability("svg") ? ["max_svg_bytes", "max_svg_elements"] : []),
+].sort();
+assert.deepEqual(resourceLimitIds, expectedResourceLimitIds);
 assertRuntimeOwnerEvidence(capabilities, {
   runtime_capability_ids: presetManifest.runtime_capability_ids,
   runtime_output_ids: presetManifest.outputs,
@@ -1352,6 +1338,7 @@ async function runSameProcessPackageSmoke() {
       "max_model_items",
       "max_model_text_bytes",
       "max_model_nesting_depth",
+      "max_document_diagrams",
     ]
   );
   assert.equal(typeof analysis.renderSvg, "undefined");

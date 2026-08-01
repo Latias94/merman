@@ -17,8 +17,9 @@ use jni::{
 #[cfg(feature = "svg")]
 use jni::{errors::Error as JniError, objects::Global};
 use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingError,
-    BindingOperationRequest, BindingOperationResult, BindingStatus, execute_once,
+    ArtifactCapabilitySurface, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode,
+    BindingError, BindingOperationRequest, BindingOperationResult, BindingStatus,
+    TextMeasurementProviderProjection, execute_once,
 };
 #[cfg(feature = "svg")]
 use std::cell::Cell;
@@ -31,6 +32,18 @@ use std::{
 };
 
 const ANDROID_TRANSPORT_API_VERSION: u32 = 1;
+
+fn android_transport_capability_surface() -> ArtifactCapabilitySurface {
+    #[cfg(feature = "svg")]
+    let text_measurement = TextMeasurementProviderProjection::PreserveCompiled;
+    #[cfg(not(feature = "svg"))]
+    let text_measurement = TextMeasurementProviderProjection::VendoredOnly;
+
+    merman_bindings_core::binding_transport_capability_surface()
+        .project_to_descriptor_target("native", text_measurement)
+        .expect("the Android transport exposes a valid native capability surface")
+}
+
 struct JniReusableEngine {
     engine: BindingEngine,
     admission: Arc<BindingEngineAdmission>,
@@ -384,7 +397,10 @@ pub extern "system" fn native_runtime_catalog_json(
     with_env_resolved(&mut unowned_env, |env| {
         Ok(result_to_java_string(
             env,
-            merman_bindings_core::runtime_catalog_json(ANDROID_TRANSPORT_API_VERSION),
+            merman_bindings_core::runtime_catalog_json_for(
+                ANDROID_TRANSPORT_API_VERSION,
+                android_transport_capability_surface(),
+            ),
         ))
     })
 }

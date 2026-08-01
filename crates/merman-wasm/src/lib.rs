@@ -577,23 +577,6 @@ mod tests {
         assert!(decode_wasm_host_text_measurement(request, result(Some(1.0), Some(3))).is_err());
     }
 
-    #[test]
-    fn render_svg_impl_returns_svg() {
-        let result = merman_bindings_core::render_svg(b"flowchart TD\nA[Hello] --> B[World]", b"");
-
-        if cfg!(feature = "svg") {
-            let svg = string_result(result).unwrap();
-            assert!(svg.contains("<svg"));
-            assert!(svg.contains("Hello"));
-        } else {
-            let error = result.unwrap_err();
-            assert_eq!(
-                error.status(),
-                merman_bindings_core::BindingStatus::UnsupportedOperation
-            );
-        }
-    }
-
     #[cfg(feature = "svg")]
     #[test]
     fn svg_plan_reports_the_owner_capability_payload() {
@@ -622,17 +605,6 @@ mod tests {
                 .unwrap()
                 .contains("no Mermaid diagram")
         );
-    }
-
-    #[cfg(not(feature = "analysis"))]
-    #[test]
-    fn analysis_entry_points_report_missing_analysis_feature() {
-        let err = merman_bindings_core::validate_json(b"flowchart TD\nA", b"").unwrap_err();
-        assert_eq!(
-            err.status(),
-            merman_bindings_core::BindingStatus::UnsupportedOperation
-        );
-        assert!(err.message().contains("analysis feature"));
     }
 
     #[cfg(all(target_arch = "wasm32", feature = "analysis"))]
@@ -849,14 +821,6 @@ mod tests {
         assert!(json["capability_id"].is_null());
         assert!(json["message"].as_str().unwrap().contains("options_json"));
 
-        if !cfg!(feature = "svg") {
-            let err = merman_bindings_core::render_svg(b"flowchart TD\nA", b"{}").unwrap_err();
-            let json = binding_error_payload_value(&err).unwrap();
-            assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_OPERATION");
-            assert_eq!(json["kind"], "missing-capability");
-            assert_eq!(json["capability_id"], "svg");
-        }
-
         let err = BindingError::resource_limit(
             "embedded_image_decode",
             "max_embedded_image_bytes",
@@ -874,34 +838,34 @@ mod tests {
     }
 
     #[test]
-    fn runtime_catalog_follows_features_and_reports_local_relations() {
+    fn runtime_catalog_tracks_the_resolved_dependency_surface_and_local_relations() {
         let catalog = wasm_runtime_catalog();
         let capabilities = catalog.capabilities;
+        let backend = merman_bindings_core::compiled_runtime_capabilities();
 
-        assert_eq!(capabilities.has_capability("svg"), cfg!(feature = "svg"));
-        assert_eq!(
-            capabilities.has_capability("analysis"),
-            cfg!(feature = "analysis")
-        );
-        assert_eq!(
-            capabilities.has_capability("ascii"),
-            cfg!(feature = "ascii")
-        );
+        for capability_id in [
+            "analysis",
+            "ascii",
+            "layout-cytoscape",
+            "layout-elk",
+            "math",
+            "svg",
+        ] {
+            assert_eq!(
+                capabilities.has_capability(capability_id),
+                backend.has_capability(capability_id),
+                "Web projection must follow the resolved backend for {capability_id}"
+            );
+        }
         assert!(
             capabilities.system_adapter_ids.is_empty(),
             "browser WASM must not claim native system adapters"
         );
         assert_eq!(
-            capabilities.has_capability("layout-elk"),
-            cfg!(feature = "layout-elk")
-        );
-        assert_eq!(capabilities.has_capability("math"), cfg!(feature = "math"));
-        assert_eq!(
             capabilities.has_capability("editor"),
             cfg!(feature = "editor")
         );
-        #[cfg(feature = "svg")]
-        {
+        if capabilities.has_capability("svg") {
             let providers = capabilities
                 .text_measurement
                 .as_ref()
@@ -911,8 +875,10 @@ mod tests {
             assert!(providers.contains(&"vendored"));
             assert_eq!(
                 providers.contains(&"host-callback"),
-                cfg!(target_arch = "wasm32")
+                cfg!(all(feature = "svg", target_arch = "wasm32"))
             );
+        } else {
+            assert!(capabilities.text_measurement.is_none());
         }
 
         assert!(
@@ -945,25 +911,18 @@ mod tests {
                 .all(|output| output.system_fonts.is_none()),
             "browser WASM cannot discover host system fonts"
         );
-        if cfg!(feature = "svg") {
-            let resources = catalog.resources;
-            assert_eq!(resources.general_binding_default_profile, "interactive");
-            assert_eq!(resources.profiles.len(), 4);
-        } else {
-            let resources = catalog.resources;
-            let limit_ids = resources
-                .limits
-                .iter()
-                .map(|limit| limit.id)
-                .collect::<Vec<_>>();
-            assert_eq!(
-                limit_ids,
-                vec![
-                    "max_source_bytes",
-                    "max_model_items",
-                    "max_model_text_bytes",
-                    "max_model_nesting_depth",
-                ]
+        let operation_ids = &catalog.capabilities.operation_ids;
+        let resources = catalog.resources;
+        assert_eq!(resources.general_binding_default_profile, "interactive");
+        assert_eq!(resources.profiles.len(), 4);
+        for limit in resources.limits {
+            assert!(
+                limit
+                    .operation_ids
+                    .iter()
+                    .all(|operation_id| operation_ids.contains(operation_id)),
+                "resource limit {} must only name callable Web operations",
+                limit.id
             );
         }
     }

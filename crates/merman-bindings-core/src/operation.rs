@@ -985,23 +985,26 @@ mod tests {
         assert!(baseline_svg.contains("id=\"base-engine\""));
     }
 
-    #[cfg(all(feature = "svg", not(feature = "layout-elk")))]
+    #[cfg(feature = "svg")]
     #[test]
-    fn missing_layout_engine_is_a_typed_capability_error() {
+    fn elk_layout_request_follows_the_resolved_dependency_feature_set() {
         let engine = BindingEngine::new(b"").unwrap();
-        let error = engine
-            .execute(BindingOperationRequest {
-                operation_id: "svg",
-                source: b"---\nconfig:\n  layout: elk\n---\nflowchart TD\n  A --> B\n",
-                uri: None,
-                options_json: b"",
-            })
-            .expect_err("ELK is not compiled");
+        let result = engine.execute(BindingOperationRequest {
+            operation_id: "svg",
+            source: b"---\nconfig:\n  layout: elk\n---\nflowchart TD\n  A --> B\n",
+            uri: None,
+            options_json: b"",
+        });
 
-        assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
-        assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
-        assert_eq!(error.capability_id(), Some("layout-elk"));
-        assert!(error.message().contains("`layout-elk`"));
+        if merman::svg::layout_elk_available() {
+            assert_eq!(result.unwrap().media_type, "image/svg+xml");
+        } else {
+            let error = result.expect_err("ELK is not compiled");
+            assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+            assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+            assert_eq!(error.capability_id(), Some("layout-elk"));
+            assert!(error.message().contains("`layout-elk`"));
+        }
     }
 
     #[cfg(feature = "png")]

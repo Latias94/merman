@@ -6,8 +6,8 @@
 //! not replace the canonical C ABI in `merman-ffi`.
 
 use merman_bindings_core::{
-    BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode, BindingError,
-    BindingErrorKind, BindingStatus,
+    ArtifactCapabilitySurface, BindingEngine, BindingEngineAdmission, BindingEngineAdmissionMode,
+    BindingError, BindingErrorKind, BindingStatus, TextMeasurementProviderProjection,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{HostTextMeasurementError, HostTextMeasurer};
@@ -104,7 +104,7 @@ impl MermanError {
     }
 }
 
-#[cfg(any(not(feature = "analysis"), not(feature = "svg")))]
+#[cfg(not(feature = "svg"))]
 fn missing_capability_error(capability_id: &'static str, message: &'static str) -> MermanError {
     MermanError::from_binding(BindingError::missing_capability(capability_id, message))
 }
@@ -355,7 +355,6 @@ fn uniffi_white_space(
     }
 }
 
-#[cfg(feature = "analysis")]
 fn uniffi_lint_rule(rule: merman_bindings_core::RuleCatalogEntry) -> MermanLintRuleCatalogEntry {
     MermanLintRuleCatalogEntry {
         id: rule.id.to_string(),
@@ -396,8 +395,9 @@ impl MermanEngine {
     /// descriptor-owned vocabulary required to validate it. Foreign bindings
     /// must consume this endpoint instead of composing separate metadata reads.
     pub fn runtime_catalog_json(&self) -> Result<String, MermanError> {
-        string_output(merman_bindings_core::runtime_catalog_json(
+        string_output(merman_bindings_core::runtime_catalog_json_for(
             UNIFFI_BINDING_API_VERSION,
+            native_transport_capability_surface(),
         ))
     }
 
@@ -605,41 +605,21 @@ impl MermanEngine {
     }
 
     pub fn lint_rule_catalog(&self) -> Result<Vec<MermanLintRuleCatalogEntry>, MermanError> {
-        #[cfg(feature = "analysis")]
-        {
-            Ok(merman_bindings_core::lint_rule_catalog()
-                .map_err(MermanError::from_binding)?
-                .into_iter()
-                .map(uniffi_lint_rule)
-                .collect())
-        }
-        #[cfg(not(feature = "analysis"))]
-        {
-            Err(missing_capability_error(
-                "analysis",
-                "lint rule catalog requires the analysis capability",
-            ))
-        }
+        Ok(merman_bindings_core::lint_rule_catalog()
+            .map_err(MermanError::from_binding)?
+            .into_iter()
+            .map(uniffi_lint_rule)
+            .collect())
     }
 
     pub fn configurable_lint_rule_catalog(
         &self,
     ) -> Result<Vec<MermanLintRuleCatalogEntry>, MermanError> {
-        #[cfg(feature = "analysis")]
-        {
-            Ok(merman_bindings_core::configurable_lint_rule_catalog()
-                .map_err(MermanError::from_binding)?
-                .into_iter()
-                .map(uniffi_lint_rule)
-                .collect())
-        }
-        #[cfg(not(feature = "analysis"))]
-        {
-            Err(missing_capability_error(
-                "analysis",
-                "configurable lint rule catalog requires the analysis capability",
-            ))
-        }
+        Ok(merman_bindings_core::configurable_lint_rule_catalog()
+            .map_err(MermanError::from_binding)?
+            .into_iter()
+            .map(uniffi_lint_rule)
+            .collect())
     }
 }
 
@@ -848,6 +828,17 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
 
 fn binding_engine_for_transport(options_json: &[u8]) -> Result<BindingEngine, BindingError> {
     BindingEngine::from_options(options_json)
+}
+
+fn native_transport_capability_surface() -> ArtifactCapabilitySurface {
+    #[cfg(feature = "svg")]
+    let text_measurement = TextMeasurementProviderProjection::PreserveCompiled;
+    #[cfg(not(feature = "svg"))]
+    let text_measurement = TextMeasurementProviderProjection::VendoredOnly;
+
+    merman_bindings_core::binding_transport_capability_surface()
+        .project_to_descriptor_target("native", text_measurement)
+        .expect("the UniFFI transport exposes a valid native capability surface")
 }
 
 fn execute_once_operation(
@@ -1417,16 +1408,34 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "svg")]
     #[test]
-    fn engine_renders_svg() {
-        let svg = engine()
-            .render_svg("flowchart TD\nA[Hello] --> B[World]".to_string(), None)
-            .unwrap();
+    fn engine_render_svg_matches_the_resolved_transport_surface() {
+        let result = engine().render_svg("flowchart TD\nA[Hello] --> B[World]".to_string(), None);
 
-        assert!(svg.contains("<svg"));
-        assert!(svg.contains("Hello"));
-        assert!(svg.contains("World"));
+        if native_transport_capability_surface()
+            .runtime_capabilities()
+            .has_operation("svg")
+        {
+            let svg = result.unwrap();
+            assert!(svg.contains("<svg"));
+            assert!(svg.contains("Hello"));
+            assert!(svg.contains("World"));
+        } else {
+            let MermanError::Binding {
+                code,
+                code_name,
+                kind,
+                capability_id,
+                resource,
+                message,
+            } = result.unwrap_err();
+            assert_eq!(code, BindingStatus::UnsupportedOperation.code());
+            assert_eq!(code_name, BindingStatus::UnsupportedOperation.code_name());
+            assert_eq!(kind, MermanErrorKind::MissingCapability);
+            assert_eq!(capability_id.as_deref(), Some("svg"));
+            assert_eq!(resource, None);
+            assert_eq!(message, "SVG rendering requires the svg feature");
+        }
     }
 
     #[test]
@@ -1918,6 +1927,14 @@ mod tests {
     #[test]
     fn engine_exposes_metadata() {
         let engine = engine();
+        let runtime_catalog_value: serde_json::Value =
+            serde_json::from_str(&engine.runtime_catalog_json().unwrap()).unwrap();
+        let runtime_capability_ids = runtime_catalog_value["capabilities"]["capability_ids"]
+            .as_array()
+            .expect("runtime capability IDs");
+        let has_ascii = runtime_capability_ids.iter().any(|id| id == "ascii");
+        let has_analysis = runtime_capability_ids.iter().any(|id| id == "analysis");
+        let has_svg = runtime_capability_ids.iter().any(|id| id == "svg");
 
         assert!(
             engine
@@ -1925,8 +1942,7 @@ mod tests {
                 .contains(&"flowchart".to_string())
         );
         let ascii_capabilities = engine.ascii_capabilities();
-        #[cfg(feature = "ascii")]
-        {
+        if has_ascii {
             let sequence = ascii_capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == "sequence")
@@ -1946,15 +1962,16 @@ mod tests {
                 .expect("expected UniFFI ASCII capabilities to include class");
             assert_eq!(class.support_level, "partial");
             assert!(class.summary_fallback);
+        } else {
+            assert!(ascii_capabilities.is_empty());
         }
-        #[cfg(not(feature = "ascii"))]
-        assert!(ascii_capabilities.is_empty());
         assert!(engine.supported_themes().contains(&"default".to_string()));
         let host_theme_presets = engine.supported_host_theme_presets();
-        #[cfg(feature = "svg")]
-        assert!(host_theme_presets.contains(&"one-dark".to_string()));
-        #[cfg(not(feature = "svg"))]
-        assert!(host_theme_presets.is_empty());
+        if has_svg {
+            assert!(host_theme_presets.contains(&"one-dark".to_string()));
+        } else {
+            assert!(host_theme_presets.is_empty());
+        }
         let capabilities = engine.diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
             capability.diagram_type == "flowchart"
@@ -1969,8 +1986,7 @@ mod tests {
                 && !capability.has_header
                 && capability.config_namespace.as_deref() == Some("flowchart")
         }));
-        #[cfg(feature = "analysis")]
-        {
+        if has_analysis {
             let lint_rules = engine.lint_rule_catalog().unwrap();
             assert!(lint_rules.iter().any(|rule| {
                 rule.id == "merman.authoring.flowchart.explicit_direction"
@@ -1987,17 +2003,13 @@ mod tests {
                     .iter()
                     .all(|rule| rule.configurable && rule.category != "internal")
             );
-        }
-        #[cfg(not(feature = "analysis"))]
-        {
+        } else {
             let lint_error = engine.lint_rule_catalog().unwrap_err();
             assert_missing_capability(&lint_error, "analysis");
             let configurable_error = engine.configurable_lint_rule_catalog().unwrap_err();
             assert_missing_capability(&configurable_error, "analysis");
         }
-        let runtime_catalog: serde_json::Value =
-            serde_json::from_str(&engine.runtime_catalog_json().unwrap()).unwrap();
-        let runtime_catalog = runtime_catalog
+        let runtime_catalog = runtime_catalog_value
             .as_object()
             .expect("runtime catalog must be an object");
         assert_eq!(
@@ -2027,12 +2039,9 @@ mod tests {
             UNIFFI_BINDING_API_VERSION
         );
         assert_eq!(
-            runtime_catalog["capabilities"]["system_adapter_ids"],
-            serde_json::json!(
-                merman_bindings_core::binding_transport_capability_surface()
-                    .runtime_capabilities()
-                    .system_adapter_ids
-            )
+            runtime_catalog["capabilities"],
+            serde_json::to_value(native_transport_capability_surface().runtime_capabilities())
+                .unwrap()
         );
         assert!(
             !runtime_catalog["capabilities"]["system_adapter_ids"]
@@ -2045,7 +2054,7 @@ mod tests {
             runtime_catalog["capabilities"]["capability_ids"]
                 .as_array()
                 .is_some_and(|ids| ids.iter().any(|id| id == "svg")),
-            cfg!(feature = "svg")
+            has_svg
         );
         assert!(runtime_catalog.get("features").is_none());
         assert_eq!(
@@ -2503,28 +2512,5 @@ mod tests {
         assert_eq!(capability_id, None);
         assert_eq!(resource, None);
         assert!(message.contains("invalid options_json"));
-    }
-
-    #[cfg(not(feature = "svg"))]
-    #[test]
-    fn engine_reports_render_feature_as_unavailable() {
-        let err = engine()
-            .render_svg("flowchart TD\nA[Hello]".to_string(), None)
-            .unwrap_err();
-
-        let MermanError::Binding {
-            code,
-            code_name,
-            kind,
-            capability_id,
-            resource,
-            message,
-        } = err;
-        assert_eq!(code, BindingStatus::UnsupportedOperation.code());
-        assert_eq!(code_name, BindingStatus::UnsupportedOperation.code_name());
-        assert_eq!(kind, MermanErrorKind::MissingCapability);
-        assert_eq!(capability_id.as_deref(), Some("svg"));
-        assert_eq!(resource, None);
-        assert_eq!(message, "SVG rendering requires the svg feature");
     }
 }

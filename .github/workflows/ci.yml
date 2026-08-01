@@ -408,7 +408,16 @@ jobs:
         if: matrix.parity
         run: |
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features merman-bindings-core/svg,merman/math,merman/system-timing \
+            --lib --cargo-quiet \
+            -E 'test(render_and_layout_entry_points_report_missing_svg_capability) | test(ascii_entry_point_reports_missing_ascii_feature) | test(analysis_entry_points_report_missing_analysis_feature)'
+          cargo nextest run --locked -p merman-ffi --no-default-features \
+            --lib --cargo-quiet \
+            -E 'test(metadata_collect_returns_owned_catalogs_and_typed_failures) | test(svg_operation_follows_the_resolved_dependency_surface_and_owns_its_result)'
+          cargo nextest run --locked -p merman-uniffi --no-default-features \
+            --lib --cargo-quiet \
+            -E 'test(engine_exposes_metadata) | test(engine_render_svg_matches_the_resolved_transport_surface)'
+          cargo nextest run --locked -p merman-bindings-core --no-default-features \
+            --features merman-bindings-core/svg,merman/layout-cytoscape,merman/layout-elk,merman/math,merman/system-timing \
             --lib --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py apple-uniffi-native)"
           qualified_features="merman-uniffi/${features//,/,merman-uniffi/}"
@@ -416,6 +425,10 @@ jobs:
             --features "$qualified_features,merman/system-timing" \
             --lib --cargo-quiet \
             -E 'package(merman-uniffi) & test(engine_exposes_metadata)'
+          cargo nextest run --manifest-path crates/merman-node/Cargo.toml --locked \
+            --no-default-features \
+            --features svg,layout-cytoscape,layout-elk,math,transport-napi,merman-bindings-core/png,merman-bindings-core/system-clock,merman-bindings-core/system-timezone,merman-bindings-core/system-random \
+            --lib --cargo-quiet
 
       - name: Install Node candidate development dependencies
         if: matrix.parity
@@ -502,7 +515,10 @@ jobs:
           "${typst_root}/typst" --version
 
       - name: Test Typst plugin crate
-        run: cargo test --locked -p merman-typst-plugin
+        run: |
+          cargo test --locked -p merman-typst-plugin
+          cargo test --locked -p merman-typst-plugin --no-default-features \
+            --features merman-bindings-core/svg,merman-bindings-core/math,merman-bindings-core/system-clock,merman-bindings-core/system-timezone,merman-bindings-core/system-random
 
       - name: Check exact Typst WASM size budget
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json

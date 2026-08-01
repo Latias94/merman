@@ -787,7 +787,21 @@ fn runtime_output_contract(
 }
 
 pub fn runtime_catalog_json(transport_api_version: u32) -> Result<Vec<u8>, BindingError> {
-    serde_json::to_vec(&runtime_catalog(transport_api_version)).map_err(internal_json_error)
+    runtime_catalog_json_for(
+        transport_api_version,
+        binding_transport_capability_surface(),
+    )
+}
+
+pub fn runtime_catalog_json_for(
+    transport_api_version: u32,
+    capability_surface: ArtifactCapabilitySurface,
+) -> Result<Vec<u8>, BindingError> {
+    serde_json::to_vec(&runtime_catalog_for(
+        transport_api_version,
+        capability_surface,
+    ))
+    .map_err(internal_json_error)
 }
 
 fn runtime_resource_contract_for(capabilities: &RuntimeCapabilities) -> RuntimeResourceContract {
@@ -1133,18 +1147,22 @@ mod tests {
             merman::runtime::compiled_system_adapter_ids().to_vec();
         expected_system_adapter_ids.sort_unstable();
         assert_eq!(capabilities.system_adapter_ids, expected_system_adapter_ids);
+        #[cfg(feature = "svg")]
+        let (expected_layout_cytoscape, expected_layout_elk, expected_math) = (
+            compiled_layout_cytoscape_available(),
+            compiled_layout_elk_available(),
+            compiled_math_available(),
+        );
+        #[cfg(not(feature = "svg"))]
+        let (expected_layout_cytoscape, expected_layout_elk, expected_math) = (false, false, false);
         assert_eq!(
             capabilities.has_capability("layout-cytoscape"),
-            cfg!(feature = "layout-cytoscape")
+            expected_layout_cytoscape
         );
         assert_eq!(
             capabilities.has_capability("layout-elk"),
-            cfg!(feature = "layout-elk")
+            expected_layout_elk
         );
-        #[cfg(feature = "svg")]
-        let expected_math = compiled_math_available();
-        #[cfg(not(feature = "svg"))]
-        let expected_math = false;
         assert_eq!(capabilities.has_capability("math"), expected_math);
         assert!(!capabilities.has_capability("editor"));
         assert_eq!(capabilities.has_output("svg"), cfg!(feature = "svg"));
@@ -1496,10 +1514,16 @@ mod tests {
             .iter()
             .find(|limit| limit.id == "max_layout_work_units");
         #[cfg(feature = "svg")]
-        assert_eq!(
-            layout.expect("layout descriptor").operation_ids,
-            ["jpeg", "layout-json", "pdf", "png", "svg"]
-        );
+        {
+            let expected_operation_ids = ["jpeg", "layout-json", "pdf", "png", "svg"]
+                .into_iter()
+                .filter(|operation_id| catalog.capabilities.has_operation(operation_id))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                layout.expect("layout descriptor").operation_ids,
+                expected_operation_ids
+            );
+        }
         #[cfg(not(feature = "svg"))]
         assert!(layout.is_none());
         #[cfg(feature = "svg")]
