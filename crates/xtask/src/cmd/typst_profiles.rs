@@ -1,0 +1,631 @@
+use crate::{
+    XtaskError,
+    cmd::{artifact_profiles::WasmArtifactProfile, paths},
+};
+use serde::Deserialize;
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+
+const DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
+const EXPECTED_PACKAGE: &str = "merman-typst-plugin";
+const EXPECTED_ARTIFACT: &str = "merman_typst_plugin.wasm";
+const EXPECTED_ARTIFACT_PROFILE: &str = "typst-wasm";
+const EXPECTED_PACKAGE_PROFILE: &str = "publish";
+const EXPECTED_CARGO_PROFILE: &str = "wasm-size";
+const EXPECTED_TARGET_TRIPLE: &str = "wasm32-unknown-unknown";
+const GENERATED_ABI_PATH: &str = "crates/merman-typst-plugin/src/generated/typst_plugin_abi.rs";
+const DESCRIPTOR_SOURCE: &str = include_str!("../../../merman-typst-plugin/wasm-profiles.json");
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawTypstProfileCatalog {
+    schema_version: u32,
+    plugin_abi_version: u32,
+    package: String,
+    manifest_path: String,
+    artifact_name: String,
+    artifact_profile: String,
+    package_profile: String,
+}
+
+/// The single public package profile backed by the canonical Typst artifact recipe.
+///
+/// Its Cargo feature selection and runtime surface deliberately live in
+/// `capabilities/artifact-profiles-v1.json`, not in the Typst descriptor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TypstPackageProfile {
+    name: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TypstProfileCatalog {
+    plugin_abi_version: u32,
+    package: String,
+    manifest_path: PathBuf,
+    artifact_name: String,
+    artifact_profile: String,
+    package_profile: TypstPackageProfile,
+}
+
+#[derive(Debug, Deserialize)]
+struct CargoProfileManifest {
+    package: CargoPackage,
+    features: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CargoPackage {
+    name: String,
+}
+
+impl TypstPackageProfile {
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl TypstProfileCatalog {
+    pub(crate) fn plugin_abi_version(&self) -> u32 {
+        self.plugin_abi_version
+    }
+
+    #[cfg(test)]
+    pub(crate) fn manifest_path(&self) -> &Path {
+        &self.manifest_path
+    }
+
+    pub(crate) fn artifact_name(&self) -> &str {
+        &self.artifact_name
+    }
+
+    pub(crate) fn artifact_profile_id(&self) -> &str {
+        &self.artifact_profile
+    }
+
+    pub(crate) fn package_profile(&self) -> &TypstPackageProfile {
+        &self.package_profile
+    }
+
+    pub(crate) fn resolve_package(
+        &self,
+        requested: Option<&str>,
+    ) -> Result<&TypstPackageProfile, XtaskError> {
+        match requested {
+            None => Ok(&self.package_profile),
+            Some(requested) if requested == self.package_profile.name() => {
+                Ok(&self.package_profile)
+            }
+            Some(requested) => Err(profile_error(format!(
+                "unknown publishable Typst WASM profile `{requested}`; expected `{EXPECTED_PACKAGE_PROFILE}`"
+            ))),
+        }
+    }
+}
+
+pub(crate) fn load_typst_profiles() -> Result<TypstProfileCatalog, XtaskError> {
+    let raw = parse_descriptor(DESCRIPTOR_SOURCE)?;
+    validate_manifest_path(&raw.manifest_path)?;
+    let manifest_path = paths::workspace_root().join(&raw.manifest_path);
+    let metadata = fs::symlink_metadata(&manifest_path).map_err(|source| XtaskError::ReadFile {
+        path: manifest_path.display().to_string(),
+        source,
+    })?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err(profile_error(format!(
+            "manifest_path must resolve to a regular file: {}",
+            manifest_path.display()
+        )));
+    }
+    let manifest_source =
+        fs::read_to_string(&manifest_path).map_err(|source| XtaskError::ReadFile {
+            path: manifest_path.display().to_string(),
+            source,
+        })?;
+    validate_and_build(raw, &manifest_source)
+}
+
+#[cfg(test)]
+fn parse_and_validate(
+    descriptor_source: &str,
+    manifest_source: &str,
+) -> Result<TypstProfileCatalog, XtaskError> {
+    let raw = parse_descriptor(descriptor_source)?;
+    validate_and_build(raw, manifest_source)
+}
+
+fn parse_descriptor(descriptor_source: &str) -> Result<RawTypstProfileCatalog, XtaskError> {
+    serde_json::from_str(descriptor_source)
+        .map_err(|error| profile_error(format!("failed to parse wasm-profiles.json: {error}")))
+}
+
+fn validate_descriptor_identity(catalog: &RawTypstProfileCatalog) -> Result<(), XtaskError> {
+    if catalog.schema_version != DESCRIPTOR_SCHEMA_VERSION {
+        return Err(profile_error(format!(
+            "unsupported descriptor schema {}; expected {DESCRIPTOR_SCHEMA_VERSION}",
+            catalog.schema_version
+        )));
+    }
+    if catalog.plugin_abi_version == 0 {
+        return Err(profile_error("plugin_abi_version must be a positive u32"));
+    }
+    Ok(())
+}
+
+fn generated_abi_source(plugin_abi_version: u32) -> String {
+    format!(
+        "// @generated by `cargo run -p xtask -- gen-typst-profile-constants`.\n\
+         // Source: crates/merman-typst-plugin/wasm-profiles.json. Do not edit directly.\n\n\
+         pub const TYPST_PLUGIN_ABI_VERSION: u32 = {plugin_abi_version};\n\
+         pub const TYPST_PLUGIN_ABI_VERSION_BYTES: &[u8] = b\"{plugin_abi_version}\";\n"
+    )
+}
+
+pub(crate) fn gen_typst_profile_constants(args: Vec<String>) -> Result<(), XtaskError> {
+    if !args.is_empty() {
+        return Err(XtaskError::Usage);
+    }
+    let descriptor = parse_descriptor(DESCRIPTOR_SOURCE)?;
+    validate_descriptor_identity(&descriptor)?;
+    let path = paths::workspace_root().join(GENERATED_ABI_PATH);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
+    fs::write(&path, generated_abi_source(descriptor.plugin_abi_version)).map_err(|source| {
+        XtaskError::WriteFile {
+            path: path.display().to_string(),
+            source,
+        }
+    })
+}
+
+pub(crate) fn verify_typst_profile_constants_artifact() -> Result<Option<String>, XtaskError> {
+    let descriptor = parse_descriptor(DESCRIPTOR_SOURCE)?;
+    validate_descriptor_identity(&descriptor)?;
+    let path = paths::workspace_root().join(GENERATED_ABI_PATH);
+    let actual = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
+        path: path.display().to_string(),
+        source,
+    })?;
+    let expected = generated_abi_source(descriptor.plugin_abi_version);
+    if actual.replace("\r\n", "\n") == expected {
+        Ok(None)
+    } else {
+        Ok(Some(format!(
+            "Typst profile constants drifted: {GENERATED_ABI_PATH}; regenerate with `cargo run -p xtask -- gen-typst-profile-constants`"
+        )))
+    }
+}
+
+pub(crate) fn verify_typst_profile_constants(args: Vec<String>) -> Result<(), XtaskError> {
+    if !args.is_empty() {
+        return Err(XtaskError::Usage);
+    }
+    match verify_typst_profile_constants_artifact()? {
+        Some(message) => Err(XtaskError::VerifyFailed(message)),
+        None => Ok(()),
+    }
+}
+
+fn validate_and_build(
+    raw: RawTypstProfileCatalog,
+    manifest_source: &str,
+) -> Result<TypstProfileCatalog, XtaskError> {
+    validate_manifest_path(&raw.manifest_path)?;
+    let manifest: CargoProfileManifest = toml::from_str(manifest_source).map_err(|error| {
+        profile_error(format!("failed to parse {}: {error}", raw.manifest_path))
+    })?;
+    validate_catalog(&raw, &manifest)?;
+
+    Ok(TypstProfileCatalog {
+        plugin_abi_version: raw.plugin_abi_version,
+        package: raw.package,
+        manifest_path: PathBuf::from(raw.manifest_path),
+        artifact_name: raw.artifact_name,
+        artifact_profile: raw.artifact_profile,
+        package_profile: TypstPackageProfile {
+            name: raw.package_profile,
+        },
+    })
+}
+
+fn validate_manifest_path(path: &str) -> Result<(), XtaskError> {
+    let path_value = Path::new(path);
+    if path.is_empty()
+        || path.contains('\\')
+        || path_value.file_name().and_then(|name| name.to_str()) != Some("Cargo.toml")
+        || path_value
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(profile_error(format!(
+            "manifest_path `{path}` must be a repository-relative Cargo.toml path"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_catalog(
+    catalog: &RawTypstProfileCatalog,
+    manifest: &CargoProfileManifest,
+) -> Result<(), XtaskError> {
+    validate_descriptor_identity(catalog)?;
+    let crate_plugin_abi_version = merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION;
+    if catalog.plugin_abi_version != crate_plugin_abi_version {
+        return Err(profile_error(format!(
+            "plugin_abi_version must match merman-typst-plugin ABI {crate_plugin_abi_version}, found {}",
+            catalog.plugin_abi_version,
+        )));
+    }
+    if catalog.package != EXPECTED_PACKAGE || manifest.package.name != EXPECTED_PACKAGE {
+        return Err(profile_error(format!(
+            "descriptor and Cargo package must both be `{EXPECTED_PACKAGE}`"
+        )));
+    }
+    if catalog.artifact_name != EXPECTED_ARTIFACT {
+        return Err(profile_error(format!(
+            "descriptor artifact_name must be `{EXPECTED_ARTIFACT}`"
+        )));
+    }
+    validate_name("artifact profile", &catalog.artifact_profile)?;
+    if catalog.artifact_profile != EXPECTED_ARTIFACT_PROFILE {
+        return Err(profile_error(format!(
+            "artifact_profile must reference the canonical `{EXPECTED_ARTIFACT_PROFILE}` recipe"
+        )));
+    }
+    validate_name("package profile", &catalog.package_profile)?;
+    if catalog.package_profile != EXPECTED_PACKAGE_PROFILE {
+        return Err(profile_error(format!(
+            "package_profile must be the sole public `{EXPECTED_PACKAGE_PROFILE}` profile"
+        )));
+    }
+    validate_typst_layout_feature_closure(manifest)?;
+    Ok(())
+}
+
+fn validate_typst_layout_feature_closure(
+    manifest: &CargoProfileManifest,
+) -> Result<(), XtaskError> {
+    for layout_feature in ["layout-cytoscape", "layout-elk"] {
+        let dependencies = manifest.features.get(layout_feature).ok_or_else(|| {
+            profile_error(format!(
+                "Cargo feature `{layout_feature}` must exist and enable the crate `svg` feature"
+            ))
+        })?;
+        if !dependencies.iter().any(|dependency| dependency == "svg") {
+            return Err(profile_error(format!(
+                "Cargo feature `{layout_feature}` must enable the crate `svg` feature so layout-only builds keep constrained resources"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Verifies that the Typst descriptor points at the one canonical artifact recipe.
+///
+/// Cargo features and semantic capabilities are intentionally not reconstructed here. The
+/// artifact-profile validator owns those relationships, and the plugin smoke test compares the
+/// produced runtime catalog directly to that validated recipe.
+pub(crate) fn validate_typst_artifact_profiles(
+    catalog: &TypstProfileCatalog,
+    artifact_profiles: &[WasmArtifactProfile],
+) -> Result<(), XtaskError> {
+    let typst_artifacts = artifact_profiles
+        .iter()
+        .filter(|profile| profile.semantic_target == "typst")
+        .collect::<Vec<_>>();
+    let [artifact] = typst_artifacts.as_slice() else {
+        return Err(profile_error(format!(
+            "the Typst release surface must have exactly one exact artifact profile, found {}",
+            typst_artifacts.len()
+        )));
+    };
+    if artifact.id != catalog.artifact_profile {
+        return Err(profile_error(format!(
+            "artifact_profile `{}` does not reference the canonical Typst artifact `{}`",
+            catalog.artifact_profile, artifact.id
+        )));
+    }
+    if artifact.id != EXPECTED_ARTIFACT_PROFILE {
+        return Err(profile_error(format!(
+            "the Typst release artifact profile must be `{EXPECTED_ARTIFACT_PROFILE}`, found `{}`",
+            artifact.id
+        )));
+    }
+    if artifact.package != catalog.package
+        || artifact.manifest_path != catalog.manifest_path
+        || artifact.artifact_name != catalog.artifact_name
+        || artifact.cargo_profile != EXPECTED_CARGO_PROFILE
+        || artifact.target_triple != EXPECTED_TARGET_TRIPLE
+    {
+        return Err(profile_error(format!(
+            "artifact profile `{EXPECTED_ARTIFACT_PROFILE}` must build package `{}` from `{}`, artifact `{}`, Cargo profile `{EXPECTED_CARGO_PROFILE}`, and target `{EXPECTED_TARGET_TRIPLE}`",
+            catalog.package,
+            catalog.manifest_path.display(),
+            catalog.artifact_name
+        )));
+    }
+    if artifact.default_features {
+        return Err(profile_error(format!(
+            "artifact profile `{EXPECTED_ARTIFACT_PROFILE}` must set default_features=false"
+        )));
+    }
+    if !artifact.features.iter().any(|feature| feature == "svg") {
+        return Err(profile_error(format!(
+            "artifact profile `{EXPECTED_ARTIFACT_PROFILE}` must explicitly enable `svg` so the fixed constrained resource policy is active"
+        )));
+    }
+    if artifact.features.iter().any(|feature| feature == "math")
+        || artifact
+            .capabilities
+            .iter()
+            .any(|capability| capability == "math")
+        || artifact
+            .runtime_ids
+            .iter()
+            .any(|runtime_id| runtime_id == "math")
+    {
+        return Err(profile_error(
+            "the canonical Typst artifact must remain math-free until Typst math admission",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_name(kind: &str, name: &str) -> Result<(), XtaskError> {
+    if name.is_empty()
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err(profile_error(format!(
+            "{kind} `{name}` must use lowercase ASCII letters, digits, and hyphens"
+        )));
+    }
+    Ok(())
+}
+
+fn profile_error(message: impl Into<String>) -> XtaskError {
+    XtaskError::TypstPackageFailed(format!(
+        "Typst package descriptor is invalid: {}",
+        message.into()
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repository_descriptor_references_the_canonical_typst_artifact_recipe() {
+        let catalog = load_typst_profiles().unwrap();
+        let publish = catalog.resolve_package(Some("publish")).unwrap();
+
+        assert_eq!(
+            catalog.plugin_abi_version(),
+            merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION
+        );
+        assert_eq!(
+            catalog.manifest_path(),
+            Path::new("crates/merman-typst-plugin/Cargo.toml")
+        );
+        assert_eq!(catalog.artifact_profile_id(), "typst-wasm");
+        assert_eq!(catalog.resolve_package(None).unwrap(), publish);
+        assert_eq!(publish.name(), "publish");
+        assert_eq!(catalog.package_profile(), publish);
+        for legacy_profile in [
+            "bridge",
+            "svg",
+            "minimal",
+            "typst-bridge",
+            "typst-render-only-no-elk",
+            "typst-render-analysis-no-elk",
+            "typst-full-elk",
+        ] {
+            assert!(catalog.resolve_package(Some(legacy_profile)).is_err());
+        }
+    }
+
+    #[test]
+    fn committed_typst_profile_constants_are_fresh() {
+        assert_eq!(verify_typst_profile_constants_artifact().unwrap(), None);
+    }
+
+    #[test]
+    fn descriptor_has_no_second_feature_or_capability_authority() {
+        let descriptor: serde_json::Value = serde_json::from_str(DESCRIPTOR_SOURCE).unwrap();
+
+        for field in ["features", "capabilities", "profiles"] {
+            assert!(
+                descriptor.get(field).is_none(),
+                "unexpected `{field}` field"
+            );
+        }
+        assert_eq!(descriptor["artifact_profile"], "typst-wasm");
+    }
+
+    #[test]
+    fn descriptor_rejects_unknown_fields() {
+        let descriptor = valid_descriptor().replace(
+            "\"schema_version\": 1,",
+            "\"schema_version\": 1, \"unexpected\": true,",
+        );
+        let error = parse_and_validate(&descriptor, valid_manifest()).unwrap_err();
+
+        assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn descriptor_rejects_a_manifest_path_outside_the_repository() {
+        let descriptor = valid_descriptor().replace(
+            "crates/merman-typst-plugin/Cargo.toml",
+            "../outside/Cargo.toml",
+        );
+        let error = parse_and_validate(&descriptor, valid_manifest()).unwrap_err();
+
+        assert!(error.to_string().contains("repository-relative"));
+    }
+
+    #[test]
+    fn descriptor_rejects_noncanonical_artifact_recipe() {
+        let descriptor = valid_descriptor().replace(
+            "\"artifact_profile\": \"typst-wasm\"",
+            "\"artifact_profile\": \"typst-wasm-preview\"",
+        );
+        let error = parse_and_validate(&descriptor, valid_manifest()).unwrap_err();
+
+        assert!(error.to_string().contains("canonical `typst-wasm` recipe"));
+    }
+
+    #[test]
+    fn descriptor_rejects_non_publish_package_profile() {
+        let descriptor = valid_descriptor().replace(
+            "\"package_profile\": \"publish\"",
+            "\"package_profile\": \"minimal\"",
+        );
+        let error = parse_and_validate(&descriptor, valid_manifest()).unwrap_err();
+
+        assert!(error.to_string().contains("sole public `publish` profile"));
+    }
+
+    #[test]
+    fn descriptor_rejects_a_second_package_profile() {
+        let descriptor = valid_descriptor().replace(
+            "\"package_profile\": \"publish\"",
+            "\"package_profile\": \"publish\", \"profiles\": [\"publish\", \"svg\"]",
+        );
+        let error = parse_and_validate(&descriptor, valid_manifest()).unwrap_err();
+
+        assert!(error.to_string().contains("unknown field `profiles`"));
+    }
+
+    #[test]
+    fn descriptor_rejects_a_layout_feature_that_does_not_enable_svg() {
+        let manifest = valid_manifest().replace(
+            "layout-cytoscape = [\"svg\", \"merman-bindings-core/layout-cytoscape\"]",
+            "layout-cytoscape = [\"merman-bindings-core/layout-cytoscape\"]",
+        );
+        let error = parse_and_validate(&valid_descriptor(), &manifest).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("layout-cytoscape` must enable the crate `svg` feature"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn exact_typst_artifact_profile_matches_the_descriptor_reference() {
+        let catalog = load_typst_profiles().unwrap();
+        let profiles = crate::cmd::artifact_profiles::load_wasm_size_artifact_profiles().unwrap();
+
+        validate_typst_artifact_profiles(&catalog, &profiles).unwrap();
+    }
+
+    #[test]
+    fn exact_typst_artifact_profile_rejects_a_second_typst_recipe() {
+        let catalog = load_typst_profiles().unwrap();
+        let mut profiles =
+            crate::cmd::artifact_profiles::load_wasm_size_artifact_profiles().unwrap();
+        let mut duplicate = profiles
+            .iter()
+            .find(|profile| profile.semantic_target == "typst")
+            .unwrap()
+            .clone();
+        duplicate.id = "typst-wasm-svg".to_string();
+        profiles.push(duplicate);
+
+        let error = validate_typst_artifact_profiles(&catalog, &profiles).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("exactly one exact artifact profile, found 2"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn exact_typst_artifact_profile_rejects_hidden_math() {
+        let catalog = load_typst_profiles().unwrap();
+        let mut profiles =
+            crate::cmd::artifact_profiles::load_wasm_size_artifact_profiles().unwrap();
+        let artifact = profiles
+            .iter_mut()
+            .find(|profile| profile.semantic_target == "typst")
+            .unwrap();
+        artifact.features.push("math".to_string());
+        artifact.capabilities.push("math".to_string());
+        artifact.runtime_ids.push("math".to_string());
+
+        let error = validate_typst_artifact_profiles(&catalog, &profiles).unwrap_err();
+        assert!(error.to_string().contains("remain math-free"), "{error}");
+    }
+
+    #[test]
+    fn exact_typst_artifact_profile_requires_svg_for_the_fixed_resource_policy() {
+        let catalog = load_typst_profiles().unwrap();
+        let mut profiles =
+            crate::cmd::artifact_profiles::load_wasm_size_artifact_profiles().unwrap();
+        let artifact = profiles
+            .iter_mut()
+            .find(|profile| profile.semantic_target == "typst")
+            .unwrap();
+        artifact.features.retain(|feature| feature != "svg");
+
+        let error = validate_typst_artifact_profiles(&catalog, &profiles).unwrap_err();
+        assert!(
+            error.to_string().contains("must explicitly enable `svg`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn exact_typst_artifact_profile_rejects_a_different_recipe_reference() {
+        let catalog = load_typst_profiles().unwrap();
+        let mut profiles =
+            crate::cmd::artifact_profiles::load_wasm_size_artifact_profiles().unwrap();
+        profiles
+            .iter_mut()
+            .find(|profile| profile.semantic_target == "typst")
+            .unwrap()
+            .id = "typst-wasm-preview".to_string();
+
+        let error = validate_typst_artifact_profiles(&catalog, &profiles).unwrap_err();
+        assert!(error.to_string().contains("does not reference"), "{error}");
+    }
+
+    fn valid_descriptor() -> String {
+        r#"{
+          "schema_version": 1,
+          "plugin_abi_version": 0,
+          "package": "merman-typst-plugin",
+          "manifest_path": "crates/merman-typst-plugin/Cargo.toml",
+          "artifact_name": "merman_typst_plugin.wasm",
+          "artifact_profile": "typst-wasm",
+          "package_profile": "publish"
+        }"#
+        .replace(
+            "\"plugin_abi_version\": 0",
+            &format!(
+                "\"plugin_abi_version\": {}",
+                merman_typst_plugin::TYPST_PLUGIN_ABI_VERSION
+            ),
+        )
+    }
+
+    fn valid_manifest() -> &'static str {
+        r#"
+          [package]
+          name = "merman-typst-plugin"
+
+          [features]
+          svg = []
+          layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
+          layout-elk = ["svg", "merman-bindings-core/layout-elk"]
+        "#
+    }
+}

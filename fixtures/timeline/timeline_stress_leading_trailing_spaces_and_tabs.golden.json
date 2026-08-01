@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Leading/trailing spaces & tabs",
     "accTitle": null,
     "accDescr": null,

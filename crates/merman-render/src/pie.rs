@@ -3,7 +3,6 @@ use crate::config::config_string;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
-use ryu_js::Buffer;
 
 pub(crate) const PIE_LEGEND_RECT_SIZE_PX: f64 = 18.0;
 pub(crate) const PIE_LEGEND_SPACING_PX: f64 = 4.0;
@@ -19,185 +18,27 @@ struct ColorScale {
     next: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Rgb01 {
-    r: f64,
-    g: f64,
-    b: f64,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Hsl {
-    h_deg: f64,
-    s_pct: f64,
-    l_pct: f64,
-}
-
-fn round_1e10(v: f64) -> f64 {
-    let v = (v * 1e10).round() / 1e10;
-    if v == -0.0 { 0.0 } else { v }
-}
-
-fn fmt_js_1e10(v: f64) -> String {
-    let v = round_1e10(v);
-    let mut b = Buffer::new();
-    b.format_finite(v).to_string()
-}
-
-fn round_hsl_1e10(mut hsl: Hsl) -> Hsl {
-    // Match Mermaid's base theme output: wrap using remainder without forcing positive hue.
-    // (JS `%` keeps the sign, so negative hues remain negative.)
-    hsl.h_deg = round_1e10(hsl.h_deg) % 360.0;
-    hsl.s_pct = round_1e10(hsl.s_pct).clamp(0.0, 100.0);
-    hsl.l_pct = round_1e10(hsl.l_pct).clamp(0.0, 100.0);
-    hsl
-}
-
-fn parse_hex_rgb01(s: &str) -> Option<Rgb01> {
-    let s = s.trim();
-    let s = s.strip_prefix('#')?;
-    if s.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&s[0..2], 16).ok()? as f64 / 255.0;
-    let g = u8::from_str_radix(&s[2..4], 16).ok()? as f64 / 255.0;
-    let b = u8::from_str_radix(&s[4..6], 16).ok()? as f64 / 255.0;
-    Some(Rgb01 { r, g, b })
-}
-
-fn rgb01_to_hsl(rgb: Rgb01) -> Hsl {
-    let r = rgb.r;
-    let g = rgb.g;
-    let b = rgb.b;
-
-    let max = r.max(g.max(b));
-    let min = r.min(g.min(b));
-    let mut h = 0.0;
-    let mut s = 0.0;
-    let l = (max + min) / 2.0;
-
-    if max != min {
-        let d = max - min;
-        s = if l > 0.5 {
-            d / (2.0 - max - min)
-        } else {
-            d / (max + min)
-        };
-
-        h = if max == r {
-            (g - b) / d + if g < b { 6.0 } else { 0.0 }
-        } else if max == g {
-            (b - r) / d + 2.0
-        } else {
-            (r - g) / d + 4.0
-        };
-        h /= 6.0;
-    }
-
-    round_hsl_1e10(Hsl {
-        h_deg: h * 360.0,
-        s_pct: s * 100.0,
-        l_pct: l * 100.0,
-    })
-}
-
-fn parse_hsl(s: &str) -> Option<Hsl> {
-    let s = s.trim();
-    let inner = s.strip_prefix("hsl(")?.strip_suffix(')')?;
-    let parts: Vec<&str> = inner.split(',').map(|p| p.trim()).collect();
-    if parts.len() != 3 {
-        return None;
-    }
-    let h = parts[0].parse::<f64>().ok()?;
-    let s_pct = parts[1].trim_end_matches('%').parse::<f64>().ok()?;
-    let l_pct = parts[2].trim_end_matches('%').parse::<f64>().ok()?;
-    Some(round_hsl_1e10(Hsl {
-        h_deg: h,
-        s_pct,
-        l_pct,
-    }))
-}
-
-fn adjust_hsl(mut hsl: Hsl, h_delta: f64, s_delta: f64, l_delta: f64) -> Hsl {
-    hsl.h_deg = (hsl.h_deg + h_delta) % 360.0;
-    hsl.s_pct = (hsl.s_pct + s_delta).clamp(0.0, 100.0);
-    hsl.l_pct = (hsl.l_pct + l_delta).clamp(0.0, 100.0);
-    round_hsl_1e10(hsl)
-}
-
-fn fmt_hsl(hsl: Hsl) -> String {
-    format!(
-        "hsl({}, {}%, {}%)",
-        fmt_js_1e10(hsl.h_deg),
-        fmt_js_1e10(hsl.s_pct),
-        fmt_js_1e10(hsl.l_pct)
-    )
-}
-
-fn adjust_color_to_hsl_string(
-    color: &str,
-    h_delta: f64,
-    s_delta: f64,
-    l_delta: f64,
-) -> Option<String> {
-    let base = if let Some(rgb) = parse_hex_rgb01(color) {
-        rgb01_to_hsl(rgb)
-    } else {
-        parse_hsl(color)?
-    };
-    Some(fmt_hsl(adjust_hsl(base, h_delta, s_delta, l_delta)))
-}
-
 impl ColorScale {
     fn default_palette() -> Vec<String> {
-        // Default theme colors as emitted by Mermaid 11.12.2 in SVG.
-        //
-        // Mermaid derives this palette from `theme-default.js` `pie1..pie12` (using `adjust()`),
-        // where the base colors are:
-        // - primaryColor = "#ECECFF"
-        // - secondaryColor = "#ffffde"
-        // - tertiaryColor = "hsl(80, 100%, 96.2745098039%)"
-        //
-        // Note: `adjust(...)` serializes as `hsl(...)` (not hex), so the palette contains a mix.
-        const PRIMARY: &str = "#ECECFF";
-        const SECONDARY: &str = "#ffffde";
-        const TERTIARY: &str = "hsl(80, 100%, 96.2745098039%)";
-
-        let pie3 = adjust_color_to_hsl_string(TERTIARY, 0.0, 0.0, -40.0)
-            .unwrap_or_else(|| "hsl(80, 100%, 56.2745098039%)".to_string());
-        let pie4 = adjust_color_to_hsl_string(PRIMARY, 0.0, 0.0, -10.0)
-            .unwrap_or_else(|| "hsl(240, 100%, 86.2745098039%)".to_string());
-        let pie5 = adjust_color_to_hsl_string(SECONDARY, 0.0, 0.0, -30.0)
-            .unwrap_or_else(|| "hsl(60, 100%, 57.0588235294%)".to_string());
-        let pie6 = adjust_color_to_hsl_string(TERTIARY, 0.0, 0.0, -20.0)
-            .unwrap_or_else(|| "hsl(80, 100%, 76.2745098039%)".to_string());
-        let pie7 = adjust_color_to_hsl_string(PRIMARY, 60.0, 0.0, -20.0)
-            .unwrap_or_else(|| "hsl(300, 100%, 76.2745098039%)".to_string());
-        let pie8 = adjust_color_to_hsl_string(PRIMARY, -60.0, 0.0, -40.0)
-            .unwrap_or_else(|| "hsl(180, 100%, 56.2745098039%)".to_string());
-        let pie9 = adjust_color_to_hsl_string(PRIMARY, 120.0, 0.0, -40.0)
-            .unwrap_or_else(|| "hsl(0, 100%, 56.2745098039%)".to_string());
-        let pie10 = adjust_color_to_hsl_string(PRIMARY, 60.0, 0.0, -40.0)
-            .unwrap_or_else(|| "hsl(300, 100%, 56.2745098039%)".to_string());
-        let pie11 = adjust_color_to_hsl_string(PRIMARY, -90.0, 0.0, -40.0)
-            .unwrap_or_else(|| "hsl(150, 100%, 56.2745098039%)".to_string());
-        let pie12 = adjust_color_to_hsl_string(PRIMARY, 120.0, 0.0, -30.0)
-            .unwrap_or_else(|| "hsl(0, 100%, 66.2745098039%)".to_string());
-
-        vec![
-            PRIMARY.to_string(),
-            SECONDARY.to_string(),
-            pie3,
-            pie4,
-            pie5,
-            pie6,
-            pie7,
-            pie8,
-            pie9,
-            pie10,
-            pie11,
-            pie12,
+        // This fallback is only for direct layout callers. Normal rendering consumes the final
+        // resolved `pie1..pie12` theme variables produced by merman-core.
+        [
+            "#ECECFF",
+            "#ffffde",
+            "hsl(80, 100%, 56.2745098039%)",
+            "hsl(240, 100%, 86.2745098039%)",
+            "hsl(60, 100%, 63.5294117647%)",
+            "hsl(80, 100%, 76.2745098039%)",
+            "hsl(300, 100%, 76.2745098039%)",
+            "hsl(180, 100%, 56.2745098039%)",
+            "hsl(0, 100%, 56.2745098039%)",
+            "hsl(300, 100%, 56.2745098039%)",
+            "hsl(150, 100%, 56.2745098039%)",
+            "hsl(0, 100%, 66.2745098039%)",
         ]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
     }
 
     fn from_config(effective_config: &serde_json::Value) -> Self {
@@ -256,17 +97,9 @@ fn fmt_number(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
-pub fn layout_pie_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<PieDiagramLayout> {
-    let model: PieDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_pie_diagram_typed(&model, effective_config, measurer)
-}
-
-pub fn layout_pie_diagram_typed(
+pub(crate) fn layout_pie_diagram_typed(
     model: &PieDiagramRenderModel,
+    diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
@@ -285,6 +118,7 @@ pub fn layout_pie_diagram_typed(
     let radius: f64 = 185.0;
     let outer_radius = radius + 1.0;
     let cfg = PieConfigView::new(effective_config).layout_settings();
+    let title = model.title.as_deref().or(diagram_title);
     let label_radius = radius.max(0.0) * cfg.text_position;
     let legend_step_y: f64 = legend_rect_size + legend_spacing;
     let legend_position = cfg.legend_position;
@@ -388,11 +222,13 @@ pub fn layout_pie_diagram_typed(
         font_family: None,
         font_size: 17.0,
         font_weight: None,
+        font_style: None,
     };
     let title_style = TextStyle {
         font_family: None,
         font_size: 25.0,
         font_weight: None,
+        font_style: None,
     };
     let mut max_legend_width: f64 = 0.0;
     for sec in &model.sections {
@@ -403,29 +239,17 @@ pub fn layout_pie_diagram_typed(
         };
         let trimmed = label.trim_end();
         // Mermaid 11.16 measures pie legend text via a single SVG `<text>` node's
-        // `getBoundingClientRect().width`. In headless mode we cannot reproduce that browser value
-        // exactly, but the single-run/simple-text SVG width path is closer than the generic
-        // multi-run bbox approximation used by Mermaid's wrapped `<tspan>` labels.
+        // `getBoundingClientRect().width`.
         let w = if trimmed.is_empty() {
             0.0
         } else {
-            crate::text::round_to_1_64_px(
-                measurer.measure_svg_simple_text_bbox_width_px(trimmed, &legend_style),
-            )
+            measurer.measure_svg_text_bounding_client_rect_width_px(trimmed, &legend_style)
         };
         max_legend_width = max_legend_width.max(w);
     }
 
-    let title_width = model
-        .title
-        .as_deref()
-        .map(str::trim_end)
-        .filter(|title| !title.is_empty())
-        .map(|title| {
-            crate::text::round_to_1_64_px(
-                measurer.measure_svg_simple_text_bbox_width_px(title, &title_style),
-            )
-        })
+    let title_width = title
+        .map(|title| measurer.measure_svg_text_bounding_client_rect_width_px(title, &title_style))
         .unwrap_or(0.0);
 
     let base_w: f64 = center * 2.0;
@@ -475,6 +299,7 @@ pub fn layout_pie_diagram_typed(
             max_x,
             max_y: height,
         }),
+        title: title.map(str::to_owned),
         center_x: center,
         center_y: center,
         radius,
@@ -489,9 +314,102 @@ pub fn layout_pie_diagram_typed(
 
 #[cfg(test)]
 mod tests {
+    use crate::text::{TextMeasurer, TextMetrics, TextStyle};
+    use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct RecordingBoundingClientRectMeasurer {
+        calls: Mutex<Vec<String>>,
+    }
+
+    impl TextMeasurer for RecordingBoundingClientRectMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("pie legend and title must use the source-backed browser primitive")
+        }
+
+        fn measure_svg_simple_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            panic!("getBBox must not stand in for getBoundingClientRect")
+        }
+
+        fn measure_svg_text_bounding_client_rect_width_px(
+            &self,
+            text: &str,
+            _style: &TextStyle,
+        ) -> f64 {
+            self.calls
+                .lock()
+                .expect("measurement calls")
+                .push(text.to_string());
+            match text {
+                "Legend" => 123.456_789,
+                "Title" => 1_000.123_456,
+                "  Title  " => 1_100.123_456,
+                "\u{a0}Title\u{a0}" => 1_200.123_456,
+                other => panic!("unexpected measurement: {other}"),
+            }
+        }
+    }
+
     #[test]
     fn pie_legend_geometry_constants_match_mermaid() {
         assert_eq!(super::PIE_LEGEND_RECT_SIZE_PX, 18.0);
         assert_eq!(super::PIE_LEGEND_SPACING_PX, 4.0);
+    }
+
+    #[test]
+    fn pie_legend_and_title_use_exact_bounding_client_rect_results() {
+        let measurer = RecordingBoundingClientRectMeasurer::default();
+        let mut legend_model = PieDiagramRenderModel::default();
+        legend_model.sections = vec![PieRenderSection {
+            label: "Legend".to_string(),
+            value: 1.0,
+        }];
+        let legend_layout =
+            super::layout_pie_diagram_typed(&legend_model, None, &serde_json::json!({}), &measurer)
+                .expect("legend layout");
+        let legend_max_x = legend_layout.bounds.expect("legend bounds").max_x;
+        assert!((legend_max_x - (512.0 + 123.456_789)).abs() < 1e-12);
+
+        let mut title_model = PieDiagramRenderModel::default();
+        title_model.title = Some("Title".to_string());
+        let title_layout = super::layout_pie_diagram_typed(
+            &title_model,
+            None,
+            &serde_json::json!({"pie": {"legendPosition": "top"}}),
+            &measurer,
+        )
+        .expect("title layout");
+        let title_max_x = title_layout.bounds.expect("title bounds").max_x;
+        assert!((title_max_x - (225.0 + 1_000.123_456 / 2.0)).abs() < 1e-12);
+        assert_eq!(
+            *measurer.calls.lock().expect("measurement calls"),
+            ["Legend".to_string(), "Title".to_string()]
+        );
+    }
+
+    #[test]
+    fn pie_frontmatter_title_preserves_boundary_whitespace_for_layout_measurement() {
+        for (title, expected_max_x) in [
+            ("  Title  ", 225.0 + 1_100.123_456 / 2.0),
+            ("\u{a0}Title\u{a0}", 225.0 + 1_200.123_456 / 2.0),
+        ] {
+            let measurer = RecordingBoundingClientRectMeasurer::default();
+            let layout = super::layout_pie_diagram_typed(
+                &PieDiagramRenderModel::default(),
+                Some(title),
+                &serde_json::json!({"pie": {"legendPosition": "top"}}),
+                &measurer,
+            )
+            .expect("title layout");
+
+            assert_eq!(layout.title.as_deref(), Some(title));
+            let max_x = layout.bounds.expect("title bounds").max_x;
+            assert!((max_x - expected_max_x).abs() < 1e-12);
+            assert_eq!(
+                *measurer.calls.lock().expect("measurement calls"),
+                [title.to_string()]
+            );
+        }
     }
 }

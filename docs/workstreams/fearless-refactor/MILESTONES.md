@@ -1,5 +1,8 @@
 # Fearless Refactor Milestones
 
+> Historical roadmap. References to root/text/SVG override tables, budgets, and generator/audit
+> commands describe retired mechanisms; current policy is ADR-0062 and ADR-0073.
+
 This roadmap targets a cleaner next release without losing Mermaid parity. Milestones are ordered
 so each stage reduces future risk before deeper changes begin.
 
@@ -775,7 +778,7 @@ Scope:
 - Run broad parity gates.
 - Run benchmarks.
 - Update README and contributor guidance.
-- Decide whether any pre-1.0 public API cleanup should happen before release.
+- Decide whether any public API cleanup should happen before the next release.
 
 Progress:
 

@@ -1,17 +1,22 @@
 # Root Viewport Derivation Workstream
 
-This workstream follows the fearless-refactor closeout. The remaining root viewport override
-entries are no longer treated as blind-pruning debt; they are tracked as typed bounds and
-measurement derivation targets.
+Status: Completed and superseded on 2026-07-15. The family-owned architecture removed every
+runtime root pin, exact-label text/SVG table, override budget, disable switch, and override
+generator/audit command. Nothing below describes a current runtime capability or runnable override
+workflow. Current policy lives in ADR-0057, ADR-0062, ADR-0073, and
+`docs/workstreams/PARITY_BOUNDARY.md`.
 
-## Objective
+The remainder of this file is the workstream's closeout snapshot. Terms such as "current" and all
+inventory counts refer to that historical snapshot, before the override machinery was deleted.
+
+## Historical Objective
 
 Replace fixture-scoped root viewport overrides with typed layout bounds, emitted SVG bounds, or
 shared browser-measurement derivation where practical, starting with State and Mindmap and then
 revisiting Sequence once the first derivation patterns are proven, while keeping `parity-root` and
 strict release gates green.
 
-## Initial Scope
+## Historical Inventory Snapshot
 
 - State root viewport overrides: `45` entries.
 - Mindmap root viewport overrides: `52` entries.
@@ -74,11 +79,9 @@ strict release gates green.
   markup, but it did not expose a safe deletion: the remaining ER pins still cover recursive
   relationship geometry, edge-label bounds, ELK/docs layout, large HTML demo, and multiline demo
   residuals rather than one safe shared rule.
-- The global generated root override audit is currently clean on stale pins after the ER title and
-  entity-label cleanups. The latest `audit-root-overrides --fail-on-stale` report covers `286`
-  inventory entries, `292` fixture keys, `292` retained root-delta keys, `279` disabled-root
-  DOM mismatches, `0` stale entries, and the same three accepted Mindmap outside-table DOM
-  residuals, so the current baseline is stable rather than stale.
+- The historical global audit closed with `286` inventory entries, `292` fixture keys, `292`
+  retained root-delta keys, `279` disabled-root DOM mismatches, `0` stale entries, and the same
+  three accepted Mindmap outside-table DOM residuals.
 - Current GitGraph root viewport overrides: `23` entries after deriving GitGraph title text
   bounds, branch line endpoints, horizontal branch-label widths, commit/tag label computed-length
   widths, vertical branch-label centered SVG bbox widths, upstream seeded auto-id warm-up
@@ -113,11 +116,11 @@ strict release gates green.
   The latest table-only cleanup collapses exact-duplicate Flowchart match arms with Rust
   or-patterns; it reduces inventory rows without changing fixture-key coverage or rendering
   behavior.
-- Current root viewport override budget: `286` entries.
-- Current text metric lookup budget: `490` entries after adding the ER-owned
+- Historical root viewport override budget: `286` entries.
+- Historical text metric lookup budget: `490` entries after adding the ER-owned
   `DELIVERY-ADDRESS`, `PRODUCT-CATEGORY`, `Customer Account Tertiary`, `CATEGORY`,
   `This **is** _Markdown_`, and `ATLAS-TEAMS` browser width facts.
-- Current SVG text metric table budget: `186` rows after adding two Sequence message-width facts
+- Historical SVG text metric table budget: `186` rows after adding two Sequence message-width facts
   for the docs boundary root pin and correcting existing default message/actor text facts for the
   title/accessibility, simple Cypress, arrow variant, package sequence, and docs/control sequence
   clusters.
@@ -125,15 +128,16 @@ strict release gates green.
   `cargo run -p xtask -- verify --strict` passes and prints the five accepted root residuals:
   two Class `different_text_labels_037` roots and three Mindmap docs/example roots. The policy is
   exact: changed values, missing residuals, or additional residuals fail the gate.
-- Keep the existing strict gate green:
+- Historical closeout gate at that time:
 
 ```sh
 cargo run -p xtask -- verify --strict
 ```
 
-## Focused Audit Commands
+## Removed Audit Commands (Historical)
 
-Use focused parity-root audits before and after each candidate deletion:
+The following commands document how the retired tables were audited. Override-specific flags and
+commands no longer exist and must not be used as current instructions:
 
 ```sh
 cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
@@ -144,36 +148,24 @@ cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root 
 cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3
 ```
 
-Use disabled-root sweeps only as diagnostic input. They are expected to fail until each bucket has
-typed bounds coverage:
+The retired disable switch was used only for historical diagnostic sweeps and is intentionally not
+documented as a runnable command here.
 
-```pwsh
-$env:MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES='1'
-cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
-cargo run -p xtask -- compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
-cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
-cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
-cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root-all
-cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3
-Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
-```
-
-## Success Criteria
+## Historical Success Criteria
 
 - Each removed root viewport entry is replaced by a deterministic derivation rule, not by another
   fixture-specific pin.
 - Each retained entry has current evidence explaining the drift source.
 - `cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
   passes for each touched diagram family.
-- `cargo run -p xtask -- report-overrides --check-no-growth` passes and budgets only shrink unless
-  growth is explicitly justified.
+- The legacy no-growth budget passed and could only shrink unless explicitly justified.
 - `cargo clippy -p merman-render --all-targets --all-features -- -D warnings` passes after render
   code changes.
 - `cargo nextest run` passes before release closeout when the blast radius reaches shared rendering
   or layout code.
 - `TODO.md`, `MILESTONES.md`, `AUDIT.md`, and `CHANGELOG.md` stay current.
 
-## Strategy
+## Historical Strategy
 
 Start with smaller, better-bounded buckets before broad table pruning in GitGraph, Sequence, or
 Flowchart. Disabled-root cross-checks can still remove stale retained pins, but broader reductions

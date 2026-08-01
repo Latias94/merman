@@ -26,7 +26,7 @@ async function addKatexCss(page) {
   if (!cssPath) {
     return;
   }
-  await page.addStyleTag({ path: cssPath });
+  await page.addStyleTag({ url: url.pathToFileURL(cssPath).href });
 }
 
 function renderKatexHtml(text, config) {
@@ -142,7 +142,7 @@ async function measureHtml(html, styleCss, maxWidthPx) {
     await page.goto(url.pathToFileURL(mermaidCliIndexHtml).href);
     await addKatexCss(page);
     return await page.evaluate(
-      (payload) => {
+      async (payload) => {
         const SVG_NS = 'http://www.w3.org/2000/svg';
         const XHTML_NS = 'http://www.w3.org/1999/xhtml';
         const host = document.getElementById('container') || document.body;
@@ -191,6 +191,7 @@ async function measureHtml(html, styleCss, maxWidthPx) {
         span.innerHTML = sanitizedHtml;
         div.appendChild(span);
         host.appendChild(svg);
+        await document.fonts.ready;
 
         let bbox = div.getBoundingClientRect();
         fo.setAttribute('width', `${bbox.width}`);
@@ -223,6 +224,14 @@ async function measureHtml(html, styleCss, maxWidthPx) {
 
 async function measureSequenceHtml(html) {
   const puppeteer = requireFromCwd('puppeteer');
+  const mermaidCliIndexHtml = path.join(
+    process.cwd(),
+    'node_modules',
+    '@mermaid-js',
+    'mermaid-cli',
+    'dist',
+    'index.html'
+  );
   const browser = await launchBrowser(puppeteer, {
     headless: 'shell',
     args: [
@@ -239,11 +248,13 @@ async function measureSequenceHtml(html) {
       height: 800,
       deviceScaleFactor: 1,
     });
-    await page.setContent('<!doctype html><html><body></body></html>');
+    await page.goto(url.pathToFileURL(mermaidCliIndexHtml).href);
     await addKatexCss(page);
-    return await page.evaluate((payload) => {
+    return await page.evaluate(async (payload) => {
       const SVG_NS = 'http://www.w3.org/2000/svg';
       const XHTML_NS = 'http://www.w3.org/1999/xhtml';
+
+      document.body.innerHTML = '';
 
       const svg = document.createElementNS(SVG_NS, 'svg');
       svg.setAttribute('xmlns', SVG_NS);
@@ -260,6 +271,7 @@ async function measureSequenceHtml(html) {
       foreignObject.appendChild(div);
 
       document.body.appendChild(svg);
+      await document.fonts.ready;
       const bbox = div.getBoundingClientRect();
       svg.remove();
 

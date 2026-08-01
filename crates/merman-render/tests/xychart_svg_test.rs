@@ -2,40 +2,39 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;
-use merman_render::model::{LayoutDiagram, XyChartDiagramLayout};
-use merman_render::svg::{SvgRenderOptions, render_xychart_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::model::{XyChartDiagramLayout, XyChartDrawableElem};
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::XyChartDiagram(layout) = out.layout else {
-        panic!("expected XyChartDiagram layout");
-    };
-
-    *layout
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize XYChart layout");
+    serde_json::from_value(projection["layout"]["XyChartDiagram"].clone())
+        .expect("XYChart layout projection")
 }
 
 fn render_xychart_svg_from_text(text: &str) -> String {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::XyChartDiagram(layout) = &out.layout else {
-        panic!("expected XyChartDiagram layout");
-    };
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
-    render_xychart_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 fn text_tag_by_text<'a>(svg: &'a str, text: &str) -> &'a str {
@@ -60,6 +59,52 @@ fn svg_segment<'a>(svg: &'a str, start_needle: &str, end_needle: &str) -> &'a st
 }
 
 #[test]
+fn xychart_frontmatter_title_and_accessibility_metadata_match_mermaid() {
+    let svg = render_xychart_svg_from_text(
+        r#"---
+title: Frontmatter XY
+---
+xychart
+  accTitle: Accessible XY
+  accDescr: XY description
+  x-axis [A]
+  y-axis 0 --> 1
+  bar [1]
+"#,
+    );
+
+    assert_contains(&svg, ">Frontmatter XY</text>");
+    assert_contains(&svg, r#"aria-labelledby="chart-title-xychart""#);
+    assert_contains(&svg, r#"aria-describedby="chart-desc-xychart""#);
+    assert_contains(
+        &svg,
+        r#"<title id="chart-title-xychart">Accessible XY</title>"#,
+    );
+    assert_contains(
+        &svg,
+        r#"<desc id="chart-desc-xychart">XY description</desc>"#,
+    );
+}
+
+#[test]
+fn xychart_body_title_overrides_frontmatter_title() {
+    let svg = render_xychart_svg_from_text(
+        r#"---
+title: Frontmatter XY
+---
+xychart
+  title "Body XY"
+  x-axis [A]
+  y-axis 0 --> 1
+  bar [1]
+"#,
+    );
+
+    assert_contains(&svg, ">Body XY</text>");
+    assert!(!svg.contains(">Frontmatter XY</text>"));
+}
+
+#[test]
 fn xychart_layout_carries_data_label_outside_policy() {
     let layout = layout_xychart_from_text(
         r"---
@@ -78,6 +123,47 @@ xychart
     assert!(layout.show_data_label);
     assert!(layout.show_data_label_outside_bar);
     assert_eq!(layout.label_data, vec!["73"]);
+}
+
+#[test]
+fn xychart_horizontal_line_point_label_offsets_from_the_screen_point() {
+    let layout = layout_xychart_from_text(
+        r#"xychart horizontal
+  x-axis [A]
+  y-axis 0 --> 100
+  line [73 "point"]
+"#,
+    );
+
+    let path = layout
+        .drawables
+        .iter()
+        .find_map(|drawable| match drawable {
+            XyChartDrawableElem::Path { data, .. } => data.first(),
+            _ => None,
+        })
+        .expect("line path");
+    let point = path
+        .path
+        .strip_prefix('M')
+        .and_then(|value| value.strip_suffix('Z'))
+        .and_then(|value| value.split_once(','))
+        .map(|(x, y)| (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap()))
+        .expect("single-point path coordinates");
+    let label = layout
+        .drawables
+        .iter()
+        .find_map(|drawable| match drawable {
+            XyChartDrawableElem::Text { data, .. } => {
+                data.iter().find(|label| label.text == "point")
+            }
+            _ => None,
+        })
+        .expect("point label");
+
+    assert_eq!(label.x, point.0 + 10.0);
+    assert_eq!(label.y, point.1);
+    assert_eq!(label.horizontal_pos, "left");
 }
 
 #[test]
@@ -138,6 +224,27 @@ xychart horizontal
         label.contains(r##"fill="#008855""##),
         "expected configured data label color: {label}"
     );
+}
+
+#[test]
+fn xychart_huge_finite_bar_dimensions_do_not_spin_the_data_label_renderer() {
+    let svg = render_xychart_svg_from_text(
+        r#"---
+config:
+  xyChart:
+    height: "1e308"
+    showDataLabel: true
+---
+xychart horizontal
+  x-axis [A]
+  y-axis 0 --> 100
+  bar [73]
+"#,
+    );
+
+    let label = text_tag_by_text(&svg, "73");
+    assert!(!label.contains("font-size=\"NaNpx\""), "label: {label}");
+    assert!(!label.contains("Infinity"), "label: {label}");
 }
 
 #[test]

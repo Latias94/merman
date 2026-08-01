@@ -1,7 +1,10 @@
 # Flowchart 11.15 SVG Convergence - TODO
 
-Status: Active
-Last updated: 2026-06-01
+Status: Closed (historical archive)
+Last updated: 2026-07-21
+
+> Archive note: this Mermaid 11.15 lane is complete and superseded by the pinned Mermaid 11.16
+> family/admission contracts. The checked task history is retained for provenance only.
 
 ## M0 - Scope And Evidence Freeze
 

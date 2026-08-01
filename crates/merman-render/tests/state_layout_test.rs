@@ -1,5 +1,9 @@
-use merman_core::{Engine, ParseOptions};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::model::StateDiagramLayout;
+use merman_render::resources::RenderResourcePolicy;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -41,17 +45,50 @@ fn deep_state_composite_chain(depth: usize) -> String {
     input
 }
 
-fn layout_state_from_text(text: &str) -> merman_render::model::StateDiagramV2Layout {
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+fn layout_state_from_text(text: &str) -> StateDiagramLayout {
+    layout_state_from_text_with_options(text, ParseOptions::default())
+}
+
+fn layout_state_from_text_with_engine(engine: Engine, text: &str) -> StateDiagramLayout {
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::default(), session).expect("typed State layout");
+    let projection = artifact.layout_json().expect("State layout projection");
+    serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).expect("State layout")
+}
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
-    *layout
+fn layout_state_from_text_with_options(
+    text: &str,
+    parse_options: ParseOptions,
+) -> StateDiagramLayout {
+    layout_state_from_text_with_options_and_policy(
+        text,
+        parse_options,
+        RenderResourcePolicy::interactive(),
+    )
+}
+
+fn layout_state_from_text_with_options_and_policy(
+    text: &str,
+    parse_options: ParseOptions,
+    resource_policy: RenderResourcePolicy,
+) -> StateDiagramLayout {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, parse_options)
+        .expect("parse ok")
+        .expect("diagram detected");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .unwrap();
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::default(), session).expect("typed State layout");
+    let projection = artifact.layout_json().expect("State layout projection");
+    serde_json::from_value(projection["layout"]["StateDiagramV2"].clone()).expect("State layout")
 }
 
 #[test]
@@ -64,7 +101,7 @@ fn state_parse_for_render_model_handles_deep_composite_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    assert_eq!(parsed.meta.diagram_type, "stateDiagram");
+    assert_eq!(parsed.metadata().diagram_type, "stateDiagram");
 }
 
 #[test]
@@ -72,16 +109,11 @@ fn state_layout_handles_deep_composite_chain() {
     const DEPTH: usize = 512;
     let text = deep_state_composite_chain(DEPTH);
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::strict()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default())
-        .expect("layout should not depend on recursive cluster extraction");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text_with_options_and_policy(
+        &text,
+        ParseOptions::strict(),
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    );
 
     assert!(layout.clusters.iter().any(|cluster| cluster.id == "S0"));
     assert!(layout.nodes.iter().any(|node| node.id == "Leaf"));
@@ -95,15 +127,7 @@ fn state_layout_produces_positions_and_routes() {
         .join("basic.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(&text);
 
     assert!(layout.nodes.len() >= 3);
     assert!(layout.edges.len() >= 3);
@@ -127,17 +151,9 @@ fn state_layout_produces_positions_and_routes() {
 }
 
 #[test]
-fn state_start_and_end_have_fixed_size() {
+fn state_start_and_end_use_source_defined_nominal_diameter() {
     let text = "stateDiagram-v2\n[*] --> A\nA --> [*]\n";
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(text);
 
     let mut by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -147,19 +163,18 @@ fn state_start_and_end_have_fixed_size() {
     let (sw, sh) = by_id["root_start"];
     let (ew, eh) = by_id["root_end"];
 
-    // Mermaid@11.12.2:
-    // - `[*]` (start) is treated as a nominal 14x14 circle.
-    // - `[*]` (end) is rendered as a path-based circle whose measured `getBBox().width`
-    //   ends up slightly larger than 14px, and Mermaid feeds that into Dagre.
-    const STATE_START_DIAMETER_PX: f64 = 14.0;
-    const STATE_END_DAGRE_WIDTH_PX_11_12_2: f64 = 14.013_293_266_296_387;
+    // Mermaid 11.16 `stateStart.ts` and `stateEnd.ts` both normalize their source geometry to a
+    // 14px diameter. Browser-specific RoughJS path `getBBox()` floats are a bounded SVG residual,
+    // not a stable layout constant.
+    const STATE_MARKER_DIAMETER_PX: f64 = 14.0;
 
     assert!(
-        (sw - STATE_START_DIAMETER_PX).abs() < 1e-6 && (sh - STATE_START_DIAMETER_PX).abs() < 1e-6
+        (sw - STATE_MARKER_DIAMETER_PX).abs() < 1e-6
+            && (sh - STATE_MARKER_DIAMETER_PX).abs() < 1e-6
     );
     assert!(
-        (ew - STATE_END_DAGRE_WIDTH_PX_11_12_2).abs() < 1e-6
-            && (eh - STATE_START_DIAMETER_PX).abs() < 1e-6
+        (ew - STATE_MARKER_DIAMETER_PX).abs() < 1e-6
+            && (eh - STATE_MARKER_DIAMETER_PX).abs() < 1e-6
     );
 }
 
@@ -197,6 +212,100 @@ A --> B: owns
 }
 
 #[test]
+fn state_layout_preserves_html_min_content_width_for_long_labels() {
+    let layout = layout_state_from_text(
+        r#"stateDiagram-v2
+direction RL
+[*] --> ThisIsAReallyLongStateIdentifierWithNumbers123
+ThisIsAReallyLongStateIdentifierWithNumbers123 --> Done : another-long-label-with-a-veryveryverylongwordthatforceswrapping
+Done --> [*]
+"#,
+    );
+
+    let long_node = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "ThisIsAReallyLongStateIdentifierWithNumbers123")
+        .expect("long state node");
+    let long_edge = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == "ThisIsAReallyLongStateIdentifierWithNumbers123")
+        .and_then(|edge| edge.label.as_ref())
+        .expect("long transition label");
+
+    assert!(
+        long_node.width > 300.0,
+        "an unbreakable HTML label must expand beyond max-width: {long_node:?}"
+    );
+    assert!(
+        long_edge.width > 250.0,
+        "an unbreakable transition segment must expand the HTML table: {long_edge:?}"
+    );
+}
+
+#[test]
+fn state_layout_reflows_at_the_expanded_html_min_content_width() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("state")
+        .join("stress_state_font_size_precedence_071.mmd");
+    let text = std::fs::read_to_string(path).expect("font-size precedence fixture");
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "secure": [
+            "secure",
+            "securityLevel",
+            "startOnLoad",
+            "maxTextSize",
+            "suppressErrorRendering",
+            "maxEdges"
+        ]
+    })));
+    let layout = layout_state_from_text_with_engine(engine, &text);
+    let node = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "A")
+        .expect("state A");
+
+    assert!(
+        node.width > 160.0,
+        "min-content must be allowed to widen the configured 120px table: {node:?}"
+    );
+    assert_eq!(
+        node.height, 232.0,
+        "the widened table must be reflowed at its actual min-content width"
+    );
+}
+
+#[test]
+fn state_layout_measures_note_markup_as_rendered_html() {
+    let layout = layout_state_from_text(
+        r#"stateDiagram-v2
+A
+note right of A
+  <a href='https://mermaid.js.org/' target='_blank'><code>note about mermaid</code></a><br/>
+  <img src=x onerror=alert(1)>
+end note
+"#,
+    );
+    let note = layout
+        .nodes
+        .iter()
+        .find(|node| node.id.contains("----note-"))
+        .expect("rendered note");
+
+    assert!(
+        (190.0..=220.0).contains(&note.width),
+        "markup must contribute rendered content, not literal tag text: {note:?}"
+    );
+    assert!(
+        note.height <= 120.0,
+        "HTML tags must not be counted as wrapped text lines: {note:?}"
+    );
+}
+
+#[test]
 fn state_layout_note_groups_contain_notes() {
     let path = workspace_root()
         .join("fixtures")
@@ -204,15 +313,7 @@ fn state_layout_note_groups_contain_notes() {
         .join("upstream_stateDiagram_v2_note_statements_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(&text);
 
     let mut node_by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -240,15 +341,7 @@ fn state_layout_composite_and_dividers_contain_children() {
         .join("upstream_stateDiagram_v2_concurrent_state_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(&text);
 
     let mut node_by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -314,15 +407,7 @@ fn state_layout_exposes_one_logical_self_loop_edge() {
         .join("upstream_stateDiagram_v2_composite_self_link_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(&text);
 
     let self_loop = layout
         .edges

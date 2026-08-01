@@ -1,29 +1,29 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "BaseShapes",
-          "x": 107.191,
+          "x": 106.579,
           "y": 174.0,
-          "width": 214.383,
+          "width": 213.157,
           "height": 348.0,
           "is_cluster": true
         },
         {
           "id": "Rectangle",
-          "x": 107.191,
+          "x": 106.579,
           "y": 241.0,
-          "width": 139.383,
+          "width": 138.157,
           "height": 144.0,
           "is_cluster": false
         },
         {
           "id": "Triangle",
-          "x": 107.191,
+          "x": 106.579,
           "y": 77.0,
-          "width": 79.563,
+          "width": 76.953,
           "height": 84.0,
           "is_cluster": false
         }
@@ -32,15 +32,15 @@
       "clusters": [
         {
           "id": "BaseShapes",
-          "x": 107.191,
+          "x": 106.579,
           "y": 174.0,
-          "width": 214.383,
+          "width": 213.157,
           "height": 348.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "BaseShapes",
           "title_label": {
-            "x": 107.191,
+            "x": 106.579,
             "y": 12.0,
             "width": 74.24,
             "height": 24.0
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 214.383,
+        "max_x": 213.157,
         "max_y": 348.0
       }
     }

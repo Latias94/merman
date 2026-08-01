@@ -5,26 +5,60 @@
       "nodes": [
         {
           "id": "one",
-          "x": 34.211,
+          "x": 32.24,
           "y": -20.0,
-          "width": 68.422,
+          "width": 64.48,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "two",
-          "x": 148.844,
+          "x": 140.96,
           "y": -20.0,
-          "width": 144.844,
+          "width": 136.96,
           "height": 32.0,
           "is_cluster": false
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "one",
+          "allocated": {
+            "x": 32.24,
+            "y": -20.0,
+            "width": 64.48,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 64.48,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "two",
+          "allocated": {
+            "x": 140.96,
+            "y": -20.0,
+            "width": 136.96,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 136.96,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -36.0,
-        "max_x": 221.266,
+        "max_x": 209.44,
         "max_y": 0.0
       }
     }

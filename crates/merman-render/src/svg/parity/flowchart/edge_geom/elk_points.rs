@@ -15,7 +15,6 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
     edge: &crate::flowchart::FlowEdge,
     origin_x: f64,
     origin_y: f64,
-    normalize_cyclic_special: bool,
     base_points: &[crate::model::LayoutPoint],
     out: &mut Vec<crate::model::LayoutPoint>,
 ) {
@@ -25,22 +24,10 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
         return;
     }
 
-    let Some(start_bounds) = boundary_for_node(
-        ctx,
-        edge.from.as_str(),
-        origin_x,
-        origin_y,
-        normalize_cyclic_special,
-    ) else {
+    let Some(start_bounds) = boundary_for_node(ctx, edge.from.as_str(), origin_x, origin_y) else {
         return;
     };
-    let Some(end_bounds) = boundary_for_node(
-        ctx,
-        edge.to.as_str(),
-        origin_x,
-        origin_y,
-        normalize_cyclic_special,
-    ) else {
+    let Some(end_bounds) = boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y) else {
         return;
     };
 

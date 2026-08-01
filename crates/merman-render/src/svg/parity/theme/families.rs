@@ -1,4 +1,5 @@
 use super::*;
+use merman_core::theme_color::{darken, invert, is_dark, lighten};
 
 impl<'a> PresentationTheme<'a> {
     pub(crate) fn xychart(&self) -> XyChartTheme {
@@ -7,15 +8,10 @@ impl<'a> PresentationTheme<'a> {
             .optional_nested_color("xyChart", "backgroundColor")
             .or_else(|| self.raw.optional_color("background"))
             .unwrap_or_else(|| "white".to_string());
-        let primary_color = self
-            .raw
-            .optional_color("primaryColor")
-            .unwrap_or_else(|| "#ECECFF".to_string());
         let primary_text = self
             .raw
             .optional_color("primaryTextColor")
-            .or_else(|| invert_hex_color(&primary_color))
-            .unwrap_or_else(|| "#333".to_string());
+            .unwrap_or_else(|| "#131300".to_string());
 
         XyChartTheme {
             background_color: background.clone(),
@@ -55,106 +51,41 @@ impl<'a> PresentationTheme<'a> {
                 .raw
                 .optional_nested_color("xyChart", "yAxisLineColor")
                 .unwrap_or_else(|| primary_text.clone()),
-            plot_color_palette: resolve_xychart_plot_palette(XyChartPaletteConfig {
-                theme_name: self.common.theme_name.clone(),
-                plot_color_palette: self
-                    .raw
-                    .optional_nested_color("xyChart", "plotColorPalette"),
-                accent_color: self
-                    .raw
-                    .optional_nested_color("xyChart", "accentColor")
-                    .or_else(|| self.raw.optional_color("primaryColor")),
-                background_color: Some(background),
-            }),
+            plot_color_palette: resolve_xychart_plot_palette(
+                &self.common.theme_name,
+                self.raw
+                    .optional_nested_color("xyChart", "plotColorPalette")
+                    .as_deref(),
+            ),
         }
     }
 
     pub(crate) fn quadrantchart(&self) -> QuadrantChartTheme {
-        let quadrant1_fill = self
-            .raw
-            .optional_color("primaryColor")
-            .unwrap_or_else(|| "#ECECFF".to_string());
-        let primary_text = self
-            .raw
-            .optional_color("primaryTextColor")
-            .or_else(|| invert_hex_color(&quadrant1_fill))
-            .unwrap_or_else(|| "#131300".to_string());
-        let border_stroke = self
-            .raw
-            .optional_color("primaryBorderColor")
-            .and_then(|v| css_color_to_rgb_string(&v))
-            .unwrap_or_else(|| "rgb(199, 199, 241)".to_string());
-        let quadrant_point_fill = derive_quadrant_point_fill(&quadrant1_fill, &border_stroke);
-
-        let mut theme = QuadrantChartTheme {
-            quadrant1_fill: quadrant1_fill.clone(),
-            quadrant2_fill: adjust_hex_rgb(&quadrant1_fill, 5)
-                .unwrap_or_else(|| "#f1f1ff".to_string()),
-            quadrant3_fill: adjust_hex_rgb(&quadrant1_fill, 10)
-                .unwrap_or_else(|| "#f6f6ff".to_string()),
-            quadrant4_fill: adjust_hex_rgb(&quadrant1_fill, 15)
-                .unwrap_or_else(|| "#fbfbff".to_string()),
-            quadrant1_text_fill: primary_text.clone(),
-            quadrant2_text_fill: adjust_hex_rgb(&primary_text, -5)
-                .unwrap_or_else(|| "#0e0e00".to_string()),
-            quadrant3_text_fill: adjust_hex_rgb(&primary_text, -10)
-                .unwrap_or_else(|| "#090900".to_string()),
-            quadrant4_text_fill: adjust_hex_rgb(&primary_text, -15)
-                .unwrap_or_else(|| "#040400".to_string()),
-            quadrant_point_fill,
-            quadrant_point_text_fill: primary_text.clone(),
-            quadrant_x_axis_text_fill: primary_text.clone(),
-            quadrant_y_axis_text_fill: primary_text.clone(),
-            quadrant_title_fill: primary_text,
-            quadrant_internal_border_stroke_fill: border_stroke.clone(),
-            quadrant_external_border_stroke_fill: border_stroke,
-        };
-
-        // Mermaid applies quadrant-specific theme variables as raw CSS tokens.
-        // Preserve that verbatim behavior for explicit overrides, but keep the
-        // headless defaults derived and valid.
-        let set = |field: &mut String, key: &str| {
-            if let Some(v) = self.raw.optional_color(key) {
-                *field = v;
-            }
-        };
-
-        set(&mut theme.quadrant1_fill, "quadrant1Fill");
-        set(&mut theme.quadrant2_fill, "quadrant2Fill");
-        set(&mut theme.quadrant3_fill, "quadrant3Fill");
-        set(&mut theme.quadrant4_fill, "quadrant4Fill");
-
-        set(&mut theme.quadrant1_text_fill, "quadrant1TextFill");
-        set(&mut theme.quadrant2_text_fill, "quadrant2TextFill");
-        set(&mut theme.quadrant3_text_fill, "quadrant3TextFill");
-        set(&mut theme.quadrant4_text_fill, "quadrant4TextFill");
-
-        if let Some(v) = self.raw.optional_color("quadrantPointFill")
-            && !is_invalid_css_token(&v)
-        {
-            theme.quadrant_point_fill = v;
+        let value = |key: &str, fallback: &str| self.raw.color(key, fallback);
+        let primary_text = self.raw.color("primaryTextColor", "#131300");
+        QuadrantChartTheme {
+            quadrant1_fill: value("quadrant1Fill", "#ECECFF"),
+            quadrant2_fill: value("quadrant2Fill", "#f1f1ff"),
+            quadrant3_fill: value("quadrant3Fill", "#f6f6ff"),
+            quadrant4_fill: value("quadrant4Fill", "#fbfbff"),
+            quadrant1_text_fill: value("quadrant1TextFill", &primary_text),
+            quadrant2_text_fill: value("quadrant2TextFill", "#0e0e00"),
+            quadrant3_text_fill: value("quadrant3TextFill", "#090900"),
+            quadrant4_text_fill: value("quadrant4TextFill", "#040400"),
+            quadrant_point_fill: value("quadrantPointFill", "hsl(240, 100%, NaN%)"),
+            quadrant_point_text_fill: value("quadrantPointTextFill", &primary_text),
+            quadrant_x_axis_text_fill: value("quadrantXAxisTextFill", &primary_text),
+            quadrant_y_axis_text_fill: value("quadrantYAxisTextFill", &primary_text),
+            quadrant_title_fill: value("quadrantTitleFill", &primary_text),
+            quadrant_internal_border_stroke_fill: value(
+                "quadrantInternalBorderStrokeFill",
+                "hsl(240, 60%, 86.2745098039%)",
+            ),
+            quadrant_external_border_stroke_fill: value(
+                "quadrantExternalBorderStrokeFill",
+                "hsl(240, 60%, 86.2745098039%)",
+            ),
         }
-        set(&mut theme.quadrant_point_text_fill, "quadrantPointTextFill");
-        set(
-            &mut theme.quadrant_x_axis_text_fill,
-            "quadrantXAxisTextFill",
-        );
-        set(
-            &mut theme.quadrant_y_axis_text_fill,
-            "quadrantYAxisTextFill",
-        );
-        set(&mut theme.quadrant_title_fill, "quadrantTitleFill");
-
-        set(
-            &mut theme.quadrant_internal_border_stroke_fill,
-            "quadrantInternalBorderStrokeFill",
-        );
-        set(
-            &mut theme.quadrant_external_border_stroke_fill,
-            "quadrantExternalBorderStrokeFill",
-        );
-
-        theme
     }
 
     pub(crate) fn tree_view(&self) -> TreeViewTheme {
@@ -195,7 +126,7 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
-    pub(crate) fn treemap(&self) -> TreemapTheme {
+    pub(crate) fn treemap(&self) -> crate::Result<TreemapTheme> {
         let text_color = self.raw.color("textColor", "#333");
         let title_color = self
             .raw
@@ -230,33 +161,33 @@ impl<'a> PresentationTheme<'a> {
             })
             .collect();
         let color_scale_label = (0..12)
-            .map(|i| {
-                self.raw
-                    .optional_color(&format!("cScaleLabel{i}"))
-                    .unwrap_or_else(|| match theme_name.as_str() {
-                        "dark" | "forest" => scale_label_color.clone(),
-                        "neutral" => {
-                            if i == 0 || i == 2 {
-                                neutral_special_label_color.clone()
-                            } else {
-                                scale_label_color.clone()
-                            }
+            .map(|i| -> crate::Result<String> {
+                if let Some(color) = self.raw.optional_color(&format!("cScaleLabel{i}")) {
+                    return Ok(color);
+                }
+                Ok(match theme_name.as_str() {
+                    "dark" | "forest" => scale_label_color.clone(),
+                    "neutral" => {
+                        if i == 0 || i == 2 {
+                            neutral_special_label_color.clone()
+                        } else {
+                            scale_label_color.clone()
                         }
-                        _ => {
-                            if label_text_is_calculated {
-                                scale_label_color.clone()
-                            } else if i == 0 || i == 3 {
-                                invert_treemap_label_color_to_hex(&label_text_color)
-                                    .unwrap_or_else(|| label_text_color.clone())
-                            } else {
-                                label_text_color.clone()
-                            }
+                    }
+                    _ => {
+                        if label_text_is_calculated {
+                            scale_label_color.clone()
+                        } else if i == 0 || i == 3 {
+                            invert(&label_text_color)?
+                        } else {
+                            label_text_color.clone()
                         }
-                    })
+                    }
+                })
             })
-            .collect();
+            .collect::<crate::Result<Vec<_>>>()?;
 
-        TreemapTheme {
+        Ok(TreemapTheme {
             title_color,
             label_color: self
                 .raw
@@ -279,7 +210,7 @@ impl<'a> PresentationTheme<'a> {
             color_scale_peer,
             color_scale_label,
             text_color,
-        }
+        })
     }
 
     pub(crate) fn gantt(&self) -> GanttTheme {
@@ -324,15 +255,17 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
-    pub(crate) fn kanban(&self) -> KanbanTheme {
+    pub(crate) fn kanban(&self) -> crate::Result<KanbanTheme> {
         let dark_mode = self.raw.bool_root_or_theme("darkMode").unwrap_or(false);
-        let mut hsl_buf = ryu_js::Buffer::new();
         let sections = (0..12)
             .map(|i| {
                 let c_scale = self.raw.color(&format!("cScale{i}"), default_c_scale(i));
-                let section_fill = adjust_kanban_section_fill(&c_scale, dark_mode, &mut hsl_buf)
-                    .unwrap_or_else(|| c_scale.clone());
-                KanbanSectionTheme {
+                let section_fill = if dark_mode {
+                    darken(&c_scale, 10.0)?
+                } else {
+                    lighten(&c_scale, 10.0)?
+                };
+                Ok(KanbanSectionTheme {
                     section_fill,
                     c_scale,
                     c_scale_label: self
@@ -341,18 +274,18 @@ impl<'a> PresentationTheme<'a> {
                     c_scale_inv: self
                         .raw
                         .color(&format!("cScaleInv{i}"), default_c_scale_inv(i)),
-                }
+                })
             })
-            .collect();
+            .collect::<crate::Result<Vec<_>>>()?;
 
-        KanbanTheme {
+        Ok(KanbanTheme {
             text_color: self.common.text_color.clone(),
             background: self.raw.color("background", "white"),
             node_border: self.raw.color("nodeBorder", "#9370DB"),
             root_fill: self.raw.color("git0", "hsl(240, 100%, 46.2745098039%)"),
             root_label: self.raw.color("gitBranchLabel0", "#ffffff"),
             sections,
-        }
+        })
     }
 
     pub(crate) fn eventmodeling(&self) -> EventModelingTheme {
@@ -395,13 +328,11 @@ impl<'a> PresentationTheme<'a> {
         }
     }
 
-    pub(crate) fn venn(&self) -> VennTheme {
+    pub(crate) fn venn(&self) -> crate::Result<VennTheme> {
         let background = self.raw.color("background", "#f4f4f4");
-        let is_dark_theme = parse_venn_css_rgb(&background)
-            .is_some_and(|(r, g, b)| venn_luminance(r, g, b) < 0.45)
-            || self.common.theme_name.to_ascii_lowercase().contains("dark");
+        let is_dark_theme = is_dark(&background)?;
 
-        VennTheme {
+        Ok(VennTheme {
             font_family_css: self.raw.font_family_css_root_first(),
             title_color: self
                 .raw
@@ -419,7 +350,7 @@ impl<'a> PresentationTheme<'a> {
                 .collect(),
             primary_color: self.raw.color("primaryColor", "#ECECFF"),
             is_dark_theme,
-        }
+        })
     }
 
     pub(crate) fn journey(&self) -> JourneyTheme {
@@ -517,31 +448,17 @@ impl<'a> PresentationTheme<'a> {
                 value as usize
             })
             .unwrap_or(12);
-        let label_text_color = self.raw.color("labelTextColor", "black");
-        let label_text_is_calculated = label_text_color.trim() == "calculated";
-        let scale_label_color = self.raw.color("scaleLabelColor", &label_text_color);
-        let mut buf = ryu_js::Buffer::new();
         let sections = (0..theme_color_limit)
             .map(|i| {
                 let c_scale = self.raw.color(&format!("cScale{i}"), default_c_scale(i));
                 let c_scale_label = self
                     .raw
                     .optional_color(&format!("cScaleLabel{i}"))
-                    .unwrap_or_else(|| {
-                        if label_text_is_calculated {
-                            scale_label_color.clone()
-                        } else if i == 0 || i == 3 {
-                            invert_timeline_label_color_to_hex(&label_text_color)
-                                .unwrap_or_else(|| label_text_color.clone())
-                        } else {
-                            label_text_color.clone()
-                        }
-                    });
+                    .unwrap_or_else(|| default_c_scale_label(i).to_string());
                 let c_scale_inv = self
                     .raw
                     .optional_color(&format!("cScaleInv{i}"))
-                    .or_else(|| derive_timeline_c_scale_inv_fallback(&c_scale, &mut buf))
-                    .unwrap_or_else(|| c_scale.clone());
+                    .unwrap_or_else(|| default_c_scale_inv(i).to_string());
 
                 TimelineSectionTheme {
                     c_scale,

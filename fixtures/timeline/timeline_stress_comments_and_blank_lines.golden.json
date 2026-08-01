@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Comments & blank lines",
     "accTitle": null,
     "accDescr": null,

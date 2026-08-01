@@ -7,11 +7,11 @@ export interface AnalysisSettings {
   fixed_today?: string;
   fixed_local_offset_minutes?: number;
   site_config?: Record<string, unknown>;
-  parse?: {
-    suppress_errors?: boolean;
-  };
   resources?: {
-    max_source_bytes?: number;
+    limits?: {
+      max_source_bytes?: number;
+      max_document_diagrams?: number;
+    };
   };
   lint?: {
     profile?: "core" | "recommended" | "strict";
@@ -25,8 +25,8 @@ export interface RawAnalysisSettings {
   fixedToday: unknown;
   fixedLocalOffsetMinutes: unknown;
   siteConfig: unknown;
-  suppressErrors: boolean;
   maxSourceBytes: unknown;
+  maxDocumentDiagrams: unknown;
   lintProfile: string;
   enableRules: unknown[];
   disableRules: unknown[];
@@ -44,6 +44,7 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
   );
   const siteConfig = normalizePlainObject(raw.siteConfig);
   const maxSourceBytes = normalizePositiveInteger(raw.maxSourceBytes);
+  const maxDocumentDiagrams = normalizePositiveInteger(raw.maxDocumentDiagrams);
   const lintProfile = normalizeLintProfile(raw.lintProfile);
   const enableRules = sanitizeStringArray(raw.enableRules);
   const disableRules = sanitizeStringArray(raw.disableRules);
@@ -53,8 +54,14 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
     fixed_today: fixedToday,
     fixed_local_offset_minutes: fixedLocalOffsetMinutes,
     site_config: siteConfig,
-    parse: raw.suppressErrors ? { suppress_errors: true } : undefined,
-    resources: maxSourceBytes ? { max_source_bytes: maxSourceBytes } : undefined,
+    resources: maxSourceBytes || maxDocumentDiagrams
+      ? {
+          limits: compactObject({
+            max_source_bytes: maxSourceBytes,
+            max_document_diagrams: maxDocumentDiagrams,
+          }),
+        }
+      : undefined,
     lint:
       lintProfile || enableRules.length || disableRules.length || ruleSeverities.length
         ? compactObject({

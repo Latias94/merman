@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Many sections with <br> in titles",
     "accTitle": null,
     "accDescr": null,

@@ -1,96 +1,120 @@
-# Apple Swift Package
+# Apple Swift Binding
 
-Status: experimental scaffold.
+Merman ships its Apple package as a direct UniFFI binding. Swift calls the
+`merman-uniffi` component; it does not call the C ABI and does not maintain a
+second Swift implementation of engine ownership, callbacks, or result buffers.
 
-The Apple wrapper uses a root SwiftPM package shape:
+The local SwiftPM package contains:
 
-- root `Package.swift`
-- `platforms/apple/Merman.xcframework` binary target
-- Swift wrapper source under `platforms/apple/Sources/Merman`
-- `scripts/build-apple-xcframework.sh`
-- `platforms/ios/build-ios.sh` compatibility wrapper
+- the root `Package.swift` product named `Merman`;
+- a generated, checked-in `platforms/apple/Sources/Merman/Generated/Merman.swift`;
+- a `MermanFFI` binary XCFramework module containing the matching UniFFI static library,
+  generated C header, and module map; and
+- `scripts/build-apple-xcframework.sh`, which regenerates the Swift binding before packaging.
 
 ## Build On macOS
 
 ```bash
 bash scripts/build-apple-xcframework.sh
+swift build
+swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 ```
 
-iOS-only:
+Use `--ios` or `--macos` to build a subset of slices. The script builds the release
+library from the descriptor-owned `apple-uniffi-native` profile with its direct feature set, then
+runs the local UniFFI generator with the same features plus `bindgen-smoke`. The generator must produce `Merman.swift`,
+`MermanFFI.h`, and `MermanFFI.modulemap`; a missing library or generated artifact is a
+hard failure. Each XCFramework slice contains the header and module map required by the
+generated Swift source.
+
+The generated Swift source is version controlled. After a local rebuild, check it with:
 
 ```bash
-bash platforms/ios/build-ios.sh
+git diff --check -- platforms/apple/Sources/Merman/Generated
+git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 ```
 
-macOS-only:
-
-```bash
-bash scripts/build-apple-xcframework.sh --macos
-```
-
-The build script compiles `merman-ffi` as static libraries for iOS device, iOS simulator, and macOS,
-then assembles `platforms/apple/Merman.xcframework`. It also writes a `MermanFFI` Clang module map
-into each XCFramework header slice so SwiftPM can import the C ABI.
+The generated binding validates its UniFFI contract version and API checksums before the
+first call. A mixed Swift source and native library fails with the generated binding's
+explicit contract/checksum mismatch message; prerelease artifacts must always be upgraded
+together.
 
 ## Swift API
 
 ```swift
 import Merman
 
-let engine = try MermanEngine()
-let svg = try engine.renderSvg("flowchart TD\nA[Hello] --> B[World]")
-let ascii = try engine.renderAscii("flowchart TD\nA[Hello] --> B[World]")
-let semanticJson = try engine.parseJsonRaw("flowchart TD\nA[Hello] --> B[World]")
-let layoutJson = try engine.layoutJsonRaw("flowchart TD\nA[Hello] --> B[World]")
-let analysisJson = try engine.analyzeJsonRaw("flowchart TD\nA[Hello] --> B[World]")
-let documentJson = try engine.analyzeDocumentJsonRaw(
-    "```mermaid\nflowchart TD\nA --> B\n```",
-    uri: "file:///tmp/example.md"
+let source = "flowchart TD\nA[Hello] --> B[World]"
+let engine = MermanEngine()
+
+guard engine.bindingApiVersion() == 3 else {
+    fatalError("unexpected Merman UniFFI binding API")
+}
+
+let options = try resourceOptionsJson(profile: .constrained, overrides: [])
+let svg = try engine.renderSvg(source: source, optionsJson: options)
+
+let request = MermanOperationRequest(
+    operationId: "png",
+    source: source,
+    uri: nil,
+    optionsJson: options
 )
-let documentFactsJson = try engine.analyzeDocumentFactsJsonRaw(
-    "```mermaid\nflowchart TD\nA --> B\n```",
-    uri: "file:///tmp/example.md"
-)
-let validation = try engine.validate("flowchart TD\nA[Hello] --> B[World]")
-let diagrams = try engine.supportedDiagrams()
-let asciiCapabilities = try engine.asciiCapabilities()
-let familyCapabilities = try engine.diagramFamilyCapabilities()
-let lintRules = try engine.lintRuleCatalog()
+let png = try engine.execute(request: request).data
 ```
 
-The wrapper checks native ABI version and struct sizes on initialization. Native error payloads are
-mapped to `MermanError.binding`. `MermanReusableEngine` exposes repeated
-render/parse/layout/analysis/document-analysis/validation calls and `MermanTextMeasureCallback`
-aliases for hosts that need font-aware text measurement. The document-analysis raw JSON APIs use the
-same full-document source plus URI contract as the C ABI and the other platform wrappers.
-`MermanEngine.lintRuleCatalog()` returns governed analyzer rule metadata, including evidence
-references, for editor settings, diagnostic explanations, and LSP rule configuration UI.
+`MermanEngine` owns one-shot operations. Use `MermanReusableEngine` when a group of
+operations shares baseline options:
 
-## Text Measurement Guidance
-
-Use `MermanReusableEngine.setTextMeasureCallback(...)` with `MermanTextMeasureCallback` when Swift
-hosts need label geometry to match the final Apple display surface. Core Text is the preferred
-low-level path for native previews:
-`CTLine`/typographic bounds for simple labels and `CTFramesetterSuggestFrameSizeWithConstraints` for
-wrapped attributed strings. `NSAttributedString.boundingRect(...)` is acceptable when it matches the
-AppKit/UIKit display configuration.
-
-Return `handled=0` for unsupported requests. Retain any `userData` context for as long as the
-callback is installed, and decode request strings during the callback instead of storing their
-pointers. Measure natural HTML-like label width before constraining to `maxWidth`; otherwise short
-labels can be overestimated and make the diagram wider than the final AppKit/UIKit/WebKit surface.
-See [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md#apple-swift) for the full platform
-checklist.
-
-## Smoke Example
-
-```bash
-bash scripts/build-apple-xcframework.sh
-swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+```swift
+let reusable = try engine.reusableEngine(optionsJson: options)
+let pdf = try reusable.renderPdf(source: source, optionsJson: nil)
 ```
 
-## Verification Status
+The generic `execute` operation is the authoritative dispatch path. Its stable `operationId`
+values, returned media type, and metadata are owned by Merman's capability descriptor. Named
+methods such as `renderSvg`, `renderPng`, `renderJpeg`, and `renderPdf` are generated convenience
+methods over that path. One-shot request options may select `runtime_policy`; reusable request
+options deeply merge over the construction baseline but cannot replace its constructor-owned
+runtime policy.
 
-This scaffold was authored on Windows. `xcodebuild`, `lipo`, and SwiftPM build verification require
-macOS with Xcode and are not run by the Windows platform gate. The Windows platform gate does check
-that the Apple package files exist and that the Apple build scripts pass `bash -n` syntax validation.
+Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
+and optional `MermanResourceErrorDetails`. `.unknownOperation` has no capability ID;
+`.missingCapability` preserves the exact descriptor capability required by the valid request.
+Resource failures preserve the stable limit ID, phase, actual value, effective maximum, and selected
+profile. Do not distinguish these cases by matching the human-readable message.
+
+## Capabilities And Limits
+
+`engine.runtimeCatalogJson()` returns flat runtime catalog schema `1`. Its top-level transport and
+package identity belong to the loaded UniFFI artifact; `capabilities` contains sorted current
+capability, output, operation, system-adapter, and text-measurement IDs. `registry` and `resources`
+describe the same artifact's diagram-family count and resource profiles. Consumers validate this
+shape and its local relations, such as every output also being an operation and every reported
+system adapter also being a capability. They must tolerate newly introduced stable IDs rather than
+embedding a second copy of Merman's global vocabulary.
+
+Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `2`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
+
+## Text Measurement
+
+Merman uses its deterministic vendored measurer by default. A Swift UI that must match Core Text,
+AppKit, or UIKit geometry can implement the generated `MermanTextMeasurer` protocol and pass it to
+`engine.reusableEngineWithTextMeasurer(optionsJson:measurer:)`. The callback is immutable for that
+engine; construct another engine to change it or return to the built-in measurer.
+
+The callback receives the independent text-measurement protocol version `1`, not a C ABI record.
+Return `nil` for a request that cannot be answered synchronously and faithfully; the corresponding
+operation uses Merman's vendored fallback. Callback-free engines admit concurrent calls. Callback
+engines serialize admission and return `.busy` to a competitor; same-engine entry from a callback
+returns `.reentrantCall`. Only callback errors delivered through UniFFI's generated trampoline can
+be converted to fallback. Callback implementations must not unwind across the generated FFI
+boundary. See [host text measurement](HOST_TEXT_MEASUREMENT.md#apple-swift) for the operation and
+lifecycle contract.
+
+## Verification
+
+The Apple smoke calls the generated public API against the built XCFramework. It verifies binding
+API `3`, runtime catalog schema `1`, local capability relations, generic operation dispatch, reusable
+operations, and SVG/PNG/JPEG/PDF output. CI also rebuilds the checked-in generated Swift binding,
+so an API drift cannot pass by compiling an older hand-written facade.

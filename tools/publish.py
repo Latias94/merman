@@ -44,6 +44,7 @@ PUBLISH_ORDER = [
     "merman-layout-elk",
     "merman-editor-core",
     "merman-render",
+    "merman-export",
     "merman",
     "merman-lsp",
     "merman-bindings-core",

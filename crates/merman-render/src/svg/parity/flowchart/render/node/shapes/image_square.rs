@@ -52,12 +52,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         } else {
             asset_h
         };
-
-        let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
-            ctx.class_defs,
-            common.node_classes,
-            common.node_styles,
-        );
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
@@ -72,8 +66,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
-                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-                whole_label_font_style: node_font_style.as_deref(),
             },
         );
         if !has_label {
@@ -135,7 +127,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
             escape_xml_display(common.fill_color)
         );
         if let Some(stroke_d) =
-            super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_stroke_path_for_svg_path(
                     &rect_stroke_path,
                     common.stroke_color,
@@ -158,7 +150,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
 
         // Label group uses a background class in Mermaid's image/icon helpers.
         let label_html =
-            super::super::helpers::timed_node_label_html(common.timing_enabled, details, || {
+            super::super::helpers::timed_node_label_html(common.timing, details, || {
                 flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
             });
         let label_dy = if top_label {

@@ -72,7 +72,5 @@ pub(super) fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, 
             to_remove.push(id.to_string());
         }
     });
-    for v in to_remove {
-        let _ = g.remove_node(&v);
-    }
+    g.remove_nodes(to_remove.iter().map(String::as_str));
 }

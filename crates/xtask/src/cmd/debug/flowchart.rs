@@ -1,11 +1,56 @@
 //! Flowchart debug utilities.
 
 use crate::XtaskError;
+use merman_core::ParsedDiagramRender;
+use merman_core::RenderSemanticModel;
+use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_render::environment::RenderSession;
+use merman_render::model::FlowchartLayout;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+
+fn flowchart_model(parsed: &ParsedDiagramRender) -> Result<&FlowchartModel, XtaskError> {
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "expected Flowchart render model, got {}",
+            parsed.model().kind()
+        )));
+    };
+    Ok(model)
+}
+
+fn layout_flowchart_render_model(
+    parsed: &ParsedDiagramRender,
+    session: RenderSession,
+) -> Result<FlowchartLayout, XtaskError> {
+    let artifact = merman_render::family::prepare(
+        parsed.clone(),
+        &merman_render::LayoutOptions::headless_svg_defaults(),
+        session,
+    )
+    .map_err(|error| XtaskError::DebugSvgFailed(error.to_string()))?;
+    let projection = artifact
+        .layout_json()
+        .map_err(|error| XtaskError::DebugSvgFailed(error.to_string()))?;
+    let layout = projection
+        .get("layout")
+        .and_then(|layout| layout.get("FlowchartV2"))
+        .cloned()
+        .ok_or_else(|| {
+            XtaskError::DebugSvgFailed(
+                "prepared Flowchart artifact did not expose a FlowchartV2 layout projection"
+                    .to_string(),
+            )
+        })?;
+    serde_json::from_value(layout).map_err(|error| {
+        XtaskError::DebugSvgFailed(format!(
+            "failed to decode prepared Flowchart layout projection: {error}"
+        ))
+    })
+}
 
 pub(crate) fn debug_flowchart_svg_roots(args: Vec<String>) -> Result<(), XtaskError> {
     let mut fixture: Option<String> = None;
@@ -1277,7 +1322,6 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     let mut out: Option<PathBuf> = None;
     let mut upstream: Option<PathBuf> = None;
     let mut local: Option<PathBuf> = None;
-    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -1301,11 +1345,6 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
             "--local" => {
                 i += 1;
                 local = args.get(i).map(PathBuf::from);
-            }
-            "--flowchart-elk-backend" => {
-                i += 1;
-                flowchart_elk_backend =
-                    parse_debug_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1336,28 +1375,20 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     // Keep layout snapshots consistent with the in-repo `layout_snapshots_test` harness, which
     // uses the default engine configuration.
     let engine = merman::Engine::new();
-    let measurer: std::sync::Arc<dyn merman_render::text::TextMeasurer + Send + Sync> =
-        std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
-    let layout_opts = merman_render::LayoutOptions {
-        text_measurer: std::sync::Arc::clone(&measurer),
-        flowchart_elk_backend,
-        ..Default::default()
-    };
+    let layout_opts = merman_render::LayoutOptions::default();
+    let session = merman::svg::RenderEnvironment::deterministic()
+        .begin_session()
+        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
 
-    let parsed =
-        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
-            .map_err(|e| XtaskError::DebugSvgFailed(format!("parse failed: {e}")))?
-            .ok_or_else(|| XtaskError::DebugSvgFailed("no diagram detected".to_string()))?;
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
+    )
+    .map_err(|e| XtaskError::DebugSvgFailed(format!("parse failed: {e}")))?
+    .ok_or_else(|| XtaskError::DebugSvgFailed("no diagram detected".to_string()))?;
+    flowchart_model(&parsed)?;
 
-    let layouted = merman_render::layout_parsed(&parsed, &layout_opts)
+    let artifact = merman_render::family::prepare(parsed, &layout_opts, session)
         .map_err(|e| XtaskError::DebugSvgFailed(format!("layout failed: {e}")))?;
-
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
-        return Err(XtaskError::DebugSvgFailed(format!(
-            "expected flowchart-v2 layout, got {}",
-            layouted.meta.diagram_type
-        )));
-    };
 
     let out = out.unwrap_or_else(|| {
         workspace_root
@@ -1374,31 +1405,22 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
         })?;
     }
 
-    // Rust 1.85+ marks environment mutation as `unsafe` due to potential UB when other
-    // threads concurrently read/modify the process environment. `xtask` sets these vars
-    // up-front before invoking rendering code, so this is safe in our usage.
-    unsafe {
-        std::env::set_var("MERMAN_TRACE_FLOWCHART_EDGE", edge_id);
-        std::env::set_var("MERMAN_TRACE_FLOWCHART_OUT", &out);
-    }
-
     let svg_opts = merman_render::svg::SvgRenderOptions {
         diagram_id: Some(fixture_name.to_string()),
         ..Default::default()
     };
+    let trace_collector = merman_render::svg::FlowchartEdgeTraceCollector::default();
+    let debug = merman_render::svg::SvgDebugOptions::default()
+        .with_flowchart_edge_trace(edge_id.to_string(), trace_collector.clone());
 
-    // Render once to trigger the trace emission inside `merman-render`.
-    let svg = merman_render::svg::render_flowchart_v2_svg(
-        layout,
-        &layouted.semantic,
-        &layouted.meta.effective_config,
-        layouted.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
-        &svg_opts,
-    )
-    .map_err(|e| XtaskError::DebugSvgFailed(format!("render failed: {e}")))?;
+    // Render once to collect the trace in caller-owned memory. This command owns the checked
+    // serialization and filesystem boundary below.
+    let rendered = artifact
+        .render_svg(&svg_opts, &debug)
+        .map_err(|e| XtaskError::DebugSvgFailed(format!("render failed: {e}")))?;
+    let svg = rendered.svg();
 
-    if let Ok(doc) = roxmltree::Document::parse(&svg)
+    if let Ok(doc) = roxmltree::Document::parse(svg)
         && let Some(dp) = find_data_points(&doc, edge_id)
         && let Some(json) = decode_data_points_json(&dp)
     {
@@ -1410,7 +1432,15 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
         println!();
     }
 
-    let trace_json = fs::read_to_string(&out).map_err(|source| XtaskError::ReadFile {
+    let trace = trace_collector
+        .drain()
+        .into_iter()
+        .find(|trace| trace.edge_id == edge_id)
+        .ok_or_else(|| {
+            XtaskError::DebugSvgFailed(format!("render did not collect trace for edge {edge_id:?}"))
+        })?;
+    let trace_json = serde_json::to_string_pretty(&trace)?;
+    fs::write(&out, &trace_json).map_err(|source| XtaskError::WriteFile {
         path: out.display().to_string(),
         source,
     })?;
@@ -1418,7 +1448,6 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     println!("trace:   {}", out.display());
     println!("fixture: {fixture_name}");
     println!("edge:    {edge_id}");
-    println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
     println!();
     println!("== Local edge trace (JSON) ==");
     println!("{trace_json}");
@@ -1532,7 +1561,6 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
     let mut fixture: Option<PathBuf> = None;
     let mut edge_id: Option<String> = None;
     let mut text_measurer: String = "deterministic".to_string();
-    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -1551,11 +1579,6 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
                     .get(i)
                     .map(|s| s.trim().to_ascii_lowercase())
                     .unwrap_or_else(|| "deterministic".to_string());
-            }
-            "--flowchart-elk-backend" => {
-                i += 1;
-                flowchart_elk_backend =
-                    parse_debug_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1578,42 +1601,34 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
         .with_fixed_today(Some(
             chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
         ));
-    let parsed =
-        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
-            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
-            .ok_or_else(|| {
-                XtaskError::DebugSvgFailed(format!(
-                    "no diagram detected in {}",
-                    fixture_path.display()
-                ))
-            })?;
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
+    )
+    .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+    .ok_or_else(|| {
+        XtaskError::DebugSvgFailed(format!("no diagram detected in {}", fixture_path.display()))
+    })?;
 
-    let mut layout_opts = merman_render::LayoutOptions::default();
-    if matches!(
+    let measurement_policy = if matches!(
         text_measurer.as_str(),
         "vendored" | "vendored-font" | "vendored-font-metrics"
     ) {
-        layout_opts.text_measurer =
-            std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
-    }
-    layout_opts.flowchart_elk_backend = flowchart_elk_backend;
-    let layouted = merman_render::layout_parsed(&parsed, &layout_opts)
-        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
-
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
-        return Err(XtaskError::DebugSvgFailed(format!(
-            "unexpected layout type: {}",
-            layouted.meta.diagram_type
-        )));
+        merman::svg::TextMeasurementPolicy::parity()
+    } else {
+        merman::svg::TextMeasurementPolicy::deterministic()
     };
+    let session = merman::svg::RenderEnvironment::deterministic()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session()
+        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
+    let layout = layout_flowchart_render_model(&parsed, session)?;
 
     println!("fixture: {}", fixture_path.display());
-    if let Some(title) = layouted.meta.title.as_deref() {
+    if let Some(title) = parsed.metadata().title.as_deref() {
         println!("title: {}", title);
     }
-    println!("diagram_type: {}", layouted.meta.diagram_type);
+    println!("diagram_type: {}", parsed.metadata().diagram_type);
     println!("text_measurer: {}", text_measurer);
-    println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
     println!();
 
     // Mirror `compute_layout_bounds` (private to `merman-render`) for debugging.
@@ -1755,9 +1770,8 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
 
 pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), XtaskError> {
     let mut fixture: Option<PathBuf> = None;
-    let mut phase = Some(merman_layout_elk::source_port::LayeredPhase::P3NodeOrdering);
-    let mut processor: Option<merman_layout_elk::source_port::ProcessorKind> = None;
-    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
+    let mut phase = Some(merman_layout_elk::LayeredPhase::P3NodeOrdering);
+    let mut processor: Option<merman_layout_elk::ProcessorKind> = None;
     let mut p3_trace = false;
 
     let mut i = 0;
@@ -1772,19 +1786,19 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
                 phase = match args.get(i).map(|s| s.trim().to_ascii_lowercase()) {
                     Some(value) if value == "full" => None,
                     Some(value) if matches!(value.as_str(), "p1" | "p1-cycle" | "cycle") => {
-                        Some(merman_layout_elk::source_port::LayeredPhase::P1CycleBreaking)
+                        Some(merman_layout_elk::LayeredPhase::P1CycleBreaking)
                     }
                     Some(value) if matches!(value.as_str(), "p2" | "p2-layer" | "layer") => {
-                        Some(merman_layout_elk::source_port::LayeredPhase::P2Layering)
+                        Some(merman_layout_elk::LayeredPhase::P2Layering)
                     }
                     Some(value) if matches!(value.as_str(), "p3" | "p3-order" | "order") => {
-                        Some(merman_layout_elk::source_port::LayeredPhase::P3NodeOrdering)
+                        Some(merman_layout_elk::LayeredPhase::P3NodeOrdering)
                     }
                     Some(value) if matches!(value.as_str(), "p4" | "p4-place" | "place") => {
-                        Some(merman_layout_elk::source_port::LayeredPhase::P4NodePlacement)
+                        Some(merman_layout_elk::LayeredPhase::P4NodePlacement)
                     }
                     Some(value) if matches!(value.as_str(), "p5" | "p5-route" | "route") => {
-                        Some(merman_layout_elk::source_port::LayeredPhase::P5EdgeRouting)
+                        Some(merman_layout_elk::LayeredPhase::P5EdgeRouting)
                     }
                     _ => return Err(XtaskError::Usage),
                 };
@@ -1798,11 +1812,6 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
             }
             "--p3-trace" => {
                 p3_trace = true;
-            }
-            "--flowchart-elk-backend" => {
-                i += 1;
-                flowchart_elk_backend =
-                    parse_debug_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1825,29 +1834,24 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
         .with_fixed_today(Some(
             chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
         ));
-    let parsed =
-        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
-            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
-            .ok_or_else(|| {
-                XtaskError::DebugSvgFailed(format!(
-                    "no diagram detected in {}",
-                    fixture_path.display()
-                ))
-            })?;
-    let model: merman_core::diagrams::flowchart::FlowchartV2Model =
-        serde_json::from_value(parsed.model.clone())?;
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
+    )
+    .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+    .ok_or_else(|| {
+        XtaskError::DebugSvgFailed(format!("no diagram detected in {}", fixture_path.display()))
+    })?;
+    let model = flowchart_model(&parsed)?;
 
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-    let elk_graph = merman_render::flowchart::elk::build_flowchart_elk_graph_for_backend(
-        &model,
-        &parsed.meta.effective_config,
+    let elk_graph = merman_render::flowchart::elk::build_flowchart_elk_graph(
+        model,
+        &parsed.metadata().effective_config,
         &measurer,
         None,
-        flowchart_elk_backend,
     )
     .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
-    let source_input = merman_layout_elk::source_input_from_graph(&elk_graph);
-    let mut lgraph = merman_layout_elk::source_port::import_graph(&source_input)
+    let mut source_diagnostics = merman_layout_elk::SourcePhaseDiagnostics::from_graph(&elk_graph)
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
 
     let has_parent_nodes = elk_graph.nodes.iter().any(|node| node.parent.is_some());
@@ -1858,16 +1862,12 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
                 "--p3-trace currently expects a compound flowchart fixture".to_string(),
             ));
         }
-        let executions =
-            merman_layout_elk::source_port::execute_ported_compound_processors_until_processor(
-                &mut lgraph,
-                merman_layout_elk::source_port::ProcessorKind::SortByInputModelProcessor,
+        let (executions, crossing_trace) = source_diagnostics
+            .inspect_compound_crossings_after_processor(
+                merman_layout_elk::ProcessorKind::SortByInputModelProcessor,
             )
             .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
-        trace = merman_layout_elk::source_port::debug_crossings_layer_sweep_hierarchical_with_type(
-            &mut lgraph,
-            merman_layout_elk::source_port::CrossMinType::Barycenter,
-        );
+        trace = crossing_trace;
         executions
             .into_iter()
             .map(|execution| {
@@ -1879,19 +1879,16 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
             .collect::<Vec<_>>()
     } else if has_parent_nodes {
         let executions = if let Some(processor) = processor {
-            merman_layout_elk::source_port::execute_ported_compound_processors_until_processor(
-                &mut lgraph,
-                processor,
-            )
-            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+            source_diagnostics
+                .execute_compound_until_processor(processor)
+                .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
         } else if let Some(phase) = phase {
-            merman_layout_elk::source_port::execute_ported_compound_processors_until(
-                &mut lgraph,
-                phase,
-            )
-            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+            source_diagnostics
+                .execute_compound_until(phase)
+                .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
         } else {
-            merman_layout_elk::source_port::execute_ported_compound_processors(&mut lgraph)
+            source_diagnostics
+                .execute_compound_all()
                 .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
         };
         executions
@@ -1905,27 +1902,26 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
             .collect::<Vec<_>>()
     } else {
         let processors = if let Some(processor) = processor {
-            merman_layout_elk::source_port::execute_processors_until_processor(
-                &mut lgraph,
-                processor,
-            )
-            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+            source_diagnostics
+                .execute_until_processor(processor)
+                .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
         } else if let Some(phase) = phase {
-            merman_layout_elk::source_port::execute_processors_until(&mut lgraph, phase)
+            source_diagnostics
+                .execute_until(phase)
                 .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
         } else {
-            merman_layout_elk::source_port::execute_ported_processors(&mut lgraph)
+            source_diagnostics
+                .execute_all()
                 .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
         };
-        vec![format!("{}={processors:?}", lgraph.id)]
+        vec![format!("{}={processors:?}", elk_graph.id)]
     };
 
     println!("fixture: {}", fixture_path.display());
-    println!("diagram_type: {}", parsed.meta.diagram_type);
-    println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
+    println!("diagram_type: {}", parsed.metadata().diagram_type);
     println!(
         "phase: {:?}",
-        phase.unwrap_or(merman_layout_elk::source_port::LayeredPhase::P5EdgeRouting)
+        phase.unwrap_or(merman_layout_elk::LayeredPhase::P5EdgeRouting)
     );
     if let Some(processor) = processor {
         println!("processor_stop: {processor:?}");
@@ -1942,20 +1938,14 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
         dump_hierarchy_sweep_debug_trace(&trace);
     }
 
-    dump_source_graph(&lgraph, 0);
+    print!("{}", source_diagnostics.graph_dump());
 
     Ok(())
 }
 
-fn parse_debug_flowchart_elk_backend(
-    raw: Option<&str>,
-) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
-    crate::cmd::parse_flowchart_elk_backend(raw)
-}
-
 fn parse_source_processor_kind(
     value: &str,
-) -> Result<merman_layout_elk::source_port::ProcessorKind, XtaskError> {
+) -> Result<merman_layout_elk::ProcessorKind, XtaskError> {
     let normalized = value
         .trim()
         .chars()
@@ -1964,82 +1954,64 @@ fn parse_source_processor_kind(
         .collect::<String>();
 
     let processor = match normalized.as_str() {
-        "directionpreprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::DirectionPreprocessor
-        }
+        "directionpreprocessor" => merman_layout_elk::ProcessorKind::DirectionPreprocessor,
         "edgeandlayerconstraintedgereverser" => {
-            merman_layout_elk::source_port::ProcessorKind::EdgeAndLayerConstraintEdgeReverser
+            merman_layout_elk::ProcessorKind::EdgeAndLayerConstraintEdgeReverser
         }
-        "greedycyclebreaker" => merman_layout_elk::source_port::ProcessorKind::GreedyCycleBreaker,
+        "greedycyclebreaker" => merman_layout_elk::ProcessorKind::GreedyCycleBreaker,
         "layerconstraintpreprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::LayerConstraintPreprocessor
+            merman_layout_elk::ProcessorKind::LayerConstraintPreprocessor
         }
-        "networksimplexlayerer" => {
-            merman_layout_elk::source_port::ProcessorKind::NetworkSimplexLayerer
-        }
+        "networksimplexlayerer" => merman_layout_elk::ProcessorKind::NetworkSimplexLayerer,
         "layerconstraintpostprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::LayerConstraintPostprocessor
+            merman_layout_elk::ProcessorKind::LayerConstraintPostprocessor
         }
         "hierarchicalportconstraintprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::HierarchicalPortConstraintProcessor
+            merman_layout_elk::ProcessorKind::HierarchicalPortConstraintProcessor
         }
-        "longedgesplitter" => merman_layout_elk::source_port::ProcessorKind::LongEdgeSplitter,
-        "portsideprocessor" => merman_layout_elk::source_port::ProcessorKind::PortSideProcessor,
-        "invertedportprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::InvertedPortProcessor
-        }
-        "portlistsorter" => merman_layout_elk::source_port::ProcessorKind::PortListSorter,
+        "longedgesplitter" => merman_layout_elk::ProcessorKind::LongEdgeSplitter,
+        "portsideprocessor" => merman_layout_elk::ProcessorKind::PortSideProcessor,
+        "invertedportprocessor" => merman_layout_elk::ProcessorKind::InvertedPortProcessor,
+        "portlistsorter" => merman_layout_elk::ProcessorKind::PortListSorter,
         "sortbyinputmodelprocessor" | "sortbyinputmodel" => {
-            merman_layout_elk::source_port::ProcessorKind::SortByInputModelProcessor
+            merman_layout_elk::ProcessorKind::SortByInputModelProcessor
         }
         "layersweepcrossingminimizerbarycenter" | "barycenter" => {
-            merman_layout_elk::source_port::ProcessorKind::LayerSweepCrossingMinimizerBarycenter
+            merman_layout_elk::ProcessorKind::LayerSweepCrossingMinimizerBarycenter
         }
         "inlayerconstraintprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::InLayerConstraintProcessor
+            merman_layout_elk::ProcessorKind::InLayerConstraintProcessor
         }
-        "labelandnodesizeprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::LabelAndNodeSizeProcessor
-        }
+        "labelandnodesizeprocessor" => merman_layout_elk::ProcessorKind::LabelAndNodeSizeProcessor,
         "innermostnodemargincalculator" => {
-            merman_layout_elk::source_port::ProcessorKind::InnermostNodeMarginCalculator
+            merman_layout_elk::ProcessorKind::InnermostNodeMarginCalculator
         }
-        "bknodeplacer" => merman_layout_elk::source_port::ProcessorKind::BKNodePlacer,
+        "bknodeplacer" => merman_layout_elk::ProcessorKind::BKNodePlacer,
         "layersizeandgraphheightcalculator" => {
-            merman_layout_elk::source_port::ProcessorKind::LayerSizeAndGraphHeightCalculator
+            merman_layout_elk::ProcessorKind::LayerSizeAndGraphHeightCalculator
         }
-        "orthogonaledgerouter" => {
-            merman_layout_elk::source_port::ProcessorKind::OrthogonalEdgeRouter
-        }
+        "orthogonaledgerouter" => merman_layout_elk::ProcessorKind::OrthogonalEdgeRouter,
         "hierarchicalportdummysizeprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::HierarchicalPortDummySizeProcessor
+            merman_layout_elk::ProcessorKind::HierarchicalPortDummySizeProcessor
         }
         "hierarchicalportpositionprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::HierarchicalPortPositionProcessor
+            merman_layout_elk::ProcessorKind::HierarchicalPortPositionProcessor
         }
         "hierarchicalportorthogonaledgerouter" => {
-            merman_layout_elk::source_port::ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
+            merman_layout_elk::ProcessorKind::HierarchicalPortOrthogonalEdgeRouter
         }
-        "longedgejoiner" => merman_layout_elk::source_port::ProcessorKind::LongEdgeJoiner,
-        "endlabelsorter" => merman_layout_elk::source_port::ProcessorKind::EndLabelSorter,
-        "reversededgerestorer" => {
-            merman_layout_elk::source_port::ProcessorKind::ReversedEdgeRestorer
-        }
-        "hierarchicalnoderesizer" => {
-            merman_layout_elk::source_port::ProcessorKind::HierarchicalNodeResizer
-        }
-        "directionpostprocessor" => {
-            merman_layout_elk::source_port::ProcessorKind::DirectionPostprocessor
-        }
+        "longedgejoiner" => merman_layout_elk::ProcessorKind::LongEdgeJoiner,
+        "endlabelsorter" => merman_layout_elk::ProcessorKind::EndLabelSorter,
+        "reversededgerestorer" => merman_layout_elk::ProcessorKind::ReversedEdgeRestorer,
+        "hierarchicalnoderesizer" => merman_layout_elk::ProcessorKind::HierarchicalNodeResizer,
+        "directionpostprocessor" => merman_layout_elk::ProcessorKind::DirectionPostprocessor,
         _ => return Err(XtaskError::Usage),
     };
 
     Ok(processor)
 }
 
-fn dump_hierarchy_sweep_debug_trace(
-    trace: &merman_layout_elk::source_port::HierarchySweepDebugTrace,
-) {
+fn dump_hierarchy_sweep_debug_trace(trace: &merman_layout_elk::HierarchySweepDebugTrace) {
     println!("p3_trace_graphs:");
     for graph in &trace.graphs {
         let child_paths = graph
@@ -2102,9 +2074,7 @@ fn dump_hierarchy_sweep_debug_trace(
     println!();
 }
 
-fn format_hierarchy_sweep_nodes(
-    nodes: &[merman_layout_elk::source_port::HierarchySweepNodeDebug],
-) -> String {
+fn format_hierarchy_sweep_nodes(nodes: &[merman_layout_elk::HierarchySweepNodeDebug]) -> String {
     nodes
         .iter()
         .map(|node| {
@@ -2115,144 +2085,4 @@ fn format_hierarchy_sweep_nodes(
         })
         .collect::<Vec<_>>()
         .join(" -> ")
-}
-
-fn dump_source_graph(graph: &merman_layout_elk::source_port::LGraph, depth: usize) {
-    let indent = "  ".repeat(depth);
-    println!(
-        "{indent}graph {} parent={:?} size=({}, {}) offset=({}, {}) padding=({}, {}, {}, {})",
-        graph.id,
-        graph.parent_node_id,
-        graph.size.width,
-        graph.size.height,
-        graph.offset.x,
-        graph.offset.y,
-        graph.padding.left,
-        graph.padding.right,
-        graph.padding.top,
-        graph.padding.bottom
-    );
-    println!(
-        "{indent}options direction={:?} port_constraints={:?} thoroughness={} hierarchical_sweepiness={} consider_model_order={:?} force_node_model_order={} port_model_order={}",
-        graph.options.direction,
-        graph.options.port_constraints,
-        graph.options.thoroughness,
-        graph.options.hierarchical_sweepiness,
-        graph.options.consider_model_order_strategy,
-        graph.options.force_node_model_order,
-        graph.options.consider_model_order_port_model_order
-    );
-    println!("{indent}layerless:");
-    for (index, node) in graph.layerless_nodes.iter().enumerate() {
-        println!(
-            "{indent}- #{index} {} kind={:?} layer={:?} order={:?} pos=({}, {}) size=({}, {}) margin=({}, {}, {}, {}) port_constraints={:?} parent_graph={}",
-            node.id,
-            node.kind,
-            node.layer_index,
-            node.model_order,
-            node.position.x,
-            node.position.y,
-            node.size.width,
-            node.size.height,
-            node.margin.left,
-            node.margin.right,
-            node.margin.top,
-            node.margin.bottom,
-            node.port_constraints,
-            node.nested_graph.is_some()
-        );
-        if node.kind == merman_layout_elk::source_port::LNodeKind::ExternalPort {
-            println!(
-                "{indent}  external side={:?} size=({}, {}) ratio_or_position={} replaced={:?}",
-                node.external_port_side,
-                node.external_port_size.width,
-                node.external_port_size.height,
-                node.port_ratio_or_position,
-                node.replaced_external_port_dummy
-            );
-        }
-        for (port_index, port) in node.ports.iter().enumerate() {
-            let incoming = port
-                .incoming_edges
-                .iter()
-                .map(|edge| graph.edges[*edge].id.as_str())
-                .collect::<Vec<_>>();
-            let outgoing = port
-                .outgoing_edges
-                .iter()
-                .map(|edge| graph.edges[*edge].id.as_str())
-                .collect::<Vec<_>>();
-            println!(
-                "{indent}  port #{port_index} {} type={:?} side={:?} order={:?} index={:?} pos=({}, {}) anchor=({}, {}) size=({}, {}) border={:?} inside={} dummy={:?} origin={:?} in=[{}] out=[{}]",
-                port.id,
-                port.port_type,
-                port.side,
-                port.model_order,
-                port.port_index,
-                port.position.x,
-                port.position.y,
-                port.anchor.x,
-                port.anchor.y,
-                port.size.width,
-                port.size.height,
-                port.border_offset,
-                port.inside_connections,
-                port.port_dummy,
-                node.origin_port,
-                incoming.join(","),
-                outgoing.join(",")
-            );
-        }
-    }
-    if !graph.edges.is_empty() {
-        println!("{indent}edges:");
-        for (edge_index, edge) in graph.edges.iter().enumerate() {
-            let source_attached = graph.edge_source_attached(edge_index);
-            let target_attached = graph.edge_target_attached(edge_index);
-            println!(
-                "{indent}- #{edge_index} {} {}:{} -> {}:{} segment={:?} reversed={} attached=({source_attached},{target_attached}) bends={:?}",
-                edge.id,
-                edge.source.node,
-                edge.source.port,
-                edge.target.node,
-                edge.target.port,
-                edge.compound_segment,
-                edge.reversed,
-                edge.bend_points
-            );
-        }
-    }
-    println!("{indent}layers:");
-    for (index, layer) in graph.layers.iter().enumerate() {
-        let nodes = layer
-            .nodes
-            .iter()
-            .map(|node| {
-                let lnode = &graph.layerless_nodes[*node];
-                format!(
-                    "{}#{node}[{:?},order={:?},pos=({},{}),size=({},{})]",
-                    lnode.id,
-                    lnode.kind,
-                    lnode.model_order,
-                    lnode.position.x,
-                    lnode.position.y,
-                    lnode.size.width,
-                    lnode.size.height
-                )
-            })
-            .collect::<Vec<_>>();
-        println!(
-            "{indent}- layer {index} size=({}, {}) nodes={}",
-            layer.size.width,
-            layer.size.height,
-            nodes.join(" -> ")
-        );
-    }
-    println!();
-
-    for node in &graph.layerless_nodes {
-        if let Some(nested) = node.nested_graph.as_deref() {
-            dump_source_graph(nested, depth + 1);
-        }
-    }
 }

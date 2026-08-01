@@ -5,9 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 592.406,
+        "max_x": 592.41,
         "max_y": 450.0
       },
+      "title": "Unsafe props test",
       "center_x": 225.0,
       "center_y": 225.0,
       "radius": 185.0,

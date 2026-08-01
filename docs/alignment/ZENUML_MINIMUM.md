@@ -1,47 +1,87 @@
-# ZenUML Minimum Slice (Headless Compatibility, Phase 1)
+# ZenUML Family Contract
 
-This document defines the initial, test-driven minimum slice for ZenUML support in `merman`.
+Merman implements ZenUML as a family-owned grammar and semantic model. It does not translate
+ZenUML into Mermaid Sequence actions or Sequence JSON.
 
-ZenUML is an upstream Mermaid “external diagram” rendered via browser-only `@zenuml/core`. `merman`
-is pure Rust and headless, so Phase 1 implements a conservative compatibility mode by translating a
-small ZenUML subset into Mermaid `sequenceDiagram` syntax.
+## Authority
 
-Baseline references:
+- Mermaid baseline: `mermaid@11.16.0`.
+- Mermaid workspace oracle: `@zenuml/core@3.47.8`, commit
+  `c81406671c0833baebb9fac08a0cbcdc99b3907d`.
+- Selected compatible behavior source: `@zenuml/core@3.50.1`, commit
+  `38404ccc14243ed54ab45b804b2eb6f2ca73af36`.
+- Selected grammar: `repo-ref/zenuml-core-3.50.1/src/g4/sequenceLexer.g4` and
+  `repo-ref/zenuml-core-3.50.1/src/g4/sequenceParser.g4`.
+- Latest stable major `4.2.0` is outside Mermaid's declared plugin range and remains a separate
+  admission rather than an implicit upgrade. Its exact deferred contract and future behavior-work
+  inventory live in `tools/upstreams/ZENUML_CORE_V4_DEFERRED_ADMISSION.json`.
 
-- Mermaid: `@11.12.3` (`repo-ref/mermaid`, see `tools/upstreams/REPOS.lock.json`)
-- ZenUML core: `v3.45.4` (`repo-ref/zenuml-core`, see `tools/upstreams/REPOS.lock.json`)
+The machine-readable decision is `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`; companion gate
+evidence is `tools/upstreams/ZENUML_CORE_ADMISSION.json`.
 
-## Supported (current)
+ADR-0075 records the parser technology decision. The selected grammar's lexer channels/modes,
+runtime semantic predicates, Unicode lookahead, incomplete-input recovery, and exact source spans
+are implemented by a grammar-derived Unicode token scanner plus bounded recursive descent. Parser
+generator uniformity is not a capability claim or architecture invariant.
 
-- Header:
-  - `zenuml` (case-insensitive), optionally preceded by empty lines.
-- Empty lines and whitespace-only lines are ignored.
-- Metadata directives (passed through to the sequence parser):
-  - `title ...`
-  - `accTitle ...`
-  - `accDescr ...`
-- Messages (translated to Mermaid sequence arrows):
-  - `A->B: message` → `A->>B: message`
-  - `A-->B: message` → `A-->>B: message`
-  - label is optional (`A->B` is allowed)
+## Owned pipeline
 
-## Output shape (Phase 1)
+`crates/merman-core/src/diagrams/zenuml/` contains the lexer, recursive recovering parser, AST,
+semantic builder, editor projection, and typed render model. The family registration points every
+entry point at one construction pass:
 
-- Diagram type: `zenuml` (metadata stays `zenuml` for detection/UX).
-- Semantic model/layout/rendering: delegated to the `sequenceDiagram` pipeline after translation:
-  - semantic parser: `crates/merman-core/src/diagrams/sequence.rs`
-  - layout: `crates/merman-render/src/sequence.rs`
-  - SVG: `crates/merman-render/src/svg/parity/sequence.rs`
+```text
+source -> ZenUML lexer/parser -> ZenUML semantic artifact
+                         |-> detection facts / editor facts / LSP
+                         |-> compatibility JSON projection
+                         `-> typed layout -> typed SVG
+```
 
-## Not yet implemented (upstream-supported)
+The compatibility JSON is a projection for existing callers only. It is never parsed back into a
+different family model.
 
-- Full ZenUML grammar (participants, blocks, activation, loops/alt/opt, notes, annotations, etc.).
-- Upstream SVG parity-gating (ZenUML rendering is browser-only upstream).
+The lexer is a Unicode-aware token scanner. It does not use regular expressions to infer nested
+syntax, and it removes the oracle's hidden modifier channel before parsing. The parser consumes
+tokens through explicit grammar rules and bounded recursive blocks. Shared Mermaid accessibility
+terminals use the common terminal parser, including multiline `accDescr`, so ZenUML does not grow a
+second line-oriented directive parser.
 
-## Alignment goal
+## Grammar surface
 
-Phase 1 is an incremental compatibility slice. The long-term goal is either:
+The oracle grammar and recovery behavior are represented for:
 
-1. A broader translation layer (still rendering via the existing Mermaid `sequenceDiagram` stack),
-   or
-2. A full headless ZenUML port (semantics + layout + rendering) behind an explicit feature flag.
+- title, accessibility title/description, comments, and divider notes;
+- participant annotations, colors, stereotypes, emoji, widths, aliases, groups, and starters;
+- synchronous and asynchronous calls, explicit/implicit owners, nested calls, creation, named
+  assignments, returns, return arrows, and expressions/parameters;
+- `par`, `opt`, `critical`, `section`, `if/else-if/else`, `while/for/foreach/loop`,
+  `try/catch/finally`, and `ref` fragments;
+- Unicode identifiers, closed and in-progress strings, exact byte spans, bounded nesting, and
+  local error recovery.
+
+The parser keeps facts before and after an invalid statement. Strict semantic/render entry points
+return the first structured diagnostic; the editor entry point returns the recovered family facts.
+
+## Support levels
+
+| Surface | Level | Evidence |
+| --- | --- | --- |
+| Grammar parse and recovery | Implemented against selected source | `zenuml` parser tests and editor corpus |
+| Semantic topology and source ranges | Implemented | typed model and `EditorSemanticFacts` tests |
+| Headless SVG topology, labels, colors, fragments | Implemented source-derived port | `crates/merman/tests/zenuml_typed_render.rs` |
+| Pixel-identical browser geometry | Residual under measurement audit | `docs/alignment/ZENUML_GEOMETRY.md` |
+| Oracle-to-selected deltas | Admitted through all nine gates | `tools/upstreams/ZENUML_CORE_ADMISSION.json` and `ZENUML_BROWSER_SECURITY_EVIDENCE.json` |
+| Latest stable major `4.2.0` | Deferred outside the Mermaid 11.16 graph | `tools/upstreams/ZENUML_CORE_V4_DEFERRED_ADMISSION.json` |
+
+Pixel or browser-dependent differences must be recorded as evidence. They must not be hidden by
+fixture-specific comparator exceptions.
+
+## Resource contract
+
+ZenUML owns the accounting for participants, groups, statements, retained text, and semantic
+nesting, but exposes no family-specific resource knobs. The typed semantic model charges those
+values to the shared `max_model_items`, `max_model_text_bytes`, and
+`max_model_nesting_depth` budgets before layout. Source, derived layout work, SVG element, and SVG
+byte budgets use the same family-neutral contract as every other diagram. This keeps the binding
+surface stable as the grammar evolves while still making every added semantic construct
+resource-accounted.

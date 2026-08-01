@@ -13,12 +13,12 @@ fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
     let mut out = parts.css_prefix;
-    let person_border = theme_color(
+    let person_border = theme_token(
         effective_config,
         "personBorder",
         "hsl(240, 60%, 86.2745098039%)",
     );
-    let person_bkg = theme_color(effective_config, "personBkg", "#ECECFF");
+    let person_bkg = theme_token(effective_config, "personBkg", "#ECECFF");
     let _ = write!(
         &mut out,
         r#"#{} .person{{stroke:{};fill:{};}}"#,
@@ -26,29 +26,6 @@ fn c4_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     );
     out.push_str(&parts.root_rule);
     out
-}
-
-fn c4_type_text_length_px(type_c4_shape: &str) -> Option<f64> {
-    match type_c4_shape {
-        "component" => Some(73.0),
-        "component_db" => Some(93.0),
-        "container" => Some(63.0),
-        "container_db" => Some(83.0),
-        "external_component" => Some(122.0),
-        "external_component_db" => Some(142.0),
-        "external_container" => Some(112.0),
-        "external_container_db" => Some(132.0),
-        "external_container_queue" => Some(152.0),
-        "external_person" => Some(100.0),
-        "external_system" => Some(101.0),
-        "external_system_db" => Some(121.0),
-        "external_system_queue" => Some(141.0),
-        "person" => Some(50.0),
-        "system" => Some(52.0),
-        "system_db" => Some(72.0),
-        "system_queue" => Some(92.0),
-        _ => None,
-    }
 }
 
 struct C4TspanText<'a> {
@@ -119,8 +96,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -151,72 +128,37 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let viewbox_x = bounds.min_x - diagram_margin_x;
     let viewbox_y = -(diagram_margin_y + extra_vert_for_title);
 
-    let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("c4");
-    let aria_roledescription_attr = escape_attr(aria_roledescription);
-
-    let mut root_viewbox = format!(
-        "{} {} {} {}",
-        fmt(viewbox_x),
-        fmt(viewbox_y),
-        fmt(width),
-        fmt(height + extra_vert_for_title)
-    );
-    let mut root_max_w = fmt_string(width);
-    let mut root_w_attr = fmt_string(width);
-    let mut root_h_attr = fmt_string(height + extra_vert_for_title);
-
-    apply_root_viewport_override(
-        diagram_id,
-        &mut root_viewbox,
-        &mut root_w_attr,
-        &mut root_h_attr,
-        &mut root_max_w,
-        crate::generated::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override,
-    );
+    let aria_roledescription = "c4";
 
     let aria_describedby = model
         .acc_descr
         .as_ref()
         .map(|s| s.trim_end_matches('\n'))
         .filter(|s| !s.trim().is_empty())
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
+        .map(|_| format!("chart-desc-{diagram_id}"));
     let aria_labelledby = model
         .acc_title
         .as_ref()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
 
     let mut out = String::new();
-    if use_max_width {
-        let style_attr = format!("max-width: {root_max_w}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(root_viewbox.as_str()),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, &aria_roledescription_attr)
-            },
-        );
-    } else {
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&root_w_attr),
-                height_attr: Some(&root_h_attr),
-                style_attr: Some("background-color: white;"),
-                viewbox_attr: Some(root_viewbox.as_str()),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, &aria_roledescription_attr)
-            },
-        );
-    }
+    let root_bounds = root_svg::DiagramBounds::from_view_box(
+        viewbox_x,
+        viewbox_y,
+        width,
+        height + extra_vert_for_title,
+    );
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
+        .with_max_width(root_svg::RootMaxWidth::SvgNumber(width));
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, aria_roledescription);
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::C4, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = model
         .acc_title
@@ -249,10 +191,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str("<g/>");
 
-    const C4_DATABASE_SYMBOL_D_11_12_2: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/assets/c4_database_d_11_12_2.txt"
-    ));
+    const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!("c4_database_d_11_16_0.txt");
 
     let _ = write!(
         &mut out,
@@ -263,7 +202,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         &mut out,
         r#"<defs><symbol id="{}" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
         escape_attr(&scoped_svg_id(diagram_id, "database")),
-        escape_attr(C4_DATABASE_SYMBOL_D_11_12_2.trim())
+        escape_attr(PINNED_C4_DATABASE_SYMBOL_D.trim())
     );
     let _ = write!(
         &mut out,
@@ -428,8 +367,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
             .as_deref()
             .unwrap_or(C4_DEFAULT_FONT_FAMILY);
         let type_size = type_font.font_size;
-        let type_text_length = c4_type_text_length_px(&s.type_c4_shape)
-            .unwrap_or_else(|| s.type_block.width.round().max(0.0));
+        let type_text_length = s.type_block.width.round().max(0.0);
         let _ = write!(
             &mut out,
             r#"<text fill="{}" font-family="{}" font-size="{}" font-style="italic" lengthAdjust="spacing" textLength="{}" x="{}" y="{}">{}</text>"#,
@@ -800,26 +738,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
 
     out.push_str("</svg>");
-    Ok(out)
-}
-
-pub(crate) fn render_c4_diagram_svg(
-    layout: &crate::model::C4DiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: C4DiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_c4_diagram_svg_typed(
-        layout,
-        &model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
+    root_document.complete(out)
 }
 
 #[cfg(test)]
@@ -843,25 +762,5 @@ mod tests {
         assert!(css.contains("#c4{"));
         assert!(css.contains("fill:#778899;"));
         assert!(css.contains("#c4 .person{stroke:#112233;fill:#445566;}"));
-    }
-
-    #[test]
-    fn c4_type_text_length_rules_stay_local() {
-        let cases = [
-            ("component", Some(73.0)),
-            ("component_db", Some(93.0)),
-            ("container", Some(63.0)),
-            ("external_container_queue", Some(152.0)),
-            ("external_person", Some(100.0)),
-            ("person", Some(50.0)),
-            ("system", Some(52.0)),
-            ("system_db", Some(72.0)),
-            ("system_queue", Some(92.0)),
-            ("unknown", None),
-        ];
-
-        for (shape, expected) in cases {
-            assert_eq!(c4_type_text_length_px(shape), expected, "{shape}");
-        }
     }
 }

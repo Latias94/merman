@@ -53,7 +53,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_paper_tape(
 
     let path_data = path_from_points(&points);
     if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
                 common.fill_color,

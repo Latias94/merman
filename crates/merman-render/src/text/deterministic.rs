@@ -175,6 +175,14 @@ impl TextMeasurer for DeterministicTextMeasurer {
         }
         (style.font_size.max(1.0) * 1.1).max(0.0)
     }
+
+    fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        if text.trim_end().is_empty() {
+            0.0
+        } else {
+            super::svg_wrapped_first_line_bbox_height_px(style)
+        }
+    }
 }
 
 impl DeterministicTextMeasurer {

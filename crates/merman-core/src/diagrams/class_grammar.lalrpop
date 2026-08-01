@@ -117,10 +117,13 @@ Statement: Vec<Action> = {
 };
 
 ClassStatement: Vec<Action> = {
-  "class" <name:Name> <label:ClassLabel?> <css:CssShorthand?> <body:ClassBody?> => {
+  "class" <name:Name> <label:ClassLabel?> <annotation:InlineAnnotation?> <css:CssShorthand?> <body:ClassBody?> => {
     let mut v = vec![Action::AddClass { id: name.clone() }];
     if let Some(lab) = label {
       v.push(Action::SetClassLabel { id: name.clone(), label: lab });
+    }
+    if let Some(annotation) = annotation {
+      v.push(Action::AddAnnotation { id: name.clone(), annotation });
     }
     if let Some(cls) = css {
       v.push(Action::SetCssClass { ids: name.clone(), css_class: cls });
@@ -133,10 +136,13 @@ ClassStatement: Vec<Action> = {
 };
 
 ClassStatementWithId: (String, Vec<Action>) = {
-  "class" <name:Name> <label:ClassLabel?> <css:CssShorthand?> <body:ClassBody?> => {
+  "class" <name:Name> <label:ClassLabel?> <annotation:InlineAnnotation?> <css:CssShorthand?> <body:ClassBody?> => {
     let mut v = vec![Action::AddClass { id: name.clone() }];
     if let Some(lab) = label {
       v.push(Action::SetClassLabel { id: name.clone(), label: lab });
+    }
+    if let Some(annotation) = annotation {
+      v.push(Action::AddAnnotation { id: name.clone(), annotation });
     }
     if let Some(cls) = css {
       v.push(Action::SetCssClass { ids: name.clone(), css_class: cls });
@@ -150,6 +156,10 @@ ClassStatementWithId: (String, Vec<Action>) = {
 
 ClassLabel: String = {
   SquareStart <s:Str> SquareStop => s
+};
+
+InlineAnnotation: String = {
+  AnnotationStart <annotation:Name> AnnotationStop => annotation
 };
 
 CssShorthand: String = {

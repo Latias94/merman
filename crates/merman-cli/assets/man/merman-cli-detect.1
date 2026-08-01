@@ -1,0 +1,42 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH MERMAN-CLI-DETECT 1 2026-07-29 "Merman 0.8.0-alpha.4" "Merman CLI Manual"
+.SH NAME
+merman\-cli\-detect \- Detect the Mermaid diagram type
+.SH SYNOPSIS
+\fBmerman\-cli detect\fR [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+.SH DESCRIPTION
+Detect the Mermaid diagram type
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.TP
+[\fIINPUT\fR]
+Input Mermaid file. Use `\-` for stdin
+.SH "SOURCE LIMITS"
+.TP
+\fB\-\-resource\-profile\fR \fI<PROFILE>\fR [default: trusted\-native]
+Resource policy used to bound source acquisition
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+interactive: General interactive applications and public binding surfaces
+.IP \(bu 2
+constrained: Constrained rendering for untrusted or publicly submitted documents
+.IP \(bu 2
+trusted\-native: Local CLI and controlled native batch rendering
+.IP \(bu 2
+unbounded\-for\-trusted\-input: Explicitly disable policy budgets while retaining hard backend capabilities
+.RE
+.TP
+\fB\-\-resource\-limit\fR \fI<max_source_bytes=POSITIVE_U64>\fR
+Override source bytes as max_source_bytes=POSITIVE_U64
+.SH EXTRA
+More options: `merman\-cli detect \-\-help` shows source resource controls.
+.SH VERSION
+v0.8.0\-alpha.4

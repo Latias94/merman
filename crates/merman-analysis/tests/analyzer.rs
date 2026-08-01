@@ -1,8 +1,9 @@
 use merman_analysis::{
-    AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisOptions,
+    AnalysisResourceLimit, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
     DiagnosticCategory, DiagnosticSeverity, FenceExpectedSyntaxKind, FenceTextIndexSource,
     SourceDescriptor, analyze_document_facts,
-    document::{analyze_document, analyze_document_result},
+    document::{analyze_document, analyze_document_generation},
     source_descriptor_for_markdown_path,
 };
 
@@ -27,6 +28,34 @@ fn empty_source_returns_no_diagram_error() {
     );
     assert_eq!(diagnostic.span.as_ref().unwrap().byte_start, 0);
     assert_eq!(diagnostic.span.as_ref().unwrap().byte_end, 0);
+}
+
+#[test]
+fn facts_and_diagnostics_payloads_use_independent_version_constants() {
+    let analyzer = Analyzer::new();
+
+    assert_eq!(
+        analyzer.analyze("flowchart TD\nA\n").version,
+        ANALYSIS_PAYLOAD_VERSION
+    );
+    assert_eq!(
+        analyzer.analyze_facts("flowchart TD\nA\n").version,
+        ANALYSIS_FACTS_PAYLOAD_VERSION
+    );
+}
+
+#[test]
+fn unknown_source_exposes_unavailable_facts_without_inventing_body_semantics() {
+    let facts = Analyzer::new().analyze_facts("unknownDiagram\nPretendNode --> OtherNode\n");
+    let syntax = &facts.diagrams[0].syntax;
+
+    assert_eq!(syntax.fact_source, FenceTextIndexSource::Unavailable);
+    assert!(!syntax.parser_backed);
+    assert!(!syntax.source_mapped_spans);
+    assert!(syntax.node_ids.is_empty());
+    assert!(syntax.references.is_empty());
+    assert!(syntax.outline_items.is_empty());
+    assert!(syntax.semantic_items.is_empty());
 }
 
 #[test]
@@ -77,7 +106,7 @@ fn common_authoring_parse_errors_are_single_precise_or_explicit_fallback_diagnos
         Case {
             label: "dangling class inheritance",
             source: "classDiagram\nA <|--",
-            expected_diagram_type: "classDiagram",
+            expected_diagram_type: "class",
         },
         Case {
             label: "dangling er relationship label",
@@ -232,19 +261,20 @@ fn markdown_fence_parse_diagnostic_remaps_to_fence_body_not_whole_document() {
 }
 
 #[test]
-fn recovered_gantt_editor_diagnostic_is_projected() {
+fn recovered_gantt_editor_diagnostic_is_deduplicated_with_the_parse_error() {
     let source = "gantt\nweekday foo\n";
     let payload = analyze(source);
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);
-    assert_eq!(payload.summary.warnings, 1);
+    assert_eq!(payload.summary.warnings, 0);
+    assert_eq!(payload.diagnostics.len(), 1);
     let diagnostic = payload
         .diagnostics
         .iter()
-        .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
-        .expect("recovered editor diagnostic");
-    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        .find(|diagnostic| diagnostic.id == "merman.parse.diagram_parse")
+        .expect("parse diagnostic");
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
     assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
     assert_eq!(diagnostic.diagram_type.as_deref(), Some("gantt"));
     assert!(diagnostic.message.contains("invalid weekday"));
@@ -252,22 +282,33 @@ fn recovered_gantt_editor_diagnostic_is_projected() {
         diagnostic.span.as_ref().map(|span| span.byte_start),
         source.find("foo")
     );
+    assert!(diagnostic.related.iter().any(|related| {
+        related
+            .message
+            .contains("Parser recovery produced the same syntax problem")
+    }));
+    assert!(
+        payload
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.id != "merman.parse.recovered_editor_facts")
+    );
 }
 
 #[test]
-fn recovered_mindmap_editor_diagnostic_is_projected() {
+fn recovered_mindmap_editor_diagnostic_is_merged_into_the_primary_error() {
     let source = "mindmap\nroot\n child[unterminated";
     let payload = analyze(source);
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);
-    assert_eq!(payload.summary.warnings, 1);
+    assert_eq!(payload.summary.warnings, 0);
     let diagnostic = payload
         .diagnostics
         .iter()
-        .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
-        .expect("recovered editor diagnostic");
-    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        .find(|diagnostic| diagnostic.id == "merman.parse.diagram_parse")
+        .expect("primary parse diagnostic");
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
     assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
     assert_eq!(diagnostic.diagram_type.as_deref(), Some("mindmap"));
     assert!(diagnostic.message.contains("unterminated node delimiter"));
@@ -275,29 +316,48 @@ fn recovered_mindmap_editor_diagnostic_is_projected() {
         diagnostic.span.as_ref().map(|span| span.byte_start),
         source.find("child")
     );
+    assert!(diagnostic.related.iter().any(|related| {
+        related
+            .message
+            .contains("Parser recovery produced the same syntax problem")
+    }));
+    assert!(
+        payload
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.id != "merman.parse.recovered_editor_facts")
+    );
 }
 
 #[test]
-fn analyze_result_exposes_complete_parser_syntax_facts() {
+fn analysis_generation_exposes_complete_parser_syntax_facts() {
     let source = "flowchart TD\nA-->B\n";
-    let result = Analyzer::new().analyze_result(source);
+    let analyzer = Analyzer::new();
+    let result = analyzer
+        .analyze_generation(source)
+        .into_ready()
+        .expect("source is within the analysis limit");
+    let payload = result.project(analyzer.options().diagnostic_policy());
 
-    assert!(result.payload().valid);
-    assert!(result.diagnostics().is_empty());
+    assert!(payload.valid);
+    assert!(payload.diagnostics.is_empty());
     assert_eq!(result.diagrams().len(), 1);
 
     let diagram = &result.diagrams()[0];
-    assert_eq!(diagram.source_id, "document");
-    assert_eq!(diagram.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
+    assert_eq!(diagram.source_id(), "document");
     assert_eq!(
-        diagram.syntax.source(),
+        diagram.syntax().diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert_eq!(
+        diagram.syntax().source(),
         FenceTextIndexSource::ParserComplete
     );
-    assert!(diagram.syntax.text_index.node_ids().any(|id| id == "A"));
+    assert!(diagram.syntax().text_index.node_ids().any(|id| id == "A"));
 }
 
 #[test]
-fn analyze_result_marks_unmapped_parser_spans_as_degraded() {
+fn analysis_generation_preserves_exact_spans_through_entity_normalization() {
     let source = concat!(
         "---\n",
         "title: quoted\n",
@@ -313,36 +373,48 @@ fn analyze_result_marks_unmapped_parser_spans_as_degraded() {
 
     let syntax = &facts.diagrams[0].syntax;
     assert_eq!(syntax.diagram_type.as_deref(), Some("sequence"));
-    assert_eq!(
-        syntax.fact_source,
-        FenceTextIndexSource::ParserCompleteDegradedSpans
-    );
+    assert_eq!(syntax.fact_source, FenceTextIndexSource::ParserComplete);
     assert!(syntax.parser_backed);
     assert!(!syntax.recovered);
-    assert!(!syntax.source_mapped_spans);
+    assert!(syntax.source_mapped_spans);
     assert!(syntax.node_ids.iter().any(|id| id == "Alice"));
     assert!(syntax.node_ids.iter().any(|id| id == "Bob"));
-    assert!(syntax.references.is_empty());
-    assert!(syntax.outline_items.is_empty());
-    assert!(syntax.semantic_items.is_empty());
-    assert!(syntax.expected_syntax.is_empty());
+    assert!(!syntax.references.is_empty());
+    assert!(!syntax.outline_items.is_empty());
+    assert!(!syntax.semantic_items.is_empty());
+    assert!(!syntax.expected_syntax.is_empty());
+    assert!(syntax.expected_syntax.iter().all(|expected| {
+        expected.span.document.as_ref().is_some_and(|span| {
+            span.byte_end <= source.len()
+                && source.is_char_boundary(span.byte_start)
+                && source.is_char_boundary(span.byte_end)
+        })
+    }));
 }
 
 #[test]
-fn analyze_result_exposes_expected_syntax_facts_for_invalid_input() {
+fn analysis_generation_exposes_expected_syntax_facts_for_invalid_input() {
     let source = "flowchart TD\nA@{\n  shape: rou\n}\n";
-    let result = Analyzer::new().analyze_result(source);
+    let analyzer = Analyzer::new();
+    let result = analyzer
+        .analyze_generation(source)
+        .into_ready()
+        .expect("source is within the analysis limit");
+    let payload = result.project(analyzer.options().diagnostic_policy());
 
-    assert!(!result.payload().valid);
+    assert!(!payload.valid);
     assert_eq!(result.diagrams().len(), 1);
 
     let diagram = &result.diagrams()[0];
-    assert_eq!(diagram.source_id, "document");
-    assert_eq!(diagram.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
-    assert!(diagram.syntax.source().is_parser_backed());
+    assert_eq!(diagram.source_id(), "document");
+    assert_eq!(
+        diagram.syntax().diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert!(diagram.syntax().source().is_parser_backed());
     assert!(
         diagram
-            .syntax
+            .syntax()
             .text_index
             .expected_syntax()
             .iter()
@@ -351,7 +423,7 @@ fn analyze_result_exposes_expected_syntax_facts_for_invalid_input() {
 }
 
 #[test]
-fn document_analysis_result_keeps_local_fence_syntax_facts() {
+fn document_analysis_generation_keeps_local_fence_syntax_facts() {
     let source = concat!(
         "before\n",
         "```mermaid\n",
@@ -363,28 +435,83 @@ fn document_analysis_result_keeps_local_fence_syntax_facts() {
         "after\n",
     );
     let analyzer = Analyzer::new();
-    let result = analyze_document_result(
+    let result = analyze_document_generation(
         source,
         &analyzer,
         source_descriptor_for_markdown_path(Some("doc.md")),
-    );
+    )
+    .into_ready()
+    .expect("source is within the analysis limit");
 
-    assert!(!result.payload().valid);
+    assert!(!result.project(analyzer.options().diagnostic_policy()).valid);
     assert_eq!(result.diagrams().len(), 1);
 
     let diagram = &result.diagrams()[0];
-    assert_eq!(diagram.source_id, "mermaid-fence-1");
-    assert_eq!(diagram.source.diagram_index, Some(0));
-    assert_eq!(diagram.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
-    assert!(diagram.syntax.source().is_parser_backed());
+    assert_eq!(diagram.source_id(), "mermaid-fence-1");
+    assert_eq!(diagram.source().diagram_index, Some(0));
+    assert_eq!(
+        diagram.syntax().diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
+    assert!(diagram.syntax().source().is_parser_backed());
     assert!(
         diagram
-            .syntax
+            .syntax()
             .text_index
             .expected_syntax()
             .iter()
             .any(|expected| expected.kind == FenceExpectedSyntaxKind::Shape)
     );
+}
+
+#[test]
+fn document_diagnostics_match_rich_generation_for_markdown_and_mdx() {
+    let source = concat!(
+        "before\n",
+        "```mermaid\n",
+        "cynefin-beta\n",
+        "  complex\n",
+        "  complicated\n",
+        "  complicated --> complicated : \"Self-loop\"\n",
+        "```\n",
+        "after\n",
+    );
+    let analyzer = Analyzer::new();
+
+    for path in ["doc.md", "doc.mdx"] {
+        let descriptor = source_descriptor_for_markdown_path(Some(path));
+        let diagnostics_only = analyze_document(source, &analyzer, descriptor.clone());
+        let rich = analyze_document_generation(source, &analyzer, descriptor)
+            .into_ready()
+            .expect("document source should produce a rich analysis result");
+        let projected = rich.project(analyzer.options().diagnostic_policy());
+        let reprojected = rich.project(analyzer.options().diagnostic_policy());
+
+        assert_eq!(diagnostics_only, projected, "{path}");
+        assert_eq!(diagnostics_only, reprojected, "{path}");
+        assert_eq!(diagnostics_only.diagnostics.len(), 1, "{path}");
+        assert_eq!(
+            diagnostics_only.diagnostics[0].id, "merman.parse.recovered_editor_facts",
+            "{path}"
+        );
+        assert_eq!(
+            diagnostics_only.diagnostics[0]
+                .span
+                .as_ref()
+                .map(|span| span.line),
+            Some(6),
+            "{path}"
+        );
+        assert_eq!(
+            diagnostics_only.diagnostics[0]
+                .related
+                .iter()
+                .filter(|related| related.message == "Mermaid fence 1")
+                .count(),
+            1,
+            "{path}"
+        );
+    }
 }
 
 #[test]
@@ -435,6 +562,67 @@ fn document_analysis_facts_payload_exposes_parser_backed_fence_facts() {
             .as_ref()
             .map(|span| span.byte_start),
         source.find("rou")
+    );
+}
+
+#[test]
+fn markdown_fence_facts_compose_crlf_preprocess_edits_and_utf16_positions() {
+    let source = concat!(
+        "😀 before\r\n",
+        "```mermaid\r\n",
+        "---\r\n",
+        "title: Demo\r\n",
+        "---\r\n",
+        "%%{wrap}%%\r\n",
+        "flowchart TD\r\n",
+        "classDef hot fill:#f00;\r\n",
+        "A[\"😀 #quot;\"]:::hot\r\n",
+        "```\r\n",
+    );
+    let facts = merman_analysis::analyze_document_facts(
+        source,
+        &Analyzer::new(),
+        source_descriptor_for_markdown_path(Some("doc.md")),
+    );
+
+    assert!(facts.valid, "{:#?}", facts.diagnostics);
+    let syntax = &facts.diagrams[0].syntax;
+    assert_eq!(syntax.fact_source, FenceTextIndexSource::ParserComplete);
+    assert!(syntax.source_mapped_spans);
+
+    let class_definition = syntax
+        .semantic_items
+        .iter()
+        .find(|item| item.detail.as_deref() == Some("flowchart class definition"))
+        .expect("class definition fact");
+    let class_selection = class_definition
+        .selection
+        .document
+        .as_ref()
+        .expect("class definition document span");
+    assert_eq!(
+        &source[class_selection.byte_start..class_selection.byte_end],
+        "hot"
+    );
+
+    let label = syntax
+        .semantic_items
+        .iter()
+        .find(|item| item.detail.as_deref() == Some("flowchart node label"))
+        .expect("node label fact");
+    let label_selection = label
+        .selection
+        .document
+        .as_ref()
+        .expect("node label document span");
+    assert_eq!(
+        &source[label_selection.byte_start..label_selection.byte_end],
+        "😀 #quot;"
+    );
+    assert_eq!(label_selection.lsp_range.start.character, 3);
+    assert_eq!(
+        label_selection.lsp_range.end.character,
+        3 + "😀 #quot;".encode_utf16().count()
     );
 }
 
@@ -587,7 +775,8 @@ fn flowchart_missing_direction_rule_can_be_disabled() {
     let options = AnalysisOptions::default().with_rule_config(
         AnalysisRuleConfig::default()
             .with_profile(AnalysisRuleProfile::Recommended)
-            .with_rule_disabled("merman.authoring.flowchart.explicit_direction"),
+            .with_rule_disabled("merman.authoring.flowchart.explicit_direction")
+            .unwrap(),
     );
     let payload = Analyzer::with_options(options).analyze("flowchart\nA-->B\n");
 
@@ -690,8 +879,8 @@ fn unsupported_diagram_returns_compatibility_error() {
     let mut engine = merman_core::Engine::new();
     *engine.diagram_registry_mut() = merman_core::diagram::DiagramRegistry::new();
 
-    let payload = Analyzer::with_engine_and_options(engine, AnalysisOptions::default())
-        .analyze("flowchart TD\nA-->B\n");
+    let payload =
+        Analyzer::with_engine(engine, AnalysisOptions::default()).analyze("flowchart TD\nA-->B\n");
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);
@@ -751,13 +940,15 @@ fn source_byte_limit_returns_resource_error() {
 }
 
 #[test]
-fn source_byte_limit_remains_hard_guard_when_resource_rule_is_disabled() {
+fn source_byte_limit_rule_cannot_be_disabled() {
+    assert!(
+        AnalysisRuleConfig::default()
+            .with_rule_disabled("merman.resource.source_bytes_exceeded")
+            .is_err()
+    );
     let options = AnalysisOptions::default()
         .with_max_source_bytes(Some(8))
-        .with_rule_config(
-            AnalysisRuleConfig::default()
-                .with_rule_disabled("merman.resource.source_bytes_exceeded"),
-        );
+        .with_rule_config(AnalysisRuleConfig::default());
     let payload = Analyzer::with_options(options).analyze("flowchart TD\nA-->B\n");
 
     assert!(!payload.valid);
@@ -782,17 +973,24 @@ fn source_byte_limit_does_not_scan_syntax_facts() {
 }
 
 #[test]
-fn plain_source_byte_limit_applies_before_result_source_map() {
+fn plain_source_byte_limit_rejects_without_constructing_a_source_map() {
     let source = format!("flowchart TD\nA-->B\n{}", "x".repeat(64));
     let analyzer =
         Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
 
-    let result = analyzer.analyze_result(&source);
+    let rejection = analyzer
+        .analyze_generation(&source)
+        .into_ready()
+        .expect_err("source must be rejected before rich facts are constructed");
 
-    assert_eq!(result.source_map().source_len(), 0);
-    assert!(result.diagrams().is_empty());
-    assert_eq!(result.diagnostics().len(), 1);
-    let diagnostic = &result.diagnostics()[0];
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::SourceBytes {
+            source_len: source.len(),
+            max_source_bytes: 8,
+        }
+    );
+    let diagnostic = &rejection.payload().diagnostics[0];
     assert_eq!(diagnostic.id, "merman.resource.source_bytes_exceeded");
     let span = diagnostic.span.as_ref().unwrap();
     assert_eq!(span.byte_start, 0);
@@ -809,10 +1007,18 @@ fn markdown_document_source_byte_limit_applies_before_fence_analysis() {
         Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
     let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
 
-    let result = analyze_document_result(&source, &analyzer, descriptor.clone());
-    assert_eq!(result.source_map().source_len(), 0);
+    let rejection = analyze_document_generation(&source, &analyzer, descriptor.clone())
+        .into_ready()
+        .expect_err("document source must be rejected before fence analysis");
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::SourceBytes {
+            source_len: source.len(),
+            max_source_bytes: 8,
+        }
+    );
 
-    let payload = result.payload();
+    let payload = rejection.payload();
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);
@@ -859,27 +1065,168 @@ fn markdown_document_source_byte_limit_allows_exact_boundary() {
     );
     let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
 
-    let result = analyze_document_result(source, &analyzer, descriptor);
+    let result = analyze_document_generation(source, &analyzer, descriptor)
+        .into_ready()
+        .expect("source at the limit remains analyzable");
 
-    assert_eq!(result.diagnostics().len(), 0);
+    assert!(
+        result
+            .project(analyzer.options().diagnostic_policy())
+            .diagnostics
+            .is_empty()
+    );
     assert_eq!(result.diagrams().len(), 1);
+}
+
+#[test]
+fn markdown_document_diagram_limit_allows_exact_boundary() {
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(2)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
+
+    let generation = analyze_document_generation(source, &analyzer, descriptor)
+        .into_ready()
+        .expect("a document at the diagram limit remains analyzable");
+
+    assert_eq!(generation.diagrams().len(), 2);
+}
+
+#[test]
+fn markdown_document_diagram_limit_rejects_before_rich_analysis() {
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(1)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
+
+    let rejection = analyze_document_generation(source, &analyzer, descriptor.clone())
+        .into_ready()
+        .expect_err("the second embedded diagram must exceed the document budget");
+
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::DocumentDiagrams {
+            observed_document_diagrams: 2,
+            max_document_diagrams: 1,
+        }
+    );
+    assert_eq!(rejection.payload().diagnostics.len(), 1);
+    assert_eq!(
+        rejection.payload().diagnostics[0].id,
+        "merman.resource.document_diagrams_exceeded"
+    );
+    let span = rejection.payload().diagnostics[0]
+        .span
+        .expect("document resource rejection must retain the host span");
+    assert_eq!(
+        span.byte_start,
+        source.match_indices("```mermaid").nth(1).unwrap().0
+    );
+    assert_eq!(span.byte_end, span.byte_start + "```".len());
+
+    let facts = analyze_document_facts(source, &analyzer, descriptor);
+    assert!(!facts.valid);
+    assert!(facts.diagrams.is_empty());
+}
+
+#[test]
+fn mdx_document_diagram_limit_counts_only_canonical_mermaid_fences() {
+    let source = concat!(
+        "````text\n```mermaid\nflowchart LR\nA-->B\n```\n````\n",
+        "~~~ Mermaid\nflowchart TD\nA-->B\n~~~\n",
+        ":::MERMAID\nsequenceDiagram\nA->>B: hi\n",
+    );
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(1)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.mdx"));
+
+    let rejection = analyze_document_generation(source, &analyzer, descriptor)
+        .into_ready()
+        .expect_err("the unclosed second Mermaid fence must exceed the limit");
+
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::DocumentDiagrams {
+            observed_document_diagrams: 2,
+            max_document_diagrams: 1,
+        }
+    );
+}
+
+#[test]
+fn document_diagram_limit_span_uses_host_utf16_coordinates() {
+    let source = "intro 🤓\r\n  ```mermaid\nflowchart TD\nA-->B\n```\n";
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(0)));
+    let descriptor = source_descriptor_for_markdown_path(Some("doc.md"));
+
+    let rejection = analyze_document_generation(source, &analyzer, descriptor)
+        .into_ready()
+        .expect_err("the first Mermaid fence must exceed a zero diagram budget");
+    let span = rejection.payload().diagnostics[0].span.unwrap();
+
+    assert_eq!(&source[span.byte_start..span.byte_end], "```");
+    assert_eq!(span.line, 2);
+    assert_eq!(span.column, 3);
+    assert_eq!(span.lsp_range.start.line, 1);
+    assert_eq!(span.lsp_range.start.character, 2);
+    assert_eq!(span.lsp_range.end.character, 5);
+}
+
+#[test]
+fn standalone_diagram_ignores_host_document_diagram_limit() {
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_document_diagrams(Some(0)));
+
+    assert!(
+        analyzer
+            .analyze_generation("flowchart TD\nA-->B\n")
+            .into_ready()
+            .is_ok()
+    );
+}
+
+#[test]
+fn document_diagram_limit_rule_cannot_be_disabled() {
+    assert!(
+        AnalysisRuleConfig::default()
+            .with_rule_disabled("merman.resource.document_diagrams_exceeded")
+            .is_err()
+    );
 }
 
 #[test]
 fn mdx_document_source_byte_limit_applies_before_fence_analysis() {
     let source = format!("```mermaid\nflowchart TD\nA-->B\n```\n{}", "x".repeat(64));
-    let analyzer =
-        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    let analyzer = Analyzer::with_options(
+        AnalysisOptions::default()
+            .with_max_source_bytes(Some(8))
+            .with_max_document_diagrams(Some(0)),
+    );
     let descriptor = source_descriptor_for_markdown_path(Some("doc.mdx"));
 
-    let result = analyze_document_result(&source, &analyzer, descriptor);
+    let rejection = analyze_document_generation(&source, &analyzer, descriptor)
+        .into_ready()
+        .expect_err("document source must be rejected before fence analysis");
 
-    assert_eq!(result.diagnostics().len(), 1);
+    assert_eq!(rejection.payload().diagnostics.len(), 1);
     assert_eq!(
-        result.diagnostics()[0].id,
+        rejection.payload().diagnostics[0].id,
         "merman.resource.source_bytes_exceeded"
     );
-    assert!(result.diagrams().is_empty());
+    assert_eq!(
+        rejection.resource_limit(),
+        AnalysisResourceLimit::SourceBytes {
+            source_len: source.len(),
+            max_source_bytes: 8,
+        }
+    );
 }
 
 #[test]

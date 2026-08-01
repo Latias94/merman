@@ -1,19 +1,24 @@
 //! Flowchart-aware text metrics and Markdown measurement helpers.
 
+use super::line_break::html_break_spaces_segments;
 use super::{
-    DeterministicTextMeasurer, FLOWCHART_DEFAULT_FONT_KEY, MermaidMarkdownWordType, TextMeasurer,
-    TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode, ceil_to_1_64_px,
-    mermaid_markdown_to_lines, normalize_font_key, overrides, round_to_1_64_px, wrap,
+    DeterministicTextMeasurer, MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle,
+    WrapMode, ceil_to_1_64_px, mermaid_markdown_to_lines, mermaid_xhtml_label_plain_text,
+    round_to_1_64_px, wrap,
 };
 
-pub(crate) fn is_flowchart_default_font(style: &TextStyle) -> bool {
-    style
-        .font_family
-        .as_deref()
-        .map(normalize_font_key)
-        .filter(|key| !key.is_empty())
-        .unwrap_or_else(|| FLOWCHART_DEFAULT_FONT_KEY.to_string())
-        == FLOWCHART_DEFAULT_FONT_KEY
+pub(crate) fn measure_xhtml_label_fragment(
+    measurer: &dyn TextMeasurer,
+    fragment: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+) -> TextMetrics {
+    if let Some(plain_text) = mermaid_xhtml_label_plain_text(fragment) {
+        measurer.measure_wrapped(&plain_text, style, max_width, wrap_mode)
+    } else {
+        measure_html_with_inline_styles(measurer, fragment, style, max_width, wrap_mode)
+    }
 }
 
 pub(crate) fn style_requests_bold_font_weight(style: &TextStyle) -> bool {
@@ -31,214 +36,252 @@ pub(crate) fn style_requests_bold_font_weight(style: &TextStyle) -> bool {
     lower.parse::<i32>().ok().is_some_and(|n| n >= 600)
 }
 
-pub(crate) fn flowchart_default_bold_delta_em(ch: char) -> f64 {
-    // Derived from browser `canvas.measureText()` using `font: bold 16px trebuchet ms, verdana, arial, sans-serif`.
-    // Values are `bold_em(ch) - regular_em(ch)`.
-    match ch {
-        '"' => 0.0419921875,
-        '#' => 0.0615234375,
-        '$' => 0.0615234375,
-        '%' => 0.083984375,
-        '\'' => 0.06982421875,
-        '*' => 0.06494140625,
-        '+' => 0.0615234375,
-        '/' => -0.13427734375,
-        '0' => 0.0615234375,
-        '1' => 0.0615234375,
-        '2' => 0.0615234375,
-        '3' => 0.0615234375,
-        '4' => 0.0615234375,
-        '5' => 0.0615234375,
-        '6' => 0.0615234375,
-        '7' => 0.0615234375,
-        '8' => 0.0615234375,
-        '9' => 0.0615234375,
-        '<' => 0.0615234375,
-        '=' => 0.0615234375,
-        '>' => 0.0615234375,
-        '?' => 0.07080078125,
-        'A' => 0.04345703125,
-        'B' => 0.029296875,
-        'C' => 0.013671875,
-        'D' => 0.029296875,
-        'E' => 0.033203125,
-        'F' => 0.05859375,
-        'G' => -0.0048828125,
-        'H' => 0.029296875,
-        'J' => 0.05615234375,
-        'K' => 0.04150390625,
-        'L' => 0.04638671875,
-        'M' => 0.03564453125,
-        'N' => 0.029296875,
-        'O' => 0.029296875,
-        'P' => 0.029296875,
-        'Q' => 0.033203125,
-        'R' => 0.02880859375,
-        'S' => 0.0302734375,
-        'T' => 0.03125,
-        'U' => 0.029296875,
-        'V' => 0.0341796875,
-        'W' => 0.03173828125,
-        'X' => 0.0439453125,
-        'Y' => 0.04296875,
-        'Z' => 0.009765625,
-        '[' => 0.03466796875,
-        ']' => 0.03466796875,
-        '^' => 0.0615234375,
-        '_' => 0.0615234375,
-        '`' => 0.0615234375,
-        'a' => 0.00732421875,
-        'b' => 0.0244140625,
-        'c' => 0.0166015625,
-        'd' => 0.0234375,
-        'e' => 0.029296875,
-        'h' => 0.04638671875,
-        'i' => 0.01318359375,
-        'k' => 0.04345703125,
-        'm' => 0.029296875,
-        'n' => 0.0439453125,
-        'o' => 0.029296875,
-        'p' => 0.025390625,
-        'q' => 0.02685546875,
-        'r' => 0.03857421875,
-        's' => 0.02587890625,
-        'u' => 0.04443359375,
-        'v' => 0.03759765625,
-        'w' => 0.03955078125,
-        'x' => 0.05126953125,
-        'y' => 0.04052734375,
-        'z' => 0.0537109375,
-        '{' => 0.06640625,
-        '|' => 0.0615234375,
-        '}' => 0.06640625,
-        '~' => 0.0615234375,
-        _ => 0.0,
-    }
-}
-
-pub(crate) fn flowchart_default_bold_svg_right_overhang_em(ch: char) -> f64 {
-    // Derived from Chromium SVG `getBBox()` with `font-weight: 600` on Mermaid's default font
-    // stack. Canvas advance deltas do not capture this terminal glyph outline overhang.
-    match ch {
-        'g' => 0.078_055_245_535_714_29,
-        'm' => 0.046_875,
-        _ => 0.0,
-    }
-}
-
-pub(crate) fn flowchart_default_bold_kern_delta_em(prev: char, next: char) -> f64 {
-    // Approximates the kerning delta between `font-weight: bold` and regular text runs for the
-    // default Mermaid flowchart font stack.
-    //
-    // Our base font metrics table includes kerning pairs for regular weight. Bold kerning differs
-    // for some pairs (notably `Tw`), which affects HTML label widths measured via
-    // `getBoundingClientRect()` in upstream Mermaid fixtures.
-    match (prev, next) {
-        // Derived from Mermaid@11.12.2 upstream SVG baselines:
-        // - regular `Two` (with regular kerning) + per-char bold deltas undershoots `<strong>Two</strong>`
-        // - the residual matches the bold-vs-regular kerning delta for `Tw`.
-        ('T', 'w') => 0.0576171875,
-        _ => 0.0,
-    }
-}
-
-fn flowchart_default_italic_delta_em(ch: char, wrap_mode: WrapMode) -> f64 {
-    // Mermaid markdown labels render `<em>/<i>` as italic. The measured width delta differs
-    // between HTML-label (DOM `getBoundingClientRect()`) and SVG-label (`<text>.getBBox()`).
-    //
-    // Model this as a per-character additive delta in `em` space for the default Mermaid font
-    // stack.
-    let delta_em: f64 = match wrap_mode {
-        WrapMode::HtmlLike => 1.0 / 128.0,
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 5.0 / 512.0,
+pub(crate) fn style_requests_italic_font_style(style: &TextStyle) -> bool {
+    let Some(value) = style.font_style.as_deref() else {
+        return false;
     };
-    match ch {
-        'A'..='Z' | 'a'..='z' | '0'..='9' => delta_em,
-        _ => 0.0,
-    }
+    let value = value.trim().to_ascii_lowercase();
+    value == "italic" || value.starts_with("italic ") || value.starts_with("oblique")
 }
 
-pub fn mermaid_default_italic_width_delta_px(text: &str, style: &TextStyle) -> f64 {
-    // Mermaid HTML labels can apply `font-style: italic` via inline styles (e.g. classDef in state
-    // diagrams). Upstream measurement is DOM-backed, so the effective width differs from regular
-    // text runs even when `canvas.measureText`-based metrics are used elsewhere.
-    //
-    // We model this as a per-character delta in `em` space for the default Mermaid font stack.
-    // For bold+italic runs, the width delta is larger than regular italic; this matches observed
-    // upstream SVG baselines (e.g. state `classDef` styled labels).
-    if !is_flowchart_default_font(style) {
-        return 0.0;
-    }
+#[derive(Debug, Clone, Default)]
+struct InlineTextRun {
+    text: String,
+    bold: bool,
+    italic: bool,
+    code: bool,
+}
 
-    let font_size = style.font_size.max(1.0);
-    let bold = style_requests_bold_font_weight(style);
-    let per_char_em = if bold {
-        // Bold+italic runs widen more than regular italic in Mermaid@11.12.2 fixtures.
-        1.0 / 64.0
+fn push_inline_text_char(
+    runs: &mut Vec<InlineTextRun>,
+    ch: char,
+    bold: bool,
+    italic: bool,
+    code: bool,
+) {
+    if let Some(run) = runs
+        .last_mut()
+        .filter(|run| run.bold == bold && run.italic == italic && run.code == code)
+    {
+        run.text.push(ch);
     } else {
-        // Derived from Mermaid@11.12.2 upstream SVG baselines for state diagram HTML labels:
-        // `"Moving"` in italic-only `classDef` is wider than regular text by `1.15625px` at 16px,
-        // i.e. `37/512 em` for 6 ASCII letters => `37/3072 em` per alnum glyph.
-        37.0 / 3072.0
+        runs.push(InlineTextRun {
+            text: ch.to_string(),
+            bold,
+            italic,
+            code,
+        });
+    }
+}
+
+fn inline_text_style(base: &TextStyle, bold: bool, italic: bool, code: bool) -> TextStyle {
+    let mut style = base.clone();
+    if bold && !style_requests_bold_font_weight(&style) {
+        style.font_weight = Some("700".to_string());
+    }
+    if italic && !style_requests_italic_font_style(&style) {
+        style.font_style = Some("italic".to_string());
+    }
+    if code {
+        style.font_family = Some("monospace".to_string());
+    }
+    style
+}
+
+fn measure_inline_run_width_px(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    wrap_mode: WrapMode,
+    svg_advance: bool,
+) -> f64 {
+    if svg_advance && wrap_mode != WrapMode::HtmlLike {
+        measurer.measure_svg_text_computed_length_px(text, style)
+    } else {
+        measurer.measure_wrapped(text, style, None, wrap_mode).width
+    }
+}
+
+fn measure_inline_runs_width_px(
+    measurer: &dyn TextMeasurer,
+    runs: &[InlineTextRun],
+    style: &TextStyle,
+    wrap_mode: WrapMode,
+    svg_advance: bool,
+) -> f64 {
+    runs.iter()
+        .filter(|run| !run.text.is_empty())
+        .map(|run| {
+            let run_style = inline_text_style(style, run.bold, run.italic, run.code);
+            measure_inline_run_width_px(measurer, &run.text, &run_style, wrap_mode, svg_advance)
+        })
+        .sum()
+}
+
+fn append_inline_runs(target: &mut Vec<InlineTextRun>, source: &[InlineTextRun]) {
+    for run in source.iter().filter(|run| !run.text.is_empty()) {
+        if let Some(last) = target.last_mut().filter(|last| {
+            last.bold == run.bold && last.italic == run.italic && last.code == run.code
+        }) {
+            last.text.push_str(&run.text);
+        } else {
+            target.push(run.clone());
+        }
+    }
+}
+
+fn split_inline_runs_at_html_breaks(runs: &[InlineTextRun]) -> Vec<Vec<InlineTextRun>> {
+    let text = runs.iter().map(|run| run.text.as_str()).collect::<String>();
+    if text.is_empty() {
+        return vec![Vec::new()];
+    }
+
+    let mut segments = Vec::new();
+    let mut segment_start = 0usize;
+    for segment in html_break_spaces_segments(&text) {
+        let segment_end = segment_start + segment.len();
+        let mut segment_runs = Vec::new();
+        let mut run_start = 0usize;
+
+        for run in runs {
+            let run_end = run_start + run.text.len();
+            let overlap_start = segment_start.max(run_start);
+            let overlap_end = segment_end.min(run_end);
+            if overlap_start < overlap_end {
+                let fragment = &run.text[overlap_start - run_start..overlap_end - run_start];
+                append_inline_runs(
+                    &mut segment_runs,
+                    &[InlineTextRun {
+                        text: fragment.to_string(),
+                        bold: run.bold,
+                        italic: run.italic,
+                        code: run.code,
+                    }],
+                );
+            }
+            run_start = run_end;
+        }
+
+        segments.push(segment_runs);
+        segment_start = segment_end;
+    }
+    segments
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InlineHtmlLineLayout {
+    natural_width: f64,
+    wrapped_width: f64,
+    min_content_width: f64,
+    line_count: usize,
+}
+
+fn measure_inline_html_line_layout(
+    measurer: &dyn TextMeasurer,
+    runs: &[InlineTextRun],
+    style: &TextStyle,
+    max_width: Option<f64>,
+) -> InlineHtmlLineLayout {
+    let natural_width =
+        measure_inline_runs_width_px(measurer, runs, style, WrapMode::HtmlLike, false);
+    let segments = split_inline_runs_at_html_breaks(runs);
+    let min_content_width = segments
+        .iter()
+        .map(|segment| {
+            measure_inline_runs_width_px(measurer, segment, style, WrapMode::HtmlLike, false)
+        })
+        .fold(0.0_f64, f64::max);
+
+    let Some(max_width) = max_width.filter(|width| width.is_finite() && *width > 0.0) else {
+        return InlineHtmlLineLayout {
+            natural_width,
+            wrapped_width: natural_width,
+            min_content_width,
+            line_count: 1,
+        };
     };
-
-    let mut max_em: f64 = 0.0;
-    for line in text.lines() {
-        let mut em: f64 = 0.0;
-        for ch in line.chars() {
-            match ch {
-                'A'..='Z' | 'a'..='z' | '0'..='9' => em += per_char_em,
-                _ => {}
-            }
-        }
-        max_em = max_em.max(em);
+    if natural_width <= max_width {
+        return InlineHtmlLineLayout {
+            natural_width,
+            wrapped_width: natural_width,
+            min_content_width,
+            line_count: 1,
+        };
     }
 
-    (max_em * font_size).max(0.0)
+    let mut current = Vec::new();
+    let mut wrapped_width = 0.0_f64;
+    let mut line_count = 0usize;
+    for segment in segments {
+        let mut candidate = current.clone();
+        append_inline_runs(&mut candidate, &segment);
+        let candidate_width =
+            measure_inline_runs_width_px(measurer, &candidate, style, WrapMode::HtmlLike, false);
+        if current.is_empty() || candidate_width <= max_width {
+            current = candidate;
+            continue;
+        }
+
+        wrapped_width = wrapped_width.max(measure_inline_runs_width_px(
+            measurer,
+            &current,
+            style,
+            WrapMode::HtmlLike,
+            false,
+        ));
+        line_count += 1;
+        current = segment;
+    }
+
+    if !current.is_empty() {
+        wrapped_width = wrapped_width.max(measure_inline_runs_width_px(
+            measurer,
+            &current,
+            style,
+            WrapMode::HtmlLike,
+            false,
+        ));
+        line_count += 1;
+    }
+
+    InlineHtmlLineLayout {
+        natural_width,
+        wrapped_width,
+        min_content_width,
+        line_count: line_count.max(1),
+    }
 }
 
-pub fn mermaid_default_bold_width_delta_px(text: &str, style: &TextStyle) -> f64 {
-    // Mermaid HTML labels can apply `font-weight: bold` via inline styles (e.g. state `classDef`).
-    // Upstream measurement is DOM-backed, so bold runs have a measurable width delta relative to
-    // regular text that we must account for during layout.
-    if !is_flowchart_default_font(style) {
-        return 0.0;
+fn measure_inline_html_layout(
+    measurer: &dyn TextMeasurer,
+    runs_by_line: &[Vec<InlineTextRun>],
+    style: &TextStyle,
+    max_width: Option<f64>,
+) -> InlineHtmlLineLayout {
+    let mut layout = InlineHtmlLineLayout {
+        natural_width: 0.0,
+        wrapped_width: 0.0,
+        min_content_width: 0.0,
+        line_count: 0,
+    };
+    for runs in runs_by_line {
+        let line = measure_inline_html_line_layout(measurer, runs, style, max_width);
+        layout.natural_width = layout.natural_width.max(line.natural_width);
+        layout.wrapped_width = layout.wrapped_width.max(line.wrapped_width);
+        layout.min_content_width = layout.min_content_width.max(line.min_content_width);
+        layout.line_count += line.line_count;
     }
-    if !style_requests_bold_font_weight(style) {
-        return 0.0;
-    }
-
-    let font_size = style.font_size.max(1.0);
-
-    let mut max_delta_px: f64 = 0.0;
-    for line in text.lines() {
-        let mut delta_px: f64 = 0.0;
-        let mut prev: Option<char> = None;
-        for ch in line.chars() {
-            if let Some(p) = prev {
-                delta_px += flowchart_default_bold_kern_delta_em(p, ch) * font_size;
-            }
-            delta_px += flowchart_default_bold_delta_em(ch) * font_size;
-            prev = Some(ch);
-        }
-        max_delta_px = max_delta_px.max(delta_px);
-    }
-
-    max_delta_px.max(0.0)
+    layout.line_count = layout.line_count.max(1);
+    layout
 }
 
-pub fn measure_html_with_flowchart_bold_deltas(
+pub fn measure_html_with_inline_styles(
     measurer: &dyn TextMeasurer,
     html: &str,
     style: &TextStyle,
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> TextMetrics {
-    // Mermaid HTML labels are measured via DOM (`getBoundingClientRect`) and do not always match a
-    // pure `canvas.measureText` bold delta model. For Mermaid@11.12.2 flowchart-v2 fixtures, the
-    // exported SVG baselines match a full `font-weight: bold` delta model for `<b>/<strong>` runs.
-    const BOLD_DELTA_SCALE: f64 = 1.0;
-
     fn html_tag_class_attr(tag: &str) -> Option<String> {
         let lower = tag.to_ascii_lowercase();
         let idx = lower.find("class=")?;
@@ -261,7 +304,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
         Some(value)
     }
 
-    fn fontawesome_icon_delta_px(tag: &str, font_size: f64) -> Option<f64> {
+    fn fontawesome_icon_width_px(tag: &str, font_size: f64) -> Option<f64> {
         let class_attr = html_tag_class_attr(tag)?;
         let mut prefix: Option<&str> = None;
         let mut icon: Option<&str> = None;
@@ -314,14 +357,14 @@ pub fn measure_html_with_flowchart_bold_deltas(
     }
 
     let mut plain = String::new();
-    let mut deltas_px_by_line: Vec<f64> = vec![0.0];
+    let mut icon_width_px_by_line: Vec<f64> = vec![0.0];
     let mut icon_on_line: Vec<bool> = vec![false];
-    let mut text_segments_by_line: Vec<Vec<String>> = vec![vec![String::new()]];
+    let mut image_on_line: Vec<bool> = vec![false];
+    let mut inline_runs_by_line: Vec<Vec<InlineTextRun>> = vec![Vec::new()];
     let mut strong_depth: usize = 0;
     let mut em_depth: usize = 0;
+    let mut code_depth: usize = 0;
     let mut fa_icon_depth: usize = 0;
-    let mut prev_char: Option<char> = None;
-    let mut prev_is_strong = false;
 
     let html = html.replace("\r\n", "\n");
     let mut it = html.chars().peekable();
@@ -349,7 +392,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 .unwrap_or("");
 
             let fontawesome_icon_width = if name == "i" && !is_closing {
-                fontawesome_icon_delta_px(tag, style.font_size)
+                fontawesome_icon_width_px(tag, style.font_size)
             } else {
                 None
             };
@@ -370,93 +413,74 @@ pub fn measure_html_with_flowchart_bold_deltas(
                             em_depth = em_depth.saturating_sub(1);
                         }
                     } else if let Some(icon_w) = fontawesome_icon_width {
-                        let line_idx = deltas_px_by_line.len().saturating_sub(1);
-                        deltas_px_by_line[line_idx] += icon_w;
+                        let line_idx = icon_width_px_by_line.len().saturating_sub(1);
+                        icon_width_px_by_line[line_idx] += icon_w;
                         if let Some(slot) = icon_on_line.get_mut(line_idx) {
                             *slot = true;
                         }
-                        if let Some(segments) = text_segments_by_line.get_mut(line_idx) {
-                            segments.push(String::new());
+                        if let Some(runs) = inline_runs_by_line.get_mut(line_idx) {
+                            runs.push(InlineTextRun::default());
                         }
                         fa_icon_depth += 1;
                     } else {
                         em_depth += 1;
                     }
                 }
+                "code" => {
+                    if is_closing {
+                        code_depth = code_depth.saturating_sub(1);
+                    } else {
+                        code_depth += 1;
+                    }
+                }
+                "img" if !is_closing => {
+                    if let Some(slot) = image_on_line.last_mut() {
+                        *slot = true;
+                    }
+                }
                 "br" => {
                     plain.push('\n');
-                    deltas_px_by_line.push(0.0);
+                    icon_width_px_by_line.push(0.0);
                     icon_on_line.push(false);
-                    text_segments_by_line.push(vec![String::new()]);
-                    prev_char = None;
-                    prev_is_strong = false;
+                    image_on_line.push(false);
+                    inline_runs_by_line.push(Vec::new());
                 }
                 "p" | "div" | "li" | "tr" | "ul" | "ol" if is_closing => {
                     plain.push('\n');
-                    deltas_px_by_line.push(0.0);
+                    icon_width_px_by_line.push(0.0);
                     icon_on_line.push(false);
-                    text_segments_by_line.push(vec![String::new()]);
-                    prev_char = None;
-                    prev_is_strong = false;
+                    image_on_line.push(false);
+                    inline_runs_by_line.push(Vec::new());
                 }
                 _ => {}
             }
             continue;
         }
 
-        let push_char = |decoded: char,
-                         plain: &mut String,
-                         deltas_px_by_line: &mut Vec<f64>,
-                         icon_on_line: &mut Vec<bool>,
-                         text_segments_by_line: &mut Vec<Vec<String>>,
-                         prev_char: &mut Option<char>,
-                         prev_is_strong: &mut bool| {
-            plain.push(decoded);
-            if decoded == '\n' {
-                deltas_px_by_line.push(0.0);
-                icon_on_line.push(false);
-                text_segments_by_line.push(vec![String::new()]);
-                *prev_char = None;
-                *prev_is_strong = false;
-                return;
-            }
-            let segment_line_idx = text_segments_by_line.len().saturating_sub(1);
-            if let Some(segments) = text_segments_by_line.get_mut(segment_line_idx) {
-                if segments.is_empty() {
-                    segments.push(String::new());
+        let mut push_char =
+            |decoded: char,
+             plain: &mut String,
+             icon_width_px_by_line: &mut Vec<f64>,
+             icon_on_line: &mut Vec<bool>,
+             inline_runs_by_line: &mut Vec<Vec<InlineTextRun>>| {
+                plain.push(decoded);
+                if decoded == '\n' {
+                    icon_width_px_by_line.push(0.0);
+                    icon_on_line.push(false);
+                    image_on_line.push(false);
+                    inline_runs_by_line.push(Vec::new());
+                    return;
                 }
-                if let Some(segment) = segments.last_mut() {
-                    segment.push(decoded);
+                if let Some(runs) = inline_runs_by_line.last_mut() {
+                    push_inline_text_char(
+                        runs,
+                        decoded,
+                        strong_depth > 0,
+                        em_depth > 0,
+                        code_depth > 0,
+                    );
                 }
-            }
-            if is_flowchart_default_font(style) {
-                let line_idx = deltas_px_by_line.len().saturating_sub(1);
-                let font_size = style.font_size.max(1.0);
-                let is_strong = strong_depth > 0;
-                if let Some(prev) = *prev_char
-                    && *prev_is_strong
-                    && is_strong
-                {
-                    deltas_px_by_line[line_idx] +=
-                        flowchart_default_bold_kern_delta_em(prev, decoded)
-                            * font_size
-                            * BOLD_DELTA_SCALE;
-                }
-                if is_strong {
-                    deltas_px_by_line[line_idx] +=
-                        flowchart_default_bold_delta_em(decoded) * font_size * BOLD_DELTA_SCALE;
-                }
-                if em_depth > 0 {
-                    deltas_px_by_line[line_idx] +=
-                        flowchart_default_italic_delta_em(decoded, wrap_mode) * font_size;
-                }
-                *prev_char = Some(decoded);
-                *prev_is_strong = is_strong;
-            } else {
-                *prev_char = Some(decoded);
-                *prev_is_strong = strong_depth > 0;
-            }
-        };
+            };
 
         if ch == '&' {
             let mut entity = String::new();
@@ -478,20 +502,31 @@ pub fn measure_html_with_flowchart_bold_deltas(
                     push_char(
                         decoded,
                         &mut plain,
-                        &mut deltas_px_by_line,
+                        &mut icon_width_px_by_line,
                         &mut icon_on_line,
-                        &mut text_segments_by_line,
-                        &mut prev_char,
-                        &mut prev_is_strong,
+                        &mut inline_runs_by_line,
                     );
                 } else {
-                    plain.push('&');
-                    plain.push_str(&entity);
-                    plain.push(';');
+                    for literal in format!("&{entity};").chars() {
+                        push_char(
+                            literal,
+                            &mut plain,
+                            &mut icon_width_px_by_line,
+                            &mut icon_on_line,
+                            &mut inline_runs_by_line,
+                        );
+                    }
                 }
             } else {
-                plain.push('&');
-                plain.push_str(&entity);
+                for literal in format!("&{entity}").chars() {
+                    push_char(
+                        literal,
+                        &mut plain,
+                        &mut icon_width_px_by_line,
+                        &mut icon_on_line,
+                        &mut inline_runs_by_line,
+                    );
+                }
             }
             continue;
         }
@@ -499,11 +534,9 @@ pub fn measure_html_with_flowchart_bold_deltas(
         push_char(
             ch,
             &mut plain,
-            &mut deltas_px_by_line,
+            &mut icon_width_px_by_line,
             &mut icon_on_line,
-            &mut text_segments_by_line,
-            &mut prev_char,
-            &mut prev_is_strong,
+            &mut inline_runs_by_line,
         );
     }
 
@@ -515,45 +548,62 @@ pub fn measure_html_with_flowchart_bold_deltas(
     } else {
         plain.trim_end().to_string()
     };
-    let base = measurer.measure_wrapped_raw(plain.trim(), style, max_width, wrap_mode);
+    let base = measurer.measure_wrapped(plain.trim(), style, max_width, wrap_mode);
+
+    // Consecutive `<br>` elements create empty inline line boxes. Keep those boxes up to the last
+    // visible text/image line; a final image-only line is left to the browser-dependent replaced
+    // element bounds instead of assigning it a guessed intrinsic height.
+    let explicit_line_boxes = inline_runs_by_line
+        .iter()
+        .zip(&image_on_line)
+        .rposition(|(runs, has_image)| !runs.is_empty() || *has_image)
+        .map(|last_content_line| {
+            inline_runs_by_line[..=last_content_line]
+                .iter()
+                .zip(&image_on_line[..=last_content_line])
+                .filter(|(runs, has_image)| !runs.is_empty() || !**has_image)
+                .count()
+        })
+        .unwrap_or(0);
 
     let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
     if lines.is_empty() {
         lines.push(String::new());
     }
-    deltas_px_by_line.resize(lines.len(), 0.0);
+    icon_width_px_by_line.resize(lines.len(), 0.0);
     icon_on_line.resize(lines.len(), false);
-    text_segments_by_line.resize_with(lines.len(), || vec![String::new()]);
+    inline_runs_by_line.resize_with(lines.len(), Vec::new);
+    let styled_text_width_px_by_line = inline_runs_by_line
+        .iter()
+        .map(|runs| measure_inline_runs_width_px(measurer, runs, style, wrap_mode, false))
+        .collect::<Vec<_>>();
+    let inline_width_px_by_line = styled_text_width_px_by_line
+        .iter()
+        .zip(&icon_width_px_by_line)
+        .map(|(text_width, icon_width)| text_width + icon_width)
+        .collect::<Vec<_>>();
 
-    fn flowchart_html_icon_wrapped_segments(line: &str) -> Vec<String> {
-        fn is_break_after(ch: char) -> bool {
-            matches!(ch, '/' | '-' | ':' | '?' | '&' | '#' | ')' | '}' | '.')
-        }
-
-        let mut out = Vec::new();
-        for tok in line.split(' ') {
-            let tok = tok.trim();
-            if tok.is_empty() {
-                continue;
+    if wrap_mode == WrapMode::HtmlLike && !icon_on_line.iter().any(|has_icon| *has_icon) {
+        let layout = measure_inline_html_layout(measurer, &inline_runs_by_line, style, max_width);
+        let width = if let Some(max_width) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
+            if layout.natural_width > max_width {
+                layout
+                    .wrapped_width
+                    .max(layout.min_content_width)
+                    .max(max_width)
+            } else {
+                layout.natural_width.min(max_width)
             }
-
-            let mut cur = String::new();
-            for ch in tok.chars() {
-                cur.push(ch);
-                if is_break_after(ch) && !cur.is_empty() {
-                    out.push(std::mem::take(&mut cur));
-                }
-            }
-            if !cur.is_empty() {
-                out.push(cur);
-            }
-        }
-
-        if out.is_empty() {
-            vec![line.trim().to_string()]
         } else {
-            out
-        }
+            layout.natural_width
+        };
+        return TextMetrics {
+            width: round_to_1_64_px(width),
+            height: layout.line_count.max(explicit_line_boxes) as f64
+                * style.font_size.max(1.0)
+                * 1.5,
+            line_count: layout.line_count.max(explicit_line_boxes),
+        };
     }
 
     let icon_start_wrap = if wrap_mode == WrapMode::HtmlLike {
@@ -573,43 +623,39 @@ pub fn measure_html_with_flowchart_bold_deltas(
                         continue;
                     }
 
-                    let segments = flowchart_html_icon_wrapped_segments(text);
-                    let text_width = measurer
-                        .measure_wrapped_raw(text, style, None, wrap_mode)
-                        .width;
-                    let first_segment = segments.first().map(String::as_str).unwrap_or(text);
+                    let segments = html_break_spaces_segments(text);
+                    let text_width = styled_text_width_px_by_line[idx];
+                    let first_segment = segments.first().copied().unwrap_or(text);
                     let first_segment_width = measurer
-                        .measure_wrapped_raw(first_segment, style, None, wrap_mode)
+                        .measure_wrapped(first_segment, style, None, wrap_mode)
                         .width;
-                    if first_segment_width + deltas_px_by_line[idx] > w {
+                    if first_segment_width + icon_width_px_by_line[idx] > w {
                         extra_lines += 1;
                         has_width_override = true;
                         for segment in segments {
-                            let segment = segment.trim();
                             if segment.is_empty() {
                                 continue;
                             }
                             wrapped_width = wrapped_width.max(
                                 measurer
-                                    .measure_wrapped_raw(segment, style, None, wrap_mode)
+                                    .measure_wrapped(segment, style, None, wrap_mode)
                                     .width,
                             );
                         }
-                    } else if text_width <= w && text_width + deltas_px_by_line[idx] > w {
+                    } else if text_width <= w && inline_width_px_by_line[idx] > w {
                         extra_lines += 1;
                         has_width_override = true;
                         wrapped_width = wrapped_width.max(w);
-                    } else if text_width > w {
+                    } else if inline_width_px_by_line[idx] > w {
                         has_width_override = true;
                         let mut segment_width: f64 = 0.0;
                         for segment in segments {
-                            let segment = segment.trim();
                             if segment.is_empty() {
                                 continue;
                             }
                             segment_width = segment_width.max(
                                 measurer
-                                    .measure_wrapped_raw(segment, style, None, wrap_mode)
+                                    .measure_wrapped(segment, style, None, wrap_mode)
                                     .width,
                             );
                         }
@@ -623,7 +669,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
         None
     };
 
-    let inline_delta_extra_wrap_lines = if wrap_mode == WrapMode::HtmlLike {
+    let inline_style_extra_wrap_lines = if wrap_mode == WrapMode::HtmlLike {
         max_width
             .filter(|w| w.is_finite() && *w > 0.0)
             .map(|w| {
@@ -638,14 +684,14 @@ pub fn measure_html_with_flowchart_bold_deltas(
                         {
                             return false;
                         }
-                        let delta = deltas_px_by_line.get(*idx).copied().unwrap_or(0.0);
-                        if delta <= 0.0 {
-                            return false;
-                        }
-                        let raw_width = measurer
-                            .measure_wrapped_raw(text, style, None, wrap_mode)
-                            .width;
-                        raw_width <= w && raw_width + delta > w
+                        let raw_width =
+                            measurer.measure_wrapped(text, style, None, wrap_mode).width;
+                        raw_width <= w
+                            && styled_text_width_px_by_line
+                                .get(*idx)
+                                .copied()
+                                .unwrap_or(raw_width)
+                                > w
                     })
                     .count()
             })
@@ -654,27 +700,10 @@ pub fn measure_html_with_flowchart_bold_deltas(
         0
     };
 
-    let mut max_line_width: f64 = 0.0;
-    for (idx, line) in lines.iter().enumerate() {
-        let w = if icon_on_line[idx] {
-            text_segments_by_line
-                .get(idx)
-                .into_iter()
-                .flat_map(|segments| segments.iter())
-                .filter(|segment| !segment.is_empty())
-                .map(|segment| {
-                    measurer
-                        .measure_wrapped_raw(segment, style, None, wrap_mode)
-                        .width
-                })
-                .sum::<f64>()
-        } else {
-            measurer
-                .measure_wrapped_raw(line.trim(), style, None, wrap_mode)
-                .width
-        };
-        max_line_width = max_line_width.max(w + deltas_px_by_line[idx]);
-    }
+    let max_line_width = inline_width_px_by_line
+        .iter()
+        .copied()
+        .fold(0.0_f64, f64::max);
 
     // Mermaid's upstream baselines land on a 1/64px lattice. For SVG-label measurement, the
     // underlying `getBBox()` numbers can hit exact `.5/64` ties; use ties-to-even rounding to
@@ -688,9 +717,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
     if wrap_mode == WrapMode::HtmlLike
         && let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0)
     {
-        let raw_w = measurer
-            .measure_wrapped_raw(plain.trim(), style, None, wrap_mode)
-            .width;
+        let raw_w = max_line_width;
         let needs_wrap = raw_w > w;
         if needs_wrap {
             // When wrapping is active, the DOM-driven width behavior is governed by the
@@ -709,22 +736,6 @@ pub fn measure_html_with_flowchart_bold_deltas(
         }
     }
 
-    let normalized_plain = lines
-        .iter()
-        .map(|line| line.trim())
-        .collect::<Vec<_>>()
-        .join("\n");
-    if wrap_mode == WrapMode::HtmlLike
-        && is_flowchart_default_font(style)
-        && normalized_plain == "This is bold\nand strong"
-    {
-        // Mermaid 11.12.3 flowchart HTML-label probes for this exact content land on 82.125px.
-        let desired = 82.125 * (style.font_size.max(1.0) / 16.0);
-        if (width - desired).abs() < 1.0 {
-            width = round_to_1_64_px(desired);
-        }
-    }
-
     let icon_only_extra_lines = if plain.trim().is_empty() {
         0
     } else {
@@ -734,7 +745,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
             .filter(|(idx, line)| {
                 line.trim().is_empty()
                     && icon_on_line.get(*idx).copied().unwrap_or(false)
-                    && deltas_px_by_line.get(*idx).copied().unwrap_or(0.0) > 0.0
+                    && icon_width_px_by_line.get(*idx).copied().unwrap_or(0.0) > 0.0
             })
             .count()
     };
@@ -757,9 +768,9 @@ pub fn measure_html_with_flowchart_bold_deltas(
         height += icon_only_extra_lines as f64 * style.font_size.max(1.0) * 1.5;
         line_count += icon_only_extra_lines;
     }
-    if inline_delta_extra_wrap_lines > 0 {
-        height += inline_delta_extra_wrap_lines as f64 * style.font_size.max(1.0) * 1.5;
-        line_count += inline_delta_extra_wrap_lines;
+    if inline_style_extra_wrap_lines > 0 {
+        height += inline_style_extra_wrap_lines as f64 * style.font_size.max(1.0) * 1.5;
+        line_count += inline_style_extra_wrap_lines;
     }
 
     TextMetrics {
@@ -769,88 +780,32 @@ pub fn measure_html_with_flowchart_bold_deltas(
     }
 }
 
-fn markdown_word_line_plain_text_and_delta_px(
+fn markdown_word_line_plain_text_and_width_px(
+    measurer: &dyn TextMeasurer,
     words: &[(String, MermaidMarkdownWordType)],
     style: &TextStyle,
     wrap_mode: WrapMode,
-    bold_delta_scale: f64,
 ) -> (String, f64) {
     let mut plain = String::new();
-    let mut delta_px = 0.0;
-    let mut prev_char: Option<char> = None;
-    let mut prev_is_strong = false;
+    let mut runs = Vec::new();
 
     for (word_idx, (word, ty)) in words.iter().enumerate() {
         let visible_word = merman_core::entities::decode_html_entities_to_unicode(word);
-        let is_strong = *ty == MermaidMarkdownWordType::Strong;
-        let is_em = *ty == MermaidMarkdownWordType::Em;
-        let bold_override_em = if is_flowchart_default_font(style) && is_strong {
-            overrides::lookup_flowchart_markdown_bold_word_delta_em(wrap_mode, word)
-        } else {
-            None
-        };
-        let mut push_char = |ch: char| {
-            plain.push(ch);
-            if !is_flowchart_default_font(style) {
-                prev_char = Some(ch);
-                prev_is_strong = is_strong;
-                return;
-            }
-            let font_size = style.font_size.max(1.0);
-            if let Some(prev) = prev_char
-                && prev_is_strong
-                && is_strong
-                && bold_override_em.is_none()
-            {
-                delta_px +=
-                    flowchart_default_bold_kern_delta_em(prev, ch) * font_size * bold_delta_scale;
-            }
-            if is_strong && bold_override_em.is_none() {
-                let mut delta_em = flowchart_default_bold_delta_em(ch);
-                delta_em += overrides::lookup_flowchart_markdown_bold_char_extra_delta_em(
-                    wrap_mode, word, ch,
-                );
-                delta_px += delta_em * font_size * bold_delta_scale;
-            }
-            prev_char = Some(ch);
-            prev_is_strong = is_strong;
-        };
+        let bold = *ty == MermaidMarkdownWordType::Strong;
+        let italic = *ty == MermaidMarkdownWordType::Em;
 
         if word_idx > 0 {
-            push_char(' ');
+            plain.push(' ');
+            push_inline_text_char(&mut runs, ' ', false, false, false);
         }
         for ch in visible_word.chars() {
-            push_char(ch);
-        }
-
-        if is_flowchart_default_font(style) && is_strong {
-            if let Some(delta_em) = bold_override_em {
-                let font_size = style.font_size.max(1.0);
-                delta_px += delta_em * font_size * bold_delta_scale;
-            }
-            let extra_em =
-                overrides::lookup_flowchart_markdown_bold_word_extra_delta_em(wrap_mode, word);
-            if extra_em != 0.0 {
-                let font_size = style.font_size.max(1.0);
-                delta_px += extra_em * font_size * bold_delta_scale;
-            }
-        }
-
-        if is_flowchart_default_font(style) && is_em {
-            let font_size = style.font_size.max(1.0);
-            if let Some(delta_em) =
-                overrides::lookup_flowchart_markdown_italic_word_delta_em(wrap_mode, word)
-            {
-                delta_px += delta_em * font_size;
-            } else {
-                for ch in visible_word.chars() {
-                    delta_px += flowchart_default_italic_delta_em(ch, wrap_mode) * font_size;
-                }
-            }
+            plain.push(ch);
+            push_inline_text_char(&mut runs, ch, bold, italic, false);
         }
     }
 
-    (plain, delta_px)
+    let width = measure_inline_runs_width_px(measurer, &runs, style, wrap_mode, true);
+    (plain, width)
 }
 
 fn measure_markdown_word_line_width_px(
@@ -859,19 +814,7 @@ fn measure_markdown_word_line_width_px(
     style: &TextStyle,
     wrap_mode: WrapMode,
 ) -> f64 {
-    let (plain, delta_px) =
-        markdown_word_line_plain_text_and_delta_px(words, style, wrap_mode, 1.0);
-    let base_w = match wrap_mode {
-        WrapMode::HtmlLike => {
-            measurer
-                .measure_wrapped_raw(&plain, style, None, wrap_mode)
-                .width
-        }
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
-            measurer.measure_svg_text_computed_length_px(&plain, style)
-        }
-    };
-    base_w + delta_px
+    markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode).1
 }
 
 fn split_markdown_word_to_width_px(
@@ -895,7 +838,7 @@ fn split_markdown_word_to_width_px(
         let head = chars[..idx].iter().collect::<String>();
         let width =
             measure_markdown_word_line_width_px(measurer, &[(head.clone(), ty)], style, wrap_mode);
-        if width.is_finite() && width <= max_width_px + 0.125 {
+        if width.is_finite() && width <= max_width_px {
             split_at = idx;
         } else {
             break;
@@ -933,7 +876,7 @@ fn wrap_markdown_word_lines(
             let mut candidate = cur.clone();
             candidate.push((word.clone(), ty));
             if measure_markdown_word_line_width_px(measurer, &candidate, style, wrap_mode)
-                <= max_width_px + 0.125
+                <= max_width_px
             {
                 cur = candidate;
                 continue;
@@ -952,7 +895,7 @@ fn wrap_markdown_word_lines(
                 style,
                 wrap_mode,
             );
-            if single_word_width <= max_width_px + 0.125 || !break_long_words {
+            if single_word_width <= max_width_px || !break_long_words {
                 out.push(vec![(word, ty)]);
                 continue;
             }
@@ -1022,7 +965,7 @@ fn html_markdown_paragraph_gap_lines(markdown: &str) -> usize {
     paragraph_count.saturating_sub(1)
 }
 
-fn measure_markdown_with_flowchart_bold_deltas_impl(
+fn measure_markdown_with_inline_styles_impl(
     measurer: &dyn TextMeasurer,
     markdown: &str,
     style: &TextStyle,
@@ -1030,13 +973,6 @@ fn measure_markdown_with_flowchart_bold_deltas_impl(
     wrap_mode: WrapMode,
     manually_wrap_words: bool,
 ) -> TextMetrics {
-    // Mermaid measures Markdown labels via DOM (`getBoundingClientRect`) after converting the
-    // Markdown into HTML inside a `<foreignObject>` (for `htmlLabels: true`). In the Mermaid@11.12.2
-    // upstream SVG baselines, both `<strong>` and `<em>` spans contribute measurable width deltas.
-    //
-    // Apply a 1:1 bold delta scale for Markdown (unlike raw-HTML labels, which are empirically ~0.5).
-    let bold_delta_scale: f64 = 1.0;
-
     // Mermaid's flowchart HTML labels support inline Markdown images. These affect layout even
     // when the label has no textual content (e.g. `![](...)`).
     //
@@ -1199,43 +1135,26 @@ fn measure_markdown_with_flowchart_bold_deltas_impl(
     };
 
     let mut plain_lines: Vec<String> = Vec::with_capacity(parsed.len().max(1));
-    let mut deltas_px_by_line: Vec<f64> = Vec::with_capacity(parsed.len().max(1));
+    let mut styled_width_px_by_line: Vec<f64> = Vec::with_capacity(parsed.len().max(1));
     for words in &parsed {
-        let (plain, delta_px) =
-            markdown_word_line_plain_text_and_delta_px(words, style, wrap_mode, bold_delta_scale);
+        let (plain, width) =
+            markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode);
         plain_lines.push(plain);
-        deltas_px_by_line.push(delta_px);
+        styled_width_px_by_line.push(width);
     }
 
     let plain = plain_lines.join("\n");
     let plain = plain.trim().to_string();
     let base = if manually_wrap_words {
-        measurer.measure_wrapped_raw(&plain, style, None, wrap_mode)
+        measurer.measure_wrapped(&plain, style, None, wrap_mode)
     } else {
-        measurer.measure_wrapped_raw(&plain, style, max_width, wrap_mode)
+        measurer.measure_wrapped(&plain, style, max_width, wrap_mode)
     };
 
-    let mut max_line_width: f64 = 0.0;
-    if manually_wrap_words {
-        for (idx, line) in plain_lines.iter().enumerate() {
-            let width = measurer
-                .measure_wrapped_raw(line, style, None, wrap_mode)
-                .width;
-            max_line_width = max_line_width.max(width + deltas_px_by_line[idx]);
-        }
-    } else {
-        let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
-        if lines.is_empty() {
-            lines.push(String::new());
-        }
-        deltas_px_by_line.resize(lines.len(), 0.0);
-        for (idx, line) in lines.iter().enumerate() {
-            let width = measurer
-                .measure_wrapped_raw(line, style, None, wrap_mode)
-                .width;
-            max_line_width = max_line_width.max(width + deltas_px_by_line[idx]);
-        }
-    }
+    let max_line_width = styled_width_px_by_line
+        .iter()
+        .copied()
+        .fold(0.0_f64, f64::max);
 
     // Mermaid's upstream baselines land on a power-of-two lattice:
     // - DOM-measured HTML labels tend to snap to 1/64px.
@@ -1249,22 +1168,12 @@ fn measure_markdown_with_flowchart_bold_deltas_impl(
     if wrap_mode == WrapMode::HtmlLike
         && let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0)
     {
-        let raw_plain = raw_parsed
+        let raw_w = raw_parsed
             .iter()
             .map(|words| {
-                markdown_word_line_plain_text_and_delta_px(
-                    words,
-                    style,
-                    wrap_mode,
-                    bold_delta_scale,
-                )
-                .0
+                markdown_word_line_plain_text_and_width_px(measurer, words, style, wrap_mode).1
             })
-            .collect::<Vec<_>>()
-            .join("\n");
-        let raw_w = measurer
-            .measure_wrapped_raw(raw_plain.trim(), style, None, wrap_mode)
-            .width;
+            .fold(0.0_f64, f64::max);
         let needs_wrap = raw_w > w;
         if needs_wrap {
             if manually_wrap_words {
@@ -1277,20 +1186,6 @@ fn measure_markdown_with_flowchart_bold_deltas_impl(
         }
     }
 
-    if wrap_mode != WrapMode::HtmlLike
-        && is_flowchart_default_font(style)
-        && markdown.contains("This is")
-        && markdown.contains("**bold**")
-        && markdown.contains("strong")
-        && markdown.contains("</br>")
-    {
-        // Mermaid 11.12.3 keeps the SVG quoted-edge label on a stable 1/64px lattice here.
-        let desired = 141.28125 * (style.font_size.max(1.0) / 16.0);
-        if (width - desired).abs() < 1.0 {
-            width = round_to_1_64_px(desired);
-        }
-    }
-
     TextMetrics {
         width,
         height: base.height + html_paragraph_gap_lines as f64 * style.font_size.max(1.0) * 1.5,
@@ -1298,208 +1193,22 @@ fn measure_markdown_with_flowchart_bold_deltas_impl(
     }
 }
 
-pub fn measure_markdown_with_flowchart_bold_deltas(
+pub fn measure_markdown_with_inline_styles(
     measurer: &dyn TextMeasurer,
     markdown: &str,
     style: &TextStyle,
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> TextMetrics {
-    measure_markdown_with_flowchart_bold_deltas_impl(
-        measurer, markdown, style, max_width, wrap_mode, false,
-    )
+    measure_markdown_with_inline_styles_impl(measurer, markdown, style, max_width, wrap_mode, false)
 }
 
-/// Computes an SVG `getBBox().width`-like measurement for Mermaid Markdown labels while keeping a
-/// tighter ~1/1024px lattice (closer to Chromium's `getBBox()` behavior) rather than the 1/64px
-/// lattice used by `measure_markdown_with_flowchart_bold_deltas` for strict-XML stability.
-///
-/// Intended for flowchart-v2 cluster titles, where sub-1/64px width differences can shift the
-/// label's left-aligned `translate(x, y)` enough to cause strict XML mismatches.
-pub fn measure_markdown_svg_like_precise_width_px(
-    measurer: &dyn TextMeasurer,
-    markdown: &str,
-    style: &TextStyle,
-    max_width: Option<f64>,
-) -> f64 {
-    let wrap_mode = WrapMode::SvgLike;
-    let bold_delta_scale: f64 = 1.0;
-
-    let raw_parsed = mermaid_markdown_to_lines(markdown, true);
-
-    // Flowchart-v2 cluster titles use a fixed wrapping width (200px) and wrap long words into
-    // `<tspan>` lines. Reuse our Markdown word wrapper so width probes line up with upstream.
-    let parsed = wrap_markdown_word_lines(measurer, &raw_parsed, style, max_width, wrap_mode, true);
-
-    let mut max_line_width: f64 = 0.0;
-    for words in &parsed {
-        let (plain, delta_px) =
-            markdown_word_line_plain_text_and_delta_px(words, style, wrap_mode, bold_delta_scale);
-        let base = measurer
-            .measure_wrapped_raw(plain.trim_end(), style, None, wrap_mode)
-            .width;
-        max_line_width = max_line_width.max(base + delta_px);
-    }
-
-    VendoredFontMetricsTextMeasurer::quantize_svg_bbox_px_nearest(max_line_width.max(0.0))
-}
-
-/// Computes a Mermaid flowchart SVG label width using the same wrapping probe as upstream
-/// `createText(..., useHtmlLabels=false)`: wrap by SVG `getComputedTextLength()`, then apply the
-/// small wrapped-title lattice correction observed in Chromium's final `getBBox().width`.
-///
-/// This is primarily needed for cluster titles: Mermaid centers the title group using the wrapped
-/// SVG text bbox width, while the layout engine still keeps the cluster box sizing independent from
-/// the title width once the cluster content is wider.
-#[cfg(test)]
-pub(crate) fn measure_flowchart_svg_like_precise_width_px(
-    measurer: &dyn TextMeasurer,
-    text: &str,
-    style: &TextStyle,
-    max_width_px: Option<f64>,
-) -> f64 {
-    const EPS_PX: f64 = 0.125;
-    let max_width_px = max_width_px.filter(|w| w.is_finite() && *w > 0.0);
-
-    fn measure_w_px(measurer: &dyn TextMeasurer, style: &TextStyle, s: &str) -> f64 {
-        measurer.measure_svg_text_computed_length_px(s, style)
-    }
-
-    fn split_token_to_width_px(
-        measurer: &dyn TextMeasurer,
-        style: &TextStyle,
-        tok: &str,
-        max_width_px: f64,
-    ) -> (String, String) {
-        if max_width_px <= 0.0 {
-            return (tok.to_string(), String::new());
-        }
-        let chars = tok.chars().collect::<Vec<_>>();
-        if chars.is_empty() {
-            return (String::new(), String::new());
-        }
-
-        let mut split_at = 1usize;
-        for i in 1..=chars.len() {
-            let head = chars[..i].iter().collect::<String>();
-            let w = measure_w_px(measurer, style, &head);
-            if w.is_finite() && w <= max_width_px + EPS_PX {
-                split_at = i;
-            } else {
-                break;
-            }
-        }
-        let head = chars[..split_at].iter().collect::<String>();
-        let tail = chars[split_at..].iter().collect::<String>();
-        (head, tail)
-    }
-
-    fn wrap_line_to_width_px(
-        measurer: &dyn TextMeasurer,
-        style: &TextStyle,
-        line: &str,
-        max_width_px: f64,
-    ) -> Vec<String> {
-        let mut tokens =
-            std::collections::VecDeque::from(DeterministicTextMeasurer::split_line_to_words(line));
-        let mut out: Vec<String> = Vec::new();
-        let mut cur = String::new();
-
-        while let Some(tok) = tokens.pop_front() {
-            if cur.is_empty() && tok == " " {
-                continue;
-            }
-
-            let candidate = format!("{cur}{tok}");
-            let candidate_trimmed = candidate.trim_end();
-            if measure_w_px(measurer, style, candidate_trimmed) <= max_width_px + EPS_PX {
-                cur = candidate;
-                continue;
-            }
-
-            if !cur.trim().is_empty() {
-                out.push(cur.trim_end().to_string());
-                cur.clear();
-                tokens.push_front(tok);
-                continue;
-            }
-
-            if tok == " " {
-                continue;
-            }
-
-            let (head, tail) = split_token_to_width_px(measurer, style, &tok, max_width_px);
-            if !head.is_empty() {
-                out.push(head);
-            }
-            if !tail.is_empty() {
-                tokens.push_front(tail);
-            }
-        }
-
-        if !cur.trim().is_empty() {
-            out.push(cur.trim_end().to_string());
-        }
-        if out.is_empty() {
-            vec![String::new()]
-        } else {
-            out
-        }
-    }
-
-    let mut wrapped_lines: Vec<String> = Vec::new();
-    let mut wrapped_by_width = false;
-    for line in DeterministicTextMeasurer::normalized_text_lines(text) {
-        if let Some(w) = max_width_px {
-            let lines = wrap_line_to_width_px(measurer, style, &line, w);
-            if lines.len() > 1 {
-                wrapped_by_width = true;
-            }
-            wrapped_lines.extend(lines);
-        } else {
-            wrapped_lines.push(line);
-        }
-    }
-
-    let mut max_line_width: f64 = 0.0;
-    if wrapped_by_width {
-        for line in &wrapped_lines {
-            max_line_width = max_line_width.max(measure_w_px(measurer, style, line.trim_end()));
-        }
-        // Chromium's final `<text>.getBBox().width` for wrapped flowchart cluster titles lands one
-        // 1/64px step tighter than the widest wrapped-line `getComputedTextLength()` probe used
-        // during wrapping. Mirror that lattice so strict-XML centering matches upstream.
-        max_line_width = (max_line_width - (1.0 / 64.0)).max(0.0);
-    } else {
-        let font_key = style
-            .font_family
-            .as_deref()
-            .map(normalize_font_key)
-            .unwrap_or_default();
-        if font_key == "trebuchetms,verdana,arial,sans-serif"
-            && (style.font_size - 16.0).abs() < 1e-9
-            && wrapped_lines.len() == 1
-            && wrapped_lines[0].trim_end() == "One"
-        {
-            return 28.25;
-        }
-        for line in &wrapped_lines {
-            let (left, right) = measurer.measure_svg_text_bbox_x(line.trim_end(), style);
-            max_line_width = max_line_width.max((left + right).max(0.0));
-        }
-    }
-
-    round_to_1_64_px(max_line_width)
-}
-
-pub(crate) fn measure_wrapped_markdown_with_flowchart_bold_deltas(
+pub(crate) fn measure_wrapped_markdown_with_inline_styles(
     measurer: &dyn TextMeasurer,
     markdown: &str,
     style: &TextStyle,
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> TextMetrics {
-    measure_markdown_with_flowchart_bold_deltas_impl(
-        measurer, markdown, style, max_width, wrap_mode, true,
-    )
+    measure_markdown_with_inline_styles_impl(measurer, markdown, style, max_width, wrap_mode, true)
 }

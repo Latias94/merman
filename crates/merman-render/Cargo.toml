@@ -18,26 +18,37 @@ exclude = [
   "tests/**",
 ]
 
+[package.metadata.merman]
+artifact-profile-required = true
+fixed-capabilities = ["svg"]
+
 [features]
-default = ["core-full"]
-core-full = ["merman-core/full", "cytoscape-layout"]
-host = ["chrono/clock", "chrono/wasmbind", "merman-core/host", "roughr/host-random"]
-cytoscape-layout = ["dep:manatee"]
-elk-layout = ["dep:merman-layout-elk"]
-ratex-math = [
+default = []
+system-clock = ["merman-core/system-clock"]
+system-timezone = ["merman-core/system-timezone"]
+system-random = ["merman-core/system-random"]
+system-timing = ["merman-core/system-timing"]
+layout-cytoscape = ["dep:manatee"]
+layout-elk = ["dep:merman-layout-elk"]
+math = [
   "dep:ratex-layout",
   "dep:ratex-parser",
   "dep:ratex-svg",
   "dep:ratex-types",
   "ratex-svg/embed-fonts",
-  "ratex-svg/standalone",
 ]
 
 [dependencies]
 base64.workspace = true
 chrono.workspace = true
+cssparser.workspace = true
+data-url.workspace = true
 dugong.workspace = true
-indexmap.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
+icu_collator.workspace = true
+icu_locale_core.workspace = true
+kurbo.workspace = true
+libm.workspace = true
 manatee = { workspace = true, optional = true }
 merman-layout-elk = { workspace = true, optional = true }
 merman-core.workspace = true
@@ -48,13 +59,17 @@ ratex-svg = { workspace = true, optional = true }
 ratex-types = { workspace = true, optional = true }
 rustc-hash.workspace = true
 roxmltree.workspace = true
+quick-xml.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+svgtypes.workspace = true
 thiserror.workspace = true
 roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
 unicode-width.workspace = true
+unicode-linebreak.workspace = true
 
 [dev-dependencies]
-futures.workspace = true
+futures = { workspace = true, features = ["executor"] }
+merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 regex.workspace = true

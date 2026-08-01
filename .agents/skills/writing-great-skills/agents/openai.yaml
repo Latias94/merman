@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release Evidence Report"
+  short_description: "Evidence-backed release metrics and user guidance"
+  default_prompt: "Use $writing-great-skills to compare this revision with its previous release and draft a user-facing evidence report."

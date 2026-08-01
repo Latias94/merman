@@ -1,17 +1,17 @@
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 use merman_render::math::MathRenderer;
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 use merman_render::text::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, round_to_1_64_px, split_html_br_lines,
 };
 
-#[cfg(not(feature = "ratex-math"))]
+#[cfg(not(feature = "math"))]
 fn main() {
-    eprintln!("enable the `ratex-math` feature to run this audit helper");
+    eprintln!("enable the `math` feature to run this audit helper");
     std::process::exit(2);
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 fn main() {
     use merman_core::MermaidConfig;
     use merman_render::math::{NodeKatexMathRenderer, RatexMathRenderer};
@@ -88,7 +88,7 @@ fn main() {
     }
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 fn flowchart_composed_ratex_metrics(
     measurer: &dyn TextMeasurer,
     renderer: &dyn MathRenderer,
@@ -122,7 +122,7 @@ fn flowchart_composed_ratex_metrics(
     })
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 fn measure_flowchart_mixed_math_line(
     measurer: &dyn TextMeasurer,
     renderer: &dyn MathRenderer,
@@ -161,7 +161,7 @@ fn measure_flowchart_mixed_math_line(
     Some((width, height.max(1.0)))
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 fn print_row(
     label: &str,
     katex: Option<merman_render::text::TextMetrics>,
@@ -172,14 +172,14 @@ fn print_row(
     println!("| `{label}` | {katex_w} | {katex_h} | {ratex_w} | {ratex_h} |");
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 fn format_metrics(metrics: Option<merman_render::text::TextMetrics>) -> (String, String) {
     metrics
         .map(|m| (format_num(m.width), format_num(m.height)))
         .unwrap_or_else(|| ("n/a".to_string(), "n/a".to_string()))
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 fn sequence_layout_metrics(
     metrics: Option<merman_render::text::TextMetrics>,
 ) -> Option<merman_render::text::TextMetrics> {
@@ -190,7 +190,7 @@ fn sequence_layout_metrics(
     })
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 fn format_num(value: f64) -> String {
     let s = format!("{value:.6}");
     let s = s.trim_end_matches('0').trim_end_matches('.');

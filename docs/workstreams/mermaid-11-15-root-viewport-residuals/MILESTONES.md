@@ -1,7 +1,10 @@
 # Mermaid 11.15 Root Viewport Residuals - Milestones
 
-Status: Active
+Status: Superseded on 2026-07-15
 Last updated: 2026-06-02
+
+> Historical milestones for the former Mermaid 11.15 root-pin system. Production root/text/SVG
+> overrides and their tooling were removed under ADR-0062.
 
 ## M0 - Baseline Split
 

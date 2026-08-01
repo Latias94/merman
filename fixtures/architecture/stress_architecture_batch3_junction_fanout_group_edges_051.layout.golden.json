@@ -5,48 +5,48 @@
       "nodes": [
         {
           "id": "api",
-          "x": 0.0,
-          "y": 0.0,
+          "x": -75.434,
+          "y": -200.783,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
         },
         {
           "id": "db",
-          "x": 0.0,
-          "y": 0.0,
+          "x": -124.417,
+          "y": -29.338,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
         },
         {
           "id": "cache",
-          "x": 0.0,
-          "y": 0.0,
+          "x": 277.258,
+          "y": -29.338,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
         },
         {
           "id": "gw",
-          "x": 0.0,
-          "y": 0.0,
+          "x": -75.434,
+          "y": 234.783,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
         },
         {
           "id": "client",
-          "x": 0.0,
-          "y": 0.0,
+          "x": -277.258,
+          "y": 234.783,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
         },
         {
           "id": "hub",
-          "x": 0.0,
-          "y": 0.0,
+          "x": 76.164,
+          "y": -29.338,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
@@ -61,16 +61,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 40.0,
-              "y": 80.0
+              "x": -35.434,
+              "y": -120.783
             },
             {
-              "x": 40.0,
-              "y": 40.0
+              "x": 40.365,
+              "y": -75.06
             },
             {
-              "x": 40.0,
-              "y": 0.0
+              "x": 116.164,
+              "y": -29.338
             }
           ],
           "label": null,
@@ -90,16 +90,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 0.0,
-              "y": 40.0
+              "x": 76.164,
+              "y": 10.662
             },
             {
-              "x": 40.0,
-              "y": 40.0
+              "x": 15.874,
+              "y": 10.662
             },
             {
-              "x": 80.0,
-              "y": 40.0
+              "x": -44.417,
+              "y": 10.662
             }
           ],
           "label": null,
@@ -119,16 +119,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 80.0,
-              "y": 40.0
+              "x": 156.164,
+              "y": 10.662
             },
             {
-              "x": 40.0,
-              "y": 40.0
+              "x": 216.711,
+              "y": 10.662
             },
             {
-              "x": 0.0,
-              "y": 40.0
+              "x": 277.258,
+              "y": 10.662
             }
           ],
           "label": null,
@@ -148,16 +148,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 80.0,
-              "y": 40.0
+              "x": -197.258,
+              "y": 274.783
             },
             {
-              "x": 40.0,
-              "y": 40.0
+              "x": -136.346,
+              "y": 274.783
             },
             {
-              "x": 0.0,
-              "y": 40.0
+              "x": -75.434,
+              "y": 274.783
             }
           ],
           "label": null,
@@ -177,16 +177,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 40.0,
-              "y": 0.0
+              "x": -35.434,
+              "y": 234.783
             },
             {
-              "x": 40.0,
-              "y": 40.0
+              "x": -35.434,
+              "y": 57.0
             },
             {
-              "x": 40.0,
-              "y": 80.0
+              "x": -35.434,
+              "y": -120.783
             }
           ],
           "label": null,
@@ -204,143 +204,158 @@
           "id": "api",
           "in_group": "core",
           "body_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 80.0
+            "min_x": -75.434,
+            "min_y": -200.783,
+            "max_x": 4.566,
+            "max_y": -120.783
           },
           "label_bounds": {
-            "min_x": 27.5,
-            "min_y": 0.0,
-            "max_x": 52.5,
-            "max_y": 97.0
+            "min_x": -49.434,
+            "min_y": -200.783,
+            "max_x": -21.434,
+            "max_y": -103.783
           },
           "label_metrics": {
             "text_width": 24.0,
-            "half_width": 12.5,
-            "applied_scale": 1.055
+            "half_width": 12.0
           },
           "union_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 97.0
+            "min_x": -76.434,
+            "min_y": -201.783,
+            "max_x": 5.566,
+            "max_y": -102.783
           }
         },
         {
           "id": "db",
           "in_group": "core",
           "body_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 80.0
+            "min_x": -124.417,
+            "min_y": -29.338,
+            "max_x": -44.417,
+            "max_y": 50.662
           },
           "label_bounds": {
-            "min_x": 30.0,
-            "min_y": 0.0,
-            "max_x": 50.0,
-            "max_y": 97.0
+            "min_x": -96.417,
+            "min_y": -29.338,
+            "max_x": -72.417,
+            "max_y": 67.662
           },
           "label_metrics": {
-            "text_width": 19.2,
-            "half_width": 10.0,
-            "applied_scale": 1.055
+            "text_width": 20.0,
+            "half_width": 10.0
           },
           "union_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 97.0
+            "min_x": -125.417,
+            "min_y": -30.338,
+            "max_x": -43.417,
+            "max_y": 68.662
           }
         },
         {
           "id": "cache",
           "in_group": "core",
           "body_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 80.0
+            "min_x": 277.258,
+            "min_y": -29.338,
+            "max_x": 357.258,
+            "max_y": 50.662
           },
           "label_bounds": {
-            "min_x": 20.5,
-            "min_y": 0.0,
-            "max_x": 59.5,
-            "max_y": 97.0
+            "min_x": 296.258,
+            "min_y": -29.338,
+            "max_x": 338.258,
+            "max_y": 67.662
           },
           "label_metrics": {
-            "text_width": 37.12,
-            "half_width": 19.5,
-            "applied_scale": 1.055
+            "text_width": 38.0,
+            "half_width": 19.0
           },
           "union_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 97.0
+            "min_x": 276.258,
+            "min_y": -30.338,
+            "max_x": 358.258,
+            "max_y": 68.662
           }
         },
         {
           "id": "gw",
           "in_group": "ext",
           "body_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 80.0
+            "min_x": -75.434,
+            "min_y": 234.783,
+            "max_x": 4.566,
+            "max_y": 314.783
           },
           "label_bounds": {
-            "min_x": 9.0,
-            "min_y": 0.0,
-            "max_x": 71.0,
-            "max_y": 97.0
+            "min_x": -66.934,
+            "min_y": 234.783,
+            "max_x": -3.934,
+            "max_y": 331.783
           },
           "label_metrics": {
-            "text_width": 58.4,
-            "half_width": 31.0,
-            "applied_scale": 1.055
+            "text_width": 59.0,
+            "half_width": 29.5
           },
           "union_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 97.0
+            "min_x": -76.434,
+            "min_y": 233.783,
+            "max_x": 5.566,
+            "max_y": 332.783
           }
         },
         {
           "id": "client",
           "in_group": "ext",
           "body_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 80.0
+            "min_x": -277.258,
+            "min_y": 234.783,
+            "max_x": -197.258,
+            "max_y": 314.783
           },
           "label_bounds": {
-            "min_x": 19.5,
-            "min_y": 0.0,
-            "max_x": 60.5,
-            "max_y": 97.0
+            "min_x": -259.258,
+            "min_y": 234.783,
+            "max_x": -215.258,
+            "max_y": 331.783
           },
           "label_metrics": {
-            "text_width": 39.2,
-            "half_width": 20.5,
-            "applied_scale": 1.055
+            "text_width": 40.0,
+            "half_width": 20.0
           },
           "union_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 97.0
+            "min_x": -278.258,
+            "min_y": 233.783,
+            "max_x": -196.258,
+            "max_y": 332.783
+          }
+        }
+      ],
+      "fcose_compound_bounds": [
+        {
+          "id": "core",
+          "bounds": {
+            "min_x": -204.417,
+            "min_y": -280.783,
+            "max_x": 357.258,
+            "max_y": 50.662
+          }
+        },
+        {
+          "id": "ext",
+          "bounds": {
+            "min_x": -357.258,
+            "min_y": 154.783,
+            "max_x": 4.566,
+            "max_y": 314.783
           }
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 80.0,
-        "max_y": 80.0
+        "min_x": -277.258,
+        "min_y": -200.783,
+        "max_x": 357.258,
+        "max_y": 314.783
       }
     }
   }

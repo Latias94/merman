@@ -1,0 +1,4 @@
+interface:
+  display_name: "Align Mermaid Release"
+  short_description: "Align Mermaid and companion behavior safely"
+  default_prompt: "Use $align-mermaid-release to align Merman with a target Mermaid release and its admitted companion graph."

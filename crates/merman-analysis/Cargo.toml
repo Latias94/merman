@@ -13,19 +13,21 @@ readme = "README.md"
 keywords = ["mermaid", "diagnostics", "lint", "lsp", "parser"]
 categories = ["parser-implementations", "development-tools"]
 
+[package.metadata.merman]
+artifact-profile-required = true
+fixed-capabilities = ["analysis"]
+
 [features]
-default = ["core-full", "core-host"]
-core-full = ["merman-core/full"]
-core-full-registry = ["merman-core/full-registry"]
-core-full-config = ["merman-core/full-config"]
-core-full-sanitization = ["merman-core/full-sanitization"]
-core-host = ["merman-core/host"]
+default = []
+system-clock = ["merman-core/system-clock"]
+system-timezone = ["merman-core/system-timezone"]
+system-random = ["merman-core/system-random"]
+system-timing = ["merman-core/system-timing"]
 
 [dependencies]
 chrono.workspace = true
-json5.workspace = true
 merman-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde_yaml.workspace = true
+serde-saphyr = { workspace = true, features = ["serialize"] }
 thiserror.workspace = true

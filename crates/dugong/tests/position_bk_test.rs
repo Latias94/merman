@@ -315,6 +315,48 @@ fn find_type2_conflicts_marks_type_2_conflicts_favoring_border_segments_2() {
 }
 
 #[test]
+fn find_type2_conflicts_preserves_non_monotonic_and_missing_order_semantics() {
+    let mut g = new_graph();
+    set_node_with(&mut g, "n0", 0, 0, 10.0, Some("dummy"), None);
+    set_node_with(&mut g, "n1", 0, 1, 10.0, Some("dummy"), None);
+    g.set_node(
+        "n_missing",
+        NodeLabel {
+            width: 10.0,
+            dummy: Some("dummy".to_string()),
+            ..Default::default()
+        },
+    );
+    set_node_with(&mut g, "b0", 1, 0, 10.0, Some("border"), None);
+    set_node_with(&mut g, "b1", 1, 1, 10.0, Some("border"), None);
+    g.set_node(
+        "b_missing",
+        NodeLabel {
+            width: 10.0,
+            dummy: Some("border".to_string()),
+            ..Default::default()
+        },
+    );
+    g.set_edge("n1", "b0");
+    g.set_edge("n0", "b1");
+    g.set_edge("n_missing", "b_missing");
+    let layering = vec![
+        vec!["n0".to_string(), "n1".to_string(), "n_missing".to_string()],
+        vec!["b0".to_string(), "b1".to_string(), "b_missing".to_string()],
+    ];
+
+    let conflicts = bk::find_type2_conflicts(&g, &layering);
+    assert!(bk::has_conflict(&conflicts, "n1", "b0"));
+    assert!(bk::has_conflict(&conflicts, "n0", "b1"));
+    assert!(bk::has_conflict(&conflicts, "n_missing", "b_missing"));
+
+    let xs = bk::position_x_with_layering(&g, &layering);
+    assert_eq!(xs.len(), 6);
+    assert!(xs.contains_key("n_missing"));
+    assert!(xs.contains_key("b_missing"));
+}
+
+#[test]
 fn has_conflict_can_test_for_a_type_1_conflict_regardless_of_edge_orientation() {
     let mut conflicts: bk::Conflicts = Default::default();
     bk::add_conflict(&mut conflicts, "b", "a");
@@ -1004,6 +1046,53 @@ fn position_x_positions_a_single_node_at_origin() {
     let mut g = new_graph();
     set_node_with(&mut g, "a", 0, 0, 100.0, None, None);
     assert_eq!(bk::position_x(&g), map_from([("a".to_string(), 0.0)]));
+}
+
+#[test]
+fn position_x_undirected_multigraph_matches_deduplicated_incident_neighbors() {
+    fn positions(top: &str, left: &str, right: &str, undirected: bool) -> [f64; 3] {
+        let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+            directed: !undirected,
+            multigraph: true,
+            ..Default::default()
+        });
+        g.set_graph(GraphLabel::default());
+        set_node_with(&mut g, top, 0, 0, 30.0, None, None);
+        set_node_with(&mut g, left, 1, 0, 20.0, None, None);
+        set_node_with(&mut g, right, 1, 1, 80.0, None, None);
+
+        g.set_edge_named(top, left, Some("left-1"), Some(EdgeLabel::default()));
+        if undirected {
+            g.set_edge_named(top, left, Some("left-2"), Some(EdgeLabel::default()));
+            g.set_edge_named(top, right, Some("right"), Some(EdgeLabel::default()));
+        } else {
+            g.set_edge_named(left, top, Some("left-reverse"), Some(EdgeLabel::default()));
+            g.set_edge_named(top, right, Some("right"), Some(EdgeLabel::default()));
+            g.set_edge_named(
+                right,
+                top,
+                Some("right-reverse"),
+                Some(EdgeLabel::default()),
+            );
+        }
+
+        let layering = vec![
+            vec![top.to_string()],
+            vec![left.to_string(), right.to_string()],
+        ];
+        let xs = bk::position_x_with_layering(&g, &layering);
+        let origin = xs[top];
+        [0.0, xs[left] - origin, xs[right] - origin]
+    }
+
+    assert_eq!(
+        positions("m", "a", "z", true),
+        positions("m", "a", "z", false)
+    );
+    assert_eq!(
+        positions("m", "z", "a", true),
+        positions("m", "z", "a", false)
+    );
 }
 
 #[test]

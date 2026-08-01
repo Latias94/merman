@@ -63,6 +63,19 @@ fn parse_diagram_state_v2_multibyte_ids_do_not_panic() {
 }
 
 #[test]
+fn parse_diagram_state_v2_preserves_colons_in_transition_labels() {
+    let res = block_on(Engine::new().parse_diagram(
+        r#"stateDiagram-v2
+Active --> Deleted: DELETE /users/:id"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(res.model["edges"][0]["label"], json!("DELETE /users/:id"));
+}
+
+#[test]
 fn parse_diagram_state_v2_groups_and_unsafe_ids() {
     let engine = Engine::new();
 
@@ -152,7 +165,7 @@ state "Display label" as S1: Trailing description
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let RenderSemanticModel::State(model) = parsed.model else {
+    let RenderSemanticModel::State(model) = parsed.model() else {
         panic!("expected typed state render model");
     };
     let node = model
@@ -203,7 +216,7 @@ state Explicit {
         )
         .unwrap()
         .unwrap();
-    let RenderSemanticModel::State(model) = parsed.model else {
+    let RenderSemanticModel::State(model) = parsed.model() else {
         panic!("expected typed state render model");
     };
     let node = |id: &str| {
@@ -230,6 +243,7 @@ state Invalid Name {
   Idle
 }
 "#;
+    crate::diagrams::state::reset_state_syntax_construction_count();
     let Error::DiagramParse { diagnostic, .. } =
         block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err()
     else {
@@ -247,6 +261,27 @@ state Invalid Name {
         Some(SourceSpan::new(offset, offset + "Name".len()))
     );
     assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    assert_eq!(
+        crate::diagrams::state::state_syntax_construction_count(),
+        1,
+        "strict malformed State parsing must construct one lexical event tape"
+    );
+
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
+        .expect("malformed State editor parse returns recovery facts")
+        .expect("malformed State editor facts are available");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert_eq!(
+        crate::diagrams::state::state_syntax_construction_count(),
+        1,
+        "malformed State recovery must reuse one lexical event tape"
+    );
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(offset, offset + "Name".len()))
+    }));
 }
 
 #[test]
@@ -456,6 +491,50 @@ note "This is a floating note" as N1"#,
 }
 
 #[test]
+fn parse_diagram_state_note_closes_only_on_a_dedicated_end_note_line() {
+    let engine = Engine::new();
+    let text = r#"stateDiagram-v2
+State1
+note right of State1
+  this sentence contains end note as part of the note text
+end note
+State1 --> State2"#;
+
+    let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        res.model["states"]["State1"]["note"]["text"],
+        json!("this sentence contains end note as part of the note text")
+    );
+    let relations = res.model["relations"].as_array().unwrap();
+    assert_eq!(relations.len(), 1);
+    assert_eq!(relations[0]["id1"], json!("State1"));
+    assert_eq!(relations[0]["id2"], json!("State2"));
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
+        .unwrap()
+        .expect("state editor facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    let embedded_marker = text.find("end note as part").unwrap();
+    assert!(facts.lexemes().iter().any(|lexeme| {
+        let span = lexeme.span();
+        lexeme.kind() == EditorLexemeKind::String
+            && span.start <= embedded_marker
+            && span.end >= embedded_marker + "end note".len()
+    }));
+    let closing_marker = text.rfind("end note").unwrap();
+    assert!(facts.lexemes().iter().any(|lexeme| {
+        let span = lexeme.span();
+        lexeme.kind() == EditorLexemeKind::Keyword
+            && span.start == closing_marker
+            && &text[span.start..span.end] == "end"
+    }));
+}
+
+#[test]
 fn parse_diagram_state_v2_getdata_edges_and_note_edges() {
     let engine = Engine::new();
 
@@ -591,7 +670,142 @@ fn state_deep_composite_chain_semantic_and_render_model_use_heap_traversal() {
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .expect("render model parse ok")
         .expect("diagram detected");
-    assert_eq!(parsed.meta.diagram_type, "stateDiagram");
+    assert_eq!(parsed.metadata().diagram_type, "stateDiagram");
+}
+
+#[test]
+fn state_family_entrypoints_construct_one_lexical_event_tape() {
+    let engine = Engine::new();
+    let input = concat!(
+        "stateDiagram-v2\n",
+        "state Idle\n",
+        "Idle --> Running: starts\n",
+        "classDef active fill:#0f0\n",
+        "class Running active\n",
+    );
+
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .expect("State JSON parse succeeds")
+        .expect("State JSON parse returns a diagram");
+    assert_eq!(
+        crate::diagrams::state::state_syntax_construction_count(),
+        1,
+        "the State JSON entrypoint must construct one lexical event tape"
+    );
+
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("State typed parse succeeds")
+        .expect("State typed parse returns a diagram");
+    assert_eq!(
+        crate::diagrams::state::state_syntax_construction_count(),
+        1,
+        "the State typed entrypoint must construct one lexical event tape"
+    );
+
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", input)
+        .expect("State editor parse succeeds")
+        .expect("State editor parse returns facts");
+    assert_eq!(
+        crate::diagrams::state::state_syntax_construction_count(),
+        1,
+        "the State editor entrypoint must construct one lexical event tape"
+    );
+}
+
+#[test]
+fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints() {
+    let engine = Engine::new();
+    let input = concat!(
+        "stateDiagram-v2\n",
+        "accTitle: Lifecycle\n",
+        "accDescr: State transitions\n",
+        "state \"Waiting\" as Idle\n",
+        "Idle --> Running: starts\n",
+        "note right of Running : Active work\n",
+        "classDef active fill:#0f0,border:#333\n",
+        "class Running active\n",
+        "click Running \"https://example.com/run\" \"Run details\"\n",
+    );
+    let standalone = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .expect("standalone State JSON parse succeeds")
+        .expect("standalone State JSON parse returns a diagram");
+    let standalone_editor = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", input)
+        .expect("standalone State editor parse succeeds")
+        .expect("standalone State editor parse returns facts");
+
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let (combined_json, mut combined_editor) = crate::family::test_support::into_result(
+        crate::diagrams::state::parse_state_json_and_editor_facts(
+            input,
+            &standalone.meta,
+            &crate::ParseControl::new(),
+        ),
+    )
+    .expect("combined State parse succeeds");
+    let family = crate::family::diagram_type_family_id(&standalone.meta.diagram_type)
+        .expect("State belongs to a catalog family");
+    combined_editor.finalize_lexemes(family, &[]);
+
+    assert_eq!(
+        crate::diagrams::state::state_syntax_construction_count(),
+        1,
+        "one combined State request must construct syntax once"
+    );
+    assert_eq!(
+        combined_json, standalone.model,
+        "State JSON projection drift"
+    );
+    assert_eq!(
+        combined_editor, standalone_editor,
+        "State editor projection drift"
+    );
+}
+
+#[test]
+fn state_typed_render_model_projects_exact_compatibility_json() {
+    let engine = Engine::new();
+    let input = concat!(
+        "stateDiagram-v2\n",
+        "direction LR\n",
+        "accTitle: Lifecycle\n",
+        "accDescr: State transitions\n",
+        "state \"Waiting\" as Idle\n",
+        "state Running {\n",
+        "  direction LR\n",
+        "  [*] --> Working\n",
+        "  Working --> [*]\n",
+        "}\n",
+        "Idle --> Running: starts\n",
+        "note right of Running : Active work\n",
+        "classDef active fill:#0f0,border:#333\n",
+        "class Running active\n",
+        "click Running \"https://example.com/run\" \"Run details\"\n",
+    );
+    let compat = engine
+        .parse_diagram_sync(input, ParseOptions::strict())
+        .expect("State JSON parse succeeds")
+        .expect("State JSON parse returns a diagram")
+        .model;
+    let typed = engine
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .expect("State typed parse succeeds")
+        .expect("State typed parse returns a diagram");
+    let RenderSemanticModel::State(model) = typed.model() else {
+        panic!("State typed parse returned another family");
+    };
+
+    assert_eq!(
+        crate::diagrams::state::render_model_to_compat_json(model, typed.metadata()).unwrap(),
+        compat
+    );
 }
 
 #[test]
@@ -615,7 +829,7 @@ accTitle: Lifecycle chart
 accDescr: Shows state transitions
 click Running "https://example.com/run" "Run details""#;
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
         .unwrap()
         .expect("state editor facts");
 
@@ -797,7 +1011,7 @@ fn parse_state_editor_facts_record_expected_syntax_spans() {
         "click namedState \"https://example.com/run\" \"Run details\"",
     );
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
         .unwrap()
         .expect("state editor facts");
 
@@ -905,8 +1119,9 @@ fn parse_state_editor_facts_record_expected_syntax_spans() {
 fn parse_state_editor_facts_recovers_from_incomplete_input() {
     let engine = Engine::new();
     let text = "stateDiagram-v2\nIdle --> Running\nRunning -->";
+    crate::diagrams::state::reset_state_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
         .unwrap()
         .expect("state editor facts");
 
@@ -920,14 +1135,41 @@ fn parse_state_editor_facts_recovers_from_incomplete_input() {
     );
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Idle"));
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Running"));
+    assert_eq!(
+        crate::diagrams::state::state_syntax_construction_count(),
+        1,
+        "incomplete State editor recovery must reuse one lexical event tape"
+    );
+
+    crate::diagrams::state::reset_state_syntax_construction_count();
+    let Error::DiagramParse { diagnostic, .. } = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("strict State parsing rejects the incomplete relation")
+    else {
+        panic!("incomplete State relation returned a non-parse error");
+    };
+    assert_eq!(
+        crate::diagrams::state::state_syntax_construction_count(),
+        1,
+        "strict incomplete State parsing must construct one lexical event tape"
+    );
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(text.len(), text.len()))
+    );
+    assert_eq!(
+        diagnostic.span_kind(),
+        ParseDiagnosticSpanKind::InsertionPoint
+    );
 }
 
 #[test]
 fn parse_state_editor_facts_stop_after_non_advancing_lexer_error() {
     let engine = Engine::new();
     let text = "stateDiagram-v2\nstate {\nIdle --> Running\n";
+    crate::diagrams::state::reset_state_syntax_construction_count();
     let facts = engine
-        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text)
         .unwrap()
         .expect("state editor facts");
 
@@ -937,6 +1179,11 @@ fn parse_state_editor_facts_stop_after_non_advancing_lexer_error() {
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.message.contains("state parser recovered"))
+    );
+    assert_eq!(
+        crate::diagrams::state::state_syntax_construction_count(),
+        1,
+        "a non-advancing State lexer error must terminate the one shared event tape"
     );
 }
 

@@ -2,14 +2,15 @@ use crate::XtaskError;
 #[cfg(test)]
 use crate::cmd::read_bounded_child_pipe;
 use crate::cmd::{
+    PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
     ensure_content_addressed_js_script, ensure_upstream_svg_puppeteer_config,
     spawn_timeout_managed_child, upstream_svg_package_tree_sha256, wait_with_bounded_output,
     wait_with_timeout,
 };
 use crate::svgdom;
-use crate::util::{extract_add_to_set_string_array, extract_defaults, extract_frozen_string_array};
+use crate::util::{extract_add_to_set_string_array, extract_frozen_string_array};
 use serde::Deserialize;
-use serde_json::{Map as JsonMap, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use std::collections::BTreeSet;
 use std::fs;
 use std::num::NonZeroUsize;
@@ -19,19 +20,14 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const DOMPURIFY_BASELINE_VERSION: &str = "3.4.0";
-const PINNED_MERMAID_PACKAGE_SHA256: &str =
-    "9182344905d95e67ff6d5baf0f902a73bc77ee007aa6bcc5f7833ef133505a1b";
-const PINNED_MERMAID_CLI_PACKAGE_SHA256: &str =
-    "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632";
-
-const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
+pub(crate) const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
     "er",
     "flowchart",
     "state",
     "class",
     "sequence",
     "info",
+    "error",
     "pie",
     "requirement",
     "sankey",
@@ -53,7 +49,9 @@ const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
     "eventmodeling",
     "architecture",
     "venn",
+    "swimlane",
     "cynefin",
+    "wardley",
     "railroad",
     "railroadEbnf",
     "railroadAbnf",
@@ -62,6 +60,26 @@ const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
 
 static UPSTREAM_SVG_CHECK_RUN_COUNTER: AtomicU64 = AtomicU64::new(0);
 static UPSTREAM_SVG_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn uses_seeded_upstream_svg_renderer(diagram: &str) -> bool {
+    matches!(diagram, "architecture" | "gitgraph" | "sequence")
+}
+
+fn captures_parse_error_svg(diagram: &str) -> bool {
+    diagram == "error"
+}
+
+fn scripted_renderer_background_color(diagram: &str) -> &'static str {
+    if captures_parse_error_svg(diagram) {
+        ""
+    } else {
+        "white"
+    }
+}
+
+fn uses_scripted_upstream_svg_renderer(diagram: &str) -> bool {
+    uses_seeded_upstream_svg_renderer(diagram) || captures_parse_error_svg(diagram)
+}
 
 fn upstream_svg_supported_diagrams_message() -> String {
     format!("{}, all", UPSTREAM_SVG_DIAGRAMS.join(", "))
@@ -290,8 +308,10 @@ fn validate_upstream_svg_render_probe(
         || runtimes.mermaid_cli_package_sha256 != PINNED_MERMAID_CLI_PACKAGE_SHA256
     {
         return Err(XtaskError::UpstreamSvgFailed(format!(
-            "installed Mermaid runtime package content does not match the pinned 11.16.0 artifacts: mermaid={}, mermaid-cli={}",
-            runtimes.mermaid_package_sha256, runtimes.mermaid_cli_package_sha256
+            "installed Mermaid runtime package content does not match the pinned {} artifacts: mermaid={}, mermaid-cli={}",
+            crate::cmd::PINNED_MERMAID_VERSION,
+            runtimes.mermaid_package_sha256,
+            runtimes.mermaid_cli_package_sha256
         )));
     }
 
@@ -340,7 +360,58 @@ fn probe_upstream_svg_render_environment(
     validate_upstream_svg_render_probe(probe, &installed_mermaid_version(tools_root)?)
 }
 
-fn create_upstream_svg_check_output_root(target_root: &Path) -> Result<PathBuf, XtaskError> {
+#[derive(Debug)]
+struct UpstreamSvgCheckOutput {
+    path: PathBuf,
+    cleaned: bool,
+}
+
+impl UpstreamSvgCheckOutput {
+    fn path(&self) -> &Path {
+        &self.path
+    }
+
+    fn cleanup(&mut self) -> Result<(), XtaskError> {
+        match fs::remove_dir_all(&self.path) {
+            Ok(()) => {
+                self.cleaned = true;
+                Ok(())
+            }
+            Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+                self.cleaned = true;
+                Ok(())
+            }
+            Err(source) => Err(XtaskError::WriteFile {
+                path: self.path.display().to_string(),
+                source,
+            }),
+        }
+    }
+
+    fn finish<T>(mut self, result: Result<T, XtaskError>) -> Result<T, XtaskError> {
+        let cleanup = self.cleanup();
+        match (result, cleanup) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(error), Ok(())) => Err(error),
+            (Ok(_), Err(cleanup)) => Err(cleanup),
+            (Err(error), Err(cleanup)) => Err(XtaskError::UpstreamSvgFailed(format!(
+                "{error}; failed to remove owned upstream SVG check corpus: {cleanup}"
+            ))),
+        }
+    }
+}
+
+impl Drop for UpstreamSvgCheckOutput {
+    fn drop(&mut self) {
+        if !self.cleaned {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+}
+
+fn create_upstream_svg_check_output_root(
+    target_root: &Path,
+) -> Result<UpstreamSvgCheckOutput, XtaskError> {
     let check_root = target_root.join("upstream-svgs-check");
     fs::create_dir_all(&check_root).map_err(|source| XtaskError::WriteFile {
         path: check_root.display().to_string(),
@@ -356,7 +427,12 @@ fn create_upstream_svg_check_output_root(target_root: &Path) -> Result<PathBuf, 
         let output_root =
             check_root.join(format!("run-{}-{timestamp}-{sequence}", std::process::id()));
         match fs::create_dir(&output_root) {
-            Ok(()) => return Ok(output_root),
+            Ok(()) => {
+                return Ok(UpstreamSvgCheckOutput {
+                    path: output_root,
+                    cleaned: false,
+                });
+            }
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(source) => {
                 return Err(XtaskError::WriteFile {
@@ -1042,10 +1118,11 @@ fn gen_upstream_svgs_impl(
     let puppeteer_config = ensure_upstream_svg_puppeteer_config()?;
     let render_probe = probe_upstream_svg_render_environment(&tools_root)?;
     println!(
-        "upstream SVG render environment: {}/{} (revision {}, timezone {}), Puppeteer {}, font probe {}",
+        "upstream SVG render environment: {}/{} (revision {}, locale {}, timezone {}), Puppeteer {}, font probe {}",
         render_probe.render_environment.browser.product,
         render_probe.render_environment.browser.version,
         render_probe.render_environment.browser.revision,
+        render_probe.render_environment.browser.locale,
         render_probe.render_environment.browser.timezone,
         render_probe.render_environment.puppeteer.version,
         render_probe.render_environment.font_probe.sha256
@@ -1090,8 +1167,8 @@ fn gen_upstream_svgs_impl(
             )));
         }
         let node_cwd = crate::cmd::mermaid_cli_root();
-        let use_seeded_renderer = diagram == "architecture" || diagram == "gitgraph";
-        let seeded_script = if use_seeded_renderer {
+        let use_scripted_renderer = uses_scripted_upstream_svg_renderer(diagram);
+        let scripted_renderer = if use_scripted_renderer {
             Some(ensure_seeded_upstream_svg_renderer_script()?)
         } else {
             None
@@ -1239,13 +1316,14 @@ fn gen_upstream_svgs_impl(
             let temp_out_path = unique_upstream_svg_temp_path(&staging_dir, &out_path);
             let svg_id = crate::cmd::upstream_svg_id(stem);
 
-            let status = if use_seeded_renderer {
+            let status = if use_scripted_renderer {
                 use std::io::Write;
                 use std::process::Stdio;
 
-                // Architecture layout relies on cytoscape-fcose, which uses `Math.random()` for
-                // spectral initialization. To keep upstream baselines reproducible, we render via
-                // a small puppeteer wrapper that seeds `Math.random()` deterministically.
+                // Architecture and GitGraph need deterministic randomness. Sequence also uses this
+                // wrapper so deferred participant MathML is complete before SVG serialization.
+                // Error uses it to retain Mermaid's rendered fallback SVG when render() rethrows the
+                // originating parse error.
                 let pinned_config = node_cwd.join("mermaid-config.json");
                 let seed: u64 = 1;
                 let output_abs = if temp_out_path.is_absolute() {
@@ -1263,15 +1341,16 @@ fn gen_upstream_svgs_impl(
                     "seed": seed,
                     "width": 800,
                     "height": 600,
-                    "background_color": "white",
+                    "background_color": scripted_renderer_background_color(diagram),
                     "browser_executable": render_probe.browser_executable.display().to_string(),
+                    "capture_parse_error_svg": captures_parse_error_svg(diagram),
                 })
                 .to_string();
 
-                let Some(script_path) = seeded_script.as_ref() else {
+                let Some(script_path) = scripted_renderer.as_ref() else {
                     return Err(upstream_svg_failure_with_cleanup(
                         &temp_out_path,
-                        "seeded renderer script not available".to_string(),
+                        "scripted renderer not available".to_string(),
                     ));
                 };
 
@@ -1622,207 +1701,213 @@ pub(crate) fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let selected_diagrams =
         select_upstream_svg_diagrams(&diagram, &fixtures_root, filter.as_deref())?;
     let baseline_root = fixtures_root.join("upstream-svgs");
-    let out_root = create_upstream_svg_check_output_root(&crate::cmd::target_root())?;
+    let output = create_upstream_svg_check_output_root(&crate::cmd::target_root())?;
+    let result = (|| {
+        let out_root = output.path();
 
-    let mut gen_args: Vec<String> = vec![
-        "--diagram".to_string(),
-        diagram.clone(),
-        "--out".to_string(),
-        out_root.to_string_lossy().to_string(),
-        "--fresh-output".to_string(),
-    ];
-    if let Some(f) = &filter {
-        gen_args.push("--filter".to_string());
-        gen_args.push(f.clone());
-    }
-    if install {
-        gen_args.push("--install".to_string());
-    }
-
-    gen_upstream_svgs(gen_args)?;
-    let current_selection =
-        select_upstream_svg_diagrams(&diagram, &fixtures_root, filter.as_deref())?;
-    if current_selection != selected_diagrams {
-        return Err(XtaskError::UpstreamSvgFailed(
-            "upstream SVG family selection changed while running the fresh baseline check"
-                .to_string(),
-        ));
-    }
-
-    struct UpstreamSvgCheck<'a> {
-        baseline_root: &'a Path,
-        out_root: &'a Path,
-        diagram: &'a str,
-        filter: Option<&'a str>,
-        check_dom: bool,
-        dom_mode: svgdom::DomMode,
-        dom_decimals: u32,
-    }
-
-    fn check_one(ctx: UpstreamSvgCheck<'_>) -> Result<(), XtaskError> {
-        let UpstreamSvgCheck {
-            baseline_root,
-            out_root,
-            diagram,
-            filter,
-            check_dom,
-            dom_mode,
-            dom_decimals,
-        } = ctx;
-        let fixtures_dir = crate::cmd::fixtures_root().join(diagram);
-        let baseline_dir = baseline_root.join(diagram);
-        let out_dir = out_root.join(diagram);
-        let _baseline_family_lock = crate::cmd::acquire_upstream_svg_family_lock(&baseline_dir)?;
-        let provenance = crate::cmd::load_upstream_svg_provenance(
-            diagram,
-            &fixtures_dir,
-            &baseline_dir,
-            filter.is_none(),
-        )?;
-        let generated_provenance = crate::cmd::load_upstream_svg_provenance(
-            diagram,
-            &fixtures_dir,
-            &out_dir,
-            filter.is_none(),
-        )?;
-        provenance.require_same_generated_environment(&generated_provenance)?;
-
-        let fixture_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter, false);
-        let (mmd_files, excluded_fixtures) =
-            partition_upstream_svg_fixtures(diagram, fixture_files)?;
-        let mut mismatches: Vec<String> = Vec::new();
-        for (fixture_path, reason) in &excluded_fixtures {
-            let Some(stem) = fixture_path.file_stem().and_then(|stem| stem.to_str()) else {
-                mismatches.push(format!(
-                    "invalid fixture filename {}",
-                    fixture_path.display()
-                ));
-                continue;
-            };
-            let baseline_path = baseline_dir.join(format!("{stem}.svg"));
-            let generated_path = out_dir.join(format!("{stem}.svg"));
-            if let Err(err) =
-                provenance.validate_excluded_fixture(fixture_path, reason, &baseline_path)
-            {
-                mismatches.push(err);
-            }
-            if let Err(err) = generated_provenance.validate_excluded_fixture(
-                fixture_path,
-                reason,
-                &generated_path,
-            ) {
-                mismatches.push(err);
-            }
+        let mut gen_args: Vec<String> = vec![
+            "--diagram".to_string(),
+            diagram.clone(),
+            "--out".to_string(),
+            out_root.to_string_lossy().to_string(),
+            "--fresh-output".to_string(),
+        ];
+        if let Some(f) = &filter {
+            gen_args.push("--filter".to_string());
+            gen_args.push(f.clone());
+        }
+        if install {
+            gen_args.push("--install".to_string());
         }
 
-        if mmd_files.is_empty() {
-            if !excluded_fixtures.is_empty() {
-                println!(
-                    "skipped {} upstream svg check fixture(s) for {diagram}: excluded by baseline policy",
-                    excluded_fixtures.len()
-                );
-                return if mismatches.is_empty() {
-                    Ok(())
-                } else {
-                    Err(XtaskError::UpstreamSvgFailed(mismatches.join("\n")))
+        gen_upstream_svgs(gen_args)?;
+        let current_selection =
+            select_upstream_svg_diagrams(&diagram, &fixtures_root, filter.as_deref())?;
+        if current_selection != selected_diagrams {
+            return Err(XtaskError::UpstreamSvgFailed(
+                "upstream SVG family selection changed while running the fresh baseline check"
+                    .to_string(),
+            ));
+        }
+
+        struct UpstreamSvgCheck<'a> {
+            baseline_root: &'a Path,
+            out_root: &'a Path,
+            diagram: &'a str,
+            filter: Option<&'a str>,
+            check_dom: bool,
+            dom_mode: svgdom::DomMode,
+            dom_decimals: u32,
+        }
+
+        fn check_one(ctx: UpstreamSvgCheck<'_>) -> Result<(), XtaskError> {
+            let UpstreamSvgCheck {
+                baseline_root,
+                out_root,
+                diagram,
+                filter,
+                check_dom,
+                dom_mode,
+                dom_decimals,
+            } = ctx;
+            let fixtures_dir = crate::cmd::fixtures_root().join(diagram);
+            let baseline_dir = baseline_root.join(diagram);
+            let out_dir = out_root.join(diagram);
+            let _baseline_family_lock =
+                crate::cmd::acquire_upstream_svg_family_lock(&baseline_dir)?;
+            let provenance = crate::cmd::load_upstream_svg_provenance(
+                diagram,
+                &fixtures_dir,
+                &baseline_dir,
+                filter.is_none(),
+            )?;
+            let generated_provenance = crate::cmd::load_upstream_svg_provenance(
+                diagram,
+                &fixtures_dir,
+                &out_dir,
+                filter.is_none(),
+            )?;
+            provenance.require_same_generated_environment(&generated_provenance)?;
+
+            let fixture_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter, false);
+            let (mmd_files, excluded_fixtures) =
+                partition_upstream_svg_fixtures(diagram, fixture_files)?;
+            let mut mismatches: Vec<String> = Vec::new();
+            for (fixture_path, reason) in &excluded_fixtures {
+                let Some(stem) = fixture_path.file_stem().and_then(|stem| stem.to_str()) else {
+                    mismatches.push(format!(
+                        "invalid fixture filename {}",
+                        fixture_path.display()
+                    ));
+                    continue;
                 };
-            }
-            return Err(XtaskError::UpstreamSvgFailed(format!(
-                "no .mmd fixtures matched under {}",
-                fixtures_dir.display()
-            )));
-        }
-
-        for mmd_path in mmd_files {
-            let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
-                mismatches.push(format!("invalid fixture filename {}", mmd_path.display()));
-                continue;
-            };
-
-            let baseline_path = baseline_dir.join(format!("{stem}.svg"));
-            let out_path = out_dir.join(format!("{stem}.svg"));
-
-            if let Err(err) = provenance.validate_fixture(&mmd_path, &baseline_path) {
-                mismatches.push(err);
-                continue;
+                let baseline_path = baseline_dir.join(format!("{stem}.svg"));
+                let generated_path = out_dir.join(format!("{stem}.svg"));
+                if let Err(err) =
+                    provenance.validate_excluded_fixture(fixture_path, reason, &baseline_path)
+                {
+                    mismatches.push(err);
+                }
+                if let Err(err) = generated_provenance.validate_excluded_fixture(
+                    fixture_path,
+                    reason,
+                    &generated_path,
+                ) {
+                    mismatches.push(err);
+                }
             }
 
-            let baseline_svg = match fs::read_to_string(&baseline_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    mismatches.push(format!(
-                        "missing baseline svg: {} ({err})",
-                        baseline_path.display()
-                    ));
-                    continue;
+            if mmd_files.is_empty() {
+                if !excluded_fixtures.is_empty() {
+                    println!(
+                        "skipped {} upstream svg check fixture(s) for {diagram}: excluded by baseline policy",
+                        excluded_fixtures.len()
+                    );
+                    return if mismatches.is_empty() {
+                        Ok(())
+                    } else {
+                        Err(XtaskError::UpstreamSvgFailed(mismatches.join("\n")))
+                    };
                 }
-            };
-            let out_svg = match fs::read_to_string(&out_path) {
-                Ok(v) => v,
-                Err(err) => {
-                    mismatches.push(format!(
-                        "missing generated svg: {} ({err})",
-                        out_path.display()
-                    ));
-                    continue;
-                }
-            };
+                return Err(XtaskError::UpstreamSvgFailed(format!(
+                    "no .mmd fixtures matched under {}",
+                    fixtures_dir.display()
+                )));
+            }
 
-            if let Some(mode) = upstream_svg_check_dom_mode(diagram, stem, check_dom, dom_mode) {
-                let a = match svgdom::dom_signature(&baseline_svg, mode, dom_decimals) {
+            for mmd_path in mmd_files {
+                let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+                    mismatches.push(format!("invalid fixture filename {}", mmd_path.display()));
+                    continue;
+                };
+
+                let baseline_path = baseline_dir.join(format!("{stem}.svg"));
+                let out_path = out_dir.join(format!("{stem}.svg"));
+
+                if let Err(err) = provenance.validate_fixture(&mmd_path, &baseline_path) {
+                    mismatches.push(err);
+                    continue;
+                }
+
+                let baseline_svg = match fs::read_to_string(&baseline_path) {
                     Ok(v) => v,
                     Err(err) => {
                         mismatches.push(format!(
-                            "{diagram}/{stem}: baseline dom parse failed: {err}"
+                            "missing baseline svg: {} ({err})",
+                            baseline_path.display()
                         ));
                         continue;
                     }
                 };
-                let b = match svgdom::dom_signature(&out_svg, mode, dom_decimals) {
+                let out_svg = match fs::read_to_string(&out_path) {
                     Ok(v) => v,
                     Err(err) => {
                         mismatches.push(format!(
-                            "{diagram}/{stem}: generated dom parse failed: {err}"
+                            "missing generated svg: {} ({err})",
+                            out_path.display()
                         ));
                         continue;
                     }
                 };
-                if a != b {
-                    mismatches.push(format!("{diagram}/{stem}: dom differs from baseline"));
+
+                if let Some(mode) = upstream_svg_check_dom_mode(diagram, stem, check_dom, dom_mode)
+                {
+                    let a = match svgdom::dom_signature(&baseline_svg, mode, dom_decimals) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            mismatches.push(format!(
+                                "{diagram}/{stem}: baseline dom parse failed: {err}"
+                            ));
+                            continue;
+                        }
+                    };
+                    let b = match svgdom::dom_signature(&out_svg, mode, dom_decimals) {
+                        Ok(v) => v,
+                        Err(err) => {
+                            mismatches.push(format!(
+                                "{diagram}/{stem}: generated dom parse failed: {err}"
+                            ));
+                            continue;
+                        }
+                    };
+                    if a != b {
+                        mismatches.push(format!("{diagram}/{stem}: dom differs from baseline"));
+                    }
+                } else if baseline_svg != out_svg {
+                    mismatches.push(format!("{diagram}/{stem}: output differs from baseline"));
                 }
-            } else if baseline_svg != out_svg {
-                mismatches.push(format!("{diagram}/{stem}: output differs from baseline"));
+            }
+
+            if mismatches.is_empty() {
+                Ok(())
+            } else {
+                Err(XtaskError::UpstreamSvgFailed(mismatches.join("\n")))
             }
         }
 
-        if mismatches.is_empty() {
+        let filter = filter.as_deref();
+        let parsed_dom_mode = svgdom::DomMode::parse(&dom_mode);
+        let mut failures: Vec<String> = Vec::new();
+        for target in selected_diagrams {
+            if let Err(err) = check_one(UpstreamSvgCheck {
+                baseline_root: &baseline_root,
+                out_root,
+                diagram: target,
+                filter,
+                check_dom,
+                dom_mode: parsed_dom_mode,
+                dom_decimals,
+            }) {
+                failures.push(format!("{target}: {err}"));
+            }
+        }
+        if failures.is_empty() {
             Ok(())
         } else {
-            Err(XtaskError::UpstreamSvgFailed(mismatches.join("\n")))
+            Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
         }
-    }
-
-    let filter = filter.as_deref();
-    let parsed_dom_mode = svgdom::DomMode::parse(&dom_mode);
-    let mut failures: Vec<String> = Vec::new();
-    for target in selected_diagrams {
-        if let Err(err) = check_one(UpstreamSvgCheck {
-            baseline_root: &baseline_root,
-            out_root: &out_root,
-            diagram: target,
-            filter,
-            check_dom,
-            dom_mode: parsed_dom_mode,
-            dom_decimals,
-        }) {
-            failures.push(format!("{target}: {err}"));
-        }
-    }
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
-    }
+    })();
+    output.finish(result)
 }
 
 fn ensure_upstream_svg_render_environment_probe_script() -> Result<PathBuf, XtaskError> {
@@ -1857,6 +1942,7 @@ function packageTreeSha256(root) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const fullPath = path.join(directory, entry.name);
       if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue;
         visit(fullPath);
       } else if (entry.isFile()) {
         entries.push({
@@ -2034,16 +2120,19 @@ async function fingerprintFonts(browser) {
   }
 }
 
-async function resolveBrowserTimezone(browser) {
+async function resolveBrowserLocaleAndTimezone(browser) {
   const page = await browser.newPage();
   try {
-    const timezone = await page.evaluate(
-      () => Intl.DateTimeFormat().resolvedOptions().timeZone
+    const { locale, timeZone: timezone } = await page.evaluate(() =>
+      Intl.DateTimeFormat().resolvedOptions()
     );
+    if (typeof locale !== 'string' || locale.trim().length === 0) {
+      throw new Error(`browser returned an invalid resolved locale: ${JSON.stringify(locale)}`);
+    }
     if (typeof timezone !== 'string' || timezone.trim().length === 0) {
       throw new Error(`browser returned an invalid resolved timezone: ${JSON.stringify(timezone)}`);
     }
-    return timezone;
+    return { locale, timezone };
   } finally {
     await page.close();
   }
@@ -2071,7 +2160,7 @@ async function resolveBrowserTimezone(browser) {
     if (separator <= 0) {
       throw new Error(`CDP returned an invalid browser product: ${JSON.stringify(browserVersion.product)}`);
     }
-    const timezone = await resolveBrowserTimezone(browser);
+    const { locale, timezone } = await resolveBrowserLocaleAndTimezone(browser);
 
     const output = {
       render_environment: {
@@ -2079,6 +2168,7 @@ async function resolveBrowserTimezone(browser) {
           product: browserVersion.product.slice(0, separator),
           version: browserVersion.product.slice(separator + 1),
           revision: String(browserVersion.revision || ''),
+          locale,
           timezone,
         },
         puppeteer: {
@@ -2161,10 +2251,14 @@ const configPath = String(input.config_path || '');
 const theme = String(input.theme || 'default');
 const svgId = String(input.svg_id || 'diagram');
 const seedStr = String((input.seed ?? 1));
+const fixedWallClockMs = 1704067200000;
 const width = Number(input.width || 800);
 const height = Number(input.height || 600);
-const backgroundColor = String(input.background_color || 'white');
+const backgroundColor = input.background_color === undefined
+  ? 'white'
+  : String(input.background_color);
 const browserExecutable = String(input.browser_executable || '');
+const captureParseErrorSvg = input.capture_parse_error_svg === true;
 const debug = process.env.MERMAN_SEEDED_UPSTREAM_SVG_DEBUG === '1';
 
 if (!inputPath || !outputPath || !configPath || !browserExecutable) {
@@ -2202,7 +2296,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     });
   }
 
-  await page.evaluateOnNewDocument((seedStr) => {
+  await page.evaluateOnNewDocument(({ seedStr, fixedWallClockMs }) => {
     const mask64 = (1n << 64n) - 1n;
     let state = (BigInt(seedStr) & mask64);
     if (state === 0n) state = 1n;
@@ -2222,6 +2316,8 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     }
 
     Math.random = nextF64;
+    // Iconify derives SVG IDs from the wall clock during Mermaid bundle initialization.
+    Date.now = () => fixedWallClockMs;
 
     if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
       const orig = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
@@ -2242,7 +2338,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
         }
       };
     }
-  }, seedStr);
+  }, { seedStr, fixedWallClockMs });
 
   await page.setViewport({ width: Math.max(1, width), height: Math.max(1, height), deviceScaleFactor: 1 });
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
@@ -2251,7 +2347,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     page.addScriptTag({ path: zenumlIifePath }),
   ]);
 
-  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width, debug }) => {
+  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width, captureParseErrorSvg, debug }) => {
     const mermaid = globalThis.mermaid;
     if (!mermaid) throw new Error('global mermaid instance not found (mermaid.js)');
 
@@ -2276,7 +2372,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
     container.style.width = `${Math.max(1, Number(width) || 1)}px`;
 
     // Surface parse errors early; some Mermaid failures otherwise only manifest as a missing `svg`.
-    if (typeof mermaid.parse === 'function') {
+    if (!captureParseErrorSvg && typeof mermaid.parse === 'function') {
       try {
         await mermaid.parse(code);
       } catch (err) {
@@ -2290,27 +2386,151 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
       }
     }
 
+    function participantActorRects(svg) {
+      return Array.from(
+        svg.querySelectorAll('rect.actor.actor-top, rect.actor.actor-bottom')
+      );
+    }
+
+    function participantActorLabels(svg) {
+      return Array.from(svg.querySelectorAll('text.actor.actor-box'));
+    }
+
+    function actorMathSwitch(rect) {
+      return Array.from(rect.parentElement?.children || []).find(
+        (child) =>
+          child.localName === 'switch' &&
+          child.querySelector('text.actor.actor-box')
+      );
+    }
+
+    function incompleteActorMathSwitches(rect) {
+      return Array.from(rect.parentElement?.children || []).filter(
+        (child) =>
+          child.localName === 'switch' &&
+          child.querySelector('foreignObject') &&
+          !child.querySelector('text.actor.actor-box')
+      );
+    }
+
+    async function completeDeferredSequenceActorMath(renderedSvgText) {
+      if (!code.includes('$$')) return renderedSvgText;
+
+      const parsed = new DOMParser().parseFromString(renderedSvgText, 'image/svg+xml');
+      if (parsed.querySelector('parsererror')) {
+        throw new Error('Mermaid returned invalid SVG while completing Sequence actor math');
+      }
+      const renderedSvg = parsed.documentElement;
+      if (renderedSvg.getAttribute('aria-roledescription') !== 'sequence') {
+        return renderedSvgText;
+      }
+
+      const renderedRects = participantActorRects(renderedSvg);
+      if (
+        renderedRects.length === 0 ||
+        participantActorLabels(renderedSvg).length >= renderedRects.length
+      ) {
+        return renderedSvgText;
+      }
+
+      const liveSvg = container.querySelector('svg');
+      if (!liveSvg) {
+        throw new Error('Sequence actor math was incomplete and the live SVG was unavailable');
+      }
+
+      const deadline = performance.now() + 5000;
+      while (participantActorLabels(liveSvg).length < renderedRects.length) {
+        if (performance.now() >= deadline) {
+          throw new Error(
+            `timed out waiting for Sequence actor math labels: expected ${renderedRects.length}, found ${participantActorLabels(liveSvg).length}`
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      const liveRects = participantActorRects(liveSvg);
+      if (liveRects.length !== renderedRects.length) {
+        throw new Error(
+          `Sequence actor placement count changed while awaiting math: rendered=${renderedRects.length}, live=${liveRects.length}`
+        );
+      }
+
+      for (let index = 0; index < liveRects.length; index++) {
+        const liveSwitch = actorMathSwitch(liveRects[index]);
+        const renderedParent = renderedRects[index].parentElement;
+        if (!liveSwitch || !renderedParent) {
+          throw new Error(`Sequence actor math label ${index} completed without a mergeable switch`);
+        }
+
+        for (const incomplete of incompleteActorMathSwitches(renderedRects[index])) {
+          incomplete.parentElement?.removeChild(incomplete);
+        }
+        if (actorMathSwitch(renderedRects[index])) continue;
+
+        const liveChildren = Array.from(liveRects[index].parentElement?.children || []);
+        const insertionIndex = liveChildren.indexOf(liveSwitch);
+        const insertionPoint = renderedParent.children[insertionIndex] || null;
+        renderedParent.insertBefore(parsed.importNode(liveSwitch, true), insertionPoint);
+      }
+
+      return new XMLSerializer().serializeToString(renderedSvg);
+    }
+
     async function tryRenderViaMermaidRender() {
       if (typeof mermaid.render !== 'function') return undefined;
-      const rendered = await mermaid.render(svgId, code, container);
-      let svg =
-        typeof rendered === 'string'
-          ? rendered
-          : Array.isArray(rendered)
-            ? rendered[0]
-            : rendered && rendered.svg;
-      if (typeof svg !== 'string' && rendered != null) {
-        const asStr = String(rendered);
-        if (asStr.trim().startsWith('<svg')) {
-          svg = asStr;
+      const deferredContainers = [];
+      const shouldRetainLiveSvg = code.includes('$$');
+      const originalRemove = Element.prototype.remove;
+      if (shouldRetainLiveSvg) {
+        Element.prototype.remove = function () {
+          if (this.id === `d${svgId}` && container.contains(this)) {
+            if (!deferredContainers.includes(this)) deferredContainers.push(this);
+            return;
+          }
+          return originalRemove.call(this);
+        };
+      }
+
+      try {
+        let rendered;
+        try {
+          rendered = await mermaid.render(svgId, code, container);
+        } catch (err) {
+          if (!captureParseErrorSvg) throw err;
+          const errorSvg = container.querySelector && container.querySelector('svg');
+          if (!errorSvg || errorSvg.getAttribute('aria-roledescription') !== 'error') {
+            throw new Error(
+              `Mermaid parse failed without a rendered Error SVG: ${String(err && err.message ? err.message : err)}`
+            );
+          }
+          return errorSvg.outerHTML;
+        }
+        let svg =
+          typeof rendered === 'string'
+            ? rendered
+            : Array.isArray(rendered)
+              ? rendered[0]
+              : rendered && rendered.svg;
+        if (typeof svg !== 'string' && rendered != null) {
+          const asStr = String(rendered);
+          if (asStr.trim().startsWith('<svg')) {
+            svg = asStr;
+          }
+        }
+        if (typeof svg === 'string') {
+          return await completeDeferredSequenceActorMath(svg);
+        }
+        const domSvg = container.querySelector && container.querySelector('svg');
+        if (domSvg && typeof domSvg.outerHTML === 'string' && domSvg.outerHTML.trim().startsWith('<svg')) {
+          return domSvg.outerHTML;
+        }
+        return undefined;
+      } finally {
+        if (shouldRetainLiveSvg) Element.prototype.remove = originalRemove;
+        for (const deferred of deferredContainers) {
+          originalRemove.call(deferred);
         }
       }
-      if (typeof svg === 'string') return svg;
-      const domSvg = container.querySelector && container.querySelector('svg');
-      if (domSvg && typeof domSvg.outerHTML === 'string' && domSvg.outerHTML.trim().startsWith('<svg')) {
-        return domSvg.outerHTML;
-      }
-      return undefined;
     }
 
     async function tryRenderViaMermaidApi() {
@@ -2355,7 +2575,7 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
       return { ok: true, stage: 'ok', svgTextLen: svgText.length, serializedLen: xml.length };
     }
     return xml;
-  }, { code, cfg, theme, svgId, width, debug });
+  }, { code, cfg, theme, svgId, width, captureParseErrorSvg, debug });
 
   if (debug) {
     if (typeof svg !== 'string') {
@@ -2488,6 +2708,45 @@ where
     Err(XtaskError::DebugSvgFailed(failures.join("\n")))
 }
 
+fn render_family_fixture_svg(
+    engine: &merman_core::Engine,
+    mmd_path: &Path,
+    text: &str,
+    parse_options: merman_core::ParseOptions,
+    expected_family: merman_render::family::RenderFamilyKind,
+    svg_options: &merman_render::svg::SvgRenderOptions,
+    debug_options: &merman_render::svg::SvgDebugOptions,
+) -> Result<String, String> {
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, parse_options)
+        .map_err(|err| format!("parse failed for {}: {err}", mmd_path.display()))?
+        .ok_or_else(|| format!("no diagram detected in {}", mmd_path.display()))?;
+
+    let session = merman::svg::RenderEnvironment::deterministic()
+        .begin_session()
+        .map_err(|err| format!("render session failed: {err}"))?;
+    let artifact =
+        merman_render::family::prepare(parsed, &merman_render::LayoutOptions::default(), session)
+            .map_err(|err| format!("layout failed for {}: {err}", mmd_path.display()))?;
+
+    if artifact.family_kind() != expected_family {
+        return Err(format!(
+            "unexpected render family for {}: expected {expected_family}, got {} ({})",
+            mmd_path.display(),
+            artifact.family_kind(),
+            artifact.metadata().diagram_type
+        ));
+    }
+
+    artifact
+        .render_svg(svg_options, debug_options)
+        .map(|rendered| {
+            let (svg, _family_kind, _metadata, _session) = rendered.into_parts();
+            svg
+        })
+        .map_err(|err| format!("render failed for {}: {err}", mmd_path.display()))
+}
+
 pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_root: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
@@ -2517,62 +2776,26 @@ pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
         serde_json::json!({ "handDrawnSeed": 1 }),
     ));
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
         filter.as_deref(),
         |mmd_path, stem, text| {
-            let parsed = match futures::executor::block_on(engine.parse_diagram(
-                text,
-                merman::ParseOptions {
-                    suppress_errors: true,
-                },
-            )) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::ErDiagram(layout) = &layouted.layout else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_er_diagram_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions {
+                    suppress_errors: true,
+                },
+                merman_render::family::RenderFamilyKind::Er,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -2606,35 +2829,46 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("debug-svgs"));
 
     fn gen_one(out_root: &Path, diagram: &str, filter: Option<&str>) -> Result<(), XtaskError> {
-        let (fixtures_dir, out_dir) = match diagram {
+        let (fixtures_dir, out_dir, expected_family) = match diagram {
             "flowchart" | "flowchart-v2" | "flowchartV2" => (
                 crate::cmd::fixtures_root().join("flowchart"),
                 out_root.join("flowchart"),
+                merman_render::family::RenderFamilyKind::Flowchart,
             ),
             "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => (
                 crate::cmd::fixtures_root().join("state"),
                 out_root.join("state"),
+                merman_render::family::RenderFamilyKind::State,
             ),
             "class" | "classDiagram" => (
                 crate::cmd::fixtures_root().join("class"),
                 out_root.join("class"),
+                merman_render::family::RenderFamilyKind::Class,
             ),
-            "er" | "erDiagram" => (crate::cmd::fixtures_root().join("er"), out_root.join("er")),
+            "er" | "erDiagram" => (
+                crate::cmd::fixtures_root().join("er"),
+                out_root.join("er"),
+                merman_render::family::RenderFamilyKind::Er,
+            ),
             "sequence" => (
                 crate::cmd::fixtures_root().join("sequence"),
                 out_root.join("sequence"),
+                merman_render::family::RenderFamilyKind::Sequence,
             ),
             "info" => (
                 crate::cmd::fixtures_root().join("info"),
                 out_root.join("info"),
+                merman_render::family::RenderFamilyKind::Info,
             ),
             "pie" => (
                 crate::cmd::fixtures_root().join("pie"),
                 out_root.join("pie"),
+                merman_render::family::RenderFamilyKind::Pie,
             ),
             "packet" => (
                 crate::cmd::fixtures_root().join("packet"),
                 out_root.join("packet"),
+                merman_render::family::RenderFamilyKind::Packet,
             ),
             other => {
                 return Err(XtaskError::DebugSvgFailed(format!(
@@ -2644,161 +2878,17 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         };
 
         let engine = merman::Engine::new();
-        let layout_opts = merman_render::LayoutOptions::default();
 
         export_svg_fixtures(&fixtures_dir, &out_dir, filter, |mmd_path, _stem, text| {
-            let parsed = match futures::executor::block_on(
-                engine.parse_diagram(text, merman::ParseOptions::default()),
-            ) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let svg = match &layouted.layout {
-                merman_render::model::LayoutDiagram::FlowchartV2(layout) => {
-                    Ok(merman_render::svg::render_flowchart_v2_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::StateDiagramV2(layout) => {
-                    Ok(merman_render::svg::render_state_diagram_v2_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::ClassDiagramV2(layout) => {
-                    Ok(merman_render::svg::render_class_diagram_v2_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::ErDiagram(layout) => {
-                    Ok(merman_render::svg::render_er_diagram_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::SequenceDiagram(layout) => {
-                    Ok(merman_render::svg::render_sequence_diagram_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::InfoDiagram(layout) => {
-                    merman_render::svg::render_info_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "info svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::PieDiagram(layout) => {
-                    merman_render::svg::render_pie_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "pie svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::PacketDiagram(layout) => {
-                    merman_render::svg::render_packet_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        layouted.meta.title.as_deref(),
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "packet svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::TimelineDiagram(layout) => {
-                    merman_render::svg::render_timeline_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        layouted.meta.title.as_deref(),
-                        layout_opts.text_measurer.as_ref(),
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "timeline svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::JourneyDiagram(layout) => {
-                    merman_render::svg::render_journey_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        layouted.meta.title.as_deref(),
-                        layout_opts.text_measurer.as_ref(),
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "journey svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::KanbanDiagram(layout) => {
-                    merman_render::svg::render_kanban_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "kanban svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                _ => Err(XtaskError::DebugSvgFailed(format!(
-                    "unsupported layout for debug svg export: {} ({})",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ))),
-            };
-
-            let svg = match svg {
-                Ok(v) => v,
-                Err(err) => return Err(err.to_string()),
-            };
-
-            Ok(svg)
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions::default(),
+                expected_family,
+                &merman_render::svg::SvgRenderOptions::default(),
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         })
     }
 
@@ -2820,224 +2910,6 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     Err(XtaskError::DebugSvgFailed(failures.join("\n")))
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-enum DefaultConfigOverrideOp {
-    Set,
-    Remove,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-struct DefaultConfigOverride {
-    op: DefaultConfigOverrideOp,
-    path: Vec<String>,
-    #[serde(default)]
-    value: Option<JsonValue>,
-    #[serde(default, rename = "reason")]
-    _reason: Option<String>,
-}
-
-fn default_config_overrides_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("default_config_overrides.json")
-}
-
-fn read_default_config_overrides(path: &Path) -> Result<Vec<DefaultConfigOverride>, XtaskError> {
-    let text = fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
-        path: path.display().to_string(),
-        source,
-    })?;
-    Ok(serde_json::from_str(&text)?)
-}
-
-fn apply_default_config_overrides(
-    root: &mut JsonValue,
-    overrides: &[DefaultConfigOverride],
-) -> Result<(), XtaskError> {
-    for override_entry in overrides {
-        apply_default_config_override(root, override_entry)?;
-    }
-    Ok(())
-}
-
-fn apply_default_config_override(
-    root: &mut JsonValue,
-    override_entry: &DefaultConfigOverride,
-) -> Result<(), XtaskError> {
-    if override_entry.path.is_empty() {
-        return Err(XtaskError::DefaultConfigOverride(
-            "override path must not be empty".to_string(),
-        ));
-    }
-
-    match override_entry.op {
-        DefaultConfigOverrideOp::Set => {
-            let value = override_entry.value.clone().ok_or_else(|| {
-                XtaskError::DefaultConfigOverride(format!(
-                    "set override for `{}` is missing value",
-                    override_entry.path.join(".")
-                ))
-            })?;
-            set_json_path(root, &override_entry.path, value)
-        }
-        DefaultConfigOverrideOp::Remove => {
-            remove_json_path(root, &override_entry.path);
-            Ok(())
-        }
-    }
-}
-
-fn set_json_path(
-    root: &mut JsonValue,
-    path: &[String],
-    value: JsonValue,
-) -> Result<(), XtaskError> {
-    let mut cur = root;
-    for segment in &path[..path.len() - 1] {
-        if !cur.is_object() {
-            return Err(XtaskError::DefaultConfigOverride(format!(
-                "cannot set `{}` through non-object segment `{segment}`",
-                path.join(".")
-            )));
-        }
-        let obj = cur.as_object_mut().ok_or_else(|| {
-            XtaskError::DefaultConfigOverride(format!(
-                "cannot set `{}` through non-object segment `{segment}`",
-                path.join(".")
-            ))
-        })?;
-        cur = obj
-            .entry(segment.clone())
-            .or_insert_with(|| JsonValue::Object(Default::default()));
-    }
-
-    let leaf = path.last().expect("path is known non-empty");
-    let obj = cur.as_object_mut().ok_or_else(|| {
-        XtaskError::DefaultConfigOverride(format!(
-            "cannot set `{}` on a non-object parent",
-            path.join(".")
-        ))
-    })?;
-    obj.insert(leaf.clone(), value);
-    Ok(())
-}
-
-fn remove_json_path(root: &mut JsonValue, path: &[String]) {
-    let mut cur = root;
-    for segment in &path[..path.len() - 1] {
-        let Some(obj) = cur.as_object_mut() else {
-            return;
-        };
-        let Some(next) = obj.get_mut(segment) else {
-            return;
-        };
-        cur = next;
-    }
-
-    if let Some(obj) = cur.as_object_mut()
-        && let Some(leaf) = path.last()
-    {
-        obj.remove(leaf);
-    }
-}
-
-fn sort_json_value_keys(value: &mut JsonValue) {
-    match value {
-        JsonValue::Object(map) => {
-            for child in map.values_mut() {
-                sort_json_value_keys(child);
-            }
-
-            let mut sorted = JsonMap::new();
-            let mut keys: Vec<String> = map.keys().cloned().collect();
-            keys.sort();
-            for key in keys {
-                if let Some(child) = map.remove(&key) {
-                    sorted.insert(key, child);
-                }
-            }
-            *map = sorted;
-        }
-        JsonValue::Array(items) => {
-            for item in items {
-                sort_json_value_keys(item);
-            }
-        }
-        _ => {}
-    }
-}
-
-pub(crate) fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
-    if args.iter().any(|a| a == "--help" || a == "-h") {
-        return Err(XtaskError::Usage);
-    }
-
-    let mut schema_path: Option<PathBuf> = None;
-    let mut out_path: Option<PathBuf> = None;
-    let mut overrides_path: Option<PathBuf> = None;
-    let mut apply_local_overrides = true;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--schema" => {
-                i += 1;
-                schema_path = args.get(i).map(PathBuf::from);
-            }
-            "--out" => {
-                i += 1;
-                out_path = args.get(i).map(PathBuf::from);
-            }
-            "--overrides" => {
-                i += 1;
-                overrides_path = args.get(i).map(PathBuf::from);
-                apply_local_overrides = true;
-            }
-            "--no-local-overrides" => {
-                apply_local_overrides = false;
-            }
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
-
-    let schema_path = schema_path.unwrap_or_else(crate::cmd::default_config_schema_path);
-    let out_path = out_path
-        .unwrap_or_else(|| PathBuf::from("crates/merman-core/src/generated/default_config.json"));
-
-    let schema_text = fs::read_to_string(&schema_path).map_err(|source| XtaskError::ReadFile {
-        path: schema_path.display().to_string(),
-        source,
-    })?;
-    let schema_yaml = serde_saphyr::from_str::<JsonValue>(&schema_text)?;
-
-    let Some(mut root_defaults) = extract_defaults(&schema_yaml, &schema_yaml) else {
-        return Err(XtaskError::InvalidRef(
-            "schema produced no defaults (unexpected)".to_string(),
-        ));
-    };
-    if apply_local_overrides {
-        let overrides_path = overrides_path.unwrap_or_else(default_config_overrides_path);
-        let overrides = read_default_config_overrides(&overrides_path)?;
-        apply_default_config_overrides(&mut root_defaults, &overrides)?;
-    }
-
-    sort_json_value_keys(&mut root_defaults);
-    let mut pretty = serde_json::to_string_pretty(&root_defaults)?;
-    pretty.push('\n');
-    let out_dir = out_path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(out_dir).map_err(|source| XtaskError::WriteFile {
-        path: out_dir.display().to_string(),
-        source,
-    })?;
-
-    fs::write(&out_path, pretty).map_err(|source| XtaskError::WriteFile {
-        path: out_path.display().to_string(),
-        source,
-    })?;
-
-    Ok(())
 }
 
 pub(crate) fn gen_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError> {
@@ -3137,7 +3009,7 @@ pub(crate) fn gen_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError
 
 fn dompurify_reference_checkout_message(src_path: &Path) -> String {
     format!(
-        "DOMPurify dist is missing at `{}`. Materialize `repo-ref/dompurify` at DOMPurify {DOMPURIFY_BASELINE_VERSION} from `tools/upstreams/REPOS.lock.json`, or pass `--src <purify.cjs.js>` to `gen-dompurify-defaults`.",
+        "DOMPurify dist is missing at `{}`. Materialize `repo-ref/dompurify` at DOMPurify {PINNED_DOMPURIFY_VERSION} from `tools/upstreams/REPOS.lock.json`, or pass `--src <purify.cjs.js>` to `gen-dompurify-defaults`.",
         src_path.display()
     )
 }
@@ -3173,12 +3045,15 @@ pub(crate) fn render_dompurify_defaults_rs(
     let mut out = String::new();
     out.push_str("// This file is @generated by `cargo run -p xtask -- gen-dompurify-defaults`.\n");
     out.push_str(&format!(
-        "// Source: `repo-ref/dompurify/dist/purify.cjs.js` (DOMPurify {DOMPURIFY_BASELINE_VERSION})\n\n"
+        "// Source: `repo-ref/dompurify/dist/purify.cjs.js` (DOMPurify {PINNED_DOMPURIFY_VERSION})\n\n"
     ));
     out.push_str(&render_slice("DEFAULT_ALLOWED_TAGS", allowed_tags));
     out.push_str(&render_slice("DEFAULT_ALLOWED_ATTR", allowed_attrs));
     out.push_str(&render_slice("DEFAULT_URI_SAFE_ATTRIBUTES", uri_safe_attrs));
     out.push_str(&render_slice("DEFAULT_DATA_URI_TAGS", data_uri_tags));
+    // Generated Rust files end with exactly one newline.
+    let removed = out.pop();
+    debug_assert_eq!(removed, Some('\n'));
     out
 }
 
@@ -3220,59 +3095,24 @@ pub(crate) fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_dir = out_root.join("flowchart");
 
     let engine = merman::Engine::new();
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
         filter.as_deref(),
         |mmd_path, stem, text| {
-            let parsed = match futures::executor::block_on(
-                engine.parse_diagram(text, merman::ParseOptions::default()),
-            ) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_flowchart_v2_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions::default(),
+                merman_render::family::RenderFamilyKind::Flowchart,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -3304,60 +3144,24 @@ pub(crate) fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_dir = out_root.join("state");
 
     let engine = merman::Engine::new();
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
         filter.as_deref(),
         |mmd_path, stem, text| {
-            let parsed = match futures::executor::block_on(
-                engine.parse_diagram(text, merman::ParseOptions::default()),
-            ) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = &layouted.layout
-            else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_state_diagram_v2_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions::default(),
+                merman_render::family::RenderFamilyKind::State,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -3389,66 +3193,24 @@ pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_dir = out_root.join("class");
 
     let engine = merman::Engine::new();
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
         filter.as_deref(),
         |mmd_path, stem, text| {
-            let is_classdiagram_v2_header = merman::preprocess_diagram(text, engine.registry())
-                .ok()
-                .map(|p| p.code.trim_start().starts_with("classDiagram-v2"))
-                .unwrap_or(false);
-
-            let parsed = match futures::executor::block_on(
-                engine.parse_diagram(text, merman::ParseOptions::default()),
-            ) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = &layouted.layout
-            else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
-                aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_class_diagram_v2_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions::default(),
+                merman_render::family::RenderFamilyKind::Class,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -3482,62 +3244,26 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     // Keep this aligned with `crates/merman-render/tests/layout_snapshots_test.rs` so the
     // `update-layout-snapshots` output matches the test's computed layouts.
     let engine = merman_core::Engine::new();
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
         filter.as_deref(),
         |mmd_path, stem, text| {
-            let parsed = match futures::executor::block_on(engine.parse_diagram(
-                text,
-                merman_core::ParseOptions {
-                    suppress_errors: true,
-                },
-            )) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::C4Diagram(layout) = &layouted.layout else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_c4_diagram_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman_core::ParseOptions {
+                    suppress_errors: true,
+                },
+                merman_render::family::RenderFamilyKind::C4,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -3545,23 +3271,26 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DOMPURIFY_BASELINE_VERSION, DefaultConfigOverride, DefaultConfigOverrideOp,
-        PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256, PendingUpstreamSvg,
-        REQUIREMENT_FONT_PRECEDENCE_FIXTURE, UPSTREAM_SVG_DIAGRAMS, UpstreamSvgRenderProbe,
-        UpstreamSvgRuntimePackageRoots, absolutize_workspace_path, apply_default_config_overrides,
-        create_upstream_svg_check_output_root, ensure_content_addressed_js_script,
-        ensure_fresh_upstream_svg_output_is_empty,
-        ensure_upstream_svg_render_environment_probe_script, gen_default_config,
-        map_bounded_in_order, parse_gen_upstream_svgs_options, parse_upstream_svg_jobs,
-        partition_upstream_svg_fixtures, promote_upstream_svg_batch, read_bounded_child_pipe,
-        render_dompurify_defaults_rs, select_upstream_svg_diagrams, sort_json_value_keys,
-        spawn_timeout_managed_child, unique_upstream_svg_failure_report_path,
-        unique_upstream_svg_temp_path, upstream_svg_check_dom_mode, upstream_svg_filter_matches,
-        upstream_svg_package_tree_sha256, use_or_acquire_upstream_svg_family_lock,
-        validate_and_promote_upstream_svg_temp, validate_external_upstream_svg_family_lock,
-        validate_mermaid_cli_install, validate_upstream_svg_filter_selection,
-        validate_upstream_svg_render_probe, wait_with_bounded_output, wait_with_timeout,
+        PINNED_DOMPURIFY_VERSION, PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
+        PendingUpstreamSvg, REQUIREMENT_FONT_PRECEDENCE_FIXTURE, UPSTREAM_SVG_DIAGRAMS,
+        UpstreamSvgRenderProbe, UpstreamSvgRuntimePackageRoots, absolutize_workspace_path,
+        captures_parse_error_svg, create_upstream_svg_check_output_root,
+        ensure_content_addressed_js_script, ensure_fresh_upstream_svg_output_is_empty,
+        ensure_seeded_upstream_svg_renderer_script,
+        ensure_upstream_svg_render_environment_probe_script, map_bounded_in_order,
+        parse_gen_upstream_svgs_options, parse_upstream_svg_jobs, partition_upstream_svg_fixtures,
+        promote_upstream_svg_batch, read_bounded_child_pipe, render_dompurify_defaults_rs,
+        render_family_fixture_svg, scripted_renderer_background_color,
+        select_upstream_svg_diagrams, spawn_timeout_managed_child,
+        unique_upstream_svg_failure_report_path, unique_upstream_svg_temp_path,
+        upstream_svg_check_dom_mode, upstream_svg_filter_matches, upstream_svg_package_tree_sha256,
+        use_or_acquire_upstream_svg_family_lock, uses_scripted_upstream_svg_renderer,
+        uses_seeded_upstream_svg_renderer, validate_and_promote_upstream_svg_temp,
+        validate_external_upstream_svg_family_lock, validate_mermaid_cli_install,
+        validate_upstream_svg_filter_selection, validate_upstream_svg_render_probe,
+        wait_with_bounded_output, wait_with_timeout,
     };
+    use crate::XtaskError;
     use crate::cmd::{
         acquire_upstream_svg_family_lock, acquire_upstream_svg_family_lock_with_timeout,
     };
@@ -3598,6 +3327,39 @@ mod tests {
         let staging_dir = root.join("staging");
         fs::create_dir_all(&staging_dir).expect("create test staging directory");
         unique_upstream_svg_temp_path(&staging_dir, out_path)
+    }
+
+    #[test]
+    fn family_fixture_renderer_uses_the_typed_artifact_pipeline() {
+        let svg = render_family_fixture_svg(
+            &merman_core::Engine::new(),
+            Path::new("info.mmd"),
+            "info\n",
+            merman_core::ParseOptions::default(),
+            merman_render::family::RenderFamilyKind::Info,
+            &merman_render::svg::SvgRenderOptions::default(),
+            &merman_render::svg::SvgDebugOptions::default(),
+        )
+        .expect("render canonical family SVG");
+
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn family_fixture_renderer_rejects_a_mismatched_family() {
+        let error = render_family_fixture_svg(
+            &merman_core::Engine::new(),
+            Path::new("info.mmd"),
+            "info\n",
+            merman_core::ParseOptions::default(),
+            merman_render::family::RenderFamilyKind::Flowchart,
+            &merman_render::svg::SvgRenderOptions::default(),
+            &merman_render::svg::SvgDebugOptions::default(),
+        )
+        .expect_err("reject mismatched render family");
+
+        assert!(error.contains("expected flowchart, got info"));
     }
 
     fn write_package_manifest(path: &Path, name: &str, version: &str) {
@@ -3651,152 +3413,12 @@ mod tests {
     }
 
     #[test]
-    fn default_config_overrides_set_and_remove_nested_paths() {
-        let mut root = json!({
-            "class": { "padding": 5 },
-            "flowchart": { "htmlLabels": null },
-            "pie": {
-                "textPosition": 0.75,
-                "donutHole": 0,
-                "legendPosition": "right"
-            },
-            "treeView": { "paddingX": 5 }
-        });
-        let overrides = vec![
-            DefaultConfigOverride {
-                op: DefaultConfigOverrideOp::Set,
-                path: vec!["class".to_string(), "padding".to_string()],
-                value: Some(json!(12)),
-                _reason: None,
-            },
-            DefaultConfigOverride {
-                op: DefaultConfigOverrideOp::Set,
-                path: vec!["flowchart".to_string(), "htmlLabels".to_string()],
-                value: Some(json!(true)),
-                _reason: None,
-            },
-            DefaultConfigOverride {
-                op: DefaultConfigOverrideOp::Remove,
-                path: vec!["treeView".to_string()],
-                value: None,
-                _reason: None,
-            },
-            DefaultConfigOverride {
-                op: DefaultConfigOverrideOp::Remove,
-                path: vec!["pie".to_string(), "donutHole".to_string()],
-                value: None,
-                _reason: None,
-            },
-        ];
-
-        apply_default_config_overrides(&mut root, &overrides).expect("overrides apply");
-
-        assert_eq!(root["class"]["padding"], json!(12));
-        assert_eq!(root["flowchart"]["htmlLabels"], json!(true));
-        assert!(root.get("treeView").is_none());
-        assert!(root["pie"].get("donutHole").is_none());
-        assert_eq!(root["pie"]["legendPosition"], json!("right"));
-    }
-
-    #[test]
-    fn default_config_set_override_creates_missing_objects() {
-        let mut root = json!({});
-        let overrides = [DefaultConfigOverride {
-            op: DefaultConfigOverrideOp::Set,
-            path: vec!["sankey".to_string(), "nodeColors".to_string()],
-            value: Some(json!({})),
-            _reason: None,
-        }];
-
-        apply_default_config_overrides(&mut root, &overrides).expect("overrides apply");
-
-        assert_eq!(root, json!({ "sankey": { "nodeColors": {} } }));
-    }
-
-    #[test]
-    fn default_config_expands_xychart_axis_reference_defaults() {
-        let root = unique_test_root("default-config-xychart-axis-defaults");
-        let output = root.join("default_config.json");
-        gen_default_config(vec![
-            "--schema".to_string(),
-            crate::cmd::default_config_schema_path()
-                .display()
-                .to_string(),
-            "--out".to_string(),
-            output.display().to_string(),
-            "--no-local-overrides".to_string(),
-        ])
-        .expect("generate defaults from the pinned Mermaid schema");
-
-        let generated: serde_json::Value =
-            serde_json::from_slice(&fs::read(&output).expect("read generated default config"))
-                .expect("parse generated default config");
-        let expected_axis = json!({
-            "axisLineWidth": 2,
-            "labelFontSize": 14,
-            "labelPadding": 5,
-            "labelRotation": 0,
-            "showAxisLine": true,
-            "showLabel": true,
-            "showTick": true,
-            "showTitle": true,
-            "tickLength": 5,
-            "tickWidth": 2,
-            "titleFontSize": 16,
-            "titlePadding": 5
-        });
-
-        assert_eq!(generated["xyChart"]["xAxis"], expected_axis);
-        assert_eq!(generated["xyChart"]["yAxis"], expected_axis);
-        remove_test_root(&root);
-    }
-
-    #[test]
-    fn default_config_output_sorts_json_keys_recursively() {
-        let mut root = json!({
-            "z": 1,
-            "a": {
-                "textPosition": 0.75,
-                "donutHole": 0
-            },
-            "m": [
-                {
-                    "b": true,
-                    "a": false
-                }
-            ]
-        });
-
-        sort_json_value_keys(&mut root);
-
-        let top_keys: Vec<&str> = root
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect();
-        assert_eq!(top_keys, vec!["a", "m", "z"]);
-        let nested_keys: Vec<&str> = root["a"]
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect();
-        assert_eq!(nested_keys, vec!["donutHole", "textPosition"]);
-        let array_object_keys: Vec<&str> = root["m"][0]
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect();
-        assert_eq!(array_object_keys, vec!["a", "b"]);
-    }
-
-    #[test]
     fn dompurify_generated_header_uses_current_baseline_version() {
         let rust = render_dompurify_defaults_rs(&[], &[], &[], &[]);
 
-        assert!(rust.contains(&format!("DOMPurify {DOMPURIFY_BASELINE_VERSION}")));
+        assert!(rust.contains(&format!("DOMPurify {PINNED_DOMPURIFY_VERSION}")));
+        assert!(rust.ends_with('\n'));
+        assert!(!rust.ends_with("\n\n"));
     }
 
     #[test]
@@ -3806,7 +3428,7 @@ mod tests {
         ));
 
         assert!(message.contains("repo-ref/dompurify"));
-        assert!(message.contains(DOMPURIFY_BASELINE_VERSION));
+        assert!(message.contains(PINNED_DOMPURIFY_VERSION));
         assert!(message.contains("tools/upstreams/REPOS.lock.json"));
     }
 
@@ -3816,9 +3438,16 @@ mod tests {
     }
 
     #[test]
+    fn error_upstream_svg_tools_include_typed_renderer_family() {
+        assert!(UPSTREAM_SVG_DIAGRAMS.contains(&"error"));
+    }
+
+    #[test]
     fn mermaid_11_16_new_families_are_available_to_upstream_svg_tools() {
         for diagram in [
+            "swimlane",
             "cynefin",
+            "wardley",
             "railroad",
             "railroadEbnf",
             "railroadAbnf",
@@ -4088,9 +3717,9 @@ mod tests {
     #[test]
     fn parser_only_fixtures_use_the_same_partition_for_generation_and_check() {
         let renderable = PathBuf::from("regular.mmd");
-        let parser_only = PathBuf::from("syntax_parser_only_spec.mmd");
+        let parser_only = PathBuf::from("upstream_flow_text_ellipse_vertex_parser_only_spec.mmd");
         let (renderable_fixtures, excluded_fixtures) =
-            partition_upstream_svg_fixtures("sequence", [renderable.clone(), parser_only.clone()])
+            partition_upstream_svg_fixtures("flowchart", [renderable.clone(), parser_only.clone()])
                 .expect("partition fixtures");
 
         assert_eq!(renderable_fixtures, vec![renderable]);
@@ -4149,13 +3778,85 @@ mod tests {
         let script = fs::read_to_string(script_path).expect("read render-environment probe script");
 
         assert!(
-            script.contains("Intl.DateTimeFormat().resolvedOptions().timeZone"),
-            "the probe must read Chromium's timezone instead of Node's host timezone"
+            script.contains("Intl.DateTimeFormat().resolvedOptions()"),
+            "the probe must read Chromium's locale and timezone instead of Node's host identity"
+        );
+        assert!(
+            script.contains("locale,"),
+            "the resolved locale must be emitted in the browser attestation"
         );
         assert!(
             script.contains("timezone,"),
             "the resolved timezone must be emitted in the browser attestation"
         );
+    }
+
+    #[test]
+    fn seeded_renderer_completes_deferred_sequence_actor_math_before_serializing() {
+        let script_path = ensure_seeded_upstream_svg_renderer_script()
+            .expect("install seeded upstream SVG renderer script");
+        let script = fs::read_to_string(script_path).expect("read seeded renderer script");
+
+        for required in [
+            "completeDeferredSequenceActorMath",
+            "Element.prototype.remove",
+            "participantActorLabels(liveSvg).length < renderedRects.length",
+            "incompleteActorMathSwitches",
+            "incomplete.parentElement?.removeChild(incomplete)",
+            "parsed.importNode(liveSwitch, true)",
+        ] {
+            assert!(
+                script.contains(required),
+                "seeded renderer must retain and complete async Sequence actor math: {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn seeded_renderer_fixes_wall_clock_before_loading_mermaid() {
+        let script_path = ensure_seeded_upstream_svg_renderer_script()
+            .expect("install seeded upstream SVG renderer script");
+        let script = fs::read_to_string(script_path).expect("read seeded renderer script");
+
+        let injection = script
+            .find("await page.evaluateOnNewDocument")
+            .expect("find deterministic page-realm injection");
+        let fixed_clock = script
+            .find("Date.now = () => fixedWallClockMs")
+            .expect("find fixed page wall clock");
+        let navigation = script
+            .find("await page.goto")
+            .expect("find Mermaid CLI page navigation");
+        let mermaid_load = script
+            .find("page.addScriptTag({ path: mermaidIifePath })")
+            .expect("find Mermaid bundle load");
+
+        assert!(injection < fixed_clock);
+        assert!(fixed_clock < navigation);
+        assert!(fixed_clock < mermaid_load);
+        assert!(script.contains("const fixedWallClockMs = 1704067200000;"));
+        assert!(
+            !script.contains("performance.now ="),
+            "monotonic timing must remain live while the wall clock is deterministic"
+        );
+    }
+
+    #[test]
+    fn sequence_uses_the_seeded_renderer_that_settles_actor_math() {
+        assert!(uses_seeded_upstream_svg_renderer("sequence"));
+        assert!(uses_seeded_upstream_svg_renderer("architecture"));
+        assert!(uses_seeded_upstream_svg_renderer("gitgraph"));
+        assert!(!uses_seeded_upstream_svg_renderer("flowchart"));
+    }
+
+    #[test]
+    fn error_uses_the_scripted_renderer_to_capture_the_upstream_fallback_svg() {
+        assert!(captures_parse_error_svg("error"));
+        assert!(uses_scripted_upstream_svg_renderer("error"));
+        assert_eq!(scripted_renderer_background_color("error"), "");
+        assert!(!captures_parse_error_svg("state"));
+        assert!(!uses_scripted_upstream_svg_renderer("state"));
+        assert_eq!(scripted_renderer_background_color("sequence"), "white");
     }
 
     #[test]
@@ -4242,20 +3943,20 @@ mod tests {
         )
         .expect("write current fixture");
         fs::write(
-            fixtures_dir.join("excluded_parser_only_spec.mmd"),
+            fixtures_dir.join("upstream_flow_text_ellipse_vertex_parser_only_spec.mmd"),
             "flowchart TD\n  A --> B\n",
         )
         .expect("write excluded fixture");
         let mut snapshots = crate::cmd::capture_upstream_svg_fixture_selection(
             &root.join("snapshot-staging"),
-            "probe",
+            "flowchart",
             &fixtures_dir,
             None,
         )
         .expect("capture complete fixture selection");
 
         let current_out = out_dir.join("current.svg");
-        let excluded_out = out_dir.join("excluded_parser_only_spec.svg");
+        let excluded_out = out_dir.join("upstream_flow_text_ellipse_vertex_parser_only_spec.svg");
         let orphan_out = out_dir.join("deleted-fixture.svg");
         fs::write(&current_out, r#"<svg id="current-old"/>"#).expect("write current baseline");
         fs::write(&excluded_out, r#"<svg id="excluded-old"/>"#).expect("write excluded baseline");
@@ -4800,20 +4501,47 @@ mod tests {
     fn upstream_svg_check_output_is_unique_and_starts_empty() {
         let target_root = unique_test_root("upstream-svg-check-output");
         let first = create_upstream_svg_check_output_root(&target_root).expect("first check root");
-        fs::write(first.join("stale.svg"), "stale").expect("write stale marker");
+        let first_path = first.path().to_path_buf();
+        fs::write(first.path().join("stale.svg"), "stale").expect("write stale marker");
 
         let second =
             create_upstream_svg_check_output_root(&target_root).expect("second check root");
+        let second_path = second.path().to_path_buf();
 
-        assert_ne!(first, second);
-        assert!(second.is_dir());
+        assert_ne!(first.path(), second.path());
+        assert!(second.path().is_dir());
         assert!(
-            fs::read_dir(&second)
+            fs::read_dir(second.path())
                 .expect("read second check root")
                 .next()
                 .is_none(),
             "a new upstream SVG check must not see artifacts from an earlier run"
         );
+
+        first
+            .finish(Ok::<_, XtaskError>(()))
+            .expect("clean successful check output");
+        let expected_failure = XtaskError::UpstreamSvgFailed("expected check failure".to_string());
+        let failure = second
+            .finish::<()>(Err(expected_failure))
+            .expect_err("preserve the check failure after cleanup");
+        assert!(failure.to_string().contains("expected check failure"));
+        assert!(!first_path.exists());
+        assert!(!second_path.exists());
+        remove_test_root(&target_root);
+    }
+
+    #[test]
+    fn abandoned_upstream_svg_check_output_is_removed_on_drop() {
+        let target_root = unique_test_root("upstream-svg-check-output-drop");
+        let output = create_upstream_svg_check_output_root(&target_root).expect("check root");
+        let path = output.path().to_path_buf();
+        fs::write(path.join("large-corpus.bin"), vec![0_u8; 1024 * 1024])
+            .expect("write owned corpus marker");
+
+        drop(output);
+
+        assert!(!path.exists());
         remove_test_root(&target_root);
     }
 
@@ -4929,6 +4657,7 @@ mod tests {
                 product: "Chrome".to_string(),
                 version: "131.0.6778.204".to_string(),
                 revision: "@revision".to_string(),
+                locale: "en-US".to_string(),
                 timezone: "UTC".to_string(),
             },
             puppeteer: crate::cmd::UpstreamSvgPuppeteerEnvironment {
@@ -5027,6 +4756,7 @@ mod tests {
                 product: "Chrome".to_string(),
                 version: "131.0.6778.204".to_string(),
                 revision: "@revision".to_string(),
+                locale: "en-US".to_string(),
                 timezone: "UTC".to_string(),
             },
             puppeteer: crate::cmd::UpstreamSvgPuppeteerEnvironment {

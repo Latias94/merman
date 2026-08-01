@@ -10,7 +10,7 @@ date: "2026-06-23"
 
 This plan turns `merman` validation into a diagnostics-first analysis surface that can power linting,
 editor integrations, and future LSP work without making SVG rendering the source of truth. It uses
-the alpha window to break shallow internals, adds a versioned diagnostics contract for Rust, CLI,
+the coordinated breaking-change window to replace shallow internals, adds a versioned diagnostics contract for Rust, CLI,
 WASM, FFI, and UniFFI consumers, and records the long-lived boundary in ADR and engineering memory.
 
 ---
@@ -45,7 +45,7 @@ same parse and model facts, not the only path to user-facing feedback.
 
 **Binding And Compatibility**
 
-- R6. `analyze_json` becomes the canonical binding payload; `validate_json` stays as a compatibility projection during the alpha transition.
+- R6. `analyze_json` becomes the canonical binding payload; `validate_json` stays as a compatibility projection during the migration.
 - R7. Binding JSON must remain tolerant of unknown fields and include a payload `version` so hosts can migrate safely.
 - R8. `@mermanjs/web`, C ABI, UniFFI, Flutter, Apple, Android, and TypeScript definitions must expose the same analysis semantics.
 
@@ -72,7 +72,7 @@ same parse and model facts, not the only path to user-facing feedback.
 In scope:
 
 - New analysis/diagnostics module boundaries and versioned payloads.
-- Breaking internal refactors in alpha-era validation, binding facade, CLI, and TypeScript wrappers.
+- Breaking internal refactors in the existing validation, binding facade, CLI, and TypeScript wrappers.
 - A CLI lint/check path for `.mmd`, `.mermaid`, `.md`, `.markdown`, and `.mdx` inputs.
 - Source-map infrastructure that supports document-level and fence-level locations immediately, with parser-level spans added progressively.
 - Parity harnesses that compare Rust analysis behavior against pinned Mermaid JS behavior for selected fixtures.
@@ -99,7 +99,7 @@ Out of scope:
 - KTD3. Add canonical `analyze_json` and keep `validate_json` as a migration bridge. The bridge derives `valid` and legacy top-level fields from diagnostics while hosts move to the richer payload.
 - KTD4. Use best-effort spans first, then deepen parser spans family by family. Markdown fences and whole-diagram spans give immediate editor value without blocking the architecture on every grammar.
 - KTD5. Keep Mermaid JS as parity evidence, not as a production fallback. The pinned JS source and fixtures should catch Rust drift, but headless users should not inherit Node, jsdom, or browser runtime costs.
-- KTD6. Treat diagnostics JSON as a public alpha contract. It may break once during this refactor, but after the ADR lands the payload versioning and compatibility policy become the migration path.
+- KTD6. Treat diagnostics JSON as a public versioned contract. It may break once during this refactor, but after the ADR lands the payload versioning and compatibility policy become the migration path.
 
 ---
 
@@ -157,7 +157,7 @@ flowchart TB
   - `docs/bindings/UNIFFI.md`
   - `docs/bindings/OPTIONS_JSON.md`
   - `README.md`
-- **Approach:** Capture the split between `analyze_json` and `validate_json`, the payload versioning rule, the no-runtime-JS decision, and the alpha migration policy. Keep detailed schema examples in binding docs, not only in the ADR.
+- **Approach:** Capture the split between `analyze_json` and `validate_json`, the payload versioning rule, the no-runtime-JS decision, and the migration policy. Keep detailed schema examples in binding docs, not only in the ADR.
 - **Patterns to follow:** `docs/adr/0066-ffi-binding-strategy.md`, `docs/adr/0069-wasm-package-surface-semantics.md`, and the existing binding protocol docs.
 - **Test scenarios:** Test expectation: none -- documentation-only unit, reviewed by schema and file-reference inspection.
 - **Verification:** The ADR explains why diagnostics are a first-class contract and binding docs show how existing hosts migrate from validation to analysis.
@@ -213,7 +213,7 @@ flowchart TB
 
 ### U4. Migrate binding surfaces to canonical analysis payloads
 
-- **Goal:** Expose the new analysis contract across binding-core, WASM, FFI, UniFFI, and platform wrappers while preserving a short alpha bridge for existing validation callers.
+- **Goal:** Expose the new analysis contract across binding-core, WASM, FFI, UniFFI, and platform wrappers while preserving a short migration bridge for existing validation callers.
 - **Requirements:** R1, R6, R7, R8, R13
 - **Dependencies:** U3
 - **Files:**
@@ -345,7 +345,7 @@ flowchart TB
 This refactor changes a cross-interface contract. Rust users gain a render-independent analysis API;
 CLI users gain lint; browser and native hosts gain a shared payload; future editor work gets a
 position model. The main compatibility pressure is on existing `validate` callers, which should be
-kept working through an alpha bridge while docs steer new code to `analyze`.
+kept working through a migration bridge while docs steer new code to `analyze`.
 
 The change also sharpens crate boundaries. `merman-analysis` should stay lighter than
 `merman-render`, and binding crates should stop treating render feature availability as a proxy for
@@ -357,7 +357,7 @@ validation capability.
 
 | Risk | Mitigation |
 | --- | --- |
-| Diagnostic schema churn breaks early host integrations. | Use a payload `version`, keep legacy validation projection during alpha, and document the migration in binding docs. |
+| Diagnostic schema churn breaks early host integrations. | Use a payload `version`, keep a temporary legacy validation projection, and document the migration in binding docs. |
 | Lint locations are initially too coarse for editor users. | Ship document and fence ranges first, then add parser-level spans family by family behind the same schema. |
 | Rust diagnostics diverge from Mermaid JS behavior. | Add fixture snapshots and optional pinned Mermaid JS parity checks as evidence, not runtime fallback. |
 | The analysis crate accidentally pulls render dependencies. | Test and review feature graphs so parse-only analysis works without SVG layout. |

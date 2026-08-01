@@ -1,0 +1,97 @@
+{
+  "schema_version": 3,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
+    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v3"
+  },
+  "attestation": {
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "locale": "en-US",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
+  },
+  "complete": true,
+  "fixtures": {
+    "upstream_cypress_wardley_spec_1_should_render_tea_shop_001": {
+      "input_sha256": "088e16cee1482251bb8153fc3e327394a09ba7e411e933d5cfeeb8ba4110c756",
+      "svg_sha256": "d03a3d23a0e98b8cb682d555712f673b56374851f629e5e7a51988f75ba71b4d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_wardley_spec_2_should_render_data_evolution_stages_002": {
+      "input_sha256": "662772f4aa8cfafbfb6264de7952396e6468572cd5fad255590d29ff061734e3",
+      "svg_sha256": "7a679ab3b498781b6ab6d1765d526d84c2539b9c04c17e5183c203dbc03cab71",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_wardley_spec_3_should_render_pipelines_003": {
+      "input_sha256": "31d76a47fcf121b9b02fa20e471f4a4990cb6c7a8452b794efcd9e004ab9f09a",
+      "svg_sha256": "8b5d279e9737254d4a4900b5a83ca77f999afe2c7f7d06daff8e382166b3d052",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_wardley_spec_4_should_render_link_types_and_annotations_004": {
+      "input_sha256": "2777b53bb67e2dfcd15918d62e57cd469aa0db1e050ef4dbc7ef53a2836b42d7",
+      "svg_sha256": "32bbacf2dbf06bd289a53293a40803f9b2056e8ece8e81df953f898e6c425eb2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_wardley_spec_5_should_render_custom_canvas_size_005": {
+      "input_sha256": "e930def2832fa5bc924a8bc4aad9750d2c53e7c1a5ac39e97d2acc69eb03178f",
+      "svg_sha256": "5842f96b1e6fe591c112099dca76c0fcd050e0a1d024099e4e35121b02884321",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_wardley_spec_6_should_render_gpt_tokeniser_architecture_010": {
+      "input_sha256": "e8cde7fa7a2242965232f97d7e58755365cd7841e503054b78b8c904a6cc6223",
+      "svg_sha256": "dad272a846f77335746a3b5a4e03bb624b2dfa77fd6a9441a01b1445d340bbcf",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_wardley_spec_should_render_under_the_base_theme_009": {
+      "input_sha256": "7dcc333f58db0c807667d2b52d35b33975f193fc9eb8e2bce6cda4e29533a260",
+      "svg_sha256": "d3eeb1cb13e7c626ca5bcfe81001de7c88336ec2824cc442d866280d5cd1eae9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_wardley_spec_should_render_under_the_dark_theme_006": {
+      "input_sha256": "723e2acbeebf025409a6d999e6a088478317f7e14502c5424153f7bfa2012d4a",
+      "svg_sha256": "01d742e559c852b7daba5587ce0754875933d9c39833a66ef2ec3364e0cde294",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_wardley_spec_should_render_under_the_forest_theme_007": {
+      "input_sha256": "c9631c44079be4f9ade8502e7b040ab3cf2e8ab002eace69f1e385d35f2ce73b",
+      "svg_sha256": "c602f6c1411437b34672995d2ba354487eec8505cc7f23e27485e2593035dbd5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_wardley_spec_should_render_under_the_neutral_theme_008": {
+      "input_sha256": "e1025369f4168377d359501a88b9f05ead360176303929c2e42354bca1062501",
+      "svg_sha256": "50d1bae40b146cb7bb57c349ce4239c183fcb3c2a04d7f349b2c5185f6e7e857",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

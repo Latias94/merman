@@ -1,53 +1,65 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "type": "zenuml",
     "title": null,
-    "accTitle": null,
-    "accDescr": null,
-    "actorOrder": [
-      "A",
-      "B"
-    ],
-    "actors": {
-      "A": {
-        "name": "A",
-        "description": "A",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "B": {
-        "name": "B",
-        "description": "B",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      }
-    },
-    "messages": [
+    "starter": null,
+    "participants": [
       {
-        "id": "0",
-        "from": "A",
-        "to": "B",
-        "message": "result",
-        "wrap": false,
-        "type": 1,
-        "activate": false
+        "name": "A",
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 23,
+            "end": 24
+          }
+        ],
+        "width": null
+      },
+      {
+        "name": "B",
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 26,
+            "end": 27
+          }
+        ],
+        "width": null
       }
     ],
-    "notes": [],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+    "groups": [],
+    "statements": [
+      {
+        "id": "zenuml-statement-0",
+        "comment": null,
+        "span": {
+          "start": 11,
+          "end": 36
+        },
+        "kind": "return",
+        "explicit_from": "A",
+        "resolved_from": "A",
+        "explicit_to": "B",
+        "resolved_to": "B",
+        "label": "result"
       }
-    }
+    ],
+    "type": "zenuml"
   }
 }

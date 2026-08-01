@@ -138,9 +138,9 @@
         {
           "x": 281.56,
           "y": 240.04,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "A-09",
@@ -156,9 +156,9 @@
         {
           "x": 276.92,
           "y": 240.04,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "A-08",
@@ -174,9 +174,9 @@
         {
           "x": 272.28,
           "y": 240.04,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "A-07",
@@ -192,9 +192,9 @@
         {
           "x": 281.56,
           "y": 244.28,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "A-06",
@@ -210,9 +210,9 @@
         {
           "x": 276.92,
           "y": 244.28,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "A-05",
@@ -228,9 +228,9 @@
         {
           "x": 272.28,
           "y": 244.28,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "A-04",
@@ -246,9 +246,9 @@
         {
           "x": 281.56,
           "y": 248.52,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "A-03",
@@ -264,9 +264,9 @@
         {
           "x": 276.92,
           "y": 248.52,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "A-02",
@@ -282,9 +282,9 @@
         {
           "x": 272.28,
           "y": 248.52,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "A-01",

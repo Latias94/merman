@@ -3,6 +3,30 @@
 Status: Closed
 Last updated: 2026-06-10
 
+> Historical closeout evidence only. Current public Web package exports and release behavior are
+> governed by
+> `docs/plans/2026-07-22-001-refactor-capability-driven-feature-and-distribution-architecture-plan.md`
+> and their owning descriptors. The current Typst contract has exactly one `publish` package profile
+> backed by the exact `typst-wasm` artifact recipe. The retired `typst-bridge`, `typst-render`,
+> `typst-core-full`, `typst-ratex-math`, bridge/SVG/minimal, and `*-no-elk` labels below identify
+> historical measurements only; they are not active Cargo features, package profiles, artifact
+> recipes, commands, or release paths.
+
+### Current Typst Contract
+
+Use the owner-backed commands from `crates/merman-typst-plugin/README.md`:
+
+```bash
+cargo run --locked -p xtask -- build-typst-package --profile publish
+cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
+cargo run --locked -p xtask -- typst-plugin-smoke --profile publish
+cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build
+```
+
+Raw Cargo output and private directories below `target/typst-wasm-artifacts/` are implementation
+details and must not be referenced by CI, release automation, or package users.
+
 ## Current Evidence
 
 ### Typst Plugin Protocol
@@ -303,14 +327,17 @@ The Typst package size is dominated by `merman_typst_plugin.wasm`; non-wasm pack
 on the order of tens of kilobytes. Treat stripped wasm size and real code/data size as separate
 signals because custom metadata can dominate unstripped deltas.
 
-Observed stripped wasm sizes:
+These rows preserve the 2026-06-10 experiments and their then-current feature combinations. Their
+labels were retired by the capability-driven architecture and must not be used as current profiles.
 
-| Typst feature profile | Stripped wasm bytes | Notes |
+Observed historical stripped wasm sizes:
+
+| Retired experiment | Stripped wasm bytes | Notes |
 | --- | ---: | --- |
-| `--no-default-features` | 33,412 | Bridge-only surface; proves wasm-minimal-protocol glue is small. |
-| default `render` | 5,414,863 | Current package default. |
-| `core-full` | 6,262,880 | About 848 KB above default render. |
-| `ratex-math` | 8,238,005 | About 2.82 MB above default render. |
+| `--no-default-features` | 33,412 | Historical transport-only experiment; not a package profile. |
+| default `render` | 5,414,863 | Historical render default. |
+| `core-full` | 6,262,880 | About 848 KB above the historical render default. |
+| `ratex-math` | 8,238,005 | About 2.82 MB above the historical render default. |
 
 Default render section ownership snapshot:
 
@@ -323,15 +350,16 @@ Conclusion:
 - previous `wasm-tools strip --all` work mainly removed about 1.6 MB of metadata;
 - further meaningful reductions must target real `code`/`data` ownership, not only custom sections.
 
-### Typst Default Render Dependency Audit
+### Historical Typst Default Render Dependency Audit
 
-Confirmed outside the default Typst render wasm path:
+At the 2026-06-10 closeout, the following dependencies were outside the then-default Typst render
+WASM path:
 
 - `core-full`: `serde_yaml`, `json5`, `lol_html`, `url`;
 - `core-host`: `uuid`, `web-time`, `getrandom/js`, `chrono/clock`;
 - browser wrapper crates: `wasm-bindgen`, `serde-wasm-bindgen`, `console_error_panic_hook`,
   `js-sys`;
-- raster/CLI crates: `image`, `resvg`, `usvg`, `tiny-skia`, `svg2pdf`, `png`, `clap`,
+- raster/CLI crates: `image`, `resvg`, `usvg`, `tiny-skia`, `krilla`, `krilla-svg`, `png`, `clap`,
   `reqwest`, `rayon`;
 - optional math and ASCII surfaces: `ratex-*`, `merman-ascii`;
 - `roughr-merman/host-random`.
@@ -398,7 +426,8 @@ Change:
   feature presets;
 - browser presets are `browser-core`, `browser-render`, `browser-ascii`, `browser-full`, and
   `browser-ratex-math`;
-- Typst presets are `typst-bridge`, `typst-render`, `typst-core-full`, and `typst-ratex-math`;
+- the historical Typst experiments were named `typst-bridge`, `typst-render`,
+  `typst-core-full`, and `typst-ratex-math`; all four names are retired;
 - each row reports raw artifact bytes plus stripped, gzip, and brotli bytes from a stripped copy
   under `target/wasm-size-matrix/`, leaving the build artifact in place;
 - `docs/release/WASM_SIZE_BUDGETS.json` now provides CI size regression budgets for every browser
@@ -406,14 +435,8 @@ Change:
 - `docs/release/PACKAGE_SURFACES.md` and `crates/merman-wasm/README.md` now explicitly label
   `merman-wasm` as the browser/wasm-bindgen surface, separate from Typst/pure wasm.
 
-Validation:
-
-```bash
-cargo nextest run -p xtask wasm_size_matrix
-cargo run -p xtask -- wasm-size-matrix --surface typst --preset typst-bridge --no-strip
-cargo run -p xtask -- wasm-size-matrix --surface typst --preset typst-bridge
-cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
-```
+The retired per-preset commands are intentionally omitted. Use **Current Typst Contract** above to
+measure the one exact `typst-wasm` artifact recipe.
 
 Observed browser matrix:
 
@@ -425,9 +448,9 @@ Observed browser matrix:
 | `browser-full` | yes | none | 8,867,749 | 6,719,540 | 2,107,768 | 1,512,064 |
 | `browser-ratex-math` | yes | `ratex-math` | 12,147,547 | 9,447,798 | 3,052,089 | 2,188,356 |
 
-Observed Typst matrix:
+Observed historical Typst matrix:
 
-| Preset | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
+| Retired experiment | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
 | `typst-bridge` | no | none | 47,287 | 33,412 | 13,388 | 11,361 |
 | `typst-render` | yes | none | 6,445,189 | 4,990,451 | 1,486,500 | 1,078,513 |
@@ -440,33 +463,26 @@ Immediate reading:
   it includes wasm-bindgen, serde-wasm-bindgen, panic hook, and metadata helpers;
 - browser `render` adds about 4.26 MB stripped over browser core;
 - browser `ascii` adds about 1.58 MB stripped over browser core;
-- Typst bridge-only remains tiny at 33,412 bytes stripped, 13,388 bytes gzip, and 11,361 bytes
-  brotli;
-- Typst render and browser render are close in render-code size once transport overhead is
-  separated.
+- the historical Typst transport-only experiment measured 33,412 bytes stripped, 13,388 bytes
+  gzip, and 11,361 bytes brotli;
+- the historical Typst render and browser render experiments were close in render-code size once
+  transport overhead was separated.
 
 ### WFS-100 Typst Plugin Transport Smoke
 
 Change:
 
-- confirmed that the existing `merman-typst-plugin` crate is the experimental Typst transport;
-- added `cargo run -p xtask -- typst-plugin-smoke --wasm <plugin.wasm>`, which loads the plugin
-  with `wasmi`, links the two wasm-minimal-protocol `typst_env` functions, calls
-  `render_svg_json`, and verifies the returned JSON contains a successful SVG payload;
-- corrected Typst plugin docs so the default artifact is described as the render artifact and the
-  bridge-only artifact is explicitly `--no-default-features`.
+- confirmed at lane closeout that `merman-typst-plugin` was the experimental Typst transport;
+- added a raw-artifact smoke at lane closeout which loaded the plugin with `wasmi`, linked the two
+  wasm-minimal-protocol `typst_env` functions, called `render_svg_json`, and verified the returned
+  JSON contained a successful SVG payload;
+- documented the then-default render and transport-only experiments. Those identities are now
+  superseded by the sole `publish` package profile and exact `typst-wasm` artifact recipe.
 
-Validation:
+The raw default-feature build transcript is intentionally omitted because it no longer selects a
+publishable artifact. Use **Current Typst Contract** above.
 
-```bash
-cargo check -p xtask
-cargo build -p xtask
-cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown
-target/debug/xtask profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
-target/debug/xtask typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
-```
-
-Observed default render artifact:
+Observed historical default render artifact:
 
 - imports: exactly
   `typst_env::wasm_minimal_protocol_send_result_to_host` and
@@ -520,15 +536,9 @@ Observed result:
 - `cargo fmt --all --check`: passed;
 - nextest: 1,253 tests run, 1,253 passed, 2 skipped.
 
-Pure/Typst dependency and import gates:
-
-```bash
-cargo run -p xtask -- profile-budget check-deps --profile pure-wasm --package merman-core --target wasm32-unknown-unknown --no-default-features --depth 3
-cargo run -p xtask -- profile-budget check-deps --profile typst-wasm --package merman-core --target wasm32-unknown-unknown --no-default-features --depth 3
-cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown
-target/debug/xtask profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
-target/debug/xtask typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
-```
+Pure/Typst dependency and import gates were run against the then-current raw Cargo artifact. That
+raw transcript is intentionally omitted because it is not the current publish recipe; use
+**Current Typst Contract** above.
 
 Observed result:
 
@@ -548,8 +558,9 @@ cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDG
 
 Observed result:
 
-- all browser and Typst preset rows reported raw, stripped, gzip, and brotli bytes;
-- `docs/release/WASM_SIZE_BUDGETS.json` passed for every selected preset.
+- all then-current browser and Typst experiment rows reported raw, stripped, gzip, and brotli
+  bytes;
+- `docs/release/WASM_SIZE_BUDGETS.json` passed for every then-selected experiment.
 
 Browser package gates:
 
@@ -593,9 +604,10 @@ Follow-up browser package size reduction on 2026-06-10:
 - `npm run prepack --prefix platforms/web` enforces the generated web package budget from
   `docs/release/WASM_SIZE_BUDGETS.json`.
 
-Residual follow-ons:
+Historical residuals at lane closeout on 2026-06-10:
 
-- public npm export paths or separate slim browser packages remain future migration work;
+- this lane did not publish public npm export paths; capability-specific subpaths were subsequently
+  shipped under the single `@mermanjs/web` package and are no longer residual work;
 - `browser-ascii` is an ASCII output surface but still carries the full core registry through
   `merman-ascii`;
 - Typst registry packaging and idiomatic `.typ` wrapper publication remain separate from transport
@@ -606,6 +618,9 @@ Residual follow-ons:
   parity residuals, not WFS blockers.
 
 ## Gates
+
+This section records the lane's historical safety model. It does not define current package or
+artifact profiles. Current Typst builds and release gates use **Current Typst Contract** above.
 
 ### Always-Preserve Gates
 
@@ -639,27 +654,26 @@ Pure-wasm target acceptance:
 - no JS Date/timezone imports;
 - no browser panic hook imports.
 
-The repository now has an initial dependency allowlist gate:
+The exact current Typst recipe has a dependency allowlist gate:
 
 ```bash
 cargo run -p xtask -- profile-budget check-deps --profile pure-wasm --package merman-core --target wasm32-unknown-unknown --no-default-features --depth 3
-cargo run -p xtask -- profile-budget check-deps --profile typst-wasm --package merman-core --target wasm32-unknown-unknown --no-default-features --depth 3
+cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
 ```
 
-Both profiles currently fail on `wasm-bindgen`, `js-sys`, `web-time`, `getrandom`,
+Both policies fail on `wasm-bindgen`, `js-sys`, `web-time`, `getrandom`,
 `serde-wasm-bindgen`, `wasm-bindgen-futures`, or `console_error_panic_hook` when those crates are
 present in the checked tree. Additional blocked crates can be supplied with repeated `--forbid`
 flags.
 
 ### Import Allowlist Gate
 
-For a Typst plugin or probe wasm:
+The lane originally exposed a raw-WASM command for this check. Current package and release
+automation must invoke `build-typst-package --profile publish`, which resolves the exact
+`typst-wasm` recipe and runs the same structured import validator without exposing a private
+artifact path.
 
-```bash
-wasm-tools print <plugin.wasm> | awk '/^  \(import/{print}'
-```
-
-Allowed imports:
+The structured Wasmi gate permits exactly these imports with their protocol `i32` signatures:
 
 ```text
 (import "typst_env" "wasm_minimal_protocol_write_args_to_buffer" ...)
@@ -675,34 +689,29 @@ Everything else must be justified as a blocker or removed. In particular, these 
 - WebCrypto/getRandomValues
 - JS Date/timezone/performance
 
-The repository now has an initial checked gate for this:
+The separate pure-WASM diagnostic remains available for modules that are not package artifacts:
 
 ```bash
-cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>
-cargo run -p xtask -- profile-budget check-imports --profile pure-wasm --wat-file <wasm-tools-print.wat>
-cargo run -p xtask -- typst-plugin-smoke --wasm <plugin.wasm>
+cargo run -p xtask -- profile-budget check-imports --profile pure-wasm --wasm <module.wasm>
 ```
 
-`typst-wasm` allows only the two wasm-minimal-protocol `typst_env` imports and requires exported
-`memory` when using `check-wasm` or `check-exports`. `typst-plugin-smoke` additionally proves that
-the artifact can be instantiated by a Typst-compatible `wasmi` host and can return SVG JSON bytes.
-`pure-wasm` currently allows no imports.
+`typst-wasm` allows only the two wasm-minimal-protocol `typst_env` imports and requires the closed
+typed export surface. The publish build and profile-owned smoke consume the same structured Wasmi
+module-surface validator; the smoke additionally proves that the artifact can be instantiated by a
+Typst-compatible host and can return SVG and analysis JSON bytes. `pure-wasm` allows no imports.
 
 ### Export Gate
 
 For a Typst plugin or probe wasm:
-
-```bash
-wasm-tools print <plugin.wasm> | awk '/^  \(export/{print}'
-```
 
 Required:
 
 - exported `memory`;
 - one or more user-facing plugin functions with Typst-compatible signatures.
 
-The `xtask profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>` gate enforces the
-exported `memory` requirement. Function signature checking remains a follow-up.
+The `publish` package build validates the exact `typst-wasm` artifact directly with Wasmi,
+including exact `i32` function signatures and immutable linker metadata globals. It does not depend
+on WAT formatting or source-text matching.
 
 ### Size Gate
 

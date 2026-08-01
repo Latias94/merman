@@ -35,17 +35,26 @@ Upstream references at locked commit `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`:
   - Stage B renderer with source-backed `.ishikawa-pair`, `.ishikawa-label-group`, and
     `.ishikawa-sub-group` ownership in addition to the spine, branch, head, label-box, and arrow
     marker DOM signals
+  - `look: "handDrawn"` ports the Mermaid 11.16 RoughJS line, path, and rectangle branches for the
+    head, spine, branches, label boxes, hachure fills, and solid arrows while preserving upstream
+    DOM order
+  - a fixed `handDrawnSeed` produces deterministic local rough paths; different seeds produce
+    different geometry
   - uses `themeVariables.lineColor`, `mainBkg`, and `textColor`
 
 ## Known Gaps
 
-- Both `structure` and `parity` DOM modes pass all 12 fixtures in the current committed baseline
-  corpus. The former 11-fixture wrapper residual was closed by retaining the renderer's typed group
-  ownership; no comparator normalization or fixture-specific policy is involved.
+- `structure` DOM mode passes all 13 fixtures in the current baseline corpus. The 12 classic-look
+  fixtures also pass `parity` mode. The former wrapper residual was closed by retaining the
+  renderer's typed group ownership; no comparator normalization or fixture-specific policy is
+  involved.
 - A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/ishikawa/`.
-- Hand-drawn / rough.js mode is not implemented in local SVG output.
-- `look: "handDrawn"` remains a dedicated follow-up lane and should not be promoted in the
-  config support matrix until Ishikawa has rendered SVG tests proving deterministic RoughJS output
-  and seed behavior for the spine, branches, head, and label boxes.
+- Cypress case 6 is pinned with `handDrawnSeed: 1` for reproducible baseline generation. Upstream's
+  default seed `0` delegates to random RoughJS seeding and does not produce a stable SVG across
+  independent renders; the explicit seed is a deterministic baseline-policy adaptation.
+- The hand-drawn fixture retains path-coordinate differences between JavaScript RoughJS and the
+  Rust `roughr` implementation. Its group/path structure and paint attributes converge, but exact
+  RoughJS path geometry remains a documented parity residual rather than comparator normalization.
 - Browser `getBBox()` float parity for labels and head shape has not been strict-audited.
-- Full Cypress image snapshot coverage has not been imported.
+- All 12 Cypress rendering inputs are represented. Browser image-pixel snapshots are not part of
+  the headless DOM comparison contract.

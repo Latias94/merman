@@ -8,115 +8,88 @@ use super::viewbox::{
 };
 use super::*;
 
-pub(super) fn render_flowchart_v2_svg(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let config = merman_core::MermaidConfig::from_value(effective_config.clone());
-    render_flowchart_v2_svg_with_config(layout, semantic, &config, diagram_title, measurer, options)
-}
-
-#[inline]
-fn section(enabled: bool, dst: &mut web_time::Duration) -> Option<timing::TimingGuard<'_>> {
-    enabled.then(|| timing::TimingGuard::new(dst))
-}
-
-pub(super) fn render_flowchart_v2_svg_model_with_config(
-    layout: &FlowchartV2Layout,
-    model: &crate::flowchart::FlowchartV2Model,
+pub(in crate::svg::parity) fn render_flowchart_svg_model_with_config(
+    layout: &FlowchartLayout,
+    model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
+    diagram_type: &str,
     diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let timing_enabled = timing::render_timing_enabled();
-    let mut timings = timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-
-    render_flowchart_v2_svg_with_config_inner(
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    render_flowchart_svg_model(
         layout,
+        None,
         model,
         effective_config,
+        diagram_type,
         diagram_title,
-        measurer,
         options,
-        FlowchartSvgTiming {
-            enabled: timing_enabled,
-            timings: &mut timings,
-            total_start,
-        },
     )
 }
 
-pub(super) fn render_flowchart_v2_svg_with_config(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
+pub(in crate::svg::parity::flowchart) fn render_flowchart_svg_model_with_swimlane(
+    layout: &FlowchartLayout,
+    swimlane_layout: &crate::model::SwimlaneLayout,
+    model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
+    diagram_type: &str,
     diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let timing_enabled = timing::render_timing_enabled();
-    let mut timings = timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-
-    let model: crate::flowchart::FlowchartV2Model = {
-        let _g = section(timing_enabled, &mut timings.deserialize_model);
-        crate::json::from_value_ref(semantic)?
-    };
-
-    render_flowchart_v2_svg_with_config_inner(
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    render_flowchart_svg_model(
         layout,
-        &model,
+        Some(swimlane_layout),
+        model,
         effective_config,
+        diagram_type,
         diagram_title,
-        measurer,
         options,
-        FlowchartSvgTiming {
-            enabled: timing_enabled,
-            timings: &mut timings,
-            total_start,
-        },
     )
 }
 
-struct FlowchartSvgTiming<'a> {
-    enabled: bool,
-    timings: &'a mut timing::RenderTimings,
-    total_start: web_time::Instant,
-}
-
-fn render_flowchart_v2_svg_with_config_inner(
-    layout: &FlowchartV2Layout,
-    model: &crate::flowchart::FlowchartV2Model,
+fn render_flowchart_svg_model(
+    layout: &FlowchartLayout,
+    swimlane_layout: Option<&crate::model::SwimlaneLayout>,
+    model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
+    diagram_type: &str,
     diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-    timing: FlowchartSvgTiming<'_>,
-) -> Result<String> {
-    let timing_enabled = timing.enabled;
-    let timings = timing.timings;
-    let total_start = timing.total_start;
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    if model
+        .nodes
+        .iter()
+        .any(|node| node.layout_shape.as_deref() == Some("ellipse"))
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "No such shape: ellipse. Please check your syntax.".to_string(),
+        });
+    }
+
+    let render_timing = options.timing();
+    let measurer = options.text_measurer();
+    let mut timings = timing::RenderTimings::default();
+    let total_timer = render_timing.start();
 
     let effective_config_value = effective_config.as_value();
+    let hand_drawn_seed = options.rough_randomness(
+        effective_config_value
+            .get("handDrawnSeed")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(options.seed() as f64),
+        "render.flowchart.roughjs",
+    );
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_type = options
-        .aria_roledescription
-        .as_deref()
-        .unwrap_or("flowchart-v2");
-
-    let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
+    let _g_build_ctx = render_timing.section(&mut timings.build_ctx);
 
     let FlowchartRenderInputs {
-        render_edges,
+        mut render_edges,
         extra_nodes,
-    } = prepare_flowchart_render_inputs(model, layout.source_ported_elk_rendering);
+    } = prepare_flowchart_render_inputs(model, layout.uses_elk_adapter_dom);
+    if let Some(swimlane_layout) = swimlane_layout {
+        super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
+    }
 
     let FlowchartRenderConfig {
         font_family,
@@ -163,6 +136,22 @@ fn render_flowchart_v2_svg_with_config_inner(
         edges_by_id.insert(edge.id.as_str(), edge);
     }
 
+    let swimlane_direction = swimlane_layout.map(|layout| layout.direction);
+    let swimlane_lanes_by_id: FxHashMap<&str, &crate::model::SwimlaneLaneLayout> = swimlane_layout
+        .into_iter()
+        .flat_map(|layout| layout.lanes.iter())
+        .map(|lane| (lane.id.as_str(), lane))
+        .collect();
+    let swimlane_edge_label_edges_by_node_id: FxHashMap<&str, &crate::flowchart::FlowEdge> =
+        swimlane_layout
+            .into_iter()
+            .flat_map(|layout| layout.edges.iter())
+            .filter_map(|layout_edge| {
+                let label_node_id = layout_edge.label_node_id.as_deref()?;
+                let edge = edges_by_id.get(layout_edge.id.as_str()).copied()?;
+                Some((label_node_id, edge))
+            })
+            .collect();
     let subgraph_order: Vec<&str> = model.subgraphs.iter().map(|s| s.id.as_str()).collect();
     let mut subgraphs_by_id: FxHashMap<&str, &crate::flowchart::FlowSubgraph> =
         FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
@@ -223,6 +212,7 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     let node_dom_index = flowchart_node_dom_indices(model);
 
+    let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let ctx = FlowchartRenderCtx {
         diagram_id,
         diagram_type,
@@ -230,18 +220,20 @@ fn render_flowchart_v2_svg_with_config_inner(
         ty,
         measurer,
         config: effective_config,
-        math_renderer: options.math_renderer.as_deref(),
-        icon_registry: options.icon_registry.as_deref(),
+        hand_drawn_seed,
+        work_meter: options.work_meter(),
+        math_renderer: options.math_renderer(),
+        icon_registry: options.icon_registry(),
         node_html_labels,
         edge_html_labels,
-        source_backed_edge_label_bboxes: layout.source_backed_edge_label_bboxes,
-        source_ported_elk_rendering: layout.source_ported_elk_rendering,
+        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
         class_defs: &model.class_defs,
         node_border_color,
         node_fill_color,
         default_edge_interpolate,
         default_edge_style,
-        trace_edge_id: std::env::var("MERMAN_TRACE_FLOWCHART_EDGE").ok(),
+        trace_edge_id: flowchart_edge_trace.map(|(edge_id, _)| edge_id),
+        trace_collector: flowchart_edge_trace.map(|(_, collector)| collector),
         subgraph_order,
         edge_order,
         nodes_by_id,
@@ -253,6 +245,9 @@ fn render_flowchart_v2_svg_with_config_inner(
         layout_nodes_by_id,
         layout_edges_by_id,
         layout_clusters_by_id,
+        swimlane_direction,
+        swimlane_lanes_by_id,
+        swimlane_edge_label_edges_by_node_id,
         dom_node_order_by_root: &layout.dom_node_order_by_root,
         node_dom_index,
         node_padding,
@@ -289,8 +284,8 @@ fn render_flowchart_v2_svg_with_config_inner(
     drop(_g_build_ctx);
 
     let mut detail = FlowchartRenderDetails::default();
-    let mut viewbox_edge_curve_bounds = web_time::Duration::ZERO;
-    let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
+    let mut viewbox_edge_curve_bounds = std::time::Duration::ZERO;
+    let _g_viewbox = render_timing.section(&mut timings.viewbox);
 
     let effective_parent_for_id = |id: &str| -> Option<&str> {
         let mut cur = ctx.parent.get(id).copied();
@@ -332,20 +327,24 @@ fn render_flowchart_v2_svg_with_config_inner(
             diagram_title,
             font_family: &font_family,
             title_top_margin,
-            timing_enabled,
+            timing: render_timing,
             viewbox_edge_curve_bounds: &mut viewbox_edge_curve_bounds,
             detail: &mut detail,
             edge_path_cache: &mut edge_path_cache,
         },
         &effective_parent_for_id,
-    );
+    )?;
 
     let document = prepare_flowchart_svg_document(FlowchartSvgDocumentRequest {
+        family_kind: if swimlane_layout.is_some() {
+            crate::family::RenderFamilyKind::Swimlane
+        } else {
+            crate::family::RenderFamilyKind::Flowchart
+        },
         diagram_id,
         diagram_type,
         model,
         use_max_width,
-        apply_root_overrides: options.apply_root_overrides,
         diagram_padding,
         bbox_min_x,
         bbox_min_y,
@@ -354,15 +353,18 @@ fn render_flowchart_v2_svg_with_config_inner(
     });
 
     drop(_g_viewbox);
-    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+    let _g_render_svg = render_timing.section(&mut timings.render_svg);
 
-    let css = flowchart_css(
+    let mut css = flowchart_css(
         diagram_id,
         effective_config_value,
         &font_family,
         font_size,
         &model.class_defs,
-    );
+    )?;
+    if swimlane_layout.is_some() {
+        css.push_str(&super::swimlane::swimlane_css(diagram_id, effective_config));
+    }
 
     let estimated_svg_bytes = 2048usize
         + css.len()
@@ -371,7 +373,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         + layout.clusters.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
 
-    document.push_root_open(&mut out);
+    let root_document = document.push_root_open(&mut out)?;
     document.push_accessibility_metadata(&mut out);
     out.push_str("<style>");
     out.push_str(&css);
@@ -380,23 +382,22 @@ fn render_flowchart_v2_svg_with_config_inner(
     let defs = prepare_flowchart_defs(diagram_id, diagram_type, &ctx);
 
     let mut root_session = FlowchartRootRenderSession {
-        timing_enabled,
+        timing: render_timing,
         details: &mut detail,
-        edge_cache: Some(&edge_path_cache),
+        edge_cache: &edge_path_cache,
     };
-    let use_elk_adapter_dom = diagram_type == "flowchart-elk" || layout.source_ported_elk_rendering;
-    if use_elk_adapter_dom {
+    if layout.uses_elk_adapter_dom {
         out.push_str("<g>");
         defs.push_base_markers(&mut out);
         defs.push_extra_markers(&mut out);
         out.push_str("</g>");
         push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
-        render_flowchart_elk_root_groups(&mut out, &ctx, &mut root_session);
+        render_flowchart_elk_root_groups(&mut out, &ctx, &mut root_session)?;
     } else {
         push_flowchart_shadow_defs(&mut out, diagram_id, effective_config_value);
         out.push_str("<g>");
         defs.push_base_markers(&mut out);
-        render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, &mut root_session);
+        render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, &mut root_session)?;
 
         defs.push_extra_markers(&mut out);
         out.push_str("</g>");
@@ -416,8 +417,10 @@ fn render_flowchart_v2_svg_with_config_inner(
     out.push_str("</svg>\n");
 
     drop(_g_render_svg);
-    timings.total = total_start.elapsed();
-    if timing_enabled {
+    timings.total = total_timer
+        .map(merman_core::runtime::OperationTimer::elapsed)
+        .unwrap_or_default();
+    if render_timing.is_enabled() {
         eprintln!(
             "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} viewbox_edge_curve_lca={:?} viewbox_edge_curve_offsets={:?} viewbox_edge_curve_geom={:?} viewbox_edge_curve_bbox_union={:?} viewbox_edge_curve_geom_calls={} viewbox_edge_curve_geom_skipped_bounds={} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} node_style_compile={:?} node_roughjs={:?} node_roughjs_calls={} node_label_html={:?} node_label_html_calls={} nested_roots={:?}",
             timings.total,
@@ -448,7 +451,7 @@ fn render_flowchart_v2_svg_with_config_inner(
             detail.nested_roots,
         );
     }
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_flowchart_shadow_defs(

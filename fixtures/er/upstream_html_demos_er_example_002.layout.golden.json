@@ -5,19 +5,19 @@
       "nodes": [
         {
           "id": "entity-HOSPITAL-0",
-          "x": 110.568,
-          "y": 149.625,
-          "width": 221.135,
+          "x": 117.82,
+          "y": 157.625,
+          "width": 219.64,
           "height": 299.25,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 221.135,
-        "max_y": 299.25
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 227.64,
+        "max_y": 307.25
       }
     }
   }

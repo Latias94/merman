@@ -1,107 +1,77 @@
-# Merman Apple Package
+# Merman For Apple Platforms
 
-Experimental Swift Package wrapper for iOS and macOS.
+Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-The package uses `platforms/apple/Merman.xcframework` as a binary target and exposes a Swift
-`MermanEngine` over the C ABI.
+> **Alpha:** use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
-## Build XCFramework
+## Requirements
 
-On macOS with Xcode:
+- Swift 5.9 or newer
+- iOS 14 or newer, or macOS 12 or newer
+- Xcode on macOS for local package use
+- Python 3, Rust 1.95 with `rustup`, Cargo, and `lipo` only when building the XCFramework from source
 
-```bash
+For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-line client cannot select iOS slices from an XCFramework for `swift build --triple`; that command-line cross-build path requires SwiftPM 5.10 or newer.
+
+## Add A Release XCFramework
+
+Check out the source tree at the same release tag as the archive, then extract `Merman.xcframework-<tag>.zip` from [GitHub Releases](https://github.com/Latias94/merman/releases) so the framework is located at `platforms/apple/Merman.xcframework`. Add the repository root as a local package in Xcode or SwiftPM and link the `Merman` product.
+
+The release archive contains the binary XCFramework and legal material. The matching checkout supplies the generated Swift facade and `Package.swift`; mixing tags is unsupported.
+
+## Build The Local Package
+
+```sh
 bash scripts/build-apple-xcframework.sh
 ```
 
-iOS-only:
+Add the repository root as a local package in Xcode or SwiftPM and link the `Merman` product. The root `Package.swift` resolves `platforms/apple/Merman.xcframework` by path. Release workflows attach a versioned XCFramework archive and checksum to GitHub Releases; the manifest deliberately does not currently declare a remote `.binaryTarget(url:checksum:)`.
 
-```bash
-bash platforms/ios/build-ios.sh
-```
-
-Generated `Merman.xcframework` is ignored by git.
-
-## Swift API
+## Render A Diagram
 
 ```swift
 import Merman
 
-let engine = try MermanEngine()
+let engine = MermanEngine()
 let source = "flowchart TD\nA[Hello] --> B[World]"
-let version = engine.packageVersion
-
-let svg = try engine.renderSvg(
-    source,
-    optionsJson: #"{"svg":{"pipeline":"readable"}}"#
-)
-let semanticJson = try engine.parseJsonRaw(source)
-let layoutJson = try engine.layoutJsonRaw(source)
-let analysisJson = try engine.analyzeJsonRaw(source)
-let documentAnalysisJson = try engine.analyzeDocumentJsonRaw(
-    "```mermaid\n\(source)\n```",
-    uri: "file:///tmp/example.md"
-)
-let documentFactsJson = try engine.analyzeDocumentFactsJsonRaw(
-    "```mermaid\n\(source)\n```",
-    uri: "file:///tmp/example.md"
-)
-let ascii = try engine.renderAscii(source)
-let validation = try engine.validate(source)
-let diagrams = try engine.supportedDiagrams()
-let lintRules = try engine.lintRuleCatalog()
-let themes = try engine.supportedThemes()
-let hostThemePresets = try engine.supportedHostThemePresets()
-
-do {
-    _ = try engine.renderSvg(source, optionsJson: "{")
-} catch MermanError.binding(_, let codeName, let message) {
-    print("\(codeName): \(message)")
-}
+let options = try resourceOptionsJson(profile: .constrained, overrides: [])
+let svg = try engine.renderSvg(source: source, optionsJson: options)
+precondition(svg.hasPrefix("<svg"))
 ```
 
-`MermanEngine` checks the native ABI version and FFI struct sizes during initialization. The package
-version is read from the linked native library.
-`optionsJson` follows the shared schema in
-[`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
-Use `lintRuleCatalog()` to discover analyzer rule ids, evidence references, default severities,
-profiles, origins, configurability, and fixability without hard-coding the rule table in Swift
-hosts.
+`resourceOptionsJson` emits Options JSON schema `2`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
 
-For repeated calls or host font measurement, use `MermanReusableEngine` and install a
-`MermanTextMeasureCallback`. Unsupported measurement requests can return `handled = 0` to fall
-back to merman's vendored metrics for that request.
-Raw document-analysis helpers are available on both `MermanEngine` and `MermanReusableEngine`:
-`analyzeDocumentJsonRaw(source, uri:)` and `analyzeDocumentFactsJsonRaw(source, uri:)`. Pass the
-full Markdown/MDX-like document text and URI to match the C ABI and other platform wrappers.
+Use `MermanOperationRequest` and `engine.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field. The generated `MermanOperationResult` carries binary-safe bytes, media type, and operation metadata. `MermanReusableEngine` is available for repeated work with baseline options plus per-operation deep-merged overrides. Reusable requests cannot change the constructor-owned runtime policy.
 
-For accurate Apple preview geometry, measure with the same text stack that will display the SVG.
-Use Core Text for native previews, or a prepared WKWebView DOM/canvas measurement cache when the SVG
-will be shown in WebKit. The callback is synchronous; return `handled = 0` for unsupported requests
-and keep any `userData` alive until the callback is cleared or the engine is closed. See
-[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#apple-swift).
-For HTML-like labels, measure the natural no-wrap width before applying `maxWidth`; otherwise short
-condition labels can expand to the available wrapping width.
+Empty or omitted options select deterministic runtime state even in the full native SDK. Pass `{"runtime_policy":"native"}` only when the operation should use Apple's clock, time-zone rules, and random source. Generic operation metadata records the selected `runtime_policy`; a custom slim artifact missing a requested adapter returns a typed unsupported-operation error.
 
-## Local Package Use
+Generated binding errors expose `MermanErrorKind`, an optional `capabilityId`, and optional `MermanResourceErrorDetails`. `.unknownOperation` has no capability ID, `.missingCapability` preserves the stable descriptor ID required by the request, and resource failures preserve typed limit evidence without message parsing.
 
-1. Build `platforms/apple/Merman.xcframework`.
-2. Add this repository as a local Swift Package in Xcode.
-3. Link product `Merman`.
+The full native SDK artifact includes semantic JSON, analysis, ASCII, SVG, PNG, JPEG, PDF, Cytoscape and ELK layouts, and RaTeX math. Check `runtimeCatalogJson()` rather than inferring support from package names or build flags. Its supported options and payload schemas, metadata IDs, capability/output/operation IDs, registry facts, and resource-to-operation mappings are the authoritative description of the loaded artifact; treat a typed missing-capability error as the final answer for any attempted operation.
 
-## Smoke Example
+## Text Measurement
 
-After building the XCFramework, run the local SwiftPM smoke example:
+The default vendored measurer is appropriate for CI, server jobs, and deterministic output. Apple previews that must match their final font stack can pass a generated `MermanTextMeasurer` when constructing a reusable engine. That callback is immutable for the engine. Return `nil` for unhandled requests and avoid re-entering the engine during a measurement callback. Callback-free engines allow concurrent operations; callback engines serialize admission and report typed `busy` or `reentrantCall` errors without waiting. Only errors returned through UniFFI's generated callback trampoline are converted; callback code must not unwind across the generated FFI boundary. The [host measurement guide](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md#apple-swift) documents the protocol and lifecycle rules.
 
-```bash
+## Verify Locally
+
+```sh
 bash scripts/build-apple-xcframework.sh
+swift build
 swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 ```
 
-The example lives in `platforms/apple/examples/smoke` and exercises SVG, ASCII, semantic JSON,
-layout JSON, validation, and metadata through the Swift wrapper.
+The final command proves that the checked-in UniFFI Swift projection matches the library used to build the XCFramework.
 
-Release builds upload a zipped `Merman.xcframework` and checksum to GitHub Releases. Release
-workflows do not move or force-update release tags. Direct remote SwiftPM consumption through
-`.binaryTarget(url:checksum:)` is registry-blocked until the release manifest strategy can commit
-the URL and checksum before tagging; the current manifest is for local package use after building or
-downloading the XCFramework.
+## Documentation And Releases
+
+- [Apple binding guide](https://github.com/Latias94/merman/blob/main/docs/bindings/APPLE_SWIFT.md)
+- [UniFFI binding guide](https://github.com/Latias94/merman/blob/main/docs/bindings/UNIFFI.md)
+- [Package changelog](CHANGELOG.md)
+- [Diagram coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
+- [GitHub Releases](https://github.com/Latias94/merman/releases)
+
+## License And Notices
+
+This package is available under MIT or Apache-2.0. See [`LICENSE`](LICENSE), [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), and [`THIRD_PARTY_LICENSES/`](THIRD_PARTY_LICENSES/) beside the Swift package or XCFramework.

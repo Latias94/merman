@@ -1,0 +1,34 @@
+{
+  "diagramType": "cynefin",
+  "model": {
+    "type": "cynefin",
+    "title": "Self-loop Handling",
+    "accTitle": null,
+    "accDescr": null,
+    "domains": [
+      {
+        "name": "complex",
+        "items": [
+          {
+            "label": "Emergent work"
+          }
+        ]
+      },
+      {
+        "name": "complicated",
+        "items": [
+          {
+            "label": "Expert work"
+          }
+        ]
+      }
+    ],
+    "transitions": [
+      {
+        "from": "complex",
+        "to": "complicated",
+        "label": "Pattern found"
+      }
+    ]
+  }
+}

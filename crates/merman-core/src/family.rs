@@ -3,12 +3,180 @@
 //! This module owns release-facing Mermaid family facts and projects them into detector,
 //! parser, render-model, and metadata surfaces.
 
-use crate::baseline::BaselineRegistryProfile;
 use crate::detect::DetectorFn;
-use crate::diagram::{DiagramSemanticParser, RenderSemanticModel, RenderSemanticParser};
-use crate::{MermaidConfig, ParseMetadata, Result};
+use crate::diagram::{
+    BuiltInDiagramSemanticParser, BuiltInRenderSemanticParser, RenderSemanticModel,
+};
+use crate::{
+    EditorSemanticFacts, Error, MermaidConfig, ParseControl, ParseControlResult, ParseMetadata,
+    Result,
+};
+use serde::Serialize;
 use serde_json::Value;
 use std::sync::OnceLock;
+
+pub(crate) type CombinedSemanticParser = fn(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<CombinedSemanticParse>;
+
+/// Closed result of one family semantic construction.
+///
+/// A failed construction still owns the parser-derived editor facts produced before the error.
+/// This prevents callers from invoking a second recovery parser over the same source.
+pub(crate) struct CombinedSemanticParse {
+    model: Result<Value>,
+    editor_facts: EditorSemanticFacts,
+}
+
+/// Closed failure handoff produced after a family has retained its recovery journal.
+pub(crate) struct CombinedSemanticFailure {
+    error: Box<Error>,
+    editor_facts: Box<EditorSemanticFacts>,
+    recovery_parser: Option<&'static str>,
+}
+
+impl CombinedSemanticFailure {
+    pub(crate) fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
+        Self {
+            error: Box::new(error),
+            editor_facts: Box::new(editor_facts),
+            recovery_parser: None,
+        }
+    }
+
+    pub(crate) fn parser_recovery(
+        parser: &'static str,
+        error: Error,
+        editor_facts: EditorSemanticFacts,
+    ) -> Self {
+        Self {
+            error: Box::new(error),
+            editor_facts: Box::new(editor_facts),
+            recovery_parser: Some(parser),
+        }
+    }
+
+    pub(crate) fn replace_family_lexemes(&mut self, batch: crate::editor::EditorLexemeBatchResult) {
+        self.editor_facts.replace_family_lexemes(batch);
+    }
+
+    pub(crate) fn into_parts(mut self) -> (Error, EditorSemanticFacts) {
+        if let Some(parser) = self.recovery_parser.take() {
+            let (message, span) = match self.error.as_ref() {
+                Error::DiagramParse { diagnostic, .. } => {
+                    (diagnostic.message().to_string(), diagnostic.span())
+                }
+                error => (error.to_string(), None),
+            };
+            self.editor_facts.mark_recovered_from_parse_error(
+                format!("{parser} parser recovered after parse error: {message}"),
+                span,
+            );
+        }
+        (*self.error, *self.editor_facts)
+    }
+
+    pub(crate) fn into_error(self) -> Error {
+        *self.error
+    }
+}
+
+#[cfg(test)]
+mod combined_semantic_failure_tests {
+    use super::*;
+    use crate::{EditorSemanticDiagnosticKind, ParseDiagnosticSpanKind, SourceSpan};
+
+    #[test]
+    fn parser_recovery_preserves_the_strict_error_and_exact_editor_diagnostic() {
+        let span = SourceSpan::new(17, 29);
+        let failure = CombinedSemanticFailure::parser_recovery(
+            "quadrant chart",
+            Error::diagram_parse_exact("quadrantChart", "expected point coordinates", span),
+            EditorSemanticFacts::new(),
+        );
+
+        let (error, facts) = failure.into_parts();
+        let Error::DiagramParse {
+            diagram_type,
+            diagnostic,
+        } = error
+        else {
+            panic!("expected diagram parse error");
+        };
+        assert_eq!(diagram_type, "quadrantChart");
+        assert_eq!(diagnostic.message(), "expected point coordinates");
+        assert_eq!(diagnostic.span(), Some(span));
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+        assert_eq!(facts.diagnostics.len(), 1);
+        assert_eq!(
+            facts.diagnostics[0].message,
+            "quadrant chart parser recovered after parse error: expected point coordinates"
+        );
+        assert_eq!(facts.diagnostics[0].span, Some(span));
+        assert_eq!(
+            facts.diagnostics[0].kind,
+            EditorSemanticDiagnosticKind::ParserRecovery
+        );
+    }
+}
+
+impl CombinedSemanticParse {
+    pub(crate) fn from_construction<S, F>(
+        construction: std::result::Result<S, F>,
+        success: impl FnOnce(S) -> (Result<Value>, EditorSemanticFacts),
+        failure: impl FnOnce(F) -> (Error, EditorSemanticFacts),
+    ) -> Self {
+        match construction {
+            Ok(source) => {
+                let (model, editor_facts) = success(source);
+                Self {
+                    model,
+                    editor_facts,
+                }
+            }
+            Err(parse_failure) => {
+                let (error, editor_facts) = failure(parse_failure);
+                Self {
+                    model: Err(error),
+                    editor_facts,
+                }
+            }
+        }
+    }
+
+    pub(crate) fn into_parts(self) -> (Result<Value>, EditorSemanticFacts) {
+        (self.model, self.editor_facts)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::{CombinedSemanticParse, CombinedSemanticParser};
+    use crate::{EditorSemanticFacts, Error, ParseControl, ParseControlResult, ParseMetadata};
+    use serde_json::Value;
+
+    pub(crate) fn into_result(
+        parsed: ParseControlResult<CombinedSemanticParse>,
+    ) -> std::result::Result<(Value, EditorSemanticFacts), Error> {
+        let (model, editor_facts) = parsed
+            .expect("a private parse control cannot be cancelled")
+            .into_parts();
+        model.map(|model| (model, editor_facts))
+    }
+
+    pub(crate) fn editor_facts(
+        parser: CombinedSemanticParser,
+        code: &str,
+        meta: &ParseMetadata,
+    ) -> EditorSemanticFacts {
+        parser(code, meta, &ParseControl::new())
+            .expect("a private parse control cannot be cancelled")
+            .into_parts()
+            .1
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct DetectorFact {
@@ -17,23 +185,9 @@ pub(crate) struct DetectorFact {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct FastDetectKeywordFact {
-    pub(crate) keyword: &'static str,
-    pub(crate) id: &'static str,
-}
-
-#[derive(Clone, Copy)]
 pub(crate) struct SemanticParserFact {
     pub(crate) id: &'static str,
-    pub(crate) parser: DiagramSemanticParser,
-    pub(crate) header_policy: HeaderPolicy,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HeaderPolicy {
-    Required,
-    Alias(&'static str),
-    Internal,
+    pub(crate) parser: BuiltInDiagramSemanticParser,
 }
 
 #[derive(Clone, Copy)]
@@ -41,726 +195,295 @@ pub(crate) struct RenderParserFact {
     pub(crate) id: &'static str,
     pub(crate) metadata_id: Option<&'static str>,
     pub(crate) model_kind: &'static str,
-    pub(crate) parser: RenderSemanticParser,
+    pub(crate) parser: BuiltInRenderSemanticParser,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SupportedDiagramFact {
-    pub(crate) metadata_id: &'static str,
-    pub(crate) render_parser_ids: Vec<&'static str>,
+#[derive(Clone, Copy)]
+pub(crate) struct CombinedParserFact {
+    pub(crate) id: &'static str,
+    pub(crate) parser: CombinedSemanticParser,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DiagramHeaderFact {
-    /// Mermaid diagram type id used for profile gating.
+    /// Mermaid diagram type id owned by this catalog entry.
     pub diagram_type: &'static str,
     /// Header text suggested to the user.
     pub label: &'static str,
     /// Short description shown in completion details.
     pub detail: &'static str,
-    /// Whether this header should only appear in the full baseline profile.
-    pub full_only: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 pub struct DiagramFamilyCapability {
     /// Mermaid diagram type id used by the pinned detector and parser registries.
     pub diagram_type: &'static str,
+    /// Logical diagram family. This does not change when a family reuses another render model.
+    pub logical_family_kind: &'static str,
     /// Public supported-diagram metadata id, when this family contributes an admitted renderer.
     pub metadata_id: Option<&'static str>,
-    /// Whether the selected registry profile has a semantic parser for this diagram type.
+    /// Typed render-model kind, when this id owns a typed render projection.
+    pub render_model_kind: Option<&'static str>,
+    /// Whether this id participates in automatic detection.
+    pub has_detector: bool,
+    /// Whether the pinned catalog has a semantic parser for this diagram type.
     pub has_semantic_parser: bool,
-    /// Whether the selected registry profile has a typed render-model parser for this diagram type.
+    /// Whether the pinned catalog has parser-backed editor facts.
+    pub has_editor_parser: bool,
+    /// Whether JSON and editor facts share one combined semantic construction.
+    pub has_combined_parser: bool,
+    /// Whether the pinned catalog has a typed render-model parser for this diagram type.
     pub has_render_parser: bool,
+    /// Whether this id contributes at least one authoring header.
+    pub has_header: bool,
+    /// Mermaid configuration namespace associated with this id.
+    pub config_namespace: Option<&'static str>,
 }
 
-pub(crate) fn detector_facts(profile: BaselineRegistryProfile) -> &'static [DetectorFact] {
-    match profile {
-        BaselineRegistryProfile::Tiny => detector_facts_tiny(),
-        BaselineRegistryProfile::Full => DETECTOR_FACTS_FULL,
-    }
-}
+/// Closed, catalog-owned identity for one logical Mermaid diagram family.
+///
+/// The inner value is private so editor facts cannot invent family ownership from an arbitrary
+/// string. Instances only come from the admitted family catalog and are cheap to copy into
+/// lexical provenance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(transparent)]
+pub struct DiagramFamilyId(&'static str);
 
-pub(crate) fn fast_detect_by_leading_keyword(
-    text: &str,
-    profile: BaselineRegistryProfile,
-) -> Option<&'static str> {
-    fn has_boundary(rest: &str) -> bool {
-        rest.is_empty()
-            || rest
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_whitespace() || c == ';')
-    }
-
-    let trimmed = text.trim_start();
-    let keywords = match profile {
-        BaselineRegistryProfile::Tiny => fast_detect_keyword_facts_tiny(),
-        BaselineRegistryProfile::Full => FAST_DETECT_KEYWORDS_FULL,
-    };
-
-    keywords.iter().find_map(|fact| {
-        trimmed
-            .strip_prefix(fact.keyword)
-            .and_then(|rest| has_boundary(rest).then_some(fact.id))
-    })
-}
-
-pub(crate) fn selected_registry_profile() -> BaselineRegistryProfile {
-    #[cfg(feature = "full-registry")]
-    {
-        BaselineRegistryProfile::Full
-    }
-    #[cfg(not(feature = "full-registry"))]
-    {
-        BaselineRegistryProfile::Tiny
+impl DiagramFamilyId {
+    pub fn as_str(self) -> &'static str {
+        self.0
     }
 }
 
-pub(crate) fn semantic_parser_facts(
-    profile: BaselineRegistryProfile,
-) -> &'static [SemanticParserFact] {
-    match profile {
-        BaselineRegistryProfile::Tiny => semantic_parser_facts_tiny(),
-        BaselineRegistryProfile::Full => SEMANTIC_PARSER_FACTS,
-    }
+struct FamilyCatalogProjection {
+    detector_facts: Vec<DetectorFact>,
+    semantic_parser_facts: Vec<SemanticParserFact>,
+    render_parser_facts: Vec<RenderParserFact>,
+    combined_parser_facts: Vec<CombinedParserFact>,
+    supported_diagram_metadata_ids: Vec<&'static str>,
+    diagram_header_facts: Vec<DiagramHeaderFact>,
+    diagram_family_capabilities: Vec<DiagramFamilyCapability>,
 }
 
-pub(crate) fn render_parser_facts(profile: BaselineRegistryProfile) -> &'static [RenderParserFact] {
-    match profile {
-        BaselineRegistryProfile::Tiny => render_parser_facts_tiny(),
-        BaselineRegistryProfile::Full => RENDER_PARSER_FACTS,
-    }
-}
+impl FamilyCatalogProjection {
+    fn build() -> Self {
+        let mut detector_facts = Vec::<(u16, DetectorFact)>::new();
+        let mut semantic_parser_facts = Vec::<(u16, SemanticParserFact)>::new();
+        let mut render_parser_facts = Vec::<(u16, RenderParserFact)>::new();
+        let mut combined_parser_facts = Vec::<(u16, CombinedParserFact)>::new();
+        let mut metadata_facts = Vec::<(u16, &'static str)>::new();
+        let mut diagram_header_facts = Vec::<(u16, DiagramHeaderFact)>::new();
+        let mut diagram_family_capabilities = Vec::<(u16, DiagramFamilyCapability)>::new();
 
-pub(crate) fn supported_diagram_facts(
-    profile: BaselineRegistryProfile,
-) -> &'static [SupportedDiagramFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<SupportedDiagramFact> {
-        let render_facts = render_parser_facts(profile);
-        SUPPORTED_DIAGRAM_METADATA_IDS
-            .iter()
-            .filter_map(|metadata_id| {
-                let render_parser_ids: Vec<_> = render_facts
-                    .iter()
-                    .filter_map(|fact| (fact.metadata_id == Some(*metadata_id)).then_some(fact.id))
-                    .collect();
-
-                (!render_parser_ids.is_empty()).then_some(SupportedDiagramFact {
-                    metadata_id,
-                    render_parser_ids,
-                })
-            })
-            .collect()
-    }
-
-    static TINY_FACTS: OnceLock<Vec<SupportedDiagramFact>> = OnceLock::new();
-    static FULL_FACTS: OnceLock<Vec<SupportedDiagramFact>> = OnceLock::new();
-
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY_FACTS
-            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
-            .as_slice(),
-        BaselineRegistryProfile::Full => FULL_FACTS
-            .get_or_init(|| build(BaselineRegistryProfile::Full))
-            .as_slice(),
-    }
-}
-
-pub(crate) fn supported_diagram_metadata_ids(
-    profile: BaselineRegistryProfile,
-) -> &'static [&'static str] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<&'static str> {
-        supported_diagram_facts(profile)
-            .iter()
-            .inspect(|fact| debug_assert!(!fact.render_parser_ids.is_empty()))
-            .map(|fact| fact.metadata_id)
-            .collect()
-    }
-
-    static TINY_IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
-    static FULL_IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
-
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY_IDS
-            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
-            .as_slice(),
-        BaselineRegistryProfile::Full => FULL_IDS
-            .get_or_init(|| build(BaselineRegistryProfile::Full))
-            .as_slice(),
-    }
-}
-
-pub(crate) fn diagram_header_facts(
-    profile: BaselineRegistryProfile,
-) -> &'static [DiagramHeaderFact] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<DiagramHeaderFact> {
-        let include_full_only = matches!(profile, BaselineRegistryProfile::Full);
-        DIAGRAM_HEADER_FACTS
-            .iter()
-            .copied()
-            .filter(|fact| {
-                diagram_type_supported_in_profile(profile, fact.diagram_type)
-                    && (!fact.full_only || include_full_only)
-                    && semantic_parser_facts(profile).iter().any(|semantic| {
-                        semantic.id == fact.diagram_type
-                            && semantic.header_policy == HeaderPolicy::Required
-                    })
-            })
-            .collect()
-    }
-
-    static TINY_FACTS: OnceLock<Vec<DiagramHeaderFact>> = OnceLock::new();
-    static FULL_FACTS: OnceLock<Vec<DiagramHeaderFact>> = OnceLock::new();
-
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY_FACTS
-            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
-            .as_slice(),
-        BaselineRegistryProfile::Full => FULL_FACTS
-            .get_or_init(|| build(BaselineRegistryProfile::Full))
-            .as_slice(),
-    }
-}
-
-#[cfg(test)]
-pub(crate) fn declared_diagram_header_facts() -> &'static [DiagramHeaderFact] {
-    DIAGRAM_HEADER_FACTS
-}
-
-#[cfg(test)]
-pub(crate) fn fast_detect_keyword_facts(
-    profile: BaselineRegistryProfile,
-) -> &'static [FastDetectKeywordFact] {
-    match profile {
-        BaselineRegistryProfile::Tiny => fast_detect_keyword_facts_tiny(),
-        BaselineRegistryProfile::Full => FAST_DETECT_KEYWORDS_FULL,
-    }
-}
-
-pub(crate) fn diagram_family_capabilities(
-    profile: BaselineRegistryProfile,
-) -> &'static [DiagramFamilyCapability] {
-    fn build(profile: BaselineRegistryProfile) -> Vec<DiagramFamilyCapability> {
-        let detector_facts = detector_facts(profile);
-        let semantic_facts = semantic_parser_facts(profile);
-        let render_facts = render_parser_facts(profile);
-
-        let mut capabilities: Vec<_> = detector_facts
-            .iter()
-            .filter(|detector| detector.id != "---")
-            .map(|detector| {
-                let semantic = semantic_facts
-                    .iter()
-                    .find(|semantic| semantic.id == detector.id);
-                let render = render_facts.iter().find(|render| render.id == detector.id);
+        for (family, variant) in variants() {
+            if let Some(ordered) = variant.detector {
+                detector_facts.push((
+                    ordered.order,
+                    DetectorFact {
+                        id: variant.id,
+                        detector: ordered.value,
+                    },
+                ));
+            }
+            if let Some(ordered) = variant.semantic {
+                semantic_parser_facts.push((
+                    ordered.order,
+                    SemanticParserFact {
+                        id: variant.id,
+                        parser: ordered.value,
+                    },
+                ));
+            }
+            if let Some(ordered) = variant.typed_render {
+                render_parser_facts.push((
+                    ordered.order,
+                    RenderParserFact {
+                        id: variant.id,
+                        metadata_id: variant.metadata.map(|metadata| metadata.id),
+                        model_kind: variant
+                            .render_model_kind
+                            .expect("typed render variants declare their model kind"),
+                        parser: ordered.value,
+                    },
+                ));
+            }
+            if let Some(ordered) = variant.combined {
+                combined_parser_facts.push((
+                    ordered.order,
+                    CombinedParserFact {
+                        id: variant.id,
+                        parser: ordered.value,
+                    },
+                ));
+            }
+            if let Some((order, id)) = variant
+                .metadata
+                .and_then(|metadata| metadata.order.map(|order| (order, metadata.id)))
+            {
+                metadata_facts.push((order, id));
+            }
+            for header in variant.headers {
+                diagram_header_facts.push((
+                    header.order,
+                    DiagramHeaderFact {
+                        diagram_type: variant.id,
+                        label: header.label,
+                        detail: header.detail,
+                    },
+                ));
+            }
+            diagram_family_capabilities.push((
+                variant.catalog_order,
                 DiagramFamilyCapability {
-                    diagram_type: detector.id,
-                    metadata_id: render.and_then(|render| render.metadata_id),
-                    has_semantic_parser: semantic.is_some(),
-                    has_render_parser: render.is_some(),
-                }
+                    diagram_type: variant.id,
+                    logical_family_kind: family.logical_kind,
+                    metadata_id: variant.metadata.map(|metadata| metadata.id),
+                    render_model_kind: variant.render_model_kind,
+                    has_detector: variant.detector.is_some(),
+                    has_semantic_parser: variant.semantic.is_some(),
+                    has_editor_parser: variant.combined.is_some(),
+                    has_combined_parser: variant.combined.is_some(),
+                    has_render_parser: variant.typed_render.is_some(),
+                    has_header: !variant.headers.is_empty(),
+                    config_namespace: family.config.map(|config| config.namespace),
+                },
+            ));
+        }
+
+        let detector_facts = ordered_values(detector_facts);
+        let semantic_parser_facts = ordered_values(semantic_parser_facts);
+        let render_parser_facts = ordered_values(render_parser_facts);
+        let combined_parser_facts = ordered_values(combined_parser_facts);
+        let metadata_facts = ordered_values(metadata_facts);
+        let diagram_header_facts = ordered_values(diagram_header_facts);
+        let diagram_family_capabilities = ordered_values(diagram_family_capabilities);
+        let supported_diagram_metadata_ids = metadata_facts
+            .into_iter()
+            .filter(|metadata_id| {
+                render_parser_facts
+                    .iter()
+                    .any(|fact| fact.metadata_id == Some(*metadata_id))
             })
             .collect();
 
-        for semantic in semantic_facts {
-            if capabilities
-                .iter()
-                .any(|capability| capability.diagram_type == semantic.id)
-            {
-                continue;
-            }
-            let render = render_facts.iter().find(|render| render.id == semantic.id);
-            capabilities.push(DiagramFamilyCapability {
-                diagram_type: semantic.id,
-                metadata_id: render.and_then(|render| render.metadata_id),
-                has_semantic_parser: true,
-                has_render_parser: render.is_some(),
-            });
-        }
-
-        for render in render_facts {
-            if capabilities
-                .iter()
-                .any(|capability| capability.diagram_type == render.id)
-            {
-                continue;
-            }
-            capabilities.push(DiagramFamilyCapability {
-                diagram_type: render.id,
-                metadata_id: render.metadata_id,
-                has_semantic_parser: false,
-                has_render_parser: true,
-            });
-        }
-
-        capabilities
-    }
-
-    static TINY_CAPABILITIES: OnceLock<Vec<DiagramFamilyCapability>> = OnceLock::new();
-    static FULL_CAPABILITIES: OnceLock<Vec<DiagramFamilyCapability>> = OnceLock::new();
-
-    match profile {
-        BaselineRegistryProfile::Tiny => TINY_CAPABILITIES
-            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
-            .as_slice(),
-        BaselineRegistryProfile::Full => FULL_CAPABILITIES
-            .get_or_init(|| build(BaselineRegistryProfile::Full))
-            .as_slice(),
-    }
-}
-
-fn semantic_parser_facts_tiny() -> &'static [SemanticParserFact] {
-    static FACTS: OnceLock<Vec<SemanticParserFact>> = OnceLock::new();
-    FACTS
-        .get_or_init(|| {
-            SEMANTIC_PARSER_FACTS
-                .iter()
-                .copied()
-                .filter(|fact| {
-                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
-                })
-                .collect()
-        })
-        .as_slice()
-}
-
-fn render_parser_facts_tiny() -> &'static [RenderParserFact] {
-    static FACTS: OnceLock<Vec<RenderParserFact>> = OnceLock::new();
-    FACTS
-        .get_or_init(|| {
-            RENDER_PARSER_FACTS
-                .iter()
-                .copied()
-                .filter(|fact| {
-                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
-                })
-                .collect()
-        })
-        .as_slice()
-}
-
-fn detector_facts_tiny() -> &'static [DetectorFact] {
-    static FACTS: OnceLock<Vec<DetectorFact>> = OnceLock::new();
-    FACTS
-        .get_or_init(|| {
-            DETECTOR_FACTS_FULL
-                .iter()
-                .copied()
-                .filter(|fact| {
-                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
-                })
-                .collect()
-        })
-        .as_slice()
-}
-
-fn fast_detect_keyword_facts_tiny() -> &'static [FastDetectKeywordFact] {
-    static FACTS: OnceLock<Vec<FastDetectKeywordFact>> = OnceLock::new();
-    FACTS
-        .get_or_init(|| {
-            FAST_DETECT_KEYWORDS_FULL
-                .iter()
-                .copied()
-                .filter(|fact| {
-                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
-                })
-                .collect()
-        })
-        .as_slice()
-}
-
-pub(crate) fn diagram_type_supported_in_profile(
-    profile: BaselineRegistryProfile,
-    diagram_type: &str,
-) -> bool {
-    match profile {
-        BaselineRegistryProfile::Full => true,
-        BaselineRegistryProfile::Tiny => {
-            !matches!(diagram_type, "architecture" | "flowchart-elk" | "mindmap")
+        Self {
+            detector_facts,
+            semantic_parser_facts,
+            render_parser_facts,
+            combined_parser_facts,
+            supported_diagram_metadata_ids,
+            diagram_header_facts,
+            diagram_family_capabilities,
         }
     }
+}
+
+fn ordered_values<T>(mut values: Vec<(u16, T)>) -> Vec<T> {
+    values.sort_by_key(|(order, _)| *order);
+    values.into_iter().map(|(_, value)| value).collect()
+}
+
+fn family_catalog_projection() -> &'static FamilyCatalogProjection {
+    static CATALOG: OnceLock<FamilyCatalogProjection> = OnceLock::new();
+    CATALOG.get_or_init(FamilyCatalogProjection::build)
+}
+
+pub(crate) fn detector_facts() -> &'static [DetectorFact] {
+    family_catalog_projection().detector_facts.as_slice()
+}
+
+pub(crate) fn semantic_parser_facts() -> &'static [SemanticParserFact] {
+    family_catalog_projection().semantic_parser_facts.as_slice()
+}
+
+pub(crate) fn render_parser_facts() -> &'static [RenderParserFact] {
+    family_catalog_projection().render_parser_facts.as_slice()
+}
+
+pub(crate) fn combined_parser_facts() -> &'static [CombinedParserFact] {
+    family_catalog_projection().combined_parser_facts.as_slice()
+}
+
+pub(crate) fn combined_parser(diagram_type: &str) -> Option<CombinedSemanticParser> {
+    combined_parser_facts()
+        .iter()
+        .find_map(|fact| (fact.id == diagram_type).then_some(fact.parser))
+}
+
+pub(crate) fn supported_diagram_metadata_ids() -> &'static [&'static str] {
+    family_catalog_projection()
+        .supported_diagram_metadata_ids
+        .as_slice()
+}
+
+pub(crate) fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
+    family_catalog_projection().diagram_header_facts.as_slice()
+}
+
+pub(crate) fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
+    family_catalog_projection()
+        .diagram_family_capabilities
+        .as_slice()
+}
+
+pub(crate) fn is_builtin_diagram_type(diagram_type: &str) -> bool {
+    find_variant(diagram_type).is_some()
 }
 
 pub(crate) fn render_model_kind_supports_diagram_type(
     model_kind: &'static str,
     diagram_type: &str,
 ) -> bool {
-    RENDER_PARSER_FACTS
+    render_parser_facts()
         .iter()
-        .any(|fact| fact.model_kind == model_kind && fact.id == diagram_type)
+        .any(|fact| fact.id == diagram_type && fact.model_kind == model_kind)
 }
 
 pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
-    RENDER_PARSER_FACTS
-        .iter()
-        .find_map(|fact| (fact.id == diagram_type).then_some(fact.model_kind))
+    diagram_type_family_id(diagram_type).map(DiagramFamilyId::as_str)
 }
 
-pub(crate) fn permits_json_render_fallback(
-    profile: BaselineRegistryProfile,
-    diagram_type: &str,
-) -> bool {
-    diagram_type == "error"
-        || !semantic_parser_facts(profile)
-            .iter()
-            .any(|fact| fact.id == diagram_type)
+pub fn diagram_type_metadata_id(diagram_type: &str) -> Option<&'static str> {
+    find_variant(diagram_type).and_then(|(_, variant)| variant.metadata.map(|metadata| metadata.id))
 }
 
-pub(crate) fn apply_known_type_detector_side_effects(
-    diagram_type: &str,
-    effective_config: &mut MermaidConfig,
-) {
-    if diagram_type == "flowchart-elk" {
-        effective_config.set_value("layout", Value::String("elk".to_string()));
-        return;
-    }
-
-    if matches!(diagram_type, "flowchart-v2" | "flowchart")
-        && effective_config.get_str("flowchart.defaultRenderer") == Some("elk")
-    {
-        effective_config.set_value("layout", Value::String("elk".to_string()));
-    }
+pub(crate) fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
+    find_variant(diagram_type).map(|(family, _)| DiagramFamilyId(family.logical_kind))
 }
 
-pub(crate) fn apply_diagram_type_config_defaults(
+pub fn diagram_type_render_model_kind(diagram_type: &str) -> Option<&'static str> {
+    find_variant(diagram_type).and_then(|(_, variant)| variant.render_model_kind)
+}
+
+pub(crate) fn apply_diagram_type_config_effects(
     diagram_type: &str,
     user_config: &MermaidConfig,
     effective_config: &mut MermaidConfig,
 ) {
-    if diagram_type == "swimlane" && user_config.get_str("layout").is_none() {
-        effective_config.set_value("layout", Value::String("swimlane".to_string()));
+    let (effect, default_effect) = find_variant(diagram_type)
+        .map(|(_, variant)| (variant.known_type_effect, variant.default_effect))
+        .unwrap_or((KnownTypeEffect::None, DefaultEffect::None));
+    match effect {
+        KnownTypeEffect::None => {}
+        KnownTypeEffect::ForceElk => {
+            effective_config.set_value("layout", Value::String("elk".to_string()));
+        }
+        KnownTypeEffect::RendererSelectsElk(config_path) => {
+            if effective_config.get_str(config_path) == Some("elk") {
+                effective_config.set_value("layout", Value::String("elk".to_string()));
+            }
+        }
+    }
+
+    match default_effect {
+        DefaultEffect::None => {}
+        DefaultEffect::SwimlaneLayout if user_config.get_str("layout").is_none() => {
+            effective_config.set_value("layout", Value::String("swimlane".to_string()));
+        }
+        DefaultEffect::SwimlaneLayout => {}
     }
 }
-
-const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
-    DetectorFact {
-        id: "error",
-        detector: crate::detect::detector_error,
-    },
-    DetectorFact {
-        id: "---",
-        detector: crate::detect::detector_frontmatter_unparsed,
-    },
-    DetectorFact {
-        id: "flowchart-elk",
-        detector: crate::detect::detector_flowchart_elk,
-    },
-    DetectorFact {
-        id: "mindmap",
-        detector: crate::detect::detector_mindmap,
-    },
-    DetectorFact {
-        id: "architecture",
-        detector: crate::detect::detector_architecture,
-    },
-    DetectorFact {
-        id: "zenuml",
-        detector: crate::detect::detector_zenuml,
-    },
-    DetectorFact {
-        id: "c4",
-        detector: crate::detect::detector_c4,
-    },
-    DetectorFact {
-        id: "kanban",
-        detector: crate::detect::detector_kanban,
-    },
-    DetectorFact {
-        id: "classDiagram",
-        detector: crate::detect::detector_class_v2,
-    },
-    DetectorFact {
-        id: "class",
-        detector: crate::detect::detector_class_dagre_d3,
-    },
-    DetectorFact {
-        id: "er",
-        detector: crate::detect::detector_er,
-    },
-    DetectorFact {
-        id: "gantt",
-        detector: crate::detect::detector_gantt,
-    },
-    DetectorFact {
-        id: "info",
-        detector: crate::detect::detector_info,
-    },
-    DetectorFact {
-        id: "pie",
-        detector: crate::detect::detector_pie,
-    },
-    DetectorFact {
-        id: "requirement",
-        detector: crate::detect::detector_requirement,
-    },
-    DetectorFact {
-        id: "sequence",
-        detector: crate::detect::detector_sequence,
-    },
-    DetectorFact {
-        id: "swimlane",
-        detector: crate::detect::detector_swimlane,
-    },
-    DetectorFact {
-        id: "flowchart-v2",
-        detector: crate::detect::detector_flowchart_v2,
-    },
-    DetectorFact {
-        id: "flowchart",
-        detector: crate::detect::detector_flowchart_dagre_d3_graph,
-    },
-    DetectorFact {
-        id: "timeline",
-        detector: crate::detect::detector_timeline,
-    },
-    DetectorFact {
-        id: "gitGraph",
-        detector: crate::detect::detector_git_graph,
-    },
-    DetectorFact {
-        id: "stateDiagram",
-        detector: crate::detect::detector_state_v2,
-    },
-    DetectorFact {
-        id: "state",
-        detector: crate::detect::detector_state_dagre_d3,
-    },
-    DetectorFact {
-        id: "journey",
-        detector: crate::detect::detector_journey,
-    },
-    DetectorFact {
-        id: "quadrantChart",
-        detector: crate::detect::detector_quadrant,
-    },
-    DetectorFact {
-        id: "sankey",
-        detector: crate::detect::detector_sankey,
-    },
-    DetectorFact {
-        id: "packet",
-        detector: crate::detect::detector_packet,
-    },
-    DetectorFact {
-        id: "xychart",
-        detector: crate::detect::detector_xychart,
-    },
-    DetectorFact {
-        id: "block",
-        detector: crate::detect::detector_block,
-    },
-    DetectorFact {
-        id: "eventmodeling",
-        detector: crate::detect::detector_eventmodeling,
-    },
-    DetectorFact {
-        id: "treeView",
-        detector: crate::detect::detector_tree_view,
-    },
-    DetectorFact {
-        id: "radar",
-        detector: crate::detect::detector_radar,
-    },
-    DetectorFact {
-        id: "ishikawa",
-        detector: crate::detect::detector_ishikawa,
-    },
-    DetectorFact {
-        id: "treemap",
-        detector: crate::detect::detector_treemap,
-    },
-    DetectorFact {
-        id: "railroad",
-        detector: crate::detect::detector_railroad,
-    },
-    DetectorFact {
-        id: "railroadEbnf",
-        detector: crate::detect::detector_railroad_ebnf,
-    },
-    DetectorFact {
-        id: "railroadAbnf",
-        detector: crate::detect::detector_railroad_abnf,
-    },
-    DetectorFact {
-        id: "railroadPeg",
-        detector: crate::detect::detector_railroad_peg,
-    },
-    DetectorFact {
-        id: "venn",
-        detector: crate::detect::detector_venn,
-    },
-    DetectorFact {
-        id: "wardley",
-        detector: crate::detect::detector_wardley,
-    },
-    DetectorFact {
-        id: "cynefin",
-        detector: crate::detect::detector_cynefin,
-    },
-];
-
-const FAST_DETECT_KEYWORDS_FULL: &[FastDetectKeywordFact] = &[
-    FastDetectKeywordFact {
-        keyword: "sequenceDiagram",
-        id: "sequence",
-    },
-    FastDetectKeywordFact {
-        keyword: "mindmap",
-        id: "mindmap",
-    },
-    FastDetectKeywordFact {
-        keyword: "architecture",
-        id: "architecture",
-    },
-    FastDetectKeywordFact {
-        keyword: "erDiagram",
-        id: "er",
-    },
-    FastDetectKeywordFact {
-        keyword: "gantt",
-        id: "gantt",
-    },
-    FastDetectKeywordFact {
-        keyword: "timeline",
-        id: "timeline",
-    },
-    FastDetectKeywordFact {
-        keyword: "journey",
-        id: "journey",
-    },
-    FastDetectKeywordFact {
-        keyword: "gitGraph",
-        id: "gitGraph",
-    },
-    FastDetectKeywordFact {
-        keyword: "quadrantChart",
-        id: "quadrantChart",
-    },
-    FastDetectKeywordFact {
-        keyword: "packet-beta",
-        id: "packet",
-    },
-    FastDetectKeywordFact {
-        keyword: "xychart-beta",
-        id: "xychart",
-    },
-    FastDetectKeywordFact {
-        keyword: "treeView-beta",
-        id: "treeView",
-    },
-    FastDetectKeywordFact {
-        keyword: "ishikawa-beta",
-        id: "ishikawa",
-    },
-    FastDetectKeywordFact {
-        keyword: "ishikawa",
-        id: "ishikawa",
-    },
-    FastDetectKeywordFact {
-        keyword: "eventmodeling",
-        id: "eventmodeling",
-    },
-];
-
-const fn semantic_parser_fact(
-    id: &'static str,
-    parser: DiagramSemanticParser,
-) -> SemanticParserFact {
-    SemanticParserFact {
-        id,
-        parser,
-        header_policy: HeaderPolicy::Required,
-    }
-}
-
-const fn semantic_parser_alias_fact(
-    id: &'static str,
-    canonical_id: &'static str,
-    parser: DiagramSemanticParser,
-) -> SemanticParserFact {
-    SemanticParserFact {
-        id,
-        parser,
-        header_policy: HeaderPolicy::Alias(canonical_id),
-    }
-}
-
-const fn internal_semantic_parser_fact(
-    id: &'static str,
-    parser: DiagramSemanticParser,
-) -> SemanticParserFact {
-    SemanticParserFact {
-        id,
-        parser,
-        header_policy: HeaderPolicy::Internal,
-    }
-}
-
-const SEMANTIC_PARSER_FACTS: &[SemanticParserFact] = &[
-    internal_semantic_parser_fact("error", crate::diagrams::error_diagram::parse_error),
-    semantic_parser_fact("flowchart-v2", crate::diagrams::flowchart::parse_flowchart),
-    semantic_parser_alias_fact(
-        "flowchart",
-        "flowchart-v2",
-        crate::diagrams::flowchart::parse_flowchart,
-    ),
-    semantic_parser_fact("flowchart-elk", crate::diagrams::flowchart::parse_flowchart),
-    semantic_parser_fact("info", crate::diagrams::info::parse_info),
-    semantic_parser_fact("pie", crate::diagrams::pie::parse_pie),
-    semantic_parser_fact("c4", crate::diagrams::c4::parse_c4),
-    semantic_parser_fact(
-        "requirement",
-        crate::diagrams::requirement::parse_requirement,
-    ),
-    semantic_parser_fact("sequence", crate::diagrams::sequence::parse_sequence),
-    semantic_parser_fact("swimlane", crate::diagrams::flowchart::parse_flowchart),
-    semantic_parser_fact("cynefin", crate::diagrams::cynefin::parse_cynefin),
-    semantic_parser_fact("railroad", crate::diagrams::railroad::parse_railroad),
-    semantic_parser_fact(
-        "railroadEbnf",
-        crate::diagrams::railroad::parse_railroad_ebnf,
-    ),
-    semantic_parser_fact(
-        "railroadAbnf",
-        crate::diagrams::railroad::parse_railroad_abnf,
-    ),
-    semantic_parser_fact("railroadPeg", crate::diagrams::railroad::parse_railroad_peg),
-    semantic_parser_fact("zenuml", crate::diagrams::zenuml::parse_zenuml),
-    semantic_parser_fact("classDiagram", crate::diagrams::class::parse_class),
-    semantic_parser_alias_fact("class", "classDiagram", crate::diagrams::class::parse_class),
-    semantic_parser_fact("er", crate::diagrams::er::parse_er),
-    semantic_parser_alias_fact("erDiagram", "er", crate::diagrams::er::parse_er),
-    semantic_parser_fact("stateDiagram", crate::diagrams::state::parse_state),
-    semantic_parser_alias_fact("state", "stateDiagram", crate::diagrams::state::parse_state),
-    semantic_parser_fact("mindmap", crate::diagrams::mindmap::parse_mindmap),
-    semantic_parser_fact("gantt", crate::diagrams::gantt::parse_gantt),
-    semantic_parser_fact("timeline", crate::diagrams::timeline::parse_timeline),
-    semantic_parser_fact("journey", crate::diagrams::journey::parse_journey),
-    semantic_parser_fact("kanban", crate::diagrams::kanban::parse_kanban),
-    semantic_parser_fact(
-        "architecture",
-        crate::diagrams::architecture::parse_architecture,
-    ),
-    semantic_parser_fact("block", crate::diagrams::block::parse_block),
-    semantic_parser_fact("gitGraph", crate::diagrams::git_graph::parse_git_graph),
-    semantic_parser_fact(
-        "quadrantChart",
-        crate::diagrams::quadrant_chart::parse_quadrant_chart,
-    ),
-    semantic_parser_fact("packet", crate::diagrams::packet::parse_packet),
-    semantic_parser_fact("radar", crate::diagrams::radar::parse_radar),
-    semantic_parser_fact("treeView", crate::diagrams::tree_view::parse_tree_view),
-    semantic_parser_fact("ishikawa", crate::diagrams::ishikawa::parse_ishikawa),
-    semantic_parser_fact(
-        "eventmodeling",
-        crate::diagrams::eventmodeling::parse_eventmodeling,
-    ),
-    semantic_parser_fact("treemap", crate::diagrams::treemap::parse_treemap),
-    semantic_parser_fact("venn", crate::diagrams::venn::parse_venn),
-    semantic_parser_fact("sankey", crate::diagrams::sankey::parse_sankey),
-    semantic_parser_fact("xychart", crate::diagrams::xychart::parse_xychart),
-];
 
 macro_rules! render_parser {
     ($fn_name:ident, $parser:path, $variant:path) => {
@@ -770,6 +493,11 @@ macro_rules! render_parser {
     };
 }
 
+render_parser!(
+    render_error,
+    crate::diagrams::error_diagram::parse_error_model_for_render,
+    RenderSemanticModel::Error
+);
 render_parser!(
     render_mindmap,
     crate::diagrams::mindmap::parse_mindmap_model_for_render,
@@ -783,7 +511,7 @@ render_parser!(
 render_parser!(
     render_zenuml,
     crate::diagrams::zenuml::parse_zenuml_model_for_render,
-    RenderSemanticModel::Sequence
+    RenderSemanticModel::Zenuml
 );
 render_parser!(
     render_sequence,
@@ -935,534 +663,1239 @@ render_parser!(
     crate::diagrams::venn::parse_venn_model_for_render,
     RenderSemanticModel::Venn
 );
+render_parser!(
+    render_wardley,
+    crate::diagrams::wardley::parse_wardley_model_for_render,
+    RenderSemanticModel::Wardley
+);
 
-const RENDER_PARSER_FACTS: &[RenderParserFact] = &[
-    RenderParserFact {
-        id: "mindmap",
-        metadata_id: Some("mindmap"),
-        model_kind: "mindmap",
-        parser: render_mindmap,
-    },
-    RenderParserFact {
-        id: "stateDiagram",
-        metadata_id: Some("state"),
-        model_kind: "state",
-        parser: render_state,
-    },
-    RenderParserFact {
-        id: "state",
-        metadata_id: Some("state"),
-        model_kind: "state",
-        parser: render_state,
-    },
-    RenderParserFact {
-        id: "zenuml",
-        metadata_id: Some("zenuml"),
-        model_kind: "sequence",
-        parser: render_zenuml,
-    },
-    RenderParserFact {
-        id: "sequence",
-        metadata_id: Some("sequence"),
-        model_kind: "sequence",
-        parser: render_sequence,
-    },
-    RenderParserFact {
-        id: "flowchart-v2",
-        metadata_id: Some("flowchart"),
-        model_kind: "flowchart",
-        parser: render_flowchart,
-    },
-    RenderParserFact {
-        id: "flowchart",
-        metadata_id: Some("flowchart"),
-        model_kind: "flowchart",
-        parser: render_flowchart,
-    },
-    RenderParserFact {
+#[derive(Clone, Copy)]
+struct Ordered<T> {
+    order: u16,
+    value: T,
+}
+
+const fn ordered<T>(order: u16, value: T) -> Ordered<T> {
+    Ordered { order, value }
+}
+
+#[derive(Clone, Copy)]
+struct MetadataDefinition {
+    id: &'static str,
+    order: Option<u16>,
+}
+
+const fn metadata(id: &'static str, order: Option<u16>) -> MetadataDefinition {
+    MetadataDefinition { id, order }
+}
+
+#[derive(Clone, Copy)]
+struct HeaderDefinition {
+    order: u16,
+    label: &'static str,
+    detail: &'static str,
+}
+
+const fn header(order: u16, label: &'static str, detail: &'static str) -> HeaderDefinition {
+    HeaderDefinition {
+        order,
+        label,
+        detail,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KnownTypeEffect {
+    None,
+    ForceElk,
+    RendererSelectsElk(&'static str),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DefaultEffect {
+    None,
+    SwimlaneLayout,
+}
+
+#[derive(Clone, Copy)]
+struct FamilyVariantDefinition {
+    id: &'static str,
+    catalog_order: u16,
+    detector: Option<Ordered<DetectorFn>>,
+    semantic: Option<Ordered<BuiltInDiagramSemanticParser>>,
+    combined: Option<Ordered<CombinedSemanticParser>>,
+    typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
+    render_model_kind: Option<&'static str>,
+    metadata: Option<MetadataDefinition>,
+    headers: &'static [HeaderDefinition],
+    frontmatter_alias_order: Option<u16>,
+    known_type_effect: KnownTypeEffect,
+    default_effect: DefaultEffect,
+}
+
+#[derive(Clone, Copy)]
+struct FamilyConfigDefinition {
+    namespace: &'static str,
+    frontmatter_order: u16,
+}
+
+#[derive(Clone, Copy)]
+struct DiagramFamilyDefinition {
+    logical_kind: &'static str,
+    config: Option<FamilyConfigDefinition>,
+    variants: &'static [FamilyVariantDefinition],
+}
+
+macro_rules! variant {
+    (
+        id: $id:literal,
+        catalog_order: $catalog_order:literal,
+        detector: $detector:expr,
+        semantic: $semantic:expr,
+        combined: $combined:expr,
+        typed: $typed:expr,
+        render_kind: $render_kind:expr,
+        metadata: $metadata:expr,
+        headers: $headers:expr,
+        config_alias_order: $config_alias_order:expr,
+        known_effect: $known_effect:expr,
+        default_effect: $default_effect:expr $(,)?
+    ) => {
+        FamilyVariantDefinition {
+            id: $id,
+            catalog_order: $catalog_order,
+            detector: $detector,
+            semantic: $semantic,
+            combined: $combined,
+            typed_render: $typed,
+            render_model_kind: $render_kind,
+            metadata: $metadata,
+            headers: $headers,
+            frontmatter_alias_order: $config_alias_order,
+            known_type_effect: $known_effect,
+            default_effect: $default_effect,
+        }
+    };
+}
+
+fn variants() -> impl Iterator<
+    Item = (
+        &'static DiagramFamilyDefinition,
+        &'static FamilyVariantDefinition,
+    ),
+> {
+    FAMILY_CATALOG
+        .iter()
+        .flat_map(|family| family.variants.iter().map(move |variant| (family, variant)))
+}
+
+fn find_variant(
+    diagram_type: &str,
+) -> Option<(
+    &'static DiagramFamilyDefinition,
+    &'static FamilyVariantDefinition,
+)> {
+    FAMILY_CATALOG.iter().find_map(|family| {
+        family
+            .variants
+            .iter()
+            .find(|variant| variant.id == diagram_type)
+            .map(|variant| (family, variant))
+    })
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct FrontmatterConfigAliasFact {
+    pub(crate) source: &'static str,
+    pub(crate) namespace: &'static str,
+}
+
+pub(crate) fn frontmatter_config_aliases() -> &'static [FrontmatterConfigAliasFact] {
+    static FACTS: OnceLock<Vec<FrontmatterConfigAliasFact>> = OnceLock::new();
+    FACTS
+        .get_or_init(|| {
+            let mut facts: Vec<_> = FAMILY_CATALOG
+                .iter()
+                .flat_map(|family| {
+                    family.variants.iter().filter_map(move |variant| {
+                        variant.frontmatter_alias_order.map(|order| {
+                            let namespace = family
+                                .config
+                                .expect("config aliases require a family namespace")
+                                .namespace;
+                            (
+                                order,
+                                FrontmatterConfigAliasFact {
+                                    source: variant.id,
+                                    namespace,
+                                },
+                            )
+                        })
+                    })
+                })
+                .collect();
+            facts.sort_by_key(|(order, _)| *order);
+            facts.into_iter().map(|(_, fact)| fact).collect()
+        })
+        .as_slice()
+}
+
+pub(crate) fn frontmatter_config_namespaces() -> &'static [&'static str] {
+    static NAMESPACES: OnceLock<Vec<&'static str>> = OnceLock::new();
+    NAMESPACES
+        .get_or_init(|| {
+            let mut namespaces: Vec<_> = FAMILY_CATALOG
+                .iter()
+                .filter_map(|family| {
+                    family
+                        .config
+                        .map(|config| (config.frontmatter_order, config.namespace))
+                })
+                .collect();
+            namespaces.sort_by_key(|(order, _)| *order);
+            namespaces
+                .into_iter()
+                .map(|(_, namespace)| namespace)
+                .collect()
+        })
+        .as_slice()
+}
+
+pub(crate) fn config_namespace_for_diagram_type(diagram_type: &str) -> Option<&'static str> {
+    find_variant(diagram_type).and_then(|(family, _)| family.config.map(|config| config.namespace))
+}
+
+const FLOWCHART_HEADERS: &[HeaderDefinition] = &[
+    header(0, "flowchart TD", "flowchart header"),
+    header(1, "graph TD", "flowchart alias"),
+];
+const SEQUENCE_HEADERS: &[HeaderDefinition] = &[header(2, "sequenceDiagram", "sequence header")];
+const SWIMLANE_HEADERS: &[HeaderDefinition] = &[header(3, "swimlane-beta", "swimlane header")];
+const CLASS_HEADERS: &[HeaderDefinition] = &[
+    header(4, "classDiagram", "class header"),
+    header(5, "classDiagram-v2", "class header"),
+];
+const STATE_HEADERS: &[HeaderDefinition] = &[
+    header(6, "stateDiagram-v2", "state header"),
+    header(7, "stateDiagram", "legacy state header"),
+];
+const ER_HEADERS: &[HeaderDefinition] = &[header(8, "erDiagram", "er header")];
+const GANTT_HEADERS: &[HeaderDefinition] = &[header(9, "gantt", "gantt header")];
+const MINDMAP_HEADERS: &[HeaderDefinition] = &[header(10, "mindmap", "mindmap header")];
+const INFO_HEADERS: &[HeaderDefinition] = &[header(11, "info", "info header")];
+const JOURNEY_HEADERS: &[HeaderDefinition] = &[header(12, "journey", "journey header")];
+const TIMELINE_HEADERS: &[HeaderDefinition] = &[header(13, "timeline", "timeline header")];
+const GIT_GRAPH_HEADERS: &[HeaderDefinition] = &[header(14, "gitGraph", "git graph header")];
+const PIE_HEADERS: &[HeaderDefinition] = &[header(15, "pie", "pie header")];
+const REQUIREMENT_HEADERS: &[HeaderDefinition] =
+    &[header(16, "requirementDiagram", "requirement header")];
+const SANKEY_HEADERS: &[HeaderDefinition] = &[header(17, "sankey", "sankey header")];
+const PACKET_HEADERS: &[HeaderDefinition] = &[
+    header(18, "packet", "packet header"),
+    header(19, "packet-beta", "packet beta header"),
+];
+const XYCHART_HEADERS: &[HeaderDefinition] = &[
+    header(20, "xychart", "xychart header"),
+    header(21, "xychart-beta", "xychart beta header"),
+];
+const TREE_VIEW_HEADERS: &[HeaderDefinition] = &[header(22, "treeView-beta", "tree view header")];
+const ISHIKAWA_HEADERS: &[HeaderDefinition] = &[header(23, "ishikawa-beta", "ishikawa header")];
+const EVENTMODELING_HEADERS: &[HeaderDefinition] =
+    &[header(24, "eventmodeling", "event modeling header")];
+const QUADRANT_HEADERS: &[HeaderDefinition] =
+    &[header(25, "quadrantChart", "quadrant chart header")];
+const VENN_HEADERS: &[HeaderDefinition] = &[header(26, "venn-beta", "venn header")];
+const ZENUML_HEADERS: &[HeaderDefinition] = &[header(27, "zenuml", "zenuml header")];
+const C4_HEADERS: &[HeaderDefinition] = &[
+    header(28, "C4Context", "c4 context header"),
+    header(29, "C4Container", "c4 container header"),
+    header(30, "C4Component", "c4 component header"),
+    header(31, "C4Dynamic", "c4 dynamic header"),
+    header(32, "C4Deployment", "c4 deployment header"),
+];
+const KANBAN_HEADERS: &[HeaderDefinition] = &[header(33, "kanban", "kanban header")];
+const ARCHITECTURE_HEADERS: &[HeaderDefinition] =
+    &[header(34, "architecture-beta", "architecture header")];
+const BLOCK_HEADERS: &[HeaderDefinition] = &[header(35, "block-beta", "block header")];
+const RADAR_HEADERS: &[HeaderDefinition] = &[header(36, "radar-beta", "radar header")];
+const TREEMAP_HEADERS: &[HeaderDefinition] = &[header(37, "treemap-beta", "treemap header")];
+const RAILROAD_HEADERS: &[HeaderDefinition] = &[header(38, "railroad-beta", "railroad header")];
+const RAILROAD_EBNF_HEADERS: &[HeaderDefinition] =
+    &[header(39, "railroad-ebnf-beta", "railroad ebnf header")];
+const RAILROAD_ABNF_HEADERS: &[HeaderDefinition] =
+    &[header(40, "railroad-abnf-beta", "railroad abnf header")];
+const RAILROAD_PEG_HEADERS: &[HeaderDefinition] =
+    &[header(41, "railroad-peg-beta", "railroad peg header")];
+const WARDLEY_HEADERS: &[HeaderDefinition] = &[header(42, "wardley-beta", "wardley header")];
+const CYNEFIN_HEADERS: &[HeaderDefinition] = &[header(43, "cynefin-beta", "cynefin header")];
+const FLOWCHART_ELK_HEADERS: &[HeaderDefinition] =
+    &[header(44, "flowchart-elk TD", "elk flowchart header")];
+
+const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "error",
+    catalog_order: 0,
+    detector: Some(ordered(0, crate::detect::detector_error)),
+    semantic: Some(ordered(0, crate::diagrams::error_diagram::parse_error)),
+    combined: None,
+    typed: Some(ordered(38, render_error)),
+    render_kind: Some("error"),
+    metadata: None,
+    headers: &[],
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
+    variant! {
         id: "flowchart-elk",
-        metadata_id: Some("flowchart"),
-        model_kind: "flowchart",
-        parser: render_flowchart,
+        catalog_order: 2,
+        detector: Some(ordered(2, crate::detect::detector_flowchart_elk)),
+        semantic: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart)),
+        combined: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
+        typed: Some(ordered(7, render_flowchart)),
+        render_kind: Some("flowchart"),
+        metadata: Some(metadata("flowchart", None)),
+        headers: FLOWCHART_ELK_HEADERS,
+        config_alias_order: Some(3),
+        known_effect: KnownTypeEffect::ForceElk,
+        default_effect: DefaultEffect::None,
     },
-    RenderParserFact {
+    variant! {
+        id: "flowchart-v2",
+        catalog_order: 17,
+        detector: Some(ordered(17, crate::detect::detector_flowchart_v2)),
+        semantic: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart)),
+        combined: Some(ordered(0, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
+        typed: Some(ordered(5, render_flowchart)),
+        render_kind: Some("flowchart"),
+        metadata: Some(metadata("flowchart", Some(7))),
+        headers: FLOWCHART_HEADERS,
+        config_alias_order: Some(2),
+        known_effect: KnownTypeEffect::RendererSelectsElk("flowchart.defaultRenderer"),
+        default_effect: DefaultEffect::None,
+    },
+    variant! {
+        id: "flowchart",
+        catalog_order: 18,
+        detector: Some(ordered(18, crate::detect::detector_flowchart_dagre_d3_graph)),
+        semantic: Some(ordered(2, crate::diagrams::flowchart::parse_flowchart)),
+        combined: Some(ordered(1, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
+        typed: Some(ordered(6, render_flowchart)),
+        render_kind: Some("flowchart"),
+        metadata: Some(metadata("flowchart", None)),
+        headers: &[],
+        config_alias_order: None,
+        known_effect: KnownTypeEffect::RendererSelectsElk("flowchart.defaultRenderer"),
+        default_effect: DefaultEffect::None,
+    },
+];
+
+const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "swimlane",
+    catalog_order: 16,
+    detector: Some(ordered(16, crate::detect::detector_swimlane)),
+    semantic: Some(ordered(9, crate::diagrams::flowchart::parse_flowchart)),
+    combined: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
+    typed: Some(ordered(39, render_flowchart)),
+    render_kind: Some("flowchart"),
+    metadata: Some(metadata("swimlane", Some(27))),
+    headers: SWIMLANE_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::SwimlaneLayout,
+}];
+
+const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "mindmap",
+    catalog_order: 3,
+    detector: Some(ordered(3, crate::detect::detector_mindmap)),
+    semantic: Some(ordered(22, crate::diagrams::mindmap::parse_mindmap)),
+    combined: Some(ordered(5, crate::diagrams::mindmap::parse_mindmap_json_and_editor_facts)),
+    typed: Some(ordered(0, render_mindmap)),
+    render_kind: Some("mindmap"),
+    metadata: Some(metadata("mindmap", Some(14))),
+    headers: MINDMAP_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const ARCHITECTURE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "architecture",
+    catalog_order: 4,
+    detector: Some(ordered(4, crate::detect::detector_architecture)),
+    semantic: Some(ordered(27, crate::diagrams::architecture::parse_architecture)),
+    combined: Some(ordered(4, crate::diagrams::architecture::parse_architecture_json_and_editor_facts)),
+    typed: Some(ordered(16, render_architecture)),
+    render_kind: Some("architecture"),
+    metadata: Some(metadata("architecture", Some(0))),
+    headers: ARCHITECTURE_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "zenuml",
+    catalog_order: 5,
+    detector: Some(ordered(5, crate::detect::detector_zenuml)),
+    semantic: Some(ordered(15, crate::diagrams::zenuml::parse_zenuml)),
+    combined: Some(ordered(36, crate::diagrams::zenuml::parse_zenuml_json_and_editor_facts)),
+    typed: Some(ordered(3, render_zenuml)),
+    render_kind: Some("zenuml"),
+    metadata: Some(metadata("zenuml", Some(34))),
+    headers: ZENUML_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "sequence",
+    catalog_order: 15,
+    detector: Some(ordered(15, crate::detect::detector_sequence)),
+    semantic: Some(ordered(8, crate::diagrams::sequence::parse_sequence)),
+    combined: Some(ordered(19, crate::diagrams::sequence::parse_sequence_json_and_editor_facts)),
+    typed: Some(ordered(4, render_sequence)),
+    render_kind: Some("sequence"),
+    metadata: Some(metadata("sequence", Some(25))),
+    headers: SEQUENCE_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const C4_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "c4",
+    catalog_order: 6,
+    detector: Some(ordered(6, crate::detect::detector_c4)),
+    semantic: Some(ordered(6, crate::diagrams::c4::parse_c4)),
+    combined: Some(ordered(28, crate::diagrams::c4::parse_c4_json_and_editor_facts)),
+    typed: Some(ordered(10, render_c4)),
+    render_kind: Some("c4"),
+    metadata: Some(metadata("c4", Some(2))),
+    headers: C4_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "kanban",
+    catalog_order: 7,
+    detector: Some(ordered(7, crate::detect::detector_kanban)),
+    semantic: Some(ordered(26, crate::diagrams::kanban::parse_kanban)),
+    combined: Some(ordered(29, crate::diagrams::kanban::parse_kanban_json_and_editor_facts)),
+    typed: Some(ordered(17, render_kanban)),
+    render_kind: Some("kanban"),
+    metadata: Some(metadata("kanban", Some(13))),
+    headers: KANBAN_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const CLASS_VARIANTS: &[FamilyVariantDefinition] = &[
+    variant! {
         id: "classDiagram",
-        metadata_id: Some("class"),
-        model_kind: "class",
-        parser: render_class,
+        catalog_order: 8,
+        detector: Some(ordered(8, crate::detect::detector_class_v2)),
+        semantic: Some(ordered(16, crate::diagrams::class::parse_class)),
+        combined: Some(ordered(20, crate::diagrams::class::parse_class_json_and_editor_facts)),
+        typed: Some(ordered(8, render_class)),
+        render_kind: Some("class"),
+        metadata: Some(metadata("class", Some(3))),
+        headers: CLASS_HEADERS,
+        config_alias_order: Some(0),
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
     },
-    RenderParserFact {
+    variant! {
         id: "class",
-        metadata_id: Some("class"),
-        model_kind: "class",
-        parser: render_class,
+        catalog_order: 9,
+        detector: Some(ordered(9, crate::detect::detector_class_dagre_d3)),
+        semantic: Some(ordered(17, crate::diagrams::class::parse_class)),
+        combined: Some(ordered(21, crate::diagrams::class::parse_class_json_and_editor_facts)),
+        typed: Some(ordered(9, render_class)),
+        render_kind: Some("class"),
+        metadata: Some(metadata("class", None)),
+        headers: &[],
+        config_alias_order: None,
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
     },
-    RenderParserFact {
-        id: "c4",
-        metadata_id: Some("c4"),
-        model_kind: "c4",
-        parser: render_c4,
-    },
-    RenderParserFact {
-        id: "cynefin",
-        metadata_id: Some("cynefin"),
-        model_kind: "cynefin",
-        parser: render_cynefin,
-    },
-    RenderParserFact {
-        id: "railroad",
-        metadata_id: Some("railroad"),
-        model_kind: "railroad",
-        parser: render_railroad,
-    },
-    RenderParserFact {
-        id: "railroadEbnf",
-        metadata_id: Some("railroadEbnf"),
-        model_kind: "railroad",
-        parser: render_railroad_ebnf,
-    },
-    RenderParserFact {
-        id: "railroadAbnf",
-        metadata_id: Some("railroadAbnf"),
-        model_kind: "railroad",
-        parser: render_railroad_abnf,
-    },
-    RenderParserFact {
-        id: "railroadPeg",
-        metadata_id: Some("railroadPeg"),
-        model_kind: "railroad",
-        parser: render_railroad_peg,
-    },
-    RenderParserFact {
-        id: "architecture",
-        metadata_id: Some("architecture"),
-        model_kind: "architecture",
-        parser: render_architecture,
-    },
-    RenderParserFact {
-        id: "kanban",
-        metadata_id: Some("kanban"),
-        model_kind: "kanban",
-        parser: render_kanban,
-    },
-    RenderParserFact {
-        id: "gantt",
-        metadata_id: Some("gantt"),
-        model_kind: "gantt",
-        parser: render_gantt,
-    },
-    RenderParserFact {
-        id: "pie",
-        metadata_id: Some("pie"),
-        model_kind: "pie",
-        parser: render_pie,
-    },
-    RenderParserFact {
-        id: "packet",
-        metadata_id: Some("packet"),
-        model_kind: "packet",
-        parser: render_packet,
-    },
-    RenderParserFact {
-        id: "timeline",
-        metadata_id: Some("timeline"),
-        model_kind: "timeline",
-        parser: render_timeline,
-    },
-    RenderParserFact {
-        id: "journey",
-        metadata_id: Some("journey"),
-        model_kind: "journey",
-        parser: render_journey,
-    },
-    RenderParserFact {
-        id: "requirement",
-        metadata_id: Some("requirement"),
-        model_kind: "requirement",
-        parser: render_requirement,
-    },
-    RenderParserFact {
-        id: "sankey",
-        metadata_id: Some("sankey"),
-        model_kind: "sankey",
-        parser: render_sankey,
-    },
-    RenderParserFact {
-        id: "radar",
-        metadata_id: Some("radar"),
-        model_kind: "radar",
-        parser: render_radar,
-    },
-    RenderParserFact {
-        id: "info",
-        metadata_id: Some("info"),
-        model_kind: "info",
-        parser: render_info,
-    },
-    RenderParserFact {
-        id: "treemap",
-        metadata_id: Some("treemap"),
-        model_kind: "treemap",
-        parser: render_treemap,
-    },
-    RenderParserFact {
-        id: "block",
-        metadata_id: Some("block"),
-        model_kind: "block",
-        parser: render_block,
-    },
-    RenderParserFact {
+];
+
+const ER_VARIANTS: &[FamilyVariantDefinition] = &[
+    variant! {
         id: "er",
-        metadata_id: Some("er"),
-        model_kind: "er",
-        parser: render_er,
+        catalog_order: 10,
+        detector: Some(ordered(10, crate::detect::detector_er)),
+        semantic: Some(ordered(18, crate::diagrams::er::parse_er)),
+        combined: Some(ordered(17, crate::diagrams::er::parse_er_json_and_editor_facts)),
+        typed: Some(ordered(29, render_er)),
+        render_kind: Some("er"),
+        metadata: Some(metadata("er", Some(5))),
+        headers: ER_HEADERS,
+        config_alias_order: None,
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
     },
-    RenderParserFact {
+    variant! {
         id: "erDiagram",
-        metadata_id: Some("er"),
-        model_kind: "er",
-        parser: render_er,
-    },
-    RenderParserFact {
-        id: "quadrantChart",
-        metadata_id: Some("quadrantchart"),
-        model_kind: "quadrantChart",
-        parser: render_quadrant_chart,
-    },
-    RenderParserFact {
-        id: "xychart",
-        metadata_id: Some("xychart"),
-        model_kind: "xychart",
-        parser: render_xychart,
-    },
-    RenderParserFact {
-        id: "gitGraph",
-        metadata_id: Some("gitgraph"),
-        model_kind: "gitGraph",
-        parser: render_git_graph,
-    },
-    RenderParserFact {
-        id: "treeView",
-        metadata_id: None,
-        model_kind: "treeView",
-        parser: render_tree_view,
-    },
-    RenderParserFact {
-        id: "ishikawa",
-        metadata_id: None,
-        model_kind: "ishikawa",
-        parser: render_ishikawa,
-    },
-    RenderParserFact {
-        id: "eventmodeling",
-        metadata_id: None,
-        model_kind: "eventmodeling",
-        parser: render_eventmodeling,
-    },
-    RenderParserFact {
-        id: "venn",
-        metadata_id: Some("venn"),
-        model_kind: "venn",
-        parser: render_venn,
+        catalog_order: 41,
+        detector: None,
+        semantic: Some(ordered(19, crate::diagrams::er::parse_er)),
+        combined: Some(ordered(18, crate::diagrams::er::parse_er_json_and_editor_facts)),
+        typed: Some(ordered(30, render_er)),
+        render_kind: Some("er"),
+        metadata: Some(metadata("er", None)),
+        headers: &[],
+        config_alias_order: Some(1),
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
     },
 ];
 
-const SUPPORTED_DIAGRAM_METADATA_IDS: &[&str] = &[
-    "architecture",
-    "block",
-    "c4",
-    "class",
-    "cynefin",
-    "er",
-    "flowchart",
-    "gantt",
-    "gitgraph",
-    "info",
-    "journey",
-    "kanban",
-    "mindmap",
-    "packet",
-    "pie",
-    "quadrantchart",
-    "radar",
-    "railroad",
-    "railroadAbnf",
-    "railroadEbnf",
-    "railroadPeg",
-    "requirement",
-    "sankey",
-    "sequence",
-    "state",
-    "timeline",
-    "treemap",
-    "venn",
-    "xychart",
-    "zenuml",
+const GANTT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "gantt",
+    catalog_order: 11,
+    detector: Some(ordered(11, crate::detect::detector_gantt)),
+    semantic: Some(ordered(23, crate::diagrams::gantt::parse_gantt)),
+    combined: Some(ordered(30, crate::diagrams::gantt::parse_gantt_json_and_editor_facts)),
+    typed: Some(ordered(18, render_gantt)),
+    render_kind: Some("gantt"),
+    metadata: Some(metadata("gantt", Some(8))),
+    headers: GANTT_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "info",
+    catalog_order: 12,
+    detector: Some(ordered(12, crate::detect::detector_info)),
+    semantic: Some(ordered(4, crate::diagrams::info::parse_info)),
+    combined: Some(ordered(10, crate::diagrams::info::parse_info_json_and_editor_facts)),
+    typed: Some(ordered(26, render_info)),
+    render_kind: Some("info"),
+    metadata: Some(metadata("info", Some(10))),
+    headers: INFO_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "pie",
+    catalog_order: 13,
+    detector: Some(ordered(13, crate::detect::detector_pie)),
+    semantic: Some(ordered(5, crate::diagrams::pie::parse_pie)),
+    combined: Some(ordered(11, crate::diagrams::pie::parse_pie_json_and_editor_facts)),
+    typed: Some(ordered(19, render_pie)),
+    render_kind: Some("pie"),
+    metadata: Some(metadata("pie", Some(16))),
+    headers: PIE_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "requirement",
+    catalog_order: 14,
+    detector: Some(ordered(14, crate::detect::detector_requirement)),
+    semantic: Some(ordered(7, crate::diagrams::requirement::parse_requirement)),
+    combined: Some(ordered(31, crate::diagrams::requirement::parse_requirement_json_and_editor_facts)),
+    typed: Some(ordered(23, render_requirement)),
+    render_kind: Some("requirement"),
+    metadata: Some(metadata("requirement", Some(23))),
+    headers: REQUIREMENT_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "timeline",
+    catalog_order: 19,
+    detector: Some(ordered(19, crate::detect::detector_timeline)),
+    semantic: Some(ordered(24, crate::diagrams::timeline::parse_timeline)),
+    combined: Some(ordered(32, crate::diagrams::timeline::parse_timeline_json_and_editor_facts)),
+    typed: Some(ordered(21, render_timeline)),
+    render_kind: Some("timeline"),
+    metadata: Some(metadata("timeline", Some(28))),
+    headers: TIMELINE_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "gitGraph",
+    catalog_order: 20,
+    detector: Some(ordered(20, crate::detect::detector_git_graph)),
+    semantic: Some(ordered(29, crate::diagrams::git_graph::parse_git_graph)),
+    combined: Some(ordered(15, crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts)),
+    typed: Some(ordered(33, render_git_graph)),
+    render_kind: Some("gitGraph"),
+    metadata: Some(metadata("gitgraph", Some(9))),
+    headers: GIT_GRAPH_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
+    variant! {
+        id: "stateDiagram",
+        catalog_order: 21,
+        detector: Some(ordered(21, crate::detect::detector_state_v2)),
+        semantic: Some(ordered(20, crate::diagrams::state::parse_state)),
+        combined: Some(ordered(26, crate::diagrams::state::parse_state_json_and_editor_facts)),
+        typed: Some(ordered(1, render_state)),
+        render_kind: Some("state"),
+        metadata: Some(metadata("state", Some(26))),
+        headers: STATE_HEADERS,
+        config_alias_order: Some(4),
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
+    },
+    variant! {
+        id: "state",
+        catalog_order: 22,
+        detector: Some(ordered(22, crate::detect::detector_state_dagre_d3)),
+        semantic: Some(ordered(21, crate::diagrams::state::parse_state)),
+        combined: Some(ordered(27, crate::diagrams::state::parse_state_json_and_editor_facts)),
+        typed: Some(ordered(2, render_state)),
+        render_kind: Some("state"),
+        metadata: Some(metadata("state", None)),
+        headers: &[],
+        config_alias_order: None,
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
+    },
 ];
 
-const DIAGRAM_HEADER_FACTS: &[DiagramHeaderFact] = &[
-    DiagramHeaderFact {
-        diagram_type: "flowchart-v2",
-        label: "flowchart TD",
-        detail: "flowchart header",
-        full_only: false,
+const JOURNEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "journey",
+    catalog_order: 23,
+    detector: Some(ordered(23, crate::detect::detector_journey)),
+    semantic: Some(ordered(25, crate::diagrams::journey::parse_journey)),
+    combined: Some(ordered(33, crate::diagrams::journey::parse_journey_json_and_editor_facts)),
+    typed: Some(ordered(22, render_journey)),
+    render_kind: Some("journey"),
+    metadata: Some(metadata("journey", Some(12))),
+    headers: JOURNEY_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "quadrantChart",
+    catalog_order: 24,
+    detector: Some(ordered(24, crate::detect::detector_quadrant)),
+    semantic: Some(ordered(30, crate::diagrams::quadrant_chart::parse_quadrant_chart)),
+    combined: Some(ordered(34, crate::diagrams::quadrant_chart::parse_quadrant_chart_json_and_editor_facts)),
+    typed: Some(ordered(31, render_quadrant_chart)),
+    render_kind: Some("quadrantChart"),
+    metadata: Some(metadata("quadrantchart", Some(17))),
+    headers: QUADRANT_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "sankey",
+    catalog_order: 25,
+    detector: Some(ordered(25, crate::detect::detector_sankey)),
+    semantic: Some(ordered(38, crate::diagrams::sankey::parse_sankey)),
+    combined: Some(ordered(16, crate::diagrams::sankey::parse_sankey_json_and_editor_facts)),
+    typed: Some(ordered(24, render_sankey)),
+    render_kind: Some("sankey"),
+    metadata: Some(metadata("sankey", Some(24))),
+    headers: SANKEY_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "packet",
+    catalog_order: 26,
+    detector: Some(ordered(26, crate::detect::detector_packet)),
+    semantic: Some(ordered(31, crate::diagrams::packet::parse_packet)),
+    combined: Some(ordered(12, crate::diagrams::packet::parse_packet_json_and_editor_facts)),
+    typed: Some(ordered(20, render_packet)),
+    render_kind: Some("packet"),
+    metadata: Some(metadata("packet", Some(15))),
+    headers: PACKET_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "xychart",
+    catalog_order: 27,
+    detector: Some(ordered(27, crate::detect::detector_xychart)),
+    semantic: Some(ordered(39, crate::diagrams::xychart::parse_xychart)),
+    combined: Some(ordered(38, crate::diagrams::xychart::parse_xychart_json_and_editor_facts)),
+    typed: Some(ordered(32, render_xychart)),
+    render_kind: Some("xychart"),
+    metadata: Some(metadata("xychart", Some(33))),
+    headers: XYCHART_HEADERS,
+    config_alias_order: Some(5),
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const BLOCK_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "block",
+    catalog_order: 28,
+    detector: Some(ordered(28, crate::detect::detector_block)),
+    semantic: Some(ordered(28, crate::diagrams::block::parse_block)),
+    combined: Some(ordered(37, crate::diagrams::block::parse_block_json_and_editor_facts)),
+    typed: Some(ordered(28, render_block)),
+    render_kind: Some("block"),
+    metadata: Some(metadata("block", Some(1))),
+    headers: BLOCK_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "eventmodeling",
+    catalog_order: 29,
+    detector: Some(ordered(29, crate::detect::detector_eventmodeling)),
+    semantic: Some(ordered(35, crate::diagrams::eventmodeling::parse_eventmodeling)),
+    combined: Some(ordered(22, crate::diagrams::eventmodeling::parse_eventmodeling_json_and_editor_facts)),
+    typed: Some(ordered(36, render_eventmodeling)),
+    render_kind: Some("eventmodeling"),
+    metadata: Some(metadata("eventmodeling", Some(6))),
+    headers: EVENTMODELING_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "treeView",
+    catalog_order: 30,
+    detector: Some(ordered(30, crate::detect::detector_tree_view)),
+    semantic: Some(ordered(33, crate::diagrams::tree_view::parse_tree_view)),
+    combined: Some(ordered(23, crate::diagrams::tree_view::parse_tree_view_json_and_editor_facts)),
+    typed: Some(ordered(34, render_tree_view)),
+    render_kind: Some("treeView"),
+    metadata: Some(metadata("treeView", Some(29))),
+    headers: TREE_VIEW_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "radar",
+    catalog_order: 31,
+    detector: Some(ordered(31, crate::detect::detector_radar)),
+    semantic: Some(ordered(32, crate::diagrams::radar::parse_radar)),
+    combined: Some(ordered(14, crate::diagrams::radar::parse_radar_json_and_editor_facts)),
+    typed: Some(ordered(25, render_radar)),
+    render_kind: Some("radar"),
+    metadata: Some(metadata("radar", Some(18))),
+    headers: RADAR_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "ishikawa",
+    catalog_order: 32,
+    detector: Some(ordered(32, crate::detect::detector_ishikawa)),
+    semantic: Some(ordered(34, crate::diagrams::ishikawa::parse_ishikawa)),
+    combined: Some(ordered(24, crate::diagrams::ishikawa::parse_ishikawa_json_and_editor_facts)),
+    typed: Some(ordered(35, render_ishikawa)),
+    render_kind: Some("ishikawa"),
+    metadata: Some(metadata("ishikawa", Some(11))),
+    headers: ISHIKAWA_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "treemap",
+    catalog_order: 33,
+    detector: Some(ordered(33, crate::detect::detector_treemap)),
+    semantic: Some(ordered(36, crate::diagrams::treemap::parse_treemap)),
+    combined: Some(ordered(25, crate::diagrams::treemap::parse_treemap_json_and_editor_facts)),
+    typed: Some(ordered(27, render_treemap)),
+    render_kind: Some("treemap"),
+    metadata: Some(metadata("treemap", Some(30))),
+    headers: TREEMAP_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
+    variant! {
+        id: "railroad",
+        catalog_order: 34,
+        detector: Some(ordered(34, crate::detect::detector_railroad)),
+        semantic: Some(ordered(11, crate::diagrams::railroad::parse_railroad)),
+        combined: Some(ordered(6, crate::diagrams::railroad::parse_railroad_json_and_editor_facts)),
+        typed: Some(ordered(12, render_railroad)),
+        render_kind: Some("railroad"),
+        metadata: Some(metadata("railroad", Some(19))),
+        headers: RAILROAD_HEADERS,
+        config_alias_order: None,
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
     },
-    DiagramHeaderFact {
-        diagram_type: "flowchart-v2",
-        label: "graph TD",
-        detail: "flowchart alias",
-        full_only: false,
+    variant! {
+        id: "railroadEbnf",
+        catalog_order: 35,
+        detector: Some(ordered(35, crate::detect::detector_railroad_ebnf)),
+        semantic: Some(ordered(12, crate::diagrams::railroad::parse_railroad_ebnf)),
+        combined: Some(ordered(7, crate::diagrams::railroad::parse_railroad_ebnf_json_and_editor_facts)),
+        typed: Some(ordered(13, render_railroad_ebnf)),
+        render_kind: Some("railroad"),
+        metadata: Some(metadata("railroadEbnf", Some(21))),
+        headers: RAILROAD_EBNF_HEADERS,
+        config_alias_order: None,
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
     },
-    DiagramHeaderFact {
-        diagram_type: "sequence",
-        label: "sequenceDiagram",
-        detail: "sequence header",
-        full_only: false,
+    variant! {
+        id: "railroadAbnf",
+        catalog_order: 36,
+        detector: Some(ordered(36, crate::detect::detector_railroad_abnf)),
+        semantic: Some(ordered(13, crate::diagrams::railroad::parse_railroad_abnf)),
+        combined: Some(ordered(8, crate::diagrams::railroad::parse_railroad_abnf_json_and_editor_facts)),
+        typed: Some(ordered(14, render_railroad_abnf)),
+        render_kind: Some("railroad"),
+        metadata: Some(metadata("railroadAbnf", Some(20))),
+        headers: RAILROAD_ABNF_HEADERS,
+        config_alias_order: None,
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
     },
-    DiagramHeaderFact {
-        diagram_type: "swimlane",
-        label: "swimlane-beta",
-        detail: "swimlane header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "classDiagram",
-        label: "classDiagram",
-        detail: "class header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "classDiagram",
-        label: "classDiagram-v2",
-        detail: "class header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "stateDiagram",
-        label: "stateDiagram-v2",
-        detail: "state header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "stateDiagram",
-        label: "stateDiagram",
-        detail: "legacy state header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "er",
-        label: "erDiagram",
-        detail: "er header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "gantt",
-        label: "gantt",
-        detail: "gantt header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "mindmap",
-        label: "mindmap",
-        detail: "mindmap header",
-        full_only: true,
-    },
-    DiagramHeaderFact {
-        diagram_type: "info",
-        label: "info",
-        detail: "info header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "journey",
-        label: "journey",
-        detail: "journey header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "timeline",
-        label: "timeline",
-        detail: "timeline header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "gitGraph",
-        label: "gitGraph",
-        detail: "git graph header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "pie",
-        label: "pie",
-        detail: "pie header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "requirement",
-        label: "requirementDiagram",
-        detail: "requirement header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "sankey",
-        label: "sankey",
-        detail: "sankey header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "packet",
-        label: "packet",
-        detail: "packet header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "packet",
-        label: "packet-beta",
-        detail: "packet beta header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "xychart",
-        label: "xychart",
-        detail: "xychart header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "xychart",
-        label: "xychart-beta",
-        detail: "xychart beta header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "treeView",
-        label: "treeView-beta",
-        detail: "tree view header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "ishikawa",
-        label: "ishikawa-beta",
-        detail: "ishikawa header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "eventmodeling",
-        label: "eventmodeling",
-        detail: "event modeling header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "quadrantChart",
-        label: "quadrantChart",
-        detail: "quadrant chart header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "venn",
-        label: "venn-beta",
-        detail: "venn header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "zenuml",
-        label: "zenuml",
-        detail: "zenuml header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "c4",
-        label: "C4Context",
-        detail: "c4 context header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "c4",
-        label: "C4Container",
-        detail: "c4 container header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "c4",
-        label: "C4Component",
-        detail: "c4 component header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "c4",
-        label: "C4Dynamic",
-        detail: "c4 dynamic header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "c4",
-        label: "C4Deployment",
-        detail: "c4 deployment header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "kanban",
-        label: "kanban",
-        detail: "kanban header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "architecture",
-        label: "architecture-beta",
-        detail: "architecture header",
-        full_only: true,
-    },
-    DiagramHeaderFact {
-        diagram_type: "block",
-        label: "block-beta",
-        detail: "block header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "radar",
-        label: "radar-beta",
-        detail: "radar header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "treemap",
-        label: "treemap-beta",
-        detail: "treemap header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "railroad",
-        label: "railroad-beta",
-        detail: "railroad header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "railroadEbnf",
-        label: "railroad-ebnf-beta",
-        detail: "railroad ebnf header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "railroadAbnf",
-        label: "railroad-abnf-beta",
-        detail: "railroad abnf header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "railroadPeg",
-        label: "railroad-peg-beta",
-        detail: "railroad peg header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "cynefin",
-        label: "cynefin-beta",
-        detail: "cynefin header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "flowchart-elk",
-        label: "flowchart-elk TD",
-        detail: "elk flowchart header",
-        full_only: true,
+    variant! {
+        id: "railroadPeg",
+        catalog_order: 37,
+        detector: Some(ordered(37, crate::detect::detector_railroad_peg)),
+        semantic: Some(ordered(14, crate::diagrams::railroad::parse_railroad_peg)),
+        combined: Some(ordered(9, crate::diagrams::railroad::parse_railroad_peg_json_and_editor_facts)),
+        typed: Some(ordered(15, render_railroad_peg)),
+        render_kind: Some("railroad"),
+        metadata: Some(metadata("railroadPeg", Some(22))),
+        headers: RAILROAD_PEG_HEADERS,
+        config_alias_order: None,
+        known_effect: KnownTypeEffect::None,
+        default_effect: DefaultEffect::None,
     },
 ];
+
+const VENN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "venn",
+    catalog_order: 38,
+    detector: Some(ordered(38, crate::detect::detector_venn)),
+    semantic: Some(ordered(37, crate::diagrams::venn::parse_venn)),
+    combined: Some(ordered(35, crate::diagrams::venn::parse_venn_json_and_editor_facts)),
+    typed: Some(ordered(37, render_venn)),
+    render_kind: Some("venn"),
+    metadata: Some(metadata("venn", Some(31))),
+    headers: VENN_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "wardley",
+    catalog_order: 39,
+    detector: Some(ordered(39, crate::detect::detector_wardley)),
+    semantic: Some(ordered(40, crate::diagrams::wardley::parse_wardley)),
+    combined: Some(ordered(39, crate::diagrams::wardley::parse_wardley_json_and_editor_facts)),
+    typed: Some(ordered(40, render_wardley)),
+    render_kind: Some("wardley"),
+    metadata: Some(metadata("wardley", Some(32))),
+    headers: WARDLEY_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
+    id: "cynefin",
+    catalog_order: 40,
+    detector: Some(ordered(40, crate::detect::detector_cynefin)),
+    semantic: Some(ordered(10, crate::diagrams::cynefin::parse_cynefin)),
+    combined: Some(ordered(13, crate::diagrams::cynefin::parse_cynefin_json_and_editor_facts)),
+    typed: Some(ordered(11, render_cynefin)),
+    render_kind: Some("cynefin"),
+    metadata: Some(metadata("cynefin", Some(4))),
+    headers: CYNEFIN_HEADERS,
+    config_alias_order: None,
+    known_effect: KnownTypeEffect::None,
+    default_effect: DefaultEffect::None,
+}];
+
+const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
+    DiagramFamilyDefinition {
+        logical_kind: "error",
+        config: None,
+        variants: ERROR_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "flowchart",
+        config: Some(FamilyConfigDefinition {
+            namespace: "flowchart",
+            frontmatter_order: 7,
+        }),
+        variants: FLOWCHART_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "swimlane",
+        config: Some(FamilyConfigDefinition {
+            namespace: "swimlane",
+            frontmatter_order: 23,
+        }),
+        variants: SWIMLANE_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "mindmap",
+        config: Some(FamilyConfigDefinition {
+            namespace: "mindmap",
+            frontmatter_order: 13,
+        }),
+        variants: MINDMAP_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "architecture",
+        config: Some(FamilyConfigDefinition {
+            namespace: "architecture",
+            frontmatter_order: 0,
+        }),
+        variants: ARCHITECTURE_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "zenuml",
+        config: Some(FamilyConfigDefinition {
+            namespace: "zenuml",
+            frontmatter_order: 30,
+        }),
+        variants: ZENUML_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "sequence",
+        config: Some(FamilyConfigDefinition {
+            namespace: "sequence",
+            frontmatter_order: 21,
+        }),
+        variants: SEQUENCE_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "c4",
+        config: Some(FamilyConfigDefinition {
+            namespace: "c4",
+            frontmatter_order: 2,
+        }),
+        variants: C4_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "kanban",
+        config: Some(FamilyConfigDefinition {
+            namespace: "kanban",
+            frontmatter_order: 12,
+        }),
+        variants: KANBAN_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "class",
+        config: Some(FamilyConfigDefinition {
+            namespace: "class",
+            frontmatter_order: 3,
+        }),
+        variants: CLASS_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "er",
+        config: Some(FamilyConfigDefinition {
+            namespace: "er",
+            frontmatter_order: 5,
+        }),
+        variants: ER_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "gantt",
+        config: Some(FamilyConfigDefinition {
+            namespace: "gantt",
+            frontmatter_order: 8,
+        }),
+        variants: GANTT_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "info",
+        config: None,
+        variants: INFO_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "pie",
+        config: Some(FamilyConfigDefinition {
+            namespace: "pie",
+            frontmatter_order: 15,
+        }),
+        variants: PIE_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "requirement",
+        config: Some(FamilyConfigDefinition {
+            namespace: "requirement",
+            frontmatter_order: 19,
+        }),
+        variants: REQUIREMENT_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "timeline",
+        config: Some(FamilyConfigDefinition {
+            namespace: "timeline",
+            frontmatter_order: 24,
+        }),
+        variants: TIMELINE_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "gitGraph",
+        config: Some(FamilyConfigDefinition {
+            namespace: "gitGraph",
+            frontmatter_order: 9,
+        }),
+        variants: GIT_GRAPH_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "state",
+        config: Some(FamilyConfigDefinition {
+            namespace: "state",
+            frontmatter_order: 22,
+        }),
+        variants: STATE_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "journey",
+        config: Some(FamilyConfigDefinition {
+            namespace: "journey",
+            frontmatter_order: 11,
+        }),
+        variants: JOURNEY_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "quadrantChart",
+        config: Some(FamilyConfigDefinition {
+            namespace: "quadrantChart",
+            frontmatter_order: 16,
+        }),
+        variants: QUADRANT_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "sankey",
+        config: Some(FamilyConfigDefinition {
+            namespace: "sankey",
+            frontmatter_order: 20,
+        }),
+        variants: SANKEY_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "packet",
+        config: Some(FamilyConfigDefinition {
+            namespace: "packet",
+            frontmatter_order: 14,
+        }),
+        variants: PACKET_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "xychart",
+        config: Some(FamilyConfigDefinition {
+            namespace: "xyChart",
+            frontmatter_order: 29,
+        }),
+        variants: XYCHART_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "block",
+        config: Some(FamilyConfigDefinition {
+            namespace: "block",
+            frontmatter_order: 1,
+        }),
+        variants: BLOCK_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "eventmodeling",
+        config: Some(FamilyConfigDefinition {
+            namespace: "eventmodeling",
+            frontmatter_order: 6,
+        }),
+        variants: EVENTMODELING_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "treeView",
+        config: Some(FamilyConfigDefinition {
+            namespace: "treeView",
+            frontmatter_order: 25,
+        }),
+        variants: TREE_VIEW_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "radar",
+        config: Some(FamilyConfigDefinition {
+            namespace: "radar",
+            frontmatter_order: 17,
+        }),
+        variants: RADAR_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "ishikawa",
+        config: Some(FamilyConfigDefinition {
+            namespace: "ishikawa",
+            frontmatter_order: 10,
+        }),
+        variants: ISHIKAWA_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "treemap",
+        config: Some(FamilyConfigDefinition {
+            namespace: "treemap",
+            frontmatter_order: 26,
+        }),
+        variants: TREEMAP_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "railroad",
+        config: Some(FamilyConfigDefinition {
+            namespace: "railroad",
+            frontmatter_order: 18,
+        }),
+        variants: RAILROAD_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "venn",
+        config: Some(FamilyConfigDefinition {
+            namespace: "venn",
+            frontmatter_order: 27,
+        }),
+        variants: VENN_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "wardley",
+        config: Some(FamilyConfigDefinition {
+            namespace: "wardley-beta",
+            frontmatter_order: 28,
+        }),
+        variants: WARDLEY_VARIANTS,
+    },
+    DiagramFamilyDefinition {
+        logical_kind: "cynefin",
+        config: Some(FamilyConfigDefinition {
+            namespace: "cynefin",
+            frontmatter_order: 4,
+        }),
+        variants: CYNEFIN_VARIANTS,
+    },
+];
+
+#[cfg(test)]
+mod catalog_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn public_metadata_ids_are_catalog_owned_instead_of_derived_from_family_names() {
+        assert_eq!(diagram_type_metadata_id("flowchart-v2"), Some("flowchart"));
+        assert_eq!(diagram_type_metadata_id("gitGraph"), Some("gitgraph"));
+        assert_eq!(
+            diagram_type_metadata_id("quadrantChart"),
+            Some("quadrantchart")
+        );
+        assert_eq!(diagram_type_metadata_id("treeView"), Some("treeView"));
+    }
+
+    #[test]
+    fn catalog_ids_orders_and_family_policy_are_internally_consistent() {
+        let mut ids = BTreeSet::new();
+        let mut catalog_orders = BTreeSet::new();
+        let mut detector_orders = BTreeSet::new();
+        let mut semantic_orders = BTreeSet::new();
+        let mut combined_orders = BTreeSet::new();
+        let mut render_orders = BTreeSet::new();
+        let mut metadata_orders = BTreeSet::new();
+        let mut header_orders = BTreeSet::new();
+
+        for family in FAMILY_CATALOG {
+            for variant in family.variants {
+                assert_ne!(variant.id, "---", "frontmatter guard is not a family");
+                assert!(
+                    ids.insert(variant.id),
+                    "duplicate catalog id {}",
+                    variant.id
+                );
+                assert!(
+                    catalog_orders.insert(variant.catalog_order),
+                    "duplicate catalog order {}",
+                    variant.catalog_order
+                );
+                assert_eq!(
+                    variant.typed_render.is_some(),
+                    variant.render_model_kind.is_some(),
+                    "{} typed parser and render kind must be declared together",
+                    variant.id
+                );
+                assert!(
+                    variant.metadata.is_none() || variant.typed_render.is_some(),
+                    "{} metadata requires a typed render parser",
+                    variant.id
+                );
+                assert!(
+                    variant.combined.is_none() || variant.semantic.is_some(),
+                    "{} combined parsing requires a semantic adapter",
+                    variant.id
+                );
+
+                if let Some(fact) = variant.detector {
+                    assert!(detector_orders.insert(fact.order));
+                }
+                if let Some(fact) = variant.semantic {
+                    assert!(semantic_orders.insert(fact.order));
+                }
+                if let Some(fact) = variant.combined {
+                    assert!(combined_orders.insert(fact.order));
+                }
+                if let Some(fact) = variant.typed_render {
+                    assert!(render_orders.insert(fact.order));
+                }
+                if let Some(order) = variant.metadata.and_then(|metadata| metadata.order) {
+                    assert!(metadata_orders.insert(order));
+                }
+                for fact in variant.headers {
+                    assert!(header_orders.insert(fact.order));
+                }
+            }
+        }
+
+        let config_orders = FAMILY_CATALOG
+            .iter()
+            .filter_map(|family| family.config.map(|config| config.frontmatter_order))
+            .collect::<BTreeSet<_>>();
+        let config_count = FAMILY_CATALOG
+            .iter()
+            .filter(|family| family.config.is_some())
+            .count();
+        assert_eq!(config_orders.len(), config_count);
+        assert_eq!(ids.len(), diagram_family_capabilities().len());
+    }
+}

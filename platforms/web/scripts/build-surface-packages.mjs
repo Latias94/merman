@@ -1,7 +1,8 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
-  readdirSync,
+  readFileSync,
   renameSync,
   rmSync,
   statSync,
@@ -9,194 +10,281 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
-import { surfaces } from "./surface-manifest.mjs";
 
-const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const srcDir = path.join(packageRoot, "src");
-const surfacesDir = path.join(srcDir, "surfaces");
-const tempSurfacesDir = path.join(srcDir, `.surfaces-${process.pid}-${Date.now()}`);
-const backupSurfacesDir = path.join(srcDir, `.surfaces-backup-${process.pid}-${Date.now()}`);
-const backupSurfacesDirNamePrefix = ".surfaces-backup-";
+import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
+import { packageDistClosure } from "./package-dist-closure.mjs";
+import { webPackages } from "./surface-manifest.mjs";
+import { WASM_INPUT_MANIFEST_NAME } from "./wasm-build/input-manifest.mjs";
+import {
+  WASM_RUNTIME_TOP_LEVEL_FILES,
+  packageDistFileRecords,
+  wasmRuntimeFileRecords,
+} from "./wasm-runtime-files.mjs";
+
+const webRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const sourceRoot = path.join(webRoot, "src");
+const entriesRoot = path.join(sourceRoot, "package-entries");
+const packageBuildRoot = path.join(webRoot, "pkg");
+const distRoot = path.join(webRoot, "dist");
 
 if (isMainModule()) {
-  let exitCode = 0;
-  rmSync(tempSurfacesDir, { recursive: true, force: true });
-  mkdirSync(tempSurfacesDir, { recursive: true });
-
-  try {
-    for (const surface of surfaces) {
-      run(process.execPath, [
-        "scripts/build-wasm.mjs",
-        "--preset",
-        surface.preset,
-        "--out-dir-rel",
-        surface.pkgDirRel,
-      ]);
-      writeSurfaceEntry(surface, tempSurfacesDir);
-    }
-    replaceSurfacesDir({
-      surfacesDir,
-      tempSurfacesDir,
-      backupSurfacesDir,
-    });
-  } catch (error) {
-    exitCode =
-      error && typeof error === "object" && "exitCode" in error
-        ? Number(error.exitCode) || 1
-        : 1;
-    console.error(error instanceof Error ? error.message : String(error));
-  } finally {
-    rmSync(tempSurfacesDir, { recursive: true, force: true });
-  }
-
-  if (exitCode !== 0) {
-    process.exit(exitCode);
+  const phase = process.argv[2];
+  if (phase === "--entries") {
+    generatePackageEntries();
+  } else if (phase === "--assemble") {
+    assemblePackageArtifacts();
+  } else {
+    console.error("usage: node scripts/build-surface-packages.mjs --entries|--assemble");
+    process.exitCode = 2;
   }
 }
 
-function writeSurfaceEntry(surface, targetDir) {
-  const normalizedPkgDirRel = normalizeImportPath(surface.pkgDirRel);
-  const source = [
-    'import { bindSurfaceRuntime } from "../surface-runtime.js";',
-    'import type { MermanWasmModule } from "../index.js";',
-    'export type * from "../index.js";',
-    "export {",
-    ...surface.valueExportNames.map((name) => `  ${surfaceValueExportSpec(surface, name)},`),
+export function generatePackageEntries() {
+  const stage = siblingStage(entriesRoot, "entries");
+  const backup = siblingStage(entriesRoot, "entries-backup");
+  rmSync(stage, { recursive: true, force: true });
+  mkdirSync(stage, { recursive: true });
+  try {
+    for (const descriptor of webPackages) {
+      writeFileSync(path.join(stage, `${descriptor.id}.ts`), packageEntrySource(descriptor));
+    }
+    replaceDirectory({ target: entriesRoot, stage, backup });
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+export function assemblePackageArtifacts() {
+  assertFile(path.join(distRoot, "index.js"), "compiled TypeScript output");
+  assertFile(path.join(distRoot, "package-entries", "full.js"), "compiled package entry");
+  for (const descriptor of webPackages) {
+    assemblePackageArtifact(descriptor);
+  }
+}
+
+export function packageEntrySource(descriptor) {
+  const runtimeImports = descriptor.runtimeExportModules.flatMap(
+    ({ specifier, exportNames }) => [
+      "import {",
+      ...exportNames.map((name) => `  ${name} as runtime_${name},`),
+      `} from ${JSON.stringify(specifier)};`,
+    ],
+  );
+  const valueExports = descriptor.valueExportModules.flatMap(
+    ({ specifier, exportNames }) => [
+      "export {",
+      ...exportNames.map((name) => `  ${name},`),
+      `} from ${JSON.stringify(specifier)};`,
+    ],
+  );
+  return [
+    'import { assertBrowserRuntime, bindSurfaceRuntime } from "../surface-runtime.js";',
+    ...runtimeImports,
+    "import type {",
+    "  MermanInitInput as SharedMermanInitInput,",
+    "  MermanInitOptions as SharedMermanInitOptions,",
+    "  MermanWasmLoader as SharedMermanWasmLoader,",
+    "  MermanWasmModule as SharedMermanWasmModule,",
     '} from "../index.js";',
+    'export type * from "../index.js";',
     "",
-    "function surfaceLoader(): Promise<MermanWasmModule> {",
-    `  // @ts-ignore -- generated wasm-bindgen artifact exists after build:surfaces runs.`,
-    `  return import("../../${normalizedPkgDirRel}/merman_wasm.js");`,
+    "export type MermanWasmModule = Required<Pick<SharedMermanWasmModule,",
+    ...descriptor.wasmExportNames.map((name) => `  | ${JSON.stringify(name)}`),
+    ">>;",
+    "export type MermanWasmLoader = SharedMermanWasmLoader<MermanWasmModule>;",
+    "export type MermanInitOptions = SharedMermanInitOptions<MermanWasmModule>;",
+    "export type MermanInitInput = SharedMermanInitInput<MermanWasmModule>;",
+    ...valueExports,
+    "",
+    "export const MERMAN_WASM_URL = new URL(\"../../artifacts/wasm/merman_wasm_bg.wasm\", import.meta.url).href;",
+    "",
+    "export function loadMermanWasmModule(): Promise<MermanWasmModule> {",
+    "  assertBrowserRuntime();",
+    "  // @ts-ignore -- wasm-bindgen output is assembled after TypeScript compilation.",
+    '  return import("../../artifacts/wasm/merman_wasm.js");',
     "}",
     "",
-    "const runtime = bindSurfaceRuntime(surfaceLoader);",
+    "const implementation = {",
+    ...descriptor.runtimeExportNames.map((name) => `  ${name}: runtime_${name},`),
+    "};",
     "",
-    "export const {",
-    ...surface.runtimeExportNames.map((name) => `  ${name},`),
-    "} = runtime;",
+    "const runtime = bindSurfaceRuntime(loadMermanWasmModule, implementation);",
+    "",
+    "export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {",
+    "  assertBrowserRuntime();",
+    "  return runtime.initMerman(init);",
+    "}",
+    "",
+    ...descriptor.runtimeExportNames
+      .filter((name) => name !== "initMerman")
+      .map((name) => `export const ${name} = runtime.${name};`),
     "",
   ].join("\n");
-  writeFileSync(path.join(targetDir, `${surface.entry}.ts`), source);
 }
 
-function surfaceValueExportSpec(surface, name) {
-  if (name === "DEFAULT_BINDING_CAPABILITIES") {
-    return `${surface.defaultBindingCapabilitiesExportName} as DEFAULT_BINDING_CAPABILITIES`;
+function assemblePackageArtifact(descriptor) {
+  const packageRoot = path.join(webRoot, descriptor.package_dir);
+  const wasmSource = path.join(packageBuildRoot, descriptor.id);
+  const stage = siblingStage(path.join(packageRoot, "artifacts"), "artifacts");
+  const backup = siblingStage(path.join(packageRoot, "artifacts"), "artifacts-backup");
+  const packageJson = readJson(path.join(packageRoot, "package.json"));
+
+  if (packageJson.name !== descriptor.name) {
+    throw new Error(`Package manifest ${descriptor.package_dir} must name ${descriptor.name}.`);
   }
-  return name;
-}
+  if (descriptor.visibility === "candidate" ? packageJson.private !== true : packageJson.private === true) {
+    throw new Error(
+      `Package manifest ${descriptor.package_dir} private flag disagrees with ${descriptor.visibility} visibility.`,
+    );
+  }
+  assertFile(path.join(wasmSource, WASM_INPUT_MANIFEST_NAME), `WASM output for ${descriptor.id}`);
 
-function normalizeImportPath(relativePath) {
-  return relativePath.split(path.sep).join("/");
-}
-
-export function replaceSurfacesDir({
-  surfacesDir,
-  tempSurfacesDir,
-  backupSurfacesDir,
-  fsOps = { existsSync, readdirSync, renameSync, rmSync, statSync },
-}) {
-  restoreInterruptedSurfacesReplacement({ surfacesDir, backupSurfacesDir, fsOps });
+  rmSync(stage, { recursive: true, force: true });
+  mkdirSync(path.join(stage, "wasm"), { recursive: true });
   try {
-    if (fsOps.existsSync(surfacesDir)) {
-      fsOps.renameSync(surfacesDir, backupSurfacesDir);
+    copyWasmRuntime(wasmSource, path.join(stage, "wasm"));
+    projectPackageDist(descriptor, packageRoot);
+    writeFileSync(
+      path.join(stage, "provenance.json"),
+      `${JSON.stringify(buildProvenance(descriptor, packageJson, wasmSource, path.join(stage, "wasm"), path.join(packageRoot, "dist", "package-entries")), null, 2)}\n`,
+    );
+    replaceDirectory({ target: path.join(packageRoot, "artifacts"), stage, backup });
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
+
+  projectLegalMaterial(descriptor, packageRoot);
+}
+
+function projectPackageDist(descriptor, packageRoot) {
+  const target = path.join(packageRoot, "dist");
+  const stage = siblingStage(target, "projection");
+  const backup = siblingStage(target, "projection-backup");
+  rmSync(stage, { recursive: true, force: true });
+  try {
+    mkdirSync(stage, { recursive: true });
+    const closure = packageDistClosure(distRoot, descriptor.id);
+    for (const relative of closure.files) {
+      const source = path.join(distRoot, ...relative.split("/"));
+      const targetFile = path.join(stage, ...relative.split("/"));
+      mkdirSync(path.dirname(targetFile), { recursive: true });
+      cpSync(source, targetFile);
     }
-    fsOps.renameSync(tempSurfacesDir, surfacesDir);
-    fsOps.rmSync(backupSurfacesDir, { recursive: true, force: true });
+    replaceDirectory({ target, stage, backup });
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+function copyWasmRuntime(source, target) {
+  for (const name of WASM_RUNTIME_TOP_LEVEL_FILES) {
+    assertFile(path.join(source, name), `WASM artifact ${name}`);
+    cpSync(path.join(source, name), path.join(target, name));
+  }
+  const snippets = path.join(source, "snippets");
+  if (existsSync(snippets)) cpSync(snippets, path.join(target, "snippets"), { recursive: true });
+}
+
+function buildProvenance(descriptor, packageJson, wasmSource, copiedWasmRoot, entryRoot) {
+  const input = readJson(path.join(wasmSource, WASM_INPUT_MANIFEST_NAME));
+  return {
+    schema_version: 2,
+    package: {
+      id: descriptor.id,
+      name: descriptor.name,
+      version: packageJson.version,
+      visibility: descriptor.visibility,
+    },
+    artifact_profile: descriptor.artifact_profile.id,
+    runtime_capability_ids: descriptor.artifact_profile.expected.runtime_ids,
+    outputs: descriptor.artifact_profile.expected.outputs,
+    artifact_files: [
+      ...wasmRuntimeFileRecords(copiedWasmRoot, { strictTopLevel: true }),
+      ...packageDistFileRecords(path.dirname(entryRoot), descriptor.id),
+    ].sort(compareArtifactRecords),
+    wasm: {
+      path: "wasm/merman_wasm_bg.wasm",
+      input_digest: input.input_digest,
+      source_digest: input.source_digest,
+      tool_versions: input.tool_versions,
+    },
+  };
+}
+
+function projectLegalMaterial(descriptor, packageRoot) {
+  const legal = legalProjectionForArtifactProfile(descriptor.artifact_profile.id);
+  copyProjection(path.join(webRoot, "LICENSE"), path.join(packageRoot, "LICENSE"));
+  writeFileSync(path.join(packageRoot, "THIRD_PARTY_NOTICES.md"), legal.notice);
+  replaceScopedLegalDirectory({
+    files: legal.files,
+    target: path.join(packageRoot, "THIRD_PARTY_LICENSES"),
+  });
+}
+
+function copyProjection(source, target) {
+  assertFile(source, source);
+  mkdirSync(path.dirname(target), { recursive: true });
+  cpSync(source, target, { force: true });
+}
+
+function replaceScopedLegalDirectory({ files, target }) {
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error("Third-party legal projection must contain at least one file.");
+  }
+  const stage = siblingStage(target, "projection");
+  const backup = siblingStage(target, "projection-backup");
+  rmSync(stage, { recursive: true, force: true });
+  try {
+    mkdirSync(stage, { recursive: true });
+    for (const file of files) {
+      copyProjection(file.source, path.join(stage, ...file.relative.split("/")));
+    }
+    replaceDirectory({ target, stage, backup });
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+export function replaceDirectory({ target, stage, backup, fsOps = { existsSync, renameSync, rmSync } }) {
+  try {
+    if (fsOps.existsSync(target)) fsOps.renameSync(target, backup);
+    fsOps.renameSync(stage, target);
+    fsOps.rmSync(backup, { recursive: true, force: true });
   } catch (error) {
-    if (!fsOps.existsSync(surfacesDir) && fsOps.existsSync(backupSurfacesDir)) {
-      fsOps.renameSync(backupSurfacesDir, surfacesDir);
+    if (!fsOps.existsSync(target) && fsOps.existsSync(backup)) {
+      fsOps.renameSync(backup, target);
     }
     throw error;
   }
 }
 
-function restoreInterruptedSurfacesReplacement({ surfacesDir, backupSurfacesDir, fsOps }) {
-  const backupDirs = findBackupSurfacesDirs({ surfacesDir, backupSurfacesDir, fsOps });
-  if (backupDirs.length === 0) {
-    return;
-  }
-  if (fsOps.existsSync(surfacesDir)) {
-    removeBackupDirs(backupDirs, fsOps);
-    return;
-  }
-  const [backupToRestore, ...staleBackupDirs] = backupDirs;
-  fsOps.renameSync(backupToRestore, surfacesDir);
-  removeBackupDirs(staleBackupDirs, fsOps);
+function siblingStage(target, kind) {
+  return path.join(
+    path.dirname(target),
+    `.${path.basename(target)}.merman-${kind}-${process.pid}-${Date.now()}`,
+  );
 }
 
-function findBackupSurfacesDirs({ surfacesDir, backupSurfacesDir, fsOps }) {
-  const srcDir = path.dirname(surfacesDir);
-  const backupDirs = new Set();
-  if (fsOps.existsSync(backupSurfacesDir) && isDirectory(backupSurfacesDir, fsOps)) {
-    backupDirs.add(path.resolve(backupSurfacesDir));
-  }
-  if (typeof fsOps.readdirSync === "function") {
-    for (const entry of fsOps.readdirSync(srcDir, { withFileTypes: true })) {
-      if (entry.isDirectory() && entry.name.startsWith(backupSurfacesDirNamePrefix)) {
-        backupDirs.add(path.resolve(srcDir, entry.name));
-      }
-    }
-  }
-  backupDirs.delete(path.resolve(surfacesDir));
-  return [...backupDirs].sort((left, right) => {
-    const mtimeDelta = backupMtimeMs(right, fsOps) - backupMtimeMs(left, fsOps);
-    if (mtimeDelta !== 0) {
-      return mtimeDelta;
-    }
-    return right.localeCompare(left);
-  });
-}
-
-function backupMtimeMs(backupDir, fsOps) {
-  if (typeof fsOps.statSync !== "function") {
-    return 0;
-  }
+function readJson(file) {
   try {
-    return fsOps.statSync(backupDir).mtimeMs;
-  } catch {
-    return 0;
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    throw new Error(`Cannot read JSON ${file}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-function isDirectory(backupDir, fsOps) {
-  if (typeof fsOps.statSync !== "function") {
-    return true;
-  }
-  try {
-    return fsOps.statSync(backupDir).isDirectory();
-  } catch {
-    return false;
+function assertFile(file, label) {
+  if (!existsSync(file) || !statSync(file).isFile() || statSync(file).size === 0) {
+    throw new Error(`Missing ${label}: ${file}.`);
   }
 }
 
-function removeBackupDirs(backupDirs, fsOps) {
-  for (const backupDir of backupDirs) {
-    if (fsOps.existsSync(backupDir)) {
-      fsOps.rmSync(backupDir, { recursive: true, force: true });
-    }
-  }
-}
-
-function run(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: packageRoot,
-    stdio: "inherit",
-  });
-  if (result.error) {
-    throw new Error(`Failed to run ${command}: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    const error = new Error(`${command} exited with status ${result.status ?? 1}`);
-    error.exitCode = result.status ?? 1;
-    throw error;
-  }
+function compareArtifactRecords(left, right) {
+  if (left.path < right.path) return -1;
+  if (left.path > right.path) return 1;
+  return 0;
 }
 
 function isMainModule() {
-  return (
-    process.argv[1] !== undefined &&
-    path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-  );
+  return process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 }

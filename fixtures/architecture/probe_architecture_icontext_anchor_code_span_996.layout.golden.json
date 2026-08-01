@@ -6,7 +6,7 @@
         {
           "id": "worker",
           "x": 0.0,
-          "y": 0.0,
+          "y": 17.0,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
@@ -18,34 +18,33 @@
           "id": "worker",
           "body_bounds": {
             "min_x": 0.0,
-            "min_y": 0.0,
+            "min_y": 17.0,
             "max_x": 80.0,
-            "max_y": 80.0
+            "max_y": 97.0
           },
           "label_bounds": {
-            "min_x": 13.5,
-            "min_y": 0.0,
-            "max_x": 66.5,
-            "max_y": 97.0
+            "min_x": 13.0,
+            "min_y": 17.0,
+            "max_x": 67.0,
+            "max_y": 114.0
           },
           "label_metrics": {
-            "text_width": 49.92,
-            "half_width": 26.5,
-            "applied_scale": 1.055
+            "text_width": 50.0,
+            "half_width": 25.0
           },
           "union_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
-            "max_x": 80.0,
-            "max_y": 97.0
+            "min_x": -1.0,
+            "min_y": 16.0,
+            "max_x": 81.0,
+            "max_y": 115.0
           }
         }
       ],
       "bounds": {
         "min_x": 0.0,
-        "min_y": 0.0,
+        "min_y": 17.0,
         "max_x": 80.0,
-        "max_y": 80.0
+        "max_y": 97.0
       }
     }
   }

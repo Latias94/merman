@@ -1,6 +1,6 @@
 use super::{
-    ClassAssignStmt, ClassDefStmt, ClickStmt, LabeledText, LinkStyleStmt, LinkToken, StyleStmt,
-    SubgraphHeader,
+    ClassAssignStmt, ClassDefStmt, ClickStmt, FlowchartLexemeComponent, LabeledText, LinkStyleStmt,
+    LinkToken, StyleStmt, SubgraphHeader,
 };
 use crate::{SourceSpan, error::ParseErrorSourceSpan};
 
@@ -19,7 +19,7 @@ pub(crate) enum Tok {
     NodeLabel(NodeLabelToken),
 
     Direction(String),
-    DirectionStmt(String),
+    DirectionStmt(DirectionStatementToken),
     Id(String),
     Arrow(LinkToken),
     EdgeLabel(LabeledText),
@@ -40,6 +40,20 @@ pub(crate) struct NodeLabelToken {
     pub shape: String,
     pub text: LabeledText,
     pub trigger_span: Option<SourceSpan>,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
+    /// Strict parser error represented by this editor-recovery token.
+    ///
+    /// The combined semantic path lexes once. An incomplete label therefore carries both the
+    /// token needed for editor facts and the error projected to the strict LALRPOP parser.
+    pub recovery_error: Option<LexError>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DirectionStatementToken {
+    pub direction: String,
+    pub selection: SourceSpan,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
+    pub recovery_error: Option<LexError>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -47,6 +61,7 @@ pub(crate) struct NodeLabelToken {
 pub(crate) struct LexError {
     pub message: String,
     pub span: Option<SourceSpan>,
+    pub expected_syntax: Option<crate::EditorExpectedSyntax>,
 }
 
 impl LexError {
@@ -54,6 +69,7 @@ impl LexError {
         Self {
             message: message.into(),
             span: None,
+            expected_syntax: None,
         }
     }
 
@@ -61,7 +77,17 @@ impl LexError {
         Self {
             message: message.into(),
             span: Some(span),
+            expected_syntax: None,
         }
+    }
+
+    pub(crate) fn expecting(
+        mut self,
+        kind: crate::EditorExpectedSyntaxKind,
+        span: SourceSpan,
+    ) -> Self {
+        self.expected_syntax = Some(crate::EditorExpectedSyntax::new(kind, span));
+        self
     }
 }
 

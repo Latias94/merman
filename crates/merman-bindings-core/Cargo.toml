@@ -13,23 +13,42 @@ readme = "README.md"
 keywords = ["mermaid", "diagrams", "bindings", "svg", "headless"]
 categories = ["api-bindings", "visualization"]
 
+[package.metadata.merman]
+artifact-profile-required = true
+
 [features]
-default = ["core-full", "core-host", "render", "analysis"]
-core-full = ["merman/core-full", "merman-analysis?/core-full"]
-core-host = ["merman/core-host", "merman-analysis?/core-host"]
+default = []
+system-clock = ["merman/system-clock", "merman-analysis?/system-clock"]
+system-timezone = ["merman/system-timezone", "merman-analysis?/system-timezone"]
+system-random = ["merman/system-random", "merman-analysis?/system-random"]
 analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
-render = ["merman/render"]
-editor-language = ["analysis"]
-cytoscape-layout = ["merman/cytoscape-layout"]
-elk-layout = ["merman/elk-layout"]
-ratex-math = ["render", "dep:merman-render", "merman-render/ratex-math"]
-raster = ["merman/raster"]
+svg = ["merman/svg"]
+png = ["svg", "merman/png"]
+jpeg = ["svg", "merman/jpeg"]
+pdf = ["svg", "merman/pdf"]
+layout-cytoscape = ["svg", "merman/layout-cytoscape"]
+layout-elk = ["svg", "merman/layout-elk"]
+math = ["svg", "merman/math"]
 
 [dependencies]
 chrono.workspace = true
 merman-analysis = { workspace = true, optional = true }
-merman = { path = "../merman", version = "0.8.0-alpha.3", default-features = false }
-merman-render = { path = "../merman-render", version = "0.8.0-alpha.3", optional = true, default-features = false }
+merman.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+[dev-dependencies]
+criterion = "0.8.2"
+roxmltree.workspace = true
+sha2.workspace = true
+
+[[bench]]
+name = "request_overlay"
+harness = false
+required-features = ["analysis", "ascii", "svg"]
+
+[[bench]]
+name = "request_overlay_memory"
+harness = false
+required-features = ["analysis", "ascii", "svg"]

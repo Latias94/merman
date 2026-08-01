@@ -1,30 +1,63 @@
 use crate::diagram::legacy_warning_messages;
 use crate::sanitize::sanitize_text;
 use crate::{
-    DiagramWarningFact, EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind,
-    EditorRenameDomain, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    DiagramWarningFact, EditorCompletionCandidate, EditorCompletionVocabulary,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
+    EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
     EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig,
-    ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
+    ParseControl, ParseControlResult, ParseMetadata, Result, SourceSpan,
+    editor::{
+        EditorLexemeJournal, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
+        lalrpop_recovery_span,
+    },
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
+#[cfg(test)]
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 
-lalrpop_util::lalrpop_mod!(
+#[cfg(test)]
+thread_local! {
+    static FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_flowchart_token_trace_construction_count() {
+    FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn flowchart_token_trace_construction_count() -> usize {
+    FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT.get()
+}
+
+#[cfg(test)]
+pub(crate) fn reset_flowchart_accessibility_scan_count() {
+    accessibility::reset_flowchart_accessibility_scan_count();
+}
+
+#[cfg(test)]
+pub(crate) fn flowchart_accessibility_scan_count() -> usize {
+    accessibility::flowchart_accessibility_scan_count()
+}
+
+include_checked_in_lalrpop_parser!(
     #[allow(
         clippy::empty_line_after_outer_attr,
+        clippy::large_enum_variant,
         clippy::type_complexity,
         clippy::result_large_err
     )]
     flowchart_grammar,
-    "/diagrams/flowchart_grammar.rs"
+    "flowchart_grammar.rs"
 );
 
 mod accessibility;
 mod ast;
 mod build;
 mod lex;
+mod lexeme;
 mod lexer;
 mod lexer_iter;
 mod link;
@@ -39,7 +72,7 @@ use text::{
     parse_edge_label_text, parse_label_text, strip_wrapping_backticks, title_kind_str, unquote,
 };
 
-pub use model::{FlowEdge, FlowEdgeDefaults, FlowNode, FlowSubgraph, FlowchartV2Model};
+pub use model::{FlowEdge, FlowEdgeDefaults, FlowNode, FlowSubgraph, FlowchartModel};
 
 pub(crate) use model::{
     Edge, EdgeDefaults, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
@@ -50,16 +83,19 @@ pub(crate) use ast::{
     LinkStyleStmt, Stmt, StyleStmt, SubgraphBlock,
 };
 
-pub(crate) use tokens::{LexError, NodeLabelToken, Tok};
+pub(crate) use lexeme::FlowchartLexemeComponent;
+pub(crate) use tokens::{DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
-use accessibility::extract_flowchart_accessibility_statements;
+use accessibility::{
+    FlowchartAccessibilityScan, FlowchartAccessibilityStatement, scan_flowchart_accessibility,
+    scan_flowchart_accessibility_controlled,
+};
 use build::FlowchartBuildState;
 use lexer::Lexer;
 use link::{destruct_end_link, destruct_start_link};
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};
 use shape_data::{
-    apply_shape_data_to_node, parse_shape_data, public_shape_names_11_12_2, value_to_bool,
-    value_to_string,
+    apply_shape_data_value_to_node, public_pinned_shape_names, value_to_bool, value_to_string,
 };
 use subgraph::SubgraphBuilder;
 
@@ -86,7 +122,6 @@ pub(crate) struct FlowSubGraph {
 struct FlowchartSemanticSource {
     keyword: String,
     direction: Option<String>,
-    effective_direction: Option<String>,
     acc_title: Option<String>,
     acc_descr: Option<String>,
     class_defs: IndexMap<String, Vec<String>>,
@@ -99,81 +134,137 @@ struct FlowchartSemanticSource {
     warning_facts: Vec<DiagramWarningFact>,
 }
 
-pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse_flowchart_semantic_source(code, meta)?
-        .into_compat_json(&meta.diagram_type, &meta.effective_config))
+pub(crate) fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let model = parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)?;
+    render_model_to_compat_json(&model, meta)
 }
 
 pub(crate) fn parse_flowchart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<(Value, EditorSemanticFacts)> {
-    let original_code = code;
-    let (code, acc_title, acc_descr) = flowchart_parser_input_and_accessibility(code);
-    let ast = parse_flowchart_ast(&code, meta)?;
-    let mut facts = editor_facts_from_flowchart_ast(&ast);
-    collect_accessibility_directive_prefixes(original_code, &mut facts);
-    collect_expected_syntax_from_tokens(&code, &mut facts);
-    let model = parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)?
-        .into_compat_json(&meta.diagram_type, &meta.effective_config);
-    Ok((model, facts))
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    control.checkpoint()?;
+    let FlowchartAccessibilityScan {
+        parser_input: code,
+        title: acc_title,
+        description: acc_descr,
+        statements: accessibility_statements,
+    } = scan_flowchart_accessibility_controlled(code, control)?;
+    control.checkpoint()?;
+    let trace = construct_flowchart_token_trace(&code, &accessibility_statements, control)?;
+    let construction = match parse_flowchart_ast_from_trace(&trace, control)? {
+        Ok(ast) => {
+            let mut facts = editor_facts_from_flowchart_ast(&ast, control)?;
+            control.checkpoint()?;
+            collect_accessibility_directive_prefixes(
+                &accessibility_statements,
+                &mut facts,
+                control,
+            )?;
+            collect_expected_syntax_from_tokens(&code, trace.editor_tokens(), &mut facts, control)?;
+            facts.replace_family_lexemes(trace.lexemes);
+            let model = match parse_flowchart_semantic_source_from_ast_controlled(
+                ast, acc_title, acc_descr, meta, control,
+            )? {
+                Ok(source) => match source.into_render_model_controlled(meta, control)? {
+                    Ok(model) => render_model_to_compat_json(&model, meta),
+                    Err(error) => Err(error),
+                },
+                Err(error) => Err(error),
+            };
+            control.checkpoint()?;
+            Ok((model, facts))
+        }
+        Err(error) => {
+            let facts = flowchart_recovery_facts(
+                &code,
+                trace,
+                &accessibility_statements,
+                error.as_ref(),
+                control,
+            )?;
+            let error = Error::diagram_parse_diagnostic(
+                meta.diagram_type.clone(),
+                lalrpop_parse_diagnostic(error.as_ref(), code.len()),
+            );
+            Err(crate::family::CombinedSemanticFailure::new(error, facts))
+        }
+    };
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |parts| parts,
+        crate::family::CombinedSemanticFailure::into_parts,
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
-pub fn parse_flowchart_model_for_render(
+pub(crate) fn parse_flowchart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<FlowchartV2Model> {
+) -> Result<FlowchartModel> {
     parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)
 }
 
-pub fn flowchart_public_shape_names() -> impl Iterator<Item = &'static str> {
-    public_shape_names_11_12_2()
+pub(crate) fn render_model_to_compat_json(
+    model: &FlowchartModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    let mut value =
+        serde_json::to_value(model).expect("Flowchart typed model must remain JSON-serializable");
+    let root = value.as_object_mut().ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "flowchart typed model did not serialize to an object".to_string(),
+        )
+    })?;
+    root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    if model
+        .warning_facts
+        .iter()
+        .any(|fact| fact.rule_id == FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID)
+    {
+        root.insert("direction".to_string(), Value::Null);
+    }
+    if !model.warning_facts.is_empty() {
+        root.insert(
+            "warnings".to_string(),
+            json!(legacy_warning_messages(&model.warning_facts)),
+        );
+    }
+    Ok(value)
 }
 
-pub fn parse_flowchart_editor_facts(
-    code: &str,
-    _meta: &ParseMetadata,
-) -> Result<EditorSemanticFacts> {
-    let original_code = code;
-    let code = mask_flowchart_editor_parse_input(code);
-    match flowchart_grammar::FlowchartAstParser::new().parse(Lexer::new(&code)) {
-        Ok(ast) => {
-            let mut facts = editor_facts_from_flowchart_ast(&ast);
-            collect_accessibility_directive_prefixes(original_code, &mut facts);
-            collect_expected_syntax_from_tokens(&code, &mut facts);
-            Ok(facts)
-        }
-        Err(error) => {
-            let span = lalrpop_recovery_span(&error, code.len());
-            let mut facts = recover_flowchart_editor_facts_from_tokens(&code);
-            collect_accessibility_directive_prefixes(original_code, &mut facts);
-            facts.mark_recovered_from_parse_error(
-                format!(
-                    "flowchart parser recovered after parse error: {}",
-                    format_lalrpop_parse_error(&error)
-                ),
-                Some(span),
-            );
-            Ok(facts)
-        }
-    }
+pub fn flowchart_public_shape_names() -> impl Iterator<Item = &'static str> {
+    public_pinned_shape_names()
 }
 
 fn parse_flowchart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<FlowchartSemanticSource> {
-    let (code, acc_title, acc_descr) = flowchart_parser_input_and_accessibility(code);
+    let FlowchartAccessibilityScan {
+        parser_input: code,
+        title: acc_title,
+        description: acc_descr,
+        ..
+    } = scan_flowchart_accessibility(code);
     let ast = parse_flowchart_ast(&code, meta)?;
-    parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)
+    let control = ParseControl::new();
+    parse_flowchart_semantic_source_from_ast_controlled(ast, acc_title, acc_descr, meta, &control)
+        .expect("a private parse control cannot be cancelled")
 }
 
-fn parse_flowchart_semantic_source_from_ast(
+fn parse_flowchart_semantic_source_from_ast_controlled(
     ast: FlowchartAst,
     acc_title: Option<String>,
     acc_descr: Option<String>,
     meta: &ParseMetadata,
-) -> Result<FlowchartSemanticSource> {
+    control: &ParseControl,
+) -> ParseControlResult<Result<FlowchartSemanticSource>> {
+    let shape_data_documents = prepare_flowchart_shape_data(&ast.statements, control)?;
+    control.checkpoint()?;
     let inherit_dir = meta
         .effective_config
         .as_value()
@@ -182,7 +273,7 @@ fn parse_flowchart_semantic_source_from_ast(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let mut builder = SubgraphBuilder::new(inherit_dir, ast.direction.clone());
-    builder.visit_statements(&ast.statements);
+    builder.visit_statements(&ast.statements, control)?;
 
     let subgraph_ids: HashSet<String> = builder
         .subgraphs
@@ -191,9 +282,12 @@ fn parse_flowchart_semantic_source_from_ast(
         .collect();
 
     let mut build = FlowchartBuildState::new(subgraph_ids);
-    build
-        .add_statements(&ast.statements)
-        .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e))?;
+    if let Err(error) = build.add_statements(&ast.statements, &shape_data_documents, control)? {
+        return Ok(Err(Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            error,
+        )));
+    }
     let FlowchartBuildState {
         nodes,
         edges,
@@ -213,10 +307,16 @@ fn parse_flowchart_semantic_source_from_ast(
 
     let mut node_index: HashMap<String, usize> = HashMap::new();
     for (idx, n) in nodes.iter().enumerate() {
+        if idx % 128 == 0 {
+            control.checkpoint()?;
+        }
         node_index.insert(n.id.clone(), idx);
     }
     let mut subgraph_index: HashMap<String, usize> = HashMap::new();
     for (idx, sg) in builder.subgraphs.iter().enumerate() {
+        if idx % 128 == 0 {
+            control.checkpoint()?;
+        }
         subgraph_index.insert(sg.id.clone(), idx);
     }
 
@@ -234,19 +334,21 @@ fn parse_flowchart_semantic_source_from_ast(
             security_level_loose,
             diagram_type: &meta.diagram_type,
             config: &meta.effective_config,
+            shape_data_documents: &shape_data_documents,
+            control,
         };
-        apply_semantic_statements(&ast.statements, &mut semantic_ctx)?;
+        if let Err(error) = apply_semantic_statements(&ast.statements, &mut semantic_ctx)? {
+            return Ok(Err(error));
+        }
     }
 
     let direction = ast.direction;
     let mut warning_facts = build_warning_facts;
     warning_facts.extend(flowchart_warning_facts(&direction, ast.header_span));
-    let effective_direction = direction.clone().or_else(|| Some("TB".to_string()));
-
-    Ok(FlowchartSemanticSource {
+    control.checkpoint()?;
+    Ok(Ok(FlowchartSemanticSource {
         keyword: ast.keyword,
         direction,
-        effective_direction,
         acc_descr,
         acc_title,
         class_defs,
@@ -257,18 +359,71 @@ fn parse_flowchart_semantic_source_from_ast(
         edges,
         subgraphs: builder.subgraphs,
         warning_facts,
-    })
+    }))
 }
 
-fn flowchart_parser_input_and_accessibility(
-    code: &str,
-) -> (String, Option<String>, Option<String>) {
-    let (_, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
-    let mut bytes = code.as_bytes().to_vec();
-    mask_accessibility_statements(code, &mut bytes);
-    let code = String::from_utf8(bytes)
-        .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into());
-    (code, acc_title, acc_descr)
+fn prepare_flowchart_shape_data(
+    statements: &[Stmt],
+    control: &ParseControl,
+) -> ParseControlResult<HashMap<String, std::result::Result<Value, String>>> {
+    let mut documents = HashMap::new();
+    let mut stack = vec![statements.iter()];
+    let mut visited = 0usize;
+
+    while let Some(iter) = stack.last_mut() {
+        let Some(statement) = iter.next() else {
+            stack.pop();
+            continue;
+        };
+        if visited.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        visited = visited.saturating_add(1);
+
+        match statement {
+            Stmt::Chain { nodes, .. } => {
+                for (index, node) in nodes.iter().enumerate() {
+                    if index % 128 == 0 {
+                        control.checkpoint()?;
+                    }
+                    if let Some(source) = node.shape_data.as_deref() {
+                        prepare_flowchart_shape_data_document(source, control, &mut documents)?;
+                    }
+                }
+            }
+            Stmt::Node(node) => {
+                if let Some(source) = node.shape_data.as_deref() {
+                    prepare_flowchart_shape_data_document(source, control, &mut documents)?;
+                }
+            }
+            Stmt::Subgraph(subgraph) => stack.push(subgraph.statements.iter()),
+            Stmt::ShapeData { yaml, .. } => {
+                prepare_flowchart_shape_data_document(yaml, control, &mut documents)?;
+            }
+            Stmt::Direction(_)
+            | Stmt::Style(_)
+            | Stmt::ClassDef(_)
+            | Stmt::ClassAssign(_)
+            | Stmt::Click(_)
+            | Stmt::LinkStyle(_) => {}
+        }
+    }
+
+    control.checkpoint()?;
+    Ok(documents)
+}
+
+fn prepare_flowchart_shape_data_document(
+    source: &str,
+    control: &ParseControl,
+    documents: &mut HashMap<String, std::result::Result<Value, String>>,
+) -> ParseControlResult<()> {
+    if documents.contains_key(source) {
+        return control.checkpoint();
+    }
+    let document = crate::inline_config::parse_mermaid_inline_object_controlled(source, control)?;
+    documents.insert(source.to_string(), document);
+    Ok(())
 }
 
 fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst> {
@@ -280,6 +435,186 @@ fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst>
                 lalrpop_parse_diagnostic(&e, code.len()),
             )
         })
+}
+
+type FlowchartAstParseError = lalrpop_util::ParseError<usize, Tok, LexError>;
+type FlowchartToken = (usize, Tok, usize);
+type FlowchartLexerItem = std::result::Result<FlowchartToken, LexError>;
+
+enum FlowchartTracedItem {
+    Token(FlowchartToken),
+    RecoveredToken {
+        token: FlowchartToken,
+        strict_error: LexError,
+    },
+    LexerError(LexError),
+}
+
+struct FlowchartTokenTrace {
+    items: Vec<FlowchartTracedItem>,
+    lexemes: crate::editor::EditorLexemeBatchResult,
+}
+
+impl FlowchartTokenTrace {
+    fn parser_items<'a>(
+        &'a self,
+        control: &'a ParseControl,
+    ) -> impl Iterator<Item = FlowchartLexerItem> + 'a {
+        let mut emitted = 0usize;
+        self.items
+            .iter()
+            .take_while(move |_| {
+                let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+                emitted = emitted.saturating_add(1);
+                active
+            })
+            .map(|item| match item {
+                FlowchartTracedItem::Token(token) => Ok(token.clone()),
+                FlowchartTracedItem::RecoveredToken { strict_error, .. }
+                | FlowchartTracedItem::LexerError(strict_error) => Err(strict_error.clone()),
+            })
+    }
+
+    fn editor_tokens(&self) -> impl Iterator<Item = &FlowchartToken> {
+        self.items.iter().filter_map(|item| match item {
+            FlowchartTracedItem::Token(token)
+            | FlowchartTracedItem::RecoveredToken { token, .. } => Some(token),
+            FlowchartTracedItem::LexerError(_) => None,
+        })
+    }
+}
+
+fn construct_flowchart_token_trace(
+    code: &str,
+    accessibility_statements: &[FlowchartAccessibilityStatement],
+    control: &ParseControl,
+) -> ParseControlResult<FlowchartTokenTrace> {
+    #[cfg(test)]
+    FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT.set(
+        FLOWCHART_TOKEN_TRACE_CONSTRUCTION_COUNT
+            .get()
+            .saturating_add(1),
+    );
+
+    let mut journal = EditorLexemeJournal::family_lexer(code);
+    for (index, component) in accessibility_statements
+        .iter()
+        .flat_map(|statement| statement.lexemes.iter())
+        .enumerate()
+    {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        journal.push(component.kind, EditorLexemeModifiers::NONE, component.span);
+    }
+    let mut items = Vec::new();
+    for item in Lexer::recovering(code) {
+        if items.len() % 128 == 0 {
+            control.checkpoint()?;
+        }
+        match item {
+            Ok(mut token @ (start, _, end)) => {
+                record_flowchart_lexeme(&mut journal, &token.1, start, end);
+                let strict_error = match &mut token.1 {
+                    Tok::NodeLabel(label) => label.recovery_error.take(),
+                    Tok::DirectionStmt(direction) => direction.recovery_error.take(),
+                    _ => None,
+                };
+                items.push(match strict_error {
+                    Some(strict_error) => FlowchartTracedItem::RecoveredToken {
+                        token,
+                        strict_error,
+                    },
+                    None => FlowchartTracedItem::Token(token),
+                });
+            }
+            Err(error) => items.push(FlowchartTracedItem::LexerError(error)),
+        }
+    }
+
+    control.checkpoint()?;
+    Ok(FlowchartTokenTrace {
+        items,
+        lexemes: journal.finish(),
+    })
+}
+
+fn parse_flowchart_ast_from_trace(
+    trace: &FlowchartTokenTrace,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<FlowchartAst, Box<FlowchartAstParseError>>> {
+    control.checkpoint()?;
+    let parsed = flowchart_grammar::FlowchartAstParser::new()
+        .parse(trace.parser_items(control))
+        .map_err(Box::new);
+    control.checkpoint()?;
+    Ok(parsed)
+}
+
+fn record_flowchart_lexeme(
+    journal: &mut EditorLexemeJournal<'_>,
+    token: &Tok,
+    start: usize,
+    end: usize,
+) {
+    let components = match token {
+        Tok::DirectionStmt(token) => Some(token.lexeme_components.as_slice()),
+        Tok::NodeLabel(token) => Some(token.lexeme_components.as_slice()),
+        Tok::EdgeLabel(label) => Some(label.lexeme_components.as_slice()),
+        Tok::SubgraphHeader(header) => Some(header.lexeme_components.as_slice()),
+        Tok::StyleStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        Tok::ClassDefStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        Tok::ClassAssignStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        Tok::ClickStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        Tok::LinkStyleStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        _ => None,
+    };
+    if let Some(components) = components {
+        for component in components {
+            journal.push(component.kind, EditorLexemeModifiers::NONE, component.span);
+        }
+        return;
+    }
+
+    let span = SourceSpan::new(start, end);
+    let kind = match token {
+        Tok::KwGraph
+        | Tok::KwFlowchart
+        | Tok::KwFlowchartElk
+        | Tok::KwSwimlane
+        | Tok::KwSubgraph
+        | Tok::KwEnd => EditorLexemeKind::Keyword,
+        Tok::Amp | Tok::StyleSep | Tok::Arrow(_) => EditorLexemeKind::Operator,
+        Tok::Direction(_) => EditorLexemeKind::Literal,
+        Tok::ShapeData(_) => EditorLexemeKind::Style,
+        Tok::Id(_) => EditorLexemeKind::Identifier,
+        Tok::EdgeId(_) => {
+            if start + 1 < end {
+                journal.push(
+                    EditorLexemeKind::Identifier,
+                    EditorLexemeModifiers::NONE,
+                    SourceSpan::new(start, end - 1),
+                );
+            }
+            journal.push(
+                EditorLexemeKind::Operator,
+                EditorLexemeModifiers::NONE,
+                SourceSpan::new(end - 1, end),
+            );
+            return;
+        }
+        Tok::DirectionStmt(_)
+        | Tok::NodeLabel(_)
+        | Tok::EdgeLabel(_)
+        | Tok::SubgraphHeader(_)
+        | Tok::StyleStmt(_)
+        | Tok::ClassDefStmt(_)
+        | Tok::ClassAssignStmt(_)
+        | Tok::ClickStmt(_)
+        | Tok::LinkStyleStmt(_) => unreachable!("compound tokens return above"),
+        Tok::Sep => return,
+    };
+    journal.push(kind, EditorLexemeModifiers::NONE, span);
 }
 
 fn flowchart_warning_facts(
@@ -300,179 +635,101 @@ fn flowchart_warning_facts(
     ]
 }
 
-fn mask_flowchart_editor_parse_input(code: &str) -> String {
-    let mut bytes = code.as_bytes().to_vec();
+const FLOWCHART_COMPLETION_OPERATORS: &[EditorCompletionCandidate] = &[
+    EditorCompletionCandidate::keyword("-->", "edge operator"),
+    EditorCompletionCandidate::keyword("---", "edge operator"),
+    EditorCompletionCandidate::keyword("-.->", "edge operator"),
+    EditorCompletionCandidate::keyword("==>", "edge operator"),
+    EditorCompletionCandidate::snippet("-->|label|", "labeled edge operator", "-->|${1:label}|"),
+    EditorCompletionCandidate::keyword("--o", "circle-ended edge operator"),
+];
 
-    if let Some((start, end)) = frontmatter_range(code) {
-        mask_range_preserving_newlines(&mut bytes, start, end);
-    }
-    mask_directives(code, &mut bytes);
-    mask_mermaid_comment_lines(code, &mut bytes);
-    mask_accessibility_statements(code, &mut bytes);
+const FLOWCHART_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
+    EditorCompletionCandidate::keyword("TB", "top to bottom"),
+    EditorCompletionCandidate::keyword("TD", "top down"),
+    EditorCompletionCandidate::keyword("BT", "bottom to top"),
+    EditorCompletionCandidate::keyword("LR", "left to right"),
+    EditorCompletionCandidate::keyword("RL", "right to left"),
+];
 
-    String::from_utf8(bytes).unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into())
-}
+const FLOWCHART_COMPLETION_VOCABULARY: EditorCompletionVocabulary = EditorCompletionVocabulary::new(
+    FLOWCHART_COMPLETION_OPERATORS,
+    FLOWCHART_COMPLETION_DIRECTIONS,
+);
 
-fn frontmatter_range(code: &str) -> Option<(usize, usize)> {
-    let after_marker = code.strip_prefix("---")?;
-    let open_line_end = after_marker.find('\n')?;
-    if !after_marker[..open_line_end].trim().is_empty() {
-        return None;
-    }
-
-    let body_start = 3 + open_line_end + 1;
-    let body = &code[body_start..];
-    let mut offset = 0usize;
-    for line in body.split_inclusive('\n') {
-        if line.trim_end_matches(['\r', '\n']).trim() == "---" {
-            return Some((0, body_start + offset + line.len()));
-        }
-        offset += line.len();
-    }
-
-    None
-}
-
-fn mask_directives(code: &str, bytes: &mut [u8]) {
-    let mut pos = 0usize;
-    while let Some(rel) = code[pos..].find("%%{") {
-        let start = pos + rel;
-        let after_start = start + 3;
-        let end = code[after_start..]
-            .find("}%%")
-            .map_or(code.len(), |rel_end| after_start + rel_end + 3);
-        mask_range_preserving_newlines(bytes, start, end);
-        pos = end;
-    }
-}
-
-fn mask_mermaid_comment_lines(code: &str, bytes: &mut [u8]) {
-    let mut start = 0usize;
-    for line in code.split_inclusive('\n') {
-        let end = start + line.len();
-        let trimmed = line.trim_start();
-        if let Some(after_marker) = trimmed.strip_prefix("%%") {
-            let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
-            if !after_marker.starts_with('{') && has_comment_body {
-                mask_range_preserving_newlines(bytes, start, end);
-            }
-        }
-        start = end;
-    }
-}
-
-fn mask_accessibility_statements(code: &str, bytes: &mut [u8]) {
-    let mut start = 0usize;
-    while start < code.len() {
-        let end = next_line_end(code, start);
-        let line = &code[start..end];
-        let trimmed = line.trim_start();
-
-        if is_accessibility_title_line(trimmed) {
-            mask_range_preserving_newlines(bytes, start, end);
-            start = end;
-            continue;
-        }
-
-        if let Some(is_block) = accessibility_description_line_kind(trimmed) {
-            let mut block_end = end;
-            if is_block && !trimmed.contains('}') {
-                while block_end < code.len() {
-                    let next_end = next_line_end(code, block_end);
-                    let next_line = &code[block_end..next_end];
-                    block_end = next_end;
-                    if next_line.contains('}') {
-                        break;
-                    }
-                }
-            }
-            mask_range_preserving_newlines(bytes, start, block_end);
-            start = block_end;
-            continue;
-        }
-
-        start = end;
-    }
-}
-
-fn is_accessibility_title_line(trimmed: &str) -> bool {
-    trimmed
-        .strip_prefix("accTitle")
-        .is_some_and(|rest| rest.trim_start().starts_with(':'))
-}
-
-fn accessibility_description_line_kind(trimmed: &str) -> Option<bool> {
-    for prefix in ["accDescription", "accDescr"] {
-        let Some(rest) = trimmed.strip_prefix(prefix) else {
-            continue;
-        };
-        let rest = rest.trim_start();
-        if rest.starts_with(':') {
-            return Some(false);
-        }
-        if rest.starts_with('{') {
-            return Some(true);
-        }
-    }
-    None
-}
-
-fn next_line_end(code: &str, start: usize) -> usize {
-    code[start..]
-        .find('\n')
-        .map_or(code.len(), |relative| start + relative + 1)
-}
-
-fn mask_range_preserving_newlines(bytes: &mut [u8], start: usize, end: usize) {
-    for byte in &mut bytes[start..end] {
-        if *byte != b'\n' && *byte != b'\r' {
-            *byte = b' ';
-        }
-    }
-}
-
-fn editor_facts_from_flowchart_ast(ast: &FlowchartAst) -> EditorSemanticFacts {
+fn editor_facts_from_flowchart_ast(
+    ast: &FlowchartAst,
+    control: &ParseControl,
+) -> ParseControlResult<EditorSemanticFacts> {
     let mut facts =
-        EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart);
-    collect_editor_facts_from_statements(&ast.statements, &mut facts);
-    facts
+        EditorSemanticFacts::new().with_completion_vocabulary(FLOWCHART_COMPLETION_VOCABULARY);
+    collect_editor_facts_from_statements(&ast.statements, &mut facts, control)?;
+    Ok(facts)
 }
 
-fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
+fn recover_flowchart_editor_facts_from_tokens(
+    code: &str,
+    trace: FlowchartTokenTrace,
+    control: &ParseControl,
+) -> ParseControlResult<EditorSemanticFacts> {
     let mut facts =
-        EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart);
+        EditorSemanticFacts::new().with_completion_vocabulary(FLOWCHART_COMPLETION_VOCABULARY);
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
-    let mut lexer = Lexer::recovering(code);
-    let mut last_position = lexer.position();
-
-    while let Some(result) = lexer.next() {
-        let current_position = lexer.position();
-        if let Ok((start, token, end)) = result {
-            collector.accept(code, token, start, end, &mut facts);
-        } else if current_position == last_position {
-            break;
+    for (index, (start, token, end)) in trace.editor_tokens().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
         }
-        last_position = current_position;
+        collector.accept(code, token, *start, *end, &mut facts);
     }
     collector.finish(code.len(), &mut facts);
+    for item in &trace.items {
+        let error = match item {
+            FlowchartTracedItem::RecoveredToken { strict_error, .. }
+            | FlowchartTracedItem::LexerError(strict_error) => Some(strict_error),
+            FlowchartTracedItem::Token(_) => None,
+        };
+        if let Some(expected) = error.and_then(|error| error.expected_syntax.as_ref()) {
+            facts.push_expected_syntax(expected.clone());
+        }
+    }
+    facts.replace_family_lexemes(trace.lexemes);
 
-    facts
+    control.checkpoint()?;
+    Ok(facts)
 }
 
-fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFacts) {
-    let mut lexer = Lexer::new(code);
-    let mut last_position = lexer.position();
-    while let Some(result) = lexer.next() {
-        let current_position = lexer.position();
-        let Ok((start, token, end)) = result else {
-            if current_position == last_position {
-                break;
-            }
-            last_position = current_position;
-            continue;
-        };
+fn flowchart_recovery_facts(
+    parser_code: &str,
+    trace: FlowchartTokenTrace,
+    accessibility_statements: &[FlowchartAccessibilityStatement],
+    error: &FlowchartAstParseError,
+    control: &ParseControl,
+) -> ParseControlResult<EditorSemanticFacts> {
+    let span = lalrpop_recovery_span(error, parser_code.len());
+    let mut facts = recover_flowchart_editor_facts_from_tokens(parser_code, trace, control)?;
+    collect_accessibility_directive_prefixes(accessibility_statements, &mut facts, control)?;
+    facts.mark_recovered_from_parse_error(
+        format!(
+            "flowchart parser recovered after parse error: {}",
+            format_lalrpop_parse_error(error)
+        ),
+        Some(span),
+    );
+    control.checkpoint()?;
+    Ok(facts)
+}
 
+fn collect_expected_syntax_from_tokens<'a>(
+    code: &str,
+    tokens: impl Iterator<Item = &'a FlowchartToken>,
+    facts: &mut EditorSemanticFacts,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    for (index, (start, token, end)) in tokens.enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         match token {
             Tok::NodeLabel(label) => {
                 if let Some(trigger_span) = label.trigger_span {
@@ -480,15 +737,15 @@ fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFac
                 }
             }
             Tok::ShapeData(_) => {
-                push_flowchart_shape_value_expected_syntax(code, start, end, facts)
+                push_flowchart_shape_value_expected_syntax(code, *start, *end, facts)
             }
-            Tok::DirectionStmt(dir) => {
-                push_flowchart_direction_value_expected_syntax(code, start, end, &dir, facts)
+            Tok::DirectionStmt(stmt) => {
+                push_flowchart_direction_value_expected_syntax(stmt.selection, facts)
             }
             _ => {}
         }
-        last_position = current_position;
     }
+    control.checkpoint()
 }
 
 #[derive(Debug, Default)]
@@ -506,7 +763,7 @@ impl FlowchartRecoveryFactCollector {
     fn accept(
         &mut self,
         code: &str,
-        token: Tok,
+        token: &Tok,
         start: usize,
         end: usize,
         facts: &mut EditorSemanticFacts,
@@ -519,7 +776,7 @@ impl FlowchartRecoveryFactCollector {
             Other,
         }
 
-        let token_kind = match &token {
+        let token_kind = match token {
             Tok::Arrow(_) => TokenKind::Arrow,
             Tok::EdgeLabel(_) => TokenKind::EdgeLabel,
             Tok::Id(_) => TokenKind::Id,
@@ -584,7 +841,7 @@ impl FlowchartRecoveryFactCollector {
 
 fn collect_editor_fact_from_token(
     code: &str,
-    token: Tok,
+    token: &Tok,
     start: usize,
     end: usize,
     facts: &mut EditorSemanticFacts,
@@ -592,7 +849,7 @@ fn collect_editor_fact_from_token(
     match token {
         Tok::Id(id) => push_flowchart_token_symbol(facts, id, start, end),
         Tok::SubgraphHeader(header) => {
-            push_flowchart_header_symbol(facts, &header);
+            push_flowchart_header_symbol(facts, header);
         }
         Tok::NodeLabel(label) => {
             if let Some(trigger_span) = label.trigger_span {
@@ -607,13 +864,13 @@ fn collect_editor_fact_from_token(
         }
         Tok::EdgeLabel(label) => push_flowchart_labeled_payload_symbol(
             facts,
-            &label,
+            label,
             Some(SourceSpan::new(start, end)),
             "flowchart edge label",
         ),
-        Tok::StyleStmt(stmt) => push_flowchart_style_stmt_facts(facts, &stmt),
-        Tok::ClassDefStmt(stmt) => push_flowchart_classdef_stmt_facts(facts, &stmt),
-        Tok::ClassAssignStmt(stmt) => push_flowchart_class_assign_stmt_facts(facts, &stmt),
+        Tok::StyleStmt(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
+        Tok::ClassDefStmt(stmt) => push_flowchart_classdef_stmt_facts(facts, stmt),
+        Tok::ClassAssignStmt(stmt) => push_flowchart_class_assign_stmt_facts(facts, stmt),
         Tok::ClickStmt(_) => facts.push_directive_prefix("click"),
         Tok::LinkStyleStmt(_) => facts.push_directive_prefix("linkStyle"),
         Tok::KwGraph
@@ -626,15 +883,19 @@ fn collect_editor_fact_from_token(
         | Tok::Amp
         | Tok::StyleSep
         | Tok::Direction(_) => {}
-        Tok::DirectionStmt(dir) => {
-            push_flowchart_direction_value_expected_syntax(code, start, end, &dir, facts)
+        Tok::DirectionStmt(stmt) => {
+            push_flowchart_direction_value_expected_syntax(stmt.selection, facts)
         }
         Tok::Arrow(_) | Tok::EdgeId(_) => {}
         Tok::ShapeData(_) => push_flowchart_shape_value_expected_syntax(code, start, end, facts),
     }
 }
 
-fn collect_editor_facts_from_statements(statements: &[Stmt], facts: &mut EditorSemanticFacts) {
+fn collect_editor_facts_from_statements(
+    statements: &[Stmt],
+    facts: &mut EditorSemanticFacts,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
     let mut emitted_edge_label_spans = HashSet::new();
     let mut seen_edge_ids = HashSet::new();
     collect_editor_facts_from_statements_with_seen_edges(
@@ -642,7 +903,8 @@ fn collect_editor_facts_from_statements(statements: &[Stmt], facts: &mut EditorS
         facts,
         &mut emitted_edge_label_spans,
         &mut seen_edge_ids,
-    );
+        control,
+    )
 }
 
 fn collect_editor_facts_from_statements_with_seen_edges(
@@ -650,14 +912,32 @@ fn collect_editor_facts_from_statements_with_seen_edges(
     facts: &mut EditorSemanticFacts,
     emitted_edge_label_spans: &mut HashSet<(usize, usize)>,
     seen_edge_ids: &mut HashSet<String>,
-) {
-    for stmt in statements {
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    let mut stack = vec![statements.iter()];
+    let mut visited = 0usize;
+    while let Some(iter) = stack.last_mut() {
+        let Some(stmt) = iter.next() else {
+            stack.pop();
+            continue;
+        };
+        if visited.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        visited = visited.saturating_add(1);
+
         match stmt {
             Stmt::Chain { nodes, edges } => {
-                for node in nodes {
+                for (index, node) in nodes.iter().enumerate() {
+                    if index % 128 == 0 {
+                        control.checkpoint()?;
+                    }
                     push_flowchart_node_symbol(facts, node);
                 }
-                for edge in edges {
+                for (index, edge) in edges.iter().enumerate() {
+                    if index % 128 == 0 {
+                        control.checkpoint()?;
+                    }
                     push_flowchart_edge_label_symbol(facts, edge, emitted_edge_label_spans);
                     if let Some(id) = edge.id.as_deref() {
                         seen_edge_ids.insert(id.to_string());
@@ -667,12 +947,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
             Stmt::Node(node) => push_flowchart_node_symbol(facts, node),
             Stmt::Subgraph(subgraph) => {
                 push_flowchart_subgraph_symbol(facts, subgraph);
-                collect_editor_facts_from_statements_with_seen_edges(
-                    &subgraph.statements,
-                    facts,
-                    emitted_edge_label_spans,
-                    seen_edge_ids,
-                );
+                stack.push(subgraph.statements.iter());
             }
             Stmt::Style(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
             Stmt::ClassDef(stmt) => push_flowchart_classdef_stmt_facts(facts, stmt),
@@ -698,6 +973,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
             Stmt::Direction(_) => {}
         }
     }
+    control.checkpoint()
 }
 
 fn push_flowchart_node_symbol(facts: &mut EditorSemanticFacts, node: &Node) {
@@ -710,7 +986,7 @@ fn push_flowchart_node_symbol(facts: &mut EditorSemanticFacts, node: &Node) {
                 span,
                 span,
             )
-            .with_rename_domain(EditorRenameDomain::FlowchartNodeId),
+            .with_rename_policy(EditorRenamePolicy::FlowchartNodeId),
         );
     }
 
@@ -831,7 +1107,7 @@ fn push_flowchart_span_symbol(
         span,
     );
     facts.push_symbol(if role == EditorSemanticRole::Entity {
-        symbol.with_rename_domain(EditorRenameDomain::FlowchartNodeId)
+        symbol.with_rename_policy(EditorRenamePolicy::FlowchartNodeId)
     } else {
         symbol
     });
@@ -895,16 +1171,9 @@ fn push_flowchart_shape_value_expected_syntax(
 }
 
 fn push_flowchart_direction_value_expected_syntax(
-    code: &str,
-    start: usize,
-    end: usize,
-    dir: &str,
+    span: SourceSpan,
     facts: &mut EditorSemanticFacts,
 ) {
-    let Some(span) = direction_value_expected_span(code, start, end, dir) else {
-        return;
-    };
-
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::DirectionValue,
         span,
@@ -918,7 +1187,11 @@ fn push_flowchart_shape_trigger_expected_syntax(span: SourceSpan, facts: &mut Ed
     ));
 }
 
-fn shape_value_expected_span(code: &str, start: usize, end: usize) -> Option<SourceSpan> {
+pub(super) fn shape_value_expected_span(
+    code: &str,
+    start: usize,
+    end: usize,
+) -> Option<SourceSpan> {
     let raw = code.get(start..end)?;
     let body = raw.strip_prefix("@{")?;
     let body = body.strip_suffix('}').unwrap_or(body);
@@ -1003,30 +1276,20 @@ fn shape_value_expected_span(code: &str, start: usize, end: usize) -> Option<Sou
     None
 }
 
-fn collect_accessibility_directive_prefixes(code: &str, facts: &mut EditorSemanticFacts) {
-    for line in code.lines() {
-        let trimmed = line.trim_start();
-        if is_accessibility_title_line(trimmed) {
-            facts.push_directive_prefix("accTitle");
-            continue;
+fn collect_accessibility_directive_prefixes(
+    statements: &[FlowchartAccessibilityStatement],
+    facts: &mut EditorSemanticFacts,
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    for (index, statement) in statements.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
         }
-        if let Some(prefix) = accessibility_description_prefix(trimmed) {
-            facts.push_directive_prefix(prefix);
-        }
-    }
-}
-
-fn accessibility_description_prefix(trimmed: &str) -> Option<&'static str> {
-    for prefix in ["accDescription", "accDescr"] {
-        let Some(rest) = trimmed.strip_prefix(prefix) else {
-            continue;
-        };
-        let rest = rest.trim_start();
-        if rest.starts_with(':') || rest.starts_with('{') {
-            return Some(prefix);
+        if statement.complete {
+            facts.push_directive_prefix(statement.directive.prefix());
         }
     }
-    None
+    control.checkpoint()
 }
 
 fn shape_key_boundary(body: &str, pos: usize) -> bool {
@@ -1092,27 +1355,6 @@ fn shape_value_end(body: &str, start: usize) -> usize {
     }
 }
 
-fn direction_value_expected_span(
-    code: &str,
-    start: usize,
-    end: usize,
-    dir: &str,
-) -> Option<SourceSpan> {
-    let raw = code.get(start..end)?;
-    let trimmed = raw.trim_start();
-    let leading = raw.len().saturating_sub(trimmed.len());
-    let after_keyword = trimmed.strip_prefix("direction")?;
-    let keyword_ws = after_keyword
-        .chars()
-        .take_while(|ch| ch.is_whitespace())
-        .map(|ch| ch.len_utf8())
-        .sum::<usize>();
-    let value_start = start + leading + "direction".len() + keyword_ws;
-    let value_end = value_start + dir.len();
-
-    Some(SourceSpan::new(value_start, value_end))
-}
-
 fn push_flowchart_subgraph_symbol(facts: &mut EditorSemanticFacts, subgraph: &SubgraphBlock) {
     push_flowchart_header_symbol(facts, &subgraph.header);
 }
@@ -1132,14 +1374,14 @@ fn push_flowchart_header_symbol(facts: &mut EditorSemanticFacts, header: &Subgra
                 span,
                 selection,
             )
-            .with_rename_domain(EditorRenameDomain::FlowchartNodeId),
+            .with_rename_policy(EditorRenamePolicy::FlowchartNodeId),
         );
     }
 }
 
 fn push_flowchart_token_symbol(
     facts: &mut EditorSemanticFacts,
-    id: String,
+    id: &str,
     start: usize,
     end: usize,
 ) {
@@ -1149,126 +1391,118 @@ fn push_flowchart_token_symbol(
     let span = crate::SourceSpan::new(start, end);
     facts.push_symbol(
         EditorSemanticSymbol::new(
-            id,
+            id.to_string(),
             Some("flowchart node".to_string()),
             EditorSemanticKind::Module,
             span,
             span,
         )
-        .with_rename_domain(EditorRenameDomain::FlowchartNodeId),
+        .with_rename_policy(EditorRenamePolicy::FlowchartNodeId),
     );
 }
 
 impl FlowchartSemanticSource {
-    fn into_compat_json(self, diagram_type: &str, config: &MermaidConfig) -> Value {
-        let FlowchartSemanticSource {
-            keyword,
-            direction,
-            acc_title,
-            acc_descr,
-            class_defs,
-            tooltips,
-            edge_defaults,
-            vertex_calls,
-            mut nodes,
-            edges,
-            subgraphs,
-            warning_facts,
-            ..
-        } = self;
-
-        if diagram_type == "flowchart-elk" {
-            append_missing_subgraph_nodes(&mut nodes, &subgraphs);
-        }
-
-        let mut model = json!({
-            "type": diagram_type,
-            "keyword": keyword,
-            "direction": direction,
-            "accTitle": acc_title,
-            "accDescr": acc_descr,
-            "classDefs": class_defs,
-            "tooltips": tooltips,
-            "edgeDefaults": {
-                "style": edge_defaults.style,
-                "interpolate": edge_defaults.interpolate,
-            },
-            "vertexCalls": vertex_calls,
-            "nodes": nodes
-                .into_iter()
-                .map(|node| flow_node_to_json(node, config))
-                .collect::<Vec<_>>(),
-            "edges": edges
-                .into_iter()
-                .map(|edge| flow_edge_to_json(edge, config))
-                .collect::<Vec<_>>(),
-            "subgraphs": subgraphs
-                .into_iter()
-                .map(flow_subgraph_to_json)
-                .collect::<Vec<_>>(),
-        });
-
-        if !warning_facts.is_empty() {
-            let warnings = legacy_warning_messages(&warning_facts);
-            model["warningFacts"] = json!(warning_facts);
-            model["warnings"] = json!(warnings);
-        }
-
-        model
+    fn into_render_model(self, meta: &ParseMetadata) -> Result<FlowchartModel> {
+        let control = ParseControl::new();
+        self.into_render_model_controlled(meta, &control)
+            .expect("a private parse control cannot be cancelled")
     }
 
-    fn into_render_model(self, meta: &ParseMetadata) -> Result<FlowchartV2Model> {
+    fn into_render_model_controlled(
+        self,
+        meta: &ParseMetadata,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<FlowchartModel>> {
+        control.checkpoint()?;
         let FlowchartSemanticSource {
             acc_descr,
             acc_title,
             class_defs,
-            direction: _,
             edge_defaults,
             vertex_calls,
             mut nodes,
             edges,
             subgraphs,
             warning_facts,
-            effective_direction,
             tooltips,
-            keyword: _,
+            keyword,
+            direction,
         } = self;
 
         if meta.diagram_type == "flowchart-elk" {
-            append_missing_subgraph_nodes(&mut nodes, &subgraphs);
+            append_missing_subgraph_nodes(&mut nodes, &subgraphs, control)?;
         }
 
-        Ok(FlowchartV2Model {
+        let mut render_nodes = Vec::with_capacity(nodes.len());
+        for (index, node) in nodes.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            render_nodes.push(flow_node_to_model(node, &meta.effective_config));
+        }
+        let mut render_edges = Vec::with_capacity(edges.len());
+        for (index, edge) in edges.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            match flow_edge_to_model(edge, meta) {
+                Ok(edge) => render_edges.push(edge),
+                Err(error) => return Ok(Err(error)),
+            }
+        }
+        let mut render_subgraphs = Vec::with_capacity(subgraphs.len());
+        for (index, subgraph) in subgraphs.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            render_subgraphs.push(flow_subgraph_to_model(subgraph));
+        }
+        let mut render_tooltips = rustc_hash::FxHashMap::default();
+        render_tooltips.reserve(tooltips.len());
+        for (index, (id, tooltip)) in tooltips.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            render_tooltips.insert(id, tooltip);
+        }
+
+        control.checkpoint()?;
+        Ok(Ok(FlowchartModel {
+            keyword,
             acc_descr,
             acc_title,
             class_defs,
-            direction: effective_direction,
+            direction: direction.or_else(|| Some("TB".to_string())),
             edge_defaults: Some(FlowEdgeDefaults {
                 style: edge_defaults.style,
                 interpolate: edge_defaults.interpolate,
             }),
             vertex_calls,
-            nodes: nodes
-                .into_iter()
-                .map(|node| flow_node_to_model(node, &meta.effective_config))
-                .collect::<Vec<_>>(),
-            edges: edges
-                .into_iter()
-                .map(|edge| flow_edge_to_model(edge, meta))
-                .collect::<Result<Vec<_>>>()?,
-            subgraphs: subgraphs
-                .into_iter()
-                .map(flow_subgraph_to_model)
-                .collect::<Vec<_>>(),
-            tooltips: tooltips.into_iter().collect(),
+            nodes: render_nodes,
+            edges: render_edges,
+            subgraphs: render_subgraphs,
+            tooltips: render_tooltips,
             warning_facts,
-        })
+        }))
     }
 }
 
-fn append_missing_subgraph_nodes(nodes: &mut Vec<Node>, subgraphs: &[FlowSubGraph]) {
-    let mut existing_ids: HashSet<String> = nodes.iter().map(|node| node.id.clone()).collect();
-    for subgraph in subgraphs {
+fn append_missing_subgraph_nodes(
+    nodes: &mut Vec<Node>,
+    subgraphs: &[FlowSubGraph],
+    control: &ParseControl,
+) -> ParseControlResult<()> {
+    let mut existing_ids = HashSet::with_capacity(nodes.len());
+    for (index, node) in nodes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        existing_ids.insert(node.id.clone());
+    }
+    for (index, subgraph) in subgraphs.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
         if existing_ids.insert(subgraph.id.clone()) {
             nodes.push(Node {
                 id: subgraph.id.clone(),
@@ -1294,31 +1528,7 @@ fn append_missing_subgraph_nodes(nodes: &mut Vec<Node>, subgraphs: &[FlowSubGrap
             });
         }
     }
-}
-
-fn flow_node_to_json(n: Node, config: &MermaidConfig) -> Value {
-    let layout_shape = layout_shape_for_node(&n);
-    let label = sanitized_node_label(&n, config);
-
-    json!({
-        "id": n.id,
-        "label": label,
-        "labelType": title_kind_str(&n.label_type),
-        "shape": n.shape,
-        "layoutShape": layout_shape,
-        "icon": n.icon,
-        "form": n.form,
-        "pos": n.pos,
-        "img": n.img,
-        "constraint": n.constraint,
-        "assetWidth": n.asset_width,
-        "assetHeight": n.asset_height,
-        "styles": n.styles,
-        "classes": n.classes,
-        "link": n.link,
-        "linkTarget": n.link_target,
-        "haveCallback": n.have_callback,
-    })
+    control.checkpoint()
 }
 
 fn flow_node_to_model(n: Node, config: &MermaidConfig) -> FlowNode {
@@ -1330,6 +1540,7 @@ fn flow_node_to_model(n: Node, config: &MermaidConfig) -> FlowNode {
         label: Some(label),
         label_type: Some(title_kind_str(&n.label_type).to_string()),
         layout_shape: Some(layout_shape),
+        shape: n.shape,
         icon: n.icon,
         form: n.form,
         pos: n.pos,
@@ -1343,28 +1554,6 @@ fn flow_node_to_model(n: Node, config: &MermaidConfig) -> FlowNode {
         link_target: n.link_target,
         have_callback: n.have_callback,
     }
-}
-
-fn flow_edge_to_json(e: Edge, config: &MermaidConfig) -> Value {
-    let label = sanitized_optional_label(e.label.as_deref(), config);
-
-    json!({
-        "from": e.from,
-        "to": e.to,
-        "id": e.id,
-        "isUserDefinedId": e.is_user_defined_id,
-        "arrow": e.link.end,
-        "type": e.link.edge_type,
-        "stroke": e.link.stroke,
-        "length": e.link.length,
-        "label": label,
-        "labelType": title_kind_str(&e.label_type),
-        "style": e.style,
-        "classes": e.classes,
-        "interpolate": e.interpolate,
-        "animate": e.animate,
-        "animation": e.animation,
-    })
 }
 
 fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<FlowEdge> {
@@ -1383,6 +1572,8 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<FlowEdge> {
         label,
         label_type: Some(title_kind_str(&e.label_type).to_string()),
         edge_type: Some(e.link.edge_type),
+        arrow: e.link.end,
+        is_user_defined_id: e.is_user_defined_id,
         stroke: Some(e.link.stroke),
         length: e.link.length,
         style: e.style,
@@ -1439,20 +1630,6 @@ fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
     crate::entities::decode_mermaid_entities_to_unicode(input)
 }
 
-fn flow_subgraph_to_json(sg: FlowSubGraph) -> Value {
-    let title = crate::entities::decode_mermaid_entities_to_unicode(&sg.title).into_owned();
-    json!({
-        "id": sg.id,
-        "nodes": sg.nodes,
-        "title": title,
-        "classes": sg.classes,
-        "styles": sg.styles,
-        "dir": sg.dir,
-        "hasExplicitDir": sg.has_explicit_dir,
-        "labelType": sg.label_type,
-    })
-}
-
 fn flow_subgraph_to_model(sg: FlowSubGraph) -> FlowSubgraph {
     FlowSubgraph {
         id: sg.id,
@@ -1469,6 +1646,137 @@ fn flow_subgraph_to_model(sg: FlowSubGraph) -> FlowSubgraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completion_vocabulary_contains_only_parser_accepted_flowchart_syntax() {
+        let meta = ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+
+        for candidate in FLOWCHART_COMPLETION_OPERATORS {
+            let source = format!("flowchart TD\nA {} B\n", candidate.label());
+            parse_flowchart_ast(&source, &meta).unwrap_or_else(|error| {
+                panic!(
+                    "flowchart completion operator {:?} must parse: {error}",
+                    candidate.label()
+                )
+            });
+        }
+
+        for candidate in FLOWCHART_COMPLETION_DIRECTIONS {
+            let source = format!("flowchart {}\nA --> B\n", candidate.label());
+            parse_flowchart_ast(&source, &meta).unwrap_or_else(|error| {
+                panic!(
+                    "flowchart completion direction {:?} must parse: {error}",
+                    candidate.label()
+                )
+            });
+        }
+    }
+
+    #[test]
+    fn combined_flowchart_parse_propagates_preexisting_cancellation() {
+        let meta = ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        let control = ParseControl::new();
+        control.cancel();
+
+        assert!(matches!(
+            parse_flowchart_json_and_editor_facts("flowchart TD\nA-->B\n", &meta, &control),
+            Err(crate::ParseCancelled)
+        ));
+    }
+
+    #[test]
+    fn token_trace_stops_after_cancellation_during_parser_work() {
+        let mut source = String::from("flowchart TD\n");
+        for index in 0..512 {
+            source.push_str(&format!("n{index}-->n{}\n", index + 1));
+        }
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            construct_flowchart_token_trace(&source, &[], &control),
+            Err(crate::ParseCancelled)
+        ));
+        assert!(control.is_cancelled());
+    }
+
+    #[test]
+    fn single_large_chain_observes_cancellation_in_post_parse_projections() {
+        let nodes = (0..256)
+            .map(|index| format!("n{index}"))
+            .collect::<Vec<_>>()
+            .join(" & ");
+        let source = format!("flowchart TD\n{nodes}\n");
+        let meta = ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        let ast = parse_flowchart_ast(&source, &meta).expect("large node group should parse");
+        assert!(matches!(
+            ast.statements.as_slice(),
+            [Stmt::Chain { nodes, .. }] if nodes.len() == 256
+        ));
+
+        let shape_data_control = ParseControl::new();
+        shape_data_control.cancel_after_checkpoints(2);
+        assert!(matches!(
+            prepare_flowchart_shape_data(&ast.statements, &shape_data_control),
+            Err(crate::ParseCancelled)
+        ));
+
+        let editor_facts_control = ParseControl::new();
+        editor_facts_control.cancel_after_checkpoints(2);
+        assert!(matches!(
+            editor_facts_from_flowchart_ast(&ast, &editor_facts_control),
+            Err(crate::ParseCancelled)
+        ));
+
+        let semantic_source =
+            parse_flowchart_semantic_source(&source, &meta).expect("large node group should build");
+        let render_control = ParseControl::new();
+        render_control.cancel_after_checkpoints(2);
+        assert!(matches!(
+            semantic_source.into_render_model_controlled(&meta, &render_control),
+            Err(crate::ParseCancelled)
+        ));
+    }
+
+    #[test]
+    fn single_large_subgraph_chain_observes_cancellation_in_membership_projection() {
+        let nodes = (0..256)
+            .map(|index| format!("n{index}"))
+            .collect::<Vec<_>>()
+            .join(" & ");
+        let source = format!("flowchart TD\nsubgraph group\n{nodes}\nend\n");
+        let meta = ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        let ast =
+            parse_flowchart_ast(&source, &meta).expect("large subgraph node group should parse");
+        let mut builder = SubgraphBuilder::new(false, ast.direction.clone());
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            builder.visit_statements(&ast.statements, &control),
+            Err(crate::ParseCancelled)
+        ));
+    }
 
     #[test]
     fn flowchart_subgraphs_exist_matches_mermaid_flowdb_spec() {

@@ -11,7 +11,7 @@ Scope: Mermaid tag `@11.16.0`.
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/quadrant-chart/parser/quadrant.jison.spec.ts`
 
 - header only: `fixtures/quadrantchart/upstream_quadrant_header_only_jison_spec.mmd`
-- missing right/top side appends ` ? ` to left/bottom: `fixtures/quadrantchart/upstream_quadrant_axes_missing_side_jison_spec.mmd`
+- missing right/top side appends ` ⟶ ` to left/bottom while preserving `❤`: `fixtures/quadrantchart/upstream_quadrant_axes_missing_side_jison_spec.mmd`
 - title raw capture (no string parsing): `fixtures/quadrantchart/upstream_quadrant_title_raw_jison_spec.mmd`
 - whole chart (basic points): `fixtures/quadrantchart/upstream_quadrant_whole_chart_jison_spec.mmd`
 - whole chart (point styles): `fixtures/quadrantchart/upstream_quadrant_whole_chart_point_styles_jison_spec.mmd`
@@ -23,7 +23,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/quadrant-chart/quadrantD
 
 ## SVG Parity
 
-- Local renderer (Stage B): `crates/merman-render/src/svg.rs` (`render_quadrantchart_diagram_svg`)
+- Local renderer: the Quadrant Chart adapter behind `FamilyRenderArtifact` in
+  `crates/merman-render/src/svg/parity/quadrantchart/render.rs`
 - DOM parity compare: `cargo run -p xtask -- compare-quadrantchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 Docs-derived fixtures (rendered via official Mermaid CLI, version-pinned):

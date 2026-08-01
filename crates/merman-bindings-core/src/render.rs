@@ -1,22 +1,17 @@
 mod request;
 
-use crate::common::{BindingError, BindingOptions, parse_options, source_text};
+#[cfg(test)]
+use crate::common::parse_options;
+use crate::common::{BindingError, BindingOptions, source_text};
 use request::RenderRequestPlan;
 use std::sync::Arc;
 
 pub fn render_svg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.render_svg(source)
-}
-
-pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.parse_json(source)
+    execute_once_data("svg", source, options_json)
 }
 
 pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
-    let source = source_text(source)?;
-    request_plan_from_options_json(options_json)?.layout_json(source)
+    execute_once_data("layout-json", source, options_json)
 }
 
 #[derive(Clone)]
@@ -24,41 +19,125 @@ pub(crate) struct CachedRenderEngine {
     plan: RenderRequestPlan,
 }
 
-impl CachedRenderEngine {
-    pub(crate) fn new(options: &BindingOptions) -> Result<Self, BindingError> {
-        Ok(Self {
-            plan: RenderRequestPlan::from_options(options)?,
-        })
-    }
+pub(crate) struct RenderOperationConfig {
+    plan: request::RenderOperationConfig,
+}
 
+impl CachedRenderEngine {
     pub(crate) fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.render_svg(source)
     }
 
-    pub(crate) fn with_text_measurer(
+    pub(crate) fn with_host_text_measurer(
         &self,
-        measurer: Arc<dyn crate::TextMeasurer + Send + Sync>,
+        measurer: Arc<dyn crate::HostTextMeasurer>,
     ) -> Self {
         Self {
-            plan: self.plan.with_text_measurer(measurer),
+            plan: self.plan.with_host_text_measurer(measurer),
         }
-    }
-
-    pub(crate) fn parse_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        let source = source_text(source)?;
-        self.plan.parse_json(source)
     }
 
     pub(crate) fn layout_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
         let source = source_text(source)?;
         self.plan.layout_json(source)
     }
+
+    pub(crate) fn svg_plan_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        self.plan.svg_plan_json(source)
+    }
+
+    #[cfg(feature = "png")]
+    pub(crate) fn render_png(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_png(source)
+    }
+
+    #[cfg(feature = "png")]
+    pub(crate) fn render_png_output(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_png_output(source)
+    }
+
+    #[cfg(feature = "jpeg")]
+    pub(crate) fn render_jpeg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_jpeg(source)
+    }
+
+    #[cfg(feature = "jpeg")]
+    pub(crate) fn render_jpeg_output(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_jpeg_output(source)
+    }
+
+    #[cfg(feature = "pdf")]
+    pub(crate) fn render_pdf(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_pdf(source)
+    }
+
+    #[cfg(feature = "pdf")]
+    pub(crate) fn render_pdf_output(
+        &self,
+        source: &[u8],
+    ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let source = source_text(source)?;
+        self.plan.render_pdf_output(source)
+    }
 }
 
-fn request_plan_from_options_json(options_json: &[u8]) -> Result<RenderRequestPlan, BindingError> {
-    let options = parse_options(options_json)?;
-    RenderRequestPlan::from_options(&options)
+impl RenderOperationConfig {
+    pub(crate) fn compile(
+        options: &BindingOptions,
+        runtime_policy: merman::runtime::RuntimePolicy,
+    ) -> Result<Self, BindingError> {
+        Ok(Self {
+            plan: request::RenderOperationConfig::compile(options, runtime_policy)?,
+        })
+    }
+
+    pub(crate) fn materialize(self) -> CachedRenderEngine {
+        CachedRenderEngine {
+            plan: self.plan.materialize(),
+        }
+    }
+}
+
+#[cfg(feature = "png")]
+pub fn render_png(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    execute_once_data("png", source, options_json)
+}
+
+#[cfg(feature = "jpeg")]
+pub fn render_jpeg(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    execute_once_data("jpeg", source, options_json)
+}
+
+#[cfg(feature = "pdf")]
+pub fn render_pdf(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    execute_once_data("pdf", source, options_json)
+}
+
+fn execute_once_data(
+    operation_id: &str,
+    source: &[u8],
+    options_json: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    crate::execute_once(crate::BindingOperationRequest {
+        operation_id,
+        source,
+        uri: None,
+        options_json,
+    })
+    .map(|result| result.data)
 }
 
 #[cfg(test)]
@@ -66,6 +145,28 @@ mod tests {
     use super::*;
     use crate::BindingStatus;
     use serde_json::Value;
+
+    fn render_session() -> merman::svg::RenderSession {
+        merman::svg::RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("render session")
+    }
+
+    fn root_style_property_is(svg: &str, property: &str, expected: &str) -> bool {
+        let Ok(document) = roxmltree::Document::parse(svg) else {
+            return false;
+        };
+        document
+            .root_element()
+            .attribute("style")
+            .is_some_and(|style| {
+                style.split(';').map(str::trim).any(|declaration| {
+                    declaration.split_once(':').is_some_and(|(name, value)| {
+                        name.trim() == property && value.trim() == expected
+                    })
+                })
+            })
+    }
 
     fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
         model["tasks"]
@@ -87,7 +188,7 @@ mod tests {
         assert!(svg.contains("World"));
     }
 
-    #[cfg(feature = "elk-layout")]
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn render_svg_returns_svg_for_flowchart_elk() {
         let svg =
@@ -100,23 +201,32 @@ mod tests {
         assert!(!svg.contains("NaN"));
     }
 
-    #[cfg(not(feature = "elk-layout"))]
+    #[cfg(not(feature = "layout-elk"))]
     #[test]
-    fn render_svg_reports_unsupported_flowchart_elk_without_elk_layout() {
-        let err = render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"").unwrap_err();
+    fn render_svg_flowchart_elk_follows_the_resolved_dependency_feature_set() {
+        let result = render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"");
 
-        assert_eq!(err.status(), BindingStatus::RenderError);
-        assert!(
-            err.message()
-                .contains("unsupported diagram type for layout: flowchart-elk"),
-            "{err:?}"
-        );
+        match result {
+            Ok(svg) => {
+                // Cargo can unify `merman/layout-elk` from another selected workspace package even
+                // when the binding facade's own feature is disabled.
+                let svg = String::from_utf8(svg).expect("SVG is UTF-8");
+                assert!(svg.contains("<svg"));
+                assert!(svg.contains("Hello"));
+                assert!(svg.contains("World"));
+            }
+            Err(err) => {
+                assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
+                assert!(err.message().contains("layout-elk"), "{err:?}");
+            }
+        }
     }
 
     #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
-            "layout": { "text_measurer": "deterministic", "viewport_width": 640, "viewport_height": 480 },
+            "layout": { "container_width": 640, "container_height": 480 },
+            "environment": { "text_measurement": "deterministic" },
             "svg": { "diagram_id": "bindings core diagram", "pipeline": "readable" }
         }"#;
         let svg =
@@ -124,6 +234,32 @@ mod tests {
 
         assert!(svg.contains("id=\"bindings-core-diagram\""));
         assert!(svg.contains("data-merman-foreignobject"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn binding_math_renderer_follows_the_compiled_default() {
+        let source = b"flowchart TD\nA[\"$$x^2$$\"] --> B[Done]";
+        let default = render_svg(source, b"");
+
+        if merman::svg::math_available() {
+            assert!(
+                default.is_ok(),
+                "the compiled math capability must be usable by default"
+            );
+        } else {
+            assert_missing_math(default.unwrap_err());
+        }
+
+        let disabled = render_svg(source, br#"{"environment":{"math_renderer":"none"}}"#);
+        assert_missing_math(disabled.unwrap_err());
+    }
+
+    #[cfg(feature = "svg")]
+    fn assert_missing_math(error: BindingError) {
+        assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+        assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+        assert_eq!(error.capability_id(), Some("math"));
     }
 
     #[test]
@@ -183,7 +319,11 @@ B -->|No| D[Debug]";
             ),
             "{svg}"
         );
-        assert!(svg.contains(r#"data-merman-postprocess="scoped-css""#));
+        assert_eq!(
+            svg.matches("<style").count(),
+            1,
+            "site CSS should merge into the existing Mermaid stylesheet: {svg}"
+        );
     }
 
     #[test]
@@ -226,7 +366,10 @@ B -->|No| D[Debug]";
         assert!(svg.contains("#94a3b8"), "{svg}");
         assert!(svg.contains("#422006"), "{svg}");
         assert!(svg.contains("#f59e0b"), "{svg}");
-        assert!(svg.contains("background-color: #0f172a;"), "{svg}");
+        assert!(
+            root_style_property_is(&svg, "background-color", "#0f172a"),
+            "{svg}"
+        );
         assert!(!svg.contains("<foreignObject"), "{svg}");
         assert!(!svg.contains("!important"), "{svg}");
     }
@@ -302,7 +445,10 @@ B -->|No| D[Debug]";
         assert!(svg.contains("#282c34"), "{svg}");
         assert!(svg.contains("#abb2bf"), "{svg}");
         assert!(svg.contains("#61afef"), "{svg}");
-        assert!(svg.contains("background-color: #282c34;"), "{svg}");
+        assert!(
+            root_style_property_is(&svg, "background-color", "#282c34"),
+            "{svg}"
+        );
     }
 
     #[test]
@@ -328,7 +474,10 @@ B -->|No| D[Debug]";
         assert!(svg.contains("#101010"), "{svg}");
         assert!(svg.contains("#ff00aa"), "{svg}");
         assert!(svg.contains("#bfbdb6"), "{svg}");
-        assert!(svg.contains("background-color: #101010;"), "{svg}");
+        assert!(
+            root_style_property_is(&svg, "background-color", "#101010"),
+            "{svg}"
+        );
     }
 
     #[test]
@@ -341,6 +490,27 @@ B -->|No| D[Debug]";
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(err.message().contains("host_theme.preset"));
+    }
+
+    #[test]
+    fn host_theme_rejects_removed_camel_case_theme_variables_alias() {
+        let err = render_svg(
+            b"flowchart TD\nA[Host]",
+            br##"{ "host_theme": { "themeVariables": { "nodeBorder": "#abcdef" } } }"##,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            err.message().contains("themeVariables"),
+            "{}",
+            err.message()
+        );
+        assert!(
+            err.message().contains("theme_variables"),
+            "{}",
+            err.message()
+        );
     }
 
     #[test]
@@ -362,7 +532,10 @@ B -->|No| D[Debug]";
         .unwrap();
         let pipeline = request::pipeline_for_options(&options).unwrap();
         let out = pipeline
-            .process_to_string(r#"<svg id="host"><style>.node{fill:red !important;}</style></svg>"#)
+            .process_to_string(
+                r#"<svg id="host"><style>.node{fill:red !important;}</style></svg>"#,
+                &render_session(),
+            )
             .unwrap();
 
         assert!(
@@ -438,6 +611,7 @@ B -->|No| D[Debug]";
         let out = pipeline
             .process_to_string(
                 r#"<svg id="host"><style>.node{fill:red !important;}</style><g/></svg>"#,
+                &render_session(),
             )
             .unwrap();
 
@@ -458,7 +632,10 @@ B -->|No| D[Debug]";
         .unwrap();
         let pipeline = request::pipeline_for_options(&options).unwrap();
         let out = pipeline
-            .process_to_string(r#"<svg id="host"><path class="edge"/></svg>"#)
+            .process_to_string(
+                r#"<svg id="host"><path class="edge"/></svg>"#,
+                &render_session(),
+            )
             .unwrap();
 
         assert!(!out.contains("@keyframes"), "{out}");
@@ -481,6 +658,7 @@ B -->|No| D[Debug]";
         let out = pipeline
             .process_to_string(
                 r#"<svg id="host" style="max-width: 400px; background-color: white;"><g/></svg>"#,
+                &render_session(),
             )
             .unwrap();
 
@@ -531,7 +709,9 @@ B -->|No| D[Debug]";
         )
         .unwrap();
         let cleanup_pipeline = request::pipeline_for_options(&cleanup_options).unwrap();
-        let cleanup_out = cleanup_pipeline.process_to_string(svg).unwrap();
+        let cleanup_out = cleanup_pipeline
+            .process_to_string(svg, &render_session())
+            .unwrap();
 
         assert_eq!(
             cleanup_out
@@ -559,7 +739,9 @@ B -->|No| D[Debug]";
 
         let default_options = parse_options(br#"{"svg":{"pipeline":"resvg-safe"}}"#).unwrap();
         let default_pipeline = request::pipeline_for_options(&default_options).unwrap();
-        let default_out = default_pipeline.process_to_string(svg).unwrap();
+        let default_out = default_pipeline
+            .process_to_string(svg, &render_session())
+            .unwrap();
         assert_eq!(
             default_out
                 .matches(r#"data-merman-foreignobject="fallback""#)
@@ -573,7 +755,9 @@ B -->|No| D[Debug]";
         )
         .unwrap();
         let cleanup_pipeline = request::pipeline_for_options(&cleanup_options).unwrap();
-        let cleanup_out = cleanup_pipeline.process_to_string(svg).unwrap();
+        let cleanup_out = cleanup_pipeline
+            .process_to_string(svg, &render_session())
+            .unwrap();
 
         assert_eq!(
             cleanup_out
@@ -590,7 +774,7 @@ B -->|No| D[Debug]";
     #[test]
     fn parse_json_returns_semantic_model() {
         let json: Value = serde_json::from_slice(
-            &parse_json(b"flowchart TD\nA[Hello] --> B[World]", b"").unwrap(),
+            &crate::parse_json(b"flowchart TD\nA[Hello] --> B[World]", b"").unwrap(),
         )
         .unwrap();
 
@@ -614,7 +798,8 @@ Missing ref: id2,after missing,1d
             "fixed_today": "2026-02-15",
             "fixed_local_offset_minutes": 0
         }"#;
-        let json: Value = serde_json::from_slice(&parse_json(source, options).unwrap()).unwrap();
+        let json: Value =
+            serde_json::from_slice(&crate::parse_json(source, options).unwrap()).unwrap();
 
         assert_eq!(
             task_by_id(&json, "id1")["startTime"].as_i64(),
@@ -671,7 +856,7 @@ Missing ref: id2,after missing,1d
                 "fixed_local_offset_minutes",
             ),
         ] {
-            let err = parse_json(b"flowchart TD\nA[Hello]", options).unwrap_err();
+            let err = crate::parse_json(b"flowchart TD\nA[Hello]", options).unwrap_err();
 
             assert_eq!(err.status(), BindingStatus::InvalidArgument);
             assert!(err.message().contains(expected), "{err:?}");
@@ -689,6 +874,7 @@ Missing ref: id2,after missing,1d
         assert!(json.get("layout").is_some());
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn validate_json_reports_success_and_errors_without_throwing() {
         let valid: Value =
@@ -737,19 +923,31 @@ Missing ref: id2,after missing,1d
     fn invalid_option_value_returns_invalid_argument() {
         let err = render_svg(
             b"flowchart TD\nA",
-            br#"{ "layout": { "viewport_width": -1 } }"#,
+            br#"{ "layout": { "container_width": -1 } }"#,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("layout.viewport_width"));
+        assert!(err.message().contains("layout.container_width"));
     }
 
     #[test]
     fn resource_limit_error_uses_dedicated_binding_status() {
         let err = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "resources": { "max_source_bytes": 4 } }"#,
+            br#"{ "resources": { "limits": { "max_source_bytes": 4 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(err.message().contains("max_source_bytes"), "{err:?}");
+    }
+
+    #[test]
+    fn parse_json_source_limit_uses_dedicated_binding_status() {
+        let err = crate::parse_json(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "resources": { "limits": { "max_source_bytes": 4 } } }"#,
         )
         .unwrap_err();
 
@@ -761,7 +959,7 @@ Missing ref: id2,after missing,1d
     fn resource_limit_error_accepts_analysis_wrapper_options() {
         let err = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "analysis": { "resources": { "max_source_bytes": 4 } } }"#,
+            br#"{ "analysis": { "resources": { "limits": { "max_source_bytes": 4 } } } }"#,
         )
         .unwrap_err();
 
@@ -782,69 +980,154 @@ Missing ref: id2,after missing,1d
 
         let err = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "resources": { "max_svg_bytes": 0 } }"#,
+            br#"{ "resources": { "limits": { "max_svg_bytes": 0 } } }"#,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("resources.max_svg_bytes"), "{err:?}");
-    }
+        assert!(err.message().contains("max_svg_bytes"), "{err:?}");
 
-    #[cfg(feature = "elk-layout")]
-    #[test]
-    fn render_svg_accepts_explicit_flowchart_elk_backend_option() {
-        let svg = String::from_utf8(
-            render_svg(
-                b"flowchart-elk TD\nA[Hello] --> B[World]",
-                br#"{ "layout": { "flowchart_elk_backend": "compat" } }"#,
-            )
-            .unwrap(),
-        )
-        .unwrap();
-
-        assert!(svg.contains("<svg"));
-        assert!(svg.contains("Hello"));
-        assert!(svg.contains("World"));
-        assert!(!svg.contains("NaN"));
-    }
-
-    #[test]
-    fn invalid_flowchart_elk_backend_returns_invalid_argument() {
-        let err = render_svg(
-            b"flowchart-elk TD\nA --> B",
-            br#"{ "layout": { "flowchart_elk_backend": "dagre" } }"#,
-        )
-        .unwrap_err();
-
-        assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("layout.flowchart_elk_backend"));
-    }
-
-    #[test]
-    fn invalid_text_measurer_returns_invalid_argument() {
         let err = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "layout": { "text_measurer": "typst-font-assets" } }"#,
+            br#"{ "resources": { "limits": { "max_layout_work_units": 0 } } }"#,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("layout.text_measurer"));
+        assert!(err.message().contains("max_layout_work_units"), "{err:?}");
+
+        for (id, expected) in [
+            ("future_limit", "not part of resource contract"),
+            ("max_svg_tree_depth", "not part of resource contract"),
+        ] {
+            let options = format!(r#"{{ "resources": {{ "limits": {{ "{id}": 8 }} }} }}"#);
+            let err = render_svg(b"flowchart TD\nA[Hello]", options.as_bytes()).unwrap_err();
+            assert_eq!(err.status(), BindingStatus::InvalidArgument);
+            assert!(err.message().contains(expected), "{err:?}");
+        }
+    }
+
+    #[test]
+    fn venn_private_pairwise_expansion_uses_the_binding_resource_budget() {
+        let err = render_svg(
+            b"venn-beta\nset A\nset B\nset C\nset D\n",
+            br#"{ "resources": { "limits": { "max_layout_work_units": 6 } } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(err.message().contains("max_layout_work_units"), "{err:?}");
+    }
+
+    #[test]
+    fn superseded_enum_value_aliases_are_rejected() {
+        let cases = [
+            (
+                r#"{ "resources": { "profile": "typst_package" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "typst" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "trusted_native" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "trusted" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "unbounded_for_trusted_input" } }"#,
+                "resources.profile",
+            ),
+            (
+                r#"{ "resources": { "profile": "unbounded" } }"#,
+                "resources.profile",
+            ),
+            (r#"{ "svg": { "pipeline": "resvg_safe" } }"#, "svg.pipeline"),
+            (
+                r#"{ "svg": { "css_override_policy": "strip_existing_important" } }"#,
+                "svg.css_override_policy",
+            ),
+            (
+                r#"{ "host_theme": { "output": { "pipeline": "resvg_safe" } } }"#,
+                "host_theme.output.pipeline",
+            ),
+            (
+                r#"{ "host_theme": { "output": { "css_override_policy": "strip_existing_important" } } }"#,
+                "host_theme.output.css_override_policy",
+            ),
+            (
+                r#"{ "host_theme": { "preset": "editor_light" } }"#,
+                "host_theme.preset",
+            ),
+            (
+                r#"{ "host_theme": { "preset": "onedark" } }"#,
+                "host_theme.preset",
+            ),
+        ];
+
+        for (options, field) in cases {
+            let err = render_svg(b"flowchart TD\nA[Hello]", options.as_bytes()).unwrap_err();
+            assert_eq!(err.status(), BindingStatus::InvalidArgument, "{options}");
+            assert!(err.message().contains(field), "{options}: {err:?}");
+        }
+    }
+
+    #[test]
+    fn invalid_text_measurement_profile_returns_invalid_argument() {
+        let err = render_svg(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "environment": { "text_measurement": "typst-font-assets" } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("environment.text_measurement"));
         assert!(err.message().contains("typst-font-assets"));
     }
 
     #[test]
-    fn unsupported_ratex_without_feature_returns_unsupported_format() {
+    fn removed_layout_fields_are_rejected_with_their_migration_target() {
+        for (legacy_field, replacement) in [
+            (
+                r#"{ "layout": { "text_measurer": "deterministic" } }"#,
+                "environment.text_measurement",
+            ),
+            (
+                r#"{ "layout": { "math_renderer": "ratex" } }"#,
+                "environment.math_renderer",
+            ),
+            (
+                r#"{ "layout": { "viewport_width": 640 } }"#,
+                "layout.container_width",
+            ),
+            (
+                r#"{ "layout": { "viewport_height": 480 } }"#,
+                "layout.container_height",
+            ),
+        ] {
+            let err = render_svg(b"flowchart TD\nA[Hello]", legacy_field.as_bytes()).unwrap_err();
+
+            assert_eq!(err.status(), BindingStatus::OptionsJsonError);
+            assert!(err.message().contains(replacement), "{err:?}");
+        }
+    }
+
+    #[test]
+    fn ratex_selection_follows_the_compiled_math_capability() {
         let result = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "layout": { "math_renderer": "ratex" } }"#,
+            br#"{ "environment": { "math_renderer": "ratex" } }"#,
         );
 
-        if cfg!(feature = "ratex-math") {
+        if merman::svg::math_available() {
             assert!(result.is_ok());
         } else {
             let err = result.unwrap_err();
-            assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+            assert_eq!(err.status(), BindingStatus::UnsupportedOperation);
         }
     }
 }

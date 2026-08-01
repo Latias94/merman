@@ -3,7 +3,7 @@
   "layout": {
     "GitGraphDiagram": {
       "bounds": {
-        "min_x": -168.047,
+        "min_x": -168.04,
         "min_y": -20.0,
         "max_x": 658.0,
         "max_y": 286.0
@@ -20,28 +20,28 @@
           "name": "main",
           "index": 0.0,
           "pos": 0.0,
-          "bbox_width": 30.719,
+          "bbox_width": 30.72,
           "bbox_height": 17.6
         },
         {
           "name": "v1-rc",
           "index": 1.0,
           "pos": 90.0,
-          "bbox_width": 34.875,
+          "bbox_width": 34.88,
           "bbox_height": 17.6
         },
         {
           "name": "FORK-v1.0-MDR",
           "index": 2.0,
           "pos": 180.0,
-          "bbox_width": 107.047,
+          "bbox_width": 107.04,
           "bbox_height": 17.6
         },
         {
           "name": "v1.0-MDR",
           "index": 3.0,
           "pos": 270.0,
-          "bbox_width": 63.359,
+          "bbox_width": 63.36,
           "bbox_height": 17.6
         }
       ],
@@ -169,7 +169,7 @@
           "y": 178.0
         },
         {
-          "id": "new feature for v1.1â¦",
+          "id": "new feature for v1.1…",
           "message": "",
           "seq": 8.0,
           "commit_type": 0.0,
@@ -264,7 +264,7 @@
           "custom_id": null,
           "tags": [],
           "parents": [
-            "new feature for v1.1â¦"
+            "new feature for v1.1…"
           ],
           "branch": "main",
           "pos": 600.0,
@@ -318,7 +318,7 @@
         },
         {
           "from": "design freeze from here",
-          "to": "new feature for v1.1â¦",
+          "to": "new feature for v1.1…",
           "class_index": 0.0,
           "d": "M 110 -2 L 360 -2"
         },
@@ -347,7 +347,7 @@
           "d": "M 260 88 L 560 88"
         },
         {
-          "from": "new feature for v1.1â¦",
+          "from": "new feature for v1.1…",
           "to": "work on v1.1",
           "class_index": 0.0,
           "d": "M 360 -2 L 610 -2"

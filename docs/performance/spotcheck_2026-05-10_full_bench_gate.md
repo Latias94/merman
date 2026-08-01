@@ -21,5 +21,6 @@ cargo bench -p merman --features render
 - Criterion reported mixed local change classifications against saved local baselines. Treat this
   run as release-gate evidence that the benchmark suite executes successfully, not as a targeted
   performance attribution report.
-- More focused cross-repo and stage-attribution evidence remains in `COMPARISON.md` and the
+- More focused cross-repo and stage-attribution evidence remains in
+  `renderer_comparison_2026-05-10.md` and the
   standard canary spotcheck reports.

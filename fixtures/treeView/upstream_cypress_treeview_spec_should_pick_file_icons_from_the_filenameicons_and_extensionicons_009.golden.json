@@ -1,0 +1,104 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory",
+      "children": [
+        {
+          "id": 1,
+          "level": 12,
+          "name": "src",
+          "nodeType": "directory",
+          "children": [
+            {
+              "id": 2,
+              "level": 16,
+              "name": "main.py",
+              "nodeType": "file",
+              "children": []
+            },
+            {
+              "id": 3,
+              "level": 16,
+              "name": "data.xyz",
+              "nodeType": "file",
+              "children": []
+            },
+            {
+              "id": 4,
+              "level": 16,
+              "name": "index.ts",
+              "nodeType": "file",
+              "children": []
+            },
+            {
+              "id": 5,
+              "level": 16,
+              "name": "unmapped.bin",
+              "nodeType": "file",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "level": 12,
+          "name": "README.md",
+          "nodeType": "file",
+          "children": []
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/",
+        "nodeType": "directory"
+      },
+      {
+        "id": 1,
+        "level": 12,
+        "name": "src",
+        "nodeType": "directory"
+      },
+      {
+        "id": 2,
+        "level": 16,
+        "name": "main.py",
+        "nodeType": "file"
+      },
+      {
+        "id": 3,
+        "level": 16,
+        "name": "data.xyz",
+        "nodeType": "file"
+      },
+      {
+        "id": 4,
+        "level": 16,
+        "name": "index.ts",
+        "nodeType": "file"
+      },
+      {
+        "id": 5,
+        "level": 16,
+        "name": "unmapped.bin",
+        "nodeType": "file"
+      },
+      {
+        "id": 6,
+        "level": 12,
+        "name": "README.md",
+        "nodeType": "file"
+      }
+    ]
+  }
+}

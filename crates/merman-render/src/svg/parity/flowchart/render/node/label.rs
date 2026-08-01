@@ -35,23 +35,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         common.node_classes,
         common.node_styles,
     );
-    let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
-        ctx.class_defs,
-        common.node_classes,
-        common.node_styles,
-    );
-    let is_markdown_label = label.label_type == "markdown";
-    let has_literal_backticks = !is_markdown_label && label.text.contains('`');
-    let has_markdown_marker = label.text.contains("**")
-        || label.text.contains("__")
-        || label.text.contains('*')
-        || label.text.contains('_');
-    let renders_markdown_like =
-        is_markdown_label || (!has_literal_backticks && has_markdown_marker);
     let mut label_dy = label.dy;
     if !ctx.node_html_labels
-        && renders_markdown_like
-        && crate::text::mermaid_markdown_to_lines(label.text, true).len() > 1
+        && flowchart_node_label_uses_markdown_bbox(label.label_type, label.text)
         && matches!(
             common.shape,
             "doc"
@@ -78,7 +64,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         // `-bbox.y`. Chromium reports these wrapped SVG markdown labels with a small positive
         // `getBBox().y`, so model that render-time offset here instead of baking literal `-1`s
         // into individual shapes.
-        label_dy -= crate::text::svg_create_text_bbox_y_offset_px(&node_text_style);
+        label_dy -= ctx
+            .measurer
+            .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style);
     }
     let mut metrics = if let (Some(w), Some(h)) = (
         common.layout_node.label_width,
@@ -92,7 +80,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
             line_count: 0,
         }
     } else {
-        let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
                 raw_label: label.text,
@@ -102,21 +90,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
-                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-                whole_label_font_style: node_font_style.as_deref(),
             },
-        );
-        let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
-            ctx.class_defs,
-            common.node_classes,
-        );
-        if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
-            crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                &mut metrics,
-                &node_text_style,
-            );
-        }
-        metrics
+        )
     };
     let label_has_visual_content = flowchart_html_contains_img_tag(label.text)
         || (label.label_type == "markdown" && label.text.contains("!["));
@@ -160,10 +135,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
         }
         out.push_str("</g></g></g>");
     } else {
-        let label_html =
-            super::helpers::timed_node_label_html(common.timing_enabled, details, || {
-                flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
-            });
+        let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
+            flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
+        });
         let span_style_attr = OptionalStyleXmlAttr(compiled_styles.label_style.as_str());
         let is_math_html_label = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
             && label.text.contains("$$")
@@ -180,7 +154,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                     };
 
                 let raw = if label.label_type == "markdown" {
-                    crate::text::measure_markdown_with_flowchart_bold_deltas(
+                    crate::text::measure_markdown_with_inline_styles(
                         ctx.measurer,
                         label.text,
                         &node_text_style,
@@ -189,7 +163,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
                     )
                     .width
                 } else if has_inline_style_tags {
-                    crate::text::measure_html_with_flowchart_bold_deltas(
+                    crate::text::measure_html_with_inline_styles(
                         ctx.measurer,
                         &label_html,
                         &node_text_style,
@@ -248,5 +222,34 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_flowchart_node_lab
     }
     if common.wrapped_in_a {
         out.push_str("</a>");
+    }
+}
+
+fn flowchart_node_label_uses_markdown_bbox(label_type: &str, text: &str) -> bool {
+    // Mermaid 11.16's labelHelper passes `markdown: true` only for the parser-owned label type.
+    label_type == "markdown" && crate::text::mermaid_markdown_to_lines(text, true).len() > 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::flowchart_node_label_uses_markdown_bbox;
+
+    #[test]
+    fn markdown_bbox_selection_uses_the_parser_label_type() {
+        assert!(!flowchart_node_label_uses_markdown_bbox(
+            "text",
+            "ordinary_name\nsecond_line"
+        ));
+        assert!(!flowchart_node_label_uses_markdown_bbox(
+            "text",
+            "*unfinished\nsecond"
+        ));
+        assert!(flowchart_node_label_uses_markdown_bbox(
+            "markdown",
+            "**first**\n_second_"
+        ));
+        assert!(!flowchart_node_label_uses_markdown_bbox(
+            "markdown", "one line"
+        ));
     }
 }

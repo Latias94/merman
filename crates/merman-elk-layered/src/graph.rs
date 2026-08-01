@@ -10,7 +10,7 @@ use super::options::{
     Alignment, ElkDirection, LayerConstraint, LayeredOptions, NodeLabelPlacement, PortAlignment,
     PortConstraints,
 };
-use crate::random::JavaRandom;
+use crate::random::{JavaRandom, RandomSeedAuthority, RandomSeedError, RandomSeedPhase};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LGraph {
@@ -24,7 +24,7 @@ pub struct LGraph {
     pub edges: Vec<LayeredEdge>,
     pub graph_properties: GraphProperties,
     pub cyclic: bool,
-    pub random: JavaRandom,
+    pub(crate) random: JavaRandom,
     pub parent_node_id: Option<String>,
     pub hidden_nodes: Vec<usize>,
     pub replaced_external_port_dummies: Vec<usize>,
@@ -32,13 +32,37 @@ pub struct LGraph {
     pub cross_hierarchy_edges: Vec<CrossHierarchyEdge>,
     pub self_loop_holders: Vec<SelfLoopHolder>,
     pub in_layer_successor_constraints_between_non_dummies: bool,
+    random_seed_context: GraphRandomSeedContext,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GraphRandomSeedContext {
+    authority: RandomSeedAuthority,
+    graph_path: Vec<String>,
+    configuration_invocations: u64,
 }
 
 impl LGraph {
     pub fn new(id: impl Into<String>, options: LayeredOptions) -> Self {
-        let random = JavaRandom::from_layout_seed(options.random_seed);
+        let id = id.into();
+        Self::new_with_random_seed_authority(
+            id.clone(),
+            options,
+            RandomSeedAuthority::require_explicit(),
+            vec![id],
+        )
+    }
+
+    pub(crate) fn new_with_random_seed_authority(
+        id: impl Into<String>,
+        options: LayeredOptions,
+        random_seed_authority: RandomSeedAuthority,
+        graph_path: Vec<String>,
+    ) -> Self {
+        let id = id.into();
+        debug_assert!(!graph_path.is_empty());
         Self {
-            id: id.into(),
+            id,
             options,
             size: LSize::default(),
             padding: LPadding::default(),
@@ -48,7 +72,9 @@ impl LGraph {
             edges: Vec::new(),
             graph_properties: GraphProperties::default(),
             cyclic: false,
-            random,
+            // The seed is resolved immediately before processor assembly. The placeholder is
+            // never an execution source because every public pipeline entry configures first.
+            random: JavaRandom::default(),
             parent_node_id: None,
             hidden_nodes: Vec::new(),
             replaced_external_port_dummies: Vec::new(),
@@ -56,7 +82,33 @@ impl LGraph {
             cross_hierarchy_edges: Vec::new(),
             self_loop_holders: Vec::new(),
             in_layer_successor_constraints_between_non_dummies: false,
+            random_seed_context: GraphRandomSeedContext {
+                authority: random_seed_authority,
+                graph_path,
+                configuration_invocations: 0,
+            },
         }
+    }
+
+    pub(crate) fn resolve_random_seed_for_configuration(&mut self) -> Result<i64, RandomSeedError> {
+        let graph_path = self
+            .random_seed_context
+            .graph_path
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let invocation = self.random_seed_context.configuration_invocations;
+        let seed = self.random_seed_context.authority.resolve(
+            self.options.random_seed,
+            &graph_path,
+            RandomSeedPhase::GraphConfigurator,
+            invocation,
+        )?;
+        self.random_seed_context.configuration_invocations = self
+            .random_seed_context
+            .configuration_invocations
+            .saturating_add(1);
+        Ok(seed)
     }
 
     pub fn sync_graph_properties_to_options(&mut self) {
@@ -99,6 +151,7 @@ pub struct LNode {
     pub margin: LMargin,
     pub padding: LPadding,
     pub labels: Vec<LLabel>,
+    pub represented_labels: Vec<LLabel>,
     pub node_label_placement: NodeLabelPlacement,
     pub ports: Vec<LPort>,
     pub nested_graph: Option<Box<LGraph>>,
@@ -139,6 +192,7 @@ impl LNode {
             margin: LMargin::default(),
             padding: LPadding::default(),
             labels: Vec::new(),
+            represented_labels: Vec::new(),
             node_label_placement: NodeLabelPlacement::Fixed,
             ports: Vec::new(),
             nested_graph: None,

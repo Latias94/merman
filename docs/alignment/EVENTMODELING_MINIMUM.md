@@ -22,11 +22,11 @@ parity for the committed upstream SVG fixture corpus. This currently includes `t
 relations, inline data, `[[dataReference]]`, data blocks, eventmodeling config, and eventmodeling
 theme variables.
 
-Grammar-only constructs are not treated as missing rendered features. If upstream Langium accepts
-statements that Mermaid's DB/renderer does not consume (currently `entity`, `note`, and `gwt`),
-merman keeps them out of the render model until either upstream adds a rendering contract or a
-separate full-AST export scope is opened. Revisit this section whenever the pinned Mermaid
-baseline changes.
+Grammar-only constructs are not treated as missing rendered features. The single local semantic
+source parses and retains `entity`, `note`, and `gwt`, validates their references, and projects
+their spans into editor facts. The typed render projection omits them because Mermaid's pinned
+DB/renderer does not consume the corresponding Langium AST collections. Revisit this boundary
+whenever the pinned Mermaid baseline changes.
 
 ## Implemented (Phase 1)
 
@@ -37,6 +37,8 @@ baseline changes.
   - supports `tf` / `timeframe` and `rf` / `resetframe`
   - captures frame name, entity type, qualified entity identifier, explicit `->>` sources, inline data, and `[[dataReference]]`
   - captures `data` blocks as named data entities
+  - retains `entity`, `note`, and `gwt` syntax and reference relationships for validation and
+    editor projections
   - ignores blank lines and whole-line `%%` comments
   - has source-backed fixture coverage for full `timeframe` syntax, qualified entity identifiers,
     and `resetframe`
@@ -66,14 +68,13 @@ Local policy:
 
 | Statement | Upstream parser status | Upstream render status | Local status | Policy |
 |---|---|---|---|---|
-| `entity` | Parsed into `modelEntities`; also used as the nominal target of GWT statement references. | Not consumed by DB, layout state, or renderer. | Not represented in `EventModelingDiagramRenderModel`; skipped by the render-oriented parser. | Keep out of the render model until upstream renders or validates standalone model entities. |
-| `note` | Parsed into `noteEntities` with a source frame and data block. | Not consumed by DB, layout state, or renderer; no syntax-doc or Cypress render example covers it. | Not represented in semantic/layout/SVG output; skipped by the render-oriented parser. | Deferred rendered feature; do not synthesize note boxes without an upstream rendering contract. |
-| `gwt` | Parsed into `gwtEntities` with `given`/`when`/`then` statement groups. | Not consumed by DB, layout state, or renderer; upstream validation only checks frame source types. | Not represented in semantic/layout/SVG output; skipped by the render-oriented parser. | Deferred model feature; requires an explicit upstream or project-owned visual/semantic contract before promotion. |
+| `entity` | Parsed into `modelEntities`; also used as the nominal target of GWT statement references. | Not consumed by DB, layout state, or renderer. | Retained by the family semantic source and editor facts; intentionally absent from `EventModelingDiagramRenderModel`. | Preserve syntax, spans, rename behavior, and GWT reference validation; do not invent rendered entities. |
+| `note` | Parsed into `noteEntities` with a source frame and data block. | Not consumed by DB, layout state, or renderer; no syntax-doc or Cypress render example covers it. | Retained by the family semantic source and editor facts; intentionally absent from render/layout/SVG projection. | Preserve syntax and source-frame references; do not synthesize note boxes without an upstream contract. |
+| `gwt` | Parsed into `gwtEntities` with `given`/`when`/`then` statement groups. | Not consumed by DB, layout state, or renderer; upstream validation checks its frame/entity references. | Retained by the family semantic source, validation, and editor facts; intentionally absent from render/layout/SVG projection. | Preserve statement groups and references; add rendering only if upstream defines it. |
 
-The complex upstream parser test that includes these statements remains excluded from the normal
-SVG parity corpus because rendering it would only prove that the current renderer ignores the
-extra AST nodes. If merman later grows a full EventModeling AST export distinct from the render
-semantic model, that fixture can be added as parser-only coverage without changing SVG admission.
+The complex upstream parser behavior is covered by family parser/editor tests rather than the SVG
+corpus. An SVG fixture would only confirm the pinned renderer's deliberate omission of those AST
+collections; it would not add a rendered contract.
 
 ## Data `foreignObject` Audit (P2E-005)
 
@@ -113,8 +114,8 @@ fixtures.
 - `xtask compare-eventmodeling-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for the
   current committed baseline corpus.
 - A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/eventmodeling/`.
-- `entity`, `note`, and `gwt` statements are intentionally outside the render semantic model; see
-  the P2E-004 policy audit above.
+- `entity`, `note`, and `gwt` are retained in the semantic source and editor facts but intentionally
+  omitted from the render projection; see the P2E-004 policy audit above.
 - Strict layout parity is not claimed; local geometry still uses deterministic headless text
   measurement rather than browser `getBBox()` dimensions.
 - Browser `foreignObject`, HTML sanitization, and `getBBox()` float parity are audited as bounded

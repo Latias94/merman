@@ -1,4 +1,4 @@
-use crate::ParseMetadata;
+use crate::{ParseControl, ParseControlResult, ParseMetadata};
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -127,12 +127,11 @@ impl SequenceDb {
         id: &str,
         description: Option<String>,
         actor_type: &str,
-        config: Option<String>,
+        participant_meta: Option<Value>,
     ) -> std::result::Result<(), String> {
         let mut actor_type = actor_type.to_string();
         let mut config_alias = None;
-        if let Some(config) = config.as_deref() {
-            let meta = parse_participant_meta(config)?;
+        if let Some(meta) = participant_meta.as_ref() {
             if let Some(obj) = meta.as_object()
                 && let Some(t) = obj
                     .get("type")
@@ -348,7 +347,39 @@ impl SequenceDb {
         });
     }
 
-    pub(super) fn apply(&mut self, action: Action) -> std::result::Result<(), String> {
+    pub(super) fn apply_controlled(
+        &mut self,
+        action: Action,
+        control: &ParseControl,
+    ) -> ParseControlResult<std::result::Result<(), String>> {
+        control.checkpoint()?;
+        let participant_meta = match &action {
+            Action::AddParticipant { config, .. } => {
+                match parse_participant_meta_controlled(config.as_deref(), control)? {
+                    Ok(meta) => meta,
+                    Err(error) => return Ok(Err(error)),
+                }
+            }
+            Action::CreateParticipant { id, config, .. } => {
+                if self.actors.contains_key(id) {
+                    return Ok(Err("It is not possible to have actors with the same id, even if one is destroyed before the next is created. Use 'AS' aliases to simulate the behavior".to_string()));
+                }
+                match parse_participant_meta_controlled(config.as_deref(), control)? {
+                    Ok(meta) => meta,
+                    Err(error) => return Ok(Err(error)),
+                }
+            }
+            _ => None,
+        };
+        control.checkpoint()?;
+        Ok(self.apply_prepared(action, participant_meta))
+    }
+
+    fn apply_prepared(
+        &mut self,
+        action: Action,
+        participant_meta: Option<Value>,
+    ) -> std::result::Result<(), String> {
         match action {
             Action::SetTitle(t) => {
                 self.title = Some(t.trim().to_string());
@@ -372,7 +403,10 @@ impl SequenceDb {
                 description,
                 draw,
                 config,
-            } => self.add_actor(&id, description, &draw, config),
+            } => {
+                let _ = config;
+                self.add_actor(&id, description, &draw, participant_meta)
+            }
 
             Action::CreateParticipant {
                 id,
@@ -384,7 +418,8 @@ impl SequenceDb {
                     return Err("It is not possible to have actors with the same id, even if one is destroyed before the next is created. Use 'AS' aliases to simulate the behavior".to_string());
                 }
                 self.last_created = Some(id.clone());
-                self.add_actor(&id, description, &draw, config)?;
+                let _ = config;
+                self.add_actor(&id, description, &draw, participant_meta)?;
                 self.created_actors.insert(id, self.messages.len());
                 Ok(())
             }
@@ -547,7 +582,7 @@ impl SequenceDb {
             };
         }
 
-        let (color_candidate, title_candidate) = split_color_and_title(trimmed);
+        let (color_candidate, title_candidate) = split_box_color_and_title(trimmed);
         let mut color = if color_candidate.trim().is_empty() {
             "transparent".to_string()
         } else {
@@ -703,230 +738,14 @@ impl SequenceDb {
     }
 }
 
-pub(super) fn fast_parse_sequence_signals_only_db(
-    code: &str,
-    wrap_enabled: Option<bool>,
-) -> Option<SequenceDb> {
-    // Fast-path for very small sequence diagrams that only contain signal statements.
-    //
-    // This avoids the LALRPOP parser + token stream overhead for tiny inputs, while preserving
-    // correctness by falling back to the full parser on anything unrecognized.
-    //
-    // Current target fixture: benches `sequence_tiny`:
-    //
-    //   sequenceDiagram
-    //     Alice->>Bob: Hi
-    //
-    // Keep the fast-path conservative to avoid surprising behavior differences.
-    if code.len() > 256 {
-        return None;
-    }
-
-    fn eq_ascii_ci(a: &str, b: &str) -> bool {
-        a.eq_ignore_ascii_case(b)
-    }
-
-    #[derive(Clone, Copy)]
-    enum Activation {
-        None,
-        Plus,
-        Minus,
-    }
-
-    struct Signal<'a> {
-        from: &'a str,
-        to: &'a str,
-        ty: i32,
-        text: &'a str,
-        activation: Activation,
-    }
-
-    fn parse_signal_line(line: &str) -> Option<Signal<'_>> {
-        let s = line.trim();
-        if s.is_empty() {
-            return None;
-        }
-        // Keep the fast-path strict: semicolons are handled by the full lexer/comment rules.
-        if s.contains(';') {
-            return None;
-        }
-        if s.contains("()") {
-            return None;
-        }
-
-        let bytes = s.as_bytes();
-        let mut sig_start: Option<usize> = None;
-        let mut i = 0usize;
-        while i < bytes.len() {
-            let b = bytes[i];
-            if b == b'<' {
-                sig_start = Some(i);
-                break;
-            }
-            if b == b'-' {
-                let next = bytes.get(i + 1).copied();
-                if matches!(next, Some(b'-' | b'>' | b'x' | b')')) {
-                    sig_start = Some(i);
-                    break;
-                }
-            }
-            i += 1;
-        }
-        let sig_start = sig_start?;
-        let from = s[..sig_start].trim();
-        if from.is_empty() {
-            return None;
-        }
-
-        let rest = &s[sig_start..];
-        let (sig_len, ty) = if rest.starts_with("<<-->>") {
-            (6, 34)
-        } else if rest.starts_with("<<->>") {
-            (5, 33)
-        } else if rest.starts_with("-->>") {
-            (4, 1)
-        } else if rest.starts_with("->>") {
-            (3, 0)
-        } else if rest.starts_with("-->") {
-            (3, 6)
-        } else if rest.starts_with("->") {
-            (2, 5)
-        } else if rest.starts_with("--x") {
-            (3, 4)
-        } else if rest.starts_with("-x") {
-            (2, 3)
-        } else if rest.starts_with("--)") {
-            (3, 25)
-        } else if rest.starts_with("-)") {
-            (2, 24)
-        } else {
-            return None;
-        };
-
-        let mut p = sig_start + sig_len;
-        while p < bytes.len() && bytes[p].is_ascii_whitespace() {
-            p += 1;
-        }
-
-        let activation = match bytes.get(p).copied() {
-            Some(b'+') => {
-                p += 1;
-                Activation::Plus
-            }
-            Some(b'-') => {
-                p += 1;
-                Activation::Minus
-            }
-            _ => Activation::None,
-        };
-
-        while p < bytes.len() && bytes[p].is_ascii_whitespace() {
-            p += 1;
-        }
-
-        let to_start = p;
-        while p < bytes.len() {
-            let b = bytes[p];
-            if b.is_ascii_whitespace() || b == b':' {
-                break;
-            }
-            p += 1;
-        }
-        let to = s[to_start..p].trim();
-        if to.is_empty() {
-            return None;
-        }
-
-        while p < bytes.len() && bytes[p].is_ascii_whitespace() {
-            p += 1;
-        }
-        if bytes.get(p).copied()? != b':' {
-            return None;
-        }
-        p += 1;
-        let text = s[p..].trim();
-
-        Some(Signal {
-            from,
-            to,
-            ty,
-            text,
-            activation,
-        })
-    }
-
-    let mut header_seen = false;
-    let mut non_empty_lines = 0usize;
-    let mut signals: Vec<Signal<'_>> = Vec::with_capacity(2);
-    for raw in code.lines() {
-        let t = raw.trim();
-        if t.is_empty() {
-            continue;
-        }
-        if t.starts_with("%%") {
-            continue;
-        }
-        non_empty_lines += 1;
-        if non_empty_lines > 8 {
-            return None;
-        }
-        if !header_seen {
-            if !eq_ascii_ci(t, "sequenceDiagram") {
-                return None;
-            }
-            header_seen = true;
-            continue;
-        }
-        let sig = parse_signal_line(t)?;
-        signals.push(sig);
-        if signals.len() > 4 {
-            return None;
-        }
-    }
-
-    if signals.is_empty() {
-        return None;
-    }
-
-    let mut db = SequenceDb::new(wrap_enabled);
-    for sig in signals {
-        db.ensure_actor(sig.from);
-        db.ensure_actor(sig.to);
-
-        let activate = matches!(sig.activation, Activation::Plus);
-        let msg = db.parse_message(sig.text);
-        db.add_signal(SignalInput {
-            from: Some(sig.from.to_string()),
-            to: Some(sig.to.to_string()),
-            message: Some(msg),
-            message_type: sig.ty,
-            activate,
-            ..Default::default()
-        });
-
-        match sig.activation {
-            Activation::Plus => {
-                db.add_signal(SignalInput {
-                    from: Some(sig.to.to_string()),
-                    message_type: LINETYPE_ACTIVE_START,
-                    ..Default::default()
-                });
-            }
-            Activation::Minus => {
-                if db.activation_count(sig.from) < 1 {
-                    return None;
-                }
-                db.add_signal(SignalInput {
-                    from: Some(sig.from.to_string()),
-                    message_type: LINETYPE_ACTIVE_END,
-                    ..Default::default()
-                });
-            }
-            Activation::None => {}
-        }
-    }
-
-    Some(db)
+fn parse_participant_meta_controlled(
+    input: Option<&str>,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<Option<Value>, String>> {
+    let Some(input) = input else {
+        return Ok(Ok(None));
+    };
+    Ok(crate::inline_config::parse_mermaid_inline_object_controlled(input, control)?.map(Some))
 }
 
 #[derive(Debug, Clone)]
@@ -940,7 +759,7 @@ fn unescape_entities(input: &str) -> String {
     input.replace("&equals;", "=").replace("&amp;", "&")
 }
 
-fn split_color_and_title(input: &str) -> (&str, &str) {
+pub(super) fn split_box_color_and_title(input: &str) -> (&str, &str) {
     let lower = input.to_ascii_lowercase();
     for prefix in ["rgba", "rgb", "hsla", "hsl"] {
         if lower.starts_with(prefix)
@@ -963,11 +782,7 @@ fn split_color_and_title(input: &str) -> (&str, &str) {
     (&input[..end], &input[end..])
 }
 
-fn parse_participant_meta(input: &str) -> std::result::Result<Value, String> {
-    crate::inline_config::parse_mermaid_inline_object(input)
-}
-
-fn is_css_color_value(input: &str) -> bool {
+pub(super) fn is_css_color_value(input: &str) -> bool {
     let t = input.trim();
     if t.is_empty() {
         return false;
@@ -1140,3 +955,40 @@ static CSS_COLOR_KEYWORDS: &[&str] = &[
     "yellow",
     "yellowgreen",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_created_participant_wins_over_invalid_inline_config() {
+        let control = ParseControl::new();
+        let mut db = SequenceDb::new(None);
+        db.apply_controlled(
+            Action::AddParticipant {
+                id: "A".to_string(),
+                description: None,
+                draw: "participant".to_string(),
+                config: None,
+            },
+            &control,
+        )
+        .unwrap()
+        .unwrap();
+
+        let error = db
+            .apply_controlled(
+                Action::CreateParticipant {
+                    id: "A".to_string(),
+                    description: None,
+                    draw: "participant".to_string(),
+                    config: Some(r#"{ "type" "control" }"#.to_string()),
+                },
+                &control,
+            )
+            .unwrap()
+            .unwrap_err();
+
+        assert!(error.contains("same id"), "{error}");
+    }
+}

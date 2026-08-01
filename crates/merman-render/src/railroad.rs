@@ -74,25 +74,8 @@ impl RailroadRenderNode {
     }
 }
 
-pub fn layout_railroad_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<RailroadDiagramLayout> {
-    layout_railroad_diagram_for_type(semantic, "railroad", effective_config, measurer)
-}
-
-pub fn layout_railroad_diagram_for_type(
-    semantic: &serde_json::Value,
-    diagram_type: &str,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<RailroadDiagramLayout> {
-    let model: RailroadDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_railroad_diagram_typed_for_type(&model, diagram_type, effective_config, measurer)
-}
-
-pub fn layout_railroad_diagram_typed(
+#[cfg(test)]
+pub(crate) fn layout_railroad_diagram_typed(
     model: &RailroadDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
@@ -100,7 +83,7 @@ pub fn layout_railroad_diagram_typed(
     layout_railroad_diagram_typed_for_type(model, "railroad", effective_config, measurer)
 }
 
-pub fn layout_railroad_diagram_typed_for_type(
+pub(crate) fn layout_railroad_diagram_typed_for_type(
     model: &RailroadDiagramRenderModel,
     diagram_type: &str,
     effective_config: &serde_json::Value,
@@ -1078,6 +1061,7 @@ fn measure_text(text: &str, style: &RailroadStyle, measurer: &dyn TextMeasurer) 
         font_family: Some(style.font_family.clone()),
         font_size: style.font_size,
         font_weight: None,
+        font_style: None,
     };
     let width = measurer.measure_svg_raw_text_bbox_width_px(text, &text_style);
     let height = measurer
@@ -1235,7 +1219,7 @@ mod tests {
             .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
             .unwrap()
             .expect("railroad render model parses");
-        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model else {
+        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
             panic!("expected railroad render model");
         };
 
@@ -1357,12 +1341,12 @@ mod tests {
             )
             .unwrap()
             .expect("railroad render model parses");
-        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model else {
+        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
             panic!("expected railroad render model");
         };
 
         let layout = layout_railroad_diagram_typed(
-            &model,
+            model,
             &serde_json::json!({}),
             &DeterministicTextMeasurer::default(),
         )
@@ -1380,7 +1364,7 @@ mod tests {
         assert_eq!(layout.diagram_type, "railroad");
 
         let ebnf_layout = layout_railroad_diagram_typed_for_type(
-            &model,
+            model,
             "railroadEbnf",
             &serde_json::json!({}),
             &DeterministicTextMeasurer::default(),
@@ -1445,13 +1429,13 @@ mod tests {
             )
             .unwrap()
             .expect("railroad render model parses");
-        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model else {
+        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
             panic!("expected railroad render model");
         };
 
         for diagram_type in ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"] {
             let layout = layout_railroad_diagram_typed_for_type(
-                &model,
+                model,
                 diagram_type,
                 &serde_json::json!({}),
                 &RailroadBBoxMeasurer,

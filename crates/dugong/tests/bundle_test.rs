@@ -53,4 +53,12 @@ fn bundle_can_do_trivial_layout() {
     let e = g.edge("a", "b", None).expect("edge must exist");
     assert!(e.x.unwrap_or(-1.0) >= 0.0);
     assert!(e.y.unwrap_or(-1.0) >= 0.0);
+    assert!(
+        g.graph().width > 0.0,
+        "the canonical layout entrypoint must publish Dagre graph width"
+    );
+    assert!(
+        g.graph().height > 0.0,
+        "the canonical layout entrypoint must publish Dagre graph height"
+    );
 }

@@ -1,0 +1,12 @@
+{
+  "name": "@mermanjs/node-linux-x64-gnu",
+  "version": "0.8.0-alpha.4",
+  "private": true,
+  "description": "Private Merman Node native candidate for Linux x64 glibc.",
+  "main": "./merman.node",
+  "files": ["merman.node", "LICENSE-APACHE", "LICENSE-MIT", "README.md", "THIRD_PARTY_LICENSES", "THIRD_PARTY_NOTICES.md"],
+  "license": "MIT OR Apache-2.0",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "libc": ["glibc"]
+}

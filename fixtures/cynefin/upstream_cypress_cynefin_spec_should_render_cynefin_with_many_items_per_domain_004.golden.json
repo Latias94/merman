@@ -1,0 +1,65 @@
+{
+  "diagramType": "cynefin",
+  "model": {
+    "type": "cynefin",
+    "title": "Software Delivery",
+    "accTitle": null,
+    "accDescr": null,
+    "domains": [
+      {
+        "name": "complex",
+        "items": [
+          {
+            "label": "New product discovery"
+          },
+          {
+            "label": "User behavior analysis"
+          },
+          {
+            "label": "A/B testing strategy"
+          }
+        ]
+      },
+      {
+        "name": "complicated",
+        "items": [
+          {
+            "label": "Performance optimization"
+          },
+          {
+            "label": "Security audit"
+          },
+          {
+            "label": "Database migration"
+          }
+        ]
+      },
+      {
+        "name": "clear",
+        "items": [
+          {
+            "label": "Deploy to staging"
+          },
+          {
+            "label": "Run test suite"
+          },
+          {
+            "label": "Merge pull request"
+          }
+        ]
+      },
+      {
+        "name": "chaotic",
+        "items": [
+          {
+            "label": "Production outage"
+          },
+          {
+            "label": "Data breach response"
+          }
+        ]
+      }
+    ],
+    "transitions": []
+  }
+}

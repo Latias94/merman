@@ -2,7 +2,6 @@ use super::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 mod css;
-mod debug_svg;
 mod defs;
 mod document;
 mod edge;
@@ -13,6 +12,7 @@ mod render;
 mod render_config;
 mod render_input;
 mod style;
+mod swimlane;
 mod types;
 mod util;
 mod viewbox;
@@ -42,44 +42,11 @@ use util::{HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleAttr, OptionalS
 // 200px (independent of `flowchart.wrappingWidth`).
 pub(in crate::svg::parity::flowchart) const FLOWCHART_EDGE_LABEL_WRAP_WIDTH: f64 = 200.0;
 
-const FLOWCHART_HTML_EDGE_LABEL_FONT_FALLBACK_SLACK_X: f64 = 4.0;
-
-#[inline]
-pub(in crate::svg::parity::flowchart) fn flowchart_html_edge_label_render_width(
-    layout_width: f64,
-) -> f64 {
-    let width = layout_width.max(0.0);
-    if width > 0.0 && width < FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
-        width + FLOWCHART_HTML_EDGE_LABEL_FONT_FALLBACK_SLACK_X
-    } else {
-        width
-    }
-}
-
-#[inline]
-pub(in crate::svg::parity::flowchart) fn flowchart_html_edge_label_width_for_layout(
-    ctx: &FlowchartRenderCtx<'_>,
-    layout_width: f64,
-) -> f64 {
-    if ctx.source_backed_edge_label_bboxes {
-        layout_width.max(0.0)
-    } else {
-        flowchart_html_edge_label_render_width(layout_width)
-    }
-}
-
 // In flowchart SVG emission, many attribute payloads are known to be short-lived (colors, inline
 // `d` strings, etc). Avoid allocating an owned `String` for attribute escaping by default.
 #[inline]
 fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<'_> {
     escape_attr_display(text)
-}
-
-pub(super) fn render_flowchart_v2_debug_svg(
-    layout: &FlowchartV2Layout,
-    options: &SvgRenderOptions,
-) -> String {
-    debug_svg::render_flowchart_v2_debug_svg(layout, options)
 }
 
 pub(in crate::svg::parity::flowchart) fn flowchart_config_look(
@@ -97,57 +64,5 @@ pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
 // Entry points (split from parity.rs).
 
 mod svg_emit;
-
-pub(super) fn render_flowchart_v2_svg(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    svg_emit::render_flowchart_v2_svg(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-pub(super) fn render_flowchart_v2_svg_model_with_config(
-    layout: &FlowchartV2Layout,
-    model: &crate::flowchart::FlowchartV2Model,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    svg_emit::render_flowchart_v2_svg_model_with_config(
-        layout,
-        model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-pub(super) fn render_flowchart_v2_svg_with_config(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    svg_emit::render_flowchart_v2_svg_with_config(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
+pub(super) use svg_emit::render_flowchart_svg_model_with_config;
+pub(super) use swimlane::render_swimlane_svg_model_with_config;

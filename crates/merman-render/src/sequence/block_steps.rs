@@ -3,11 +3,16 @@ use super::messages::{
     SequenceMessageHorizontalContext, SequenceMessageHorizontalModel,
     sequence_message_horizontal_model,
 };
-use super::metrics::measure_svg_like_with_html_br;
+use super::metrics::{
+    SequenceMathHeightMode, measure_sequence_math_label, measure_svg_like_with_html_br,
+};
 use super::notes::{SequenceNoteHorizontalContext, sequence_note_horizontal_model};
-use super::{bracketize_sequence_block_label, sequence_block_label_wrap_width};
+use super::{
+    bracketize_sequence_block_label, sequence_block_label_wrap_width,
+    wrap_sequence_label_like_mermaid_lines,
+};
 use crate::math::MathRenderer;
-use crate::text::{TextMeasurer, TextStyle, wrap_label_like_mermaid_lines};
+use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use std::collections::HashMap;
@@ -101,8 +106,19 @@ fn block_label_step(
     }
 
     let label = bracketize_sequence_block_label(raw_label);
+    if let Some((_, height)) = measure_sequence_math_label(
+        frame_ctx.measurer,
+        &label,
+        frame_ctx.msg_text_style,
+        frame_ctx.math_config,
+        frame_ctx.math_renderer,
+        SequenceMathHeightMode::Bound,
+    ) {
+        return step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height);
+    }
+
     let measured_label = match frame_width {
-        Some(width) => wrap_label_like_mermaid_lines(
+        Some(width) => wrap_sequence_label_like_mermaid_lines(
             &label,
             frame_ctx.measurer,
             frame_ctx.msg_text_style,
@@ -182,62 +198,138 @@ impl BlockHorizontalBounds {
             width: 0.0,
         }
     }
+}
 
-    fn include_note(&mut self, start_x: f64, width: f64, label_box_width: f64) {
-        self.from = self.from.min(start_x);
-        self.to = self.to.max(start_x + width);
-        self.width = self.width.max((self.to - self.from).abs()) - label_box_width;
+#[derive(Debug, Clone, Copy)]
+struct BlockBoundsSummary {
+    // For input bounds (F, T, W), width becomes:
+    // max(W + p, T - F + r, T + t, -F + f, c).
+    min_from: f64,
+    max_to: f64,
+    prior_width_offset: f64,
+    range_width_offset: f64,
+    max_to_width_offset: f64,
+    neg_min_from_width_offset: f64,
+    constant_width: f64,
+}
+
+impl BlockBoundsSummary {
+    fn identity() -> Self {
+        Self {
+            min_from: f64::INFINITY,
+            max_to: f64::NEG_INFINITY,
+            prior_width_offset: 0.0,
+            range_width_offset: f64::NEG_INFINITY,
+            max_to_width_offset: f64::NEG_INFINITY,
+            neg_min_from_width_offset: f64::NEG_INFINITY,
+            constant_width: f64::NEG_INFINITY,
+        }
     }
 
-    fn include_message(
-        &mut self,
-        msg: &SequenceMessage,
-        model: SequenceMessageHorizontalModel,
-        ctx: BlockFrameWidthContext<'_>,
-    ) {
-        if model.start_x == model.stop_x {
-            let Some(actor_id) = msg.from.as_deref() else {
-                return;
-            };
-            let Some(actor_index) = ctx.actor_index.get(actor_id).copied() else {
-                return;
-            };
-            let Some(actor_center_x) = ctx.actor_centers_x.get(actor_index).copied() else {
-                return;
-            };
-            let Some(actor_width) = ctx.actor_widths.get(actor_index).copied() else {
-                return;
-            };
-            let actor_left_x = actor_center_x - actor_width / 2.0;
-            self.from = self
-                .from
-                .min(actor_left_x - model.width / 2.0)
-                .min(actor_left_x - actor_width / 2.0);
-            self.to = self
-                .to
-                .max(actor_left_x + model.width / 2.0)
-                .max(actor_left_x + actor_width / 2.0);
-            self.width = self.width.max((self.to - self.from).abs()) - ctx.label_box_width;
-        } else {
-            self.from = self.from.min(model.start_x);
-            self.to = self.to.max(model.stop_x);
-            self.width = self.width.max(model.width) - ctx.label_box_width;
+    fn fixed_width(from: f64, to: f64, width: f64, label_box_width: f64) -> Self {
+        Self {
+            min_from: from,
+            max_to: to,
+            prior_width_offset: -label_box_width,
+            range_width_offset: f64::NEG_INFINITY,
+            max_to_width_offset: f64::NEG_INFINITY,
+            neg_min_from_width_offset: f64::NEG_INFINITY,
+            constant_width: width - label_box_width,
         }
+    }
+
+    fn envelope_width(from: f64, to: f64, label_box_width: f64) -> Self {
+        Self {
+            min_from: from,
+            max_to: to,
+            prior_width_offset: -label_box_width,
+            range_width_offset: -label_box_width,
+            max_to_width_offset: -from - label_box_width,
+            neg_min_from_width_offset: to - label_box_width,
+            constant_width: to - from - label_box_width,
+        }
+    }
+
+    fn then(self, next: Self) -> Self {
+        Self {
+            min_from: self.min_from.min(next.min_from),
+            max_to: self.max_to.max(next.max_to),
+            prior_width_offset: self.prior_width_offset + next.prior_width_offset,
+            range_width_offset: (self.range_width_offset + next.prior_width_offset)
+                .max(next.range_width_offset),
+            max_to_width_offset: (self.max_to_width_offset + next.prior_width_offset)
+                .max(next.range_width_offset - self.min_from)
+                .max(next.max_to_width_offset),
+            neg_min_from_width_offset: (self.neg_min_from_width_offset + next.prior_width_offset)
+                .max(next.range_width_offset + self.max_to)
+                .max(next.neg_min_from_width_offset),
+            constant_width: (self.constant_width + next.prior_width_offset)
+                .max(next.range_width_offset + self.max_to - self.min_from)
+                .max(next.max_to_width_offset + self.max_to)
+                .max(next.neg_min_from_width_offset - self.min_from)
+                .max(next.constant_width),
+        }
+    }
+
+    fn resolve(self) -> BlockHorizontalBounds {
+        if self.min_from == f64::INFINITY && self.max_to == f64::NEG_INFINITY {
+            return BlockHorizontalBounds::empty();
+        }
+
+        // Every block summary is ultimately evaluated from the empty (F, T, W) state.
+        let width = self.prior_width_offset.max(self.constant_width);
+        BlockHorizontalBounds {
+            from: self.min_from,
+            to: self.max_to,
+            width,
+        }
+    }
+}
+
+fn message_bounds_summary(
+    msg: &SequenceMessage,
+    model: SequenceMessageHorizontalModel,
+    ctx: BlockFrameWidthContext<'_>,
+) -> Option<BlockBoundsSummary> {
+    if model.start_x == model.stop_x {
+        let actor_id = msg.from.as_deref()?;
+        let actor_index = ctx.actor_index.get(actor_id).copied()?;
+        let actor_center_x = ctx.actor_centers_x.get(actor_index).copied()?;
+        let actor_width = ctx.actor_widths.get(actor_index).copied()?;
+        let actor_left_x = actor_center_x - actor_width / 2.0;
+        let from = (actor_left_x - model.width / 2.0).min(actor_left_x - actor_width / 2.0);
+        let to = (actor_left_x + model.width / 2.0).max(actor_left_x + actor_width / 2.0);
+        Some(BlockBoundsSummary::envelope_width(
+            from,
+            to,
+            ctx.label_box_width,
+        ))
+    } else {
+        Some(BlockBoundsSummary::fixed_width(
+            model.start_x,
+            model.stop_x,
+            model.width,
+            ctx.label_box_width,
+        ))
     }
 }
 
 #[derive(Debug)]
 struct OpenBlock {
     aliases: Vec<String>,
-    bounds: BlockHorizontalBounds,
+    summary: BlockBoundsSummary,
 }
 
 impl OpenBlock {
     fn new(id: String) -> Self {
         Self {
             aliases: vec![id],
-            bounds: BlockHorizontalBounds::empty(),
+            summary: BlockBoundsSummary::identity(),
         }
+    }
+
+    fn include(&mut self, summary: BlockBoundsSummary) {
+        self.summary = self.summary.then(summary);
     }
 }
 
@@ -264,8 +356,12 @@ fn calculate_sequence_block_bounds(
         }
         if is_block_end(msg.message_type) {
             if let Some(current) = stack.pop() {
+                if let Some(parent) = stack.last_mut() {
+                    parent.include(current.summary);
+                }
+                let bounds = current.summary.resolve();
                 for alias in current.aliases {
-                    completed.insert(alias, current.bounds);
+                    completed.insert(alias, bounds);
                 }
             }
             continue;
@@ -273,9 +369,9 @@ fn calculate_sequence_block_bounds(
         if activation_state.handle_directive(msg, ctx.actor_index, ctx.actor_centers_x) {
             continue;
         }
-        if stack.is_empty() {
+        let Some(current) = stack.last_mut() else {
             continue;
-        }
+        };
 
         if msg.placement.is_some() {
             let Some(note) = sequence_note_horizontal_model(
@@ -296,11 +392,11 @@ fn calculate_sequence_block_bounds(
             ) else {
                 continue;
             };
-            for current in &mut stack {
-                current
-                    .bounds
-                    .include_note(note.start_x, note.width, ctx.label_box_width);
-            }
+            current.include(BlockBoundsSummary::envelope_width(
+                note.start_x,
+                note.start_x + note.width,
+                ctx.label_box_width,
+            ));
             continue;
         }
 
@@ -319,8 +415,8 @@ fn calculate_sequence_block_bounds(
         ) else {
             continue;
         };
-        for current in &mut stack {
-            current.bounds.include_message(msg, message, ctx);
+        if let Some(summary) = message_bounds_summary(msg, message, ctx) {
+            current.include(summary);
         }
     }
 
@@ -330,7 +426,8 @@ fn calculate_sequence_block_bounds(
 #[cfg(test)]
 mod tests {
     use super::{
-        BlockFrameWidthContext, BlockStepContext, block_label_step, calculate_sequence_block_bounds,
+        BlockBoundsSummary, BlockFrameWidthContext, BlockHorizontalBounds, BlockStepContext,
+        block_label_step, calculate_sequence_block_bounds,
     };
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use merman_core::MermaidConfig;
@@ -399,6 +496,52 @@ mod tests {
                 math_renderer: None,
             },
         )
+    }
+
+    #[test]
+    fn block_bounds_summaries_preserve_ordered_width_updates() {
+        let fixed_updates = [
+            (300.0, 100.0, 240.0),
+            (450.0, 50.0, 400.0),
+            (100.0, 500.0, 400.0),
+        ];
+        let envelope_updates = [(80.0, 200.0), (40.0, 180.0), (250.0, 650.0)];
+
+        for label_box_width in [0.0, 7.0, 50.0] {
+            for envelope_mask in 0..8 {
+                let mut reference = BlockHorizontalBounds::empty();
+                let mut summaries = [BlockBoundsSummary::identity(); 3];
+
+                for index in 0..3 {
+                    if envelope_mask & (1 << index) == 0 {
+                        let (from, to, width) = fixed_updates[index];
+                        reference.from = reference.from.min(from);
+                        reference.to = reference.to.max(to);
+                        reference.width = reference.width.max(width) - label_box_width;
+                        summaries[index] =
+                            BlockBoundsSummary::fixed_width(from, to, width, label_box_width);
+                    } else {
+                        let (from, to) = envelope_updates[index];
+                        reference.from = reference.from.min(from);
+                        reference.to = reference.to.max(to);
+                        reference.width =
+                            reference.width.max((reference.to - reference.from).abs())
+                                - label_box_width;
+                        summaries[index] =
+                            BlockBoundsSummary::envelope_width(from, to, label_box_width);
+                    }
+                }
+
+                let composed = summaries
+                    .into_iter()
+                    .fold(BlockBoundsSummary::identity(), BlockBoundsSummary::then)
+                    .resolve();
+                let nested = summaries[0].then(summaries[1].then(summaries[2])).resolve();
+
+                assert_eq!(composed, reference);
+                assert_eq!(nested, reference);
+            }
+        }
     }
 
     #[test]

@@ -1,4 +1,3 @@
-use super::block_bounds::SequenceBlockBounds;
 use super::constants::sequence_actor_popup_panel_height;
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use crate::math::MathRenderer;
@@ -13,7 +12,8 @@ pub(super) struct SequenceRootBoundsContext<'a> {
     pub(super) diagram_title: Option<&'a str>,
     pub(super) nodes: &'a [LayoutNode],
     pub(super) edges: &'a [LayoutEdge],
-    pub(super) block_bounds: Option<SequenceBlockBounds>,
+    pub(super) bounds_start_x: f64,
+    pub(super) bounds_stop_x: f64,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_left_x: &'a [f64],
@@ -37,10 +37,6 @@ pub(super) struct SequenceRootBoundsContext<'a> {
 
 pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds {
     let mut content = sequence_content_bounds(&ctx);
-
-    if let Some(block_bounds) = ctx.block_bounds {
-        content.include_bounds(block_bounds.min_x, block_bounds.max_x, block_bounds.max_y);
-    }
 
     include_actor_popup_bottoms(&mut content, &ctx);
 
@@ -73,7 +69,8 @@ pub(super) fn sequence_root_bounds(ctx: SequenceRootBoundsContext<'_>) -> Bounds
         bounds_box_stopy += ctx.box_margin;
     }
 
-    let mut bounds_box = ActorHorizontalBounds::from_content(content.min_x, content.max_x);
+    let mut bounds_box = ActorHorizontalBounds::from_content(ctx.bounds_start_x, ctx.bounds_stop_x);
+    bounds_box.include(content.min_x, content.max_x);
     bounds_box.include_actor_boxes(&ctx);
     include_self_message_bounds(&mut bounds_box, &ctx);
 
@@ -227,11 +224,6 @@ impl ContentBounds {
 
     fn include_y(&mut self, y: f64) {
         self.max_y = self.max_y.max(y);
-    }
-
-    fn include_bounds(&mut self, min_x: f64, max_x: f64, max_y: f64) {
-        self.include_x(min_x, max_x);
-        self.include_y(max_y);
     }
 
     fn or_fallback(mut self, fallback_width: f64, fallback_max_y: f64) -> Self {

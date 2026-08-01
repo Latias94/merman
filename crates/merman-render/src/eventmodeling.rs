@@ -30,20 +30,9 @@ const CONTENT_START_X: f64 = 250.0;
 const TEXT_MAX_WIDTH: f64 = 430.0;
 const BOX_TEXT_PADDING: f64 = 10.0;
 const TEXT_FONT_SIZE: f64 = 16.0;
-const HTML_LABEL_TEXT_WIDTH_OFFSET: f64 = 6.0;
-const HTML_LABEL_DATA_WIDTH_SCALE: f64 = 1.047;
 const HTML_LABEL_BBOX_LINE_HEIGHT: f64 = 19.0;
 
-pub fn layout_eventmodeling_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<EventModelingDiagramLayout> {
-    let model: EventModelingDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_eventmodeling_diagram_typed(&model, effective_config, measurer)
-}
-
-pub fn layout_eventmodeling_diagram_typed(
+pub(crate) fn layout_eventmodeling_diagram_typed(
     model: &EventModelingDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
@@ -459,9 +448,7 @@ fn measure_frame_text(
     let (html, has_data) = frame_label_html_for_measurement(frame, data_entities, measurer, &style);
     let mut dimension = measure_eventmodeling_label_html(&html, measurer, &style);
     if has_data {
-        dimension.width = (dimension.width * HTML_LABEL_DATA_WIDTH_SCALE) / 3.0;
-    } else {
-        dimension.width += HTML_LABEL_TEXT_WIDTH_OFFSET;
+        dimension.width /= 3.0;
     }
     TextDimension {
         width: dimension.width.min(TEXT_MAX_WIDTH),
@@ -478,11 +465,13 @@ fn measure_eventmodeling_label_html(
         font_family: Some("sans-serif".to_string()),
         font_size: style.font_size,
         font_weight: style.font_weight.clone(),
+        font_style: None,
     };
     let default_font_style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: style.font_size,
         font_weight: style.font_weight.clone(),
+        font_style: None,
     };
     let sans = measure_eventmodeling_label_html_with_style(html, measurer, &sans_style);
     let default_font =

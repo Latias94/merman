@@ -30,39 +30,39 @@
         {
           "id": "note-0",
           "x": -25.0,
-          "y": 94.0,
+          "y": 94.5,
           "width": 150.0,
-          "height": 38.0,
+          "height": 39.0,
           "is_cluster": false
         },
         {
           "id": "note-1",
           "x": 375.0,
-          "y": 142.0,
+          "y": 143.5,
           "width": 150.0,
-          "height": 38.0,
+          "height": 39.0,
           "is_cluster": false
         },
         {
           "id": "note-2",
           "x": 475.0,
-          "y": 190.0,
+          "y": 192.5,
           "width": 150.0,
-          "height": 38.0,
+          "height": 39.0,
           "is_cluster": false
         },
         {
           "id": "note-3",
           "x": 175.0,
-          "y": 238.0,
+          "y": 241.5,
           "width": 250.0,
-          "height": 38.0,
+          "height": 39.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Alice",
           "x": 75.0,
-          "y": 354.7,
+          "y": 359.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -70,7 +70,7 @@
         {
           "id": "actor-bottom-Bob",
           "x": 275.0,
-          "y": 354.7,
+          "y": 359.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -78,7 +78,7 @@
         {
           "id": "actor-bottom-Carl",
           "x": 475.0,
-          "y": 354.7,
+          "y": 359.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -94,17 +94,17 @@
           "points": [
             {
               "x": 76.0,
-              "y": 302.2
+              "y": 307.0
             },
             {
               "x": 274.0,
-              "y": 302.2
+              "y": 307.0
             }
           ],
           "label": {
             "x": 175.0,
-            "y": 272.0,
-            "width": 54.0,
+            "y": 276.0,
+            "width": 53.76,
             "height": 17.6
           },
           "start_label_left": null,
@@ -128,7 +128,7 @@
             },
             {
               "x": 75.0,
-              "y": 322.2
+              "y": 327.0
             }
           ],
           "label": null,
@@ -153,7 +153,7 @@
             },
             {
               "x": 275.0,
-              "y": 322.2
+              "y": 327.0
             }
           ],
           "label": null,
@@ -178,7 +178,7 @@
             },
             {
               "x": 475.0,
-              "y": 322.2
+              "y": 327.0
             }
           ],
           "label": null,
@@ -196,7 +196,7 @@
         "min_x": -150.0,
         "min_y": -10.0,
         "max_x": 600.0,
-        "max_y": 398.2
+        "max_y": 403.0
       }
     }
   }

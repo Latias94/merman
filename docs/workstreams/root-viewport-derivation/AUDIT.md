@@ -1,5 +1,9 @@
 # Root Viewport Derivation Audit
 
+> Historical snapshot. Production root/text/SVG overrides, their disable switches, budgets, and
+> generator/audit commands were removed on 2026-07-15 under ADR-0062. Commands and "current state"
+> claims below describe the retired implementation and are not current guidance.
+
 This audit maps the workstream objective to concrete artifacts and gates.
 
 ## Objective

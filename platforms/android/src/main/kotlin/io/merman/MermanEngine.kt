@@ -1,168 +1,156 @@
 package io.merman
 
+import org.json.JSONObject
+
+/**
+ * Stateless Android entry point for the transport-neutral Merman operation catalog.
+ *
+ * Native methods are registered during `JNI_OnLoad`; no Java-name-derived JNI symbols are part of
+ * the public native library contract. The runtime catalog schema and transport API are validated
+ * before any operation. Exact release equality is not checked; Kotlin classes and native slices
+ * must come from the same AAR.
+ */
 object MermanEngine {
-    const val ABI_VERSION: Int = 2
+    const val TRANSPORT_API_VERSION: Int = ANDROID_TRANSPORT_API_VERSION
+
+    private val runtimeCatalogJsonCache: String by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        validateRuntimeCatalogPayload(nativeRuntimeCatalogJson())
+    }
 
     init {
-        System.loadLibrary("merman_ffi")
-        checkNativeAbi()
+        System.loadLibrary("merman_android_jni")
+        runtimeCatalogJsonCache
     }
 
     @JvmStatic
     internal fun ensureNativeReady() = Unit
 
     val packageVersion: String
-        get() = nativePackageVersion()
+        get() = JSONObject(runtimeCatalogJson())
+            .getString("package_version")
 
     private val supportedDiagramsJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        nativeSupportedDiagramsJson()
+        metadataJson("supported-diagrams")
     }
 
     private val asciiCapabilitiesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        nativeAsciiCapabilitiesJson()
+        metadataJson("ascii-capabilities")
     }
 
     private val diagramFamilyCapabilitiesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        nativeDiagramFamilyCapabilitiesJson()
+        metadataJson("diagram-family-capabilities")
     }
 
     private val lintRuleCatalogJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        nativeLintRuleCatalogJson()
+        metadataJson("lint-rule-catalog")
     }
 
     private val supportedThemesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        nativeSupportedThemesJson()
+        metadataJson("supported-themes")
     }
 
     private val supportedHostThemePresetsJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        nativeSupportedHostThemePresetsJson()
+        metadataJson("supported-host-theme-presets")
     }
+
+    /** Executes any operation ID exposed by [runtimeCatalogJson]. */
+    @JvmStatic
+    fun execute(
+        operationId: String,
+        source: String,
+        optionsJson: String? = null,
+        uri: String? = null,
+    ): MermanOperationResult = nativeExecute(operationId, source, optionsJson, uri)
 
     @JvmStatic
     fun renderSvg(source: String, optionsJson: String? = null): String =
-        nativeRenderSvg(source, optionsJson)
+        executeText("svg", source, optionsJson)
 
     @JvmStatic
     fun renderAscii(source: String, optionsJson: String? = null): String =
-        nativeRenderAscii(source, optionsJson)
+        executeText("ascii", source, optionsJson)
+
+    @JvmStatic
+    fun renderPng(source: String, optionsJson: String? = null): ByteArray =
+        execute("png", source, optionsJson).data
+
+    @JvmStatic
+    fun renderJpeg(source: String, optionsJson: String? = null): ByteArray =
+        execute("jpeg", source, optionsJson).data
+
+    @JvmStatic
+    fun renderPdf(source: String, optionsJson: String? = null): ByteArray =
+        execute("pdf", source, optionsJson).data
 
     @JvmStatic
     fun parseJson(source: String, optionsJson: String? = null): String =
-        nativeParseJson(source, optionsJson)
+        executeText("semantic-json", source, optionsJson)
 
     @JvmStatic
     fun layoutJson(source: String, optionsJson: String? = null): String =
-        nativeLayoutJson(source, optionsJson)
+        executeText("layout-json", source, optionsJson)
 
     @JvmStatic
     fun analyzeJson(source: String, optionsJson: String? = null): String =
-        nativeAnalyzeJson(source, optionsJson)
+        executeText("analysis-json", source, optionsJson)
 
     @JvmStatic
     fun analyzeDocumentJson(source: String, uri: String, optionsJson: String? = null): String =
-        nativeAnalyzeDocumentJson(source, optionsJson, uri)
+        executeText("document-analysis-json", source, optionsJson, uri)
 
     @JvmStatic
     fun analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String? = null): String =
-        nativeAnalyzeDocumentFactsJson(source, optionsJson, uri)
+        executeText("document-analysis-facts-json", source, optionsJson, uri)
 
     @JvmStatic
     fun validateJson(source: String, optionsJson: String? = null): String =
-        nativeValidateJson(source, optionsJson)
+        executeText("validation-json", source, optionsJson)
 
     @JvmStatic
-    fun supportedDiagramsJson(): String =
-        supportedDiagramsJsonCache
+    fun supportedDiagramsJson(): String = supportedDiagramsJsonCache
+
+    /** Returns the capability, registry, and resource facts for this native artifact. */
+    @JvmStatic
+    fun runtimeCatalogJson(): String = runtimeCatalogJsonCache
 
     @JvmStatic
-    fun asciiCapabilitiesJson(): String =
-        asciiCapabilitiesJsonCache
+    fun asciiCapabilitiesJson(): String = asciiCapabilitiesJsonCache
 
     @JvmStatic
-    fun diagramFamilyCapabilitiesJson(): String =
-        diagramFamilyCapabilitiesJsonCache
+    fun diagramFamilyCapabilitiesJson(): String = diagramFamilyCapabilitiesJsonCache
 
     @JvmStatic
-    fun lintRuleCatalogJson(): String =
-        lintRuleCatalogJsonCache
+    fun lintRuleCatalogJson(): String = lintRuleCatalogJsonCache
 
     @JvmStatic
-    fun supportedThemesJson(): String =
-        supportedThemesJsonCache
+    fun supportedThemesJson(): String = supportedThemesJsonCache
 
     @JvmStatic
-    fun supportedHostThemePresetsJson(): String =
-        supportedHostThemePresetsJsonCache
+    fun supportedHostThemePresetsJson(): String = supportedHostThemePresetsJsonCache
 
-    private fun checkNativeAbi() {
-        val nativeAbi = nativeAbiVersion()
-        if (nativeAbi != ABI_VERSION) {
-            throw MermanException("Merman ABI mismatch: expected $ABI_VERSION, got $nativeAbi")
-        }
-        if (nativeBufferStructSize() <= 0L || nativeResultStructSize() <= 0L) {
-            throw MermanException("Merman ABI struct size check failed")
-        }
-    }
+    private fun executeText(
+        operationId: String,
+        source: String,
+        optionsJson: String? = null,
+        uri: String? = null,
+    ): String = execute(operationId, source, optionsJson, uri).data.toString(Charsets.UTF_8)
 
-    @JvmStatic
-    private external fun nativeAbiVersion(): Int
+    private fun metadataJson(id: String): String = nativeMetadataJson(id)
+
+    internal fun validateRuntimeCatalogPayload(json: String): String =
+        MermanRuntimeCatalogValidator.validate(json)
 
     @JvmStatic
-    private external fun nativePackageVersion(): String
+    private external fun nativeRuntimeCatalogJson(): String
 
     @JvmStatic
-    private external fun nativeBufferStructSize(): Long
-
-    @JvmStatic
-    private external fun nativeResultStructSize(): Long
-
-    @JvmStatic
-    private external fun nativeRenderSvg(source: String, optionsJson: String?): String
-
-    @JvmStatic
-    private external fun nativeRenderAscii(source: String, optionsJson: String?): String
-
-    @JvmStatic
-    private external fun nativeParseJson(source: String, optionsJson: String?): String
-
-    @JvmStatic
-    private external fun nativeLayoutJson(source: String, optionsJson: String?): String
-
-    @JvmStatic
-    private external fun nativeAnalyzeJson(source: String, optionsJson: String?): String
-
-    @JvmStatic
-    private external fun nativeAnalyzeDocumentJson(
+    private external fun nativeExecute(
+        operationId: String,
         source: String,
         optionsJson: String?,
-        uri: String,
-    ): String
+        uri: String?,
+    ): MermanOperationResult
 
     @JvmStatic
-    private external fun nativeAnalyzeDocumentFactsJson(
-        source: String,
-        optionsJson: String?,
-        uri: String,
-    ): String
-
-    @JvmStatic
-    private external fun nativeValidateJson(source: String, optionsJson: String?): String
-
-    @JvmStatic
-    private external fun nativeSupportedDiagramsJson(): String
-
-    @JvmStatic
-    private external fun nativeAsciiCapabilitiesJson(): String
-
-    @JvmStatic
-    private external fun nativeDiagramFamilyCapabilitiesJson(): String
-
-    @JvmStatic
-    private external fun nativeLintRuleCatalogJson(): String
-
-    @JvmStatic
-    private external fun nativeSupportedThemesJson(): String
-
-    @JvmStatic
-    private external fun nativeSupportedHostThemePresetsJson(): String
+    private external fun nativeMetadataJson(id: String): String
 }

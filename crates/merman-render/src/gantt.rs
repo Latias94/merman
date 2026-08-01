@@ -1,26 +1,25 @@
+use crate::Result;
 use crate::config::{config_bool as cfg_bool, config_f64 as cfg_f64};
-use crate::json::from_value_ref;
 use crate::model::{
     Bounds, GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
 };
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
-use crate::{Error, Result};
 use chrono::{Datelike, FixedOffset, Timelike};
 use std::collections::{HashMap, hash_map::Entry};
 
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
-// Mermaid's gantt renderer derives the width from the parent element's `offsetWidth`.
-// In Mermaid CLI (and typical browser defaults), the body margin results in an effective
-// width of 1184px for a 1200px viewport, which matches our upstream SVG baselines.
-const DEFAULT_WIDTH: f64 = 1184.0;
+// Mermaid falls back to 1200 only when the parent element exposes no `offsetWidth`.
+const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;
 const MS_PER_DAY: i64 = 86_400_000;
 
-fn dt_utc_to_local_fixed(dt_utc: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<FixedOffset> {
-    merman_core::time::datetime_to_local_fixed(
-        dt_utc.with_timezone(&merman_core::time::utc_fixed_offset()),
-    )
+fn dt_utc_to_local_fixed(
+    dt_utc: chrono::DateTime<chrono::Utc>,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<chrono::DateTime<FixedOffset>> {
+    local_time_zone
+        .datetime_to_local_fixed(dt_utc.with_timezone(&merman_core::time::utc_fixed_offset()))
 }
 
 fn cfg_i64(cfg: &serde_json::Value, path: &[&str]) -> Option<i64> {
@@ -104,9 +103,13 @@ fn ordinal_suffix(n: u32) -> &'static str {
     }
 }
 
-fn format_dayjs_like(ms: i64, fmt: &str) -> Option<String> {
+fn format_dayjs_like(
+    ms: i64,
+    fmt: &str,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<String> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let fmt = fmt.trim();
 
     let mut out = String::new();
@@ -197,8 +200,11 @@ fn format_dayjs_like(ms: i64, fmt: &str) -> Option<String> {
     Some(out)
 }
 
-fn format_yyyy_mm_dd(ms: i64) -> Option<String> {
-    format_dayjs_like(ms, "YYYY-MM-DD")
+fn format_yyyy_mm_dd(
+    ms: i64,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<String> {
+    format_dayjs_like(ms, "YYYY-MM-DD", local_time_zone)
 }
 
 fn weekend_start_day(weekend: &str) -> u32 {
@@ -214,11 +220,12 @@ fn is_invalid_date(
     excludes: &[String],
     includes: &[String],
     weekend: &str,
+    local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> bool {
-    let Some(formatted_date) = format_dayjs_like(ms, date_format) else {
+    let Some(formatted_date) = format_dayjs_like(ms, date_format, local_time_zone) else {
         return false;
     };
-    let Some(date_only) = format_yyyy_mm_dd(ms) else {
+    let Some(date_only) = format_yyyy_mm_dd(ms, local_time_zone) else {
         return false;
     };
 
@@ -232,7 +239,9 @@ fn is_invalid_date(
     let Some(dt_utc) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms) else {
         return false;
     };
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let Some(dt) = dt_utc_to_local_fixed(dt_utc, local_time_zone) else {
+        return false;
+    };
     let iso_weekday = dt.weekday().number_from_monday();
 
     if excludes.iter().any(|t| t == "weekends") {
@@ -252,17 +261,21 @@ fn is_invalid_date(
         .any(|t| t == &formatted_date || t == &date_only)
 }
 
-fn start_of_day_ms(ms: i64) -> Option<i64> {
+fn start_of_day_ms(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let d = dt.date_naive();
-    let local_midnight = merman_core::time::datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
-    Some(local_midnight.timestamp_millis())
+    let local_midnight = local_time_zone.datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
+    Some(local_midnight?.timestamp_millis())
 }
 
-fn end_of_day_ms(ms: i64) -> Option<i64> {
-    let start = start_of_day_ms(ms)?;
-    Some(start + MS_PER_DAY - 1)
+fn end_of_day_ms(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> Option<i64> {
+    let start = start_of_day_ms(ms, local_time_zone)?;
+    start.checked_add(MS_PER_DAY)?.checked_sub(1)
+}
+
+fn absolute_millis_between(a: i64, b: i64) -> i128 {
+    (i128::from(a) - i128::from(b)).abs()
 }
 
 fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
@@ -271,7 +284,9 @@ fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
         // This matters for fixtures where parsing fails and `startTime == endTime` (width=0).
         return (range / 2.0).round();
     }
-    let t = (ms - min_ms) as f64 / (max_ms - min_ms) as f64;
+    let elapsed = i128::from(ms) - i128::from(min_ms);
+    let span = i128::from(max_ms) - i128::from(min_ms);
+    let t = elapsed as f64 / span as f64;
     (t * range).round()
 }
 
@@ -350,7 +365,7 @@ fn auto_tick_interval(min_ms: i64, max_ms: i64) -> (i64, &'static str) {
     const MONTH: f64 = (MS_PER_DAY * 30) as f64;
     const YEAR: f64 = (MS_PER_DAY * 365) as f64;
 
-    let span_ms = (max_ms - min_ms).abs().max(1) as f64;
+    let span_ms = absolute_millis_between(max_ms, min_ms).max(1) as f64;
     let target = span_ms / TARGET_TICKS;
 
     let mut intervals: Vec<(f64, i64, &'static str)> = Vec::new();
@@ -440,31 +455,34 @@ fn parse_tick_interval(s: &str) -> Option<(i64, &str)> {
     }
 }
 
-fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
+fn add_interval(
+    ms: i64,
+    every: i64,
+    unit: &str,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let naive = dt.naive_local();
 
     let next = match unit {
-        "millisecond" => naive + chrono::Duration::milliseconds(every),
-        "second" => naive + chrono::Duration::seconds(every),
-        "minute" => naive + chrono::Duration::minutes(every),
-        "hour" => naive + chrono::Duration::hours(every),
-        "day" => naive + chrono::Duration::days(every),
-        "week" => naive + chrono::Duration::days(every * 7),
+        "millisecond" => naive.checked_add_signed(chrono::Duration::try_milliseconds(every)?)?,
+        "second" => naive.checked_add_signed(chrono::Duration::try_seconds(every)?)?,
+        "minute" => naive.checked_add_signed(chrono::Duration::try_minutes(every)?)?,
+        "hour" => naive.checked_add_signed(chrono::Duration::try_hours(every)?)?,
+        "day" => naive.checked_add_signed(chrono::Duration::try_days(every)?)?,
+        "week" => naive.checked_add_signed(chrono::Duration::try_weeks(every)?)?,
         "month" => {
-            let mut y = naive.date().year();
-            let mut m = naive.date().month() as i32 + every as i32;
-            while m > 12 {
-                y += 1;
-                m -= 12;
-            }
-            while m < 1 {
-                y -= 1;
-                m += 12;
-            }
+            let month_index = i64::from(naive.date().year())
+                .checked_mul(12)?
+                .checked_add(i64::from(naive.date().month0()))?
+                .checked_add(every)?;
+            let y: i32 = month_index.div_euclid(12).try_into().ok()?;
+            let m = u32::try_from(month_index.rem_euclid(12))
+                .ok()?
+                .checked_add(1)?;
             let d = naive.date().day().min(28);
-            let date = chrono::NaiveDate::from_ymd_opt(y, m as u32, d)?;
+            let date = chrono::NaiveDate::from_ymd_opt(y, m, d)?;
             date.and_hms_opt(
                 naive.time().hour(),
                 naive.time().minute(),
@@ -472,7 +490,8 @@ fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
             )?
         }
         "year" => {
-            let y = naive.date().year() + every as i32;
+            let every: i32 = every.try_into().ok()?;
+            let y = naive.date().year().checked_add(every)?;
             let m = naive.date().month();
             let d = naive.date().day().min(28);
             let date = chrono::NaiveDate::from_ymd_opt(y, m, d)?;
@@ -485,8 +504,8 @@ fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
         _ => return None,
     };
 
-    let out = merman_core::time::datetime_from_naive_local(next);
-    Some(out.timestamp_millis())
+    let out = local_time_zone.datetime_from_naive_local(next);
+    Some(out?.timestamp_millis())
 }
 
 fn weekday_from_str(s: &str) -> Option<chrono::Weekday> {
@@ -502,9 +521,15 @@ fn weekday_from_str(s: &str) -> Option<chrono::Weekday> {
     }
 }
 
-fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>) -> Option<i64> {
+fn ceil_tick_start(
+    min_ms: i64,
+    every: i64,
+    unit: &str,
+    week_start: Option<&str>,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(min_ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let naive = dt.naive_local();
 
     let start = match unit {
@@ -512,9 +537,12 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let e = every.max(1);
             // D3's `millisecond.every(e)` aligns using `Math.floor(date / e) * e`, and `range`
             // starts at `ceil(start)`. Use Euclidean division so negative timestamps match D3.
-            let q = min_ms.div_euclid(e);
             let r = min_ms.rem_euclid(e);
-            let aligned = if r == 0 { q * e } else { (q + 1) * e };
+            let aligned = if r == 0 {
+                min_ms
+            } else {
+                min_ms.checked_add(e.checked_sub(r)?)?
+            };
             return Some(aligned);
         }
         "second" => {
@@ -525,16 +553,16 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             )?;
             let mut cur = base;
             if cur < naive {
-                cur += chrono::Duration::seconds(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_seconds(1)?)?;
             }
             let e = every.max(1);
             loop {
                 let sec = cur.time().second() as i64;
-                let rem = (sec % e + e) % e;
+                let rem = sec.rem_euclid(e);
                 if rem == 0 {
                     break;
                 }
-                cur += chrono::Duration::seconds(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_seconds(1)?)?;
             }
             cur
         }
@@ -544,16 +572,16 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
                 .and_hms_opt(naive.time().hour(), naive.time().minute(), 0)?;
             let mut cur = base;
             if cur < naive {
-                cur += chrono::Duration::minutes(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_minutes(1)?)?;
             }
             let e = every.max(1);
             loop {
                 let min = cur.time().minute() as i64;
-                let rem = (min % e + e) % e;
+                let rem = min.rem_euclid(e);
                 if rem == 0 {
                     break;
                 }
-                cur += chrono::Duration::minutes(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_minutes(1)?)?;
             }
             cur
         }
@@ -561,23 +589,23 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let base = naive.date().and_hms_opt(naive.time().hour(), 0, 0)?;
             let mut cur = base;
             if cur < naive {
-                cur += chrono::Duration::hours(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_hours(1)?)?;
             }
             let e = every.max(1);
             loop {
                 let hour = cur.time().hour() as i64;
-                let rem = (hour % e + e) % e;
+                let rem = hour.rem_euclid(e);
                 if rem == 0 {
                     break;
                 }
-                cur += chrono::Duration::hours(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_hours(1)?)?;
             }
             cur
         }
         "day" => {
             let mut cur = naive.date().and_hms_opt(0, 0, 0)?;
             if cur < naive {
-                cur += chrono::Duration::days(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_days(1)?)?;
             }
             let e = every.max(1);
             if e > 1 {
@@ -585,9 +613,9 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
                 // modulus resets at each month boundary (days 1, 1+e, 1+2e, ... within a month).
                 let mut d = cur.date();
                 let day0 = d.day0() as i64;
-                let rem = (day0 % e + e) % e;
+                let rem = day0.rem_euclid(e);
                 if rem != 0 {
-                    d += chrono::Duration::days(e - rem);
+                    d = d.checked_add_signed(chrono::Duration::try_days(e.checked_sub(rem)?)?)?;
                 }
                 cur = d.and_hms_opt(0, 0, 0)?;
             }
@@ -602,23 +630,21 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let mut d = naive.date();
             let cur_wd = d.weekday().num_days_from_sunday() as i64;
             let start_wd = start.num_days_from_sunday() as i64;
-            let delta = (cur_wd - start_wd + 7) % 7;
-            d -= chrono::Duration::days(delta);
+            let delta = (cur_wd - start_wd).rem_euclid(7);
+            d = d.checked_sub_signed(chrono::Duration::try_days(delta)?)?;
             let mut cur = d.and_hms_opt(0, 0, 0)?;
             if cur < naive {
-                cur += chrono::Duration::days(7);
+                cur = cur.checked_add_signed(chrono::Duration::try_days(7)?)?;
             }
 
             let e = every.max(1);
             if e > 1 {
                 let mut ws = cur.date();
-                loop {
-                    let weeks = ws.signed_duration_since(epoch).num_days() / 7;
-                    let rem = (weeks % e + e) % e;
-                    if rem == 0 {
-                        break;
-                    }
-                    ws += chrono::Duration::days(7);
+                let weeks = ws.signed_duration_since(epoch).num_days() / 7;
+                let rem = weeks.rem_euclid(e);
+                if rem != 0 {
+                    let delta_days = e.checked_sub(rem)?.checked_mul(7)?;
+                    ws = ws.checked_add_signed(chrono::Duration::try_days(delta_days)?)?;
                 }
                 cur = ws.and_hms_opt(0, 0, 0)?;
             }
@@ -631,10 +657,11 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let mut m = naive.date().month();
             let mut cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
             if cur < naive {
-                m += 1;
-                if m > 12 {
+                if m == 12 {
                     m = 1;
-                    y += 1;
+                    y = y.checked_add(1)?;
+                } else {
+                    m = m.checked_add(1)?;
                 }
                 cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
             }
@@ -642,29 +669,33 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let e = every.max(1);
             if e > 1 {
                 let mut idx = month_index(y, m);
-                let rem = (idx % e + e) % e;
+                let rem = idx.rem_euclid(e);
                 if rem != 0 {
-                    idx += e - rem;
-                    y = (idx / 12) as i32;
-                    m = (idx % 12) as u32 + 1;
+                    idx = idx.checked_add(e.checked_sub(rem)?)?;
+                    y = idx.div_euclid(12).try_into().ok()?;
+                    m = u32::try_from(idx.rem_euclid(12)).ok()?.checked_add(1)?;
                     cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
                 }
             }
             cur
         }
         "year" => {
-            let mut y = naive.date().year();
-            let mut cur = chrono::NaiveDate::from_ymd_opt(y, 1, 1)?.and_hms_opt(0, 0, 0)?;
+            let mut y = i64::from(naive.date().year());
+            let initial_year: i32 = y.try_into().ok()?;
+            let mut cur =
+                chrono::NaiveDate::from_ymd_opt(initial_year, 1, 1)?.and_hms_opt(0, 0, 0)?;
             if cur < naive {
-                y += 1;
-                cur = chrono::NaiveDate::from_ymd_opt(y, 1, 1)?.and_hms_opt(0, 0, 0)?;
+                y = y.checked_add(1)?;
+                let year: i32 = y.try_into().ok()?;
+                cur = chrono::NaiveDate::from_ymd_opt(year, 1, 1)?.and_hms_opt(0, 0, 0)?;
             }
-            let e = every.max(1) as i32;
+            let e = every.max(1);
             if e > 1 {
-                let rem = (y % e + e) % e;
+                let rem = y.rem_euclid(e);
                 if rem != 0 {
-                    y += e - rem;
-                    cur = chrono::NaiveDate::from_ymd_opt(y, 1, 1)?.and_hms_opt(0, 0, 0)?;
+                    y = y.checked_add(e.checked_sub(rem)?)?;
+                    let year: i32 = y.try_into().ok()?;
+                    cur = chrono::NaiveDate::from_ymd_opt(year, 1, 1)?.and_hms_opt(0, 0, 0)?;
                 }
             }
             cur
@@ -672,18 +703,22 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
         _ => return None,
     };
 
-    let out = merman_core::time::datetime_from_naive_local(start);
-    Some(out.timestamp_millis())
+    let out = local_time_zone.datetime_from_naive_local(start);
+    Some(out?.timestamp_millis())
 }
 
-fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
+fn add_d3_time_day_every(
+    ms: i64,
+    every: i64,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> Option<i64> {
     let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
-    let dt = dt_utc_to_local_fixed(dt_utc);
+    let dt = dt_utc_to_local_fixed(dt_utc, local_time_zone)?;
     let naive = dt.naive_local();
 
     let e = every.max(1);
     if e <= 1 {
-        return add_interval(ms, 1, "day");
+        return add_interval(ms, 1, "day", local_time_zone);
     }
 
     // D3's `timeDay.every(e)` uses a filtered interval based on `(date.getDate() - 1) % e`.
@@ -691,14 +726,18 @@ fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
     // `+e days` for months with non-multiple-of-e lengths.
     let cur_date = naive.date();
     let day0 = cur_date.day0() as i64;
-    let next_day0 = day0 + 1;
-    let rem = (next_day0 % e + e) % e;
+    let next_day0 = day0.checked_add(1)?;
+    let rem = next_day0.rem_euclid(e);
     let delta = if rem == 0 { 0 } else { e - rem };
-    let cand_day0 = next_day0 + delta;
+    let cand_day0 = next_day0.checked_add(delta)?;
 
     let (y, m) = (cur_date.year(), cur_date.month());
     let first_this_month = chrono::NaiveDate::from_ymd_opt(y, m, 1)?;
-    let (ny, nm) = if m == 12 { (y + 1, 1) } else { (y, m + 1) };
+    let (ny, nm) = if m == 12 {
+        (y.checked_add(1)?, 1)
+    } else {
+        (y, m.checked_add(1)?)
+    };
     let first_next_month = chrono::NaiveDate::from_ymd_opt(ny, nm, 1)?;
     let days_in_month = first_next_month
         .signed_duration_since(first_this_month)
@@ -716,8 +755,8 @@ fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
         naive.time().second(),
     )?;
 
-    let out = merman_core::time::datetime_from_naive_local(next);
-    Some(out.timestamp_millis())
+    let out = local_time_zone.datetime_from_naive_local(next);
+    Some(out?.timestamp_millis())
 }
 
 fn axis_format_to_strftime(axis_format: &str, date_format: &str, cfg_axis_format: &str) -> String {
@@ -896,15 +935,28 @@ fn format_axis_tick_label(d: chrono::DateTime<FixedOffset>, axis_format: &str) -
     out
 }
 
-fn build_ticks(
+struct GanttTickRequest<'a> {
     min_ms: i64,
     max_ms: i64,
     range: f64,
     left_padding: f64,
-    axis_format: &str,
-    tick_interval: Option<&str>,
-    week_start: Option<&str>,
-) -> Vec<GanttAxisTickLayout> {
+    axis_format: &'a str,
+    tick_interval: Option<&'a str>,
+    week_start: Option<&'a str>,
+    local_time_zone: &'a merman_core::time::LocalTimeZone,
+}
+
+fn build_ticks(request: GanttTickRequest<'_>) -> Vec<GanttAxisTickLayout> {
+    let GanttTickRequest {
+        min_ms,
+        max_ms,
+        range,
+        left_padding,
+        axis_format,
+        tick_interval,
+        week_start,
+        local_time_zone,
+    } = request;
     const MAX_TICK_COUNT: f64 = 10_000.0;
 
     fn estimate_ticks(min_ms: i64, max_ms: i64, every: i64, unit: &str) -> f64 {
@@ -912,7 +964,7 @@ fn build_ticks(
             return f64::INFINITY;
         }
 
-        let time_diff_ms = (max_ms - min_ms).abs().max(1) as f64;
+        let time_diff_ms = absolute_millis_between(max_ms, min_ms).max(1) as f64;
         let interval_ms = match unit {
             "millisecond" => every as f64,
             "second" => (every as f64) * 1_000.0,
@@ -944,7 +996,8 @@ fn build_ticks(
     };
 
     let mut ticks = Vec::new();
-    let mut cur = ceil_tick_start(min_ms, every, unit, week_start).unwrap_or(min_ms);
+    let mut cur =
+        ceil_tick_start(min_ms, every, unit, week_start, local_time_zone).unwrap_or(min_ms);
     let max_ticks = 2000;
     for _ in 0..max_ticks {
         if cur > max_ms {
@@ -952,7 +1005,8 @@ fn build_ticks(
         }
         let x = scale_time(cur, min_ms, max_ms, range) + left_padding;
         let label = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(cur)
-            .map(|d| format_axis_tick_label(dt_utc_to_local_fixed(d), axis_format))
+            .and_then(|d| dt_utc_to_local_fixed(d, local_time_zone))
+            .map(|d| format_axis_tick_label(d, axis_format))
             .unwrap_or_default();
         ticks.push(GanttAxisTickLayout {
             time_ms: cur,
@@ -960,9 +1014,9 @@ fn build_ticks(
             label,
         });
         let next = if unit == "day" && every > 1 {
-            add_d3_time_day_every(cur, every)
+            add_d3_time_day_every(cur, every, local_time_zone)
         } else {
-            add_interval(cur, every, unit)
+            add_interval(cur, every, unit, local_time_zone)
         };
         let Some(next) = next else {
             break;
@@ -975,21 +1029,35 @@ fn build_ticks(
     ticks
 }
 
-pub fn layout_gantt_diagram(
-    model: &serde_json::Value,
-    config: &serde_json::Value,
-    text_measurer: &dyn TextMeasurer,
-) -> Result<GanttDiagramLayout> {
-    let model: GanttDiagramRenderModel = from_value_ref(model).map_err(Error::Json)?;
-    layout_gantt_diagram_typed(&model, config, text_measurer)
+/// Mirrors JavaScript remainder stringification for Mermaid's generated Gantt class names.
+///
+/// In particular, `index % 0` is `NaN` in JavaScript rather than a thrown division error. The
+/// class suffix is observable in Mermaid SVG, so preserve that behavior at the language boundary
+/// instead of relying on Rust's integer remainder operator at every call site.
+pub(crate) fn gantt_section_class_suffix(
+    task_type: &str,
+    categories: &[String],
+    number_section_styles: i64,
+) -> String {
+    let Some(index) = categories.iter().position(|category| category == task_type) else {
+        return "0".to_string();
+    };
+    if number_section_styles == 0 {
+        return "NaN".to_string();
+    }
+    ((index as i64) % number_section_styles).to_string()
 }
 
-pub fn layout_gantt_diagram_typed(
+pub(crate) fn layout_gantt_diagram_typed(
     model: &GanttDiagramRenderModel,
+    diagram_title: Option<&str>,
     config: &serde_json::Value,
     text_measurer: &dyn TextMeasurer,
+    container_width: f64,
+    local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<GanttDiagramLayout> {
     let mut m = model.clone();
+    let title = m.title.as_deref().or(diagram_title).map(str::to_owned);
 
     let gantt_cfg = config.get("gantt").unwrap_or(config);
     let bar_gap = cfg_f64(gantt_cfg, &["barGap"]).unwrap_or(4.0);
@@ -1014,10 +1082,15 @@ pub fn layout_gantt_diagram_typed(
         .and_then(|v| v.as_str())
         .unwrap_or("%Y-%m-%d");
 
+    let container_width = if container_width.is_finite() && container_width > 0.0 {
+        container_width
+    } else {
+        DEFAULT_CONTAINER_WIDTH
+    };
     let width = gantt_cfg
         .get("useWidth")
         .and_then(|v| v.as_f64())
-        .unwrap_or(DEFAULT_WIDTH);
+        .unwrap_or(container_width);
     let gap = bar_height + bar_gap;
 
     let row_task_count = m.tasks.iter().filter(|task| !task.vert).count();
@@ -1083,9 +1156,11 @@ pub fn layout_gantt_diagram_typed(
         (0, 0)
     };
     let range = (width - left_padding - right_padding).max(1.0);
-    let span_days = (max_ms - min_ms).abs() / MS_PER_DAY;
-    let has_excludes_layer =
-        has_tasks && (!m.excludes.is_empty() || !m.includes.is_empty()) && span_days <= 365 * 5;
+    let span_ms = absolute_millis_between(max_ms, min_ms);
+    let max_exclude_span_ms = i128::from(MS_PER_DAY) * 365 * 5;
+    let has_excludes_layer = has_tasks
+        && (!m.excludes.is_empty() || !m.includes.is_empty())
+        && span_ms <= max_exclude_span_ms;
 
     // Sort by start time for rendering.
     m.tasks.sort_by_key(|a| a.start_ms);
@@ -1093,14 +1168,20 @@ pub fn layout_gantt_diagram_typed(
     // Exclude day ranges.
     let mut excludes_layout: Vec<GanttExcludeRangeLayout> = Vec::new();
     if has_excludes_layer {
-        let mut cur = start_of_day_ms(min_ms).unwrap_or(min_ms);
-        let max_day = start_of_day_ms(max_ms).unwrap_or(max_ms);
+        let mut cur = start_of_day_ms(min_ms, local_time_zone).unwrap_or(min_ms);
+        let max_day = start_of_day_ms(max_ms, local_time_zone).unwrap_or(max_ms);
         let mut range_start: Option<i64> = None;
         let mut range_end: Option<i64> = None;
 
         while cur <= max_day {
-            let invalid =
-                is_invalid_date(cur, &m.date_format, &m.excludes, &m.includes, &m.weekend);
+            let invalid = is_invalid_date(
+                cur,
+                &m.date_format,
+                &m.excludes,
+                &m.includes,
+                &m.weekend,
+                local_time_zone,
+            );
             if invalid {
                 if range_start.is_none() {
                     range_start = Some(cur);
@@ -1111,10 +1192,10 @@ pub fn layout_gantt_diagram_typed(
             } else if let (Some(s), Some(e)) = (range_start.take(), range_end.take()) {
                 let id = format!(
                     "exclude-{}",
-                    format_yyyy_mm_dd(s).unwrap_or_else(|| "invalid".to_string())
+                    format_yyyy_mm_dd(s, local_time_zone).unwrap_or_else(|| "invalid".to_string())
                 );
                 let x0 = scale_time(s, min_ms, max_ms, range) + left_padding;
-                let eod = end_of_day_ms(e).unwrap_or(e);
+                let eod = end_of_day_ms(e, local_time_zone).unwrap_or(e);
                 let x1 = scale_time(eod, min_ms, max_ms, range) + left_padding;
                 excludes_layout.push(GanttExcludeRangeLayout {
                     id,
@@ -1126,7 +1207,13 @@ pub fn layout_gantt_diagram_typed(
                     height: (height - top_padding - grid_line_start_padding).max(0.0),
                 });
             }
-            cur += MS_PER_DAY;
+            let Some(next) = cur.checked_add(MS_PER_DAY) else {
+                break;
+            };
+            if next <= cur {
+                break;
+            }
+            cur = next;
         }
     }
 
@@ -1154,12 +1241,7 @@ pub fn layout_gantt_diagram_typed(
             .map(|t| t.task_type.clone())
             .unwrap_or_default();
 
-        let mut sec_num = 0_i64;
-        for (i, c) in categories.iter().enumerate() {
-            if &ttype == c {
-                sec_num = (i as i64) % number_section_styles;
-            }
-        }
+        let sec_num = gantt_section_class_suffix(&ttype, &categories, number_section_styles);
 
         let y = *order as f64 * gap + top_padding - 2.0;
         rows.push(GanttRowLayout {
@@ -1187,6 +1269,7 @@ pub fn layout_gantt_diagram_typed(
         font_family: Some(task_font_family.clone()),
         font_size,
         font_weight: None,
+        font_style: None,
     };
 
     let mut tasks: Vec<GanttTaskLayout> = Vec::new();
@@ -1218,12 +1301,7 @@ pub fn layout_gantt_diagram_typed(
             bar_height
         };
 
-        let mut sec_num = 0_i64;
-        for (i, c) in categories.iter().enumerate() {
-            if &t.task_type == c {
-                sec_num = (i as i64) % number_section_styles;
-            }
-        }
+        let sec_num = gantt_section_class_suffix(&t.task_type, &categories, number_section_styles);
 
         let mut task_class = String::new();
         if t.active {
@@ -1250,7 +1328,7 @@ pub fn layout_gantt_diagram_typed(
         if t.vert {
             task_class = format!(" vert{task_class}");
         }
-        task_class.push_str(&format!("{sec_num}"));
+        task_class.push_str(&sec_num.to_string());
         if !t.classes.is_empty() {
             task_class.push(' ');
             task_class.push_str(&t.classes.join(" "));
@@ -1269,7 +1347,9 @@ pub fn layout_gantt_diagram_typed(
 
         // Mermaid measures `textWidth` via `this.getBBox().width`, which does not include trailing
         // whitespace. Preserve the original task text for rendering, but trim it for measurement.
-        let text_width = text_measurer.measure(t.task.trim_end(), &text_style).width;
+        let text_width = text_measurer
+            .measure_svg_raw_text_bbox_width_px(t.task.trim_end(), &text_style)
+            .max(0.0);
 
         // Mermaid uses `renderEndTime` for the X-position calculation but `endTime` for the class
         // overflow check. Mirror this quirk for DOM parity.
@@ -1360,12 +1440,7 @@ pub fn layout_gantt_diagram_typed(
         let lines = DeterministicTextMeasurer::normalized_text_lines(sec);
         let dy_em = -((lines.len().saturating_sub(1)) as f64) / 2.0;
 
-        let mut sec_num = 0_i64;
-        for (j, c) in categories.iter().enumerate() {
-            if sec == c {
-                sec_num = (j as i64) % number_section_styles;
-            }
-        }
+        let sec_num = gantt_section_class_suffix(sec, &categories, number_section_styles);
 
         let y = if idx == 0 {
             (*h as f64 * gap) / 2.0 + top_padding
@@ -1393,29 +1468,31 @@ pub fn layout_gantt_diagram_typed(
         Some(m.weekday.as_str())
     };
     let bottom_ticks = if has_tasks {
-        build_ticks(
+        build_ticks(GanttTickRequest {
             min_ms,
             max_ms,
             range,
             left_padding,
-            &axis_format,
+            axis_format: &axis_format,
             tick_interval,
             week_start,
-        )
+            local_time_zone,
+        })
     } else {
         Vec::new()
     };
     let top_axis_enabled = m.top_axis || cfg_top_axis;
     let top_ticks = if has_tasks && top_axis_enabled {
-        build_ticks(
+        build_ticks(GanttTickRequest {
             min_ms,
             max_ms,
             range,
             left_padding,
-            &axis_format,
+            axis_format: &axis_format,
             tick_interval,
             week_start,
-        )
+            local_time_zone,
+        })
     } else {
         Vec::new()
     };
@@ -1459,8 +1536,67 @@ pub fn layout_gantt_diagram_typed(
         has_excludes_layer,
         bottom_ticks,
         top_ticks,
-        title: m.title.clone(),
+        title,
         title_x: width / 2.0,
         title_y: title_top_margin,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::layout_gantt_diagram_typed;
+    use crate::text::DeterministicTextMeasurer;
+    use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
+
+    #[test]
+    fn zero_section_styles_preserves_javascript_nan_class_suffix() {
+        let categories = vec!["first".to_string(), "second".to_string()];
+
+        assert_eq!(
+            super::gantt_section_class_suffix("second", &categories, 0),
+            "NaN"
+        );
+        assert_eq!(
+            super::gantt_section_class_suffix("missing", &categories, 0),
+            "0"
+        );
+    }
+
+    #[test]
+    fn maximum_utc_date_layout_terminates_without_panicking() {
+        let max_midnight = chrono::NaiveDate::MAX.and_hms_opt(0, 0, 0).unwrap();
+        let max_ms =
+            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(max_midnight, chrono::Utc)
+                .timestamp_millis();
+        let mut model = GanttDiagramRenderModel::default();
+        model.date_format = "x".to_string();
+        model.axis_format = "%Y-%m-%d".to_string();
+        model.tick_interval = Some("1day".to_string());
+        model.excludes = vec!["weekends".to_string()];
+        model.weekend = "saturday".to_string();
+        model.tasks.push(GanttRenderTask {
+            id: "boundary".to_string(),
+            task: "Boundary".to_string(),
+            section: "Boundary".to_string(),
+            task_type: "Boundary".to_string(),
+            start_ms: max_ms,
+            end_ms: max_ms,
+            ..GanttRenderTask::default()
+        });
+
+        let utc = merman_core::time::LocalTimeZone::utc();
+        let layout = layout_gantt_diagram_typed(
+            &model,
+            None,
+            &serde_json::json!({}),
+            &DeterministicTextMeasurer::default(),
+            800.0,
+            &utc,
+        )
+        .expect("maximum-date layout should terminate successfully");
+
+        assert_eq!(layout.tasks.len(), 1);
+        assert_eq!(layout.tasks[0].start_ms, max_ms);
+        assert_eq!(layout.bottom_ticks.len(), 1);
+    }
 }

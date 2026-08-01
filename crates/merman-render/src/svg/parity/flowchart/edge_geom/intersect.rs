@@ -68,6 +68,7 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
         layout_shape,
         Some(
             "circle"
+                | "circ"
                 | "diamond"
                 | "diam"
                 | "question"
@@ -743,12 +744,7 @@ fn compute_node_label_metrics_for_intersection(
         &flow_node.classes,
         &flow_node.styles,
     );
-    let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
-        ctx.class_defs,
-        &flow_node.classes,
-        &flow_node.styles,
-    );
-    let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: &label_text,
@@ -758,21 +754,8 @@ fn compute_node_label_metrics_for_intersection(
             wrap_mode: ctx.node_wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
-            preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-            whole_label_font_style: node_font_style.as_deref(),
         },
     );
-
-    let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
-        ctx.class_defs,
-        &flow_node.classes,
-    );
-    if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
-        crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-            &mut metrics,
-            &node_text_style,
-        );
-    }
 
     Some(metrics)
 }
@@ -934,12 +917,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             &flow_node.classes,
             &flow_node.styles,
         );
-        let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
-            ctx.class_defs,
-            &flow_node.classes,
-            &flow_node.styles,
-        );
-        let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
                 raw_label: &label_text,
@@ -949,43 +927,16 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
-                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-                whole_label_font_style: node_font_style.as_deref(),
             },
         );
-
-        let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
-            ctx.class_defs,
-            &flow_node.classes,
-        );
-        if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
-            crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                &mut metrics,
-                &node_text_style,
-            );
-        }
 
         let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
             Some("stadium"),
             metrics,
             ctx.node_padding,
         );
-        let mut w = render_w.max(1.0);
-        let mut h = render_h.max(1.0);
-
-        // The input bbox values that Mermaid uses to derive these dimensions come from DOM
-        // APIs and behave like f32-rounded values in Chromium. Keep the sampled polygon points
-        // on the same lattice so the downstream intersection rounding matches strict baselines.
-        let w_f32 = w as f32;
-        let h_f32 = h as f32;
-        if w_f32.is_finite()
-            && h_f32.is_finite()
-            && w_f32.is_sign_positive()
-            && h_f32.is_sign_positive()
-        {
-            w = w_f32 as f64;
-            h = h_f32 as f64;
-        }
+        let w = render_w.max(1.0);
+        let h = render_h.max(1.0);
 
         let radius = h / 2.0;
 
@@ -1047,12 +998,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             &flow_node.classes,
             &flow_node.styles,
         );
-        let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
-            ctx.class_defs,
-            &flow_node.classes,
-            &flow_node.styles,
-        );
-        let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
                 raw_label: &label_text,
@@ -1062,21 +1008,8 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
-                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-                whole_label_font_style: node_font_style.as_deref(),
             },
         );
-
-        let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
-            ctx.class_defs,
-            &flow_node.classes,
-        );
-        if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
-            crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                &mut metrics,
-                &node_text_style,
-            );
-        }
 
         let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
             Some("hexagon"),
@@ -1594,7 +1527,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
     }
 
     match layout_shape {
-        Some("circle") => intersect_circle(node, point),
+        Some("circle" | "circ") => intersect_circle(node, point),
         Some("f-circ" | "junction" | "filled-circle") => intersect_circle(node, point),
         Some("cross-circ" | "summary" | "crossed-circle") => intersect_circle(node, point),
         Some("cylinder" | "cyl" | "db" | "database") => intersect_cylinder(node, point),

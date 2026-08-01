@@ -1,0 +1,60 @@
+{
+  "diagramType": "venn",
+  "model": {
+    "type": "venn",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "subsets": [
+      {
+        "sets": [
+          "A"
+        ],
+        "size": 10.0
+      },
+      {
+        "sets": [
+          "B"
+        ],
+        "size": 10.0
+      },
+      {
+        "sets": [
+          "C"
+        ],
+        "size": 10.0
+      },
+      {
+        "sets": [
+          "A",
+          "B"
+        ],
+        "size": 2.5
+      },
+      {
+        "sets": [
+          "B",
+          "C"
+        ],
+        "size": 2.5
+      },
+      {
+        "sets": [
+          "A",
+          "C"
+        ],
+        "size": 2.5
+      },
+      {
+        "sets": [
+          "A",
+          "B",
+          "C"
+        ],
+        "size": 1.1111111111111112
+      }
+    ],
+    "textNodes": [],
+    "styleEntries": []
+  }
+}

@@ -1,12 +1,12 @@
 use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
-use crate::{Error, MermaidConfig, Result};
+use crate::{Error, MermaidConfig, ParseControl, ParseControlResult, Result};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
 use super::{
     ClickAction, Edge, EdgeDefaults, FlowSubGraph, LinkStylePos, Node, Stmt, TitleKind,
-    apply_shape_data_to_node, parse_shape_data, value_to_bool, value_to_string,
+    apply_shape_data_value_to_node, value_to_bool, value_to_string,
 };
 
 pub(super) struct FlowchartSemanticContext<'a> {
@@ -21,25 +21,33 @@ pub(super) struct FlowchartSemanticContext<'a> {
     pub(super) security_level_loose: bool,
     pub(super) diagram_type: &'a str,
     pub(super) config: &'a MermaidConfig,
+    pub(super) shape_data_documents:
+        &'a HashMap<String, std::result::Result<serde_json::Value, String>>,
+    pub(super) control: &'a ParseControl,
 }
 
 pub(super) fn apply_semantic_statements(
     statements: &[Stmt],
     ctx: &mut FlowchartSemanticContext<'_>,
-) -> Result<()> {
+) -> ParseControlResult<Result<()>> {
     ctx.apply_statements(statements)
 }
 
 impl<'a> FlowchartSemanticContext<'a> {
-    fn apply_statements(&mut self, statements: &[Stmt]) -> Result<()> {
+    fn apply_statements(&mut self, statements: &[Stmt]) -> ParseControlResult<Result<()>> {
         // Preserve the recursive preorder semantics while avoiding stack growth on nested
         // subgraphs.
         let mut stack = vec![statements.iter()];
+        let mut visited = 0usize;
         while let Some(iter) = stack.last_mut() {
             let Some(stmt) = iter.next() else {
                 stack.pop();
                 continue;
             };
+            if visited.is_multiple_of(128) {
+                self.control.checkpoint()?;
+            }
+            visited = visited.saturating_add(1);
 
             match stmt {
                 Stmt::Subgraph(sg) => stack.push(sg.statements.iter()),
@@ -52,22 +60,31 @@ impl<'a> FlowchartSemanticContext<'a> {
                     }
                 }
                 Stmt::ClassDef(c) => {
-                    for id in &c.ids {
+                    for (index, id) in c.ids.iter().enumerate() {
+                        if index % 128 == 0 {
+                            self.control.checkpoint()?;
+                        }
                         self.class_defs.insert(id.clone(), c.styles.clone());
                     }
                 }
                 Stmt::ClassAssign(c) => {
-                    for target in &c.targets {
-                        self.add_class_to_target(target, &c.class_name);
+                    for (index, target) in c.targets.iter().enumerate() {
+                        if index % 128 == 0 {
+                            self.control.checkpoint()?;
+                        }
+                        self.add_class_to_target(target, &c.class_name)?;
                     }
                 }
                 Stmt::Click(c) => {
-                    for id in &c.ids {
+                    for (index, id) in c.ids.iter().enumerate() {
+                        if index % 128 == 0 {
+                            self.control.checkpoint()?;
+                        }
                         if let Some(tt) = &c.tooltip {
                             self.tooltips
                                 .insert(id.clone(), sanitize_text(tt, self.config));
                         }
-                        self.add_class_to_target(id, "clickable");
+                        self.add_class_to_target(id, "clickable")?;
 
                         match &c.action {
                             ClickAction::Link { href, target } => {
@@ -88,20 +105,23 @@ impl<'a> FlowchartSemanticContext<'a> {
                 }
                 Stmt::LinkStyle(ls) => {
                     if let Some(algo) = &ls.interpolate {
-                        for pos in &ls.positions {
+                        for (index, pos) in ls.positions.iter().enumerate() {
+                            if index % 128 == 0 {
+                                self.control.checkpoint()?;
+                            }
                             match pos {
                                 LinkStylePos::Default => {
                                     self.edge_defaults.interpolate = Some(algo.clone())
                                 }
                                 LinkStylePos::Index(i) => {
                                     if *i >= self.edges.len() {
-                                        return Err(Error::diagram_parse_fallback(
+                                        return Ok(Err(Error::diagram_parse_fallback(
                                             self.diagram_type.to_string(),
                                             format!(
                                                 "The index {i} for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and {}. (Help: Ensure that the index is within the range of existing edges.)",
                                                 self.edges.len().saturating_sub(1)
                                             ),
-                                        ));
+                                        )));
                                     }
                                     self.edges[*i].interpolate = Some(algo.clone());
                                 }
@@ -110,20 +130,23 @@ impl<'a> FlowchartSemanticContext<'a> {
                     }
 
                     if !ls.styles.is_empty() {
-                        for pos in &ls.positions {
+                        for (index, pos) in ls.positions.iter().enumerate() {
+                            if index % 128 == 0 {
+                                self.control.checkpoint()?;
+                            }
                             match pos {
                                 LinkStylePos::Default => {
                                     self.edge_defaults.style = ls.styles.clone()
                                 }
                                 LinkStylePos::Index(i) => {
                                     if *i >= self.edges.len() {
-                                        return Err(Error::diagram_parse_fallback(
+                                        return Ok(Err(Error::diagram_parse_fallback(
                                             self.diagram_type.to_string(),
                                             format!(
                                                 "The index {i} for linkStyle is out of bounds. Valid indices for linkStyle are between 0 and {}. (Help: Ensure that the index is within the range of existing edges.)",
                                                 self.edges.len().saturating_sub(1)
                                             ),
-                                        ));
+                                        )));
                                     }
                                     self.edges[*i].style = ls.styles.clone();
                                     if !self.edges[*i].style.is_empty()
@@ -143,72 +166,87 @@ impl<'a> FlowchartSemanticContext<'a> {
                     // Mermaid syntax uses the same `@{...}` form for both nodes and edges:
                     // - if an edge with the given ID exists, it updates the edge metadata
                     // - otherwise it updates (and may create) a node
-                    let v = parse_shape_data(yaml).map_err(|e| {
-                        Error::diagram_parse_fallback(
-                            self.diagram_type.to_string(),
-                            format!("Invalid shapeData: {e}"),
-                        )
-                    })?;
+                    let v = match self.shape_data_documents.get(yaml).expect(
+                        "flowchart shape data must be prepared before semantic construction",
+                    ) {
+                        Ok(document) => document,
+                        Err(error) => {
+                            return Ok(Err(Error::diagram_parse_fallback(
+                                self.diagram_type.to_string(),
+                                format!("Invalid shapeData: {error}"),
+                            )));
+                        }
+                    };
 
                     let map = v.as_object();
-                    let is_edge_target = self
-                        .edges
-                        .iter()
-                        .any(|e| e.id.as_deref() == Some(target.as_str()));
-                    if is_edge_target {
-                        if let Some(map) = map {
-                            for e in self.edges.iter_mut() {
-                                if e.id.as_deref() != Some(target.as_str()) {
-                                    continue;
-                                }
-                                for (key, v) in map {
-                                    match key.as_str() {
-                                        "animate" => {
-                                            if let Some(b) = value_to_bool(v) {
-                                                e.animate = Some(b);
-                                            }
-                                        }
-                                        "animation" => {
-                                            if let Some(s) = value_to_string(v) {
-                                                e.animation = Some(s);
-                                            }
-                                        }
-                                        "curve" => {
-                                            if let Some(s) = value_to_string(v) {
-                                                e.interpolate = Some(s);
-                                            }
-                                        }
-                                        _ => {}
+                    let mut is_edge_target = false;
+                    for (index, edge) in self.edges.iter_mut().enumerate() {
+                        if index % 128 == 0 {
+                            self.control.checkpoint()?;
+                        }
+                        if edge.id.as_deref() != Some(target.as_str()) {
+                            continue;
+                        }
+                        is_edge_target = true;
+                        let Some(map) = map else {
+                            continue;
+                        };
+                        for (key, value) in map {
+                            match key.as_str() {
+                                "animate" => {
+                                    if let Some(value) = value_to_bool(value) {
+                                        edge.animate = Some(value);
                                     }
                                 }
+                                "animation" => {
+                                    if let Some(value) = value_to_string(value) {
+                                        edge.animation = Some(value);
+                                    }
+                                }
+                                "curve" => {
+                                    if let Some(value) = value_to_string(value) {
+                                        edge.interpolate = Some(value);
+                                    }
+                                }
+                                _ => {}
                             }
                         }
+                    }
+                    if is_edge_target {
                         continue;
                     }
 
                     let idx = self.ensure_node(target);
-                    apply_shape_data_to_node(&mut self.nodes[idx], yaml).map_err(|e| {
-                        Error::diagram_parse_fallback(self.diagram_type.to_string(), e)
-                    })?;
+                    if let Err(error) = apply_shape_data_value_to_node(&mut self.nodes[idx], v) {
+                        return Ok(Err(Error::diagram_parse_fallback(
+                            self.diagram_type.to_string(),
+                            error,
+                        )));
+                    }
                 }
                 Stmt::Chain { .. } | Stmt::Node(_) | Stmt::Direction(_) => {}
             }
         }
-        Ok(())
+        self.control.checkpoint()?;
+        Ok(Ok(()))
     }
 
-    fn add_class_to_target(&mut self, target: &str, class_name: &str) {
+    fn add_class_to_target(&mut self, target: &str, class_name: &str) -> ParseControlResult<()> {
         if let Some(&idx) = self.subgraph_index.get(target) {
             self.subgraphs[idx].classes.push(class_name.to_string());
         }
         if let Some(&idx) = self.node_index.get(target) {
             self.nodes[idx].classes.push(class_name.to_string());
         }
-        for e in self.edges.iter_mut() {
-            if e.id.as_deref() == Some(target) {
-                e.classes.push(class_name.to_string());
+        for (index, edge) in self.edges.iter_mut().enumerate() {
+            if index % 128 == 0 {
+                self.control.checkpoint()?;
+            }
+            if edge.id.as_deref() == Some(target) {
+                edge.classes.push(class_name.to_string());
             }
         }
+        Ok(())
     }
 
     fn ensure_node(&mut self, id: &str) -> usize {
@@ -240,5 +278,79 @@ impl<'a> FlowchartSemanticContext<'a> {
         });
         self.node_index.insert(id.to_string(), idx);
         idx
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagrams::flowchart::{ClassAssignStmt, LinkToken};
+
+    #[test]
+    fn class_assignment_can_cancel_during_edge_scanning() {
+        let mut nodes = Vec::new();
+        let mut node_index = HashMap::new();
+        let mut edges = (0..512)
+            .map(|index| Edge {
+                from: format!("n{index}"),
+                to: format!("n{}", index + 1),
+                id: Some(format!("edge-{index}")),
+                link: LinkToken {
+                    end: "arrow_point".to_string(),
+                    edge_type: "arrow".to_string(),
+                    stroke: "normal".to_string(),
+                    length: 1,
+                },
+                label: None,
+                label_type: TitleKind::Text,
+                label_span: None,
+                label_selection: None,
+                style: Vec::new(),
+                classes: Vec::new(),
+                interpolate: None,
+                is_user_defined_id: true,
+                animate: None,
+                animation: None,
+            })
+            .collect::<Vec<_>>();
+        let mut subgraphs = Vec::new();
+        let mut subgraph_index = HashMap::new();
+        let mut class_defs = IndexMap::new();
+        let mut tooltips = HashMap::new();
+        let mut edge_defaults = EdgeDefaults {
+            style: Vec::new(),
+            interpolate: None,
+        };
+        let config = MermaidConfig::empty_object();
+        let shape_data_documents = HashMap::new();
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(3);
+        let mut context = FlowchartSemanticContext {
+            nodes: &mut nodes,
+            node_index: &mut node_index,
+            edges: &mut edges,
+            subgraphs: &mut subgraphs,
+            subgraph_index: &mut subgraph_index,
+            class_defs: &mut class_defs,
+            tooltips: &mut tooltips,
+            edge_defaults: &mut edge_defaults,
+            security_level_loose: false,
+            diagram_type: "flowchart-v2",
+            config: &config,
+            shape_data_documents: &shape_data_documents,
+            control: &control,
+        };
+        let statements = [Stmt::ClassAssign(ClassAssignStmt {
+            targets: vec!["missing-edge".to_string()],
+            target_spans: Vec::new(),
+            class_name: "hot".to_string(),
+            class_name_span: None,
+            lexeme_components: Vec::new(),
+        })];
+
+        assert!(matches!(
+            apply_semantic_statements(&statements, &mut context),
+            Err(crate::ParseCancelled)
+        ));
     }
 }

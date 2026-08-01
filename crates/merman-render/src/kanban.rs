@@ -1,7 +1,9 @@
 use crate::Result;
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
-use crate::text::{TextMeasurer, WrapMode};
+use crate::resources::{ModelComplexity, RenderResourcePolicy};
+use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
+use std::collections::HashMap;
 
 pub(crate) const KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX: f64 = 25.0;
 pub(crate) const KANBAN_SECTION_PADDING_PX: f64 = 10.0;
@@ -9,25 +11,189 @@ pub(crate) const KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX: f64 = 24.0;
 const KANBAN_ITEM_ONE_ROW_HEIGHT_PX: f64 = 44.0;
 const KANBAN_ITEM_TWO_ROW_HEIGHT_PX: f64 = 56.0;
 
+pub(crate) struct KanbanMarkdown<'a> {
+    sanitize_config: &'a merman_core::MermaidConfig,
+    auto_wrap: bool,
+}
+
+impl<'a> KanbanMarkdown<'a> {
+    pub(crate) fn new(effective_config: &'a merman_core::MermaidConfig) -> Self {
+        Self {
+            sanitize_config: effective_config,
+            auto_wrap: crate::config::config_bool(
+                effective_config.as_value(),
+                &["markdownAutoWrap"],
+            )
+            .unwrap_or(true),
+        }
+    }
+
+    pub(crate) fn render(&self, raw: &str) -> String {
+        let sanitized = merman_core::sanitize::sanitize_text(raw, self.sanitize_config);
+        crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, self.auto_wrap)
+    }
+
+    pub(crate) fn measure_html(
+        &self,
+        measurer: &dyn TextMeasurer,
+        html: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+    ) -> TextMetrics {
+        crate::text::measure_xhtml_label_fragment(
+            measurer,
+            html,
+            style,
+            max_width,
+            WrapMode::HtmlLike,
+        )
+    }
+}
+
 mod config;
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
 
-pub fn layout_kanban_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<KanbanDiagramLayout> {
-    let model: KanbanDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_kanban_diagram_typed(&model, effective_config, measurer)
+#[derive(Debug)]
+pub(crate) struct KanbanPreparedArtifact {
+    layout: KanbanDiagramLayout,
+    sections: Vec<KanbanPreparedMarkdownLabel>,
+    items: Vec<KanbanPreparedItemLabel>,
 }
 
-pub fn layout_kanban_diagram_typed(
+impl KanbanPreparedArtifact {
+    pub(crate) fn layout(&self) -> &KanbanDiagramLayout {
+        &self.layout
+    }
+
+    pub(crate) fn render_parts(
+        &self,
+    ) -> (
+        &KanbanDiagramLayout,
+        &[KanbanPreparedMarkdownLabel],
+        &[KanbanPreparedItemLabel],
+    ) {
+        (&self.layout, &self.sections, &self.items)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct KanbanPreparedMarkdownLabel {
+    pub(crate) html: String,
+    pub(crate) geometry: KanbanPreparedLabelGeometry,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct KanbanPreparedLabelGeometry {
+    pub(crate) content_height: f64,
+    pub(crate) foreign_object_width: f64,
+    pub(crate) wrapped: bool,
+}
+
+impl KanbanPreparedLabelGeometry {
+    pub(crate) fn empty() -> Self {
+        Self {
+            content_height: 0.0,
+            foreign_object_width: 0.0,
+            wrapped: false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct KanbanPreparedItemLabel {
+    pub(crate) title: KanbanPreparedMarkdownLabel,
+}
+
+fn prepare_kanban_markdown_label(
+    markdown: &KanbanMarkdown<'_>,
+    measurer: &dyn TextMeasurer,
+    raw: &str,
+    style: &TextStyle,
+    max_width: f64,
+) -> (KanbanPreparedMarkdownLabel, TextMetrics) {
+    let html = markdown.render(raw);
+    let raw_metrics = markdown.measure_html(measurer, &html, style, None);
+    let wrapped = max_width > 0.0 && raw_metrics.width > max_width;
+    let metrics = if wrapped {
+        markdown.measure_html(measurer, &html, style, Some(max_width))
+    } else {
+        raw_metrics
+    };
+
+    (
+        KanbanPreparedMarkdownLabel {
+            html,
+            geometry: KanbanPreparedLabelGeometry {
+                content_height: metrics.height,
+                foreign_object_width: if wrapped {
+                    max_width.max(0.0)
+                } else {
+                    metrics.width.max(0.0)
+                },
+                wrapped,
+            },
+        },
+        metrics,
+    )
+}
+
+fn prepare_kanban_title_label(
+    markdown: &KanbanMarkdown<'_>,
+    measurer: &dyn TextMeasurer,
+    raw: &str,
+    style: &TextStyle,
+    max_width: f64,
+) -> (KanbanPreparedMarkdownLabel, TextMetrics) {
+    let (mut prepared, metrics) =
+        prepare_kanban_markdown_label(markdown, measurer, raw, style, max_width);
+    if raw.is_empty() {
+        prepared.geometry.foreign_object_width = 0.0;
+    }
+    (prepared, metrics)
+}
+
+fn kanban_layout_work_units(model: &KanbanDiagramRenderModel) -> usize {
+    let sections = model.nodes.iter().filter(|node| node.is_group).count();
+    let items = model
+        .nodes
+        .iter()
+        .filter(|node| node.parent_id.is_some())
+        .count();
+    model
+        .nodes
+        .len()
+        .saturating_mul(2)
+        .saturating_add(sections.saturating_mul(2))
+        .saturating_add(items.saturating_mul(3))
+}
+
+#[cfg(test)]
+pub(crate) fn layout_kanban_diagram_typed(
     model: &KanbanDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
-    let cfg = KanbanConfigView::new(effective_config).layout_settings();
+    let effective_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    prepare_kanban_diagram_typed_with_resource_policy(
+        model,
+        &effective_config,
+        measurer,
+        RenderResourcePolicy::interactive(),
+    )
+    .map(|prepared| prepared.layout)
+}
+
+/// Prepares a Kanban model under the resource policy owned by the render operation.
+pub(crate) fn prepare_kanban_diagram_typed_with_resource_policy(
+    model: &KanbanDiagramRenderModel,
+    effective_config: &merman_core::MermaidConfig,
+    measurer: &dyn TextMeasurer,
+    resource_limits: RenderResourcePolicy,
+) -> Result<KanbanPreparedArtifact> {
+    resource_limits.check_model_complexity(ModelComplexity::from_kanban(model))?;
+    resource_limits.check_layout_work_units(kanban_layout_work_units(model))?;
+    let cfg = KanbanConfigView::new(effective_config.as_value()).layout_settings();
     let section_width = cfg.section_width;
     let viewbox_padding = cfg.viewbox_padding;
     let padding = KANBAN_SECTION_PADDING_PX;
@@ -39,22 +205,38 @@ pub fn layout_kanban_diagram_typed(
     let label_foreign_object_height = KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX * font_scale;
     let item_one_row_height = KANBAN_ITEM_ONE_ROW_HEIGHT_PX * font_scale;
     let item_two_row_height = KANBAN_ITEM_TWO_ROW_HEIGHT_PX * font_scale;
-
-    let mut max_label_height = section_label_height_baseline;
-    let mut sections: Vec<KanbanSectionLayout> = Vec::new();
-    let mut items: Vec<KanbanItemLayout> = Vec::new();
+    let markdown = KanbanMarkdown::new(effective_config);
 
     let section_nodes: Vec<&KanbanRenderNode> = model.nodes.iter().filter(|n| n.is_group).collect();
+    let item_capacity = model
+        .nodes
+        .iter()
+        .filter(|node| node.parent_id.is_some())
+        .count();
+    let mut max_label_height = section_label_height_baseline;
+    let mut sections: Vec<KanbanSectionLayout> = Vec::with_capacity(section_nodes.len());
+    let mut items: Vec<KanbanItemLayout> = Vec::with_capacity(item_capacity);
+    let mut prepared_sections = Vec::with_capacity(section_nodes.len());
+    let mut prepared_items = Vec::with_capacity(item_capacity);
+
+    let mut items_by_section: HashMap<&str, Vec<&KanbanRenderNode>> =
+        HashMap::with_capacity(section_nodes.len());
+    for node in &model.nodes {
+        if let Some(parent_id) = node.parent_id.as_deref() {
+            items_by_section.entry(parent_id).or_default().push(node);
+        }
+    }
     for (i, section) in section_nodes.iter().enumerate() {
         let index = (i + 1) as i64;
         let center_x = section_width * (index as f64) + ((index - 1) as f64 * padding) / 2.0;
         let center_y = 0.0;
 
-        let label_metrics = measurer.measure_wrapped(
+        let (prepared_label, label_metrics) = prepare_kanban_markdown_label(
+            &markdown,
+            measurer,
             &section.label,
             &legend_style,
-            Some(section_width),
-            WrapMode::HtmlLike,
+            section_width,
         );
         let label_height = label_metrics.height.max(label_foreign_object_height);
         max_label_height = max_label_height.max(label_height);
@@ -73,38 +255,31 @@ pub fn layout_kanban_diagram_typed(
             label_width: label_metrics.width.max(0.0),
             label_height,
         });
+        prepared_sections.push(prepared_label);
     }
 
     for section in sections.iter_mut() {
         let top = section_rect_y + max_label_height;
         let mut y = top;
 
-        let section_items: Vec<&KanbanRenderNode> = model
-            .nodes
-            .iter()
-            .filter(|n| n.parent_id.as_deref() == Some(section.id.as_str()))
-            .collect();
-
-        for item in section_items {
+        for &item in items_by_section
+            .get(section.id.as_str())
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
             let width = (section_width - 1.5 * padding).max(1.0);
             let inner_max_w = (width - padding).max(0.0);
 
             // Mermaid's kanban items are rendered via `kanbanItem.ts`, which uses HTML labels for
             // the title and applies `max-width` clamping when the content needs wrapping. Mirror
             // that behavior so item heights match the upstream bbox-based layout.
-            let item_label_style = legend_style.clone();
-            let raw_title_metrics =
-                measurer.measure_wrapped(&item.label, &item_label_style, None, WrapMode::HtmlLike);
-            let title_metrics = if inner_max_w > 0.0 && raw_title_metrics.width > inner_max_w {
-                measurer.measure_wrapped(
-                    &item.label,
-                    &item_label_style,
-                    Some(inner_max_w),
-                    WrapMode::HtmlLike,
-                )
-            } else {
-                raw_title_metrics
-            };
+            let (prepared_title, title_metrics) = prepare_kanban_title_label(
+                &markdown,
+                measurer,
+                &item.label,
+                &legend_style,
+                inner_max_w,
+            );
 
             let has_details_row = item.ticket.is_some() || item.assigned.is_some();
             let base_height = if has_details_row {
@@ -132,6 +307,9 @@ pub fn layout_kanban_diagram_typed(
                 assigned: item.assigned.clone(),
                 priority: item.priority.clone(),
                 icon: item.icon.clone(),
+            });
+            prepared_items.push(KanbanPreparedItemLabel {
+                title: prepared_title,
             });
 
             y = center_y + height / 2.0 + padding / 2.0;
@@ -181,7 +359,7 @@ pub fn layout_kanban_diagram_typed(
         None
     };
 
-    Ok(KanbanDiagramLayout {
+    let layout = KanbanDiagramLayout {
         bounds,
         section_width,
         padding,
@@ -190,14 +368,76 @@ pub fn layout_kanban_diagram_typed(
         use_max_width: cfg.use_max_width,
         sections,
         items,
+    };
+    Ok(KanbanPreparedArtifact {
+        layout,
+        sections: prepared_sections,
+        items: prepared_items,
     })
 }
 
 #[cfg(test)]
+pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
+    layout: &KanbanDiagramLayout,
+    effective_config: &merman_core::MermaidConfig,
+    measurer: &dyn TextMeasurer,
+) -> KanbanPreparedArtifact {
+    let settings = KanbanConfigView::new(effective_config.as_value()).layout_settings();
+    let markdown = KanbanMarkdown::new(effective_config);
+    let sections = layout
+        .sections
+        .iter()
+        .map(|section| {
+            prepare_kanban_markdown_label(
+                &markdown,
+                measurer,
+                &section.label,
+                &settings.text_style,
+                section.width,
+            )
+            .0
+        })
+        .collect();
+    let items = layout
+        .items
+        .iter()
+        .map(|item| KanbanPreparedItemLabel {
+            title: prepare_kanban_title_label(
+                &markdown,
+                measurer,
+                &item.label,
+                &settings.text_style,
+                (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
+            )
+            .0,
+        })
+        .collect();
+
+    KanbanPreparedArtifact {
+        layout: layout.clone(),
+        sections,
+        items,
+    }
+}
+
+#[cfg(test)]
 mod tests {
-    use super::layout_kanban_diagram;
+    use super::layout_kanban_diagram_typed;
     use crate::text::DeterministicTextMeasurer;
+    use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
     use serde_json::json;
+
+    fn section(id: &str, label: &str) -> KanbanRenderNode {
+        let mut node = KanbanRenderNode::new(id, label);
+        node.is_group = true;
+        node
+    }
+
+    fn item(id: &str, label: &str, parent_id: &str) -> KanbanRenderNode {
+        let mut node = KanbanRenderNode::new(id, label);
+        node.parent_id = Some(parent_id.to_string());
+        node
+    }
 
     #[test]
     fn kanban_geometry_constants_match_mermaid() {
@@ -210,20 +450,19 @@ mod tests {
 
     #[test]
     fn kanban_layout_uses_mermaid_padding() {
-        let semantic = json!({
-            "type": "kanban",
-            "nodes": [
-                {"id": "todo", "label": "Todo", "isGroup": true},
-                {"id": "doing", "label": "Doing", "isGroup": true},
-                {"id": "task-1", "label": "Task", "parentId": "todo"}
-            ]
-        });
+        let model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "Todo"),
+                section("doing", "Doing"),
+                item("task-1", "Task", "todo"),
+            ],
+        };
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
             line_height_factor: 16.0,
         };
 
-        let layout = layout_kanban_diagram(&semantic, &json!({}), &measurer).unwrap();
+        let layout = layout_kanban_diagram_typed(&model, &json!({}), &measurer).unwrap();
 
         assert_eq!(layout.padding, super::KANBAN_SECTION_PADDING_PX);
         assert!(layout.use_max_width);
@@ -234,20 +473,60 @@ mod tests {
     }
 
     #[test]
+    fn kanban_layout_measures_rendered_markdown_instead_of_source_markers() {
+        let markdown_model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "Todo"),
+                item("task-1", "*aaaa aaaa aaaaaaa*", "todo"),
+                item("task-2", "Next", "todo"),
+            ],
+        };
+        let plain_model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "Todo"),
+                item("task-1", "aaaa aaaa aaaaaaa", "todo"),
+                item("task-2", "Next", "todo"),
+            ],
+        };
+        let measurer = DeterministicTextMeasurer::default();
+
+        let markdown_layout =
+            layout_kanban_diagram_typed(&markdown_model, &json!({}), &measurer).unwrap();
+        let plain_layout =
+            layout_kanban_diagram_typed(&plain_model, &json!({}), &measurer).unwrap();
+
+        assert_eq!(
+            markdown_layout.items[0].height,
+            plain_layout.items[0].height
+        );
+        assert_eq!(
+            markdown_layout.items[1].center_y,
+            plain_layout.items[1].center_y
+        );
+        assert_eq!(
+            markdown_layout.sections[0].rect_height,
+            plain_layout.sections[0].rect_height
+        );
+        let markdown_bounds = markdown_layout.bounds.as_ref().unwrap();
+        let plain_bounds = plain_layout.bounds.as_ref().unwrap();
+        assert_eq!(markdown_bounds.min_x, plain_bounds.min_x);
+        assert_eq!(markdown_bounds.min_y, plain_bounds.min_y);
+        assert_eq!(markdown_bounds.max_x, plain_bounds.max_x);
+        assert_eq!(markdown_bounds.max_y, plain_bounds.max_y);
+    }
+
+    #[test]
     fn kanban_layout_uses_mermaid_mindmap_viewport_config_precedence() {
-        let semantic = json!({
-            "type": "kanban",
-            "nodes": [
-                {"id": "todo", "label": "Todo", "isGroup": true}
-            ]
-        });
+        let model = KanbanDiagramRenderModel {
+            nodes: vec![section("todo", "Todo")],
+        };
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
             line_height_factor: 16.0,
         };
 
-        let layout = layout_kanban_diagram(
-            &semantic,
+        let layout = layout_kanban_diagram_typed(
+            &model,
             &json!({
                 "mindmap": {
                     "padding": 3,

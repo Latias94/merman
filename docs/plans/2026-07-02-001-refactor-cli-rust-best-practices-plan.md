@@ -6,9 +6,14 @@ artifact_contract: "ce-unified-plan/v1"
 artifact_readiness: "implementation-ready"
 product_contract_source: "ce-plan-bootstrap"
 execution: "code"
+status: "superseded"
+superseded_by: "docs/plans/2026-07-27-001-refactor-cli-invocation-execution-contracts-plan.md"
 ---
 
 # CLI Rust Best Practices Refactor - Plan
+
+> Superseded by the bounded acquisition, typed invocation, and recoverable publication contract in
+> `docs/plans/2026-07-27-001-refactor-cli-invocation-execution-contracts-plan.md`.
 
 ## Goal Capsule
 

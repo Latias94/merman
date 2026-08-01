@@ -4,161 +4,153 @@
 #include <stdint.h>
 #include <string.h>
 
-typedef MermanResult (*MermanCall)(const uint8_t*, size_t, const uint8_t*, size_t);
-typedef MermanResult (*MermanEngineCall)(const MermanEngine*, const uint8_t*, size_t);
-typedef void (*MermanFree)(MermanBuffer);
+typedef MermanNativeStatus (*MermanGetNativeApiFn)(
+    const MermanNativeApiRequest *request,
+    MermanNativeApi *out_api
+);
 
-typedef struct MermanApi {
-    int render_enabled;
-    int ascii_enabled;
-    int analysis_enabled;
-    uint32_t (*abi_version)(void);
-    const char* (*package_version)(void);
-    size_t (*buffer_struct_size)(void);
-    size_t (*result_struct_size)(void);
-    size_t (*engine_result_struct_size)(void);
-    size_t (*host_text_measure_request_struct_size)(void);
-    size_t (*host_text_measure_result_struct_size)(void);
-    MermanEngineResult (*engine_new)(const uint8_t*, size_t);
-    void (*engine_free)(MermanEngine*);
-    MermanResult (*engine_set_text_measure_callback)(
-        MermanEngine*,
-        MermanHostTextMeasureCallback,
-        void*
-    );
-    MermanEngineCall engine_render_svg;
-    MermanEngineCall engine_render_ascii;
-    MermanEngineCall engine_analyze_json;
-    MermanEngineDocumentCall engine_analyze_document_json;
-    MermanEngineDocumentCall engine_analyze_document_facts_json;
-    MermanEngineCall engine_parse_json;
-    MermanEngineCall engine_layout_json;
-    MermanEngineCall engine_validate_json;
-    MermanCall render_svg;
-    MermanCall render_ascii;
-    MermanCall analyze_json;
-    MermanDocumentCall analyze_document_json;
-    MermanDocumentCall analyze_document_facts_json;
-    MermanCall parse_json;
-    MermanCall layout_json;
-    MermanCall validate_json;
-    MermanResult (*supported_diagrams_json)(void);
-    MermanResult (*ascii_capabilities_json)(void);
-    MermanResult (*diagram_family_capabilities_json)(void);
-    MermanResult (*lint_rule_catalog_json)(void);
-    MermanResult (*supported_themes_json)(void);
-    MermanResult (*supported_host_theme_presets_json)(void);
-    MermanFree buffer_free;
-} MermanApi;
-
-typedef struct MermanMeasureProbe {
-    size_t calls;
-    size_t handled;
-    size_t html_like;
-    size_t break_spaces;
-    size_t reset_calls;
-} MermanMeasureProbe;
-
-static MermanHostTextMeasureResult smoke_measure_text(
-    MermanHostTextMeasureRequest request,
-    void* user_data
-) {
-    if (user_data == NULL) {
-        MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
-        return fallback;
-    }
-
-    MermanMeasureProbe* probe = (MermanMeasureProbe*)user_data;
-    probe->calls += 1;
-    if (request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE) {
-        probe->html_like += 1;
-    }
-    if (request.white_space == MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES) {
-        probe->break_spaces += 1;
-    }
-    if (request.text != NULL && request.text_len > 0) {
-        probe->handled += 1;
-        double natural_width = (double)request.text_len * 8.0;
-        double width = natural_width;
-        if (request.has_max_width && request.max_width > 0.0 && natural_width > request.max_width) {
-            width = request.max_width;
-        }
-        MermanHostTextMeasureResult measured = {
-            1,
-            width,
-            request.line_height > 0.0 ? request.line_height : request.font_size,
-            1
-        };
-        return measured;
-    }
-
-    MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
-    return fallback;
+static MermanNativeSlice borrowed_slice(const uint8_t *data, size_t len) {
+    MermanNativeSlice slice;
+    slice.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice);
+    slice.data = data;
+    slice.len = len;
+    return slice;
 }
 
-static int buffer_contains(MermanBuffer buffer, const char* needle) {
-    size_t needle_len = strlen(needle);
+static MermanNativeResult empty_result(void) {
+    return (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
+}
+
+static int bytes_contain(const uint8_t *data, size_t len, const char *needle) {
+    const size_t needle_len = strlen(needle);
+    size_t index = 0;
     if (needle_len == 0) {
         return 1;
     }
-    if (buffer.data == NULL || buffer.len < needle_len) {
+    if (data == NULL || len < needle_len) {
         return 0;
     }
-    for (size_t i = 0; i <= buffer.len - needle_len; i++) {
-        if (memcmp(buffer.data + i, needle, needle_len) == 0) {
+    for (index = 0; index <= len - needle_len; index += 1) {
+        if (memcmp(data + index, needle, needle_len) == 0) {
             return 1;
         }
     }
     return 0;
 }
 
-static int expect_ok_with(MermanResult result, MermanFree free_buffer, const char* needle) {
-    if (result.code != MERMAN_OK) {
-        if (result.data.data != NULL || result.data.len != 0) {
-            free_buffer(result.data);
-        }
-        return 10 + result.code;
+static uint64_t hash_size_t(uint64_t hash, size_t value) {
+    const uint8_t *bytes = (const uint8_t *)&value;
+    size_t index = 0;
+    for (index = 0; index < sizeof(value); index += 1) {
+        hash ^= bytes[index];
+        hash *= UINT64_C(1099511628211);
     }
-    if (!buffer_contains(result.data, needle)) {
-        free_buffer(result.data);
-        return 20;
-    }
-    free_buffer(result.data);
-    return 0;
+    return hash;
 }
 
-static int expect_empty_ok(MermanResult result, MermanFree free_buffer) {
-    if (result.code != MERMAN_OK) {
-        if (result.data.data != NULL || result.data.len != 0) {
-            free_buffer(result.data);
-        }
-        return 60 + result.code;
-    }
-    if (result.data.data != NULL || result.data.len != 0) {
-        free_buffer(result.data);
-        return 70;
-    }
-    return 0;
-}
+#define HASH_RECORD(hash, type) \
+    do { \
+        (hash) = hash_size_t((hash), sizeof(type)); \
+        (hash) = hash_size_t((hash), _Alignof(type)); \
+    } while (0)
 
-static int expect_error_with(
-    MermanResult result,
-    MermanFree free_buffer,
-    int expected_code,
-    const char* code_name
-) {
-    if (result.code != expected_code) {
-        if (result.data.data != NULL || result.data.len != 0) {
-            free_buffer(result.data);
-        }
-        return 30 + result.code;
-    }
-    if (!buffer_contains(result.data, code_name)) {
-        free_buffer(result.data);
-        return 40;
-    }
-    free_buffer(result.data);
-    return 0;
+#define HASH_FIELD(hash, type, field) \
+    do { \
+        (hash) = hash_size_t((hash), offsetof(type, field)); \
+    } while (0)
+
+#if defined(_WIN32)
+__declspec(dllexport)
+#else
+__attribute__((visibility("default")))
+#endif
+uint64_t merman_c_layout_fingerprint(void) {
+    uint64_t hash = UINT64_C(14695981039346656037);
+
+    HASH_RECORD(hash, MermanNativeSlice);
+    HASH_FIELD(hash, MermanNativeSlice, struct_size);
+    HASH_FIELD(hash, MermanNativeSlice, data);
+    HASH_FIELD(hash, MermanNativeSlice, len);
+
+    HASH_RECORD(hash, MermanNativeBuffer);
+    HASH_FIELD(hash, MermanNativeBuffer, struct_size);
+    HASH_FIELD(hash, MermanNativeBuffer, data);
+    HASH_FIELD(hash, MermanNativeBuffer, len);
+
+    HASH_RECORD(hash, MermanNativeTextMeasureRequest);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, struct_size);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, text_measurement_protocol_version);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, text);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, font_family);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, font_size);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, font_weight);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, font_style);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, max_width);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, line_height);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, letter_spacing);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, word_spacing);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, wrap_mode);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, direction);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, white_space);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, has_max_width);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, phase);
+    HASH_FIELD(hash, MermanNativeTextMeasureRequest, operation);
+
+    HASH_RECORD(hash, MermanNativeTextMeasureResult);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, struct_size);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, handled);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, has_raw_width);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, result_kind);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, width);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, height);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, length);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, bbox_left);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, bbox_right);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, raw_width);
+    HASH_FIELD(hash, MermanNativeTextMeasureResult, line_count);
+
+    HASH_RECORD(hash, MermanNativeEngineConfig);
+    HASH_FIELD(hash, MermanNativeEngineConfig, struct_size);
+    HASH_FIELD(hash, MermanNativeEngineConfig, options_json);
+    HASH_FIELD(hash, MermanNativeEngineConfig, text_measure);
+    HASH_FIELD(hash, MermanNativeEngineConfig, text_measure_user_data);
+
+    HASH_RECORD(hash, MermanNativeOperationRequest);
+    HASH_FIELD(hash, MermanNativeOperationRequest, struct_size);
+    HASH_FIELD(hash, MermanNativeOperationRequest, operation);
+    HASH_FIELD(hash, MermanNativeOperationRequest, source);
+    HASH_FIELD(hash, MermanNativeOperationRequest, uri);
+    HASH_FIELD(hash, MermanNativeOperationRequest, options_json);
+
+    HASH_RECORD(hash, MermanNativeResult);
+    HASH_FIELD(hash, MermanNativeResult, struct_size);
+    HASH_FIELD(hash, MermanNativeResult, allocation_token);
+    HASH_FIELD(hash, MermanNativeResult, status);
+    HASH_FIELD(hash, MermanNativeResult, operation);
+    HASH_FIELD(hash, MermanNativeResult, media_type);
+    HASH_FIELD(hash, MermanNativeResult, data);
+    HASH_FIELD(hash, MermanNativeResult, metadata_or_error_json);
+
+    HASH_RECORD(hash, MermanNativeApiRequest);
+    HASH_FIELD(hash, MermanNativeApiRequest, struct_size);
+    HASH_FIELD(hash, MermanNativeApiRequest, expected_abi_version);
+    HASH_FIELD(hash, MermanNativeApiRequest, expected_minimum_prefix_layout_digest);
+
+    HASH_RECORD(hash, MermanNativeApi);
+    HASH_FIELD(hash, MermanNativeApi, struct_size);
+    HASH_FIELD(hash, MermanNativeApi, abi_version);
+    HASH_FIELD(hash, MermanNativeApi, minimum_prefix_layout_digest);
+    HASH_FIELD(hash, MermanNativeApi, full_descriptor_digest);
+    HASH_FIELD(hash, MermanNativeApi, capability_catalog_digest);
+    HASH_FIELD(hash, MermanNativeApi, package_version);
+    HASH_FIELD(hash, MermanNativeApi, runtime_catalog);
+    HASH_FIELD(hash, MermanNativeApi, engine_new);
+    HASH_FIELD(hash, MermanNativeApi, engine_try_close);
+    HASH_FIELD(hash, MermanNativeApi, execute_collect);
+    HASH_FIELD(hash, MermanNativeApi, result_free);
+    HASH_FIELD(hash, MermanNativeApi, metadata_collect);
+
+    return hash;
 }
 
 #if defined(_WIN32)
@@ -166,527 +158,265 @@ __declspec(dllexport)
 #else
 __attribute__((visibility("default")))
 #endif
-int merman_c_consumer_smoke(MermanApi api) {
-    static const uint8_t source[] = "flowchart TD\nA[Hello] --> B[World]";
-    int rc = 0;
+int merman_c_consumer_smoke(
+    MermanGetNativeApiFn get_native_api,
+    int require_complete_artifact
+) {
+    static const uint8_t source[] = "flowchart TD\nA --> B";
+    static const uint8_t request_options[] =
+        "{\"svg\":{\"diagram_id\":\"c-request\"}}";
+    static const char *metadata_ids[] = {
+        "supported-diagrams",
+        "ascii-capabilities",
+        "diagram-family-capabilities",
+        "lint-rule-catalog",
+        "supported-themes",
+        "supported-host-theme-presets"
+    };
+    static const uint8_t unknown_metadata_id[] = "unknown-catalog";
+    MermanNativeApiRequest discovery;
+    MermanNativeApi api;
+    MermanNativeResult result;
+    MermanNativeEngineConfig config;
+    MermanNativeEngineToken engine = 0;
+    MermanNativeOperationRequest request;
+    MermanNativeStatus status;
+    size_t metadata_index;
 
-    if (
-        api.abi_version == NULL ||
-        api.package_version == NULL ||
-        api.buffer_struct_size == NULL ||
-        api.result_struct_size == NULL ||
-        api.engine_result_struct_size == NULL ||
-        api.host_text_measure_request_struct_size == NULL ||
-        api.host_text_measure_result_struct_size == NULL ||
-        api.engine_new == NULL ||
-        api.engine_free == NULL ||
-        api.engine_set_text_measure_callback == NULL ||
-        api.engine_render_svg == NULL ||
-        api.engine_render_ascii == NULL ||
-        api.engine_analyze_json == NULL ||
-        api.engine_analyze_document_json == NULL ||
-        api.engine_analyze_document_facts_json == NULL ||
-        api.engine_parse_json == NULL ||
-        api.engine_layout_json == NULL ||
-        api.engine_validate_json == NULL ||
-        api.render_svg == NULL ||
-        api.render_ascii == NULL ||
-        api.analyze_json == NULL ||
-        api.analyze_document_json == NULL ||
-        api.analyze_document_facts_json == NULL ||
-        api.parse_json == NULL ||
-        api.layout_json == NULL ||
-        api.validate_json == NULL ||
-        api.supported_diagrams_json == NULL ||
-        api.ascii_capabilities_json == NULL ||
-        api.diagram_family_capabilities_json == NULL ||
-        api.lint_rule_catalog_json == NULL ||
-        api.supported_themes_json == NULL ||
-        api.supported_host_theme_presets_json == NULL ||
-        api.buffer_free == NULL
-    ) {
+    if (get_native_api == NULL) {
         return 1;
     }
 
-    if (api.abi_version() != MERMAN_ABI_VERSION) {
+    memset(&discovery, 0, sizeof(discovery));
+    discovery.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApiRequest);
+    discovery.expected_abi_version = MERMAN_NATIVE_ABI_VERSION;
+    discovery.expected_minimum_prefix_layout_digest = borrowed_slice(
+        (const uint8_t *)MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST,
+        strlen(MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST)
+    );
+    memset(&api, 0, sizeof(api));
+    api.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi);
+    status = get_native_api(&discovery, &api);
+    if (
+        status != MERMAN_NATIVE_STATUS_OK ||
+        api.abi_version != MERMAN_NATIVE_ABI_VERSION ||
+        api.runtime_catalog == NULL ||
+        api.engine_new == NULL ||
+        api.engine_try_close == NULL ||
+        api.execute_collect == NULL ||
+        api.result_free == NULL ||
+        api.metadata_collect == NULL
+    ) {
         return 2;
     }
-    if (api.package_version() == NULL || strlen(api.package_version()) == 0) {
+
+    result = empty_result();
+    status = api.runtime_catalog(&result);
+    if (
+        status != MERMAN_NATIVE_STATUS_OK ||
+        result.status != MERMAN_NATIVE_STATUS_OK ||
+        result.operation != MERMAN_NATIVE_OPERATION_NONE ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"transport_api_version\":3"
+        ) ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"capabilities\""
+        ) ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"operation_ids\""
+        )
+    ) {
+        api.result_free(&result);
         return 3;
     }
-    if (api.buffer_struct_size() != sizeof(MermanBuffer)) {
+    api.result_free(&result);
+
+    for (
+        metadata_index = 0;
+        metadata_index < (require_complete_artifact ? 6u : 1u);
+        metadata_index += 1
+    ) {
+        const char *metadata_id = metadata_ids[metadata_index];
+        result = empty_result();
+        status = api.metadata_collect(
+            borrowed_slice((const uint8_t *)metadata_id, strlen(metadata_id)),
+            &result
+        );
+        if (
+            status != MERMAN_NATIVE_STATUS_OK ||
+            result.status != MERMAN_NATIVE_STATUS_OK ||
+            result.operation != MERMAN_NATIVE_OPERATION_NONE ||
+            result.allocation_token == 0 ||
+            result.data.len != 0 ||
+            result.metadata_or_error_json.len == 0
+        ) {
+            api.result_free(&result);
+            return 31;
+        }
+        api.result_free(&result);
+        if (result.allocation_token != 0) {
+            return 32;
+        }
+    }
+
+    result = empty_result();
+    status = api.metadata_collect(
+        borrowed_slice(unknown_metadata_id, sizeof(unknown_metadata_id) - 1),
+        &result
+    );
+    if (
+        status != MERMAN_NATIVE_STATUS_INVALID_ARGUMENT ||
+        result.status != MERMAN_NATIVE_STATUS_INVALID_ARGUMENT ||
+        result.allocation_token == 0 ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"status_name\":\"invalid-argument\""
+        )
+    ) {
+        api.result_free(&result);
+        return 33;
+    }
+    api.result_free(&result);
+
+    memset(&config, 0, sizeof(config));
+    config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineConfig);
+    config.options_json = borrowed_slice(NULL, 0);
+    result = empty_result();
+    status = api.engine_new(&config, &engine, &result);
+    if (
+        status != MERMAN_NATIVE_STATUS_OK ||
+        result.status != MERMAN_NATIVE_STATUS_OK ||
+        engine == 0
+    ) {
+        api.result_free(&result);
         return 4;
     }
-    if (api.result_struct_size() != sizeof(MermanResult)) {
-        return 5;
+    api.result_free(&result);
+
+    memset(&request, 0, sizeof(request));
+    request.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeOperationRequest);
+    request.source = borrowed_slice(source, sizeof(source) - 1);
+    request.uri = borrowed_slice(NULL, 0);
+    request.options_json = borrowed_slice(NULL, 0);
+
+    if (require_complete_artifact) {
+        request.operation = MERMAN_NATIVE_OPERATION_SVG;
+        request.options_json = borrowed_slice(
+            request_options,
+            sizeof(request_options) - 1
+        );
+        result = empty_result();
+        status = api.execute_collect(engine, &request, &result);
+        if (
+            status != MERMAN_NATIVE_STATUS_OK ||
+            result.status != MERMAN_NATIVE_STATUS_OK ||
+            result.operation != MERMAN_NATIVE_OPERATION_SVG ||
+            !bytes_contain(result.data.data, result.data.len, "<svg") ||
+            !bytes_contain(result.data.data, result.data.len, "id=\"c-request\"") ||
+            !bytes_contain(
+                result.metadata_or_error_json.data,
+                result.metadata_or_error_json.len,
+                "\"operation_id\":\"svg\""
+            ) ||
+            !bytes_contain(
+                result.metadata_or_error_json.data,
+                result.metadata_or_error_json.len,
+                "\"runtime_policy\":\"deterministic\""
+            )
+        ) {
+            api.result_free(&result);
+            api.engine_try_close(engine);
+            return 5;
+        }
+        api.result_free(&result);
+        request.options_json = borrowed_slice(NULL, 0);
+
+        request.operation = MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON;
+        result = empty_result();
+        status = api.execute_collect(engine, &request, &result);
+        if (
+            status != MERMAN_NATIVE_STATUS_OK ||
+            result.status != MERMAN_NATIVE_STATUS_OK ||
+            result.operation != MERMAN_NATIVE_OPERATION_SVG_PLAN_JSON ||
+            !bytes_contain(
+                result.data.data,
+                result.data.len,
+                "\"planned_operation_id\":\"svg\""
+            ) ||
+            !bytes_contain(
+                result.metadata_or_error_json.data,
+                result.metadata_or_error_json.len,
+                "\"operation_id\":\"svg-plan-json\""
+            )
+        ) {
+            api.result_free(&result);
+            api.engine_try_close(engine);
+            return 51;
+        }
+        api.result_free(&result);
     }
-    if (api.engine_result_struct_size() != sizeof(MermanEngineResult)) {
+
+    request.operation = MERMAN_NATIVE_OPERATION_SEMANTIC_JSON;
+    result = empty_result();
+    status = api.execute_collect(engine, &request, &result);
+    if (
+        status != MERMAN_NATIVE_STATUS_OK ||
+        result.status != MERMAN_NATIVE_STATUS_OK ||
+        result.operation != MERMAN_NATIVE_OPERATION_SEMANTIC_JSON ||
+        !bytes_contain(result.data.data, result.data.len, "{") ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"operation_id\":\"semantic-json\""
+        )
+    ) {
+        api.result_free(&result);
+        api.engine_try_close(engine);
         return 6;
     }
-    if (api.host_text_measure_request_struct_size() != sizeof(MermanHostTextMeasureRequest)) {
+    api.result_free(&result);
+
+    request.operation = INT32_MAX;
+    result = empty_result();
+    status = api.execute_collect(engine, &request, &result);
+    if (
+        status != MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION ||
+        result.status != MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION ||
+        result.operation != MERMAN_NATIVE_OPERATION_NONE ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"version\":1"
+        ) ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"kind\":\"" MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION "\""
+        ) ||
+        !bytes_contain(
+            result.metadata_or_error_json.data,
+            result.metadata_or_error_json.len,
+            "\"capability_id\":null"
+        )
+    ) {
+        api.result_free(&result);
+        api.engine_try_close(engine);
         return 7;
     }
-    if (api.host_text_measure_result_struct_size() != sizeof(MermanHostTextMeasureResult)) {
+    api.result_free(&result);
+
+    if (api.engine_try_close(engine) != MERMAN_NATIVE_STATUS_OK) {
         return 8;
     }
-
-    rc = api.render_enabled
-        ? expect_ok_with(
-            api.render_svg(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            "<svg"
-        )
-        : expect_error_with(
-            api.render_svg(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        return rc;
+    if (api.engine_try_close(engine) != MERMAN_NATIVE_STATUS_INVALID_ENGINE) {
+        return 9;
     }
-
-    rc = api.ascii_enabled
-        ? expect_ok_with(
-            api.render_ascii(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            "Hello"
-        )
-        : expect_error_with(
-            api.render_ascii(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = api.render_enabled
-        ? expect_ok_with(
-            api.parse_json(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            "flowchart-v2"
-        )
-        : expect_error_with(
-            api.parse_json(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(
-            api.analyze_json(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            "\"version\":1"
-        )
-        : expect_error_with(
-            api.analyze_json(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        return rc;
-    }
-
-    static const uint8_t markdown_source[] =
-        "# Example\n\n```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```\n";
-    static const uint8_t markdown_uri[] = "file:///tmp/example.md";
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(
-            api.analyze_document_json(
-                markdown_source,
-                sizeof(markdown_source) - 1,
-                NULL,
-                0,
-                markdown_uri,
-                sizeof(markdown_uri) - 1
-            ),
-            api.buffer_free,
-            "\"kind\":\"markdown\""
-        )
-        : expect_error_with(
-            api.analyze_document_json(
-                markdown_source,
-                sizeof(markdown_source) - 1,
-                NULL,
-                0,
-                markdown_uri,
-                sizeof(markdown_uri) - 1
-            ),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(
-            api.analyze_document_facts_json(
-                markdown_source,
-                sizeof(markdown_source) - 1,
-                NULL,
-                0,
-                markdown_uri,
-                sizeof(markdown_uri) - 1
-            ),
-            api.buffer_free,
-            "\"kind\":\"markdown\""
-        )
-        : expect_error_with(
-            api.analyze_document_facts_json(
-                markdown_source,
-                sizeof(markdown_source) - 1,
-                NULL,
-                0,
-                markdown_uri,
-                sizeof(markdown_uri) - 1
-            ),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = api.render_enabled
-        ? expect_ok_with(
-            api.layout_json(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            "layout"
-        )
-        : expect_error_with(
-            api.layout_json(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(
-            api.validate_json(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            "\"valid\":true"
-        )
-        : expect_error_with(
-            api.validate_json(source, sizeof(source) - 1, NULL, 0),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(api.validate_json(NULL, 0, NULL, 0), api.buffer_free, "MERMAN_NO_DIAGRAM")
-        : expect_error_with(
-            api.validate_json(NULL, 0, NULL, 0),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = expect_ok_with(api.supported_diagrams_json(), api.buffer_free, "flowchart");
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = expect_ok_with(
-        api.ascii_capabilities_json(),
-        api.buffer_free,
-        api.ascii_enabled ? "\"support_level\":\"summary\"" : "[]"
-    );
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = expect_ok_with(
-        api.diagram_family_capabilities_json(),
-        api.buffer_free,
-        "\"diagram_type\":\"flowchart\""
-    );
-    if (rc != 0) {
-        return rc;
-    }
-
-    if (api.analysis_enabled) {
-        rc = expect_ok_with(
-            api.lint_rule_catalog_json(),
-            api.buffer_free,
-            "merman.authoring.flowchart.explicit_direction"
-        );
-        if (rc != 0) {
-            return rc;
-        }
-
-        rc = expect_ok_with(
-            api.lint_rule_catalog_json(),
-            api.buffer_free,
-            "docs/adr/0072-lint-rule-governance.md"
-        );
-        if (rc != 0) {
-            return rc;
-        }
-    } else {
-        rc = expect_error_with(
-            api.lint_rule_catalog_json(),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-        if (rc != 0) {
-            return rc;
-        }
-    }
-
-    rc = expect_ok_with(api.supported_themes_json(), api.buffer_free, "default");
-    if (rc != 0) {
-        return rc;
-    }
-
-    rc = expect_ok_with(
-        api.supported_host_theme_presets_json(),
-        api.buffer_free,
-        api.render_enabled ? "one-dark" : "[]"
-    );
-    if (rc != 0) {
-        return rc;
-    }
-
-    MermanEngineResult engine = api.engine_new(NULL, 0);
-    if (engine.code != MERMAN_OK || engine.engine == NULL) {
-        if (engine.data.data != NULL || engine.data.len != 0) {
-            api.buffer_free(engine.data);
-        }
-        return 50 + engine.code;
-    }
-
-    rc = api.render_enabled
-        ? expect_ok_with(
-            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            "<svg"
-        )
-        : expect_error_with(
-            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        api.engine_free(engine.engine);
-        return rc;
-    }
-
-    if (api.render_enabled) {
-        MermanMeasureProbe probe = {0, 0, 0, 0, 0};
-        rc = expect_empty_ok(
-            api.engine_set_text_measure_callback(engine.engine, smoke_measure_text, &probe),
-            api.buffer_free
-        );
-        if (rc != 0) {
-            api.engine_free(engine.engine);
-            return rc;
-        }
-
-        rc = expect_ok_with(
-            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            "<svg"
-        );
-        if (rc != 0) {
-            api.engine_free(engine.engine);
-            return rc;
-        }
-        if (probe.calls == 0 || probe.handled == 0 || probe.html_like == 0) {
-            api.engine_free(engine.engine);
-            return 80;
-        }
-
-        rc = expect_empty_ok(
-            api.engine_set_text_measure_callback(engine.engine, NULL, NULL),
-            api.buffer_free
-        );
-        if (rc != 0) {
-            api.engine_free(engine.engine);
-            return rc;
-        }
-        probe.reset_calls = probe.calls;
-
-        rc = expect_ok_with(
-            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            "<svg"
-        );
-        if (rc != 0) {
-            api.engine_free(engine.engine);
-            return rc;
-        }
-        if (probe.calls != probe.reset_calls) {
-            api.engine_free(engine.engine);
-            return 81;
-        }
-    } else {
-        rc = expect_error_with(
-            api.engine_set_text_measure_callback(engine.engine, smoke_measure_text, NULL),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-        if (rc != 0) {
-            api.engine_free(engine.engine);
-            return rc;
-        }
-    }
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(
-            api.engine_analyze_json(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            "\"version\":1"
-        )
-        : expect_error_with(
-            api.engine_analyze_json(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        api.engine_free(engine.engine);
-        return rc;
-    }
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(
-            api.engine_analyze_document_json(
-                engine.engine,
-                markdown_source,
-                sizeof(markdown_source) - 1,
-                markdown_uri,
-                sizeof(markdown_uri) - 1
-            ),
-            api.buffer_free,
-            "\"kind\":\"markdown\""
-        )
-        : expect_error_with(
-            api.engine_analyze_document_json(
-                engine.engine,
-                markdown_source,
-                sizeof(markdown_source) - 1,
-                markdown_uri,
-                sizeof(markdown_uri) - 1
-            ),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        api.engine_free(engine.engine);
-        return rc;
-    }
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(
-            api.engine_analyze_document_facts_json(
-                engine.engine,
-                markdown_source,
-                sizeof(markdown_source) - 1,
-                markdown_uri,
-                sizeof(markdown_uri) - 1
-            ),
-            api.buffer_free,
-            "\"kind\":\"markdown\""
-        )
-        : expect_error_with(
-            api.engine_analyze_document_facts_json(
-                engine.engine,
-                markdown_source,
-                sizeof(markdown_source) - 1,
-                markdown_uri,
-                sizeof(markdown_uri) - 1
-            ),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        api.engine_free(engine.engine);
-        return rc;
-    }
-
-    rc = api.ascii_enabled
-        ? expect_ok_with(
-            api.engine_render_ascii(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            "Hello"
-        )
-        : expect_error_with(
-            api.engine_render_ascii(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        api.engine_free(engine.engine);
-        return rc;
-    }
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(
-            api.engine_validate_json(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            "\"valid\":true"
-        )
-        : expect_error_with(
-            api.engine_validate_json(engine.engine, source, sizeof(source) - 1),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        api.engine_free(engine.engine);
-        return rc;
-    }
-
-    rc = api.analysis_enabled
-        ? expect_ok_with(
-            api.engine_validate_json(engine.engine, NULL, 0),
-            api.buffer_free,
-            "MERMAN_NO_DIAGRAM"
-        )
-        : expect_error_with(
-            api.engine_validate_json(engine.engine, NULL, 0),
-            api.buffer_free,
-            MERMAN_UNSUPPORTED_FORMAT,
-            "MERMAN_UNSUPPORTED_FORMAT"
-        );
-    if (rc != 0) {
-        api.engine_free(engine.engine);
-        return rc;
-    }
-
-    api.engine_free(engine.engine);
-
-    return expect_error_with(
-        api.render_svg(NULL, 1, NULL, 0),
-        api.buffer_free,
-        MERMAN_INVALID_ARGUMENT,
-        "MERMAN_INVALID_ARGUMENT"
-    );
+    return 0;
 }

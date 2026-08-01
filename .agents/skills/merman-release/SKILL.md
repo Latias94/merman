@@ -5,142 +5,103 @@ description: Merman release operator workflow. Use when preparing a new Merman v
 
 # Merman Release
 
-Run releases as a preflight-first, evidence-backed path. Keep `docs/release/RELEASING.md` as the
-source of truth for commands and surface inventory; use this skill to follow the same process every
-time and to avoid the release traps already found in this repo.
+Use this skill as the release-operator checklist. `docs/release/RELEASING.md` explains the public workflow, but package manifests, artifact profiles, platform descriptors, owner workflows, and actual registry or GitHub evidence remain the authority for a release decision. README text and a central release-status file are never machine release authority.
 
 ## Read First
 
-From the repository root, read these before editing or publishing:
+Read:
 
 - `docs/release/RELEASING.md`
 - `docs/release/PACKAGE_SURFACES.md`
 - `docs/release/PUBLISH_ORDER.md`
 - the top entry of `CHANGELOG.md`
-- the manifests listed in the `Version Checklist` section of `docs/release/RELEASING.md`
+- the `Version Checklist` in `docs/release/RELEASING.md`
 
-Completion criterion: the target version, source ref, release channel, publish surfaces, and version
-files are known before any tag or registry action.
+Before changing anything, identify the target version, immutable source commit, release channel, and intended publish surfaces.
 
-## Release Notes
+## Authorization Boundary
 
-Write release notes for users first, then maintainers.
+Treat the request as `prepare` unless the maintainer explicitly authorizes `ship` for a concrete version, source commit, channel, and surface set.
 
-- Start each top-level changelog entry with `## [version] - YYYY-MM-DD`.
-- Follow with a short user-facing summary paragraph.
-- Add `### Highlights` with only the changes users should scan first.
-- Give new crates, packages, editor integrations, and platform surfaces their own short bullets when
-  they change how users install or integrate Merman.
-- Mention migration or compatibility impact explicitly.
-- Include PR references where they help GitHub release notes, for example `(#23)`.
-- Prune no-op bullets such as "point to the right docs", broad internal cleanup, duplicate package
-  metadata notes, or implementation details users cannot act on.
-- Do not manually wrap prose inside a bullet. Let the formatter or editor wrap display text.
-- When polishing wording, use the repo's release-note voice and run `$humanizer` if it is available.
+- `prepare` may update source files, run local checks, dispatch non-publishing preflight when requested, and inspect external state read-only.
+- `ship` may create or push a tag, dispatch a publishing workflow, modify a GitHub Release, or mutate a registry only within the named scope.
+- Pushing a release tag starts one inseparable tag-triggered publication bundle: `release.yml`, `release-crates.yml`, and `release-flutter.yml`. The maintainer must authorize all three tag-triggered surfaces; authorization for only part of that bundle does not authorize a tag push.
+- Python, Android, Apple, Web, VS Code, and Homebrew are separately authorized surfaces.
+- Preparation, a green preflight, an existing plan, a partial prior release, or authorization from an earlier release never implies current shipping authorization.
 
-Completion criterion: the changelog can stand alone as the GitHub Release body, has no duplicate
-items, and explains new user-facing surfaces without turning into a commit log.
+If scope is incomplete, report what is ready and stop before the first external mutation.
 
-## Version Sync
+## Prepare
 
-Update every release-facing version before preflight:
+### Release Notes
 
-- Rust workspace version in `Cargo.toml`.
-- Cargo crate versions and workspace dependency pins implied by the release.
-- `platforms/web/package.json`.
-- `platforms/flutter/pubspec.yaml`.
-- `platforms/android/build.gradle.kts`.
-- `platforms/python/merman/pyproject.toml`, using PEP 440 for prereleases such as `0.8.0a3`.
-- `tools/vscode-extension/package.json`; VS Code uses stable SemVer in the manifest and marks
-  prerelease VSIX builds during packaging.
-- Platform changelogs and package README compatibility sections when the published surface changes.
-- `packages/typst/merman/README.md` version mapping when the Typst package embeds a new workspace
-  renderer line.
+Write the changelog for users:
 
-Completion criterion: every release-facing manifest and compatibility table names the same intended
-workspace release, with platform-specific spelling only where the registry requires it.
+- Keep an in-progress entry as `## [version] - Unreleased`; immediately before immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form.
+- Treat the root `CHANGELOG.md` as the canonical project-wide release narrative. For every intended publish surface that owns a package-local changelog, update that file as a curated projection of the same release delta: include only changes, migrations, compatibility notes, and verified performance claims that affect that package's users.
+- Keep workspace-coupled package changelog entries at `Unreleased` during preparation, then stamp them with the same intended tag date as the root entry immediately before immutable preflight. Independently versioned surfaces keep their own version and publication date.
+- Review `platforms/flutter/CHANGELOG.md`, `platforms/python/merman/CHANGELOG.md`, `platforms/android/CHANGELOG.md`, and `platforms/apple/CHANGELOG.md` when their surfaces are in scope. Review `tools/vscode-extension/CHANGELOG.md` only for the extension's independent release. Do not create per-crate changelogs or copy the complete root entry into every package.
+- State installation, integration, migration, compatibility, or behavior changes users can act on.
+- Remove duplicate metadata and internal implementation detail.
+- Keep each Markdown paragraph or bullet on one physical line.
+- Use the repository's release-note voice; use `$writing-great-skills` for an evidence-backed range report and `$humanizer` when prose needs a final polish.
 
-## Preflight
+### Version Projection And Documentation Review
 
-Run the manual release preflight before tagging:
+Treat `Cargo.toml` `[workspace.package].version` as the workspace release authority. Use the exact projection and validation commands in the `Version Checklist` of `docs/release/RELEASING.md`.
 
-```bash
-gh workflow run release-preflight.yml -f version=<version> -f source_ref=main
-```
+Do not hand-edit generated version projections. If the command is interrupted, preserve the partial diff and rerun the same command; the workspace authority is written last.
 
-Wait for the run to complete and inspect failed jobs before tagging. Do not treat a local build as a
-substitute for preflight, because preflight covers registry-independent package dry-runs, platform
-artifacts, VSIX packaging, Flutter dry-run publishing, and WASM size gates.
+README files are ordinary documentation. Review their install examples, package names, feature names, and supported-platform statements before preflight, but do not switch them between source and registry modes or make them part of a version projection. A cancelled or completed release therefore has no README state to restore.
 
-Completion criterion: `release-preflight.yml` is green for the exact version and source ref that
-will be tagged.
+VS Code, Typst, and `roughr-merman` have independent version axes. Update them only when that surface is being released, and preserve their bundled Merman provenance.
 
-## Tag And Publish
+### Local Contract And Preflight
 
-After preflight passes, tag the intended source commit:
+Run the owner-owned contract checks listed in `docs/release/RELEASING.md`, including exact artifact recipes, package build/load smoke tests, ABI checks, release legal material, and the requested preflight workflows.
 
-```bash
-git tag v<version>
-git push origin v<version>
-```
+Resolve the intended commit to a 40-character `SOURCE_SHA`. Use the exact preflight dispatch from `docs/release/RELEASING.md`, passing that immutable SHA instead of a branch. Wait for every job and diagnose failures before tagging. A local build is not a substitute for preflight.
 
-Watch the tag-triggered workflows first:
+Preparation is complete when version projections and release notes are committed, the release-ready check passes, and preflight is green for the exact version and `SOURCE_SHA`.
 
-- `release.yml` creates the GitHub Release and CLI/LSP artifacts.
-- `release-crates.yml` publishes crates.io packages in dependency order.
-- `release-flutter.yml` publishes to pub.dev from the tag-triggered run.
+Apple source compatibility is a compiler-floor contract. The Swift 5.9/Xcode 15.2 CI job must pass for the exact source commit; a newer Swift compiler does not prove that floor. GitHub's `macos-14` hosted image starts retirement brownouts on 2026-10-05 and retires on 2026-11-02, so move this exact check to a maintained runner or toolchain before the brownouts. If no equivalent runner is available, block Apple shipping instead of weakening or silently skipping the check.
 
-After the GitHub Release exists, dispatch the platform workflows from the tag:
+## Ship
 
-```bash
-gh workflow run release-python.yml -f release_tag=v<version> -f source_ref=refs/tags/v<version> -f publish_to_pypi=true
-gh workflow run release-android.yml -f release_tag=v<version> -f source_ref=refs/tags/v<version>
-gh workflow run release-apple.yml -f release_tag=v<version> -f source_ref=refs/tags/v<version>
-gh workflow run release-web.yml -f release_tag=v<version> -f source_ref=refs/tags/v<version> -f publish_to_npm=true
-gh workflow run vscode-extension.yml -f source_ref=refs/tags/v<version>
-```
+Do not continue here without explicit `ship` authorization for the current release.
 
-Completion criterion: every intended release workflow has a successful latest run for the target
-version, and skipped jobs are expected by channel rules rather than accidental.
+Use only the `Tag And Push` commands in `docs/release/RELEASING.md`. They must verify that `HEAD` is the preflighted `SOURCE_SHA`, create the tag at that explicit commit, and push that tag without moving it.
 
-## Verification
+Watch the tag-triggered cargo-dist, crates.io, and pub.dev workflows first. After the GitHub Release exists, use only the exact platform dispatch commands in `docs/release/RELEASING.md`; do not reconstruct them from memory or from this skill.
 
-Verify the published state, not only workflow success:
+Skipped jobs must be explained by channel rules. A manual surface is not authorized merely because the tag-triggered bundle succeeded.
 
-- GitHub Release is not draft, has the intended prerelease/stable state, and contains expected CLI,
-  LSP, source, checksum, Python wheel, Android AAR, and Apple XCFramework assets when those surfaces
-  are part of the release.
-- crates.io shows the published Rust crate versions.
-- npm shows `@mermanjs/web@<version>` and the correct dist-tag: `alpha`, `beta`, `rc`, or `latest`.
-- PyPI and pub.dev show the intended package versions after their workflows publish.
-- VS Code workflow artifacts exist; Marketplace publishing is not enabled unless a separate release
-  decision added it.
-- `main` CI is green after any release-workflow fixes.
+## Verify
 
-Completion criterion: registries and GitHub Release state agree with the workflow matrix, and the
-working tree is clean or only contains explicitly reported unrelated user changes.
+Use direct GitHub, registry, and artifact evidence documented in `docs/release/RELEASING.md`. Confirm that:
+
+- the GitHub Release state and assets match the channel and configured target matrix;
+- crates.io, npm, PyPI, and pub.dev show only the surfaces that were actually published;
+- separately authorized Android, Apple, Web, VS Code, and Homebrew outputs match their declared channel semantics;
+- `main` remains green after any release-workflow repair.
+
+Workflow success is not publication evidence. Registry and GitHub state must agree with the release contract.
 
 ## Recovery
 
-Classify a failed release before changing code:
+Classify the failure before changing anything:
 
-- Source or manifest failure: fix the source on `main`, rerun preflight, and create a new tag only if
-  nothing has been externally published for the broken tag.
-- Workflow-only failure after a tag exists: fix the workflow on `main`, then rerun manual workflows
-  with `source_ref=refs/tags/<tag>` so the artifact source remains the release tag.
-- Registry partial publish: rerun only idempotent or remaining workflows. Do not republish packages
-  that the registry already accepted.
-- After any external registry publish, treat the release tag as immutable. Do not move it unless the
-  maintainer explicitly accepts the registry and provenance risk.
+- Source or manifest failure before publication: fix source, rerun preflight, and use a new tag only if nothing external accepted the broken version.
+- Workflow-only failure after tagging: fix the workflow on `main`, then rerun the authorized workflow against `refs/tags/<tag>` so provenance remains anchored to the release.
+- Partial registry publication: rerun only idempotent or unfinished surfaces; never republish a version a registry accepted.
+- Any accepted external publication makes the release tag immutable unless the maintainer explicitly accepts the provenance risk of changing it.
 
-Known traps from `0.8.0-alpha.3`:
+Diagnosis and local fixes are `prepare` work. Rerunning a publisher, uploading an asset, changing a tag, or mutating a registry requires fresh `ship` authorization.
 
-- `cargo pkgid` version parsing must handle both `#version` and `@version` forms.
-- `gh release view` and `gh release upload` jobs without checkout need `GH_REPO`.
-- cargo-dist workflow updates must be regenerated and checked with `dist generate --check`.
-- `npm pack --json` must not be polluted by lifecycle script logs; run verification before packing
-  and pack release artifacts with scripts disabled when the workflow already ran `prepack`.
-- Typst package compatibility can fail on missing README version mapping even when size budgets pass.
+## Known Traps
 
-Completion criterion: the recovery path preserves published artifacts, keeps the tag source
-explainable, and ends with successful replacement runs for every failed release surface.
+- `cargo pkgid` may print versions with either `#` or `@`.
+- GitHub Release jobs without checkout need `GH_REPO`.
+- cargo-dist workflow changes require `dist generate --check`.
+- `npm pack --json` output must not be contaminated by lifecycle logs.
+- Typst compatibility includes README version mapping, not only size gates.

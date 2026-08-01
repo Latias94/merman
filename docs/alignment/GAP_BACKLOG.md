@@ -8,8 +8,10 @@ eliminate them without regressing the global parity gates.
 Scope:
 
 - Primary contract: SVG DOM parity in `parity` mode (DOM structure/semantics; geometry numbers normalized).
-- Secondary contract (tracked, non-blocking in CI today): SVG root viewport parity in `parity-root` mode
-  (root `max-width`/`viewBox` lattice, `--dom-decimals 3`).
+- Secondary contract: SVG root viewport parity in `parity-root` mode (root `max-width`/`viewBox`
+  lattice, `--dom-decimals 3`). Browser-only residuals are retained in the hash-bound
+  `fixtures/_verification/root-parity-residuals.json` catalog; they cannot make unrelated
+  descendant mismatches pass.
 - Secondary contracts:
   - strict SVG XML parity where feasible (`dom-mode strict`)
   - deterministic, reproducible upstream baselines
@@ -20,14 +22,13 @@ Global gates (must stay green):
 - `cargo nextest run`
 - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
-Non-blocking CI signal (kept visible to drive incremental alignment work):
+The release-strength root gate is:
 
 - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
-The global `parity-root` sweep skips Phase 2 Stage B families whose current family-local audits
-still report root viewport residuals: `treeView`, `ishikawa`, and `eventmodeling`. Use
-`compare-all-svgs --diagram <family> --dom-mode parity-root` or the family-local compare command
-when auditing those root residuals explicitly.
+All 35 primary families participate in the root evidence contract. Family-specific browser or
+RoughJS residuals remain visible through the catalog and the family owner documents; they are not
+silently skipped by a global family allowlist.
 
 ## Automated audits
 
@@ -37,9 +38,9 @@ spot checks:
 - Generate a report: `cargo run -p xtask -- audit-gaps --out target/audit/gaps.md`
 - Output is intentionally written under `target/` (do not commit it); only summarize conclusions here.
 
-As of `2026-06-22` (see the generated report for details):
+As of `2026-07-20` (see the generated report for details):
 
-- Parser-only fixtures: `6` (not included in SVG DOM parity gates)
+- Parser-only fixtures: `5` (not included in SVG DOM parity gates)
 - Deferred fixtures (`fixtures/_deferred`): `0` parse OK, `86` parse ERR, `2` absorbed duplicates
 - The absorbed duplicates are Mermaid-reachable ELK requests that now have active source-backed evidence:
   the Class ELK Cypress full-diagram body is covered by the active Class fixture, and the Flowchart docs
@@ -56,7 +57,6 @@ Notes:
 
 Per-diagram details:
 
-- Architecture: `docs/alignment/ARCHITECTURE_SVG_PARITY_GAPS.md`
 - Flowchart: `docs/alignment/FLOWCHART_SVG_PARITY_GAPS.md`
 - Mindmap: `docs/alignment/MINDMAP_SVG_PARITY_GAPS.md`
 - State root viewport: `docs/alignment/STATE_ROOT_VIEWBOX_PARITY_GAPS.md`
@@ -84,9 +84,11 @@ Legend:
      for SVG labels under the pinned CLI baseline.
    - Risk: H (can change line breaks, bboxes, viewBox/max-width).
 
-3. **Reduce fixture-id keyed root viewport overrides**
-   - Target: replace fixture-id keys with reusable semantic/topology profiles or deterministic
-     algorithms wherever possible.
+3. **Keep root viewport ownership fixture-free**
+   - Target: preserve computed family or emitted-content bounds and source-backed root algorithms;
+     reject any reintroduction of fixture-id keys.
+   - Current status: complete in the family-owned architecture migration; browser-only drift is
+     represented only by narrow verification residual policy.
    - Risk: M (viewport is a global gate and sensitive to tiny drift).
 
 ### P1: Coverage confidence (expand and stabilize)
@@ -109,25 +111,28 @@ Legend:
 
 ### P2: Beyond core parity (optional expansions)
 
-6. **Family-specific `look=handDrawn` parity**
+7. **Family-specific `look=handDrawn` parity**
    - Flowchart, Class, ER, Requirement, and State have focused rendered seed evidence. Venn and
      Ishikawa RoughJS branches remain deferred family lanes and must be promoted only with
      source-backed rendered tests.
    - Risk: H (shape/path output diverges substantially).
 
-7. **Mermaid-reachable ELK hardening**
+8. **Mermaid-reachable ELK hardening**
    - Source-backed Flowchart ELK is the default public render path and the dedicated probe gate
      covers every exact upstream `flowchart-elk.spec.js` render call and all 57 unique layout
      bodies; broad SVG parity admits those probes under the source-backed backend. Class
      `layout: elk` and `class.defaultRenderer: elk` now dispatch through the Class ELK adapter
-     under the existing `elk-layout` feature and reuse the Class SVG renderer. Remaining work is
+     under the existing `layout-elk` feature and reuse the Class SVG renderer. Remaining work is
      continued hardening from new upstream or user-reported cases, not a generic deferred
      `layout=elk` gap.
    - Risk: M/H (large surface area, but the current Mermaid spec body coverage is source-backed).
 
-8. **ZenUML “practical” compatibility expansion**
-   - Snapshot-gated only (no upstream SVG baselines).
-   - Risk: M (translator complexity; must not regress Mermaid parity gates).
+9. **ZenUML external-lane maintenance**
+   - The family-owned grammar, semantic/editor facts, typed layout, native SVG, and opaque browser
+     admission probe are implemented. Future work is limited to source-backed ZenUML Core release
+     admission and new fixture evidence; do not reintroduce a Sequence translator.
+   - Authority: `docs/alignment/ZENUML_MINIMUM.md` and `docs/adr/0061-external-diagrams-zenuml.md`.
+   - Risk: M (third-party behavior changes; must not regress Mermaid parity gates).
 
 ## Milestone mapping
 

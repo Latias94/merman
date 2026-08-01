@@ -9,9 +9,9 @@ async fn main() -> ExitCode {
 
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    let (service, socket) = MermanLanguageServer::service_with_refresh();
+    let (service, socket) = MermanLanguageServer::service();
     match serve_stdio(stdin, stdout, socket, service).await {
-        StdioTermination::ExitWithoutShutdown => ExitCode::FAILURE,
+        StdioTermination::ExitWithoutShutdown | StdioTermination::OutputClosed => ExitCode::FAILURE,
         StdioTermination::InputClosed | StdioTermination::ExitAfterShutdown => ExitCode::SUCCESS,
     }
 }

@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": -30.0,
         "min_y": -30.0,
-        "max_x": 644.0,
+        "max_x": 626.0,
         "max_y": 440.0
       },
-      "total_width": 674.0,
+      "total_width": 656.0,
       "total_height": 470.0,
       "viewbox_x": -30.0,
       "viewbox_y": -30.0,
@@ -21,7 +21,7 @@
           "namespace": null,
           "x": 0.0,
           "y": 0.0,
-          "width": 614.0,
+          "width": 596.0,
           "height": 130.0
         },
         {
@@ -30,7 +30,7 @@
           "namespace": "Product",
           "x": 0.0,
           "y": 140.0,
-          "width": 614.0,
+          "width": 596.0,
           "height": 130.0
         },
         {
@@ -39,7 +39,7 @@
           "namespace": "Cart",
           "x": 0.0,
           "y": 280.0,
-          "width": 614.0,
+          "width": 596.0,
           "height": 130.0
         }
       ],
@@ -53,7 +53,7 @@
           "text": "UI",
           "x": 250.0,
           "y": 15.0,
-          "width": 118.0,
+          "width": 112.0,
           "height": 100.0,
           "fill": "white",
           "stroke": "#dbdada",
@@ -66,9 +66,9 @@
           "model_entity_type": "evt",
           "entity_identifier": "Product.PriceChanged",
           "text": "PriceChanged",
-          "x": 298.0,
+          "x": 292.0,
           "y": 155.0,
-          "width": 189.0,
+          "width": 183.0,
           "height": 100.0,
           "fill": "#ffb778",
           "stroke": "#c19a0f",
@@ -81,9 +81,9 @@
           "model_entity_type": "evt",
           "entity_identifier": "Cart.ItemAdded",
           "text": "ItemAdded",
-          "x": 417.0,
+          "x": 405.0,
           "y": 295.0,
-          "width": 172.0,
+          "width": 166.0,
           "height": 100.0,
           "fill": "#ffb778",
           "stroke": "#c19a0f",
@@ -94,18 +94,18 @@
         {
           "source_frame": "02",
           "target_frame": "01",
-          "x1": 328.667,
+          "x1": 324.667,
           "y1": 115.0,
-          "x2": 361.0,
+          "x2": 353.0,
           "y2": 155.0,
           "stroke": "#333333"
         },
         {
           "source_frame": "01",
           "target_frame": "03",
-          "x1": 424.0,
+          "x1": 414.0,
           "y1": 255.0,
-          "x2": 474.333,
+          "x2": 460.333,
           "y2": 295.0,
           "stroke": "#333333"
         }

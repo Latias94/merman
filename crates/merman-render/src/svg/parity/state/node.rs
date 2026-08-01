@@ -1,5 +1,4 @@
 use super::*;
-use crate::generated::state_text_overrides_11_12_2 as state_text_overrides;
 
 pub(super) fn render_state_node_svg(
     out: &mut String,
@@ -7,7 +6,7 @@ pub(super) fn render_state_node_svg(
     node_id: &str,
     origin_x: f64,
     origin_y: f64,
-    timing_enabled: bool,
+    timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
 ) {
     let Some(node) = ctx.nodes_by_id.get(node_id).copied() else {
@@ -28,8 +27,12 @@ pub(super) fn render_state_node_svg(
     fn cached_circle(
         ctx: &StateRenderCtx<'_>,
         key: StateRoughCacheKey,
+        allow_cache: bool,
         build: impl FnOnce() -> String,
     ) -> Arc<String> {
+        if !allow_cache {
+            return Arc::new(build());
+        }
         let existing = { ctx.rough_circle_cache.borrow().get(&key).cloned() };
         if let Some(v) = existing {
             return v;
@@ -70,8 +73,13 @@ pub(super) fn render_state_node_svg(
     fn cached_paths(
         ctx: &StateRenderCtx<'_>,
         key: StateRoughCacheKey,
+        allow_cache: bool,
         build: impl FnOnce() -> (String, String),
     ) -> (Arc<String>, Arc<String>) {
+        if !allow_cache {
+            let (fill_d, stroke_d) = build();
+            return (Arc::new(fill_d), Arc::new(stroke_d));
+        }
         let existing = { ctx.rough_paths_cache.borrow().get(&key).cloned() };
         if let Some(v) = existing {
             return v;
@@ -119,8 +127,11 @@ pub(super) fn render_state_node_svg(
     };
     let node_dom_id = state_scoped_dom_id(ctx, &node.dom_id);
     let data_look = state_data_look(ctx);
+    // A fallback `Math.random()` stream is ordered across shapes, so cache hits would otherwise
+    // skip consumption and change subsequent output.
+    let allow_rough_cache = !ctx.hand_drawn_seed.seed().may_use_math_random();
 
-    let style_parse_start = timing_enabled.then(web_time::Instant::now);
+    let style_parse_start = timing.start();
     let mut shape_decls: Vec<StateInlineDecl<'_>> = Vec::new();
     let mut text_decls: Vec<StateInlineDecl<'_>> = Vec::new();
     let mut fill_override: Option<&str> = None;
@@ -161,7 +172,7 @@ pub(super) fn render_state_node_svg(
 
     match node.shape.as_str() {
         "stateStart" => {
-            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
+            let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r#"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"/></g>"#,
@@ -173,41 +184,41 @@ pub(super) fn render_state_node_svg(
             drop(_g_emit);
         }
         "stateEnd" => {
-            let rough_start = timing_enabled.then(web_time::Instant::now);
-            if timing_enabled {
+            let rough_start = timing.start();
+            if timing.is_enabled() {
                 details.leaf_roughjs_calls += 2;
                 details.leaf_roughjs_unique.insert(StateRoughCacheKey {
                     tag: 1,
                     a: 14.0f64.to_bits(),
                     b: 0,
-                    seed: ctx.hand_drawn_seed,
+                    seed: ctx.hand_drawn_seed.seed(),
                 });
                 details.leaf_roughjs_unique.insert(StateRoughCacheKey {
                     tag: 2,
                     a: 5.0f64.to_bits(),
                     b: 0,
-                    seed: ctx.hand_drawn_seed,
+                    seed: ctx.hand_drawn_seed.seed(),
                 });
             }
             let outer_key = StateRoughCacheKey {
                 tag: 1,
                 a: 14.0f64.to_bits(),
                 b: 0,
-                seed: ctx.hand_drawn_seed,
+                seed: ctx.hand_drawn_seed.seed(),
             };
             let inner_key = StateRoughCacheKey {
                 tag: 2,
                 a: 5.0f64.to_bits(),
                 b: 0,
-                seed: ctx.hand_drawn_seed,
+                seed: ctx.hand_drawn_seed.seed(),
             };
 
-            let outer_d = cached_circle(ctx, outer_key, || {
-                roughjs_circle_path_d(14.0, ctx.hand_drawn_seed)
+            let outer_d = cached_circle(ctx, outer_key, allow_rough_cache, || {
+                roughjs_circle_path_d(14.0, &ctx.hand_drawn_seed)
                     .unwrap_or_else(|| "M0,0".to_string())
             });
-            let inner_d = cached_circle(ctx, inner_key, || {
-                roughjs_circle_path_d(5.0, ctx.hand_drawn_seed)
+            let inner_d = cached_circle(ctx, inner_key, allow_rough_cache, || {
+                roughjs_circle_path_d(5.0, &ctx.hand_drawn_seed)
                     .unwrap_or_else(|| "M0,0".to_string())
             });
             if let Some(s) = rough_start {
@@ -218,7 +229,7 @@ pub(super) fn render_state_node_svg(
             let outer_stroke = ctx.theme_defaults.end_outer_stroke.as_str();
             let inner_fill = ctx.theme_defaults.inner_end_background.as_str();
             let inner_stroke = ctx.theme_defaults.end_inner_stroke.as_str();
-            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
+            let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r##"<g class="node default" id="{}" data-look="{}" transform="translate({}, {})"><g class="outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
@@ -240,18 +251,18 @@ pub(super) fn render_state_node_svg(
             drop(_g_emit);
         }
         "fork" | "join" => {
-            let rough_start = timing_enabled.then(web_time::Instant::now);
+            let rough_start = timing.start();
             let key = StateRoughCacheKey {
                 tag: 3,
                 a: w.to_bits(),
                 b: h.to_bits(),
-                seed: ctx.hand_drawn_seed,
+                seed: ctx.hand_drawn_seed.seed(),
             };
-            if timing_enabled {
+            if timing.is_enabled() {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, || {
+            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
                 roughjs_paths_for_rect(StateRoughRectSpec {
                     x: -w / 2.0,
                     y: -h / 2.0,
@@ -260,7 +271,7 @@ pub(super) fn render_state_node_svg(
                     fill: "#333333",
                     stroke: "#333333",
                     stroke_width: 1.3,
-                    seed: ctx.hand_drawn_seed,
+                    randomness: &ctx.hand_drawn_seed,
                 })
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
             });
@@ -273,7 +284,7 @@ pub(super) fn render_state_node_svg(
                 stroke_override.unwrap_or(ctx.theme_defaults.special_state_color.as_str());
             let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
             let shape_style_escaped = escape_attr(&shape_style_attr);
-            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
+            let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
@@ -293,25 +304,25 @@ pub(super) fn render_state_node_svg(
             drop(_g_emit);
         }
         "choice" => {
-            let rough_start = timing_enabled.then(web_time::Instant::now);
+            let rough_start = timing.start();
             let key = StateRoughCacheKey {
                 tag: 4,
                 a: w.to_bits(),
                 b: h.to_bits(),
-                seed: ctx.hand_drawn_seed,
+                seed: ctx.hand_drawn_seed.seed(),
             };
-            if timing_enabled {
+            if timing.is_enabled() {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, || {
+            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_choice_diamond_path_data(w, h),
                     "#ECECFF",
                     "#9370DB",
                     1.3,
                     "0 0",
-                    ctx.hand_drawn_seed,
+                    &ctx.hand_drawn_seed,
                 )
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
             });
@@ -325,7 +336,7 @@ pub(super) fn render_state_node_svg(
                 .unwrap_or(ctx.theme_defaults.rough_stroke_width_value)
                 .max(0.0);
             let shape_style_escaped = escape_attr(&shape_style_attr);
-            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
+            let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g></g>"##,
@@ -346,41 +357,37 @@ pub(super) fn render_state_node_svg(
         }
         "note" => {
             let label = state_node_label_text(node);
-            let measure_start = timing_enabled.then(web_time::Instant::now);
+            let measure_start = timing.start();
             let wrap_mode = if ctx.html_labels {
                 WrapMode::HtmlLike
             } else {
                 WrapMode::SvgLike
             };
-            let mut metrics = ctx.measurer.measure_wrapped(
+            let measurement = crate::state::measure_state_markdown_label(
                 &label,
+                ctx.measurer,
                 &ctx.text_style,
                 Some(ctx.html_label_wrapping_width),
                 wrap_mode,
             );
+            let metrics = &measurement.metrics;
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
             }
-            if let Some(w) = state_text_overrides::lookup_state_note_label_width_px(
-                ctx.text_style.font_size,
-                label.trim(),
-            ) {
-                metrics.width = w;
-            }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
-            let rough_start = timing_enabled.then(web_time::Instant::now);
+            let rough_start = timing.start();
             let key = StateRoughCacheKey {
                 tag: 5,
                 a: w.to_bits(),
                 b: h.to_bits(),
-                seed: ctx.hand_drawn_seed,
+                seed: ctx.hand_drawn_seed.seed(),
             };
-            if timing_enabled {
+            if timing.is_enabled() {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, || {
+            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
                 roughjs_paths_for_rect(StateRoughRectSpec {
                     x: -w / 2.0,
                     y: -h / 2.0,
@@ -389,27 +396,39 @@ pub(super) fn render_state_node_svg(
                     fill: "#fff5ad",
                     stroke: "#aaaa33",
                     stroke_width: 1.3,
-                    seed: ctx.hand_drawn_seed,
+                    randomness: &ctx.hand_drawn_seed,
                 })
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
             });
             if let Some(s) = rough_start {
                 details.leaf_nodes_roughjs += s.elapsed();
             }
-            let label_html_start = timing_enabled.then(web_time::Instant::now);
+            let label_html_start = timing.start();
             let label_dom = if ctx.html_labels {
-                state_node_label_html(&label)
+                state_node_label_html(&label, ctx.text_style.font_size)
             } else {
                 state_svg_text_label(&label, false, None)
             };
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
-            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
+            let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
+                let div_style = if measurement.uses_html_wrapping_table {
+                    format!(
+                        "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                        fmt(ctx.html_label_wrapping_width),
+                        fmt(ctx.html_label_wrapping_width),
+                    )
+                } else {
+                    format!(
+                        "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                        fmt(ctx.html_label_wrapping_width),
+                    )
+                };
                 let _ = write!(
                     out,
-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g></g>"##,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                     escape_xml_display(&node_class),
                     escape_xml_display(&node_dom_id),
                     escape_xml_display(data_look),
@@ -423,7 +442,7 @@ pub(super) fn render_state_node_svg(
                     fmt_display(-lh / 2.0),
                     fmt_display(lw),
                     fmt_display(lh),
-                    fmt_display(ctx.html_label_wrapping_width),
+                    div_style,
                     label_dom
                 );
             } else {
@@ -457,7 +476,7 @@ pub(super) fn render_state_node_svg(
                 .as_ref()
                 .map(|v| v.join("\n"))
                 .unwrap_or_default();
-            let measure_start = timing_enabled.then(web_time::Instant::now);
+            let measure_start = timing.start();
             let title_metrics =
                 ctx.measurer
                     .measure_wrapped(&title, &ctx.text_style, None, WrapMode::HtmlLike);
@@ -468,21 +487,15 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_measure += s.elapsed();
             }
 
-            let padding = ctx.state_padding;
-            let half_pad = (padding / 2.0).max(0.0);
-            let top_pad = state_text_overrides::state_rect_with_title_top_pad_px(padding);
-            let gap = state_text_overrides::state_rect_with_title_gap_px(padding);
-
             let title_w = title_metrics.width.max(0.0);
             let title_h = title_metrics.height.max(0.0);
             let desc_w = desc_metrics.width.max(0.0);
             let desc_h = desc_metrics.height.max(0.0);
-            let inner_w = (w - padding).max(0.0);
-            let title_x = ((inner_w - title_w) / 2.0).max(0.0);
-            let desc_x = ((inner_w - desc_w) / 2.0).max(0.0);
-            let desc_y = title_h + gap;
-            let divider_y = -h / 2.0 + top_pad + title_h + 1.0;
-            let label_html_start = timing_enabled.then(web_time::Instant::now);
+            let padding = node.padding.unwrap_or(ctx.state_padding).max(0.0);
+            let geometry = crate::state::RectWithTitleGeometry::from_metrics(
+                title_w, title_h, desc_w, desc_h, padding,
+            );
+            let label_html_start = timing.start();
             let (title_dom, desc_dom) = if ctx.html_labels {
                 (
                     state_node_label_plain_html(&title),
@@ -497,7 +510,7 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
-            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
+            let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
                 let _ = write!(
                     out,
@@ -513,18 +526,18 @@ pub(super) fn render_state_node_svg(
                     fmt_display(h),
                     fmt_display(-w / 2.0),
                     fmt_display(w / 2.0),
-                    fmt_display(divider_y),
-                    fmt_display(divider_y),
-                    fmt_display(-w / 2.0 + half_pad),
-                    fmt_display(-h / 2.0 + top_pad),
+                    fmt_display(geometry.divider_y),
+                    fmt_display(geometry.divider_y),
+                    fmt_display(geometry.label_x),
+                    fmt_display(geometry.label_y),
                     fmt_display(title_w),
                     fmt_display(title_h),
-                    fmt_display(title_x),
+                    fmt_display(geometry.title_x),
                     title_dom,
                     fmt_display(desc_w),
                     fmt_display(desc_h),
-                    fmt_display(desc_x),
-                    fmt_display(desc_y),
+                    fmt_display(geometry.description_x),
+                    fmt_display(geometry.description_y),
                     desc_dom
                 );
             } else {
@@ -542,14 +555,14 @@ pub(super) fn render_state_node_svg(
                     fmt_display(h),
                     fmt_display(-w / 2.0),
                     fmt_display(w / 2.0),
-                    fmt_display(divider_y),
-                    fmt_display(divider_y),
-                    fmt_display(-w / 2.0 + half_pad),
-                    fmt_display(-h / 2.0 + top_pad),
-                    fmt_display(title_x),
+                    fmt_display(geometry.divider_y),
+                    fmt_display(geometry.divider_y),
+                    fmt_display(geometry.label_x),
+                    fmt_display(geometry.label_y),
+                    fmt_display(geometry.title_x),
                     title_dom,
-                    fmt_display(desc_x),
-                    fmt_display(desc_y),
+                    fmt_display(geometry.description_x),
+                    fmt_display(geometry.description_y),
                     desc_dom
                 );
             }
@@ -567,8 +580,6 @@ pub(super) fn render_state_node_svg(
             }
 
             let mut measure_style = ctx.text_style.clone();
-            let mut has_metrics_style: bool = false;
-            let mut italic: bool = false;
 
             for d in &text_decls {
                 let k = d.key.trim().to_ascii_lowercase();
@@ -577,14 +588,9 @@ pub(super) fn render_state_node_svg(
                 match k.as_str() {
                     "font-weight" if !v_no_imp.is_empty() => {
                         measure_style.font_weight = Some(v_no_imp.to_string());
-                        has_metrics_style = true;
                     }
-                    "font-style" => {
-                        let lower = v_no_imp.to_ascii_lowercase();
-                        if lower.contains("italic") || lower.contains("oblique") {
-                            italic = true;
-                            has_metrics_style = true;
-                        }
+                    "font-style" if !v_no_imp.is_empty() => {
+                        measure_style.font_style = Some(v_no_imp.to_string());
                     }
                     "font-size" => {
                         if let Some(px) = parse_css_px_f64(v_no_imp)
@@ -592,90 +598,33 @@ pub(super) fn render_state_node_svg(
                             && px > 0.0
                         {
                             measure_style.font_size = px;
-                            has_metrics_style = true;
                         }
                     }
                     "font-family" if !v_no_imp.is_empty() => {
                         measure_style.font_family = Some(v_no_imp.to_string());
-                        has_metrics_style = true;
                     }
                     _ => {}
                 }
             }
 
-            let measure_start = timing_enabled.then(web_time::Instant::now);
+            let measure_start = timing.start();
             let wrap_mode = if ctx.html_labels {
                 WrapMode::HtmlLike
             } else {
                 WrapMode::SvgLike
             };
-            let mut metrics = ctx.measurer.measure_wrapped(
+            let measurement = crate::state::measure_state_markdown_label(
                 &label,
+                ctx.measurer,
                 &measure_style,
                 Some(ctx.html_label_wrapping_width),
                 wrap_mode,
             );
+            let metrics = &measurement.metrics;
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
             }
 
-            if italic {
-                metrics.width +=
-                    crate::text::mermaid_default_italic_width_delta_px(&label, &measure_style);
-            }
-            metrics.width +=
-                crate::text::mermaid_default_bold_width_delta_px(&label, &measure_style);
-
-            if metrics.width.is_finite() {
-                metrics.width = metrics.width.min(ctx.html_label_wrapping_width);
-            }
-            metrics.width = crate::text::round_to_1_64_px(metrics.width);
-            if metrics.width.is_finite() {
-                metrics.width = metrics.width.min(ctx.html_label_wrapping_width);
-            }
-
-            if !has_metrics_style
-                && let Some(w) =
-                    crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
-                        measure_style.font_size,
-                        label.trim(),
-                    )
-            {
-                metrics.width = w;
-            }
-
-            let bold = measure_style
-                .font_weight
-                .as_deref()
-                .is_some_and(|s| s.to_ascii_lowercase().contains("bold"));
-            if let Some(w) =
-                crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px_styled(
-                    measure_style.font_size,
-                    label.trim(),
-                    bold,
-                    italic,
-                )
-            {
-                metrics.width = w;
-            }
-
-            let has_classdef_border_style = node
-                .css_compiled_styles
-                .iter()
-                .any(|s| s.trim_start().to_ascii_lowercase().starts_with("border:"));
-
-            // Mermaid@11.12.2 browser baselines show a surprising `getBoundingClientRect()` inflation
-            // for `classDef`-styled border nodes: even a single-line `<p>` label can measure as `72px`
-            // tall. Mirror that behavior here to avoid relying on string-keyed height overrides.
-            if has_classdef_border_style && (measure_style.font_size - 16.0).abs() <= 0.01 {
-                let trimmed = label.trim();
-                let is_single_line = !trimmed.contains('\n')
-                    && !trimmed.to_ascii_lowercase().contains("<br")
-                    && !trimmed.is_empty();
-                if is_single_line && (metrics.height - 24.0).abs() <= 0.01 {
-                    metrics.height = metrics.height.max(72.0);
-                }
-            }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
 
@@ -726,25 +675,25 @@ pub(super) fn render_state_node_svg(
                 .unwrap_or(ctx.theme_defaults.rough_stroke_width_value)
                 .max(0.0);
 
-            let rough_start = timing_enabled.then(web_time::Instant::now);
+            let rough_start = timing.start();
             let key = StateRoughCacheKey {
                 tag: 6,
                 a: w.to_bits(),
                 b: h.to_bits(),
-                seed: ctx.hand_drawn_seed,
+                seed: ctx.hand_drawn_seed.seed(),
             };
-            if timing_enabled {
+            if timing.is_enabled() {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
             }
-            let (fill_d, stroke_d) = cached_paths(ctx, key, || {
+            let (fill_d, stroke_d) = cached_paths(ctx, key, allow_rough_cache, || {
                 roughjs_paths_for_svg_path(
                     &mermaid_rounded_rect_path_data(w, h),
                     "#ECECFF",
                     "#9370DB",
                     1.3,
                     "0 0",
-                    ctx.hand_drawn_seed,
+                    &ctx.hand_drawn_seed,
                 )
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
             });
@@ -757,9 +706,9 @@ pub(super) fn render_state_node_svg(
             } else {
                 Some(text_style_attr.as_str())
             };
-            let label_html_start = timing_enabled.then(web_time::Instant::now);
+            let label_html_start = timing.start();
             let label_dom = if ctx.html_labels {
-                state_node_label_html_with_style(&label, label_span_style)
+                state_node_label_html_with_style(&label, label_span_style, ctx.text_style.font_size)
             } else {
                 state_svg_text_label(&label, false, label_span_style)
             };
@@ -767,12 +716,12 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_label_html += s.elapsed();
             }
 
-            let div_style = if metrics.line_count > 1 {
+            let div_style = if measurement.uses_html_wrapping_table {
                 format!(
                     r#"{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;"#,
                     div_style_prefix,
                     fmt(ctx.html_label_wrapping_width),
-                    fmt(lw),
+                    fmt(ctx.html_label_wrapping_width),
                 )
             } else {
                 format!(
@@ -785,7 +734,7 @@ pub(super) fn render_state_node_svg(
             if data_look != "handDrawn" {
                 let rect_radius = if data_look == "neo" { 3.0 } else { 5.0 };
                 let rect_style = escape_xml_display(&shape_style_attr);
-                let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
+                let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
                 if ctx.html_labels {
                     let _ = write!(
                         out,
@@ -842,7 +791,7 @@ pub(super) fn render_state_node_svg(
                 return;
             }
 
-            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
+            let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
                 let _ = write!(
                     out,

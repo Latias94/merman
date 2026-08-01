@@ -64,12 +64,29 @@ describe("Merman binary resolution", () => {
       packageName: "merman-cli",
       extensionPath,
       workspaceRoots: [root],
-      directArgs: ["-q"],
+      directArgs: [
+        "render",
+        "-",
+        "--output",
+        "-",
+        "--format",
+        "svg",
+        "--quiet",
+      ],
       platform: "darwin",
       arch: "arm64",
     });
 
     assert.equal(invocation.command, packaged);
+    assert.deepEqual(invocation.args, [
+      "render",
+      "-",
+      "--output",
+      "-",
+      "--format",
+      "svg",
+      "--quiet",
+    ]);
     assert.equal(invocation.source, "packaged");
   });
 
@@ -179,7 +196,15 @@ describe("Merman binary resolution", () => {
       packageName: "merman-cli",
       extensionPath: path.join(root, "extension"),
       workspaceRoots: [root],
-      directArgs: ["-i", "-"],
+      directArgs: [
+        "render",
+        "-",
+        "--output",
+        "-",
+        "--format",
+        "svg",
+        "--quiet",
+      ],
       useCargoRun: true,
       cargoArgs: ["--release"],
       workspaceTrusted: true,
@@ -192,8 +217,13 @@ describe("Merman binary resolution", () => {
       "merman-cli",
       "--release",
       "--",
-      "-i",
+      "render",
       "-",
+      "--output",
+      "-",
+      "--format",
+      "svg",
+      "--quiet",
     ]);
     assert.equal(invocation.cwd, root);
     assert.equal(invocation.source, "cargo");

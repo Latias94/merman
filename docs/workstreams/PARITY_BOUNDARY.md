@@ -4,7 +4,7 @@ This document defines how far merman should go when reproducing Mermaid output. 
 keep merman useful as a Rust library: deterministic, browser-free, fast, and maintainable. Mermaid
 CLI pixel parity is a diagnostic tool, not the product boundary.
 
-Pinned upstream baseline: Mermaid `@11.12.3`.
+Pinned upstream baseline: Mermaid `@11.16.0`.
 
 ## Product Boundary
 
@@ -16,8 +16,8 @@ merman should optimize for:
   layout;
 - deterministic Rust implementation: no runtime browser dependency and no fixture-answer logic in
   core rendering code;
-- explicit parity debt: exact browser/export facts may be retained as generated data or root guards
-  only when the reason and removal path are documented.
+- explicit parity debt: browser-only residuals stay visible in verification reports and narrow
+  accepted-residual policy rather than changing production output.
 
 merman should not optimize for:
 
@@ -32,15 +32,15 @@ merman should not optimize for:
 | --- | --- | --- |
 | Mermaid semantics or layout rules | Required derivation | parser fields, config precedence, DOM order, rank/spacing, edge routing, label wrapper structure |
 | Shared deterministic browser-like behavior | Required derivation when the rule is explainable | HTML line boxes, whitespace around inline elements, CSS inheritance rules, stable quantization |
-| Browser/font measurement fact | Generated data only | glyph overhang, kerning, fallback font width, `getBBox()`, `getComputedTextLength()` |
-| Upstream export-root fact | Generated root guard until derivable | root `viewBox`, root `max-width`, emitted-bounds drift after DOM insertion |
-| Strict serialization or tiny browser lattice noise | Accepted drift when guarded or documented | 1/64px root drift, attribute serialization order already canonicalized elsewhere |
+| Browser/font measurement fact | General generated fact or host measurement | glyph overhang, kerning, fallback font width, `getBBox()`, `getComputedTextLength()` |
+| Upstream export-root difference | Required derivation or accepted residual | root `viewBox`, root `max-width`, emitted-bounds drift after DOM insertion |
+| Strict serialization or tiny browser lattice noise | Accepted drift when narrowly documented | 1/64px root drift, attribute serialization order already canonicalized elsewhere |
 | Fixture-answer literal without source | Reject | per-icon widths from root drift, one-off label width match arms, broad renderer-local constants |
 
 ## Required Derivation
 
-These differences must be fixed in parser, model, layout, or renderer code. Overrides are not an
-acceptable substitute except as a short-lived bridge with owner and removal criteria.
+These differences must be fixed in parser, model, layout, renderer, or generalized measurement
+code. Production overrides are not an acceptable substitute.
 
 - Parser and semantic model facts: nodes, edges, labels, subgraphs, diagram-specific fields,
   comments, IDs, directives, and config precedence.
@@ -66,17 +66,13 @@ represented as generated data when all of the following are true:
   a pinned Mermaid CLI export;
 - the generator or extraction path is documented;
 - the data is narrow and version-scoped to the Mermaid baseline;
-- `xtask report-overrides` inventories the category and the no-growth budget remains meaningful;
-- there is a plausible removal path, such as a better font table, a browser-probe import, or a
-  later typed model fix.
+- the key generalizes to unseen labels and contains no fixture id or complete label string;
+- fixture corpora are independent validation inputs rather than training answers.
 
 Valid generated-data categories include:
 
 - browser text metrics: `getBBox()`, `getComputedTextLength()`, `getBoundingClientRect()`, glyph
   overhang, kerning, fallback fonts, and SVG/HTML text export quirks;
-- root viewport guards: `viewBox` and root `max-width` values after upstream DOM insertion when
-  deterministic local layout cannot honestly derive the export bounds yet;
-- literal SVG/path quirks that are version-pinned and too narrow for a shared model;
 - generated font metrics from upstream font/CSS assets, provided they are generated or probed and
   not hand-entered because a fixture failed.
 
@@ -85,7 +81,8 @@ Generated data must not encode:
 - missing typed model data;
 - layout, routing, DOM-order, sanitizer, escaping, or Markdown bugs;
 - broad fallbacks that change unrelated diagrams;
-- hand-curated glyph or icon tables derived from root drift.
+- hand-curated glyph or icon tables derived from root drift;
+- fixture ids, complete source strings, or complete label strings.
 
 ## Accepted Drift
 
@@ -95,18 +92,16 @@ would harm the Rust library boundary.
 Accept drift when:
 
 - the difference is strict-XML serialization noise with no meaningful visual or semantic impact;
-- the difference is small browser float/lattice drift and is isolated by a root viewport guard;
+- the difference is small browser float/lattice drift and is isolated by a narrow verification
+  residual;
 - exact parity would require per-browser or per-font behavior that is not available without a
   browser engine;
 - exact parity would add broad special cases that are harder to explain than the observed
   difference;
 - the fixture remains useful as a guard but the core model should stay clean.
 
-Accepted drift must still be visible. Use one of these records:
-
-- retained root viewport override with current disabled-root evidence;
-- generated text/SVG metric table with source and removal criteria;
-- changelog/TODO note explaining why exact modeling is intentionally out of scope.
+Accepted drift must still be visible in a parity report, narrow accepted-residual policy, or a
+changelog/TODO note explaining why exact modeling is intentionally out of scope.
 
 ## FontAwesome And Icon Labels
 
@@ -119,8 +114,7 @@ Allowed:
 - use a clean nominal inline width when that keeps the renderer predictable;
 - treat unregistered custom-pack examples as empty inline elements when upstream emits no usable
   icon font;
-- retain root guards for diagrams whose exact root width depends on real FontAwesome per-icon
-  advance widths.
+- accept a bounded root residual when exact width depends on an unavailable FontAwesome font.
 
 Not allowed:
 
@@ -143,9 +137,9 @@ Before merging a parity change, answer these questions in the PR, commit note, o
 2. If it is semantic/layout behavior, where is the typed derivation?
 3. If it is generated data, what repeatable upstream source produced it?
 4. If it is accepted drift, where is the guard or documented retention note?
-5. Did the change delete stale overrides where the new model made them unnecessary?
-6. Did the relevant focused parity command and `cargo run -p xtask -- report-overrides
-   --check-no-growth` pass?
+5. Does generated measurement data generalize to unseen strings and use fixtures only for
+   validation?
+6. Did the relevant focused and global parity commands pass without production pins?
 
 ## Command Evidence
 
@@ -155,14 +149,5 @@ Use these commands according to blast radius:
 cargo fmt --all --check
 cargo clippy -p merman-render --all-targets -- -D warnings
 cargo nextest run -p merman-render
-cargo run -p xtask -- report-overrides --check-no-growth
 cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-mode parity-root --dom-decimals 3
-```
-
-For root-override deletion candidates, also run a focused disabled-root audit:
-
-```pwsh
-$env:MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES='1'
-cargo run -p xtask -- compare-<diagram>-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --filter <fixture> --report-root-all
-Remove-Item Env:\MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES
 ```

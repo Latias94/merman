@@ -7,6 +7,7 @@ const SUMMARY_WRAP_WIDTH: usize = 80;
 pub fn render_gantt_diagram(
     model: &GanttDiagramRenderModel,
     _options: &AsciiRenderOptions,
+    local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> String {
     let mut lines = Vec::new();
 
@@ -36,7 +37,7 @@ pub fn render_gantt_diagram(
             &mut lines,
             "  - ",
             "    ",
-            &render_task_text(task),
+            &render_task_text(task, local_time_zone),
             SUMMARY_WRAP_WIDTH,
         );
     }
@@ -44,9 +45,12 @@ pub fn render_gantt_diagram(
     trim_trailing_blank_lines(lines).join("\n")
 }
 
-fn render_task_text(task: &GanttRenderTask) -> String {
-    let start = format_date(task.start_ms);
-    let end = format_date(task.render_end_ms.unwrap_or(task.end_ms));
+fn render_task_text(
+    task: &GanttRenderTask,
+    local_time_zone: &merman_core::time::LocalTimeZone,
+) -> String {
+    let start = format_date(task.start_ms, local_time_zone);
+    let end = format_date(task.render_end_ms.unwrap_or(task.end_ms), local_time_zone);
     let mut flags = Vec::new();
     if task.milestone {
         flags.push("milestone");
@@ -71,13 +75,13 @@ fn render_task_text(task: &GanttRenderTask) -> String {
     format!("{} [{} -> {}]{}", task.task, start, end, suffix)
 }
 
-fn format_date(ms: i64) -> String {
+fn format_date(ms: i64, local_time_zone: &merman_core::time::LocalTimeZone) -> String {
     chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)
-        .map(|dt| {
-            let local = merman_core::time::datetime_to_local_fixed(
+        .and_then(|dt| {
+            let local = local_time_zone.datetime_to_local_fixed(
                 dt.with_timezone(&merman_core::time::utc_fixed_offset()),
-            );
-            local.date_naive().format("%Y-%m-%d").to_string()
+            )?;
+            Some(local.date_naive().format("%Y-%m-%d").to_string())
         })
         .unwrap_or_else(|| ms.to_string())
 }

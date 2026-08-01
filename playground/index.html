@@ -1,11 +1,15 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' blob: '__MERMAN_COMPARE_BOOTSTRAP_CSP_HASH__' '__MERMAN_BENCHMARK_BOOTSTRAP_CSP_HASH__' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Online Mermaid diagram editor powered by Rust + WebAssembly" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#121816" />
     <title>Merman Playground</title>
   </head>
   <body>

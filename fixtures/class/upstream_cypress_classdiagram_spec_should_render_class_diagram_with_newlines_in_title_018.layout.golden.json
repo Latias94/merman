@@ -1,21 +1,21 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Animal",
-          "x": 84.879,
+          "x": 84.601,
           "y": 96.0,
-          "width": 151.664,
+          "width": 141.758,
           "height": 192.0,
           "is_cluster": false
         },
         {
           "id": "Du\nck",
-          "x": 84.879,
+          "x": 84.601,
           "y": 350.0,
-          "width": 169.758,
+          "width": 169.202,
           "height": 216.0,
           "is_cluster": false
         }
@@ -29,15 +29,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 84.879,
+              "x": 84.601,
               "y": 192.0
             },
             {
-              "x": 84.879,
+              "x": 84.601,
               "y": 217.0
             },
             {
-              "x": 84.879,
+              "x": 84.601,
               "y": 242.0
             }
           ],
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 169.758,
+        "max_x": 169.202,
         "max_y": 458.0
       }
     }

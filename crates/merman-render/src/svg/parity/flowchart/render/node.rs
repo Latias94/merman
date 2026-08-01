@@ -1,6 +1,7 @@
 //! Flowchart node renderer.
 
 use super::super::*;
+use crate::svg::parity::timing::RenderTiming;
 
 pub(in crate::svg::parity::flowchart) mod geom;
 mod helpers;
@@ -27,9 +28,9 @@ pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'
     pub stroke_color: &'a str,
     pub stroke_width: f32,
     pub stroke_dasharray: &'a str,
-    pub hand_drawn_seed: u64,
+    pub hand_drawn_seed: &'a roughr::core::RoughRandomness,
     pub wrapped_in_a: bool,
-    pub timing_enabled: bool,
+    pub timing: RenderTiming,
 }
 
 impl FlowchartNodeRenderCommon<'_> {
@@ -79,22 +80,22 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     node_id: &str,
     origin_x: f64,
     origin_y: f64,
-    timing_enabled: bool,
+    timing: RenderTiming,
     details: &mut FlowchartRenderDetails,
-) {
+) -> crate::Result<()> {
     let Some(layout_node) = ctx.layout_nodes_by_id.get(node_id) else {
-        return;
+        return Ok(());
     };
 
     let x = layout_node.x + ctx.tx - origin_x;
     let y = layout_node.y + ctx.ty - origin_y;
 
     if helpers::try_render_self_loop_label_placeholder(out, node_id, x, y) {
-        return;
+        return Ok(());
     }
 
     let Some(resolved) = helpers::resolve_node_render_info(ctx, node_id) else {
-        return;
+        return Ok(());
     };
 
     let tooltip = ctx.tooltips.get(node_id).map(|s| s.as_str()).unwrap_or("");
@@ -150,7 +151,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         },
     );
 
-    let style_start = timing_enabled.then(web_time::Instant::now);
+    let style_start = timing.start();
     let mut compiled_styles =
         flowchart_compile_node_styles(ctx.class_defs, node_classes, node_styles, &[]);
     if let Some(s) = style_start {
@@ -177,13 +178,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         .unwrap_or("0 0")
         .trim();
 
-    let hand_drawn_seed = ctx
-        .config
-        .as_value()
-        .get("handDrawnSeed")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-
     let common = FlowchartNodeRenderCommon {
         node_id,
         shape,
@@ -203,9 +197,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         stroke_color,
         stroke_width,
         stroke_dasharray,
-        hand_drawn_seed,
+        hand_drawn_seed: &ctx.hand_drawn_seed,
         wrapped_in_a,
-        timing_enabled,
+        timing,
     };
     let mut label = FlowchartNodeLabelState {
         text: if resolved.label_text_is_node_id {
@@ -218,17 +212,18 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         dy: 0.0,
     };
 
-    if shapes::try_render_flowchart_v2_no_label(out, ctx, &common, details) {
+    if shapes::try_render_flowchart_no_label(out, ctx, &common, details) {
         out.push_str("</g>");
         if common.wrapped_in_a {
             out.push_str("</a>");
         }
-        return;
+        return Ok(());
     }
 
-    if shapes::render_flowchart_v2_shape(out, ctx, &common, &mut label, details) {
-        return;
+    if shapes::render_flowchart_shape(out, ctx, &common, &mut label, details)? {
+        return Ok(());
     }
 
     label::render_flowchart_node_label(out, ctx, &common, &label, &compiled_styles, details);
+    Ok(())
 }

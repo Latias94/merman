@@ -1,6 +1,6 @@
 mod support;
 
-use merman::render::{HeadlessRenderer, HostThemeOutput, HostThemePreset, HostThemeProfile};
+use merman::svg::{HeadlessRenderer, HostThemeOutput, HostThemePreset, HostThemeProfile};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = support::read_mermaid_or_default(

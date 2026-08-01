@@ -59,13 +59,14 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 - `repo-ref/mermaid/cypress/integration/rendering/eventmodeling/eventmodeling.spec.ts`
 - `repo-ref/mermaid/docs/syntax/eventmodeling.md`
 
-## Deferred Coverage
+## Render Boundary
 
-- The complex upstream parser fixture that includes unrendered `entity`, `note`, and `gwt`
-  statements. P2E-004 audited this fixture as upstream parser AST coverage rather than render
-  coverage: Mermaid's current eventmodeling DB/renderer does not consume `modelEntities`,
-  `noteEntities`, or `gwtEntities`.
-- `entity`, `note`, and `gwt` statement rendering. Local support stays deferred until an upstream
-  rendering contract or a separate full-AST export scope exists.
+- The single local semantic source parses and retains `entity`, `note`, and `gwt`, validates their
+  references, and exposes their spans through editor facts. Family parser/editor tests cover that
+  contract; an SVG fixture would not add rendered evidence because Mermaid's current DB/renderer
+  does not consume `modelEntities`, `noteEntities`, or `gwtEntities`.
+- Rendering for `entity`, `note`, and `gwt` remains intentionally absent until upstream defines a
+  rendering contract. The typed render projection follows the upstream omission without dropping
+  the syntax/editor information.
 - Strict data-block HTML parity for `html` / `md` / rich content data types.
 - Full strict DOM parity for the current Cypress image snapshot corpus.

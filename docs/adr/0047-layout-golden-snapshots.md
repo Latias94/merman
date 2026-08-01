@@ -4,9 +4,12 @@
 
 Accepted
 
+Updated 2026-07-15 for the canonical typed family artifact path.
+
 ## Context
 
-`merman` aims for 1:1 parity with Mermaid `@11.12.3`. We already use:
+`merman` aims for parity with the repository's pinned Mermaid baseline (currently `@11.16.0`). We
+already use:
 
 - semantic golden snapshots (`*.golden.json`) to lock parsing behavior
 - upstream SVG fixtures (`fixtures/upstream-svgs/**`) to lock end-to-end rendering output (see
@@ -37,8 +40,9 @@ localized earlier than SVG output, without needing to diff full SVG files.
       commit ids) so snapshots remain stable across runs; dynamic ids are replaced with the
       placeholder suffix `-<dynamic>`
 - Add an integration test in `merman-render` that:
-  - parses every fixture with `Engine::parse_diagram`
-  - runs `layout_parsed`
+  - parses every fixture through `Engine::parse_diagram_for_render_model`
+  - runs `merman_render::family::prepare` with one operation-owned `RenderSession`
+  - projects the typed artifact's layout JSON
   - compares the computed snapshot JSON `Value` to `*.layout.golden.json` if present
   - fails with a message instructing how to regenerate layout snapshots
 - Add an `xtask` command to regenerate layout snapshots:

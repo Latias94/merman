@@ -41,7 +41,7 @@ The release process also still depends on manual operator judgment for status af
 
 - R1. Users can choose between Rust core/render/analysis/LSP, browser subpaths, native bindings, VS Code, Typst, and CLI from a single support matrix without reading every platform README.
 - R2. The public package-choice matrix must make dependency weight visible with a compact signal such as size bucket, measured WASM size where available, ELK/license flag, host-dependency flag, and capability set.
-- R3. Feature and preset names must remain explicit and stable enough for alpha users: `core-full`, `core-host`, `analysis`, `render`, `elk-layout`, `ascii`, `editor-language`, `ratex-math`, `cytoscape-layout`, `browser-core`, `browser-render`, `browser-render-only`, `browser-ascii`, `browser-full`, `browser-full-no-elk`, and `browser-ratex-math`.
+- R3. Feature and preset names must remain explicit and stable enough for users of published prereleases: `core-full`, `core-host`, `analysis`, `render`, `elk-layout`, `ascii`, `editor-language`, `ratex-math`, `cytoscape-layout`, `browser-core`, `browser-render`, `browser-render-only`, `browser-ascii`, `browser-full`, `browser-full-no-elk`, and `browser-ratex-math`.
 - R4. The docs must continue to say there is no separate `@mermanjs/web/analysis` subpath because `@mermanjs/web/core` is the smallest analysis-capable browser artifact.
 
 **Release operation**

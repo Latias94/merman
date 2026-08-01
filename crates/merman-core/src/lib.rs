@@ -9,6 +9,7 @@
 pub mod baseline;
 pub mod common;
 pub mod common_db;
+mod compatibility_json;
 pub mod config;
 pub mod detect;
 pub mod diagram;
@@ -21,34 +22,45 @@ pub mod generated;
 pub mod geom;
 mod inline_config;
 pub mod models;
+mod parse_control;
 mod parse_pipeline;
 pub mod preprocess;
-mod runtime;
+pub mod resources;
+pub mod runtime;
 pub mod sanitize;
 mod theme;
+pub mod theme_color;
 pub mod time;
 pub mod utils;
-#[cfg(feature = "full-config")]
 mod yaml_config;
 
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
-    BLOCK_WIDTH_WARNING_RULE_ID, DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
+    BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CustomJsonProvenance,
+    CustomJsonRenderModel, CustomJsonRenderParser, DiagramParseOutcome, DiagramParseSnapshot,
+    DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
     GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
-    ParsedDiagramWithEditorFacts, ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
-    RenderSemanticParser,
+    ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
 };
 pub use editor::{
-    EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenameDomain,
-    EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticDiagnosticKind,
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
-    EditorSpanCoordinateSpace, SourceSpan,
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeFailure, EditorLexemeKind,
+    EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducer, EditorLexemeProducerKind,
+    EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticDiagnostic,
+    EditorSemanticDiagnosticKind, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
-pub use family::{DiagramFamilyCapability, DiagramHeaderFact, diagram_type_family_kind};
-pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
+pub use family::{
+    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_kind,
+    diagram_type_metadata_id, diagram_type_render_model_kind,
+};
+pub use parse_control::{ParseCancelled, ParseControl, ParseControlResult};
+pub use preprocess::{
+    PreprocessResult, PreprocessedSource, preprocess_diagram, preprocess_diagram_with_known_type,
+};
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.
 pub const MAX_DIAGRAM_NESTING_DEPTH: usize = 256;
@@ -60,65 +72,41 @@ pub fn supported_themes() -> &'static [&'static str] {
 
 /// Returns supported diagram metadata names for binding and host capability discovery.
 pub fn supported_diagrams() -> &'static [&'static str] {
-    supported_diagrams_for_profile(selected_baseline_registry_profile())
+    family::supported_diagram_metadata_ids()
 }
 
-/// Returns supported diagram metadata names for an explicit Mermaid registry profile.
-pub fn supported_diagrams_for_profile(
-    profile: baseline::BaselineRegistryProfile,
-) -> &'static [&'static str] {
-    family::supported_diagram_metadata_ids(profile)
-}
-
-/// Returns detector/parser/render capability facts for Mermaid diagram ids in the selected pinned
-/// profile. Detector-only families have both parser flags set to `false`.
+/// Returns the complete family capability facts for Mermaid diagram ids in the pinned baseline.
 pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
-    diagram_family_capabilities_for_profile(selected_baseline_registry_profile())
+    family::diagram_family_capabilities()
 }
 
-/// Returns detector/parser/render capability facts for Mermaid diagram ids in an explicit registry
-/// profile. Detector-only families have both parser flags set to `false`.
-pub fn diagram_family_capabilities_for_profile(
-    profile: baseline::BaselineRegistryProfile,
-) -> &'static [DiagramFamilyCapability] {
-    family::diagram_family_capabilities(profile)
-}
-
-/// Returns header completion facts for Mermaid diagram starters in the selected profile.
+/// Returns header completion facts for Mermaid diagram starters in the pinned baseline.
 pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
-    diagram_header_facts_for_profile(selected_baseline_registry_profile())
+    family::diagram_header_facts()
 }
 
-/// Returns header completion facts for Mermaid diagram starters in an explicit registry profile.
-pub fn diagram_header_facts_for_profile(
-    profile: baseline::BaselineRegistryProfile,
-) -> &'static [DiagramHeaderFact] {
-    family::diagram_header_facts(profile)
-}
-
-/// Returns the Mermaid registry profile selected by this crate's enabled feature set.
-pub fn selected_baseline_registry_profile() -> baseline::BaselineRegistryProfile {
-    family::selected_registry_profile()
-}
-
-fn build_default_effective_config(site_config: &MermaidConfig) -> MermaidConfig {
+fn build_default_effective_config(
+    site_config: &MermaidConfig,
+) -> std::result::Result<MermaidConfig, theme_color::ColorError> {
     let mut effective_config = site_config.clone();
-    theme::apply_theme_defaults(&mut effective_config);
-    effective_config
+    theme::apply_theme_defaults(&mut effective_config)?;
+    Ok(effective_config)
 }
 
-fn generated_default_effective_config() -> MermaidConfig {
-    static DEFAULT_EFFECTIVE_CONFIG: std::sync::OnceLock<MermaidConfig> =
-        std::sync::OnceLock::new();
+fn generated_default_effective_config()
+-> std::result::Result<MermaidConfig, theme_color::ColorError> {
+    static DEFAULT_EFFECTIVE_CONFIG: std::sync::OnceLock<
+        std::result::Result<MermaidConfig, theme_color::ColorError>,
+    > = std::sync::OnceLock::new();
     DEFAULT_EFFECTIVE_CONFIG
         .get_or_init(|| build_default_effective_config(&generated::default_site_config()))
         .clone()
 }
 
-/// Parser behavior switches shared by metadata, semantic JSON, and typed render-model parsing.
+/// Parser behavior switches for model-producing parse facades.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ParseOptions {
-    /// Return an `error` diagram model instead of an error when diagram parsing fails.
+    /// Return an `error` diagram model from JSON/render facades when diagram parsing fails.
     pub suppress_errors: bool,
 }
 
@@ -130,7 +118,7 @@ impl ParseOptions {
         }
     }
 
-    /// Lenient parsing: on parse failures, return an `error` diagram instead of returning an error.
+    /// Lenient model parsing: return an `error` diagram from JSON/render facades on failure.
     pub fn lenient() -> Self {
         Self {
             suppress_errors: true,
@@ -162,9 +150,8 @@ pub struct Engine {
     diagram_registry: DiagramRegistry,
     render_diagram_registry: RenderDiagramRegistry,
     site_config: MermaidConfig,
-    default_effective_config: MermaidConfig,
-    fixed_today_local: Option<chrono::NaiveDate>,
-    fixed_local_offset_minutes: Option<i32>,
+    default_effective_config: std::result::Result<MermaidConfig, theme_color::ColorError>,
+    runtime_policy: runtime::RuntimePolicy,
 }
 
 impl Default for Engine {
@@ -173,77 +160,109 @@ impl Default for Engine {
         let default_effective_config = generated_default_effective_config();
 
         Self {
-            registry: DetectorRegistry::for_pinned_mermaid_baseline(),
-            diagram_registry: DiagramRegistry::for_pinned_mermaid_baseline(),
-            render_diagram_registry: RenderDiagramRegistry::for_pinned_mermaid_baseline(),
+            registry: DetectorRegistry::pinned_mermaid_baseline(),
+            diagram_registry: DiagramRegistry::pinned_mermaid_baseline(),
+            render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             site_config,
             default_effective_config,
-            fixed_today_local: None,
-            fixed_local_offset_minutes: None,
+            runtime_policy: runtime::RuntimePolicy::deterministic(),
         }
     }
 }
 
 impl Engine {
-    pub(crate) fn parse_timing_enabled() -> bool {
-        #[cfg(feature = "host-timing")]
-        {
-            Self::parse_timing_enabled_from_env()
-        }
-
-        #[cfg(not(feature = "host-timing"))]
-        false
-    }
-
-    #[cfg(feature = "host-timing")]
-    fn parse_timing_enabled_from_env() -> bool {
-        static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *ENABLED.get_or_init(|| {
-            matches!(
-                std::env::var("MERMAN_PARSE_TIMING").as_deref(),
-                Ok("1") | Ok("true")
-            )
-        })
-    }
-
     /// Creates an engine using the pinned Mermaid baseline registries and default site config.
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub(crate) fn default_effective_config(&self) -> MermaidConfig {
-        self.default_effective_config.clone()
+    /// Creates an engine backed by all native system adapters.
+    pub fn try_native() -> std::result::Result<Self, runtime::RuntimePolicyError> {
+        Ok(Self::new().with_runtime_policy(runtime::RuntimePolicy::try_native()?))
+    }
+
+    pub(crate) fn default_effective_config(&self) -> Result<MermaidConfig> {
+        self.default_effective_config.clone().map_err(Error::from)
     }
 
     /// Overrides the "today" value used by diagrams that depend on local time (e.g. Gantt).
     ///
-    /// This exists primarily to make fixture snapshots deterministic. By default, Mermaid uses the
-    /// current local date.
+    /// This exists primarily to make fixture snapshots deterministic. The default runtime policy
+    /// uses the Unix epoch; native callers must explicitly select [`Engine::try_native`].
     pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
-        self.fixed_today_local = today;
+        self.runtime_policy = self.runtime_policy.with_fixed_today(today);
         self
     }
 
-    /// Overrides the local timezone offset (in minutes) used by diagrams that depend on local time
-    /// semantics (notably Gantt).
-    ///
-    /// This exists primarily to make fixture snapshots deterministic across CI runners. When
-    /// `None`, the system local timezone is used.
-    pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
-        self.fixed_local_offset_minutes = offset_minutes;
+    /// Selects a fixed local UTC offset for diagrams with local-time semantics.
+    pub fn try_with_fixed_local_offset_minutes(
+        mut self,
+        offset_minutes: i32,
+    ) -> std::result::Result<Self, runtime::RuntimePolicyError> {
+        self.runtime_policy = self
+            .runtime_policy
+            .try_with_fixed_local_offset_minutes(offset_minutes)?;
+        Ok(self)
+    }
+
+    /// Installs an already-resolved local timezone without consulting ambient process state.
+    pub fn with_local_time_zone(mut self, time_zone: time::LocalTimeZone) -> Self {
+        self.runtime_policy = self.runtime_policy.with_local_time_zone(time_zone);
         self
+    }
+
+    /// Replaces the complete runtime policy used to begin future operations.
+    pub fn with_runtime_policy(mut self, policy: runtime::RuntimePolicy) -> Self {
+        self.runtime_policy = policy;
+        self
+    }
+
+    /// Replays a previously frozen runtime context without consulting system state.
+    pub fn with_operation_context(self, context: runtime::OperationContext) -> Self {
+        self.with_runtime_policy(runtime::RuntimePolicy::from_operation_context(context))
+    }
+
+    pub fn runtime_policy(&self) -> &runtime::RuntimePolicy {
+        &self.runtime_policy
+    }
+
+    pub fn begin_operation(
+        &self,
+    ) -> std::result::Result<runtime::OperationContext, runtime::RuntimePolicyError> {
+        self.runtime_policy.begin_operation()
     }
 
     /// Returns the fixed local timezone offset configured for this engine.
     pub fn fixed_local_offset_minutes(&self) -> Option<i32> {
-        self.fixed_local_offset_minutes
+        self.runtime_policy.fixed_local_offset_minutes()
+    }
+
+    pub fn local_time_zone(&self) -> &time::LocalTimeZone {
+        self.runtime_policy.local_time_zone()
     }
 
     /// Applies site-level Mermaid config defaults.
     pub fn with_site_config(mut self, mut site_config: MermaidConfig) -> Self {
+        if site_config.is_empty_object() {
+            return self;
+        }
         // Merge overrides onto Mermaid schema defaults so detectors keep working.
         config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
         self.site_config.deep_merge(site_config.as_value());
+        self.default_effective_config = build_default_effective_config(&self.site_config);
+        self
+    }
+
+    /// Replaces the complete site-config environment while preserving custom registries.
+    ///
+    /// `None` restores the pinned Mermaid defaults. An explicit config is merged onto those
+    /// defaults without inheriting values from the engine's previous site config.
+    pub fn with_exact_site_config(mut self, site_config: Option<MermaidConfig>) -> Self {
+        self.site_config = generated::default_site_config();
+        if let Some(mut site_config) = site_config {
+            config::mirror_legacy_font_family_into_theme_variables(&mut site_config);
+            self.site_config.deep_merge(site_config.as_value());
+        }
         self.default_effective_config = build_default_effective_config(&self.site_config);
         self
     }
@@ -283,12 +302,8 @@ impl Engine {
     /// This is useful for UI render pipelines that are synchronous (e.g. immediate-mode UI),
     /// where introducing an async executor would be awkward. The parsing work is CPU-bound and
     /// does not perform I/O.
-    pub fn parse_metadata_sync(
-        &self,
-        text: &str,
-        options: ParseOptions,
-    ) -> Result<Option<ParseMetadata>> {
-        parse_pipeline::ParsePipeline::detect(self, text, options).metadata()
+    pub fn parse_metadata_sync(&self, text: &str) -> Result<ParseMetadata> {
+        parse_pipeline::ParsePipeline::detect(self, text, ParseOptions::strict()).metadata()
     }
 
     /// Parses metadata for an already-known diagram type (skips type detection).
@@ -299,7 +314,7 @@ impl Engine {
     /// ## Example (Markdown fence)
     ///
     /// ```no_run
-    /// use merman_core::{Engine, ParseOptions};
+    /// use merman_core::Engine;
     ///
     /// let engine = Engine::new();
     ///
@@ -318,17 +333,16 @@ impl Engine {
     /// };
     ///
     /// let meta = engine
-    ///     .parse_metadata_with_type_sync(diagram_type, diagram, ParseOptions::strict())?
-    ///     .expect("diagram detected");
+    ///     .parse_metadata_with_type_sync(diagram_type, diagram)?;
     /// # Ok::<(), merman_core::Error>(())
     /// ```
     pub fn parse_metadata_with_type_sync(
         &self,
         diagram_type: &str,
         text: &str,
-        options: ParseOptions,
-    ) -> Result<Option<ParseMetadata>> {
-        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options).metadata()
+    ) -> Result<ParseMetadata> {
+        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, ParseOptions::strict())
+            .metadata()
     }
 
     /// Parses editor-facing semantic facts when a family has a parser-backed implementation.
@@ -338,22 +352,30 @@ impl Engine {
         &self,
         diagram_type: &str,
         text: &str,
-        options: ParseOptions,
     ) -> Result<Option<EditorSemanticFacts>> {
-        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options)
-            .parse_editor_semantic_facts()
+        let Some(snapshot) = self.parse_diagram_snapshot_with_type_sync(diagram_type, text)? else {
+            return Ok(None);
+        };
+        let (_, outcome, editor_facts) = snapshot.into_parts();
+        match editor_facts {
+            ParsedEditorFacts::Available(facts) => Ok(Some(facts)),
+            ParsedEditorFacts::Unavailable => match outcome {
+                DiagramParseOutcome::Failed(error @ Error::UnsupportedDiagram { .. })
+                    if family::is_builtin_diagram_type(diagram_type) =>
+                {
+                    Err(error)
+                }
+                _ => Ok(None),
+            },
+        }
     }
 
     /// Async facade for [`Engine::parse_metadata_sync`].
     ///
     /// The work is CPU-bound and executes synchronously; this method exists for callers that
     /// prefer an async-shaped API.
-    pub async fn parse_metadata(
-        &self,
-        text: &str,
-        options: ParseOptions,
-    ) -> Result<Option<ParseMetadata>> {
-        self.parse_metadata_sync(text, options)
+    pub async fn parse_metadata(&self, text: &str) -> Result<ParseMetadata> {
+        self.parse_metadata_sync(text)
     }
 
     /// Async facade for [`Engine::parse_metadata_with_type_sync`].
@@ -363,9 +385,8 @@ impl Engine {
         &self,
         diagram_type: &str,
         text: &str,
-        options: ParseOptions,
-    ) -> Result<Option<ParseMetadata>> {
-        self.parse_metadata_with_type_sync(diagram_type, text, options)
+    ) -> Result<ParseMetadata> {
+        self.parse_metadata_with_type_sync(diagram_type, text)
     }
 
     /// Synchronous variant of [`Engine::parse_diagram`].
@@ -381,20 +402,45 @@ impl Engine {
             .parse_json(parse_pipeline::ParseTiming::Json)
     }
 
-    /// Parses semantic JSON and parser-backed editor facts from one preprocessing/detection pass.
+    /// Captures semantic JSON or its original error and parser-backed editor facts in one operation.
     ///
     /// This is intended for editor integrations that need both diagnostics/facts and the
-    /// Mermaid-compatible model. On parse errors it returns the same error as
-    /// [`Engine::parse_diagram_sync`]; callers that want recovery facts for invalid input should
-    /// use [`Engine::parse_editor_semantic_facts_with_type_sync`] after projecting the parse
-    /// diagnostic's diagram type.
-    pub fn parse_diagram_with_editor_facts_sync(
+    /// Mermaid-compatible model. Once preprocessing and detection succeed, family parse errors and
+    /// panics are retained inside the snapshot alongside metadata and recovery facts. Consumers
+    /// must project that failure state directly rather than parsing the source again.
+    /// Error suppression is deliberately absent from this API; suppression remains limited to
+    /// model-producing JSON and render facades.
+    pub fn parse_diagram_snapshot_sync(&self, text: &str) -> Result<Option<DiagramParseSnapshot>> {
+        let control = ParseControl::new();
+        self.parse_diagram_snapshot_controlled_sync(text, &control)
+            .map_err(Error::from)?
+    }
+
+    /// Captures an editor-facing parse operation with cooperative cancellation.
+    ///
+    /// Cancellation is returned through the outer [`ParseControlResult`] and is never converted
+    /// into a Mermaid parse error, failed snapshot, or recovery diagnostic.
+    pub fn parse_diagram_snapshot_controlled_sync(
         &self,
         text: &str,
-        options: ParseOptions,
-    ) -> Result<Option<ParsedDiagramWithEditorFacts>> {
-        parse_pipeline::ParsePipeline::detect(self, text, options)
-            .parse_json_with_editor_facts(parse_pipeline::ParseTiming::Json)
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<Option<DiagramParseSnapshot>>> {
+        parse_pipeline::ParsePipeline::detect(self, text, ParseOptions::strict())
+            .parse_editor_snapshot_controlled(parse_pipeline::ParseTiming::Json, control)
+    }
+
+    /// Captures one editor-facing parse operation when the diagram type is already known.
+    ///
+    /// This has the same closed snapshot contract as [`Engine::parse_diagram_snapshot_sync`], but
+    /// skips automatic detection. Family parse failures and panics remain inside the returned
+    /// snapshot.
+    pub fn parse_diagram_snapshot_with_type_sync(
+        &self,
+        diagram_type: &str,
+        text: &str,
+    ) -> Result<Option<DiagramParseSnapshot>> {
+        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, ParseOptions::strict())
+            .parse_editor_snapshot(parse_pipeline::ParseTiming::Json)
     }
 
     /// Async facade for [`Engine::parse_diagram_sync`].
@@ -504,11 +550,6 @@ impl Engine {
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
         self.parse_diagram_with_type_sync(diagram_type, text, options)
-    }
-
-    /// Backward-compatible shorthand for [`Engine::parse_metadata`].
-    pub async fn parse(&self, text: &str, options: ParseOptions) -> Result<Option<ParseMetadata>> {
-        self.parse_metadata(text, options).await
     }
 }
 

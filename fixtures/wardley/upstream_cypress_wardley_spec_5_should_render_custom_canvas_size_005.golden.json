@@ -1,0 +1,90 @@
+{
+  "diagramType": "wardley",
+  "model": {
+    "type": "wardley",
+    "title": "Custom Size Map",
+    "accTitle": null,
+    "accDescr": null,
+    "nodes": [
+      {
+        "id": "User",
+        "label": "User",
+        "x": 90.0,
+        "y": 95.0,
+        "className": "anchor"
+      },
+      {
+        "id": "App",
+        "label": "App",
+        "x": 85.0,
+        "y": 75.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "API",
+        "label": "API",
+        "x": 70.0,
+        "y": 50.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Database",
+        "label": "Database",
+        "x": 50.0,
+        "y": 30.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Cloud",
+        "label": "Cloud",
+        "x": 30.0,
+        "y": 15.0,
+        "className": "component",
+        "inertia": false
+      }
+    ],
+    "links": [
+      {
+        "source": "User",
+        "target": "App",
+        "dashed": false
+      },
+      {
+        "source": "App",
+        "target": "API",
+        "dashed": false
+      },
+      {
+        "source": "API",
+        "target": "Database",
+        "dashed": false
+      },
+      {
+        "source": "Database",
+        "target": "Cloud",
+        "dashed": false
+      }
+    ],
+    "trends": [
+      {
+        "nodeId": "Database",
+        "targetX": 60.0,
+        "targetY": 30.0
+      }
+    ],
+    "pipelines": [],
+    "annotations": [],
+    "notes": [],
+    "accelerators": [],
+    "deaccelerators": [],
+    "annotationsBox": null,
+    "axes": {},
+    "size": {
+      "width": 600.0,
+      "height": 800.0
+    }
+  }
+}

@@ -283,6 +283,159 @@ fn remove_node_removes_self_loop_once_with_cached_adjacency() {
 }
 
 #[test]
+fn remove_nodes_batches_incident_edges_and_preserves_live_order() {
+    let mut g: Graph<(), i32, ()> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+        ..Default::default()
+    });
+    g.set_parent("a", "parent");
+    g.set_parent("b", "parent");
+    g.set_parent("child", "b");
+    g.set_edge_named("a", "b", Some("ab"), Some(1));
+    g.set_edge_named("c", "d", Some("cd"), Some(2));
+    g.set_edge_named("b", "b", Some("self"), Some(3));
+    g.set_edge_named("d", "a", Some("da"), Some(4));
+    g.set_edge_named("b", "c", Some("bc"), Some(5));
+
+    // Materialize the cache first: a batch must remain correct after cached queries and only
+    // invalidate once when the mutation begins.
+    assert_eq!(g.successors("b"), vec!["b", "c"]);
+    assert_eq!(g.remove_nodes(["missing", "b", "b"].into_iter()), 1);
+
+    assert!(!g.has_node("b"));
+    assert_eq!(g.parent("child"), None);
+    assert_eq!(g.children("parent"), vec!["a"]);
+    assert_eq!(g.edge_count(), 2);
+    assert_eq!(
+        g.edge_keys()
+            .into_iter()
+            .map(|edge| (edge.v, edge.w, edge.name))
+            .collect::<Vec<_>>(),
+        vec![
+            ("c".to_string(), "d".to_string(), Some("cd".to_string())),
+            ("d".to_string(), "a".to_string(), Some("da".to_string())),
+        ]
+    );
+    assert_eq!(g.edge("c", "d", Some("cd")), Some(&2));
+    assert_eq!(g.edge("d", "a", Some("da")), Some(&4));
+}
+
+#[test]
+fn remove_nodes_clears_removed_parents_and_children_together() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        compound: true,
+        ..Default::default()
+    });
+    g.set_parent("child", "middle");
+    g.set_parent("middle", "root");
+    g.set_parent("sibling", "root");
+
+    assert_eq!(g.remove_nodes(["root", "middle"].into_iter()), 2);
+
+    assert_eq!(g.parent("child"), None);
+    assert_eq!(g.parent("sibling"), None);
+    assert_eq!(g.children_root(), vec!["child", "sibling"]);
+    assert_eq!(g.remove_nodes(std::iter::empty::<&str>()), 0);
+}
+
+#[test]
+fn remove_nodes_does_not_mutate_if_the_target_iterator_panics() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+    g.set_edge("a", "b");
+
+    let mut first = true;
+    let ids = std::iter::from_fn(move || {
+        if first {
+            first = false;
+            Some("a")
+        } else {
+            panic!("target iterator failed")
+        }
+    });
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| g.remove_nodes(ids)));
+
+    assert!(result.is_err());
+    assert!(g.has_node("a"));
+    assert!(g.has_node("b"));
+    assert!(g.has_edge("a", "b", None));
+    assert_eq!(g.node_count(), 2);
+    assert_eq!(g.edge_count(), 1);
+}
+
+#[test]
+fn set_parent_ix_rejects_removed_node_slots() {
+    let mut g: Graph<(), (), ()> = Graph::new(GraphOptions {
+        compound: true,
+        ..Default::default()
+    });
+    for id in ["child", "sibling", "removed_parent", "tail"] {
+        g.set_node(id, ());
+    }
+
+    assert!(g.remove_node("removed_parent"));
+    g.set_parent_ix(0, 2);
+    assert_eq!(g.parent("child"), None);
+
+    // Removing the tail trims both trailing slots. No stale parent index may survive and make a
+    // later batch index outside its live slot vector.
+    assert!(g.remove_node("tail"));
+    assert_eq!(g.remove_nodes(["sibling"].into_iter()), 1);
+    assert_eq!(g.children_root(), vec!["child"]);
+}
+
+fn batch_reference_graph(directed: bool) -> Graph<(), i32, ()> {
+    let mut g = Graph::new(GraphOptions {
+        directed,
+        multigraph: true,
+        compound: true,
+    });
+    for id in [
+        "root", "middle", "old", "keep_a", "drop_a", "keep_b", "drop_b", "tail",
+    ] {
+        g.set_node(id, ());
+    }
+    assert!(g.remove_node("old"));
+    g.set_parent("middle", "root");
+    g.set_parent("keep_a", "middle");
+    g.set_parent("drop_a", "middle");
+    g.set_parent("keep_b", "root");
+    g.set_parent("drop_b", "root");
+    g.set_edge_named("keep_a", "drop_a", Some("parallel_1"), Some(1));
+    g.set_edge_named("drop_a", "keep_a", Some("parallel_2"), Some(2));
+    g.set_edge_named("keep_a", "keep_b", Some("survivor"), Some(3));
+    g.set_edge_named("drop_b", "drop_b", Some("self"), Some(4));
+    g.set_edge_named("tail", "keep_b", Some("tail"), Some(5));
+    g
+}
+
+#[test]
+fn remove_nodes_matches_sequential_removal_across_graph_modes() {
+    let targets = ["drop_b", "missing", "middle", "drop_a", "drop_b", "tail"];
+
+    for directed in [true, false] {
+        let mut batch = batch_reference_graph(directed);
+        let mut sequential = batch_reference_graph(directed);
+
+        assert_eq!(batch.remove_nodes(targets), 4);
+        let sequential_count = targets
+            .into_iter()
+            .filter(|id| sequential.remove_node(id))
+            .count();
+        assert_eq!(sequential_count, 4);
+
+        let batch_nodes: Vec<_> = batch.nodes().collect();
+        assert_eq!(batch_nodes, sequential.nodes().collect::<Vec<_>>());
+        assert_eq!(batch.edge_keys(), sequential.edge_keys());
+        assert_eq!(batch.children_root(), sequential.children_root());
+        for id in batch_nodes {
+            assert_eq!(batch.parent(id), sequential.parent(id));
+            assert_eq!(batch.children(id), sequential.children(id));
+        }
+    }
+}
+
+#[test]
 fn set_edge_creates_endpoint_nodes_and_uses_default_edge_label() {
     let mut g: Graph<(), Option<i32>, ()> = Graph::new(GraphOptions::default());
     g.set_default_edge_label(|| Some(9));

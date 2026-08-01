@@ -4,7 +4,7 @@ use crate::model::{
     IshikawaHeadLayout, IshikawaLabelBoxLayout, IshikawaLineLayout, IshikawaPairLayout,
     IshikawaSubGroupLayout, IshikawaTextLayout,
 };
-use crate::text::{TextMeasurer, TextStyle, round_to_1_64_px_ties_to_even};
+use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::ishikawa::{
     IshikawaDiagramRenderModel, IshikawaNodeRenderModel as IshikawaNode,
 };
@@ -23,16 +23,7 @@ mod config;
 pub(crate) use config::IshikawaConfigView;
 use config::IshikawaLayoutSettings;
 
-pub fn layout_ishikawa_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<IshikawaDiagramLayout> {
-    let model: IshikawaDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_ishikawa_diagram_typed(&model, effective_config, measurer)
-}
-
-pub fn layout_ishikawa_diagram_typed(
+pub(crate) fn layout_ishikawa_diagram_typed(
     model: &IshikawaDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
@@ -684,12 +675,6 @@ fn ishikawa_anchored_line_bbox_x(
         .measurer
         .measure_svg_text_computed_length_px(line, style)
         .max(0.0);
-    let measured_width = ctx.measurer.measure(line, style).width.max(0.0);
-    let anchored_advance = if (measured_width - computed).abs() <= 0.031_25 {
-        round_to_1_64_px_ties_to_even(measured_width.max(computed))
-    } else {
-        computed
-    };
     let (center_left, center_right) = ctx
         .measurer
         .measure_svg_text_bbox_x_with_ascii_overhang(line, style);
@@ -703,7 +688,7 @@ fn ishikawa_anchored_line_bbox_x(
             right: center_right.max(0.0),
         },
         TextAnchor::End => TextHorizontalBounds {
-            left: anchored_advance + start_overhang,
+            left: computed + start_overhang,
             right: end_overhang,
         },
     }

@@ -7,7 +7,7 @@ Default `render_svg_sync` stays parity-oriented. Use a profile only when a host 
 ## Rust API
 
 ```rust
-use merman::render::{HeadlessRenderer, HostThemePreset, HostThemeProfile};
+use merman::svg::{HeadlessRenderer, HostThemePreset, HostThemeProfile};
 
 let profile = HostThemeProfile::from_preset(HostThemePreset::OneDark);
 let renderer = HeadlessRenderer::new()
@@ -19,7 +19,7 @@ let svg = renderer.render_svg_sync(source)?;
 Use request-scoped helpers when only one diagram render should use a host theme:
 
 ```rust
-use merman::render::{HeadlessRenderer, HostThemePreset, HostThemeProfile};
+use merman::svg::{HeadlessRenderer, HostThemePreset, HostThemeProfile};
 
 let renderer = HeadlessRenderer::new().with_diagram_id("preview");
 let profile = HostThemeProfile::from_preset(HostThemePreset::GruvboxDark);
@@ -90,7 +90,7 @@ Bindings accept the same profile through `host_theme`:
 native SVG text and generated fallback text are both visible. It is off by default because repeated
 labels can be intentional in unrelated nodes.
 
-`preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`, `themeVariables`, `site_config`, and `output` values override the preset. These host presets are separate from Mermaid core theme names returned by `supported_themes()`. Built-in host presets default to editor-safe `resvg-safe` output; an empty `{ "host_theme": {} }` remains a no-op.
+`preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`, `theme_variables`, `site_config`, and `output` values override the preset. These host presets are separate from Mermaid core theme names returned by `supported_themes()`. Built-in host presets default to editor-safe `resvg-safe` output; an empty `{ "host_theme": {} }` remains a no-op.
 
 ## Design Notes
 
@@ -106,5 +106,5 @@ Series palette is mapped to Mermaid's existing palette entry points such as `cSc
 For a stronger visual showcase, run:
 
 ```bash
-cargo run -p merman --features render --example example_13_stylized_theme_showcase > showcase.svg
+cargo run -p merman --features svg --example example_13_stylized_theme_showcase > showcase.svg
 ```

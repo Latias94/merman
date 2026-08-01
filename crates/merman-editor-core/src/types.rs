@@ -11,6 +11,10 @@ impl DocumentUri {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub(crate) fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
 }
 
 impl From<String> for DocumentUri {
@@ -35,6 +39,14 @@ pub enum DocumentKind {
 impl DocumentKind {
     pub fn is_markdown(self) -> bool {
         matches!(self, Self::Markdown | Self::Mdx)
+    }
+
+    pub const fn source_kind(self) -> merman_analysis::SourceKind {
+        match self {
+            Self::Diagram => merman_analysis::SourceKind::Diagram,
+            Self::Markdown => merman_analysis::SourceKind::Markdown,
+            Self::Mdx => merman_analysis::SourceKind::Mdx,
+        }
     }
 
     pub fn from_path(path: &str) -> Self {

@@ -33,7 +33,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];
     let path_data = path_from_points(&pts);
     let (fill_d, stroke_d) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
                 common.fill_color,
@@ -69,7 +69,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_triangle_extract(
     let bbox_y_offset = if ctx.node_html_labels {
         0.0
     } else {
-        crate::text::svg_create_text_bbox_y_offset_px(&node_text_style)
+        ctx.measurer
+            .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style)
     };
     let padding_term = if ctx.node_html_labels { p / 2.0 } else { p };
     label.dy = h / 2.0 - metrics.height / 2.0 - padding_term + bbox_y_offset;

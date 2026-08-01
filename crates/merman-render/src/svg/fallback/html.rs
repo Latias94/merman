@@ -70,7 +70,7 @@ pub(super) fn htmlish_to_text_lines(html: &str) -> Vec<String> {
 
 fn line_width_html_px(measurer: &dyn TextMeasurer, style: &TextStyle, text: &str) -> f64 {
     measurer
-        .measure_wrapped_raw(text, style, None, WrapMode::HtmlLike)
+        .measure_wrapped(text, style, None, WrapMode::HtmlLike)
         .width
 }
 
@@ -80,10 +80,9 @@ fn wrap_html_line_to_width(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
 ) -> Vec<String> {
-    const EPS_PX: f64 = 0.125;
     if !max_width_px.is_finite()
         || max_width_px <= 0.0
-        || line_width_html_px(measurer, style, line) <= max_width_px + EPS_PX
+        || line_width_html_px(measurer, style, line) <= max_width_px
     {
         return vec![line.to_string()];
     }
@@ -99,7 +98,7 @@ fn wrap_html_line_to_width(
 
         let candidate = format!("{cur}{tok}");
         let candidate_trimmed = candidate.trim_end();
-        if line_width_html_px(measurer, style, candidate_trimmed) <= max_width_px + EPS_PX {
+        if line_width_html_px(measurer, style, candidate_trimmed) <= max_width_px {
             cur = candidate;
             continue;
         }

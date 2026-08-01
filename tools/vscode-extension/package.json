@@ -2,10 +2,10 @@
   "name": "merman-vscode",
   "displayName": "Merman",
   "description": "Local Mermaid authoring, diagnostics, preview, and export powered by Merman.",
-  "version": "0.8.0",
+  "version": "0.1.0",
   "publisher": "latias94",
   "preview": true,
-  "license": "MIT OR Apache-2.0",
+  "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://github.com/Latias94/merman#readme",
   "bugs": {
     "url": "https://github.com/Latias94/merman/issues"
@@ -186,20 +186,21 @@
             "scope": "window",
             "order": 30
           },
-          "merman.analysis.parse.suppress_errors": {
-            "type": "boolean",
-            "default": false,
-            "markdownDescription": "Forward lenient parse mode to `merman-lsp`.",
-            "scope": "window",
-            "order": 40
-          },
-          "merman.analysis.resources.max_source_bytes": {
+          "merman.analysis.resources.limits.max_source_bytes": {
             "type": "integer",
             "default": 0,
             "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `0` uses the server default.",
             "scope": "window",
             "minimum": 0,
-            "order": 50
+            "order": 40
+          },
+          "merman.analysis.resources.limits.max_document_diagrams": {
+            "type": "integer",
+            "default": 0,
+            "markdownDescription": "Optional Mermaid fence count cap for Markdown and MDX documents. `0` uses the server default.",
+            "scope": "window",
+            "minimum": 0,
+            "order": 41
           },
           "merman.analysis.lint.profile": {
             "type": "string",
@@ -218,7 +219,7 @@
               "Opt-in recommended authoring diagnostics.",
               "Strict authoring diagnostics."
             ],
-            "order": 60
+            "order": 50
           },
           "merman.analysis.lint.enable_rules": {
             "type": "array",
@@ -228,7 +229,7 @@
             "default": [],
             "markdownDescription": "Additional lint rules enabled in `merman-lsp`.",
             "scope": "window",
-            "order": 70
+            "order": 60
           },
           "merman.analysis.lint.disable_rules": {
             "type": "array",
@@ -238,7 +239,7 @@
             "default": [],
             "markdownDescription": "Lint rules disabled in `merman-lsp`.",
             "scope": "window",
-            "order": 80
+            "order": 70
           },
           "merman.analysis.lint.rule_severities": {
             "type": "array",
@@ -266,7 +267,7 @@
             "default": [],
             "markdownDescription": "Per-rule severity overrides forwarded to `merman-lsp`.",
             "scope": "window",
-            "order": 90
+            "order": 80
           }
         }
       },
@@ -557,30 +558,155 @@
           "when": "(resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx) && merman.pngClipboardAvailable"
         }
       ]
+    },
+    "semanticTokenTypes": [
+      {
+        "id": "mermanDelimiter",
+        "superType": "operator",
+        "description": "Punctuation that delimits Mermaid syntax."
+      },
+      {
+        "id": "mermanIdentifier",
+        "superType": "variable",
+        "description": "A parser-backed Mermaid identifier."
+      },
+      {
+        "id": "mermanDate",
+        "superType": "number",
+        "description": "A Mermaid date literal."
+      },
+      {
+        "id": "mermanDuration",
+        "superType": "number",
+        "description": "A Mermaid duration literal."
+      },
+      {
+        "id": "mermanBoolean",
+        "superType": "keyword",
+        "description": "A Mermaid boolean literal."
+      },
+      {
+        "id": "mermanStyle",
+        "superType": "string",
+        "description": "A Mermaid style expression."
+      },
+      {
+        "id": "mermanColor",
+        "superType": "string",
+        "description": "A Mermaid color literal."
+      },
+      {
+        "id": "mermanLiteral",
+        "superType": "string",
+        "description": "An unquoted Mermaid literal."
+      },
+      {
+        "id": "mermanFrontmatter",
+        "superType": "string",
+        "description": "A Mermaid YAML frontmatter block."
+      },
+      {
+        "id": "mermanDirective",
+        "superType": "keyword",
+        "description": "A Mermaid initialization directive."
+      }
+    ],
+    "semanticTokenModifiers": [
+      {
+        "id": "mermanReference",
+        "description": "Marks a parser-backed reference to a Mermaid entity."
+      },
+      {
+        "id": "mermanEntity",
+        "description": "Marks a parser-backed Mermaid semantic entity."
+      },
+      {
+        "id": "mermanOutline",
+        "description": "Marks parser-backed Mermaid outline structure."
+      },
+      {
+        "id": "mermanPayload",
+        "description": "Marks parser-backed Mermaid payload data."
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "mermaid",
+        "scopes": {
+          "mermanDelimiter": [
+            "punctuation.definition.mermaid",
+            "punctuation.separator.mermaid"
+          ],
+          "mermanIdentifier": [
+            "variable.other.readwrite.mermaid",
+            "entity.name.variable.mermaid"
+          ],
+          "mermanDate": [
+            "constant.numeric.date.mermaid",
+            "constant.numeric"
+          ],
+          "mermanDuration": [
+            "constant.numeric.duration.mermaid",
+            "constant.numeric"
+          ],
+          "mermanBoolean": [
+            "constant.language.boolean.mermaid",
+            "constant.language.boolean"
+          ],
+          "mermanStyle": [
+            "meta.embedded.inline.css.mermaid",
+            "string.unquoted.mermaid"
+          ],
+          "mermanColor": [
+            "constant.other.color.mermaid",
+            "constant.other.color"
+          ],
+          "mermanLiteral": [
+            "string.unquoted.mermaid",
+            "string.unquoted"
+          ],
+          "mermanFrontmatter": [
+            "meta.embedded.block.frontmatter.mermaid",
+            "string.unquoted.mermaid"
+          ],
+          "mermanDirective": [
+            "meta.preprocessor.mermaid",
+            "keyword.control.directive.mermaid"
+          ]
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "[mermaid]": {
+        "editor.semanticHighlighting.enabled": true
+      }
     }
   },
   "scripts": {
-    "build": "npm run clean && npm run compile && npm run bundle",
+    "build": "npm run licenses:check && npm run clean && npm run compile && npm run bundle",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "compile": "tsc -p .",
-    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --outfile=dist/extension.js --sourcemap --sources-content=false",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --outfile=dist/extension.js --sourcemap --sources-content=false --legal-comments=external",
     "check": "tsc -p . --noEmit",
     "test": "npm run build && node --test --test-concurrency=1 dist/test/**/*.test.js scripts/*.test.mjs",
     "test:extension-host": "npm run build && node scripts/run-extension-host-smoke.mjs",
     "prepare:binaries": "node scripts/prepare-binaries.mjs",
     "package": "npm run build && node scripts/package-vsix.mjs",
     "verify:vsix": "node scripts/verify-vsix.mjs",
-    "smoke:vsix": "node scripts/smoke-vsix.mjs"
+    "smoke:vsix": "node scripts/smoke-vsix.mjs",
+    "licenses:check": "node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --check",
+    "licenses:generate": "node ../../scripts/generate-npm-license-report.mjs --package-root tools/vscode-extension --output tools/vscode-extension/THIRD_PARTY_LICENSES/npm-production-dependencies.txt --write"
   },
   "dependencies": {
-    "vscode-languageclient": "10.0.1"
+    "vscode-languageclient": "10.1.0"
   },
   "devDependencies": {
     "@types/node": "26.0.1",
     "@types/vscode": "1.120.0",
-    "@vscode/test-electron": "^3.0.0",
+    "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "3.9.2",
     "esbuild": "0.28.1",
+    "generate-license-file": "4.2.1",
     "typescript": "6.0.3"
   },
   "allowScripts": {

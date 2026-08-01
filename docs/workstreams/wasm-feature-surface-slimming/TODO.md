@@ -16,8 +16,8 @@ Last updated: 2026-06-10
 
 - [x] WFS-020 [owner=codex] [deps=WFS-010] [scope=crates/xtask,docs/workstreams/wasm-feature-surface-slimming]
   Goal: Add or script repeatable dependency/import measurement gates for feature profiles.
-  Validation: profile cargo-tree checks; `wasm-tools print` import allowlist checks; size snapshot
-  output stored outside the repo or in a generated report.
+  Validation: profile cargo-tree checks; structured Wasmi import/export/signature checks; size
+  snapshot output stored outside the repo or in a generated report.
   Review: The gate should fail on `__wbindgen_placeholder__`, `js-sys`, WebCrypto, or JS Date in
   pure-wasm outputs.
   Evidence: `xtask profile-budget` landed with dependency, import, export, and wasm size checks for

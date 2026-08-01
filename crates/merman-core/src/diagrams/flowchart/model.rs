@@ -1,10 +1,13 @@
+use super::FlowchartLexemeComponent;
 use crate::{DiagramWarningFact, SourceSpan};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowchartV2Model {
+pub struct FlowchartModel {
+    #[serde(default)]
+    pub keyword: String,
     #[serde(default, rename = "accDescr")]
     pub acc_descr: Option<String>,
     #[serde(default, rename = "accTitle")]
@@ -31,7 +34,7 @@ pub struct FlowchartV2Model {
     pub warning_facts: Vec<DiagramWarningFact>,
 }
 
-impl FlowchartV2Model {
+impl FlowchartModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
@@ -54,6 +57,8 @@ pub struct FlowNode {
     pub label_type: Option<String>,
     #[serde(rename = "layoutShape")]
     pub layout_shape: Option<String>,
+    #[serde(default)]
+    pub shape: Option<String>,
     #[serde(default)]
     pub icon: Option<String>,
     #[serde(default)]
@@ -90,6 +95,10 @@ pub struct FlowEdge {
     pub label_type: Option<String>,
     #[serde(default, rename = "type")]
     pub edge_type: Option<String>,
+    #[serde(default)]
+    pub arrow: String,
+    #[serde(default, rename = "isUserDefinedId")]
+    pub is_user_defined_id: bool,
     #[serde(default)]
     pub stroke: Option<String>,
     #[serde(default)]
@@ -190,6 +199,7 @@ pub(crate) struct LabeledText {
     pub kind: TitleKind,
     pub span: Option<SourceSpan>,
     pub selection: Option<SourceSpan>,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -200,6 +210,7 @@ pub(crate) struct SubgraphHeader {
     pub raw_title: String,
     pub title_kind: TitleKind,
     pub id_equals_title: bool,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 impl Default for SubgraphHeader {
@@ -211,6 +222,7 @@ impl Default for SubgraphHeader {
             raw_title: String::new(),
             title_kind: TitleKind::Text,
             id_equals_title: true,
+            lexeme_components: Vec::new(),
         }
     }
 }

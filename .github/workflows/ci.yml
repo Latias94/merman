@@ -35,11 +35,23 @@ jobs:
       - name: Verify release crate order docs
         run: python3 scripts/verify-release-crate-order.py
 
-      - name: Verify release surface contract
-        run: python3 scripts/verify-release-surfaces.py
+      - name: Verify release version projections
+        run: python3 scripts/release-version.py
+
+      - name: Verify CLI installation metadata
+        run: python3 scripts/cli_installation_contract.py
+
+      - name: Verify third-party source and license contract
+        run: python3 scripts/verify-third-party-licenses.py
+
+      - name: Verify legal material projections
+        run: python3 scripts/sync-release-legal-materials.py --check
+
+      - name: Verify Cargo package legal materials
+        run: python3 scripts/verify_crate_package_legal_materials.py
 
       - name: Test release and workflow hygiene scripts
-        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_release_status.py scripts/test_verify_release_surfaces.py scripts/test_workflow_path_filters.py scripts/test_fuzz_config.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py scripts/test_publish.py
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Check whitespace (pull request)
         if: github.event_name == 'pull_request'
@@ -54,6 +66,118 @@ jobs:
           else
             git diff --check "$base...${{ github.sha }}"
           fi
+
+  cli-contracts:
+    name: cli-contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Install CLI asset validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes elvish fish mandoc zsh
+
+      - name: Verify generated CLI distribution assets
+        run: python3 scripts/generate_cli_assets.py --check
+
+      - name: Validate CLI distribution assets
+        run: python3 scripts/verify_cli_assets.py --require bash,zsh,fish,elvish,mandoc
+
+      - name: Test exact CLI feature process matrix
+        run: python3 scripts/verify_cli_process_matrix.py --locked
+
+      - name: Lint all CLI feature branches
+        run: cargo clippy --locked -p merman-cli --all-targets --all-features -- -D warnings
+
+  nix-cli-package:
+    name: nix-cli-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3.21.8
+
+      - name: Build reusable Nix derivation
+        run: |
+          nix-build --no-out-link default.nix \
+            --arg pkgs 'import (builtins.getFlake (toString ./.)).inputs.nixpkgs { }'
+
+      - name: Check Nix flake
+        run: |
+          nix flake check --all-systems --no-build --no-write-lock-file
+          nix flake check --print-build-logs --no-write-lock-file
+
+      - name: Run Nix flake app
+        run: nix run --no-write-lock-file . -- --version
+
+      - name: Check immutable Nix lock
+        run: git diff --exit-code -- flake.lock
+
+  cli-artifact-profiles:
+    name: cli-artifact-profiles (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-2025-vs2026
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate PowerShell completion
+        if: runner.os == 'Windows'
+        run: python3 scripts/verify_cli_assets.py --require powershell
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Build exact CLI artifact profiles
+        run: |
+          python3 scripts/artifact_profile_recipe.py cli-analysis --build-host --locked
+          python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
 
   build-test:
     name: build-test (${{ matrix.os }})
@@ -78,8 +202,96 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Resolve pinned Mermaid source
+        id: mermaid-source
+        if: matrix.parity
+        shell: bash
+        run: |
+          commit="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          bundle = json.loads(
+              Path("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json").read_text(encoding="utf-8")
+          )
+          print(bundle["release"]["source"]["commit"])
+          PY
+          )"
+          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid Mermaid source commit in reference bundle: $commit" >&2
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        name: Checkout pinned Mermaid Cypress sources
+        if: matrix.parity
+        with:
+          repository: mermaid-js/mermaid
+          ref: ${{ steps.mermaid-source.outputs.commit }}
+          path: repo-ref/mermaid
+          persist-credentials: false
+          sparse-checkout: |
+            cypress/integration/rendering/treeView/treeView.spec.ts
+            cypress/integration/rendering/cynefin/cynefin.spec.js
+            cypress/integration/rendering/railroad/railroad.spec.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Verify pinned Mermaid source checkout
+        if: matrix.parity
+        shell: bash
+        env:
+          MERMAID_SOURCE_COMMIT: ${{ steps.mermaid-source.outputs.commit }}
+        run: |
+          actual="$(git -C repo-ref/mermaid rev-parse HEAD)"
+          test "$actual" = "$MERMAID_SOURCE_COMMIT"
+
+      - name: Resolve pinned DOMPurify source
+        id: dompurify-source
+        if: matrix.parity
+        shell: bash
+        run: |
+          commit="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          bundle = json.loads(
+              Path("tools/upstreams/MERMAID_REFERENCE_BUNDLE.json").read_text(encoding="utf-8")
+          )
+          print(bundle["sanitizer"]["source"]["commit"])
+          PY
+          )"
+          if [[ ! "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid DOMPurify source commit in reference bundle: $commit" >&2
+            exit 1
+          fi
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        name: Checkout pinned DOMPurify source
+        if: matrix.parity
+        with:
+          repository: cure53/DOMPurify
+          ref: ${{ steps.dompurify-source.outputs.commit }}
+          path: repo-ref/dompurify
+          persist-credentials: false
+          sparse-checkout: |
+            dist/purify.cjs.js
+          sparse-checkout-cone-mode: false
+
+      - name: Verify pinned DOMPurify source checkout
+        if: matrix.parity
+        shell: bash
+        env:
+          DOMPURIFY_SOURCE_COMMIT: ${{ steps.dompurify-source.outputs.commit }}
+        run: |
+          actual="$(git -C repo-ref/dompurify rev-parse HEAD)"
+          test "$actual" = "$DOMPURIFY_SOURCE_COMMIT"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android,wasm32-unknown-unknown
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
@@ -103,16 +315,145 @@ jobs:
         with:
           cache-targets: false
 
+      - name: Verify pinned Mermaid reference before runtime install
+        if: matrix.parity
+        run: cargo run --locked -p xtask -- verify-mermaid-reference
+
+      - name: Setup Node for generated Mermaid artifacts
+        if: matrix.parity
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            platforms/node/package-lock.json
+            tools/mermaid-cli/package-lock.json
+
+      - name: Install pinned Mermaid runtime
+        if: matrix.parity
+        working-directory: tools/mermaid-cli
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm ci
+
+      - name: Verify generated architecture contracts
+        if: matrix.parity
+        run: |
+          cargo run --locked -p xtask -- verify-generated
+          python3 scripts/verify_artifact_dependency_closures.py
+          cargo run --locked -p xtask -- verify-feature-matrix --strict
+          python3 .agents/skills/align-mermaid-release/scripts/validate_workflow.py
+
       - name: Test (nextest)
         run: cargo nextest run --cargo-quiet
 
+      - name: Test architecture compile-fail contracts
+        if: matrix.parity
+        run: |
+          cargo test -p merman-render --doc
+          cargo test -p merman --doc --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
+
+      - name: Test exact Rustdoc artifact recipe
+        if: matrix.parity
+        run: |
+          features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
+          cargo nextest run -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
+
+      - name: Test exact artifact owner APIs
+        if: matrix.parity
+        shell: bash
+        run: |
+          run_owner_test() {
+            local profile="$1"
+            local expected_package="$2"
+            shift 2
+
+            local package
+            package="$(python3 scripts/artifact_profile_recipe.py "$profile" --field package)"
+            test "$package" = "$expected_package"
+
+            local features
+            features="$(python3 scripts/artifact_profile_recipe.py "$profile")"
+            local -a args=(
+              --locked
+              --package "$package"
+              --no-default-features
+              --cargo-quiet
+            )
+            if [[ -n "$features" ]]; then
+              args+=(--features "$features")
+            fi
+            cargo nextest run "${args[@]}" "$@"
+          }
+
+          run_owner_test rust-analysis merman-analysis \
+            --test analyzer facts_and_diagnostics_payloads_use_independent_version_constants
+          run_owner_test rust-ascii merman-ascii \
+            --test flowchart_model flowchart_parser_lr_chain_matches_upstream_ascii_golden
+          run_owner_test rust-editor-core merman-editor-core \
+            --test completion completion_offers_known_node_ids_with_text_edits
+          run_owner_test rust-editor-facade merman \
+            --test feature_surface_smoke facade_exposes_callable_analysis_and_editor_apis
+          run_owner_test rust-svg-basic merman
+          run_owner_test rust-bindings-core-native-sdk merman-bindings-core \
+            --lib runtime_capabilities_follow_callable_feature_surface
+          run_owner_test rust-export-jpeg merman-export \
+            --lib jpeg_leaf_encodes_a_sealed_svg
+          run_owner_test rust-export-png merman-export \
+            --lib png_leaf_encodes_a_sealed_svg
+          run_owner_test rust-export-pdf merman-export \
+            --lib pdf_leaf_encodes_a_sealed_svg
+
+      - name: Test external Cargo feature unification contract
+        if: matrix.parity
+        run: |
+          cargo nextest run --locked -p merman-bindings-core --no-default-features \
+            --lib --cargo-quiet \
+            -E 'test(render_and_layout_entry_points_report_missing_svg_capability) | test(ascii_entry_point_reports_missing_ascii_feature) | test(analysis_entry_points_report_missing_analysis_feature)'
+          cargo nextest run --locked -p merman-ffi --no-default-features \
+            --lib --cargo-quiet \
+            -E 'test(metadata_collect_returns_owned_catalogs_and_typed_failures) | test(svg_operation_follows_the_resolved_dependency_surface_and_owns_its_result)'
+          cargo nextest run --locked -p merman-uniffi --no-default-features \
+            --lib --cargo-quiet \
+            -E 'test(engine_exposes_metadata) | test(engine_render_svg_matches_the_resolved_transport_surface)'
+          cargo nextest run --locked -p merman-bindings-core --no-default-features \
+            --features merman-bindings-core/svg,merman/layout-cytoscape,merman/layout-elk,merman/math,merman/system-timing \
+            --lib --cargo-quiet
+          features="$(python3 scripts/artifact_profile_recipe.py apple-uniffi-native)"
+          qualified_features="merman-uniffi/${features//,/,merman-uniffi/}"
+          cargo nextest run --locked -p merman-uniffi -p merman --no-default-features \
+            --features "$qualified_features,merman/system-timing" \
+            --lib --cargo-quiet \
+            -E 'package(merman-uniffi) & test(engine_exposes_metadata)'
+          cargo nextest run --manifest-path crates/merman-node/Cargo.toml --locked \
+            --no-default-features \
+            --features svg,layout-cytoscape,layout-elk,math,transport-napi,merman-bindings-core/png,merman-bindings-core/system-clock,merman-bindings-core/system-timezone,merman-bindings-core/system-random \
+            --lib --cargo-quiet
+
+      - name: Install Node candidate development dependencies
+        if: matrix.parity
+        run: npm ci --prefix platforms/node
+
+      - name: Verify Node candidate contracts and nested lock freshness
+        if: matrix.parity
+        run: npm test --prefix platforms/node
+
+      - name: Verify Cypress corpus against pinned Mermaid source
+        if: matrix.parity
+        run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
+
       - name: Test (nextest, merman render)
         if: matrix.parity
-        run: cargo nextest run -p merman --features render --cargo-quiet
+        run: cargo nextest run -p merman --no-default-features --features layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing --cargo-quiet
 
-      - name: Test C FFI no-render validation smoke
+      - name: Test C FFI artifact-profile consumer smoke
         if: matrix.parity
-        run: cargo nextest run -p merman-ffi --no-default-features --features core-full,core-host,analysis --test c_consumer_smoke --cargo-quiet
+        run: |
+          features="$(python3 scripts/artifact_profile_recipe.py c-abi-native)"
+          qualified_features="merman-ffi/${features//,/,merman-ffi/}"
+          cargo nextest run --locked -p merman-ffi -p merman --no-default-features \
+            --features "$qualified_features,merman/system-timing" \
+            --test c_consumer_smoke --cargo-quiet
 
       - name: Check UniFFI no-render feature sets
         if: matrix.parity
@@ -120,20 +461,16 @@ jobs:
           cargo check -p merman-uniffi --no-default-features
           cargo check -p merman-uniffi --no-default-features --features ascii
 
-      - name: Build (release)
-        run: cargo build --release --locked -p merman-cli
-
-      - name: Override inventory
+      - name: SVG DOM structure
         if: matrix.parity
-        run: cargo run --release -p xtask -- report-overrides
+        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3
 
       - name: SVG DOM parity
         if: matrix.parity
         run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3
 
-      - name: SVG DOM parity (parity-root, non-blocking)
+      - name: SVG DOM parity (parity-root)
         if: matrix.parity
-        continue-on-error: true
         run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
 
   typst-package:
@@ -178,20 +515,26 @@ jobs:
           "${typst_root}/typst" --version
 
       - name: Test Typst plugin crate
-        run: cargo test -p merman-typst-plugin
+        run: |
+          cargo test --locked -p merman-typst-plugin --no-default-features
+          cargo test --locked -p merman-typst-plugin --no-default-features \
+            --features merman-bindings-core/svg,merman-bindings-core/math,merman-bindings-core/system-clock,merman-bindings-core/system-timezone,merman-bindings-core/system-random
 
-      - name: Build Typst package
-        run: cargo run -p xtask -- build-typst-package
+      - name: Check exact Typst WASM size budget
+        run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
-      - name: Check Typst wasm ABI and size
-        run: cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
+      - name: Check exact Typst dependency closure
+        run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+
+      - name: Build and validate Typst package
+        run: cargo run --locked -p xtask -- build-typst-package --profile publish
 
       - name: Smoke Typst package
         shell: bash
         run: |
           set -euo pipefail
           typst_bin="${RUNNER_TEMP}/typst-${TYPST_CLI_VERSION}/typst"
-          cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst "${typst_bin}"
+          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --typst "${typst_bin}"
 
       - name: Upload Typst package smoke artifacts
         if: failure()
@@ -228,10 +571,13 @@ jobs:
         uses: taiki-e/install-action@wasm-tools
 
       - name: Check WASM size budgets
-        run: cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
+        run: cargo run --locked -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
-      - name: Build Typst package
-        run: cargo run -p xtask -- build-typst-package
+      - name: Check exact Typst dependency closure
+        run: cargo run --locked -p xtask -- profile-budget check-deps --profile typst-wasm --artifact-profile typst-wasm
+
+      - name: Build and validate Typst package
+        run: cargo run --locked -p xtask -- build-typst-package --profile publish
 
       - name: Download Typst compatibility version
         shell: bash
@@ -253,7 +599,7 @@ jobs:
         run: |
           set -euo pipefail
           typst_bin="${RUNNER_TEMP}/typst-${TYPST_COMPAT_CLI_VERSION}/typst"
-          cargo run -p xtask -- typst-package-smoke --skip-wasm-build --tests-only --typst "${typst_bin}"
+          cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm-build --tests-only --typst "${typst_bin}"
 
       - name: Upload Typst package compatibility artifacts
         if: failure()
@@ -274,16 +620,11 @@ jobs:
       - name: Check Python platform scripts
         run: |
           python3 -m py_compile \
-            scripts/release-status.py \
-            scripts/verify-release-surfaces.py \
-            scripts/verify-ffi-publish-surface.py \
             scripts/verify-platform-bindings.py \
             scripts/build-python-uniffi-wheel.py \
+            scripts/python_wheel_licenses.py \
             platforms/android/build-android.py \
             platforms/flutter/tool/android-smoke.py
-
-      - name: Verify FFI publish surface
-        run: python3 scripts/verify-ffi-publish-surface.py
 
       - name: Check shell scripts
         run: bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-ios.sh platforms/flutter/build-desktop.sh
@@ -295,11 +636,14 @@ jobs:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-      KOTLIN_VERSION: "1.9.24"
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        run: echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -314,17 +658,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-
-      - name: Setup Kotlin compiler
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -L \
-            -o "$RUNNER_TEMP/kotlin-compiler.zip" \
-            "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip"
-          unzip -q "$RUNNER_TEMP/kotlin-compiler.zip" -d "$RUNNER_TEMP/kotlin"
-          echo "$RUNNER_TEMP/kotlin/kotlinc/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/kotlin/kotlinc/bin/kotlinc" -version
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -341,8 +674,23 @@ jobs:
       - name: Precache Flutter Android artifacts
         run: flutter precache --android
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        shell: bash
+        env:
+          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
       - name: Verify platform bindings
         run: python3 scripts/verify-platform-bindings.py
+
+      - name: Verify Flutter Android packaging
+        run: python3 platforms/flutter/tool/android-smoke.py --targets aarch64-linux-android
 
   android-instrumentation:
     name: android-instrumentation
@@ -351,11 +699,16 @@ jobs:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-      ANDROID_NDK_VERSION: "26.3.11579264"
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        run: |
+          echo "java=$(python3 platforms/android/build-android.py --print-version java)" >> "$GITHUB_OUTPUT"
+          echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -371,22 +724,25 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
-        with:
-          gradle-version: "9.4.1"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install Android NDK
         shell: bash
+        env:
+          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
         run: |
           set -euo pipefail
           sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-35"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Run Android JVM contract tests
+        run: platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace
 
       - name: Enable KVM access
         shell: bash
@@ -411,7 +767,7 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-linux-hw-accel: false
-          script: python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke --gradle-path gradle
+          script: python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke
 
   python-uniffi-wheel:
     name: python-uniffi-wheel
@@ -435,9 +791,6 @@ jobs:
       - name: Build and smoke Python UniFFI wheel
         run: python scripts/build-python-uniffi-wheel.py --run-smoke
 
-      - name: Run Python example
-        run: PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/smoke.py
-
   c-ffi-example:
     name: c-ffi-example
     runs-on: ubuntu-24.04
@@ -453,53 +806,65 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build merman C ABI library
-        run: cargo build -p merman-ffi --release
+        run: python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
 
       - name: Build and run C example
         run: |
+          profile_dir="$(python3 scripts/artifact_profile_recipe.py c-abi-native --field profile)"
+          library_dir="target/$profile_dir"
           cc -I crates/merman-ffi/include \
             crates/merman-ffi/examples/render_svg.c \
-            -L target/release -lmerman_ffi \
-            -Wl,-rpath,"$PWD/target/release" \
+            -L "$library_dir" -lmerman_ffi \
+            -Wl,-rpath,"$PWD/$library_dir" \
             -o target/merman-ffi-render-svg
           target/merman-ffi-render-svg | grep -q '<svg'
 
-  flutter-package-check:
-    name: flutter-package-check
-    runs-on: ubuntu-24.04
+  apple-swift-5-9-smoke:
+    name: apple-swift-5-9-smoke
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
+      - name: Select Xcode 15.2 and verify Swift 5.9
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_15.2.app/Contents/Developer
+          swift --version
+          swift --version | grep -Eq 'Apple Swift version 5\.9(\.[0-9]+)?([[:space:]]|$)'
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.38.3"
-          channel: stable
-          cache: true
+      - name: Build Apple XCFramework with Swift 5.9
+        env:
+          MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
+        run: bash scripts/build-apple-xcframework.sh
 
-      - name: Validate Flutter package
-        working-directory: platforms/flutter
+      - name: Validate Swift 5.9 package
         run: |
-          flutter pub get
-          flutter analyze
-          dart format --set-exit-if-changed lib example
+          swift package describe
+          swift build
+          swiftc -typecheck -module-name Merman \
+            -target arm64-apple-ios14.0 \
+            -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -I platforms/apple/Merman.xcframework/ios-arm64/Headers \
+            platforms/apple/Sources/Merman/Generated/Merman.swift
+          swiftc -typecheck -module-name Merman \
+            -target arm64-apple-ios14.0-simulator \
+            -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
+            -I platforms/apple/Merman.xcframework/ios-arm64_x86_64-simulator/Headers \
+            platforms/apple/Sources/Merman/Generated/Merman.swift
+          swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
-      - name: Run Dart FFI smoke
-        working-directory: platforms/flutter
-        run: |
-          cargo build -p merman-ffi
-          dart run example/smoke.dart ../../target/debug/libmerman_ffi.so
-
-  apple-ffi-smoke:
-    name: apple-ffi-smoke
+  apple-uniffi-smoke:
+    name: apple-uniffi-smoke
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
@@ -523,4 +888,7 @@ jobs:
         run: |
           swift package describe
           swift build
+          swift build --triple arm64-apple-ios14.0 --sdk "$(xcrun --sdk iphoneos --show-sdk-path)"
+          swift build --triple arm64-apple-ios14.0-simulator --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+          git diff --exit-code -- platforms/apple/Sources/Merman/Generated

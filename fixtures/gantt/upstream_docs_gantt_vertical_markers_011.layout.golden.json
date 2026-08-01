@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 148.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 148.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -34,7 +34,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -42,7 +42,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -89,7 +89,7 @@
             "width": 49.28,
             "x": 75.0,
             "y": 143.0,
-            "class": "taskText taskText0 width-49.279999999999994"
+            "class": "taskTextOutsideRight taskTextOutside0 width-49.279999999999994"
           }
         },
         {
@@ -105,9 +105,9 @@
           "vert": false,
           "bar": {
             "id": "task1",
-            "x": 140.0,
+            "x": 116.0,
             "y": 50.0,
-            "width": 97.0,
+            "width": 61.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -118,7 +118,7 @@
             "text": "Task A ",
             "font_size": 11.0,
             "width": 32.34,
-            "x": 188.5,
+            "x": 146.5,
             "y": 63.5,
             "class": "taskText taskText0 width-32.339999999999996"
           }
@@ -136,9 +136,9 @@
           "vert": false,
           "bar": {
             "id": "task2",
-            "x": 237.0,
+            "x": 177.0,
             "y": 74.0,
-            "width": 258.0,
+            "width": 162.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -149,7 +149,7 @@
             "text": "Task B ",
             "font_size": 11.0,
             "width": 32.34,
-            "x": 366.0,
+            "x": 258.0,
             "y": 87.5,
             "class": "taskText taskText0 width-32.339999999999996"
           }
@@ -167,7 +167,7 @@
           "vert": true,
           "bar": {
             "id": "v2",
-            "x": 980.0,
+            "x": 644.0,
             "y": 35.0,
             "width": 1.6,
             "height": 88.0,
@@ -180,7 +180,7 @@
             "text": "Final vert ",
             "font_size": 11.0,
             "width": 44.77,
-            "x": 980.0,
+            "x": 644.0,
             "y": 143.0,
             "class": "taskText taskText0 width-44.77"
           }
@@ -196,38 +196,38 @@
         },
         {
           "time_ms": 1771176900000.0,
-          "x": 237.0,
+          "x": 177.0,
           "label": "17:35"
         },
         {
           "time_ms": 1771177200000.0,
-          "x": 398.0,
+          "x": 278.0,
           "label": "17:40"
         },
         {
           "time_ms": 1771177500000.0,
-          "x": 560.0,
+          "x": 380.0,
           "label": "17:45"
         },
         {
           "time_ms": 1771177800000.0,
-          "x": 721.0,
+          "x": 481.0,
           "label": "17:50"
         },
         {
           "time_ms": 1771178100000.0,
-          "x": 883.0,
+          "x": 583.0,
           "label": "17:55"
         },
         {
           "time_ms": 1771178400000.0,
-          "x": 1044.0,
+          "x": 684.0,
           "label": "18:00"
         }
       ],
       "top_ticks": [],
       "title": null,
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

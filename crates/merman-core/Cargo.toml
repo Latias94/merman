@@ -12,43 +12,51 @@ documentation = "https://docs.rs/merman-core"
 readme = "README.md"
 keywords = ["mermaid", "diagrams", "parser", "ast"]
 categories = ["parser-implementations", "visualization"]
-build = "build.rs"
+
+[package.metadata.merman]
+artifact-profile-required = true
 
 [features]
-# `full` keeps Mermaid-compatible parser/config/sanitizer affordances on by default.
-# `host` keeps ambient host capabilities on by default.
-# Disable defaults for pure-WASM/Typst profiles.
-default = ["full", "host"]
-full = ["full-registry", "full-config", "full-sanitization"]
-full-registry = []
-full-config = ["dep:granit-parser", "dep:json5"]
-full-sanitization = ["dep:lol_html", "dep:url"]
-host = ["host-clock", "host-random", "host-timing"]
-host-clock = ["chrono/clock", "chrono/wasmbind"]
-host-random = ["dep:uuid", "uuid/js", "uuid/v4"]
-host-timing = ["dep:web-time"]
+# Mermaid language parsing, configuration, sanitization, detection, and family facts are the
+# unconditional core contract. Features only admit explicit system adapters.
+default = []
+system-clock = []
+system-timezone = [
+    "dep:jiff",
+    "dep:sha2",
+    "jiff/std",
+    "jiff/tz-system",
+    "jiff/tz-fat",
+    "jiff/tzdb-bundle-platform",
+    "jiff/tzdb-zoneinfo",
+    "jiff/tzdb-concatenated",
+    "jiff/perf-inline",
+]
+system-random = ["dep:getrandom", "getrandom/std"]
+system-timing = ["dep:web-time"]
 
 [dependencies]
 euclid.workspace = true
 htmlize.workspace = true
-indexmap.workspace = true
+indexmap = { workspace = true, features = ["serde"] }
 lalrpop-util.workspace = true
-regex.workspace = true
 serde.workspace = true
-serde_json.workspace = true
-granit-parser = { workspace = true, optional = true }
-json5 = { workspace = true, optional = true }
+serde_json = { workspace = true, features = ["preserve_order"] }
+granit-parser.workspace = true
+json5.workspace = true
 thiserror.workspace = true
-lol_html = { workspace = true, optional = true }
-url = { workspace = true, optional = true }
-uuid = { workspace = true, optional = true }
+unicode-general-category.workspace = true
+lol_html.workspace = true
+url.workspace = true
 chrono.workspace = true
+jiff = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
 ryu-js.workspace = true
 rustc-hash.workspace = true
+sha2 = { workspace = true, optional = true }
 web-time = { workspace = true, optional = true }
 
-[build-dependencies]
-lalrpop.workspace = true
-
 [dev-dependencies]
-futures.workspace = true
+futures = { workspace = true, features = ["executor"] }
+merman-fixture-render-context = { path = "../merman-fixture-render-context" }
+regex.workspace = true

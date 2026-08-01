@@ -1,9 +1,32 @@
 use futures::executor::block_on;
-use merman_core::{Engine, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_flowchart_v2_svg};
-use merman_render::text::VendoredFontMetricsTextMeasurer;
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, RenderSession};
+use merman_render::family;
+use merman_render::model::FlowchartLayout;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+
+fn layout_flowchart_render_model(
+    parsed: ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: RenderSession,
+) -> merman_render::Result<FlowchartLayout> {
+    let artifact = family::prepare(parsed, options, session)?;
+    let projection = artifact.layout_json()?;
+    serde_json::from_value(projection["layout"]["FlowchartV2"].clone())
+        .map_err(merman_render::Error::from)
+}
+
+fn render_flowchart_artifact(
+    parsed: ParsedDiagramRender,
+    layout_options: &LayoutOptions,
+    session: RenderSession,
+) -> merman_render::Result<String> {
+    let artifact = family::prepare(parsed, layout_options, session)?;
+    let rendered =
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
+    Ok(rendered.svg().to_owned())
+}
 
 fn attr_value<'a>(s: &'a str, name: &str) -> &'a str {
     let needle = format!(r#"{name}=""#);
@@ -77,36 +100,29 @@ fn assert_close(actual: f64, expected: f64, name: &str) {
 
 #[test]
 fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
+    let _session = RenderEnvironment::deterministic().begin_session().unwrap();
     let text = r#"flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(
+        parsed.clone(),
+        &layout_options,
+        RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("begin layout session"),
+    )
+    .expect("layout ok");
     let node = layout.nodes.iter().find(|n| n.id == "n0").expect("node n0");
 
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            apply_root_overrides: false,
-            ..Default::default()
-        },
-    )
-    .expect("render svg");
+    let svg = render_flowchart_artifact(parsed, &layout_options, _session).expect("render svg");
 
     let node_start = svg.find(r#"<g class="node default""#).expect("node group");
     let node_chunk = &svg[node_start..];
@@ -150,35 +166,19 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
 
 #[test]
 fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
+    let _session = RenderEnvironment::deterministic().begin_session().unwrap();
     let text = r#"flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    let svg = render_flowchart_v2_svg(
-        &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            apply_root_overrides: false,
-            ..Default::default()
-        },
-    )
-    .expect("render svg");
+    let svg = render_flowchart_artifact(parsed, &layout_options, _session).expect("render svg");
 
     let node_start = svg.find(r#"<g class="node default""#).expect("node group");
     let node_chunk = &svg[node_start..];

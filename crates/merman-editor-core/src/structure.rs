@@ -1,7 +1,8 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentUri, Position, Range};
 use merman_analysis::{
-    ByteSpan, EditorSymbolKind, FenceLineItem, FenceSemanticItem, FenceTextIndexSource, SourceMap,
+    ByteSpan, EditorSymbolKind, FenceLineItem, FenceRenamePolicy, FenceSemanticItem,
+    FenceTextIndexSource, SourceMap,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -43,10 +44,10 @@ impl OutlineItem {
             value.push_str(&markdown_plain_text(detail));
             value.push_str("\n\n");
         }
-        if let Some(kind) = fence.diagram_type.as_deref() {
+        if let Some(kind) = fence.diagram_type() {
             value.push_str(&format!("Diagram: {}\n", markdown_plain_text(kind)));
         }
-        value.push_str(&format!("Scope: fence {}\n", fence.index + 1));
+        value.push_str(&format!("Scope: fence {}\n", fence.index() + 1));
 
         EditorMarkupContent { value }
     }
@@ -111,14 +112,18 @@ fn is_markdown_control(char: char) -> bool {
 
 pub fn document_symbols(snapshot: &DocumentSnapshot) -> Vec<EditorDocumentSymbol> {
     snapshot
-        .fences
+        .fences()
         .iter()
+        .filter(|fence| !fence.text_index().source().is_unavailable())
         .map(outline_for_fence)
-        .filter_map(|item| item.to_document_symbol(&snapshot.source_map))
+        .filter_map(|item| item.to_document_symbol(snapshot.source_map()))
         .collect()
 }
 
-pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<EditorSymbolInformation> {
+pub fn search_document_symbols(
+    snapshot: &DocumentSnapshot,
+    query: &str,
+) -> Vec<EditorSymbolInformation> {
     let query = query.trim();
     let query = if query.is_empty() {
         None
@@ -126,24 +131,15 @@ pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<Editor
         Some(query.to_lowercase())
     };
     let mut symbols = Vec::new();
-    for fence in &snapshot.fences {
+    for fence in snapshot.fences() {
+        if fence.text_index().source().is_unavailable() {
+            continue;
+        }
         let outline = outline_for_fence(fence);
-        collect_workspace_symbols(snapshot, &outline, None, query.as_deref(), &mut symbols);
+        collect_document_symbol_matches(snapshot, &outline, None, query.as_deref(), &mut symbols);
     }
 
-    sort_workspace_symbols(&mut symbols);
-    symbols
-}
-
-pub fn workspace_symbols_for_snapshots<'a>(
-    snapshots: impl IntoIterator<Item = &'a DocumentSnapshot>,
-    query: &str,
-) -> Vec<EditorSymbolInformation> {
-    let mut symbols = snapshots
-        .into_iter()
-        .flat_map(|snapshot| workspace_symbols(snapshot, query))
-        .collect::<Vec<_>>();
-    sort_workspace_symbols(&mut symbols);
+    sort_symbol_information(&mut symbols);
     symbols
 }
 
@@ -168,7 +164,7 @@ pub fn selection_range(
     let mut spans = Vec::new();
 
     if let Some(relative_offset) = fence_relative_offset(snapshot, fence, position)
-        && let Some(item) = fence.text_index.semantic_item_at_offset(relative_offset)
+        && let Some(item) = fence.text_index().semantic_item_at_offset(relative_offset)
     {
         push_selection_span(
             &mut spans,
@@ -183,51 +179,49 @@ pub fn selection_range(
         push_selection_span(&mut spans, absolute_offset, item.span);
     }
 
-    push_selection_span(
-        &mut spans,
-        absolute_offset,
+    push_selection_span(&mut spans, absolute_offset, {
+        let body_range = fence.body_range();
         ByteSpan {
-            start: fence.body_start,
-            end: fence.body_end,
-        },
-    );
-    push_selection_span(
-        &mut spans,
-        absolute_offset,
+            start: body_range.start,
+            end: body_range.end,
+        }
+    });
+    push_selection_span(&mut spans, absolute_offset, {
+        let document_range = fence.document_range();
         ByteSpan {
-            start: fence.start,
-            end: fence.end,
-        },
-    );
+            start: document_range.start,
+            end: document_range.end,
+        }
+    });
 
-    spans_to_selection_range(&snapshot.source_map, fence.text_index.source(), spans)
+    spans_to_selection_range(snapshot.source_map(), fence.text_index().source(), spans)
 }
 
 pub fn folding_ranges(snapshot: &DocumentSnapshot) -> Vec<EditorFoldingRange> {
     let mut ranges = Vec::new();
 
-    for fence in &snapshot.fences {
-        if fence.fence_delimiter.is_some() {
+    for fence in snapshot.fences() {
+        if fence.fence_delimiter().is_some() {
             push_folding_span(
                 &mut ranges,
-                &snapshot.source_map,
-                fence.text_index.source(),
-                trim_folding_span(
-                    &snapshot.text,
+                snapshot.source_map(),
+                fence.text_index().source(),
+                trim_folding_span(snapshot.text(), {
+                    let document_range = fence.document_range();
                     ByteSpan {
-                        start: fence.start,
-                        end: fence.end,
-                    },
-                ),
+                        start: document_range.start,
+                        end: document_range.end,
+                    }
+                }),
             );
         }
 
         for child in outline_children(fence) {
             push_folding_span(
                 &mut ranges,
-                &snapshot.source_map,
+                snapshot.source_map(),
                 child.fact_source,
-                trim_folding_span(&snapshot.text, child.span),
+                trim_folding_span(snapshot.text(), child.span),
             );
         }
     }
@@ -250,23 +244,26 @@ fn trim_folding_span(text: &str, mut span: ByteSpan) -> ByteSpan {
 
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<EditorHover> {
     let fence = snapshot.fence_at_position(position)?;
+    if fence.text_index().source().is_unavailable() {
+        return None;
+    }
     let absolute_offset = snapshot.byte_offset_for_position(position)?;
     let relative_offset = fence_relative_offset(snapshot, fence, position)?;
     let outline = outline_for_fence(fence);
     let item = fence
-        .text_index
+        .text_index()
         .semantic_item_at_offset(relative_offset)
         .map(|item| outline_item_from_semantic(fence, item))
         .or_else(|| outline.find_deepest(absolute_offset).cloned())
         .unwrap_or(outline);
-    let range = range_from_span(&snapshot.source_map, item.selection).or_else(|| {
-        range_from_span(
-            &snapshot.source_map,
+    let range = range_from_span(snapshot.source_map(), item.selection).or_else(|| {
+        range_from_span(snapshot.source_map(), {
+            let document_range = fence.document_range();
             ByteSpan {
-                start: fence.start,
-                end: fence.end,
-            },
-        )
+                start: document_range.start,
+                end: document_range.end,
+            }
+        })
     });
 
     Some(EditorHover {
@@ -279,12 +276,15 @@ pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<EditorHo
 pub fn goto_definition(snapshot: &DocumentSnapshot, position: Position) -> Option<EditorLocation> {
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
-    let item = fence.text_index.entity_item_at_offset(offset)?;
-    let span = absolute_span(fence, fence.text_index.first_reference_span_for_item(item)?);
-    let range = range_from_span(&snapshot.source_map, span)?;
+    let item = fence.text_index().entity_item_at_offset(offset)?;
+    let span = absolute_span(
+        fence,
+        fence.text_index().first_reference_span_for_item(item)?,
+    );
+    let range = range_from_span(snapshot.source_map(), span)?;
     Some(EditorLocation {
-        uri: snapshot.uri.clone(),
-        fact_source: fence.text_index.source(),
+        uri: snapshot.uri().clone(),
+        fact_source: fence.text_index().source(),
         range,
     })
 }
@@ -296,27 +296,27 @@ pub fn references(
 ) -> Option<Vec<EditorLocation>> {
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
-    let item = fence.text_index.entity_item_at_offset(offset)?;
+    let item = fence.text_index().entity_item_at_offset(offset)?;
     let mut locations = fence
-        .text_index
+        .text_index()
         .reference_spans_for_item(item)
         .iter()
         .copied()
         .filter_map(|span| {
             let span = absolute_span(fence, span);
-            range_from_span(&snapshot.source_map, span).map(|range| EditorLocation {
-                uri: snapshot.uri.clone(),
-                fact_source: fence.text_index.source(),
+            range_from_span(snapshot.source_map(), span).map(|range| EditorLocation {
+                uri: snapshot.uri().clone(),
+                fact_source: fence.text_index().source(),
                 range,
             })
         })
         .collect::<Vec<_>>();
 
     if !include_declaration
-        && let Some(def_span) = fence.text_index.first_reference_span_for_item(item)
+        && let Some(def_span) = fence.text_index().first_reference_span_for_item(item)
     {
         let def_span = absolute_span(fence, def_span);
-        locations.retain(|location| !same_span(&snapshot.source_map, location.range, def_span));
+        locations.retain(|location| !same_span(snapshot.source_map(), location.range, def_span));
     }
 
     locations.sort_by(|a, b| compare_range(&a.range, &b.range));
@@ -329,15 +329,18 @@ pub fn prepare_rename(
 ) -> Option<EditorPrepareRename> {
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
-    let item = fence.text_index.entity_item_at_offset(offset)?;
+    let item = fence.text_index().entity_item_at_offset(offset)?;
+    if !rename_group_allows(fence, item, FenceRenamePolicy::is_renameable) {
+        return None;
+    }
     let selection = absolute_span(fence, item.selection);
-    let range = range_from_span(&snapshot.source_map, selection)?;
+    let range = range_from_span(snapshot.source_map(), selection)?;
     let placeholder = snapshot
-        .text
+        .text()
         .get(selection.start..selection.end)?
         .to_string();
     Some(EditorPrepareRename {
-        fact_source: fence.text_index.source(),
+        fact_source: fence.text_index().source(),
         range,
         placeholder,
     })
@@ -354,10 +357,10 @@ pub fn rename(
     let offset =
         fence_relative_offset(snapshot, fence, position).ok_or(RenameError::NoRenameableSymbol)?;
     let item = fence
-        .text_index
+        .text_index()
         .entity_item_at_offset(offset)
         .ok_or(RenameError::NoRenameableSymbol)?;
-    if !item.rename_domain.accepts(new_name) {
+    if !rename_group_allows(fence, item, |policy| policy.accepts(new_name)) {
         return Err(RenameError::InvalidName);
     }
     Ok(rename_edits(snapshot, fence, item, new_name))
@@ -369,13 +372,13 @@ fn rename_edits(
     item: &FenceSemanticItem,
     new_name: &str,
 ) -> Option<EditorWorkspaceEdit> {
-    let spans = fence.text_index.reference_spans_for_item(item);
+    let spans = fence.text_index().reference_spans_for_item(item);
     let mut edits = spans
         .iter()
         .copied()
-        .filter_map(|span| range_from_span(&snapshot.source_map, absolute_span(fence, span)))
+        .filter_map(|span| range_from_span(snapshot.source_map(), absolute_span(fence, span)))
         .map(|range| EditorTextEdit {
-            fact_source: fence.text_index.source(),
+            fact_source: fence.text_index().source(),
             range,
             new_text: new_name.to_string(),
         })
@@ -386,26 +389,49 @@ fn rename_edits(
     edits.sort_by(|a, b| compare_range(&a.range, &b.range));
 
     let mut changes = HashMap::new();
-    changes.insert(snapshot.uri.clone(), edits);
+    changes.insert(snapshot.uri().clone(), edits);
     Some(EditorWorkspaceEdit {
-        fact_source: fence.text_index.source(),
+        fact_source: fence.text_index().source(),
         changes,
     })
+}
+
+fn rename_group_allows(
+    fence: &FenceSnapshot,
+    item: &FenceSemanticItem,
+    predicate: impl Fn(FenceRenamePolicy) -> bool,
+) -> bool {
+    fence
+        .text_index()
+        .semantic_items()
+        .iter()
+        .filter(|candidate| {
+            candidate.role == merman_analysis::FenceSemanticRole::Entity
+                && candidate.name == item.name
+                && candidate.kind == item.kind
+        })
+        .all(|candidate| predicate(candidate.rename_policy))
 }
 
 fn outline_for_fence(fence: &FenceSnapshot) -> OutlineItem {
     OutlineItem {
         name: fence_name(fence),
         detail: fence_detail(fence),
-        kind: generic_kind(fence.diagram_type.as_deref()),
-        fact_source: fence.text_index.source(),
-        span: ByteSpan {
-            start: fence.start,
-            end: fence.end,
+        kind: generic_kind(fence.diagram_type()),
+        fact_source: fence.text_index().source(),
+        span: {
+            let document_range = fence.document_range();
+            ByteSpan {
+                start: document_range.start,
+                end: document_range.end,
+            }
         },
-        selection: ByteSpan {
-            start: fence.body_start,
-            end: fence.body_end,
+        selection: {
+            let body_range = fence.body_range();
+            ByteSpan {
+                start: body_range.start,
+                end: body_range.end,
+            }
         },
         children: outline_children(fence),
     }
@@ -413,7 +439,7 @@ fn outline_for_fence(fence: &FenceSnapshot) -> OutlineItem {
 
 fn outline_children(fence: &FenceSnapshot) -> Vec<OutlineItem> {
     fence
-        .text_index
+        .text_index()
         .outline_items()
         .iter()
         .map(|item| outline_item_from_index(fence, item))
@@ -425,7 +451,7 @@ fn outline_item_from_index(fence: &FenceSnapshot, item: &FenceLineItem) -> Outli
         name: item.name.clone(),
         detail: item.detail.clone(),
         kind: item.kind,
-        fact_source: fence.text_index.source(),
+        fact_source: fence.text_index().source(),
         span: absolute_span(fence, item.span),
         selection: absolute_span(fence, item.selection),
         children: Vec::new(),
@@ -437,22 +463,22 @@ fn outline_item_from_semantic(fence: &FenceSnapshot, item: &FenceSemanticItem) -
         name: item.name.clone(),
         detail: item.detail.clone(),
         kind: item.kind,
-        fact_source: fence.text_index.source(),
+        fact_source: fence.text_index().source(),
         span: absolute_span(fence, item.span),
         selection: absolute_span(fence, item.selection),
         children: Vec::new(),
     }
 }
 
-fn collect_workspace_symbols(
+fn collect_document_symbol_matches(
     snapshot: &DocumentSnapshot,
     item: &OutlineItem,
     container_name: Option<&str>,
     query: Option<&str>,
     symbols: &mut Vec<EditorSymbolInformation>,
 ) {
-    if query.is_none_or(|query| workspace_symbol_matches(&item.name, query))
-        && let Some(location) = workspace_symbol_location(snapshot, item)
+    if query.is_none_or(|query| document_symbol_matches(&item.name, query))
+        && let Some(location) = document_symbol_location(snapshot, item)
     {
         symbols.push(EditorSymbolInformation {
             name: item.name.clone(),
@@ -465,27 +491,27 @@ fn collect_workspace_symbols(
 
     let container_name = Some(item.name.as_str());
     for child in &item.children {
-        collect_workspace_symbols(snapshot, child, container_name, query, symbols);
+        collect_document_symbol_matches(snapshot, child, container_name, query, symbols);
     }
 }
 
-fn workspace_symbol_matches(name: &str, query: &str) -> bool {
+fn document_symbol_matches(name: &str, query: &str) -> bool {
     name.to_lowercase().contains(query)
 }
 
-fn workspace_symbol_location(
+fn document_symbol_location(
     snapshot: &DocumentSnapshot,
     item: &OutlineItem,
 ) -> Option<EditorLocation> {
-    let range = range_from_span(&snapshot.source_map, item.selection)?;
+    let range = range_from_span(snapshot.source_map(), item.selection)?;
     Some(EditorLocation {
-        uri: snapshot.uri.clone(),
+        uri: snapshot.uri().clone(),
         fact_source: item.fact_source,
         range,
     })
 }
 
-pub fn sort_workspace_symbols(symbols: &mut [EditorSymbolInformation]) {
+fn sort_symbol_information(symbols: &mut [EditorSymbolInformation]) {
     symbols.sort_by(|left, right| {
         left.name
             .cmp(&right.name)
@@ -501,13 +527,14 @@ fn fence_relative_offset(
     position: Position,
 ) -> Option<usize> {
     let offset = snapshot.byte_offset_for_position(position)?;
-    (offset >= fence.body_start).then_some(offset - fence.body_start)
+    let body_range = fence.body_range();
+    (offset >= body_range.start).then_some(offset - body_range.start)
 }
 
 fn absolute_span(fence: &FenceSnapshot, span: ByteSpan) -> ByteSpan {
     ByteSpan {
-        start: fence.body_start + span.start,
-        end: fence.body_start + span.end,
+        start: fence.body_range().start + span.start,
+        end: fence.body_range().start + span.end,
     }
 }
 
@@ -559,7 +586,7 @@ fn push_folding_span(
 }
 
 fn fence_name(fence: &FenceSnapshot) -> String {
-    match fence.diagram_type.as_deref() {
+    match fence.diagram_type() {
         Some(kind) => format!("{kind} diagram"),
         None => "Mermaid diagram".to_string(),
     }
@@ -568,12 +595,12 @@ fn fence_name(fence: &FenceSnapshot) -> String {
 fn fence_detail(fence: &FenceSnapshot) -> Option<String> {
     let mut parts = Vec::new();
 
-    if let Some(kind) = fence.diagram_type.as_deref() {
+    if let Some(kind) = fence.diagram_type() {
         parts.push(format!("diagram type `{kind}`"));
     }
 
     let prefixes = fence
-        .text_index
+        .text_index()
         .directive_prefixes()
         .cloned()
         .collect::<Vec<_>>();
@@ -720,7 +747,7 @@ pub enum RenameError {
 impl fmt::Display for RenameError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
-            Self::InvalidName => "new name is not valid for the selected symbol",
+            Self::InvalidName => "new name is not valid for this symbol's Mermaid grammar",
             Self::OutsideFence => "position is outside a Mermaid fence",
             Self::NoRenameableSymbol => "no renameable symbol at the requested position",
         };

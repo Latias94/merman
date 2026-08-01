@@ -16,20 +16,17 @@ categories = ["wasm", "visualization"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[package.metadata.merman]
+artifact-profile-required = true
+
 [features]
-default = ["render", "analysis", "elk-layout"]
-core-full = ["merman-bindings-core/core-full"]
-core-host = ["merman-bindings-core/core-host"]
+default = []
 analysis = ["merman-bindings-core/analysis"]
-render = ["merman-bindings-core/render", "dep:serde_json"]
-cytoscape-layout = ["merman-bindings-core/cytoscape-layout"]
-elk-layout = ["merman-bindings-core/elk-layout"]
-ratex-math = ["render", "merman-bindings-core/ratex-math"]
+svg = ["merman-bindings-core/svg"]
+layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
+layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 
 [dependencies]
 merman-bindings-core.workspace = true
-serde_json = { workspace = true, optional = true }
-wasm-minimal-protocol.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true
+wasm-minimal-protocol.workspace = true

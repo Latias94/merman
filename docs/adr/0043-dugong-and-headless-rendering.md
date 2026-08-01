@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`merman` targets 1:1 behavioral parity with Mermaid `@11.12.3`.
+`merman` targets source-backed behavioral parity with pinned Mermaid `@11.16.0`.
 
 For many Mermaid diagrams (notably flowchart/class/er/state), the final output depends on a layout
 pipeline that in upstream is implemented with the `dagre` family of libraries plus Mermaid-specific

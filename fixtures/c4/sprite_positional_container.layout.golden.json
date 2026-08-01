@@ -5,14 +5,14 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 825.0,
-        "max_y": 624.0
+        "max_x": 814.0,
+        "max_y": 622.0
       },
-      "width": 875.0,
-      "height": 634.0,
+      "width": 864.0,
+      "height": 632.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Container",
       "title": "C4Container sprite (positional) on Container",
       "boundaries": [
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 675.0,
-          "height": 508.0,
+          "width": 664.0,
+          "height": 506.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -70,17 +70,17 @@
           "label": {
             "text": "Customer",
             "y": 86.0,
-            "width": 75.0,
-            "height": 17.0,
+            "width": 63.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank.",
-            "y": 123.0,
-            "width": 148.0,
-            "height": 16.0,
+            "y": 124.0,
+            "width": 140.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -90,8 +90,8 @@
           "type_c4_shape": "container",
           "x": 466.0,
           "y": 166.0,
-          "width": 259.0,
-          "height": 153.0,
+          "width": 248.0,
+          "height": 152.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -108,23 +108,23 @@
           "label": {
             "text": "Single-Page App",
             "y": 86.0,
-            "width": 127.0,
-            "height": 17.0,
+            "width": 103.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[JavaScript, Angular]",
-            "y": 108.0,
+            "y": 109.0,
             "width": 105.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Provides Internet banking functionality.",
             "y": 142.0,
-            "width": 239.0,
-            "height": 16.0,
+            "width": 228.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -133,9 +133,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "container_db",
           "x": 150.0,
-          "y": 419.0,
+          "y": 418.0,
           "width": 216.0,
-          "height": 105.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -152,23 +152,23 @@
           "label": {
             "text": "Database",
             "y": 38.0,
-            "width": 71.0,
-            "height": 17.0,
+            "width": 58.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[PostgreSQL]",
-            "y": 60.0,
+            "y": 61.0,
             "width": 68.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Stores account data.",
             "y": 94.0,
-            "width": 128.0,
-            "height": 16.0,
+            "width": 118.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         }
@@ -180,26 +180,26 @@
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
-            "y": 251.545
+            "y": 251.655
           },
           "end_point": {
             "x": 466.0,
-            "y": 284.214
+            "y": 281.942
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 27.0,
-            "height": 14.0,
+            "width": 23.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": {
             "text": "HTTPS",
             "y": 0.0,
             "width": 36.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": null
@@ -209,27 +209,27 @@
           "to": "db",
           "rel_type": "rel",
           "start_point": {
-            "x": 543.415,
-            "y": 319.0
+            "x": 538.0,
+            "y": 318.0
           },
           "end_point": {
             "x": 366.0,
-            "y": 428.712
+            "y": 426.8
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Reads/Writes",
             "y": 0.0,
-            "width": 72.0,
-            "height": 14.0,
+            "width": 66.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": {
             "text": "JDBC",
             "y": 0.0,
             "width": 29.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": null

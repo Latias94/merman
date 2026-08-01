@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-Mermaid `@11.12.3` relies on Cytoscape-based layout engines for multiple diagrams:
+Mermaid `@11.16.0` relies on Cytoscape-based layout engines for multiple diagrams:
 
 - Mindmap: `cose-bilkent` (via `cytoscape-cose-bilkent`)
 - Architecture: `fcose` (via `cytoscape-fcose`) with additional alignment/relative constraints derived
@@ -25,13 +25,21 @@ deterministic Rust implementation of the same effective layout behavior.
 ## Decision
 
 - Port the Cytoscape layout engines used by Mermaid into Rust (headless-only):
-  - `cytoscape@3.33.1`
+  - Mermaid 11.16's workspace oracle is `cytoscape@3.33.3`.
+  - The selected latest-compatible source is `cytoscape@3.34.0`
+    (`22716bfb75834b56fa6679648b0abb06f4ae691c`).
   - `cytoscape-fcose@2.2.0`
   - `cytoscape-cose-bilkent@4.1.0`
   - Versions are taken from `repo-ref/mermaid/pnpm-lock.yaml` under the pinned Mermaid baseline.
   - Upstream source repositories are tracked in `tools/upstreams/REPOS.lock.json` (no git submodules).
   - Note: `cytoscape-cose-bilkent`/`cytoscape-fcose` delegate most of their algorithmic core to
     `cose-base` + `layout-base`, which are also tracked in `tools/upstreams/REPOS.lock.json`.
+  - The source delta from Cytoscape `3.33.1` through `3.34.0` changes renderer node-shape bounds,
+    label alignment/measurement, WebGL, and interaction behavior. It does not change the FCoSE,
+    COSE-Bilkent, `cose-base`, or `layout-base` algorithm sources translated by `manatee`.
+    Mermaid's Architecture and CoSE setup disable Cytoscape styles, so the 3.34 label changes do
+    not enter those layout operations. Corpus and parity gates still fail the candidate closed if
+    an observable delta appears.
 - Implement them as a dedicated workspace crate:
   - `manatee`: reusable, headless graph layout engines (initially `fcose` and `cose-bilkent`).
 - Keep `merman-render` responsible for diagram-to-layout-data mapping:
@@ -40,8 +48,11 @@ deterministic Rust implementation of the same effective layout behavior.
   - `manatee` consumes the graph and returns node positions (and any algorithm-provided routing hints).
 - Determinism and numeric policy:
   - Stable iteration order (explicit node/edge ordering by ID).
-  - No ambient randomness: all randomness must be explicit and seeded; default seed pinned to match
-    Mermaid CLI baselines.
+  - Randomness is owned by `RenderEnvironment` and captured once per operation. Architecture
+    `seed: 0` consumes that operation stream continuously across FCoSE reruns, matching Mermaid's
+    native-random opt-out without reading process-global randomness inside family code. A non-zero
+    Architecture seed restarts its configured stream for every upstream-equivalent layout run.
+    Parity environments pin the operation stream for reproducible baselines.
   - Prefer `f64` internally, but mirror JS `Number` corner cases where they impact observable output
     (e.g. comparisons near-equality, tie-breaking).
 - Testing policy:

@@ -1,19 +1,39 @@
-use web_time::{Duration, Instant};
+use merman_core::runtime::{OperationTimer, OperationTiming};
+use std::time::Duration;
 
-fn parse_env_bool(v: &str) -> bool {
-    !matches!(
-        v.trim().to_ascii_lowercase().as_str(),
-        "" | "0" | "false" | "no" | "off"
-    )
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RenderTiming {
+    authority: Option<OperationTiming>,
 }
 
-pub(crate) fn render_timing_enabled() -> bool {
-    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("MERMAN_RENDER_TIMING")
-            .ok()
-            .is_some_and(|v| parse_env_bool(&v))
-    })
+impl RenderTiming {
+    pub(crate) const fn disabled() -> Self {
+        Self { authority: None }
+    }
+
+    pub(crate) const fn enabled(authority: OperationTiming) -> Self {
+        Self {
+            authority: Some(authority),
+        }
+    }
+
+    pub(crate) const fn is_enabled(self) -> bool {
+        self.authority.is_some()
+    }
+
+    pub(crate) fn start(self) -> Option<OperationTimer> {
+        self.authority.map(OperationTiming::start)
+    }
+
+    pub(crate) fn section<'duration>(
+        self,
+        dst: &'duration mut Duration,
+    ) -> Option<TimingGuard<'duration>> {
+        self.start().map(|timer| TimingGuard {
+            dst,
+            timer: Some(timer),
+        })
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -29,20 +49,15 @@ pub(crate) struct RenderTimings {
 #[derive(Debug)]
 pub(crate) struct TimingGuard<'a> {
     dst: &'a mut Duration,
-    start: Instant,
-}
-
-impl<'a> TimingGuard<'a> {
-    pub(crate) fn new(dst: &'a mut Duration) -> Self {
-        Self {
-            dst,
-            start: Instant::now(),
-        }
-    }
+    timer: Option<OperationTimer>,
 }
 
 impl Drop for TimingGuard<'_> {
     fn drop(&mut self) {
-        *self.dst += self.start.elapsed();
+        let timer = self
+            .timer
+            .take()
+            .expect("timing guard owns one timer until drop");
+        *self.dst += timer.elapsed();
     }
 }

@@ -13,21 +13,16 @@ fn class_parse_stroke_dash_pair(stroke_dasharray: &str) -> (f64, f64) {
     }
 }
 
-fn roughjs46_next_f64(seed: &mut u32) -> f64 {
-    if *seed == 0 {
-        return 0.0;
-    }
-    let prod = seed.wrapping_mul(48_271);
-    *seed = prod & 0x7fff_ffff;
-    (*seed as f64) / 2_147_483_648.0
+fn roughjs46_diverge_point(options: &mut roughr::core::Options) -> f64 {
+    0.2 + options.random() * 0.2
 }
 
-fn roughjs46_diverge_point(seed: &mut u32) -> f64 {
-    0.2 + roughjs46_next_f64(seed) * 0.2
-}
-
-pub(super) fn class_rough_seed(base_seed: u64, _diagram_id: &str, _dom_id: &str) -> u64 {
-    base_seed
+pub(super) fn class_rough_seed(
+    base_randomness: &roughr::core::RoughRandomness,
+    _diagram_id: &str,
+    _dom_id: &str,
+) -> roughr::core::RoughRandomness {
+    base_randomness.clone()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -40,7 +35,7 @@ pub(super) fn class_rough_hachure_rect_paths(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
-    seed: u64,
+    randomness: &roughr::core::RoughRandomness,
 ) -> Option<(String, String)> {
     let fill =
         parse_hex_color_to_srgba(fill).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
@@ -48,7 +43,7 @@ pub(super) fn class_rough_hachure_rect_paths(
         parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
     let (dash0, dash1) = class_parse_stroke_dash_pair(stroke_dasharray);
     let options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.7)
         .fill(fill)
         .fill_style(roughr::core::FillStyle::Hachure)
@@ -94,13 +89,13 @@ pub(super) fn class_rough_hand_drawn_line_path(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
-    seed: u64,
+    randomness: &roughr::core::RoughRandomness,
 ) -> Option<String> {
     let stroke =
         parse_hex_color_to_srgba(stroke).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0));
     let (dash0, dash1) = class_parse_stroke_dash_pair(stroke_dasharray);
     let mut options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.7)
         .stroke(stroke)
         .stroke_width(stroke_width)
@@ -122,10 +117,10 @@ pub(super) fn class_rough_hand_drawn_line_path(
 pub(super) fn class_rough_hand_drawn_stroke_path_for_svg_path(
     svg_path_data: &str,
     roughness: f32,
-    seed: u64,
+    randomness: &roughr::core::RoughRandomness,
 ) -> Option<String> {
     let mut options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(roughness)
         .disable_multi_stroke(false)
         .build()
@@ -140,11 +135,24 @@ pub(super) fn class_rough_line_double_path_and_bounds(
     y1: f64,
     x2: f64,
     y2: f64,
-    seed: u64,
+    randomness: &roughr::core::RoughRandomness,
+) -> (String, super::super::path_bounds::SvgPathBounds) {
+    let mut options = roughr::core::OptionsBuilder::default()
+        .randomness(randomness.clone())
+        .build()
+        .expect("class rough line options must be valid");
+    class_rough_line_double_path_and_bounds_with_options(x1, y1, x2, y2, &mut options)
+}
+
+fn class_rough_line_double_path_and_bounds_with_options(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    options: &mut roughr::core::Options,
 ) -> (String, super::super::path_bounds::SvgPathBounds) {
     let dx = x2 - x1;
     let dy = y2 - y1;
-    let mut s = seed as u32;
     let mut d = String::new();
     let mut pb = super::super::path_bounds::SvgPathBounds {
         min_x: x1,
@@ -154,9 +162,9 @@ pub(super) fn class_rough_line_double_path_and_bounds(
     };
 
     for idx in 0..2 {
-        let diverge = roughjs46_diverge_point(&mut s);
+        let diverge = roughjs46_diverge_point(options);
         for _ in 0..10 {
-            let _ = roughjs46_next_f64(&mut s);
+            let _ = options.random();
         }
 
         let c1x = x1 + dx * diverge;
@@ -201,11 +209,14 @@ pub(super) fn class_rough_rect_stroke_path_and_bounds(
     top: f64,
     width: f64,
     height: f64,
-    seed: u64,
+    randomness: &roughr::core::RoughRandomness,
 ) -> (String, super::super::path_bounds::SvgPathBounds) {
     let right = left + width;
     let bottom = top + height;
-    let mut s = seed as u32;
+    let mut options = roughr::core::OptionsBuilder::default()
+        .randomness(randomness.clone())
+        .build()
+        .expect("class rough rectangle options must be valid");
     let mut out = String::new();
     let mut pb_opt: Option<super::super::path_bounds::SvgPathBounds> = None;
 
@@ -218,10 +229,8 @@ pub(super) fn class_rough_rect_stroke_path_and_bounds(
     .into_iter()
     .enumerate()
     {
-        let (segment, seg_pb) = class_rough_line_double_path_and_bounds(ax, ay, bx, by, s as u64);
-        for _ in 0..22 {
-            let _ = roughjs46_next_f64(&mut s);
-        }
+        let (segment, seg_pb) =
+            class_rough_line_double_path_and_bounds_with_options(ax, ay, bx, by, &mut options);
         if idx > 0 {
             out.push(' ');
         }

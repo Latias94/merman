@@ -17,9 +17,8 @@ During `initialize`, the server advertises:
 {
   "experimental": {
     "merman": {
-      "schemaVersion": 2,
+      "schemaVersion": 1,
       "diagramSupport": {
-        "profile": "full",
         "families": [
           {
             "diagramType": "flowchart-v2",
@@ -39,11 +38,10 @@ During `initialize`, the server advertises:
 
 Clients should feature-detect these fields instead of hard-coding extension availability.
 
-`diagramSupport.profile` is `full` for the default registry and `tiny` for a no-default registry.
 Each `families` entry reports the canonical `diagramType` plus separate semantic-parser and
-render-parser availability. Clients should use this data to explain a slim server build instead of
-assuming every published Mermaid family is available. The family list describes compiled registry
-capabilities, not files currently open in the workspace.
+render-parser availability. Every parser-capable Merman build reports the same complete pinned
+Mermaid language catalog; layout and output backends remain separate product capabilities. The
+family list describes that language catalog, not files currently open in the workspace.
 
 ## `merman/ruleCatalog`
 
@@ -186,18 +184,30 @@ Response. The JSON below is abbreviated; implementations return the complete
 ```
 
 The schema describes the same analysis options accepted by `initialize.initializationOptions` and
-`workspace/didChangeConfiguration`: `lint`, `parse.suppress_errors`, `resources.max_source_bytes`,
-`site_config`, `fixed_today`, and `fixed_local_offset_minutes`. It is intentionally permissive with
-`additionalProperties` so alpha clients are not broken by future options. Clients should use it for
-settings completion, settings validation hints, and profile/rule pickers, then use
-`merman/ruleCatalog` for the richer rule explanations and evidence metadata.
+`workspace/didChangeConfiguration`: `lint`, `resources.limits.max_source_bytes`,
+`resources.limits.max_document_diagrams`, `site_config`, `fixed_today`, and
+`fixed_local_offset_minutes`. The document-diagram limit counts Mermaid fences in Markdown and MDX
+documents; clients that omit it use the server default of 256. The schema is intentionally
+permissive with `additionalProperties` so alpha clients are not broken by future options. Clients
+should use it for settings completion, settings validation hints, and profile/rule pickers, then
+use `merman/ruleCatalog` for the richer rule explanations and evidence metadata.
 
 ## Standard LSP Pairing
 
-- Diagnostics use standard `textDocument/publishDiagnostics`.
+- Clients that do not negotiate pull diagnostics receive standard
+  `textDocument/publishDiagnostics`; pull clients request `textDocument/diagnostic` instead and do
+  not also receive pushed analysis diagnostics.
 - Rule ids appear on Merman diagnostics and code actions through the shared analysis payload.
-- Quickfixes use standard `textDocument/codeAction` and only exist when diagnostics carry explicit
-  `DiagnosticFix` metadata.
-- Runtime lint configuration should flow through initialization options or
-  `workspace/didChangeConfiguration`; the server then republishes diagnostics and refreshes semantic
-  tokens when the client advertises refresh support.
+- Quickfixes use standard `textDocument/codeAction` and only exist when the current server
+  analysis snapshot carries explicit `DiagnosticFix` metadata; diagnostic data contains identity
+  and version validation only.
+- Runtime analysis configuration should flow through initialization options or
+  `workspace/didChangeConfiguration`. A diagnostic-affecting change republishes open-document
+  diagnostics for push clients, or sends `workspace/diagnostic/refresh` for pull clients only when
+  they advertise diagnostic refresh support. A snapshot-affecting change independently sends
+  `workspace/semanticTokens/refresh` when semantic tokens and refresh support are negotiated;
+  diagnostic-only lint changes do not invalidate or refresh semantic tokens.
+
+Analysis always retains family parse failures in its closed snapshot. The removed
+`parse.suppress_errors` analysis setting is not an ignored compatibility field; clients must remove
+it. Lenient parsing remains available only on parse, render, and ASCII operation options.

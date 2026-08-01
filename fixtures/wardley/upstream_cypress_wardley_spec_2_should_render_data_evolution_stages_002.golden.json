@@ -1,0 +1,103 @@
+{
+  "diagramType": "wardley",
+  "model": {
+    "type": "wardley",
+    "title": "Data Evolution Pipeline",
+    "accTitle": null,
+    "accDescr": null,
+    "nodes": [
+      {
+        "id": "User Needs",
+        "label": "User Needs",
+        "x": 5.0,
+        "y": 95.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Data Collection",
+        "label": "Data Collection",
+        "x": 15.0,
+        "y": 80.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Custom Analytics",
+        "label": "Custom Analytics",
+        "x": 35.0,
+        "y": 70.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Standardized Reports",
+        "label": "Standardized Reports",
+        "x": 65.0,
+        "y": 65.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Commodity Storage",
+        "label": "Commodity Storage",
+        "x": 85.0,
+        "y": 60.0,
+        "className": "component",
+        "inertia": false
+      }
+    ],
+    "links": [
+      {
+        "source": "User Needs",
+        "target": "Data Collection",
+        "dashed": false
+      },
+      {
+        "source": "Data Collection",
+        "target": "Custom Analytics",
+        "dashed": false
+      },
+      {
+        "source": "Custom Analytics",
+        "target": "Standardized Reports",
+        "dashed": false
+      },
+      {
+        "source": "Standardized Reports",
+        "target": "Commodity Storage",
+        "dashed": false
+      }
+    ],
+    "trends": [
+      {
+        "nodeId": "Custom Analytics",
+        "targetX": 60.0,
+        "targetY": 70.0
+      },
+      {
+        "nodeId": "Standardized Reports",
+        "targetX": 85.0,
+        "targetY": 65.0
+      }
+    ],
+    "pipelines": [],
+    "annotations": [],
+    "notes": [],
+    "accelerators": [],
+    "deaccelerators": [],
+    "annotationsBox": null,
+    "axes": {
+      "stages": [
+        "Unmodelled",
+        "Divergent",
+        "Convergent",
+        "Modelled"
+      ]
+    },
+    "size": {
+      "width": 1100.0,
+      "height": 800.0
+    }
+  }
+}

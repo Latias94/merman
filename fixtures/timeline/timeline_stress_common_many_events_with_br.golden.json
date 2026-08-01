@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Many events per period with explicit <br>",
     "accTitle": null,
     "accDescr": null,

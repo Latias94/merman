@@ -1,5 +1,6 @@
 //! Rough.js helpers used by multiple parity renderers.
 
+use roughr::core::RoughRandomness;
 use roughr::{PathParser, PathSegment};
 
 use super::super::roughjs_common::{
@@ -81,7 +82,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     stroke: &str,
     stroke_width: f32,
     stroke_dasharray: &str,
-    seed: u64,
+    randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
     let fill = roughjs_parse_hex_color_to_srgba(fill)?;
     let stroke = roughjs_parse_hex_color_to_srgba(stroke)?;
@@ -117,7 +118,7 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     // Use a single mutable `Options` to match Rough.js behavior: the PRNG state (`randomizer`)
     // lives on the options object and advances across drawing phases.
     let mut options = roughr::core::OptionsBuilder::default()
-        .seed(seed)
+        .randomness(randomness.clone())
         .roughness(0.0)
         .fill_style(roughr::core::FillStyle::Solid)
         .fill(fill)

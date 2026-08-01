@@ -1,5 +1,48 @@
 use super::*;
 
+const UPSTREAM_DOCS_BY_DIAGRAM: &[(&str, &str)] = &[
+    ("architecture", "architecture.md"),
+    ("block", "block.md"),
+    ("c4", "c4.md"),
+    ("class", "classDiagram.md"),
+    ("cynefin", "cynefin.md"),
+    ("er", "entityRelationshipDiagram.md"),
+    ("eventmodeling", "eventmodeling.md"),
+    ("flowchart", "flowchart.md"),
+    ("gantt", "gantt.md"),
+    ("gitgraph", "gitgraph.md"),
+    ("ishikawa", "ishikawa.md"),
+    ("journey", "userJourney.md"),
+    ("kanban", "kanban.md"),
+    ("mindmap", "mindmap.md"),
+    ("packet", "packet.md"),
+    ("pie", "pie.md"),
+    ("quadrantchart", "quadrantChart.md"),
+    ("radar", "radar.md"),
+    ("railroad", "railroad.md"),
+    ("railroadAbnf", "railroad.md"),
+    ("railroadEbnf", "railroad.md"),
+    ("railroadPeg", "railroad.md"),
+    ("requirement", "requirementDiagram.md"),
+    ("sankey", "sankey.md"),
+    ("sequence", "sequenceDiagram.md"),
+    ("state", "stateDiagram.md"),
+    ("swimlane", "swimlanes.md"),
+    ("timeline", "timeline.md"),
+    ("treeView", "treeView.md"),
+    ("treemap", "treemap.md"),
+    ("venn", "venn.md"),
+    ("wardley", "wardley.md"),
+    ("xychart", "xyChart.md"),
+    ("zenuml", "zenuml.md"),
+];
+
+fn docs_md_for_diagram(diagram: &str) -> Option<&'static str> {
+    UPSTREAM_DOCS_BY_DIAGRAM
+        .iter()
+        .find_map(|(candidate, file)| (*candidate == diagram).then_some(*file))
+}
+
 pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -193,35 +236,6 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         Ok(out)
     }
 
-    fn docs_md_for_diagram(diagram: &str) -> Option<&'static str> {
-        match diagram {
-            "all" => None,
-            "architecture" => Some("architecture.md"),
-            "block" => Some("block.md"),
-            "c4" => Some("c4.md"),
-            "class" => Some("classDiagram.md"),
-            "er" => Some("entityRelationshipDiagram.md"),
-            "flowchart" => Some("flowchart.md"),
-            "gantt" => Some("gantt.md"),
-            "gitgraph" => Some("gitgraph.md"),
-            "kanban" => Some("kanban.md"),
-            "mindmap" => Some("mindmap.md"),
-            "packet" => Some("packet.md"),
-            "pie" => Some("pie.md"),
-            "quadrantchart" => Some("quadrantChart.md"),
-            "radar" => Some("radar.md"),
-            "requirement" => Some("requirementDiagram.md"),
-            "sankey" => Some("sankey.md"),
-            "sequence" => Some("sequenceDiagram.md"),
-            "state" => Some("stateDiagram.md"),
-            "timeline" => Some("timeline.md"),
-            "treemap" => Some("treemap.md"),
-            "journey" => Some("userJourney.md"),
-            "xychart" => Some("xyChart.md"),
-            _ => None,
-        }
-    }
-
     fn collect_markdown_files_recursively(
         root: &Path,
         out: &mut Vec<PathBuf>,
@@ -254,28 +268,6 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             }
         }
         Ok(())
-    }
-
-    fn normalize_diagram_dir(detected: &str) -> Option<String> {
-        match detected {
-            "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
-                Some("state".to_string())
-            }
-            "class" | "classDiagram" => Some("class".to_string()),
-            "gitGraph" => Some("gitgraph".to_string()),
-            "quadrantChart" => Some("quadrantchart".to_string()),
-            "er" => Some("er".to_string()),
-            "journey" => Some("journey".to_string()),
-            "xychart" => Some("xychart".to_string()),
-            "requirement" => Some("requirement".to_string()),
-            "architecture-beta" => Some("architecture".to_string()),
-            "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
-            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
-                Some(detected.to_string())
-            }
-            _ => None,
-        }
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
@@ -324,7 +316,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         "xychart",
     ];
 
-    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
+    let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline();
     let mut created: Vec<CreatedFixture> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
 
@@ -544,7 +536,8 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                     continue;
                 }
             };
-            let Some(diagram_dir) = normalize_diagram_dir(detected) else {
+            let Some(diagram_dir) = normalize_imported_diagram_dir(detected).map(str::to_string)
+            else {
                 skipped.push(format!(
                     "skip (unsupported detected type '{detected}'): {}",
                     b.source_md.display()
@@ -733,7 +726,20 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                     canonical_fixture_text,
                 )
             });
-        if let Some(existing_path) = existing.get(&c.body) {
+        let existing_path = existing.get(&c.body).cloned();
+        let out_path = c.fixtures_dir.join(format!("{}.mmd", c.stem));
+        let deferred_out_path = crate::cmd::fixtures_root()
+            .join("_deferred")
+            .join(&c.diagram_dir)
+            .join(format!("{}.mmd", c.stem));
+        if let Some(existing_path) = existing_path.as_deref()
+            && !should_revalidate_deferred_fixture(
+                existing_path,
+                &deferred_out_path,
+                with_baselines,
+                overwrite,
+            )
+        {
             if with_baselines {
                 report_skip_duplicate_content += 1;
                 report_lines.push(format!(
@@ -755,7 +761,6 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             continue;
         }
 
-        let out_path = c.fixtures_dir.join(format!("{}.mmd", c.stem));
         if out_path.exists() && !overwrite {
             if with_baselines {
                 report_skip_exists += 1;
@@ -773,10 +778,6 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             skipped.push(format!("skip (exists): {}", out_path.display()));
             continue;
         }
-        let deferred_out_path = crate::cmd::fixtures_root()
-            .join("_deferred")
-            .join(&c.diagram_dir)
-            .join(format!("{}.mmd", c.stem));
         if deferred_out_path.exists() && !overwrite {
             skipped.push(format!(
                 "skip (already deferred): {}",
@@ -1095,4 +1096,32 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn upstream_doc_routes_cover_every_documented_supported_family() {
+        let expected = merman_core::supported_diagrams()
+            .iter()
+            .copied()
+            .filter(|diagram| *diagram != "info")
+            .collect::<BTreeSet<_>>();
+        let actual = UPSTREAM_DOCS_BY_DIAGRAM
+            .iter()
+            .map(|(diagram, _)| *diagram)
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn every_railroad_dialect_uses_the_shared_upstream_page() {
+        for diagram in ["railroad", "railroadAbnf", "railroadEbnf", "railroadPeg"] {
+            assert_eq!(docs_md_for_diagram(diagram), Some("railroad.md"));
+        }
+    }
 }

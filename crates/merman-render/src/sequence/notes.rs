@@ -1,10 +1,12 @@
 use super::constants::SEQUENCE_FRAME_GEOM_PAD_PX;
 use super::metrics::{
-    SequenceMathHeightMode, measure_sequence_label_for_layout, measure_svg_like_with_html_br,
+    SequenceDrawnTextNode, SequenceMathHeightMode, measure_drawn_svg_like_with_html_br,
+    measure_sequence_label_for_layout, measure_svg_like_with_html_br,
+    wrap_sequence_label_like_mermaid_lines,
 };
 use crate::math::MathRenderer;
 use crate::model::LayoutNode;
-use crate::text::{TextMeasurer, TextStyle, wrap_label_like_mermaid_lines};
+use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceMessage;
 use std::collections::HashMap;
@@ -80,7 +82,7 @@ pub(super) fn sequence_note_horizontal_model(
         )
         .0
     } else if should_wrap {
-        let wrapped = wrap_label_like_mermaid_lines(
+        let wrapped = wrap_sequence_label_like_mermaid_lines(
             text,
             ctx.measurer,
             ctx.note_text_style,
@@ -94,7 +96,7 @@ pub(super) fn sequence_note_horizontal_model(
     .max(0.0);
     if !matches!(placement, 0 | 1) && from == to {
         let measured_text = if should_wrap {
-            wrap_label_like_mermaid_lines(
+            wrap_sequence_label_like_mermaid_lines(
                 text,
                 ctx.measurer,
                 ctx.note_text_style,
@@ -236,13 +238,14 @@ pub(super) fn layout_sequence_note(
             ctx.note_text_style,
             ctx.math_config,
             ctx.math_renderer,
-            SequenceMathHeightMode::Bound,
+            SequenceMathHeightMode::Draw,
         )
     } else {
-        measure_svg_like_with_html_br(
+        measure_drawn_svg_like_with_html_br(
             ctx.measurer,
             &horizontal.effective_text,
             ctx.note_text_style,
+            SequenceDrawnTextNode::Tspan,
         )
     };
     let note_x = horizontal.start_x;
@@ -276,7 +279,7 @@ pub(crate) fn sequence_note_final_wrapped_lines(
     note_text_style: &TextStyle,
 ) -> Vec<String> {
     let wrap_w = (note_width - note_text_pad_total).max(1.0);
-    wrap_label_like_mermaid_lines(text, measurer, note_text_style, wrap_w)
+    wrap_sequence_label_like_mermaid_lines(text, measurer, note_text_style, wrap_w)
 }
 
 #[cfg(test)]

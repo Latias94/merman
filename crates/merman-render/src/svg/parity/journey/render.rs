@@ -11,20 +11,6 @@ fn fmt_task_face_y(v: Option<f64>) -> String {
         .unwrap_or_else(|| "NaN".to_string())
 }
 
-fn journey_svg_height_attr_from_viewbox(viewbox: &str, fallback: &str) -> String {
-    let mut parts = viewbox.split_whitespace();
-    let _min_x = parts.next();
-    let min_y = parts.next().and_then(|part| part.parse::<f64>().ok());
-    let _width = parts.next();
-    let height = parts.next().and_then(|part| part.parse::<f64>().ok());
-
-    match (min_y, height) {
-        (Some(min_y), Some(height)) if min_y < 0.0 => fmt(height - min_y).to_string(),
-        (Some(_), Some(height)) => fmt(height).to_string(),
-        _ => fallback.to_string(),
-    }
-}
-
 fn journey_css(
     diagram_id: &str,
     effective_config: &serde_json::Value,
@@ -123,33 +109,14 @@ fn journey_css(
     out
 }
 
-pub(crate) fn render_journey_diagram_svg(
-    layout: &crate::model::JourneyDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: JourneyDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_journey_diagram_svg_model(
-        layout,
-        &model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(crate) fn render_journey_diagram_svg_model(
     layout: &crate::model::JourneyDiagramLayout,
     model: &JourneyDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -325,67 +292,42 @@ pub(crate) fn render_journey_diagram_svg_model(
     let aria_labelledby = model
         .acc_title
         .as_deref()
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = model
         .acc_descr
         .as_deref()
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
+        .map(|_| format!("chart-desc-{diagram_id}"));
 
-    let max_w_attr = fmt_max_width_px(layout.width);
-    let w_attr = fmt(layout.width).to_string();
-    let viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    let fallback_svg_h_attr = fmt(if vb_min_y < 0.0 {
+    let svg_height = if vb_min_y < 0.0 {
         vb_h - vb_min_y
     } else {
         vb_h
-    })
-    .to_string();
-
-    let svg_h_attr = journey_svg_height_attr_from_viewbox(&viewbox_attr, &fallback_svg_h_attr);
-    let h_attr = svg_h_attr.as_str();
-    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
+    };
     let preserve_aspect_ratio: [(&str, &str); 1] = [("preserveAspectRatio", "xMinYMin meet")];
-    let height_attr: [(&str, &str); 2] =
-        [("preserveAspectRatio", "xMinYMin meet"), ("height", h_attr)];
-    if layout.use_max_width {
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(&viewbox_attr),
-                extra_attrs: &height_attr,
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "journey")
-            },
-        );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&w_attr),
-                height_attr: Some(h_attr),
-                style_attr: None,
-                viewbox_attr: Some(&viewbox_attr),
-                extra_attrs: &preserve_aspect_ratio,
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                tail_attrs: &tail_attrs,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "journey")
-            },
-        );
-    }
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "journey");
+    root_chrome.extra_attrs = &preserve_aspect_ratio;
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom = root_svg::RootDomProfile {
+        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+        responsive_height_placement: root_svg::RootResponsiveHeightPlacement::AfterExtraAttrs,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Journey, diagram_id)
+            .write_open(
+                &mut out,
+                root_svg::RootViewportSpec::mermaid(
+                    root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
+                    layout.use_max_width,
+                )
+                .with_mermaid_responsive_height(layout.use_max_width, svg_height)
+                .with_fixed_size(layout.width, svg_height)
+                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
+                root_chrome,
+            )?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(
@@ -611,7 +553,7 @@ pub(crate) fn render_journey_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]
@@ -732,14 +674,16 @@ mod tests {
             ..Default::default()
         };
 
-        let svg = render_journey_diagram_svg_model(
-            &layout,
-            &JourneyDiagramRenderModel::default(),
-            &cfg,
-            None,
-            &DeterministicTextMeasurer::default(),
-            &options,
-        )
+        let svg = with_test_svg_execution(&options, |options| {
+            render_journey_diagram_svg_model(
+                &layout,
+                &JourneyDiagramRenderModel::default(),
+                &cfg,
+                None,
+                &DeterministicTextMeasurer::default(),
+                options,
+            )
+        })
         .unwrap();
 
         assert!(svg.contains(r#"#journey .task-type-0,#journey .section-type-0{fill:#b0b0b0;}"#));
@@ -782,14 +726,16 @@ mod tests {
             ..Default::default()
         };
 
-        let svg = render_journey_diagram_svg_model(
-            &layout,
-            &JourneyDiagramRenderModel::default(),
-            &serde_json::json!({}),
-            None,
-            &DeterministicTextMeasurer::default(),
-            &options,
-        )
+        let svg = with_test_svg_execution(&options, |options| {
+            render_journey_diagram_svg_model(
+                &layout,
+                &JourneyDiagramRenderModel::default(),
+                &serde_json::json!({}),
+                None,
+                &DeterministicTextMeasurer::default(),
+                options,
+            )
+        })
         .unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;
 

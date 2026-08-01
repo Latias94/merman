@@ -1,89 +1,118 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "type": "zenuml",
     "title": "Sync message",
-    "accTitle": null,
-    "accDescr": null,
-    "actorOrder": [
-      "A.SyncMessage",
-      "A",
-      "B"
-    ],
-    "actors": {
-      "A.SyncMessage": {
-        "name": "A.SyncMessage",
-        "description": "A.SyncMessage",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
+    "starter": null,
+    "participants": [
+      {
+        "name": "_STARTER_",
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": true,
+        "declarationSpan": null,
+        "occurrences": [],
+        "width": null
       },
-      "A": {
+      {
         "name": "A",
-        "description": "A",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 34,
+            "end": 35
+          },
+          {
+            "start": 52,
+            "end": 53
+          }
+        ],
+        "width": null
       },
-      "B": {
+      {
         "name": "B",
-        "description": "B",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      }
-    },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "A",
-        "message": "SyncMessage(with, parameters)",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "B",
-        "to": "B",
-        "message": "nestedSyncMessage()",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "A",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 92,
+            "end": 93
+          }
+        ],
+        "width": null
       }
     ],
-    "notes": [],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+    "groups": [],
+    "statements": [
+      {
+        "id": "zenuml-statement-0",
+        "comment": null,
+        "span": {
+          "start": 34,
+          "end": 47
+        },
+        "kind": "message",
+        "explicit_from": null,
+        "resolved_from": null,
+        "resolved_to": "A",
+        "label": "SyncMessage",
+        "assignment": null,
+        "style": "synchronous",
+        "body": []
+      },
+      {
+        "id": "zenuml-statement-1",
+        "comment": null,
+        "span": {
+          "start": 52,
+          "end": 119
+        },
+        "kind": "message",
+        "explicit_from": null,
+        "resolved_from": null,
+        "resolved_to": "A",
+        "label": "SyncMessage(with,parameters)",
+        "assignment": null,
+        "style": "synchronous",
+        "body": [
+          {
+            "id": "zenuml-statement-2",
+            "comment": null,
+            "span": {
+              "start": 92,
+              "end": 113
+            },
+            "kind": "message",
+            "explicit_from": null,
+            "resolved_from": "A",
+            "resolved_to": "B",
+            "label": "nestedSyncMessage()",
+            "assignment": null,
+            "style": "synchronous",
+            "body": []
+          }
+        ]
       }
-    }
+    ],
+    "type": "zenuml"
   }
 }

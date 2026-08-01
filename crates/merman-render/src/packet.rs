@@ -7,24 +7,18 @@ mod config;
 
 pub(crate) use config::PacketConfigView;
 
-pub fn layout_packet_diagram(
-    semantic: &serde_json::Value,
-    diagram_title: Option<&str>,
-    effective_config: &serde_json::Value,
-    _measurer: &dyn TextMeasurer,
-) -> Result<PacketDiagramLayout> {
-    let model: PacketDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_packet_diagram_typed(&model, diagram_title, effective_config, _measurer)
-}
-
-pub fn layout_packet_diagram_typed(
+pub(crate) fn layout_packet_diagram_typed(
     model: &PacketDiagramRenderModel,
     diagram_title: Option<&str>,
     effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
 ) -> Result<PacketDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
-    let cfg = PacketConfigView::new(effective_config).layout_settings();
+    let cfg = PacketConfigView::new(effective_config)
+        .layout_settings()
+        .map_err(|error| crate::Error::InvalidModel {
+            message: error.to_string(),
+        })?;
 
     let total_row_height = cfg.row_height + cfg.padding_y;
     let title_from_semantic = model

@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "disableMulticolor + many periods (no sections)",
     "accTitle": null,
     "accDescr": null,

@@ -1,5 +1,8 @@
 # Fearless Refactor TODO
 
+> Historical backlog, not current implementation guidance. Override tables, policies, budgets, and
+> generator/audit commands mentioned below were removed on 2026-07-15 under ADR-0062.
+
 This backlog is intentionally architecture-focused. Each item should end with code deletion,
 simpler ownership boundaries, stronger gates, or measurable performance improvement.
 

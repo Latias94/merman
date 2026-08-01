@@ -1,6 +1,6 @@
 //! SVG text bbox and font-key helpers.
 
-use super::{TextStyle, round_to_1_64_px};
+use super::TextStyle;
 
 pub(crate) const FLOWCHART_DEFAULT_FONT_KEY: &str = "trebuchetms,verdana,arial,sans-serif";
 
@@ -77,8 +77,4 @@ pub(crate) fn svg_title_bbox_vertical_extents_px(style: &TextStyle) -> (f64, f64
         (SVG_DEFAULT_TITLE_ASCENT_EM, SVG_DEFAULT_TITLE_DESCENT_EM)
     };
     (font_size * ascent_em, font_size * descent_em)
-}
-
-pub(crate) fn svg_create_text_bbox_y_offset_px(style: &TextStyle) -> f64 {
-    round_to_1_64_px(style.font_size.max(1.0) / 16.0)
 }

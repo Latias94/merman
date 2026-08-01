@@ -1,8 +1,8 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 #![recursion_limit = "256"]
 
 use merman::MermaidConfig;
-use merman::render::{
+use merman::svg::{
     CssOverridePolicy, CssOverridePostprocessor, HeadlessRenderer, ScopedCssPostprocessor,
     SvgPipeline,
 };
@@ -123,9 +123,10 @@ fn render_zed_with_host_css(name: &str, source: &str, host_css: &str) -> String 
 
 fn render_zed_with_pipeline(name: &str, source: &str, pipeline: &SvgPipeline) -> String {
     zed_like_renderer(name)
-        .render_svg_with_pipeline_sync(source, pipeline)
+        .render_resvg_compatible_svg_with_pipeline_sync(source, pipeline)
         .unwrap_or_else(|err| panic!("{name}: render failed: {err}"))
         .unwrap_or_else(|| panic!("{name}: no diagram detected"))
+        .into_string()
 }
 
 fn assert_zed_safe_svg(name: &str, svg: &str) {
@@ -176,6 +177,7 @@ fn assert_zed_safe_svg(name: &str, svg: &str) {
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn zed_like_editor_pipeline_keeps_resvg_safe_themeable_svg_contract() {
     let cases = [
         (
@@ -263,13 +265,49 @@ flowchart TD
         !svg.contains("fill: #123456"),
         "diagram-level themeCSS should stay filtered out: {svg}"
     );
+    let document = roxmltree::Document::parse(&svg).expect("valid Zed SVG XML");
+    let host_css = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("style")
+                && node.attribute("data-merman-postprocess") == Some("scoped-css")
+        })
+        .and_then(|node| node.text())
+        .expect("scoped host CSS");
     assert!(
-        svg.contains("#zed-contract-css .node rect { stroke: #0ea5e9; }"),
+        host_css.contains("#zed-contract-css .node rect") && host_css.contains("stroke: #0ea5e9"),
         "expected scoped host CSS to remain in control: {svg}"
     );
     assert!(
         !svg.contains("@keyframes"),
         "resvg-safe output should remove animation rules: {svg}"
+    );
+}
+
+#[test]
+fn zed_like_host_css_is_sanitized_before_the_resvg_contract_is_sealed() {
+    let svg = render_zed_with_host_css(
+        "zed-contract-host-css-safety",
+        "flowchart TD\n  A[Styled] --> B[Host]\n",
+        r#"
+@import url("https://example.invalid/theme.css");
+.node rect {
+  stroke: #0ea5e9;
+  fill: url("javascript:alert(1)");
+  animation: pulse 1s infinite;
+}
+@keyframes pulse { to { opacity: 0.5; } }
+"#,
+    );
+
+    assert_zed_safe_svg("zed-contract-host-css-safety", &svg);
+    let lower = svg.to_ascii_lowercase();
+    assert!(!lower.contains("@import"), "{svg}");
+    assert!(!lower.contains("javascript:"), "{svg}");
+    assert!(!lower.contains("example.invalid"), "{svg}");
+    assert!(
+        svg.contains("stroke: #0ea5e9") || svg.contains("stroke:#0ea5e9"),
+        "safe host declarations should survive terminal sanitization: {svg}"
     );
 }
 

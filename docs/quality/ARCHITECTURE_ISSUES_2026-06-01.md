@@ -48,6 +48,57 @@ Large-file size signals observed during the audit:
 - P1: High-leverage refactor that reduces repeated behavior across many diagrams or adapters.
 - P2: Important cleanup or seam-deepening that should follow a broader boundary decision.
 
+## Architecture Contract Refresh - 2026-07-15
+
+The issue bodies below remain the evidence captured by the 2026-06-01 audit. Their locators are
+historical and must not be read as current implementation instructions. ADR-0073 now defines the
+current family-owned architecture for the Mermaid 11.16 baseline. The following dispositions
+supersede older status notes for the migration it governs:
+
+| Issue | Disposition | Current contract and evidence |
+| --- | --- | --- |
+| ARCH-002 | Closed as an authority split | `merman-core::baseline` owns the pinned Mermaid 11.16 identity. Diagram Family Facts, Root Viewport, parity verification, and the versioned generalized measurement profile consume that identity; production generated filenames now use the 11.16 baseline. |
+| ARCH-003 | Closed | `crates/merman-core/src/family.rs` is the single built-in catalog and projects detector order, aliases, semantic/editor/render adapters, metadata, config namespaces, and authoring headers. Every core build uses that same language catalog. |
+| ARCH-004 | Closed within the source-backed boundary | Families importing Mermaid's Langium `common.langium` use one span-rich common syntax implementation. Other Mermaid grammars remain family-local; a universal title/accessibility parser is explicitly rejected. |
+| ARCH-005 | Closed for built-ins | Each admitted built-in family owns one successful semantic construction and projects compatibility JSON, editor facts, and typed render semantics. Parse-pipeline orchestration no longer owns family model interpretation. |
+| ARCH-007 | Closed as a coverage imbalance | Compatibility snapshots remain intentionally, but registry-driven construction/projection tests and typed family artifact tests now assert family invariants directly. Compatibility JSON is supplementary evidence rather than the render oracle. |
+| ARCH-008 | Closed | Built-in JSON-first layout/SVG dispatch is deleted. `FamilyRenderArtifact` owns an opaque matching semantic/layout pair and projects layout JSON from the typed artifact. |
+| ARCH-009 | Closed | `RenderEnvironment` owns production services and deterministic policy; `SvgRenderOptions` contains request values and `SvgDebugOptions` contains diagnostics. The operation freezes one `RenderSession`. |
+| ARCH-010 | Closed | Every built-in root is planned and emitted through the Root Viewport module. Family renderers provide content bounds and root mode but do not own sizing, fixture lookup, or root attribute emission. |
+| ARCH-017 | Closed | Runtime root pins, complete-label text/SVG tables, budget reports, stale-key audits, and their generators were deleted. Generalized measurement facts and explicit verification residuals are the only remaining browser boundary. |
+| ARCH-020 | Closed | Per-family compare commands delegate canonical rendering to the shared compare harness and typed `HeadlessRenderer` operation. Family hooks are limited to proven diagnostics such as Flowchart, ER, and Gantt. |
+| ARCH-023 | Closed | Facade, CLI, bindings, parity tooling, and raster paths delegate to the operation-owned typed render pipeline instead of rebuilding parse-layout-render stages. |
+| ARCH-034 | Still open as documentation hygiene | ADR-0073 and the root README provide current ownership, but chronological alignment notes remain historical evidence. Current gate claims must continue to come from the latest dated status section and verification output. |
+| ARCH-035 | Closed | The canonical facade is `HeadlessRenderer` plus consuming prepared-render stages. Old public `layout_parsed*`, `render_layouted_svg`, raw model/layout SVG helpers, and pass-through family wrappers are removed rather than retained as transition APIs. |
+
+The remaining issues are not implicitly closed by ADR-0073. In particular, large algorithm modules,
+binding contract generation, ASCII ownership, benchmark inventory, and historical documentation
+maintenance retain their own scope.
+
+## Browser Runtime Contract Refresh - 2026-07-18
+
+The original 2026-06-01 audit predates the document-runtime, Compare-realm, browser benchmark, and
+Monaco Worker implementation. ADR-0074 now owns those browser concerns. Historical references to
+the removed component-local `useMerman` hook, combined WASM loader/Cache Storage adapter,
+synthetic product warmup, main-realm Mermaid mutation, handwritten examples, or source-prefix
+detection are evidence of the superseded implementation, not current architectural guidance.
+
+| Browser scope | Disposition | Current contract and evidence |
+| --- | --- | --- |
+| Merman loading and lifecycle | Closed | One document-owned staged runtime coalesces import/fetch/init/session work, uses browser HTTP cache only, bounds reload recovery, distinguishes BFCache suspension from destruction, and owns disposable browser measurement resources. React effects do not own the session. |
+| Live render publication | Closed | A separate Render Coordinator freezes request inputs, publishes latest-wins coherent batches, records the actual source's presentation boundary, and keeps request failures outside runtime lifecycle state. Product SVG warmup is removed. |
+| Mermaid Compare isolation | Closed | The main document does not import Mermaid. An authenticated same-origin iframe and failure-resilient operation queue own local import, external registration, initialization, recovery, render, and SVG validation. |
+| Browser benchmark validity | Closed for the Playground product | Equivalent per-engine Window realms emit protocol/trace schema 1 phase events; the controller owns derivation, deterministic balanced AB/BA order, equal real-source warmups, failure retention, visibility invalidation, and fail-closed ratios. This does not close ARCH-021's native Criterion scenario-inventory finding. |
+| Browser editor intelligence | Closed | Local Monaco uses a dedicated `@mermanjs/web-editor` module Worker backed by the `web-editor` artifact profile, the 35-family Rust catalog, native ABI 3, diagnostics schema 1, and facts schema 1. TypeScript syntax heuristics are not a fallback path. |
+| Examples and live type detection | Closed | One fixture manifest generates a 70-example Playground teaching catalog across the exact 35-family set, with at least one example per family. Rust/WASM parser facts provide family, syntax, and effective layout; `xtask` proves provenance, detection, baseline, and freshness. |
+| Web release surface | Closed for current packages | One structured Web descriptor owns artifact features/capabilities and public package-directory/runtime-profile mappings. Build/surface generation and the Python release verifier consume it without source regexes; `SURFACES.json`, package smoke, ABI checks, and WASM size budgets include `@mermanjs/web-editor` / `web-editor`. This does not close ARCH-027's broader cross-adapter contract-matrix finding. |
+
+The browser runtime is intentionally application code above `@mermanjs/web`; no reusable public
+engine/session factory was introduced. Browser HTTP headers remain an operational residual: the
+observed hashed asset uses `Cache-Control: max-age=14400` without `immutable`, so desired immutable
+hashed-asset caching must be configured by the hosting layer rather than simulated with Cache
+Storage.
+
 ## Issues
 
 ### ARCH-001 - Repository lacks a root context entry point
@@ -93,56 +144,15 @@ Related decisions:
 
 ### ARCH-002 - Mermaid baseline facts are split and stale
 
-Priority: P0
+Priority: closed
 
-Locators:
+Status note 2026-07-16:
 
-- `tools/upstreams/REPOS.lock.json:7` pins `mermaid@11.15.0`
-- `docs/adr/0001-upstream-baseline.md:14` states `mermaid@11.15.0`
-- `crates/merman-core/src/detect/mod.rs:103` uses `default_mermaid_11_12_2_full`
-- `crates/merman-core/src/detect/mod.rs:183` uses `default_mermaid_11_12_2`
-- `crates/merman-core/src/diagram/mod.rs:25` uses `default_mermaid_11_12_2`
-- `crates/merman-render/src/generated/architecture_root_overrides_11_12_2.rs:1`
-- `docs/alignment/ARCHITECTURE_MINIMUM.md:5` still says Mermaid `@11.12.3`
-- `docs/adr/0047-layout-golden-snapshots.md:9` still says Mermaid `@11.12.3`
-- `docs/adr/0052-normalized-upstream-fixtures.md:7` still says Mermaid `@11.12.3`
-
-Problem:
-
-The repository currently has more than one baseline story. The lock file and
-ADR-0001 say the active baseline is `11.15.0`, while many code names, generated
-artifact names, generated comments, alignment docs, and older ADRs still encode
-`11.12.x` or `11.12.3`. Some generated files are documented as historical names,
-but that history is now visible at production call sites.
-
-Impact:
-
-Baseline upgrades have poor locality. A future bump can miss report titles,
-generated provenance, registry names, and comparison policies. The stale naming
-also makes it harder to determine whether a drift is a real upstream difference
-or just stale documentation.
-
-Deletion test:
-
-If a single baseline module were deleted, the current complexity would return to
-xtask, generated files, renderer modules, docs, and registry constructors. That
-means the baseline module is a real seam worth deepening.
-
-Suggested direction:
-
-Create a pinned baseline registry module or manifest used by import, generation,
-reports, docs projections, detector/diagram registry naming, and generated
-override provenance.
-
-Status note 2026-06-05:
-
-This issue has been partially narrowed. `crates/merman-core/src/baseline.rs`
-now records the pinned Mermaid `11.15.0` constants and the legacy generated
-suffix explicitly, while detector and parser registries expose
-`for_pinned_mermaid_baseline` / `pinned_mermaid_baseline_*` constructors. The
-remaining work is not to invent the baseline seam from scratch, but to pay down
-stale `11.12.x` wording in historical docs/comments and remove production
-call-site reliance on deprecated versioned names where compatibility allows.
+`crates/merman-core/src/baseline.rs` and `tools/upstreams/REPOS.lock.json` define the pinned Mermaid
+`11.16.0@7c0cafcf` baseline used by registries, provenance, import, and verification. Deprecated
+version-named registry constructors and generated exact root/text tables have been removed from
+production. Historical ADRs and workstream journals may retain the version they documented; they
+are not runtime authorities.
 
 Related decisions:
 
@@ -326,6 +336,16 @@ narrowed but not fully closed: the public `ParseOptions::suppress_errors` name
 and documented lenient/strict semantics remain unchanged for compatibility and
 can be reassessed separately if the public Interface is revised before a stable
 release.
+
+Status note 2026-07-20:
+
+The editor/analysis boundary no longer accepts `ParseOptions`. Its closed parse
+snapshot always retains the original family failure and same-construction
+recovery facts. `ParseOptions::suppress_errors` remains intentionally limited to
+model-producing JSON, render, and ASCII facades, where it is observable rather
+than silently ignored. This closes the analysis-side ambiguity while preserving
+the Mermaid-compatible Error-family projection where it is part of the output
+contract.
 
 Related decisions:
 
@@ -868,37 +888,23 @@ not by arbitrary file size alone.
 
 ### ARCH-017 - Root/text override footprint and policy are not local
 
-Priority: P0
+Status: Resolved on 2026-07-15 by the family-owned architecture migration.
 
-Locators:
+Resolution:
 
-- `crates/merman-render/src/generated/*_root_overrides_11_12_2.rs`
-- `crates/merman-render/src/generated/*_text_overrides_11_12_2.rs`
-- `crates/merman-render/src/svg/parity/util.rs:361`
-- `docs/alignment/ROOT_VIEWPORT_OVERRIDES.md:122`
-- `docs/alignment/STATUS.md:130`
-- `crates/xtask/src/cmd/compare/all.rs:286`
-
-Problem:
-
-ADR-0062 allows fixture-derived overrides, but the current inventory, generated
-lookup functions, accepted residual policy, disabled-root audit, and no-growth
-gate are not owned by one module. Production renderers know about generated
-lookups directly.
-
-Impact:
-
-It is hard to tell whether an override is current, stale, diagnostic, accepted,
-or release-blocking. Override paydown and growth control become process-heavy.
-
-Suggested direction:
-
-Fold root/text override inventory and residual policy into the root viewport
-parity module proposed in ARCH-010.
+- Generated root tables, complete-label text/SVG tables, runtime root policy, budget reports, and
+  generator/audit commands were deleted.
+- Every built-in root delegates computed family or emitted-content bounds to Root Viewport.
+- The operation-owned measurement profile contains only generalized font and DOM-shape facts;
+  successful host measurements bypass it.
+- ADR-0062 now forbids production fixture answers, and architecture guards reject their
+  reintroduction.
 
 Related decisions:
 
-- ADR-0062 fixture-derived overrides
+- ADR-0057 headless text measurement
+- ADR-0062 no production fixture overrides
+- ADR-0073 family-owned diagram architecture
 
 ### ARCH-018 - Fixture parity inventory is fragmented
 

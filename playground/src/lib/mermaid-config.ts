@@ -1,5 +1,5 @@
 import { normalizeThemeName } from "@mermanjs/web";
-import { diagramFontStack, type DiagramFont } from "@/src/lib/diagram-font";
+import { diagramFontStack, type DiagramFont } from "./diagram-font.ts";
 
 export type MermaidConfigObject = Record<string, unknown>;
 
@@ -49,6 +49,13 @@ export function sourceWithConfig(
   options: MermaidConfigBuildOptions = {}
 ): string {
   const config = buildMermaidConfig(configJson, theme, options);
+  return sourceWithMermaidConfig(source, config);
+}
+
+export function sourceWithMermaidConfig(
+  source: string,
+  config: MermaidConfigObject
+): string {
   if (Object.keys(config).length === 0) {
     return source;
   }
@@ -59,22 +66,32 @@ export function sourceWithConfig(
 
 function insertDirectiveAfterFrontmatter(source: string, directive: string): string {
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const firstLineEnd = source.search(/\r?\n/);
+  const firstLine = firstLineEnd < 0 ? source : source.slice(0, firstLineEnd);
+  const opening = frontmatterDelimiter(firstLine);
+  if (opening === null) {
+    return `${directive}${newline}${source}`;
+  }
   const lines = source.split(/\r?\n/);
 
-  if (lines[0]?.trim() === "---") {
-    const frontmatterEnd = lines.findIndex(
-      (line, index) => index > 0 && line.trim() === "---"
-    );
-    if (frontmatterEnd > 0) {
-      return [
-        ...lines.slice(0, frontmatterEnd + 1),
-        directive,
-        ...lines.slice(frontmatterEnd + 1),
-      ].join(newline);
-    }
+  const frontmatterEnd = lines.findIndex(
+    (line, index) =>
+      index > 0 && frontmatterDelimiter(line) === opening
+  );
+  if (frontmatterEnd > 0) {
+    return [
+      ...lines.slice(0, frontmatterEnd + 1),
+      directive,
+      ...lines.slice(frontmatterEnd + 1),
+    ].join(newline);
   }
 
   return `${directive}${newline}${source}`;
+}
+
+function frontmatterDelimiter(line: string): string | null {
+  const match = /^([ \t]*)---[ \t]*$/.exec(line);
+  return match?.[1] ?? null;
 }
 
 function isPlainObject(value: unknown): value is MermaidConfigObject {

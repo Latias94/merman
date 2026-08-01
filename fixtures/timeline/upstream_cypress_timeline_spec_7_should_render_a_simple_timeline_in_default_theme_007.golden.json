@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "History of Social Media Platform",
     "accTitle": null,
     "accDescr": null,

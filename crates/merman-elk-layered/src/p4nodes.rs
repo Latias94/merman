@@ -108,7 +108,7 @@ pub fn calculate_innermost_node_margins(graph: &mut LGraph) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::PortSide;
+    use crate::graph::{EdgeLabelPlacement, LLabel, LSize, PortSide};
     use crate::importer::{ElkInputEdge, ElkInputGraph, ElkInputNode, import_graph};
     use crate::options::{ElkDirection, LayeredOptions};
 
@@ -153,6 +153,35 @@ mod tests {
             edges,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn label_dummy_represented_edge_labels_do_not_expand_node_margin() {
+        let mut graph = LGraph::new(
+            "root",
+            LayeredOptions::mermaid_flowchart_defaults(ElkDirection::Right),
+        );
+        let mut dummy = crate::graph::LNode::new("label", 13.0, 24.0, None);
+        dummy.kind = LNodeKind::Label;
+        dummy.represented_labels.push(LLabel {
+            text: "edge label".to_string(),
+            size: LSize {
+                width: 13.0,
+                height: 24.0,
+            },
+            position: crate::graph::LPoint { x: 63.0, y: 0.0 },
+            placement: EdgeLabelPlacement::Center,
+            inline: true,
+            label_side: None,
+            end_label_edge: None,
+            original_label_edge: None,
+        });
+        graph.layerless_nodes.push(dummy);
+        graph.set_node_layer(0, 0);
+
+        calculate_innermost_node_margins(&mut graph);
+
+        assert_eq!(graph.layerless_nodes[0].margin, Default::default());
     }
 
     #[test]

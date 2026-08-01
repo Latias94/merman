@@ -88,19 +88,20 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/er/erRenderer.spec.ts`
 
 - renderer-only (SVG / id generation for rendering) and out of scope for headless parsing parity.
 
-## Headless layout coverage (Stage A)
+## Headless layout coverage
 
-Layout entrypoint:
+Canonical low-level path:
 
-- `merman_render::layout_parsed` (diagram type `er` / `erDiagram` → `LayoutDiagram::ErDiagram`)
+- `Engine::parse_diagram_for_render_model_sync` followed by
+  `merman_render::family::prepare` (diagram type `er` / `erDiagram` → typed ER family artifact)
 
 Covered by Rust tests:
 
 - basic layout + routing: `fixtures/er/basic.mmd` via `crates/merman-render/tests/er_layout_test.rs`
 
-Debug SVG exporter:
+Development SVG exporter:
 
-- `crates/merman-render/src/svg.rs` (`render_er_diagram_debug_svg`)
+- `crates/merman-render/examples/er_debug_svg.rs` (canonical typed family render path)
 - usage: `docs/rendering/ER_DEBUG_SVG.md`
 - bulk export helper (writes to `target/debug-svgs/er/*.svg`):
   `cargo run -p xtask -- gen-debug-svgs --diagram er`

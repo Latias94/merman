@@ -1,25 +1,21 @@
 import type {
-  AsciiCapability,
-  AsciiDiagramType,
   DiagramFamilyCapability,
   DiagramType,
-  HostThemePresetName,
-  LintRuleCatalogEntry,
+  ThemeName,
+} from "./public-catalog.js";
+import type {
   MermanWasmLoader,
   MermanWasmModule,
-  ThemeName,
-} from "./index.js";
+  RuntimeCatalog,
+} from "./public-types.js";
 
 export interface MermanRuntimeState {
   defaultLoader: MermanWasmLoader;
   wasmModule: MermanWasmModule | null;
   initPromise: Promise<MermanWasmModule> | null;
   supportedDiagramsCache: DiagramType[] | null;
-  asciiSupportedDiagramsCache: AsciiDiagramType[] | null;
-  asciiCapabilitiesCache: AsciiCapability[] | null;
   diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null;
-  lintRuleCatalogCache: LintRuleCatalogEntry[] | null;
-  supportedHostThemePresetsCache: HostThemePresetName[] | null;
+  runtimeCatalogCache: RuntimeCatalog | null;
   supportedThemesCache: ThemeName[] | null;
 }
 
@@ -33,11 +29,8 @@ export function createMermanRuntimeState(
     wasmModule: null,
     initPromise: null,
     supportedDiagramsCache: null,
-    asciiSupportedDiagramsCache: null,
-    asciiCapabilitiesCache: null,
     diagramFamilyCapabilitiesCache: null,
-    lintRuleCatalogCache: null,
-    supportedHostThemePresetsCache: null,
+    runtimeCatalogCache: null,
     supportedThemesCache: null,
   };
 }

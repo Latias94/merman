@@ -1,5 +1,6 @@
-use super::{fixture_stem, hash_bytes, hash_file, upstream_svg_fixture_exclusion_reason};
+use super::{fixture_stem, hash_file, upstream_svg_fixture_exclusion_reason};
 use crate::XtaskError;
+use crate::util::sha256_hex;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
@@ -243,7 +244,7 @@ fn capture_fixture(
         stem,
         live_path,
         snapshot_path,
-        input_sha256: hash_bytes(&bytes),
+        input_sha256: sha256_hex(&bytes),
     })
 }
 

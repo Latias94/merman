@@ -7,7 +7,7 @@
           "id": "root_end",
           "x": 116.0,
           "y": 331.0,
-          "width": 14.013,
+          "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
@@ -31,7 +31,7 @@
           "id": "s2",
           "x": 116.0,
           "y": 254.0,
-          "width": 149.438,
+          "width": 149.44,
           "height": 40.0,
           "is_cluster": false
         }

@@ -2,14 +2,17 @@ use std::fmt::Write as _;
 
 use crate::architecture_metrics::{
     ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX, ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX,
-    architecture_create_text_bbox_height_px, architecture_create_text_bbox_y_range_px,
+    architecture_create_text_middle_bbox_y_range_px,
 };
 use crate::model::Bounds;
-use crate::text::{TextMeasurer, VendoredFontMetricsTextMeasurer};
+use crate::text::TextMeasurer;
 
 use super::super::{escape_xml_into, fmt, fmt_into, fmt_string};
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
-use super::labels::{svg_line_plain_text, wrap_svg_words_to_lines, write_svg_text_lines};
+use super::labels::{
+    svg_line_plain_text, svg_line_tspan_bbox_width_px, wrap_svg_words_to_lines,
+    write_svg_text_lines,
+};
 use super::model::ArchitectureModelAccess;
 use super::settings::ArchitectureRenderSettings;
 use crate::model::ArchitectureDiagramLayout;
@@ -21,7 +24,7 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
-    pub(super) text_measurer: &'a VendoredFontMetricsTextMeasurer,
+    pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
 }
@@ -278,7 +281,7 @@ fn architecture_edge_label_plan(
     edge: super::model::ArchitectureEdgeRef<'_>,
     points: ArchitectureEdgePoints,
     settings: &ArchitectureRenderSettings,
-    text_measurer: &VendoredFontMetricsTextMeasurer,
+    text_measurer: &dyn TextMeasurer,
 ) -> Option<ArchitectureEdgeLabelPlan> {
     let label = edge.title.map(str::trim).filter(|t| !t.is_empty())?;
     let axis = match (is_arch_dir_x(edge.lhs_dir), is_arch_dir_x(edge.rhs_dir)) {
@@ -300,22 +303,26 @@ fn architecture_edge_label_plan(
     let lines = wrap_svg_words_to_lines(label, wrap_width, text_measurer, &settings.text_style);
 
     let mut bbox_w = 0.0f64;
+    let mut first_line_text = None;
     for line in &lines {
         let s = svg_line_plain_text(line);
-        let m = text_measurer.measure_wrapped(
-            s.as_str(),
+        bbox_w = bbox_w.max(svg_line_tspan_bbox_width_px(
+            line,
+            text_measurer,
             &settings.text_style,
-            None,
-            crate::text::WrapMode::SvgLike,
-        );
-        bbox_w = bbox_w.max(m.width);
+        ));
+        first_line_text.get_or_insert(s);
     }
     let line_count = lines.len().max(1);
-    let bbox_h = architecture_create_text_bbox_height_px(settings.svg_font_size_px, line_count);
+    let (bbox_y_min, bbox_y_max) = architecture_create_text_middle_bbox_y_range_px(
+        first_line_text.as_deref().unwrap_or(label),
+        &settings.text_style,
+        line_count,
+        text_measurer,
+    );
+    let bbox_h = bbox_y_max - bbox_y_min;
     let half_bbox_h = bbox_h / 2.0;
     let half_bbox_w = bbox_w / 2.0;
-    let (bbox_y_min, bbox_y_max) =
-        architecture_create_text_bbox_y_range_px(settings.svg_font_size_px, line_count);
 
     let (dominant_baseline, transform) = match axis {
         "Y" => (

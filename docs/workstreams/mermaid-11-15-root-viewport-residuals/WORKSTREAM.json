@@ -2,8 +2,8 @@
   "schema_version": 1,
   "slug": "mermaid-11-15-root-viewport-residuals",
   "title": "Mermaid 11.15 Root Viewport Residuals",
-  "status": "active",
-  "updated": "2026-06-05",
+  "status": "closed",
+  "updated": "2026-07-21",
   "scope_kind": "execution",
   "problem": "The implemented Mermaid 11.15 diagram matrix is structurally green, but full parity-root still has root viewBox/max-width residuals driven by browser bbox/font/layout lattice behavior.",
   "authoritative_docs": [
@@ -37,7 +37,7 @@
     }
   ],
   "context_manifest": "docs/workstreams/mermaid-11-15-root-viewport-residuals/CONTEXT.jsonl",
-  "current_task": "M15RV-089",
+  "current_task": null,
   "gates": [
     "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3",
     "cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3",
@@ -65,7 +65,7 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "notes": "Classify root-only residuals before adding lookup data. Prefer source-derived layout/root rules; treat browser font lattice tails as diagnostic unless generated and auditable."
+    "default_action": "closed",
+    "notes": "Historical Mermaid 11.15 execution evidence. This lane was superseded on 2026-07-15 by shared Root Viewport ownership, ADR-0062 override removal, and docs/alignment/ROOT_PARITY_RESIDUAL_CATALOG.md. Do not resume tasks from this archive."
   }
 }

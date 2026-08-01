@@ -6,10 +6,10 @@
         "min_x": -0.5,
         "min_y": 0.0,
         "max_x": 121.92,
-        "max_y": 348.0
+        "max_y": 331.2
       },
       "total_width": 121.92,
-      "total_height": 348.0,
+      "total_height": 331.2,
       "row_indent": 10.0,
       "padding_x": 5.0,
       "padding_y": 5.0,
@@ -26,11 +26,11 @@
           "x": 0.0,
           "y": 0.0,
           "width": 15.28,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 5.0,
-          "label_y": 14.5,
+          "label_y": 13.8,
           "label_width": 5.28,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 1.0,
@@ -39,13 +39,13 @@
           "nodeType": "file",
           "depth": 1.0,
           "x": 15.0,
-          "y": 29.0,
+          "y": 27.6,
           "width": 57.84,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 20.0,
-          "label_y": 43.5,
+          "label_y": 41.4,
           "label_width": 47.84,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 2.0,
@@ -54,13 +54,13 @@
           "nodeType": "file",
           "depth": 2.0,
           "x": 30.0,
-          "y": 58.0,
+          "y": 55.2,
           "width": 59.92,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 35.0,
-          "label_y": 72.5,
+          "label_y": 69.0,
           "label_width": 49.92,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 3.0,
@@ -69,13 +69,13 @@
           "nodeType": "file",
           "depth": 2.0,
           "x": 30.0,
-          "y": 87.0,
+          "y": 82.8,
           "width": 59.92,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 35.0,
-          "label_y": 101.5,
+          "label_y": 96.6,
           "label_width": 49.92,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 4.0,
@@ -84,13 +84,13 @@
           "nodeType": "file",
           "depth": 1.0,
           "x": 15.0,
-          "y": 116.0,
+          "y": 110.4,
           "width": 57.84,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 20.0,
-          "label_y": 130.5,
+          "label_y": 124.2,
           "label_width": 47.84,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 5.0,
@@ -99,13 +99,13 @@
           "nodeType": "file",
           "depth": 2.0,
           "x": 30.0,
-          "y": 145.0,
+          "y": 138.0,
           "width": 91.92,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 35.0,
-          "label_y": 159.5,
+          "label_y": 151.8,
           "label_width": 81.92,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 6.0,
@@ -114,13 +114,13 @@
           "nodeType": "file",
           "depth": 2.0,
           "x": 30.0,
-          "y": 174.0,
+          "y": 165.6,
           "width": 57.84,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 35.0,
-          "label_y": 188.5,
+          "label_y": 179.4,
           "label_width": 47.84,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 7.0,
@@ -129,13 +129,13 @@
           "nodeType": "file",
           "depth": 3.0,
           "x": 45.0,
-          "y": 203.0,
+          "y": 193.2,
           "width": 59.92,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 50.0,
-          "label_y": 217.5,
+          "label_y": 207.0,
           "label_width": 49.92,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 8.0,
@@ -144,13 +144,13 @@
           "nodeType": "file",
           "depth": 3.0,
           "x": 45.0,
-          "y": 232.0,
+          "y": 220.8,
           "width": 59.92,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 50.0,
-          "label_y": 246.5,
+          "label_y": 234.6,
           "label_width": 49.92,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 9.0,
@@ -159,13 +159,13 @@
           "nodeType": "file",
           "depth": 3.0,
           "x": 45.0,
-          "y": 261.0,
+          "y": 248.4,
           "width": 57.84,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 50.0,
-          "label_y": 275.5,
+          "label_y": 262.2,
           "label_width": 47.84,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 10.0,
@@ -174,13 +174,13 @@
           "nodeType": "file",
           "depth": 4.0,
           "x": 60.0,
-          "y": 290.0,
+          "y": 276.0,
           "width": 59.92,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 65.0,
-          "label_y": 304.5,
+          "label_y": 289.8,
           "label_width": 49.92,
-          "label_height": 19.0
+          "label_height": 17.6
         },
         {
           "id": 11.0,
@@ -189,149 +189,149 @@
           "nodeType": "file",
           "depth": 1.0,
           "x": 15.0,
-          "y": 319.0,
+          "y": 303.6,
           "width": 59.92,
-          "height": 29.0,
+          "height": 27.6,
           "label_x": 20.0,
-          "label_y": 333.5,
+          "label_y": 317.4,
           "label_width": 49.92,
-          "label_height": 19.0
+          "label_height": 17.6
         }
       ],
       "lines": [
         {
           "x1": -10.0,
-          "y1": 14.5,
+          "y1": 13.8,
           "x2": 0.0,
-          "y2": 14.5,
+          "y2": 13.8,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 5.0,
-          "y1": 43.5,
+          "y1": 41.4,
           "x2": 15.0,
-          "y2": 43.5,
+          "y2": 41.4,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 20.0,
-          "y1": 72.5,
+          "y1": 69.0,
           "x2": 30.0,
-          "y2": 72.5,
+          "y2": 69.0,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 20.0,
-          "y1": 101.5,
+          "y1": 96.6,
           "x2": 30.0,
-          "y2": 101.5,
+          "y2": 96.6,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 20.0,
-          "y1": 58.0,
+          "y1": 55.2,
           "x2": 20.0,
-          "y2": 102.0,
+          "y2": 97.1,
           "stroke_width": 1.0,
           "kind": "vertical"
         },
         {
           "x1": 5.0,
-          "y1": 130.5,
+          "y1": 124.2,
           "x2": 15.0,
-          "y2": 130.5,
+          "y2": 124.2,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 20.0,
-          "y1": 159.5,
+          "y1": 151.8,
           "x2": 30.0,
-          "y2": 159.5,
+          "y2": 151.8,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 20.0,
-          "y1": 188.5,
+          "y1": 179.4,
           "x2": 30.0,
-          "y2": 188.5,
+          "y2": 179.4,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 35.0,
-          "y1": 217.5,
+          "y1": 207.0,
           "x2": 45.0,
-          "y2": 217.5,
+          "y2": 207.0,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 35.0,
-          "y1": 246.5,
+          "y1": 234.6,
           "x2": 45.0,
-          "y2": 246.5,
+          "y2": 234.6,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 35.0,
-          "y1": 275.5,
+          "y1": 262.2,
           "x2": 45.0,
-          "y2": 275.5,
+          "y2": 262.2,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 50.0,
-          "y1": 304.5,
+          "y1": 289.8,
           "x2": 60.0,
-          "y2": 304.5,
+          "y2": 289.8,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 50.0,
-          "y1": 290.0,
+          "y1": 276.0,
           "x2": 50.0,
-          "y2": 305.0,
+          "y2": 290.3,
           "stroke_width": 1.0,
           "kind": "vertical"
         },
         {
           "x1": 35.0,
-          "y1": 203.0,
+          "y1": 193.2,
           "x2": 35.0,
-          "y2": 276.0,
+          "y2": 262.7,
           "stroke_width": 1.0,
           "kind": "vertical"
         },
         {
           "x1": 20.0,
-          "y1": 145.0,
+          "y1": 138.0,
           "x2": 20.0,
-          "y2": 189.0,
+          "y2": 179.9,
           "stroke_width": 1.0,
           "kind": "vertical"
         },
         {
           "x1": 5.0,
-          "y1": 333.5,
+          "y1": 317.4,
           "x2": 15.0,
-          "y2": 333.5,
+          "y2": 317.4,
           "stroke_width": 1.0,
           "kind": "horizontal"
         },
         {
           "x1": 5.0,
-          "y1": 29.0,
+          "y1": 27.6,
           "x2": 5.0,
-          "y2": 334.0,
+          "y2": 317.9,
           "stroke_width": 1.0,
           "kind": "vertical"
         }

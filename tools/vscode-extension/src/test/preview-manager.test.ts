@@ -449,6 +449,32 @@ describe("preview manager", () => {
     assert.deepEqual(host.warnings, ["Open a Mermaid preview before locking it to a source."]);
   });
 
+  it("keeps an empty preview unlocked and retargets it without stealing editor focus", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.();
+    assert.equal(host.panels.length, 1);
+    assert.deepEqual(host.showTextDocumentCalls, []);
+
+    await host.panels[0]?.receive({ type: "setLocked", locked: true });
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+
+    assert.equal(host.panels.length, 1);
+    assert.deepEqual(host.showTextDocumentCalls.map(({ documentUri, preserveFocus }) => ({
+      documentUri,
+      preserveFocus,
+    })), [
+      { documentUri: "file:///workspace/example.mmd", preserveFocus: true },
+    ]);
+    assert.deepEqual(host.revealCalls, [{ viewColumn: 2, preserveFocus: true }]);
+  });
+
   it("opens a new follow preview when the active preview is locked", async () => {
     const host = new FakePreviewHost();
     const { registerPreview } = loadPreviewModule(host);

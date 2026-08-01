@@ -63,11 +63,15 @@ These fixtures are parity-gated against upstream SVG baselines under `fixtures/u
 Class ELK entry-point coverage:
 
 - Mermaid-reachable `layout: elk` and `class.defaultRenderer: elk` requests dispatch through the
-  feature-gated Class ELK adapter under `elk-layout`, then reuse the existing Class SVG renderer.
+  feature-gated Class ELK adapter under `layout-elk`. The renderer shares Class semantic,
+  node, edge, and namespace emitters while selecting Mermaid 11.16's layout-adapter top-level DOM
+  (`subgraphs`, `nodes`, `edges edgePaths`, and `edgeLabels`) instead of the Dagre root wrapper.
   `render_model_dispatch_uses_elk_for_class_layout_config`,
   `render_model_dispatch_uses_elk_for_class_default_renderer_config`, and
-  `class_svg_elk_layout_preserves_existing_renderer_semantics` cover dispatch plus rendered
-  Class semantics for namespaces, styles, links, notes, relation labels, and cardinality terminals.
+  `class_svg_elk_layout_preserves_existing_renderer_semantics` cover dispatch plus rendered Class
+  semantics for namespaces, styles, links, notes, relation labels, and cardinality terminals.
+  `class_svg_elk_layout_uses_upstream_adapter_dom` locks the adapter-specific wrapper order and
+  classes against the pinned upstream renderer.
 - The deferred upstream Cypress full-diagram ELK copy with stem
   `upstream_cypress_classdiagram_v3_spec_should_render_a_full_class_diagram_using_elk_057`
   is treated as absorbed because its diagram body matches the active fixture
@@ -230,11 +234,13 @@ renderer fails, so no SVG baseline is committed:
 
 - `repo-ref/mermaid/demos/classchart.html` block that contains the line `class People List~List~Person~~`
 
-## Headless layout coverage (Stage A)
+## Headless layout coverage
 
-Layout entrypoint:
+Canonical low-level path:
 
-- `merman_render::layout_parsed` (diagram type `classDiagram` / `class` → `LayoutDiagram::ClassDiagramV2`)
+- `Engine::parse_diagram_for_render_model_sync` followed by
+  `merman_render::family::prepare` (diagram type `classDiagram` / `class` → typed Class family
+  artifact)
 
 Covered by Rust tests:
 
@@ -242,9 +248,9 @@ Covered by Rust tests:
 - namespace clusters contain their member classes: `fixtures/class/upstream_namespaces_and_generics.mmd` via `crates/merman-render/tests/class_layout_test.rs`
 - terminal label placement (cardinalities): `fixtures/class/upstream_relation_types_and_cardinalities_spec.mmd` via `crates/merman-render/tests/class_layout_test.rs`
 
-Debug SVG exporter:
+Development SVG exporter:
 
-- `crates/merman-render/src/svg.rs` (`render_class_diagram_v2_debug_svg`)
+- `crates/merman-render/examples/class_debug_svg.rs` (canonical typed family render path)
 - usage: `docs/rendering/CLASS_DEBUG_SVG.md`
 - bulk export helper (writes to `target/debug-svgs/class/*.svg`):
   `cargo run -p xtask -- gen-debug-svgs --diagram class`

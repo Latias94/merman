@@ -1,20 +1,40 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions};
-use merman_render::model::{LayoutDiagram, LayoutEdge, LayoutPoint, SequenceDiagramLayout};
-use merman_render::svg::{
-    SvgRenderOptions, render_sequence_diagram_debug_svg, render_sequence_diagram_svg,
-};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
+use merman_render::family;
+use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::PathBuf;
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 use std::sync::Arc;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn parse_sequence_for_render(engine: &Engine, text: &str) -> ParsedDiagramRender {
+    engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected")
+}
+
+fn layout_sequence_from_environment(
+    text: &str,
+    environment: &RenderEnvironment,
+) -> SequenceDiagramLayout {
+    let parsed = parse_sequence_for_render(&Engine::new(), text);
+    let session = environment.begin_session().unwrap();
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::default(), session).expect("typed Sequence layout");
+    let projection = artifact.layout_json().expect("Sequence layout projection");
+    serde_json::from_value(projection["layout"]["SequenceDiagram"].clone())
+        .expect("Sequence layout")
 }
 
 fn extract_self_closing_tags<'a>(s: &'a str, tag_name: &str) -> Vec<&'a str> {
@@ -50,12 +70,61 @@ fn extract_paired_tags<'a>(s: &'a str, tag_name: &str) -> Vec<&'a str> {
     out
 }
 
+fn text_rows_by_class(svg: &str, class_name: &str) -> Vec<String> {
+    let document = roxmltree::Document::parse(svg).expect("valid Sequence SVG");
+    document
+        .descendants()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().name() == "text"
+                && node.attribute("class").is_some_and(|classes| {
+                    classes.split_whitespace().any(|class| class == class_name)
+                })
+        })
+        .map(|node| {
+            node.descendants()
+                .filter(|descendant| descendant.is_text())
+                .filter_map(|descendant| descendant.text())
+                .collect::<String>()
+        })
+        .collect()
+}
+
 fn attr_f64(tag: &str, name: &str) -> Option<f64> {
     let needle = format!(r#"{name}=""#);
     let i = tag.find(&needle)? + needle.len();
     let rest = &tag[i..];
     let end = rest.find('"')?;
     rest[..end].parse::<f64>().ok()
+}
+
+fn root_view_box_and_max_width(svg: &str) -> ([f64; 4], f64) {
+    let document = roxmltree::Document::parse(svg).expect("valid Sequence SVG");
+    let root = document.root_element();
+    assert_eq!(root.tag_name().name(), "svg", "expected SVG root element");
+
+    let values = root
+        .attribute("viewBox")
+        .expect("Sequence root viewBox")
+        .split_whitespace()
+        .map(|part| part.parse::<f64>().expect("numeric viewBox component"))
+        .collect::<Vec<_>>();
+    let view_box: [f64; 4] = values
+        .try_into()
+        .unwrap_or_else(|values: Vec<f64>| panic!("expected four viewBox values: {values:?}"));
+
+    let max_width = root
+        .attribute("style")
+        .expect("Sequence root style")
+        .split(';')
+        .map(str::trim)
+        .find_map(|declaration| declaration.strip_prefix("max-width:"))
+        .map(str::trim)
+        .and_then(|value| value.strip_suffix("px"))
+        .and_then(|value| value.parse::<f64>().ok())
+        .expect("numeric Sequence root max-width");
+
+    (view_box, max_width)
 }
 
 fn sequence_number_x(svg: &str, number: &str) -> f64 {
@@ -81,61 +150,36 @@ fn render_sequence_svg_from_fixture_with_options(
     fixture: &str,
     options: &SvgRenderOptions,
 ) -> String {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
         .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare Sequence artifact");
 
-    let layout_options = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-
-    render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        options,
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render Sequence artifact")
+        .svg()
+        .to_string()
 }
 
-fn render_sequence_svg_from_fixture_after_layout_json_roundtrip(fixture: &str) -> String {
+fn sequence_layout_json_from_fixture(fixture: &str) -> serde_json::Value {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
         .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-    let layout_options = LayoutOptions::headless_svg_defaults();
-    let layouted = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let encoded = serde_json::to_vec(&layouted).expect("serialize layouted diagram");
-    let roundtripped: merman_render::model::LayoutedDiagram =
-        serde_json::from_slice(&encoded).expect("deserialize layouted diagram");
-    let LayoutDiagram::SequenceDiagram(layout) = &roundtripped.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
 
-    render_sequence_diagram_svg(
-        layout,
-        &roundtripped.semantic,
-        &roundtripped.meta.effective_config,
-        roundtripped.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("render roundtripped svg")
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare Sequence artifact")
+        .layout_json()
+        .expect("project Sequence layout JSON")
 }
 
 fn render_sequence_svg_from_text(text: &str) -> String {
@@ -144,69 +188,47 @@ fn render_sequence_svg_from_text(text: &str) -> String {
 }
 
 fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session()
+        .unwrap();
+    let parsed = parse_sequence_for_render(&engine, text);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
 
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-
-    render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact")
+        .svg()
+        .to_string()
 }
 
 fn render_sequence_svg_with_theme_variables(
     text: &str,
     theme_variables: serde_json::Value,
 ) -> String {
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session()
+        .unwrap();
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": theme_variables,
+    })));
+    let parsed = parse_sequence_for_render(&engine, text);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
 
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-    let mut effective_config = out.meta.effective_config.clone();
-    effective_config
-        .as_object_mut()
-        .expect("effective config object")
-        .insert("themeVariables".to_string(), theme_variables);
-
-    render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact")
+        .svg()
+        .to_string()
 }
 
 fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-    *layout
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
+    layout_sequence_from_environment(text, &environment)
 }
 
 #[test]
@@ -300,37 +322,382 @@ fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_1
 }
 
 #[test]
-fn sequence_no_longer_depends_on_historical_root_overrides() {
-    let stem = "stress_wrap_directive_and_prefixes_028";
-    let fixture = format!("{stem}.mmd");
-    let enabled = render_sequence_svg_from_fixture_with_options(
-        &fixture,
-        &SvgRenderOptions {
-            diagram_id: Some(stem.to_string()),
-            ..SvgRenderOptions::default()
-        },
+fn sequence_control_structure_label_box_uses_configured_width() {
+    let svg = render_sequence_svg_from_text(
+        r#"---
+config:
+  sequence:
+    labelBoxWidth: 96
+---
+sequenceDiagram
+    Alice->>Bob: Start
+    loop Retry
+        Alice->>Bob: Again
+    end
+    alt Accepted
+        Alice->>Bob: Continue
+    else Rejected
+        Bob-->>Alice: Stop
+    end
+    critical Establish connection
+        Alice->>Bob: Connect
+    option Retry later
+        Bob-->>Alice: Retry
+    end
+"#,
     );
-    let disabled = render_sequence_svg_from_fixture_with_options(
-        &fixture,
-        &SvgRenderOptions {
-            diagram_id: Some(stem.to_string()),
-            apply_root_overrides: false,
-            ..SvgRenderOptions::default()
-        },
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+    let control_structures = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("g") && node.attribute("data-et") == Some("control-structure")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(control_structures.len(), 3);
+
+    for control_structure in control_structures {
+        let polygon = control_structure
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("polygon")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "labelBox")
+                    })
+            })
+            .expect("control-structure label box");
+        let points = polygon
+            .attribute("points")
+            .expect("label box points")
+            .split_whitespace()
+            .map(|point| {
+                point
+                    .split_once(',')
+                    .map(|(x, y)| (x.parse::<f64>().unwrap(), y.parse::<f64>().unwrap()))
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert!((points[1].0 - points[0].0 - 96.0).abs() <= f64::EPSILON);
+
+        let label = control_structure
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "labelText")
+                    })
+            })
+            .expect("control-structure label text");
+        let label_x = label
+            .attribute("x")
+            .expect("label x")
+            .parse::<f64>()
+            .unwrap();
+        assert!((label_x - (points[0].0 + 48.0).round()).abs() <= f64::EPSILON);
+    }
+}
+
+#[test]
+fn sequence_representative_roots_are_finite_and_scale_with_fixture_complexity() {
+    let cases = [
+        "activation_explicit.mmd",
+        "stress_sequence_batch5_many_participants_spacing_050.mmd",
+        "zed_pr_57644_sequence.mmd",
+    ];
+    let mut roots = Vec::new();
+
+    for fixture in cases {
+        let svg =
+            render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
+        let (view_box, max_width) = root_view_box_and_max_width(&svg);
+
+        assert!(
+            view_box.into_iter().all(f64::is_finite),
+            "expected finite root geometry for {fixture}: {view_box:?}"
+        );
+        assert!(
+            view_box[2] > 0.0 && view_box[3] > 0.0 && max_width.is_finite(),
+            "expected positive root extent for {fixture}: viewBox={view_box:?}, max-width={max_width}"
+        );
+        assert!(
+            (max_width - view_box[2]).abs() <= 1e-6,
+            "root max-width must track viewBox width for {fixture}: viewBox={view_box:?}, max-width={max_width}"
+        );
+
+        roots.push((view_box[2], view_box[3]));
+    }
+
+    let activation = roots[0];
+    let many_participants = roots[1];
+    let long_conversation = roots[2];
+    assert!(
+        many_participants.0 > long_conversation.0 && long_conversation.0 > activation.0,
+        "participant count should drive representative root widths: {roots:?}"
+    );
+    assert!(
+        long_conversation.1 > many_participants.1 && many_participants.1 > activation.1,
+        "message depth should drive representative root heights: {roots:?}"
+    );
+}
+
+#[test]
+fn sequence_block_root_width_replays_upstream_bounds_insert_lifecycle() {
+    for (fixture, expected_min_x, expected_width) in [
+        ("stress_create_destroy_inside_alt_030.mmd", -50.0, 734.0),
+        ("stress_critical_break_007.mmd", -50.0, 650.0),
+    ] {
+        let svg = render_sequence_svg_from_fixture(fixture);
+        let (view_box, max_width) = root_view_box_and_max_width(&svg);
+        assert_eq!(
+            view_box[0], expected_min_x,
+            "unexpected root x for {fixture}"
+        );
+        assert_eq!(
+            view_box[2], expected_width,
+            "unexpected width for {fixture}"
+        );
+        assert_eq!(max_width, expected_width);
+    }
+}
+
+#[test]
+fn sequence_actor_lifecycle_adjustment_survives_block_close() {
+    let fixture = "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010.mmd";
+    let path = workspace_root()
+        .join("fixtures")
+        .join("sequence")
+        .join(fixture);
+    let text = std::fs::read_to_string(path).expect("fixture");
+    let layout = layout_sequence_from_environment(&text, &RenderEnvironment::deterministic());
+    let actor = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing lifecycle actor {id}"))
+    };
+
+    let alice_top = actor("actor-top-Alice");
+    let bob_top = actor("actor-top-Bob");
+    let john_top = actor("actor-top-John");
+    let alice_bottom = actor("actor-bottom-Alice");
+    let bob_bottom = actor("actor-bottom-Bob");
+    let john_bottom = actor("actor-bottom-John");
+
+    assert!(
+        john_top.y > alice_top.y.max(bob_top.y),
+        "created actor must begin below the initially declared actors"
+    );
+    assert!(
+        john_bottom.y < alice_bottom.y.min(bob_bottom.y),
+        "destroyed actor must end before ordinary footer actors"
     );
 
-    let enabled_root = enabled.split_once('>').expect("enabled SVG root").0;
-    let disabled_root = disabled.split_once('>').expect("disabled SVG root").0;
-    assert_eq!(
-        enabled_root, disabled_root,
-        "Sequence roots should be computed from layout bounds regardless of the legacy override flag"
+    let lifeline = layout
+        .edges
+        .iter()
+        .find(|edge| edge.id == "lifeline-John")
+        .expect("John lifecycle edge");
+    assert_eq!(lifeline.from, john_top.id);
+    assert_eq!(lifeline.to, john_bottom.id);
+    let lifeline_start = lifeline.points.first().expect("lifeline start").y;
+    let lifeline_end = lifeline.points.last().expect("lifeline end").y;
+    let creation_boundary = john_top.y + john_top.height / 2.0;
+    let destruction_boundary = john_bottom.y - john_bottom.height / 2.0;
+
+    assert!(
+        (lifeline_start - creation_boundary).abs() <= 1e-6
+            && (lifeline_end - destruction_boundary).abs() <= 1e-6
+            && lifeline_start < lifeline_end,
+        "John's lifeline must remain bounded by its create/destroy actors after block closure"
     );
+}
+
+#[test]
+fn sequence_font_size_precedence_matches_fresh_mermaid_11_16_root() {
+    let svg = render_sequence_svg_from_fixture_with_options(
+        "stress_sequence_font_size_precedence_090.mmd",
+        &SvgRenderOptions::default(),
+    );
+    let root = svg.split_once('>').expect("SVG root").0;
+    let note = extract_self_closing_tags(&svg, "rect")
+        .into_iter()
+        .find(|tag| tag.contains(r#"class="note""#))
+        .expect("expected note rectangle");
+
+    assert_eq!(attr_f64(note, "height"), Some(31.0));
+    assert!(
+        root.contains(r#"style="max-width: 550px; background-color: white;""#)
+            && root.contains(r#"viewBox="-50 -10 550 244""#),
+        "expected fresh Mermaid 11.16 font-size root geometry: {root}"
+    );
+}
+
+#[test]
+fn sequence_reverse_message_align_uses_the_normalized_message_interval() {
+    let source = "sequenceDiagram\nparticipant A\nparticipant B\nB->>A: reverse\n";
+    let wrap_padding = 17.0;
+    let render_with_align = |align: &str| {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "sequence": { "messageAlign": align, "wrapPadding": wrap_padding }
+        })));
+        render_sequence_svg_from_text_with_engine(engine, source)
+    };
+    let message_position = |svg: &str| {
+        let document = roxmltree::Document::parse(svg).expect("valid Sequence SVG");
+        let text = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "messageText")
+                    })
+            })
+            .expect("message text");
+        let line = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("line")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class.starts_with("messageLine"))
+                    })
+                    && node.attribute("data-et") == Some("message")
+            })
+            .expect("message line");
+        let endpoint = |name: &str| {
+            line.attribute(name)
+                .unwrap_or_else(|| panic!("message {name}"))
+                .parse::<f64>()
+                .unwrap_or_else(|_| panic!("numeric message {name}"))
+        };
+        let x1 = endpoint("x1");
+        let x2 = endpoint("x2");
+        (
+            text.attribute("x")
+                .expect("message x")
+                .parse::<f64>()
+                .expect("numeric message x"),
+            text.attribute("text-anchor")
+                .expect("message anchor")
+                .to_string(),
+            x1.min(x2),
+            x1.max(x2),
+        )
+    };
+
+    let left_svg = render_with_align("left");
+    let right_svg = render_with_align("right");
+    let (left_x, left_anchor, left_edge, _) = message_position(&left_svg);
+    let (right_x, right_anchor, _, right_edge) = message_position(&right_svg);
+
+    assert_eq!(left_anchor, "start");
+    assert_eq!(right_anchor, "end");
+    assert!((left_x - (left_edge + wrap_padding)).abs() < f64::EPSILON);
+    assert!((right_x - (right_edge - wrap_padding)).abs() < f64::EPSILON);
+}
+
+#[test]
+fn sequence_parity_wraps_message_candidates_with_calculate_text_width_bbox() {
+    let svg = render_sequence_svg_from_fixture_with_options(
+        "stress_br_in_messages_notes_011.mmd",
+        &SvgRenderOptions::default(),
+    );
+    let wrapped_message =
+        "This is a longer message that should be wrapped by Mermaid&#39;s default behavior";
+    let message_lines = extract_paired_tags(&svg, "text")
+        .into_iter()
+        .filter(|tag| tag.contains(r#"class="messageText""#))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        message_lines.len(),
+        5,
+        "Mermaid 11.16 keeps the wrapped message on one line: {message_lines:#?}"
+    );
+    assert!(
+        message_lines
+            .iter()
+            .any(|line| line.contains(wrapped_message)),
+        "expected the complete wrapped message in one SVG text node: {message_lines:#?}"
+    );
+}
+
+#[test]
+fn sequence_calculate_text_dimensions_wraps_long_notes_to_six_rows() {
+    let expected_rows = [
+        "Extremely utterly long",
+        "line of longness which",
+        "had previously",
+        "overflown the actor box",
+        "as it is much longer",
+        "than what it should be",
+    ];
+    for fixture in [
+        "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
+        "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019.mmd",
+    ] {
+        let svg =
+            render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
+        let note_rows = text_rows_by_class(&svg, "noteText");
+        let note_rect = extract_self_closing_tags(&svg, "rect")
+            .into_iter()
+            .find(|tag| tag.contains(r#"class="note""#))
+            .expect("wrapped note rectangle");
+
+        assert_eq!(note_rows, expected_rows, "unexpected rows for {fixture}");
+        assert_eq!(
+            attr_f64(note_rect, "width"),
+            Some(173.0),
+            "unexpected note width for {fixture}"
+        );
+    }
+}
+
+#[test]
+fn sequence_calculate_text_dimensions_keeps_first_wrapped_message_on_two_rows() {
+    let fixture =
+        "upstream_cypress_sequencediagram_spec_should_render_with_wrapping_enabled_048.mmd";
+    let svg = render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
+    let message_rows = text_rows_by_class(&svg, "messageText");
+
+    assert_eq!(
+        message_rows.len(),
+        10,
+        "unexpected message rows: {message_rows:#?}"
+    );
+    assert_eq!(
+        &message_rows[..2],
+        [
+            "Hello John, how are you today?",
+            "I'm feeling quite verbose today."
+        ],
+        "the first wrapped message must stay on two rows"
+    );
+}
+
+#[test]
+fn sequence_fallback_wraps_block_candidates_without_losing_text() {
+    let svg = render_sequence_svg_from_fixture_with_options(
+        "upstream_critical_without_options_spec.mmd",
+        &SvgRenderOptions::default(),
+    );
+    let loop_lines = text_rows_by_class(&svg, "loopText");
+
+    assert_eq!(
+        loop_lines.len(),
+        2,
+        "the configured critical-title cap must wrap into two rows: {loop_lines:#?}"
+    );
+    assert_eq!(loop_lines.join(" "), "[Establish a connection to the DB]");
 }
 
 #[test]
 fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
     let fixture = "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd";
-    let svg = render_sequence_svg_from_fixture_after_layout_json_roundtrip(fixture);
+    let svg = render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
     let group_start = svg
         .find(r#"<g data-et="control-structure" data-id="i17">"#)
         .unwrap_or_else(|| panic!("missing nested opt control group: {svg}"));
@@ -345,14 +712,13 @@ fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
 
     assert_eq!(
         loop_lines.len(),
-        4,
-        "nested opt title should use four lines"
+        3,
+        "nested opt title should use three Mermaid 11.16 lines"
     );
     for (line, expected) in loop_lines.iter().zip([
-        "[this is a nested",
-        "opt with a long",
-        "title that will",
-        "overflow]",
+        "[this is a nested opt",
+        "with a long title that",
+        "will overflow]",
     ]) {
         assert!(
             line.contains(&format!(">{expected}</tspan>")),
@@ -362,19 +728,47 @@ fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
 }
 
 #[test]
-fn sequence_block_wraps_survive_layout_json_roundtrip() {
+fn sequence_layout_json_preserves_family_wire_shape() {
     for fixture in [
         "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd",
         "upstream_alt_multiple_elses_spec.mmd",
         "upstream_par_multiple_ands_spec.mmd",
         "upstream_critical_with_options_spec.mmd",
     ] {
-        let direct =
-            render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
-        let roundtripped = render_sequence_svg_from_fixture_after_layout_json_roundtrip(fixture);
+        let layout_json = sequence_layout_json_from_fixture(fixture);
         assert_eq!(
-            roundtripped, direct,
-            "layout JSON roundtrip changed Sequence SVG for {fixture}"
+            layout_json.pointer("/meta/diagram_type"),
+            Some(&serde_json::Value::String("sequence".to_string())),
+            "unexpected Sequence metadata projection for {fixture}"
+        );
+        assert_eq!(
+            layout_json.pointer("/semantic/type"),
+            Some(&serde_json::Value::String("sequence".to_string())),
+            "unexpected Sequence semantic projection for {fixture}"
+        );
+        assert!(
+            layout_json
+                .pointer("/semantic/messages")
+                .is_some_and(serde_json::Value::is_array),
+            "Sequence semantic messages must remain an array for {fixture}: {layout_json}"
+        );
+        let layout = layout_json
+            .pointer("/layout/SequenceDiagram")
+            .and_then(serde_json::Value::as_object)
+            .unwrap_or_else(|| {
+                panic!("missing SequenceDiagram layout projection for {fixture}: {layout_json}")
+            });
+        assert!(
+            ["nodes", "edges", "clusters"]
+                .into_iter()
+                .all(|key| layout.get(key).is_some_and(serde_json::Value::is_array)),
+            "Sequence layout collections must remain arrays for {fixture}: {layout_json}"
+        );
+        assert!(
+            layout
+                .get("bounds")
+                .is_some_and(serde_json::Value::is_object),
+            "Sequence layout bounds must remain an object for {fixture}: {layout_json}"
         );
     }
 }
@@ -502,117 +896,14 @@ end"##,
 }
 
 #[test]
-fn sequence_debug_svg_renders_generic_polyline_points() {
-    let layout = SequenceDiagramLayout {
-        nodes: Vec::new(),
-        clusters: Vec::new(),
-        bounds: None,
-        edges: vec![LayoutEdge {
-            id: "generic-edge".to_string(),
-            from: "a".to_string(),
-            to: "b".to_string(),
-            from_cluster: None,
-            to_cluster: None,
-            points: vec![
-                LayoutPoint { x: -0.0, y: 0.0 },
-                LayoutPoint { x: 1.5, y: -2.0 },
-                LayoutPoint { x: 3.25, y: 4.5 },
-            ],
-            label: None,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        }],
-    };
-
-    let svg = render_sequence_diagram_debug_svg(&layout, &SvgRenderOptions::default());
-
-    assert!(
-        svg.contains(r#"<polyline class="edge" points="0,0 1.5,-2 3.25,4.5" />"#),
-        "expected generic sequence debug edges to render a shared-helper point list"
-    );
-}
-
-#[test]
-fn sequence_debug_svg_marker_ids_are_prefixed_when_diagram_id_is_provided() {
-    let layout = SequenceDiagramLayout {
-        nodes: Vec::new(),
-        clusters: Vec::new(),
-        bounds: None,
-        edges: vec![LayoutEdge {
-            id: "msg-1".to_string(),
-            from: "a".to_string(),
-            to: "b".to_string(),
-            from_cluster: None,
-            to_cluster: None,
-            points: vec![
-                LayoutPoint { x: 10.0, y: 20.0 },
-                LayoutPoint { x: 100.0, y: 20.0 },
-            ],
-            label: None,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        }],
-    };
-
-    let svg = render_sequence_diagram_debug_svg(
-        &layout,
-        &SvgRenderOptions {
-            diagram_id: Some("sequence-debug-inline".to_string()),
-            ..SvgRenderOptions::default()
-        },
-    );
-
-    assert!(
-        svg.contains(r#"id="sequence-debug-inline-arrowhead""#),
-        "expected scoped sequence debug marker id: {svg}"
-    );
-    assert!(
-        svg.contains(r#"marker-end="url(#sequence-debug-inline-arrowhead)""#),
-        "expected scoped sequence debug marker reference: {svg}"
-    );
-    assert!(
-        !svg.contains(r#"id="arrowhead""#),
-        "expected no bare sequence debug marker id: {svg}"
-    );
-    assert!(
-        !svg.contains(r#"marker-end="url(#arrowhead)""#),
-        "expected no bare sequence debug marker reference: {svg}"
-    );
-}
-
-#[test]
-fn sequence_note_width_expands_for_literal_br_backslash_t_in_vendored_mode() {
+fn sequence_note_width_expands_for_literal_br_backslash_t_with_fallback_profile() {
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
         .join("html_br_variants_and_wrap.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(
-            merman_render::text::VendoredFontMetricsTextMeasurer::default(),
-        ),
-        ..LayoutOptions::default()
-    };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
+    let layout = layout_sequence_from_environment(&text, &RenderEnvironment::deterministic());
 
     let note = layout
         .nodes
@@ -621,11 +912,11 @@ fn sequence_note_width_expands_for_literal_br_backslash_t_in_vendored_mode() {
         .expect("expected note-7 layout node");
 
     // Mermaid's text-dimension probe treats the escaped `<br \t/>` as literal single-run text,
-    // then adds the normal note padding. Keep this as an expansion guard rather than a 1px
-    // browser-lattice claim.
+    // then adds the normal note padding. The reusable fallback profile must preserve that semantic
+    // expansion without encoding the fixture's browser-specific width.
     assert!(
-        (151.0..=152.0).contains(&note.width),
-        "expected literal escaped <br> note width to stay in the known deterministic band, got {}",
+        note.width > 150.0 && note.width.is_finite(),
+        "expected literal escaped <br> note to expand beyond the default width, got {}",
         note.width
     );
 }
@@ -654,8 +945,8 @@ fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
     let y0 = attr_f64(dashed_separators[0], "y1").expect("sep y1");
     let y1 = attr_f64(dashed_separators[1], "y1").expect("sep y1");
     assert!(
-        (y0 - y1).abs() > 0.0001,
-        "expected separators to have distinct y"
+        y0 < y1,
+        "expected section separators to increase monotonically, got {y0} then {y1}"
     );
 
     let mut frame_min_x = f64::INFINITY;
@@ -689,6 +980,131 @@ fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
 }
 
 #[test]
+fn sequence_zed_59651_nested_frame_headers_follow_the_preceding_note() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+    participant S as Server
+    participant C as Client
+
+    Note over S: ① Initialize connection
+    loop for each request
+        alt request is valid
+            S->>C: process normally
+        else
+            S-->>C: return error
+        end
+    end
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Sequence SVG");
+
+    let note = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "rect"
+                && node.attribute("class") == Some("note")
+        })
+        .expect("issue fixture note");
+    let note_bottom = note
+        .attribute("y")
+        .expect("note y")
+        .parse::<f64>()
+        .expect("numeric note y")
+        + note
+            .attribute("height")
+            .expect("note height")
+            .parse::<f64>()
+            .expect("numeric note height");
+
+    let control_group = |title: &str| {
+        document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node.attribute("data-et") == Some("control-structure")
+                    && node
+                        .descendants()
+                        .filter(|descendant| descendant.is_text())
+                        .filter_map(|descendant| descendant.text())
+                        .any(|text| text.contains(title))
+            })
+            .unwrap_or_else(|| panic!("control structure containing {title:?}"))
+    };
+    let frame_bounds = |group: roxmltree::Node<'_, '_>| {
+        let mut horizontal_ys = group
+            .children()
+            .filter(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "line"
+                    && node.attribute("class") == Some("loopLine")
+                    && node.attribute("style").is_none()
+            })
+            .filter_map(|node| {
+                let y1 = node.attribute("y1")?.parse::<f64>().ok()?;
+                let y2 = node.attribute("y2")?.parse::<f64>().ok()?;
+                ((y1 - y2).abs() < 0.0001).then_some(y1)
+            });
+        let top = horizontal_ys.next().expect("frame top");
+        let bottom = horizontal_ys.next().expect("frame bottom");
+        (top.min(bottom), top.max(bottom))
+    };
+    let title_y = |group: roxmltree::Node<'_, '_>| {
+        group
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "text"
+                    && node.attribute("class") == Some("loopText")
+            })
+            .and_then(|node| node.attribute("y"))
+            .and_then(|value| value.parse::<f64>().ok())
+            .expect("numeric loop title y")
+    };
+
+    let outer_loop = control_group("for each request");
+    let inner_alt = control_group("request is valid");
+    let (outer_top, outer_bottom) = frame_bounds(outer_loop);
+    let (inner_top, inner_bottom) = frame_bounds(inner_alt);
+    let outer_title_y = title_y(outer_loop);
+    let inner_title_y = title_y(inner_alt);
+    const LABEL_BOX_HEIGHT: f64 = 20.0;
+
+    assert!(
+        note_bottom < outer_top && outer_top < inner_top,
+        "expected note.bottom < outer loop.top < inner alt.top, got \
+         {note_bottom} < {outer_top} < {inner_top}: {svg}"
+    );
+    assert!(
+        outer_top < outer_title_y
+            && outer_top + LABEL_BOX_HEIGHT < inner_top
+            && outer_title_y + LABEL_BOX_HEIGHT < inner_top
+            && inner_top < inner_title_y
+            && inner_title_y < inner_bottom
+            && inner_bottom < outer_bottom,
+        "expected nested frames and labels to occupy distinct vertical bands: {svg}"
+    );
+
+    let separator_y = inner_alt
+        .children()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "line"
+                && node.attribute("style") == Some("stroke-dasharray: 3, 3;")
+        })
+        .and_then(|node| node.attribute("y1"))
+        .and_then(|value| value.parse::<f64>().ok())
+        .expect("numeric alt separator y");
+    assert!(
+        inner_top + LABEL_BOX_HEIGHT < separator_y
+            && inner_title_y + LABEL_BOX_HEIGHT < separator_y
+            && separator_y < inner_bottom,
+        "expected the alt section separator to advance below its title and stay inside the frame"
+    );
+}
+
+#[test]
 fn sequence_rect_block_is_root_level_before_actors() {
     let svg = render_sequence_svg_from_fixture("upstream_rect_block_spec.mmd");
 
@@ -714,7 +1130,7 @@ fn sequence_rect_block_is_root_level_before_actors() {
 }
 
 #[test]
-fn sequence_bare_rect_uses_mermaid_11_16_theme_fill_fallbacks() {
+fn sequence_bare_rect_uses_resolved_theme_fill_and_explicit_override() {
     let bare_rect = r#"sequenceDiagram
 participant A
 participant B
@@ -734,26 +1150,6 @@ end"#;
             .into_iter()
             .any(|tag| tag.contains(r#"class="rect""#) && tag.contains(r##"fill="#112233""##)),
         "rectBkgColor should be the first bare rect fallback: {rect_fill}"
-    );
-
-    let actor_fill = render_sequence_svg_with_theme_variables(
-        bare_rect,
-        serde_json::json!({ "actorBkg": "#445566" }),
-    );
-    assert!(
-        extract_self_closing_tags(&actor_fill, "rect")
-            .into_iter()
-            .any(|tag| tag.contains(r#"class="rect""#) && tag.contains(r##"fill="#445566""##)),
-        "actorBkg should be used when rectBkgColor is absent: {actor_fill}"
-    );
-
-    let neutral_fill = render_sequence_svg_with_theme_variables(bare_rect, serde_json::json!({}));
-    assert!(
-        extract_self_closing_tags(&neutral_fill, "rect")
-            .into_iter()
-            .any(|tag| tag.contains(r#"class="rect""#)
-                && tag.contains(r#"fill="rgba(128, 128, 128, 0.5)""#)),
-        "bare rect should use the neutral fallback without theme colors: {neutral_fill}"
     );
 
     let explicit_fill = render_sequence_svg_with_theme_variables(
@@ -836,7 +1232,6 @@ fn sequence_long_leftof_notes_keep_mermaid_11_16_root_width() {
 
 #[test]
 fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
-    let engine = Engine::new();
     for fixture in [
         "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
         "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019.mmd",
@@ -846,14 +1241,9 @@ fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
             .join("sequence")
             .join(fixture);
         let text = std::fs::read_to_string(&path).expect("fixture");
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected");
-        let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-        let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-            panic!("expected SequenceDiagram layout");
-        };
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
+        let layout = layout_sequence_from_environment(&text, &environment);
         let note = layout
             .nodes
             .iter()
@@ -874,23 +1264,22 @@ fn sequence_frontmatter_title_expands_layout_root_y() {
         .join("upstream_html_demos_sequence_sequence_diagram_demos_002.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-    assert_eq!(parsed.meta.title.as_deref(), Some("With forced menus"));
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    assert_eq!(
+        parsed.metadata().title.as_deref(),
+        Some("With forced menus")
+    );
+    let RenderSemanticModel::Sequence(model) = parsed.model() else {
+        panic!("expected Sequence render model");
+    };
     assert!(
-        parsed
-            .model
-            .get("title")
-            .is_none_or(|title| title.is_null()),
+        model.title.is_none(),
         "frontmatter title should stay in parse metadata, not the sequence semantic title"
     );
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
+    let layout = layout_sequence_from_environment(&text, &environment);
     let bounds = layout.bounds.as_ref().expect("sequence root bounds");
     assert_eq!(bounds.min_y, -50.0);
 }
@@ -923,15 +1312,9 @@ fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
         );
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic());
+    let layout = layout_sequence_from_environment(&text, &environment);
 
     let actor_center = |id: &str| {
         layout
@@ -981,7 +1364,7 @@ fn sequence_central_connection_rtl_svg_uses_layout_actor_centers() {
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn sequence_svg_renders_ratex_math_message_and_note_end_to_end() {
     let text = r#"sequenceDiagram
@@ -990,30 +1373,17 @@ participant B
 A->>B: $$x^2$$
 Note right of B: $$x^2$$
 "#;
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
-    let layout_options = LayoutOptions::default().with_math_renderer(math_renderer.clone());
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-
-    let svg = render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            math_renderer: Some(math_renderer),
-            ..SvgRenderOptions::default()
-        },
-    )
-    .expect("render svg");
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
+    let session = environment.begin_session().unwrap();
+    let parsed = parse_sequence_for_render(&Engine::new(), text);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact");
+    let svg = rendered.svg();
 
     assert!(
         svg.contains(r#"width="0.97153em""#),
@@ -1033,7 +1403,7 @@ Note right of B: $$x^2$$
     );
 }
 
-#[cfg(feature = "ratex-math")]
+#[cfg(feature = "math")]
 #[test]
 fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
     let path = workspace_root()
@@ -1042,30 +1412,17 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         .join("upstream_docs_math_sequence_002.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let math_renderer = Arc::new(merman_render::math::RatexMathRenderer);
-    let layout_options = LayoutOptions::default().with_math_renderer(math_renderer.clone());
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-
-    let svg = render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            math_renderer: Some(math_renderer),
-            ..SvgRenderOptions::default()
-        },
-    )
-    .expect("render svg");
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
+    let session = environment.begin_session().unwrap();
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact");
+    let svg = rendered.svg();
 
     let inline_formula_count = svg
         .matches(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 "#)

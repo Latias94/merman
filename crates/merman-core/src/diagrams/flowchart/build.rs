@@ -1,5 +1,7 @@
-use super::{Edge, Node, Stmt, TitleKind, apply_shape_data_to_node};
+use super::{Edge, Node, Stmt, TitleKind, apply_shape_data_value_to_node};
 use crate::diagram::{DiagramWarningFact, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID};
+use crate::{ParseControl, ParseControlResult};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
 pub(super) struct FlowchartBuildState {
@@ -30,20 +32,30 @@ impl FlowchartBuildState {
     pub(super) fn add_statements(
         &mut self,
         statements: &[Stmt],
-    ) -> std::result::Result<(), String> {
+        shape_data_documents: &HashMap<String, std::result::Result<Value, String>>,
+        control: &ParseControl,
+    ) -> ParseControlResult<std::result::Result<(), String>> {
         // Keep Mermaid's preorder statement handling without using the Rust call stack for
         // deeply nested subgraphs.
         let mut stack = vec![statements.iter()];
+        let mut visited = 0usize;
         while let Some(iter) = stack.last_mut() {
             let Some(stmt) = iter.next() else {
                 stack.pop();
                 continue;
             };
+            if visited.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            visited = visited.saturating_add(1);
 
             match stmt {
                 Stmt::Chain { nodes, edges } => {
                     let mut deferred_shape_data_vertex_calls: Vec<String> = Vec::new();
-                    for mut n in nodes.iter().cloned() {
+                    for (index, mut n) in nodes.iter().cloned().enumerate() {
+                        if index % 128 == 0 {
+                            control.checkpoint()?;
+                        }
                         // Mermaid FlowDB `vertexCounter` increments on every `addVertex(...)` call.
                         // Our grammar models `shapeData` attachments in the AST, so we can replay the
                         // observable call sequence:
@@ -57,13 +69,24 @@ impl FlowchartBuildState {
                             // after we've visited every vertex in the statement.
                             deferred_shape_data_vertex_calls.push(n.id.clone());
                         }
-                        if let Some(sd) = n.shape_data.take() {
-                            apply_shape_data_to_node(&mut n, &sd)?;
+                        if let Some(sd) = n.shape_data.take()
+                            && let Err(error) =
+                                apply_shape_data_document(&mut n, &sd, shape_data_documents)
+                        {
+                            return Ok(Err(error));
                         }
                         self.upsert_node(n);
                     }
-                    self.vertex_calls.extend(deferred_shape_data_vertex_calls);
-                    for e in edges.iter().cloned() {
+                    for (index, id) in deferred_shape_data_vertex_calls.into_iter().enumerate() {
+                        if index % 128 == 0 {
+                            control.checkpoint()?;
+                        }
+                        self.vertex_calls.push(id);
+                    }
+                    for (index, e) in edges.iter().cloned().enumerate() {
+                        if index % 128 == 0 {
+                            control.checkpoint()?;
+                        }
                         self.push_edge(e);
                     }
                 }
@@ -73,8 +96,11 @@ impl FlowchartBuildState {
                     if n.shape_data.is_some() {
                         self.vertex_calls.push(n.id.clone());
                     }
-                    if let Some(sd) = n.shape_data.take() {
-                        apply_shape_data_to_node(&mut n, &sd)?;
+                    if let Some(sd) = n.shape_data.take()
+                        && let Err(error) =
+                            apply_shape_data_document(&mut n, &sd, shape_data_documents)
+                    {
+                        return Ok(Err(error));
                     }
                     self.upsert_node(n);
                 }
@@ -178,7 +204,8 @@ impl FlowchartBuildState {
                 }
             }
         }
-        Ok(())
+        control.checkpoint()?;
+        Ok(Ok(()))
     }
 
     fn upsert_node(&mut self, n: Node) {
@@ -251,5 +278,65 @@ impl FlowchartBuildState {
         e.is_user_defined_id = is_user_defined_id;
         e.link.length = e.link.length.min(10);
         self.edges.push(e);
+    }
+}
+
+fn apply_shape_data_document(
+    node: &mut Node,
+    source: &str,
+    documents: &HashMap<String, std::result::Result<Value, String>>,
+) -> std::result::Result<(), String> {
+    match documents
+        .get(source)
+        .expect("flowchart shape data must be prepared before semantic construction")
+    {
+        Ok(document) => apply_shape_data_value_to_node(node, document),
+        Err(error) => Err(error.clone()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_large_chain_observes_cancellation_inside_node_projection() {
+        let nodes = (0..256)
+            .map(|index| Node {
+                id: format!("n{index}"),
+                id_span: None,
+                label: None,
+                label_type: TitleKind::Text,
+                label_span: None,
+                label_selection: None,
+                shape: None,
+                shape_data: None,
+                icon: None,
+                form: None,
+                pos: None,
+                img: None,
+                constraint: None,
+                asset_width: None,
+                asset_height: None,
+                styles: Vec::new(),
+                classes: Vec::new(),
+                link: None,
+                link_target: None,
+                have_callback: false,
+            })
+            .collect();
+        let statements = [Stmt::Chain {
+            nodes,
+            edges: Vec::new(),
+        }];
+        let mut build = FlowchartBuildState::new(HashSet::new());
+        let control = ParseControl::new();
+        control.cancel_after_checkpoints(2);
+
+        assert!(matches!(
+            build.add_statements(&statements, &HashMap::new(), &control),
+            Err(crate::ParseCancelled)
+        ));
+        assert!(build.nodes.len() < 256);
     }
 }

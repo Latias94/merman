@@ -149,6 +149,29 @@ pub(crate) fn load_existing_imported_fixtures(
     )
 }
 
+pub(crate) fn record_imported_fixture_content(
+    index: &mut HashMap<String, PathBuf>,
+    body: String,
+    path: PathBuf,
+    identity_paths: &[&Path],
+) {
+    index.retain(|_, indexed_path| {
+        !identity_paths
+            .iter()
+            .any(|identity_path| indexed_path == identity_path)
+    });
+    index.insert(body, path);
+}
+
+pub(crate) fn should_revalidate_deferred_fixture(
+    existing_path: &Path,
+    deferred_candidate_path: &Path,
+    with_baselines: bool,
+    overwrite: bool,
+) -> bool {
+    with_baselines && overwrite && existing_path == deferred_candidate_path
+}
+
 pub(crate) fn validate_exact_import_candidate_filter(
     diagram_dir: &str,
     stem: &str,
@@ -379,12 +402,14 @@ mod tests {
         acquire_imported_fixture_family_locks_in, acquire_imported_fixture_workspace_lock_in,
         candidate_snapshot_failure, candidate_svg_compare_failure, candidate_upstream_svg_failure,
         is_candidate_upstream_svg_failure, load_existing_imported_fixtures_from_dirs,
-        rollback_imported_fixture_snapshots,
+        record_imported_fixture_content, rollback_imported_fixture_snapshots,
+        should_revalidate_deferred_fixture,
     };
     use crate::XtaskError;
     use crate::cmd::import::ImportedFixtureSnapshot;
+    use std::collections::HashMap;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::mpsc;
     use std::time::Duration;
@@ -435,6 +460,57 @@ mod tests {
     }
 
     #[test]
+    fn recording_overwritten_content_removes_stale_body_mappings() {
+        let active = Path::new("fixtures/flowchart/example.mmd");
+        let deferred = Path::new("fixtures/_deferred/flowchart/example.mmd");
+        let unrelated = PathBuf::from("fixtures/flowchart/other.mmd");
+        let mut index = HashMap::from([
+            ("old".to_string(), active.to_path_buf()),
+            ("deferred-old".to_string(), deferred.to_path_buf()),
+            ("unrelated".to_string(), unrelated.clone()),
+        ]);
+
+        record_imported_fixture_content(
+            &mut index,
+            "new".to_string(),
+            active.to_path_buf(),
+            &[active, deferred],
+        );
+
+        assert_eq!(index.get("new"), Some(&active.to_path_buf()));
+        assert_eq!(index.get("unrelated"), Some(&unrelated));
+        assert!(!index.contains_key("old"));
+        assert!(!index.contains_key("deferred-old"));
+    }
+
+    #[test]
+    fn deferred_fixture_revalidation_requires_matching_path_baselines_and_overwrite() {
+        let deferred = Path::new("fixtures/_deferred/treeView/example.mmd");
+
+        assert!(should_revalidate_deferred_fixture(
+            deferred, deferred, true, true
+        ));
+        assert!(!should_revalidate_deferred_fixture(
+            deferred, deferred, false, true
+        ));
+        assert!(!should_revalidate_deferred_fixture(
+            deferred, deferred, true, false
+        ));
+        assert!(!should_revalidate_deferred_fixture(
+            Path::new("fixtures/treeView/example.mmd"),
+            deferred,
+            true,
+            true,
+        ));
+        assert!(!should_revalidate_deferred_fixture(
+            Path::new("fixtures/_deferred/treeView/duplicate.mmd"),
+            deferred,
+            true,
+            true,
+        ));
+    }
+
+    #[test]
     fn non_baseline_batch_serializes_fixture_writes_with_family_generation() {
         let sequence = TEMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
@@ -478,10 +554,10 @@ mod tests {
                 let config_dir = writer_root.join("_config");
                 fs::create_dir_all(&config_dir).expect("create config directory");
                 fs::write(
-                    config_dir.join("site_config_overrides.json"),
-                    "{\"sequence/imported.mmd\":{}}\n",
+                    config_dir.join("render_contexts.json"),
+                    "{\"schemaVersion\":1,\"contexts\":[]}\n",
                 )
-                .expect("commit imported site config");
+                .expect("commit imported render contexts");
                 import_committed_tx
                     .send(())
                     .expect("signal imported fixture commit");

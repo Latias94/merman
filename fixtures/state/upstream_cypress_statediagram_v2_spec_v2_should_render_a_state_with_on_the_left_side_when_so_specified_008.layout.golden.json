@@ -6,25 +6,25 @@
         {
           "id": "State1",
           "x": 158.0,
-          "y": 278.0,
+          "y": 242.0,
           "width": 216.0,
-          "height": 88.0,
+          "height": 64.0,
           "is_cluster": false
         },
         {
           "id": "State1----note-0",
           "x": 158.0,
-          "y": 96.0,
+          "y": 84.0,
           "width": 230.0,
-          "height": 126.0,
+          "height": 102.0,
           "is_cluster": false
         },
         {
           "id": "State1----parent",
           "x": 158.0,
-          "y": 96.0,
+          "y": 84.0,
           "width": 300.0,
-          "height": 176.0,
+          "height": 152.0,
           "is_cluster": true
         }
       ],
@@ -38,19 +38,19 @@
           "points": [
             {
               "x": 158.0,
-              "y": 96.0
+              "y": 84.0
             },
             {
               "x": 158.0,
-              "y": 184.0
+              "y": 160.0
             },
             {
               "x": 158.0,
-              "y": 209.0
+              "y": 185.0
             },
             {
               "x": 158.5,
-              "y": 234.5
+              "y": 210.5
             }
           ],
           "label": null,
@@ -67,17 +67,17 @@
         {
           "id": "State1----parent",
           "x": 158.0,
-          "y": 96.0,
+          "y": 84.0,
           "width": 300.0,
-          "height": 176.0,
+          "height": 152.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Important information! You can write\nnotes with . and  in them.",
           "title_label": {
             "x": 158.0,
-            "y": 33.0,
-            "width": 254.234,
-            "height": 48.0
+            "y": 45.0,
+            "width": 200.0,
+            "height": 72.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -90,7 +90,7 @@
         "min_x": 8.0,
         "min_y": 8.0,
         "max_x": 308.0,
-        "max_y": 322.0
+        "max_y": 274.0
       }
     }
   }

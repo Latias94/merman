@@ -1,0 +1,25 @@
+---
+config:
+  fontFamily: courier
+  fontSize: 16px
+  sequence:
+    actorFontFamily: courier
+    noteFontFamily: courier
+    messageFontFamily: courier
+  handDrawnSeed: 1
+  architecture:
+    seed: 1
+  cynefin:
+    seed: 1
+---
+railroad-beta
+expression = sequence(
+    nonterminal("term"),
+    zeroOrMore(choice(
+        sequence(terminal("+"), nonterminal("term")),
+        sequence(terminal("-"), nonterminal("term"))
+    ))
+) ;
+term = choice(nonterminal("number"), sequence(terminal("("), nonterminal("expression"), terminal(")"))) ;
+number = oneOrMore(nonterminal("digit")) ;
+digit = choice(terminal("0"), terminal("1"), terminal("2")) ;

@@ -12,7 +12,8 @@ fn parse_class_render_model(input: &str) -> RenderSemanticModel {
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("class diagram should parse")
         .expect("class diagram should be detected")
-        .model
+        .into_parts()
+        .1
 }
 
 fn parse_class_model(input: &str) -> ClassDiagram {

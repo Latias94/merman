@@ -138,9 +138,9 @@
         {
           "x": 123.8,
           "y": 341.8,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "10px",
           "text": {
             "text": "Incorta",
@@ -156,7 +156,7 @@
         {
           "x": 267.64,
           "y": 299.4,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "#ff00ff",
           "strokeWidth": "10px",
@@ -176,7 +176,7 @@
           "y": 214.6,
           "fill": "#ff0000",
           "radius": 10.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "Salesforce",
@@ -210,7 +210,7 @@
       ],
       "axisLabels": [
         {
-          "text": "Completeness of Vision ?",
+          "text": "Completeness of Vision ❤",
           "x": 147.0,
           "y": 479.0,
           "fill": "#131300",

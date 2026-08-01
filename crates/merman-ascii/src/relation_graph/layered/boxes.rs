@@ -674,7 +674,7 @@ mod tests {
 
     #[test]
     fn score_ordered_layered_group_candidate_skips_duplicate_orders() {
-        let boxes = vec![
+        let boxes = [
             RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
         ];

@@ -63,6 +63,48 @@
         "in": "left"
       },
       {
+        "id": "c",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "j",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "c",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "C",
+        "in": "right"
+      },
+      {
+        "id": "d",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "j",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "d",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "D",
+        "in": "right"
+      },
+      {
         "id": "j",
         "type": "junction",
         "edges": [
@@ -115,48 +157,6 @@
         "iconText": null,
         "title": null,
         "in": "left"
-      },
-      {
-        "id": "c",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "j",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": true,
-            "rhsId": "c",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": true,
-            "title": null
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
-        "title": "C",
-        "in": "right"
-      },
-      {
-        "id": "d",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "j",
-            "lhsDir": "B",
-            "lhsInto": null,
-            "lhsGroup": true,
-            "rhsId": "d",
-            "rhsDir": "T",
-            "rhsInto": true,
-            "rhsGroup": true,
-            "title": null
-          }
-        ],
-        "icon": "database",
-        "iconText": null,
-        "title": "D",
-        "in": "right"
       }
     ],
     "services": [

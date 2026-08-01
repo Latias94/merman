@@ -1,159 +1,127 @@
-# merman Android JNI
+# Merman For Android
 
-Experimental Android wrapper for `merman-ffi`.
+Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a WebView or a JavaScript runtime. The Kotlin API uses a direct JNI transport over Merman's shared binding engine.
 
-The Kotlin layer loads `libmerman_ffi.so`, checks the native ABI version, then exposes blocking
-string APIs for SVG, ASCII text, semantic JSON, layout JSON, validation JSON, and metadata.
-Rendering work should be called from a background dispatcher in app code.
+> **Alpha:** the Android wrapper is not published to Maven Central. Use the repository module or an AAR from a matching GitHub release; Kotlin classes and `libmerman_android_jni.so` must come from the same release.
 
-## Kotlin API
+## Requirements
+
+- Android API 23 or newer
+- Java 17 toolchain
+- `arm64-v8a` or `x86_64`
+
+At load time, the wrapper validates the runtime catalog schema, transport API, native package metadata, Options JSON schema, binding-result schema, and text-measurement protocol rather than relying on C ABI symbols or per-method JNI name lookup. Incompatible Kotlin/native API surfaces fail before the first operation, but exact release equality is not checked; always ship both parts from the same AAR.
+
+## Add A Release AAR
+
+Download `merman-android-<tag>.aar` from the matching [GitHub Release](https://github.com/Latias94/merman/releases), place it in the application's `app/libs/` directory, and add it as a local dependency:
 
 ```kotlin
-import io.merman.MermanEngine
-import io.merman.MermanException
-
-val source = "flowchart TD\nA[Hello] --> B[World]"
-val version = MermanEngine.packageVersion
-
-val svg = MermanEngine.renderSvg(
-    source,
-    optionsJson = """{"svg":{"pipeline":"readable"}}""",
-)
-val semanticJson = MermanEngine.parseJson(source)
-val layoutJson = MermanEngine.layoutJson(source)
-val analysisJson = MermanEngine.analyzeJson(source)
-val documentAnalysisJson = MermanEngine.analyzeDocumentJson(
-    "```mermaid\n$source\n```",
-    uri = "file:///tmp/example.md",
-)
-val documentFactsJson = MermanEngine.analyzeDocumentFactsJson(
-    "```mermaid\n$source\n```",
-    uri = "file:///tmp/example.md",
-)
-val ascii = MermanEngine.renderAscii(source)
-val validationJson = MermanEngine.validateJson(source)
-val diagramsJson = MermanEngine.supportedDiagramsJson()
-val lintRuleCatalogJson = MermanEngine.lintRuleCatalogJson()
-val supportedThemesJson = MermanEngine.supportedThemesJson()
-val hostThemePresetsJson = MermanEngine.supportedHostThemePresetsJson()
-
-try {
-    MermanEngine.renderSvg(source, optionsJson = "{")
-} catch (error: MermanException) {
-    println(error.message)
+dependencies {
+    implementation(files("libs/merman-android-<tag>.aar"))
 }
 ```
 
-Native errors are thrown as `MermanException` with the C ABI JSON error payload as the message.
-`MermanEngine` checks the loaded native ABI before the first call and exposes the linked native
-package version through `packageVersion`.
-`optionsJson` follows the shared schema in
-[`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
-`lintRuleCatalogJson()` returns the shared analyzer rule catalog as a versioned JSON response
-object with `{ "version": 1, "rules": [...] }`, including evidence references for settings,
-diagnostics, and LSP-related UI. Hosts should prefer it over hard-coded rule metadata.
+The AAR contains the Kotlin API and `libmerman_android_jni.so` for both supported Android ABIs. Do not download or package a second native library beside it.
 
-For repeated calls or host font measurement, use `MermanReusableEngine` and install a
-`MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
-vendored metrics for that request.
-Reusable engine methods are serialized around the native handle. A text-measurement callback should
-not call back into the same `MermanReusableEngine`; calling `close()` from a callback is safe and
-releases the engine after the current native call returns.
-If a Kotlin measurer throws, the JNI bridge clears the pending exception, reports that single
-measurement request as unsupported, and keeps the engine usable for the next JNI call. Log callback
-exceptions in host code so accidental fallback does not hide geometry drift.
+## Add The Repository Module
 
-`MermanEngine.analyzeDocumentJson(...)` and `analyzeDocumentFactsJson(...)` are also available on
-`MermanReusableEngine`. They follow the shared document-analysis contract: pass the full
-Markdown/MDX-like document source plus the document URI; the URI is used to select document parsing
-behavior consistently with the other platform bindings.
+Building the repository module requires Python 3, Rust 1.95 with `rustup`, Java 17, Android SDK 35, and the NDK revision pinned in `gradle/libs.versions.toml`. Build both native slices:
 
-For accurate Android preview geometry, measure with the same text stack that will display the SVG:
-`TextPaint`/`StaticLayout` for native Android UI, or a cached DOM/canvas measurement path for
-WebView display. The callback is synchronous, so keep it fast, cache repeated requests, and return
-`null` when the host cannot measure a request faithfully. See
-[`docs/bindings/HOST_TEXT_MEASUREMENT.md`](../../docs/bindings/HOST_TEXT_MEASUREMENT.md#android-jni).
-For HTML-like labels, measure the natural no-wrap width first and only apply `maxWidth` when the
-natural width is larger; returning `maxWidth` for short labels can make diagrams unnecessarily wide.
-
-## Example
-
-[`examples/MermanSmoke.kt`](examples/MermanSmoke.kt) shows the smallest Android-side smoke call
-sequence. Use it from an Android app or instrumentation test after packaging
-`libmerman_ffi.so` into the app.
-
-## Local Verification
-
-```bash
-kotlinc src/main/kotlin/io/merman/*.kt -d ../../target/platforms/android/merman-android.jar
-rustup target add aarch64-linux-android
-cargo check -p merman-ffi --target aarch64-linux-android
-```
-
-Standalone Gradle verification with native slices and Gradle 9.x:
-
-```bash
-python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
-gradle -p platforms/android assembleRelease
-# or, with an explicit Gradle install:
-"<gradle-install-dir>/bin/gradle" -p platforms/android assembleRelease
-```
-
-On Windows, the existing PowerShell entry point remains available:
-
-```powershell
-.\platforms\android\build-android.ps1 -Targets aarch64-linux-android,x86_64-linux-android
-gradle -p platforms/android assembleRelease
-```
-
-Full platform gate with Android native slices and AAR assembly:
-
-```bash
-python3 scripts/verify-platform-bindings.py --build-android-slices --run-android-gradle-build --gradle-path "<gradle-install-dir>/bin/gradle"
-```
-
-Runtime JNI smoke, including the throwing text-measurer fallback path, runs on a connected Android
-device or emulator:
-
-```bash
-python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke --gradle-path "<gradle-install-dir>/bin/gradle"
-```
-
-## Build Native Slices
-
-```bash
+```sh
 python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 ```
 
-This copies libraries into:
+The default `android-native` recipe builds the internal `merman-android-jni` crate. It is reserved for this Kotlin AAR; Flutter Android packages build `merman-ffi` from a separate C ABI recipe.
 
-```text
-platforms/android/src/main/jniLibs/{arm64-v8a,x86_64}/libmerman_ffi.so
-```
-
-`jniLibs` is generated output and is ignored by git.
-
-## Gradle Module
-
-`platforms/android` is an Android library module. In a host app:
+Include the module from the host project's `settings.gradle.kts`:
 
 ```kotlin
 include(":merman-android")
 project(":merman-android").projectDir = file("path/to/merman/platforms/android")
 ```
 
-Then depend on `implementation(project(":merman-android"))`.
+Then add `implementation(project(":merman-android"))`. No Maven coordinates are currently supported for remote resolution.
 
-The release workflow currently uploads an AAR to GitHub Releases. Maven Central publishing still
-needs Central Portal credentials and signing secrets, but the Gradle module already declares the
-`merman-android` Maven publication metadata and can verify it locally:
+## Render A Diagram
 
-```bash
-gradle -p platforms/android publishReleasePublicationToLocalStagingRepository
+```kotlin
+import io.merman.MermanEngine
+
+val source = "flowchart TD\nA[Hello] --> B[World]"
+val svg = MermanEngine.renderSvg(source)
+check(svg.startsWith("<svg"))
 ```
 
-## License
+Use the generic API when the host chooses output dynamically:
 
-This Android package is dual-licensed under either Apache-2.0 or MIT. See `LICENSE` for the full
-license texts. Mermaid compatibility and upstream Mermaid MIT attribution are documented in
-[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).
+```kotlin
+val result = MermanEngine.execute("png", source)
+check(result.operationId == "png")
+check(result.mediaType == "image/png")
+val bytes = result.data
+```
+
+Convenience methods cover SVG, ASCII, PNG, JPEG, PDF, semantic JSON, layout JSON, validation, and document analysis. Calls are blocking; invoke substantial work from a background dispatcher. Native failures throw `MermanException` with a structured Merman error payload. Use `kind` to distinguish `UNKNOWN_OPERATION`, `MISSING_CAPABILITY`, `BUSY`, and `REENTRANT_CALL`; `capabilityId` is non-null only for `MISSING_CAPABILITY` and is the stable descriptor ID. Resource failures expose optional typed `resourceDetails` with the stable limit ID, phase, actual value, effective maximum, and selected profile.
+
+## Options And Capabilities
+
+`optionsJson` follows the versioned [binding options schema](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md):
+
+```kotlin
+val svg = MermanEngine.renderSvg(
+    source,
+    optionsJson = """{"svg":{"pipeline":"readable"}}""",
+)
+```
+
+`MermanResourceOptionsBuilder` emits Options JSON schema `2`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
+
+An omitted `runtime_policy` is deterministic even though the normal Android artifact compiles native adapters. Add `"runtime_policy":"native"` only when an operation should use Android's clock, time-zone rules, and random source; a custom slim artifact missing an adapter fails with a typed unsupported-operation error.
+
+Use `MermanEngine.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, metadata IDs, capability/output/operation subset, and resource-to-operation mappings. It returns the flat runtime catalog, including the Android transport API version. The package's normal release artifact uses the complete native feature set, but hosts should still query the catalog before exposing optional output choices.
+
+`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; document facts also use their independently defined schema `1`. These payload schemas are independent of Android transport version. Pass full Markdown/MDX-like content plus a URI to document analysis:
+
+````kotlin
+val factsJson = MermanEngine.analyzeDocumentFactsJson(
+    "```mermaid\n$source\n```",
+    uri = "file:///workspace/README.md",
+)
+````
+
+## Reusable Engines And Text Measurement
+
+Use `MermanReusableEngine` when calls share options:
+
+```kotlin
+import io.merman.MermanReusableEngine
+
+MermanReusableEngine().use { engine ->
+    val svg = engine.renderSvg(source)
+}
+```
+
+Merman owns a deterministic vendored text measurer by default. Keep it for background jobs, tests, and content generation. Provide an Android text measurer when constructing `MermanReusableEngine` when layout must match the final `TextPaint`/`StaticLayout` font stack. Return `null` for requests that cannot be answered faithfully; the engine falls back per request. A callback-free reusable engine permits concurrent calls. An engine with a callback rejects a competing call immediately with `BUSY`, and calls or close attempts from its measurement callback return `REENTRANT_CALL`. A failed `close()` preserves the handle; retry it after the active call returns.
+
+## Verify Locally
+
+```sh
+python3 platforms/android/build-android.py --install-missing-ndk --assemble-aar
+python3 scripts/verify-platform-bindings.py --build-android-slices
+```
+
+The helper uses the checked-in Gradle Wrapper, pinned JDK 17/NDK toolchain, and explicit native SDK capability profile. Before packaging, NDK `llvm-nm` verifies that the JNI library exports `JNI_OnLoad` and does not export `merman_get_native_api`. A connected-device JNI smoke is available through `--only-android-instrumentation-smoke`.
+
+## Documentation And Releases
+
+- [Android JNI transport guide](https://github.com/Latias94/merman/blob/main/docs/bindings/ANDROID_JNI.md)
+- [Package changelog](CHANGELOG.md)
+- [Diagram coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
+- [GitHub Releases](https://github.com/Latias94/merman/releases)
+
+The Gradle module defines local Maven publication metadata for release verification; this is not a claim that `io.merman:merman-android` exists in Maven Central.
+
+## License And Notices
+
+This package is available under MIT or Apache-2.0. See [`LICENSE`](LICENSE), [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), and [`THIRD_PARTY_LICENSES/`](THIRD_PARTY_LICENSES/). The AAR also carries these files under `META-INF/`.

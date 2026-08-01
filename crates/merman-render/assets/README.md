@@ -1,12 +1,8 @@
 # Merman Render Assets
 
-These files are packaged with `merman-render` because renderer code loads them relative to
-`CARGO_MANIFEST_DIR`.
+This directory contains renderer support files whose loading and provenance are owned by `merman-render`.
 
-- `sequence_base_defs_11_12_2.svgfrag` is embedded into the Mermaid-parity sequence SVG renderer.
-- `c4_database_d_11_12_2.txt` is embedded into the Mermaid-parity C4 database icon definition.
-- `katex_flowchart_probe.cjs` is used by the optional Node.js KaTeX probe backend for HTML/math
-  measurement audits.
+- `katex_flowchart_probe.cjs` is a runtime file loaded relative to `CARGO_MANIFEST_DIR` by the optional Node.js KaTeX probe used for HTML and math measurement audits.
+- `zenuml/*.svg` contains source-backed ZenUML symbols embedded into the Rust library with `include_str!`; [`zenuml/README.md`](zenuml/README.md) records their exact upstream version, hashes, and license.
 
-Do not remove these files from crate packaging unless the corresponding renderer path is removed or
-rewired.
+New assets must state whether they are loaded at runtime or embedded at compile time, remain within this crate's ownership boundary, and carry the required upstream provenance and license material.

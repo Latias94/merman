@@ -1,58 +1,95 @@
-# ADR-0059: Raster Output Strategy (PNG/JPG/PDF) for `merman-cli`
+# ADR-0059: SVG, Raster, and Vector PDF Export Strategy
 
 Date: 2026-02-09
 
+Amended: 2026-07-20
+
+Status: Accepted
+
 ## Context
 
-This repository targets a 1:1 re-implementation of Mermaid pinned to Mermaid `@11.12.3`.
+Merman targets source-backed behavior from Mermaid `@11.16.0`. The primary parity contract is SVG
+DOM structure against pinned upstream baselines. Applications also need PNG, JPEG, and PDF export
+without bundling a browser.
 
-The primary parity contract is **SVG DOM parity** against upstream baselines stored under
-`fixtures/upstream-svgs/**`.
+Upstream Mermaid relies heavily on HTML inside SVG `<foreignObject>` labels. Pure-Rust SVG
+consumers do not implement the complete browser HTML/CSS layout model, so passing parity SVG
+directly to an image or PDF backend can lose labels. Output dimensions also have fundamentally
+different costs: an SVG or vector PDF page can describe large geometry without allocating a
+full-page pixmap, while PNG and JPEG must allocate every output pixel.
 
-For developer ergonomics and downstream integrations, `merman-cli` also exposes raster formats:
-
-- PNG
-- JPG
-- PDF
-
-Upstream Mermaid renders in a browser and heavily uses HTML labels via SVG `<foreignObject>`.
-Pure-Rust SVG raster stacks (`usvg`/`resvg`/`svg2pdf`) do not fully render `<foreignObject>`,
-resulting in “missing text” (or effectively blank) raster outputs for many diagram types.
+Treating all exports as one raster policy therefore gives the wrong behavior. It either rejects
+valid vector output or permits unsafe bitmap allocations.
 
 ## Decision
 
-`merman-cli` will treat raster output as **best effort** and will **not** require pixel-perfect
-parity with upstream browser rendering.
+Merman keeps one renderer-owned export preparation path and distinct output allocation policies.
 
-For raster formats only, `merman-cli` will apply an SVG preprocessing step that:
+1. Default SVG output preserves the Mermaid-parity contract. It remains vector markup with no
+   global width or height cap; normal source, model, label, and SVG-byte resource budgets still
+   apply.
+2. PNG/JPEG and PDF export start from the terminal `SvgPipeline::resvg_safe()` policy. It converts
+   supported `<foreignObject>` labels to SVG text fallbacks, removes the original HTML, strips
+   active or unsupported content, parses the result, and returns a sealed `ResvgCompatibleSvg`.
+3. PNG and JPEG use `RasterOptions`. Fit, scale, final dimensions, and embedded raster images are
+   planned before allocation. Safe defaults limit each side to 4096 pixels and the final image to
+   16,777,216 pixels.
+4. PDF uses independent `PdfOptions` and a Rust vector PDF backend. Page geometry does not share the
+   PNG/JPEG pixel budget. SVG filters that require localized bitmaps and embedded raster images
+   have separate aggregate limits.
+5. Browser-style PDF fitting is a page-unit contract, not a raster-size heuristic.
+   `PdfPagePolicy::FitCssWidth` constrains responsive SVG width in CSS pixels and converts 96 CSS
+   pixels to 72 PDF points. The versioned `merman-cli mmdc --pdfFit` compatibility command uses this
+   policy; its default page remains a 612-by-792-point Letter approximation.
+6. Each unbounded option disables only its named allocation boundary. No export option disables
+   parser, layout, label, or SVG-byte resource profiles.
+7. Resvg-compatible export has a separate backend capability boundary for resolved SVG group
+   depth. Native prepare/encode work runs on an 8 MiB worker stack and accepts 256 levels; the
+   WebAssembly build accepts 64 levels because it cannot create that worker stack. The boundary
+   applies after `usvg` resolves references as well as to the final XML tree, and cannot be removed
+   by an unbounded output option.
 
-- replaces common `<foreignObject>` label patterns with SVG `<text>/<tspan>` equivalents
-  (approximate centering + line breaks), and
-- leaves SVG output unchanged to preserve the upstream SVG baseline contract.
+PNG/JPEG and PDF remain best-effort integration outputs rather than pixel-parity gates. Their SVG
+geometry and source semantics should converge with Mermaid, but browser font layout, rich HTML,
+filters, Chromium screenshots, and print behavior may retain documented residuals.
 
-## Alternatives considered
+## Alternatives Considered
 
-1. Bundle headless Chromium (Puppeteer-like) for raster output
-   - Pros: closest to upstream rendering semantics (`foreignObject`, CSS, fonts).
-   - Cons: large dependency footprint, slower startup, harder cross-platform distribution,
-     weak alignment with “pure Rust headless library” goals.
+### Bundle headless Chromium
 
-2. Implement a full HTML/CSS layout/rendering engine for `<foreignObject>`
-   - Pros: pure Rust, potentially fully deterministic.
-   - Cons: significant scope and long-term maintenance burden; effectively re-implementing parts
-     of a browser.
+This would most closely reproduce `<foreignObject>`, browser fonts, screenshots, and print-to-PDF.
+It was rejected because of its large dependency footprint, startup cost, packaging complexity, and
+conflict with the browserless Rust architecture.
 
-3. Emit `switch(foreignObject, text)` in the default SVG output
-   - Pros: would help rasterizers that support `<switch>`.
-   - Cons: breaks upstream SVG DOM parity (upstream does not emit these wrappers).
+### Apply one pixel limit to PNG, JPEG, and PDF
+
+This would offer a superficially simpler option surface. It was rejected because a vector PDF page
+does not allocate a full-page pixmap. A shared limit would reject valid large vector documents while
+failing to express the real PDF costs: localized filter bitmaps and embedded raster images.
+
+### Implement a complete HTML/CSS engine for `<foreignObject>`
+
+This would keep the runtime pure Rust and could improve browser parity. It was rejected as a
+separate browser-layout project with disproportionate maintenance cost. Source-backed family text
+rendering and narrow export fallbacks remain preferable.
+
+### Modify default parity SVG with fallback wrappers
+
+Adding `<switch>` or duplicate fallback text to every SVG would help some consumers. It was rejected
+because it changes the upstream SVG DOM contract. Export cleanup remains explicit.
 
 ## Consequences
 
-- Raster output becomes useful immediately for previews and CI artifacts.
-- Raster output is explicitly not a parity gate; SVG remains the spec.
-- Some rich label rendering will degrade in raster outputs until specialized conversions are added.
+- Large finite SVG and vector PDF dimensions are supported without a global side-length heuristic.
+- PNG/JPEG allocation is predictable and inspectable through `RasterPlan` before a pixmap exists.
+- PDF filter sampling and embedded image decoding are independently bounded and inspectable.
+- Hosts must choose the output policy that matches their display or export target instead of using
+  one unbounded switch for every format.
+- Rich browser-only labels and print behavior can still differ, and those differences must remain
+  documented rather than hidden by broad comparator normalization.
 
 ## References
 
 - `docs/rendering/RASTER_OUTPUT.md`
-
+- `docs/security/THREAT_MODEL.md`
+- `docs/alignment/CLI_COMPATIBILITY.md`

@@ -380,7 +380,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_curly_brace_commen
     label.dx = geometry.label_dx;
 
     let mut stroke_d = |d: &str| {
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_stroke_path_for_svg_path(
                 d,
                 common.stroke_color,

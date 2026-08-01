@@ -1,36 +1,128 @@
 # merman-lsp
 
-`merman-lsp` is the canonical LSP transport for Merman diagnostics and protocol-neutral editor
-intelligence. It validates the LSP projection while analysis and editor-core own the underlying
-language behavior.
+[![Crates.io](https://img.shields.io/crates/v/merman-lsp.svg)](https://crates.io/crates/merman-lsp) [![Documentation](https://docs.rs/merman-lsp/badge.svg)](https://docs.rs/merman-lsp) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-## Responsibilities
+Local Mermaid language intelligence for `.mmd`, `.mermaid`, Markdown, and MDX documents.
 
-- Accept `initialize`, `didOpen`, `didChange`, `didSave`, `didClose`, `completion`, `hover`,
-  `completionItem/resolve`, `documentSymbol`, `definition`, `references`, `prepareRename`,
-  `rename`, `selectionRange`, `foldingRange`, `codeAction`, `semanticTokens/full`, and
-  `semanticTokens/range`.
-- Advertise editor-agnostic Merman extension requests under `ServerCapabilities.experimental`,
-  including `merman/ruleCatalog` and `merman/configSchema`.
-- Publish diagnostics from `merman-analysis`, including document pull diagnostics.
-- Keep document state versioned so diagnostics from stale analysis snapshots are suppressed before
-  publication.
-- Project `merman-editor-core` completion, hover, document symbols, selection ranges, folding
-  ranges, workspace symbols, definition, references, prepare-rename, rename, and semantic-token
-  responses into LSP types.
-- Provide fix-backed quickfix code actions from shared analysis diagnostics.
-- Reject `workspace/diagnostic` while unopened workspace-file scanning has no owner; tracked
-  document snapshots still support workspace symbols.
+`merman-lsp` provides parser-backed diagnostics, completion, hover, navigation, rename, code actions, symbols, folding, and semantic tokens. It does not render previews; pair it with [`merman-cli`](https://crates.io/crates/merman-cli), or use the [Merman VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) for an integrated editor experience.
 
-## Deferred
+## Install The Stdio Server
 
-- Formatting
+The crate defaults to a protocol-neutral Rust library. Enable `stdio` when installing the bundled language-server executable:
 
-## Notes
+```sh
+cargo install --git https://github.com/Latias94/merman --locked merman-lsp \
+  --no-default-features --features stdio
+```
 
-- Plain Mermaid files and Markdown/MDX fenced Mermaid blocks are both supported.
-- Diagnostics remain analysis-driven; the LSP layer does not reimplement parse or render rules.
-- Language features remain editor-core-driven; the LSP layer converts URI/range/type shapes and
-  handles request lifecycle.
-- First-class family coverage is tracked in `docs/lsp/CAPABILITIES.md`; parse/render support
-  outside that matrix is not yet a mature LSP commitment.
+Configure an editor or LSP client to launch:
+
+```text
+merman-lsp
+```
+
+The server communicates over standard input and output. Logs go to standard error, so protocol messages remain isolated.
+
+For repository development:
+
+```sh
+cargo run -p merman-lsp --features stdio
+```
+
+## Supported Documents
+
+- Standalone Mermaid files: `.mmd` and `.mermaid`.
+- Mermaid code fences in Markdown, MDX, and Markdown-family documents.
+- Multiple fences per document with source ranges mapped back to the host file.
+
+Language behavior comes from `merman-analysis` and `merman-editor-core`. `MermanLspService` owns synchronous message admission, while its private `LanguageSession` owns document and configuration transactions, generation acquisition and caching, stale-result suppression, cancellation, client effects, refresh coordination, and shutdown. The remaining LSP layer projects those results onto the protocol.
+
+Unconfigured sessions admit at most 4 MiB of source text and 256 Mermaid fences per Markdown or MDX document. Source-byte rejection discards the oversized text and requires a later full replacement. Fence-count rejection retains authoritative text, so ranged edits or a configuration increase can restore analysis without reopening the document. Both limits are exposed through the analysis settings and `merman/configSchema`.
+
+## Language Features
+
+- Diagnostics, including pull diagnostics and fix-backed quick fixes. When several requested diagnostics own the same shared document fix, the server materializes one equivalent workspace edit rather than repeating the action.
+- Completion and completion-item resolution.
+- Hover, document symbols, selection ranges, and folding ranges.
+- Definition, references, prepare rename, and rename.
+- Full-document and range semantic tokens.
+- Merman extension requests for the rule catalog and configuration schema.
+
+The server intentionally rejects workspace diagnostics until unopened workspace-file discovery has a defined owner. Formatting is not currently provided.
+
+See the [capability matrix](https://github.com/Latias94/merman/blob/main/docs/lsp/CAPABILITIES.md) for family-level coverage.
+
+## Embed The Protocol Library
+
+Applications that already own a transport can depend on `merman-lsp` with default features disabled and call `MermanLanguageServer::service()` directly. The `stdio` feature adds only the bundled Tokio stdio transport and executable.
+
+`MermanLanguageServer::service()` returns an ordered `MermanLspService` plus its client socket. Embedded transports must drive `MermanLspService` through `tower::Service<Request>` so each message is admitted in input order. The underlying `LanguageServer` is intentionally not exposed: calling it directly would bypass document and configuration ordering.
+
+The session refactor removes the direct `MermanLanguageServer::rule_catalog()` and `MermanLanguageServer::config_schema()` helpers. Embedded clients should send `RULE_CATALOG_METHOD` and `CONFIG_SCHEMA_METHOD` through the ordered service. Rust callers that only need the static payloads can use `RuleCatalogResponse::current()` and `ConfigSchemaResponse::current()`.
+
+```toml
+[dependencies]
+merman-lsp = { git = "https://github.com/Latias94/merman", default-features = false }
+```
+
+The embedding boundary deliberately uses the same JSON-RPC and service types as `tower-lsp-server`. Declare those transport dependencies directly so Cargo resolves the traits and request types used by the host:
+
+```toml
+futures = "0.3.31"
+tower = { version = "0.5.2", default-features = false, features = ["util"] }
+tower-lsp-server = { version = "0.23.0", default-features = false, features = ["runtime-tokio"] }
+```
+
+Split the returned socket once, then drive both named halves. `MermanClientSocket` is an ownership token and deliberately does not implement `Stream` or `Sink`. Incoming client requests enter the ordered service; its response goes back to the client. Server-initiated requests and notifications leave through `MermanRequestStream`, and client responses to server-initiated requests must be sent through `MermanResponseSink`:
+
+```rust
+use futures::{SinkExt, StreamExt};
+use merman_lsp::{
+    MermanClientSocketError, MermanLanguageServer, MermanLspService, MermanRequestStream,
+    MermanResponseSink,
+};
+use tower::{Service, ServiceExt};
+use tower_lsp_server::jsonrpc::{Request, Response};
+use tower_lsp_server::ExitedError;
+
+async fn handle_client_request(
+    service: &mut MermanLspService,
+    request: Request,
+) -> Result<Option<Response>, ExitedError> {
+    service.ready().await?.call(request).await
+}
+
+async fn next_server_request(requests: &mut MermanRequestStream) -> Option<Request> {
+    requests.next().await
+}
+
+async fn handle_client_response(
+    responses: &mut MermanResponseSink,
+    response: Response,
+) -> Result<(), MermanClientSocketError> {
+    responses.send(response).await
+}
+
+fn create_session() -> (MermanLspService, MermanRequestStream, MermanResponseSink) {
+    let (service, socket) = MermanLanguageServer::service();
+    let (requests, responses) = socket.split();
+    (service, requests, responses)
+}
+```
+
+The host transport should poll these directions concurrently. It owns the request queue: reject encoded messages larger than `LSP_MAX_MESSAGE_BYTES`, retain no more than `LSP_REQUEST_BYTE_BUDGET` across queued and running ordinary messages, and poll at most `LSP_ORDINARY_HANDLER_CONCURRENCY` ordinary futures concurrently. Reserve an independent bounded control path for cancellation and `exit`; the bundled transport polls up to `LSP_CONTROL_HANDLER_CONCURRENCY` control futures, for a default `LSP_TOTAL_HANDLER_CONCURRENCY` of eight. Call the ordered Tower service as each embedded message enters its bounded queue. The bundled stdio path instead uses `StdioService::admit` to synchronously reserve ordering, register request cancellation, and perform the valid-`exit` lifecycle action. Its returned future waits for predecessors and completes or abandons the reserved ordering slot, so transports may poll futures concurrently and must be able to drop them safely. Dropping the service, the unsplit socket, or either split half terminates the whole shared session and cancels pending work exactly once. Request EOF, a successful response-sink close, and any response-sink error also terminate both directions. Closing the response half wakes a pending request poll, while closing the request half makes subsequent response operations fail immediately, so transport shutdown cannot wait forever. Do not leave either socket half undriven because diagnostics, logs, and refresh requests use them.
+
+## Runtime And Contract Boundaries
+
+LSP analysis uses deterministic runtime state. Initialization and workspace settings can provide `fixed_today` and `fixed_local_offset_minutes`, but the server does not expose a native runtime selector or forward `system-*` Cargo features.
+
+The private session cache consumes typed editor snapshots backed by `FenceTextIndex` and retains weighted generation/payload entries; normal language requests do not serialize `AnalysisFactsPayload`. The separately exposed binding facts payload uses schema version `1`, which is independent from LSP document revisions and Mermaid diagram IDs such as `flowchart-v2`.
+
+When a family parser cannot provide complete or recovered body facts, Merman does not guess body symbols, references, or rename targets. Source-start diagram headers and templates remain available from the static family catalog.
+
+## Related Documentation
+
+- [LSP architecture and lifecycle](https://github.com/Latias94/merman/blob/main/docs/lsp/README.md)
+- [VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme)
+- [Analysis crate](https://crates.io/crates/merman-analysis)
+- [Editor-core crate](https://docs.rs/merman-editor-core)

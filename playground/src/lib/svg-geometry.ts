@@ -1,10 +1,17 @@
+import {
+  assertSafeInlineSvgArtifact,
+  projectSafeInlineSvg,
+  type SafeInlineSvg,
+} from "../runtime/render-artifact.ts";
+
 export interface SvgDimensions {
   width: number;
   height: number;
 }
 
-export interface NormalizedSvgDimensions extends SvgDimensions {
-  svg: string;
+interface PreparedSvgPreview {
+  readonly dimensions: SvgDimensions | null;
+  takeNode(): Element;
 }
 
 interface ParsedSvgRoot {
@@ -16,6 +23,8 @@ interface ViewBox {
   height: number;
 }
 
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
 export function parseSvgDimensions(svg: string): SvgDimensions | null {
   const parsed = parseSvgRoot(svg);
   if (!parsed) return null;
@@ -23,37 +32,117 @@ export function parseSvgDimensions(svg: string): SvgDimensions | null {
   return resolveSvgDimensions(parsed.root);
 }
 
-export function normalizeSvgDimensions(
-  svg: string
-): NormalizedSvgDimensions | null {
-  const parsed = parseSvgRoot(svg);
+export function prepareSvgForResponsivePreview(
+  artifact: SafeInlineSvg
+): PreparedSvgPreview | null {
+  assertSafeInlineSvgArtifact(artifact);
+  const parsed = parseSvgRootForHtmlMount(artifact.svg);
   if (!parsed) return null;
 
   const dimensions = resolveSvgDimensions(parsed.root);
-  if (!dimensions) return null;
+  if (dimensions) {
+    ensureViewBox(parsed.root, dimensions);
+    parsed.root.setAttribute("width", "100%");
+    parsed.root.setAttribute("height", "100%");
+    appendRootStyle(
+      parsed.root,
+      "display:block;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important"
+    );
+  }
 
-  parsed.root.setAttribute("width", formatSvgNumber(dimensions.width));
-  parsed.root.setAttribute("height", formatSvgNumber(dimensions.height));
-
-  return {
-    svg: new XMLSerializer().serializeToString(parsed.root),
-    ...dimensions,
-  };
+  const template = parsed.root;
+  template.remove();
+  return Object.freeze({
+    dimensions: dimensions ? Object.freeze({ ...dimensions }) : null,
+    takeNode(): Element {
+      return template.parentNode
+        ? (template.cloneNode(true) as Element)
+        : template;
+    },
+  });
 }
 
-function parseSvgRoot(svg: string): ParsedSvgRoot | null {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(svg, "image/svg+xml");
-  const root = doc.documentElement;
-
+export function sizeSvgForRasterization(
+  artifact: SafeInlineSvg,
+  renderedDimensions: SvgDimensions
+): SafeInlineSvg | null {
+  assertSafeInlineSvgArtifact(artifact);
   if (
-    root.localName.toLowerCase() !== "svg" ||
-    doc.querySelector("parsererror")
+    !isPositiveFinite(renderedDimensions.width) ||
+    !isPositiveFinite(renderedDimensions.height)
   ) {
     return null;
   }
 
-  return { root };
+  const parsed = parseSvgRoot(artifact.svg);
+  if (!parsed) return null;
+  const intrinsicDimensions = resolveSvgDimensions(parsed.root);
+  if (!intrinsicDimensions) return null;
+
+  ensureViewBox(parsed.root, intrinsicDimensions);
+  const width = formatSvgNumber(renderedDimensions.width);
+  const height = formatSvgNumber(renderedDimensions.height);
+  parsed.root.setAttribute("width", width);
+  parsed.root.setAttribute("height", height);
+  appendRootStyle(
+    parsed.root,
+    `display:block;width:${width}px!important;height:${height}px!important;max-width:none!important;max-height:none!important`
+  );
+  return projectSafeInlineSvg(
+    new XMLSerializer().serializeToString(parsed.root)
+  );
+}
+
+function parseSvgRoot(svg: string): ParsedSvgRoot | null {
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(svg, "image/svg+xml");
+  const xmlRoot = xml.documentElement;
+
+  if (isSvgRoot(xmlRoot) && !xml.querySelector("parsererror")) {
+    return { root: xmlRoot };
+  }
+
+  return parseSvgRootAsHtml(parser, svg);
+}
+
+function parseSvgRootForHtmlMount(svg: string): ParsedSvgRoot | null {
+  return parseSvgRootAsHtml(new DOMParser(), svg);
+}
+
+function parseSvgRootAsHtml(
+  parser: DOMParser,
+  svg: string
+): ParsedSvgRoot | null {
+  // HTML parsing preserves the namespace and case fixups of the former innerHTML sink,
+  // including XHTML descendants inside foreignObject.
+  const html = parser.parseFromString(svg, "text/html");
+  const htmlRoot = html.body?.firstElementChild ?? null;
+  if (html.body?.childElementCount !== 1 || !isSvgRoot(htmlRoot)) {
+    return null;
+  }
+
+  return { root: htmlRoot };
+}
+
+function isSvgRoot(root: Element | null): root is Element {
+  return (
+    root?.localName.toLowerCase() === "svg" &&
+    root.namespaceURI === SVG_NAMESPACE
+  );
+}
+
+function ensureViewBox(root: Element, dimensions: SvgDimensions): void {
+  if (parseViewBox(root.getAttribute("viewBox"))) return;
+  root.setAttribute(
+    "viewBox",
+    `0 0 ${formatSvgNumber(dimensions.width)} ${formatSvgNumber(dimensions.height)}`
+  );
+}
+
+function appendRootStyle(root: Element, declarations: string): void {
+  const existing = root.getAttribute("style")?.trim();
+  const prefix = existing ? `${existing.replace(/;+$/u, "")};` : "";
+  root.setAttribute("style", `${prefix}${declarations}`);
 }
 
 function resolveSvgDimensions(root: Element): SvgDimensions | null {

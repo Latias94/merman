@@ -1,9 +1,11 @@
 use crate::config::{config_f64_css_px, config_string};
-use crate::json::from_value_ref;
+use crate::flowchart::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
+use crate::math::MathRenderer;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
 use crate::text::WrapMode;
-use crate::text::{TextMeasurer, TextMetrics, TextStyle};
+use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
+use merman_core::MermaidConfig;
 use serde_json::Value;
 
 mod tidy_tree;
@@ -12,6 +14,10 @@ pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
     config_f64_css_px(effective_config, &["mindmap", "maxNodeWidth"])
         .unwrap_or(200.0)
         .max(1.0)
+}
+
+pub(crate) fn uses_tidy_tree_layout(effective_config: &Value) -> bool {
+    config_string(effective_config, &["layout"]).as_deref() == Some("tidy-tree")
 }
 
 type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
@@ -31,6 +37,7 @@ fn mindmap_text_style(effective_config: &Value) -> TextStyle {
         font_family,
         font_size,
         font_weight: None,
+        font_style: None,
     }
 }
 
@@ -54,111 +61,14 @@ pub(crate) fn mindmap_label_text_for_layout(text: &str) -> &str {
     normalized.unwrap_or(text)
 }
 
-fn is_simple_markdown_label(text: &str) -> bool {
-    // Conservative: only fast-path labels that would render as plain text inside a `<p>...</p>`
-    // when passed through Mermaid's Markdown + sanitizer pipeline.
-    if text.contains('\n') || text.contains('\r') {
-        return false;
-    }
-    let trimmed = text.trim_start();
-    let bytes = trimmed.as_bytes();
-    // Line-leading markdown constructs that can change the HTML shape even without newlines.
-    if bytes.first().is_some_and(|b| matches!(b, b'#' | b'>')) {
-        return false;
-    }
-    if bytes.starts_with(b"- ") || bytes.starts_with(b"+ ") || bytes.starts_with(b"---") {
-        return false;
-    }
-    // Ordered list: `1. item` / `1) item`
-    let mut i = 0usize;
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        i += 1;
-    }
-    if i > 0
-        && i + 1 < bytes.len()
-        && (bytes[i] == b'.' || bytes[i] == b')')
-        && bytes[i + 1] == b' '
-    {
-        return false;
-    }
-    // Block/inline markdown triggers we don't want to replicate here.
-    if text.contains('*')
-        || text.contains('_')
-        || text.contains('`')
-        || text.contains('~')
-        || text.contains('[')
-        || text.contains(']')
-        || text.contains('!')
-        || text.contains('\\')
-    {
-        return false;
-    }
-    // HTML passthrough / entity patterns: keep the full markdown path.
-    if text.contains('<') || text.contains('>') || text.contains('&') {
-        return false;
-    }
-    true
-}
-
-fn mindmap_plain_html_label_metrics(
-    text: &str,
-    label_type: &str,
-    metrics: TextMetrics,
-    max_node_width_px: f64,
-) -> TextMetrics {
-    let mut metrics = metrics;
-    if label_type == "markdown"
-        || metrics.line_count != 1
-        || text.contains('\n')
-        || text.contains('\r')
-    {
-        return metrics;
-    }
-    if metrics.width >= max_node_width_px - 1e-3 {
-        return metrics;
-    }
-    let width_units = metrics.width * 64.0;
-    if (width_units - width_units.round()).abs() > 1e-6 {
-        return metrics;
-    }
-
-    let trimmed = text.trim();
-    if trimmed.len() <= 2 || trimmed != text {
-        return metrics;
-    }
-
-    if trimmed.ends_with("[]") || trimmed.ends_with("()") {
-        // Mermaid's mindmap HTML labels come from `labelHelper(...)` measuring a `<div>` with
-        // `getBoundingClientRect()`. For plain one-line labels whose visible text is or ends in
-        // ASCII delimiter pairs, Chromium 11.12.2 baselines land one 1/32px cell below the
-        // vendored advance sum while staying on the same 1/64px lattice. Keep this local to
-        // Mindmap HTML labels so other diagrams keep their established measurement contracts.
-        metrics.width = (metrics.width - (1.0 / 32.0)).max(0.0);
-    }
-    if trimmed == "Waterfall" {
-        // Browser `foreignObject` measurement is narrower than the vendored advance sum for this
-        // reusable plain Mindmap label. Keep it as a label metric instead of a root-profile patch.
-        metrics.width = 66.203125;
-    } else if trimmed == "the root" {
-        // The root-shape fixtures reuse this plain label across multiple typed node shapes.
-        metrics.width = 58.375;
-    } else if trimmed == "Root" {
-        // A 1/64px browser bbox delta is enough to alter the deterministic COSE layout for the
-        // docs Root -> A -> {B, C} examples, so keep it at the label boundary.
-        metrics.width = 32.1875;
-    }
-
-    metrics
-}
-
 fn mindmap_label_bbox_px(
     text: &str,
-    label_type: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_node_width_px: f64,
 ) -> (f64, f64) {
-    let text = mindmap_label_text_for_layout(text);
+    let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(text);
+    let text = mindmap_label_text_for_layout(decoded.as_ref());
 
     // Mermaid mindmap labels are rendered via HTML `<foreignObject>` and respect
     // `mindmap.maxNodeWidth` (default 200px). When the raw label is wider than that, Mermaid
@@ -168,54 +78,17 @@ fn mindmap_label_bbox_px(
     // Mirror that by measuring with an explicit max width in HTML-like mode.
     let max_node_width_px = max_node_width_px.max(1.0);
 
-    // Complex Markdown labels require the full DOM-like measurement path (bold/em deltas, inline
-    // HTML, sanitizer edge cases). Keep the existing two-pass approach for those.
-    if label_type == "markdown" && !is_simple_markdown_label(text) {
-        if text.contains("![") {
-            let wrapped = crate::text::measure_markdown_with_flowchart_bold_deltas(
-                measurer,
-                text,
-                style,
-                Some(max_node_width_px),
-                WrapMode::HtmlLike,
-            );
-            let unwrapped = crate::text::measure_markdown_with_flowchart_bold_deltas(
-                measurer,
-                text,
-                style,
-                None,
-                WrapMode::HtmlLike,
-            );
-            return (
-                wrapped.width.max(unwrapped.width).max(0.0),
-                wrapped.height.max(0.0),
-            );
-        }
-
-        let html = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-        let wrapped = crate::text::measure_html_with_flowchart_bold_deltas(
-            measurer,
-            &html,
-            style,
-            Some(max_node_width_px),
-            WrapMode::HtmlLike,
-        );
-        let unwrapped = crate::text::measure_html_with_flowchart_bold_deltas(
-            measurer,
-            &html,
-            style,
-            None,
-            WrapMode::HtmlLike,
-        );
-        return (
-            wrapped.width.max(unwrapped.width).max(0.0),
-            wrapped.height.max(0.0),
-        );
-    }
-
-    let wrapped =
-        measurer.measure_wrapped_raw(text, style, Some(max_node_width_px), WrapMode::HtmlLike);
-    let wrapped = mindmap_plain_html_label_metrics(text, label_type, wrapped, max_node_width_px);
+    // Upstream `mindmapDb.flattenNodes()` assigns `labelType: 'markdown'` to every node. Measure
+    // the same post-Markdown HTML fragment that `createText()` inserts into the foreignObject,
+    // including raw inline HTML. SVG emission applies the configured sanitizer after rendering.
+    let html = crate::text::mermaid_markdown_to_html_label_fragment(text, true);
+    let wrapped = crate::text::measure_html_with_inline_styles(
+        measurer,
+        &html,
+        style,
+        Some(max_node_width_px),
+        WrapMode::HtmlLike,
+    );
 
     // The HTML-like measurement path already includes min-content width for unbreakable tokens.
     // Do not re-expand normal wrapping prose back to its unwrapped paragraph width, or Mindmap
@@ -223,19 +96,45 @@ fn mindmap_label_bbox_px(
     (wrapped.width.max(0.0), wrapped.height.max(0.0))
 }
 
-fn mindmap_node_dimensions_px(
-    node: &MindmapNodeModel,
+fn mindmap_label_bbox_px_with_math(
+    text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_node_width_px: f64,
-) -> (f64, f64, f64, f64) {
-    let (bbox_w, bbox_h) = mindmap_label_bbox_px(
-        &node.label,
-        &node.label_type,
+    config: &MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> Result<(f64, f64)> {
+    if !crate::math::contains_delimited_math(text) {
+        return Ok(mindmap_label_bbox_px(
+            text,
+            measurer,
+            style,
+            max_node_width_px,
+        ));
+    }
+
+    let math_renderer = math_renderer.ok_or_else(|| Error::MissingCapability {
+        capability: crate::RenderCapability::Math,
+        diagram_type: "mindmap".to_string(),
+    })?;
+    let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
         measurer,
+        raw_label: mindmap_label_text_for_layout(text),
+        label_type: "markdown",
         style,
-        max_node_width_px,
-    );
+        max_width_px: Some(max_node_width_px.max(1.0)),
+        wrap_mode: WrapMode::HtmlLike,
+        config,
+        math_renderer: Some(math_renderer),
+    });
+    Ok((metrics.width.max(0.0), metrics.height.max(0.0)))
+}
+
+fn mindmap_node_dimensions_from_label_bbox(
+    node: &MindmapNodeModel,
+    bbox_w: f64,
+    bbox_h: f64,
+) -> (f64, f64, f64, f64) {
     // Mermaid mindmap applies some shape-specific padding overrides during rendering (after
     // `mindmapDb.getData()`), notably for rounded nodes.
     //
@@ -285,17 +184,28 @@ fn mindmap_node_dimensions_px(
             let min_h = bbox_h + 20.0;
             (w.max(min_w), h.max(min_h))
         }
-        // `hexagon.ts`: h = bbox.height + padding; w = bbox.width + 2.5*padding; then expands by +w/6
-        // due to `halfWidth = w/2 + m` where `m = (w/2)/6`.
+        // `hexagon.ts` (classic): h = bbox.height + padding; m = h/4;
+        // w = bbox.width + 2*m + padding.
         "hexagon" => {
-            let w = bbox_w + 2.5 * padding;
             let h = bbox_h + padding;
-            (w * (7.0 / 6.0), h)
+            let m = h / 4.0;
+            (bbox_w + 2.0 * m + padding, h)
         }
         _ => (bbox_w + 8.0 * half_padding, bbox_h + 2.0 * half_padding),
     };
 
     (w, h, bbox_w, bbox_h)
+}
+
+#[cfg(test)]
+fn mindmap_node_dimensions_px(
+    node: &MindmapNodeModel,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_node_width_px: f64,
+) -> (f64, f64, f64, f64) {
+    let (bbox_w, bbox_h) = mindmap_label_bbox_px(&node.label, measurer, style, max_node_width_px);
+    mindmap_node_dimensions_from_label_bbox(node, bbox_w, bbox_h)
 }
 
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
@@ -337,61 +247,25 @@ fn shift_nodes_to_positive_bounds(nodes: &mut [LayoutNode], content_min: f64) {
     }
 }
 
-pub fn layout_mindmap_diagram(
-    model: &Value,
-    effective_config: &Value,
-    text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
-) -> Result<MindmapDiagramLayout> {
-    let model = MindmapModel {
-        nodes: model
-            .get("nodes")
-            .map(from_value_ref)
-            .transpose()?
-            .unwrap_or_default(),
-        edges: model
-            .get("edges")
-            .map(from_value_ref)
-            .transpose()?
-            .unwrap_or_default(),
-    };
-    layout_mindmap_diagram_model(&model, effective_config, text_measurer, use_manatee_layout)
-}
-
-pub fn layout_mindmap_diagram_typed(
+pub(crate) fn layout_mindmap_diagram_typed(
     model: &MindmapModel,
-    effective_config: &Value,
+    config: &MermaidConfig,
     text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<MindmapDiagramLayout> {
-    layout_mindmap_diagram_model(model, effective_config, text_measurer, use_manatee_layout)
+    layout_mindmap_diagram_model(model, config, text_measurer, math_renderer)
 }
 
 fn layout_mindmap_diagram_model(
     model: &MindmapModel,
-    effective_config: &Value,
+    config: &MermaidConfig,
     text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<MindmapDiagramLayout> {
-    let timing_enabled = std::env::var("MERMAN_MINDMAP_LAYOUT_TIMING")
-        .ok()
-        .as_deref()
-        == Some("1");
-    #[derive(Debug, Default, Clone)]
-    struct MindmapLayoutTimings {
-        total: web_time::Duration,
-        measure_nodes: web_time::Duration,
-        layout: web_time::Duration,
-        build_edges: web_time::Duration,
-        bounds: web_time::Duration,
-    }
-    let mut timings = MindmapLayoutTimings::default();
-    let total_start = timing_enabled.then(web_time::Instant::now);
-
+    let effective_config = config.as_value();
     let text_style = mindmap_text_style(effective_config);
     let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
-    let measure_nodes_start = timing_enabled.then(web_time::Instant::now);
     let mut nodes_sorted: Vec<(i64, &MindmapNodeModel)> = model
         .nodes
         .iter()
@@ -401,8 +275,16 @@ fn layout_mindmap_diagram_model(
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
     for (_id_num, n) in nodes_sorted {
+        let (label_width, label_height) = mindmap_label_bbox_px_with_math(
+            &n.label,
+            text_measurer,
+            &text_style,
+            max_node_width_px,
+            config,
+            math_renderer,
+        )?;
         let (width, height, label_width, label_height) =
-            mindmap_node_dimensions_px(n, text_measurer, &text_style, max_node_width_px);
+            mindmap_node_dimensions_from_label_bbox(n, label_width, label_height);
 
         nodes.push(LayoutNode {
             id: n.id.clone(),
@@ -417,10 +299,6 @@ fn layout_mindmap_diagram_model(
             label_height: Some(label_height.max(0.0)),
         });
     }
-    if let Some(s) = measure_nodes_start {
-        timings.measure_nodes = s.elapsed();
-    }
-
     let mut id_to_idx: rustc_hash::FxHashMap<&str, usize> =
         rustc_hash::FxHashMap::with_capacity_and_hasher(nodes.len(), Default::default());
     for (idx, n) in nodes.iter().enumerate() {
@@ -442,61 +320,59 @@ fn layout_mindmap_diagram_model(
         edge_indices.push((a, b));
     }
 
-    let use_tidy_tree =
-        config_string(effective_config, &["layout"]).as_deref() == Some("tidy-tree");
-    let mut tidy_tree_edges = None;
-    if use_tidy_tree {
-        let layout_start = timing_enabled.then(web_time::Instant::now);
-        tidy_tree_edges = Some(tidy_tree::layout(
+    let use_tidy_tree = uses_tidy_tree_layout(effective_config);
+    let tidy_tree_edges = if use_tidy_tree {
+        Some(tidy_tree::layout(
             &mut nodes,
             &model.nodes,
             &model.edges,
             &edge_indices,
-        )?);
-        if let Some(start) = layout_start {
-            timings.layout = start.elapsed();
-        }
-    } else if use_manatee_layout {
-        let layout_start = timing_enabled.then(web_time::Instant::now);
-        let indexed_nodes: Vec<manatee::algo::cose_bilkent::IndexedNode> = nodes
-            .iter()
-            .map(|n| manatee::algo::cose_bilkent::IndexedNode {
-                width: n.width,
-                height: n.height,
-                x: n.x,
-                y: n.y,
-            })
-            .collect();
-        let mut indexed_edges: Vec<manatee::algo::cose_bilkent::IndexedEdge> =
-            Vec::with_capacity(model.edges.len());
-        for (edge_idx, (a, b)) in edge_indices.iter().copied().enumerate() {
-            if a == b {
-                continue;
+        )?)
+    } else {
+        #[cfg(feature = "layout-cytoscape")]
+        {
+            let indexed_nodes: Vec<manatee::algo::cose_bilkent::IndexedNode> = nodes
+                .iter()
+                .map(|n| manatee::algo::cose_bilkent::IndexedNode {
+                    width: n.width,
+                    height: n.height,
+                    x: n.x,
+                    y: n.y,
+                })
+                .collect();
+            let mut indexed_edges: Vec<manatee::algo::cose_bilkent::IndexedEdge> =
+                Vec::with_capacity(model.edges.len());
+            for (edge_idx, (a, b)) in edge_indices.iter().copied().enumerate() {
+                if a == b {
+                    continue;
+                }
+                indexed_edges.push(manatee::algo::cose_bilkent::IndexedEdge { a, b });
+
+                // Keep `edge_idx` referenced so unused warnings don't obscure failures if we ever
+                // enhance indexed validation error messages.
+                let _ = edge_idx;
             }
-            indexed_edges.push(manatee::algo::cose_bilkent::IndexedEdge { a, b });
 
-            // Keep `edge_idx` referenced so unused warnings don't obscure failures if we ever
-            // enhance indexed validation error messages.
-            let _ = edge_idx;
-        }
+            let positions =
+                manatee::algo::cose_bilkent::layout_indexed(&indexed_nodes, &indexed_edges)
+                    .map_err(|e| Error::InvalidModel {
+                        message: format!("manatee layout failed: {e}"),
+                    })?;
 
-        let positions = manatee::algo::cose_bilkent::layout_indexed(
-            &indexed_nodes,
-            &indexed_edges,
-            &Default::default(),
-        )
-        .map_err(|e| Error::InvalidModel {
-            message: format!("manatee layout failed: {e}"),
-        })?;
-
-        for (n, p) in nodes.iter_mut().zip(positions) {
-            n.x = p.x;
-            n.y = p.y;
+            for (n, p) in nodes.iter_mut().zip(positions) {
+                n.x = p.x;
+                n.y = p.y;
+            }
+            None
         }
-        if let Some(start) = layout_start {
-            timings.layout = start.elapsed();
+        #[cfg(not(feature = "layout-cytoscape"))]
+        {
+            return Err(Error::MissingCapability {
+                capability: crate::RenderCapability::LayoutCytoscape,
+                diagram_type: "mindmap".to_string(),
+            });
         }
-    }
+    };
 
     // Mermaid's COSE-Bilkent post-layout normalizes to a positive coordinate space via
     // `transform(0,0)` (layout-base), yielding a content bbox that starts around (15,15) before
@@ -508,7 +384,6 @@ fn layout_mindmap_diagram_model(
         shift_nodes_to_positive_bounds(&mut nodes, 15.0);
     }
 
-    let build_edges_start = timing_enabled.then(web_time::Instant::now);
     let edges = if let Some(edges) = tidy_tree_edges {
         edges
     } else {
@@ -547,28 +422,7 @@ fn layout_mindmap_diagram_model(
             })
             .collect()
     };
-    if let Some(s) = build_edges_start {
-        timings.build_edges = s.elapsed();
-    }
-
-    let bounds_start = timing_enabled.then(web_time::Instant::now);
     let bounds = compute_bounds(&nodes, &edges);
-    if let Some(s) = bounds_start {
-        timings.bounds = s.elapsed();
-    }
-    if let Some(s) = total_start {
-        timings.total = s.elapsed();
-        eprintln!(
-            "[layout-timing] diagram=mindmap total={:?} measure_nodes={:?} layout={:?} build_edges={:?} bounds={:?} nodes={} edges={}",
-            timings.total,
-            timings.measure_nodes,
-            timings.layout,
-            timings.build_edges,
-            timings.bounds,
-            nodes.len(),
-            edges.len(),
-        );
-    }
     Ok(MindmapDiagramLayout {
         nodes,
         edges,
@@ -578,6 +432,22 @@ fn layout_mindmap_diagram_model(
 
 #[cfg(test)]
 mod tests {
+    struct FixedMeasurer;
+
+    impl crate::text::TextMeasurer for FixedMeasurer {
+        fn measure(
+            &self,
+            _text: &str,
+            _style: &crate::text::TextStyle,
+        ) -> crate::text::TextMetrics {
+            crate::text::TextMetrics {
+                width: 73.0,
+                height: 24.0,
+                line_count: 1,
+            }
+        }
+    }
+
     #[test]
     fn mindmap_max_node_width_accepts_number_and_px_string() {
         let numeric = serde_json::json!({
@@ -623,23 +493,29 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_plain_label_measurement_ignores_cross_diagram_html_overrides() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-        let style = super::mindmap_text_style(&serde_json::json!({}));
-        let (width, height) =
-            super::mindmap_label_bbox_px("I am a circle", "", &measurer, &style, 200.0);
-
-        assert!((width - 89.078125).abs() < 0.05);
-        assert_eq!(height, 24.0);
-    }
-
-    #[test]
     fn mindmap_plain_wrapping_label_uses_wrapped_container_width() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
         let (width, height) = super::mindmap_label_bbox_px(
             "A root with a long text that wraps to keep the node size in check",
-            "",
+            &measurer,
+            &style,
+            200.0,
+        );
+
+        assert!(width > 0.0 && width <= 200.0);
+        assert!(
+            height > style.font_size,
+            "long prose should wrap to multiple rows"
+        );
+    }
+
+    #[test]
+    fn mindmap_markdown_wrapping_respects_max_node_width() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let (width, height) = super::mindmap_label_bbox_px(
+            "The dog in **the** hog... a *very long text* that wraps to a new line",
             &measurer,
             &style,
             200.0,
@@ -650,41 +526,90 @@ mod tests {
     }
 
     #[test]
-    fn mindmap_plain_delimiter_labels_use_browser_html_bbox_width() {
+    fn mindmap_html_labels_measure_visible_content_instead_of_markup() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
+        let expected = crate::text::TextMeasurer::measure_wrapped(
+            &measurer,
+            "docs",
+            &style,
+            Some(200.0),
+            crate::text::WrapMode::HtmlLike,
+        );
 
-        for text in ["String containing []", "String containing ()"] {
-            let (width, height) = super::mindmap_label_bbox_px(text, "", &measurer, &style, 200.0);
-            assert_eq!(width, 137.625);
-            assert_eq!(height, 24.0);
-        }
+        let actual = super::mindmap_label_bbox_px(
+            r#"<a href='https://mermaid.js.org/' rel="noopener" target="_blank">docs</a>"#,
+            &measurer,
+            &style,
+            200.0,
+        );
+
+        assert_eq!(actual, (expected.width, expected.height));
     }
 
     #[test]
-    fn mindmap_plain_known_labels_use_browser_html_bbox_widths() {
+    fn mindmap_layout_decodes_mermaid_entity_placeholders_before_measurement() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = super::mindmap_text_style(&serde_json::json!({}));
+        let expected = super::mindmap_label_bbox_px("Circle: &♥ ∞", &measurer, &style, 200.0);
 
-        for (text, expected_width) in [
-            ("Waterfall", 66.203125),
-            ("the root", 58.375),
-            ("Root", 32.1875),
+        let actual =
+            super::mindmap_label_bbox_px("Circle: &ﬂ°°9829¶ß &infin;", &measurer, &style, 200.0);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn mindmap_code_only_html_uses_monospace_measurement() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let mut code_style = style.clone();
+        code_style.font_family = Some("monospace".to_string());
+        let expected = crate::text::TextMeasurer::measure_wrapped(
+            &measurer,
+            "note about mermaid",
+            &code_style,
+            Some(200.0),
+            crate::text::WrapMode::HtmlLike,
+        );
+
+        let actual = super::mindmap_label_bbox_px(
+            r#"<a href="https://mermaid.js.org/"><code>note about mermaid</code></a>"#,
+            &measurer,
+            &style,
+            200.0,
+        );
+
+        assert_eq!(actual, (expected.width, expected.height));
+    }
+
+    #[test]
+    fn mindmap_plain_labels_use_the_selected_measurer_without_content_adjustment() {
+        let measurer = FixedMeasurer;
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+
+        for text in [
+            "String containing []",
+            "String containing ()",
+            "Waterfall",
+            "the root",
+            "Root",
+            "unseen label",
         ] {
-            let (width, height) = super::mindmap_label_bbox_px(text, "", &measurer, &style, 200.0);
-            assert_eq!(width, expected_width);
+            let (width, height) = super::mindmap_label_bbox_px(text, &measurer, &style, 200.0);
+            assert_eq!(width, 73.0);
             assert_eq!(height, 24.0);
         }
     }
 
     #[test]
     fn mindmap_cloud_layout_uses_rendered_path_bbox_dimensions() {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let measurer = FixedMeasurer;
         let style = super::mindmap_text_style(&serde_json::json!({}));
         let node = super::MindmapNodeModel {
             id: "0".to_string(),
             dom_id: "node_0".to_string(),
-            label: "the root".to_string(),
+            label: "arbitrary cloud label".to_string(),
             label_type: String::new(),
             is_group: false,
             shape: "cloud".to_string(),
@@ -706,9 +631,44 @@ mod tests {
         let (width, height, label_width, label_height) =
             super::mindmap_node_dimensions_px(&node, &measurer, &style, 200.0);
 
-        assert!((label_width - 58.375).abs() < 1e-9);
-        assert_eq!(label_height, 24.0);
-        assert!((width - 91.66693405421854).abs() < 1e-9);
-        assert!((height - 66.86466866912957).abs() < 1e-9);
+        let shape_width = label_width + node.padding;
+        let shape_height = label_height + node.padding;
+        let expected = crate::svg::mindmap_cloud_rendered_bbox_size_px(shape_width, shape_height)
+            .expect("cloud path bounds");
+
+        assert_eq!((label_width, label_height), (73.0, 24.0));
+        assert_eq!((width, height), expected);
+        assert!(width > shape_width && height > shape_height);
+    }
+
+    #[test]
+    fn mindmap_hexagon_layout_uses_mermaid_11_16_shape_geometry() {
+        let measurer = FixedMeasurer;
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let node = super::MindmapNodeModel {
+            id: "0".to_string(),
+            dom_id: "node_0".to_string(),
+            label: "arbitrary hexagon label".to_string(),
+            label_type: String::new(),
+            is_group: false,
+            shape: "hexagon".to_string(),
+            width: 0.0,
+            height: 0.0,
+            padding: 20.0,
+            css_classes: "mindmap-node section-root section--1".to_string(),
+            css_styles: Vec::new(),
+            look: String::new(),
+            icon: None,
+            x: None,
+            y: None,
+            level: 0,
+            node_id: "0".to_string(),
+            node_type: 0,
+            section: None,
+        };
+
+        let dimensions = super::mindmap_node_dimensions_px(&node, &measurer, &style, 200.0);
+
+        assert_eq!(dimensions, (115.0, 44.0, 73.0, 24.0));
     }
 }

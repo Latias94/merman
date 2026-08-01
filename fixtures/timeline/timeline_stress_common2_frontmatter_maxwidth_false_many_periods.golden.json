@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Frontmatter maxWidth:false + disableMulticolor + many periods",
     "accTitle": null,
     "accDescr": null,

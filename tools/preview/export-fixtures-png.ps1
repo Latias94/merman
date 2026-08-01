@@ -84,7 +84,7 @@ function Export-OnePng {
 
   New-Item -ItemType Directory -Force -Path (Split-Path $OutPng) | Out-Null
 
-  $msg = & $CliPath render --format png --scale $Scale --background $Background --text-measurer $TextMeasurer --out $OutPng $InputMmd 2>&1
+  $msg = & $CliPath render --format png --scale $Scale --background $Background --text-measurer $TextMeasurer --output $OutPng $InputMmd 2>&1
   if ($LASTEXITCODE -ne 0) {
     if ($msg) {
       return (($msg | Select-Object -Last 1) -as [string])

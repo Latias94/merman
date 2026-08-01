@@ -71,14 +71,6 @@ fn parse_css_px_f32(v: Option<&String>, fallback: f32) -> f32 {
         .unwrap_or(fallback)
 }
 
-fn flowchart_hand_drawn_seed(ctx: &FlowchartRenderCtx<'_>) -> u64 {
-    ctx.config
-        .as_value()
-        .get("handDrawnSeed")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn write_flowchart_cluster_shape(
     out: &mut String,
@@ -111,7 +103,7 @@ fn write_flowchart_cluster_shape(
             FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT,
             FLOWCHART_CLUSTER_HAND_DRAWN_HACHURE_GAP,
             FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS,
-            flowchart_hand_drawn_seed(ctx),
+            &ctx.hand_drawn_seed,
         ) {
             let background_style = cluster_rough_background_style(rect_style);
             let border_style = cluster_rough_border_style(rect_style);
@@ -150,6 +142,15 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     origin_x: f64,
     origin_y: f64,
 ) {
+    if let Some(lane) = ctx.swimlane_lanes_by_id.get(cluster.id.as_str())
+        && lane.parent_id.is_none()
+    {
+        super::super::swimlane::render_swimlane_cluster(
+            out, ctx, cluster, lane, origin_x, origin_y,
+        );
+        return;
+    }
+
     let Some(sg) = ctx.subgraphs_by_id.get(cluster.id.as_str()) else {
         return;
     };
@@ -166,7 +167,7 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     let rect_w = cluster.width.max(1.0);
     let rect_h = cluster.height.max(1.0);
     let label_top = top + cluster.title_margin_top.max(0.0);
-    let cluster_dom_id = if ctx.source_ported_elk_rendering {
+    let cluster_dom_id = if ctx.uses_elk_adapter_dom {
         Cow::Borrowed("[object Object]")
     } else {
         Cow::Owned(format!("{}-{}", ctx.diagram_id, cluster.id))

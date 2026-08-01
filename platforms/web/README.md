@@ -1,348 +1,72 @@
-# @mermanjs/web
+# Merman Browser Packages
 
-Browser integration for merman. This package wraps the `merman-wasm` wasm-bindgen output with a
-small TypeScript API.
+This workspace builds the lockstep, browser-only Merman package group. Each admitted package contains one matching WASM artifact, its TypeScript wrapper, provenance, and legal material.
 
-Use the live build at [Merman Playground](https://frankorz.com/merman/).
+> These commands build and install a source checkout. Published npm packages are versioned independently of this documentation.
 
-## Build
+Do not use these packages for Node.js or SSR. They require a browser main-thread or Web Worker realm when loading the WASM module. A future Node transport, if admitted, will be a separate package rather than a browser-WASM fallback.
+
+## Choose A Package
+
+| Package | Use it for | Status |
+| --- | --- | --- |
+| `@mermanjs/web` | Complete browser rendering, analysis, ASCII output, and editor APIs. | Required complete release surface. |
+| `@mermanjs/web-analysis` | Detection, validation, facts, and semantic analysis without SVG, ASCII, or editor sessions. | Admitted slim release surface. |
+| `@mermanjs/web-editor` | Parser-backed editor sessions in a dedicated browser Worker. | Admitted slim release surface. |
+| `@mermanjs/web-ascii` | Supported ASCII diagram output. | Admitted slim release surface. |
+| `@mermanjs/web-render` | Complete SVG-only workflow with both layouts and math. | Admitted complete rendering surface. |
+
+Public packages use one version and one release contract. Workflow-specific slim packages are published only when their independently measured installed size is at least 15% below the complete package. The complete SVG-only renderer is admitted for its distinct capability contract, with its smaller artifact recorded separately. The Playground deliberately uses `@mermanjs/web` for both editor and renderer until its two-realm measurement proves that a split improves the real user path.
+
+## Browser Quick Start
+
+Build the local package group and install the complete browser package:
 
 ```sh
-npm install --prefix platforms/web
-npm run build --prefix platforms/web
-npm run smoke --prefix platforms/web
+npm ci --prefix /path/to/merman/platforms/web
+npm run build --prefix /path/to/merman/platforms/web
+npm install /path/to/merman/platforms/web/packages/full
 ```
-
-`npm run build` produces the default `browser-full` artifact used for npm publication. The surface
-includes rendering, parsing, layout, ASCII, validation, diagnostics analysis, and the current
-editor-language APIs. Source and CI builds can choose a browser WASM preset when a smaller local
-artifact is useful:
-
-The WASM build uses the workspace `wasm-size` Cargo profile through `wasm-pack --profile
-wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
-
-| Preset | Command | Capability |
-| --- | --- | --- |
-| `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport plus metadata, analysis, facts, and validation. Render, parse, layout, ASCII, and editor-language calls are unavailable. |
-| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, metadata, analysis, facts, and validation over the minimal core profile. Editor-language calls are unavailable. |
-| `browser-render-only` | `npm run build:wasm:render-only --prefix platforms/web` | SVG, semantic JSON, layout JSON, and metadata without diagnostics analysis, validation, lint catalog, ASCII, or editor-language dependencies. |
-| `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering and metadata without diagnostics analysis or editor-language dependencies. |
-| `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/analysis/validate, ASCII, editor-language APIs, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
-| `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
-| `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. Keeps editor-language enabled. |
-
-Run `npm run build:ts --prefix platforms/web` after a preset build when producing a complete local
-package. The TypeScript build first runs `npm run check:contracts --prefix platforms/web`, which
-checks the wasm-bindgen declarations against the public wrapper, `MermanWasmModule`, and the
-capability-specific subpath runtime bindings.
-
-Each build writes `pkg/merman_wasm_preset.json`. `npm run prepack` expects `browser-full` unless
-`MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package, and it also
-runs the wrapper/subpath contract check.
-
-Call `bindingCapabilities()` after `initMerman()` when you need to branch on optional surfaces.
-Slim subpaths do not export wrappers for capabilities they intentionally omit. For example,
-`@mermanjs/web/core` has no `renderSvg()`, `renderAscii()`, or editor-language exports, and
-`@mermanjs/web/render` has no ASCII or editor-language exports.
-`@mermanjs/web/render-only` has no analysis, validation, lint catalog, ASCII, or editor-language
-exports.
-`@mermanjs/web/ascii` has no analysis, validation, lint catalog, render, parse, layout, or
-editor-language exports.
-`bindingCapabilities().analysis` is the supported runtime contract for whether the loaded artifact
-exposes `analyze()`, `analysisFacts()`, document analysis, validation, and `lintRuleCatalog()`.
-`bindingCapabilities().editor_language` is the supported runtime contract for whether the loaded
-artifact exposes `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`,
-`editorHover()`, `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
-`editorReferences()`, `editorPrepareRename()`, `editorRename()`,
-`editorSemanticTokenLegend()`, and `editorSemanticTokens()`.
-
-## Published entry points
-
-The package publishes one default full artifact plus opt-in subpath entry points:
-
-| Entry point | WASM preset | Intended use |
-| --- | --- | --- |
-| `@mermanjs/web` | `browser-full` | Default playground/editor package with render, layout, parse, ASCII, analysis, validation, editor APIs, and ELK. |
-| `@mermanjs/web/core` | `browser-core` | Smallest browser artifact for metadata, analysis, facts, and validation. Render, layout, parse JSON, ASCII, and editor API wrappers are not exported. |
-| `@mermanjs/web/render` | `browser-render` | SVG/layout/parse plus metadata, analysis, facts, and validation over the minimal core registry. ASCII and editor API wrappers are not exported. |
-| `@mermanjs/web/render-only` | `browser-render-only` | SVG/layout/parse plus metadata. Analysis, validation, lint catalog, ASCII, and editor API wrappers are not exported. |
-| `@mermanjs/web/ascii` | `browser-ascii` | ASCII/Unicode rendering plus metadata. Analysis, validation, lint catalog, SVG/layout/parse, and editor API wrappers are not exported. |
-| `@mermanjs/web/full` | `browser-full` | Explicit full preset import; equivalent capabilities to the default package. |
-
-There is no separate `@mermanjs/web/analysis` entry point. `@mermanjs/web/core` is already the
-smallest analysis-capable artifact, so an analysis alias would add API surface without reducing the
-download size.
-
-## Usage
 
 ```ts
 import { initMerman, renderSvg } from "@mermanjs/web";
 
 await initMerman();
 
-const svg = renderSvg("flowchart TD\nA[Hello] --> B[World]", {
-  svg: { pipeline: "readable" },
-});
+const svg = renderSvg(`flowchart TD
+  A[Start] --> B[Done]`);
 ```
 
-The options object is serialized to the shared merman binding options JSON contract documented in
-`docs/bindings/OPTIONS_JSON.md`.
-
-Host/editor theme presets are separate from Mermaid's native `theme` names:
-
-```ts
-import { initMerman, renderSvg, supportedHostThemePresets } from "@mermanjs/web";
-
-await initMerman();
-
-const presets = supportedHostThemePresets();
-const svg = renderSvg("flowchart TD\nA[Hello] --> B[World]", {
-  host_theme: { preset: "one-dark" },
-});
-```
-
-## Browser DOM helper
-
-For non-framework browser integrations, render directly into a host element:
-
-```ts
-import { initMerman, renderSvgToElement } from "@mermanjs/web";
-
-await initMerman();
-
-renderSvgToElement(document.querySelector("#preview")!, "sequenceDiagram\nA->>B: hello", {
-  svg: { diagram_id: "preview" },
-});
-```
-
-Framework integrations can use `renderSvg()` and mount the returned SVG string with their normal
-HTML/SVG insertion path.
-
-When inserting raw SVG into a browser DOM, keep `assertSafeSvgForDom()` in the path or use the
-wrapper helpers that call it. The shared DOM insertion policy is documented in
-[`docs/security/RENDERING_SECURITY.md`](https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md).
-
-## Browser text measurement
-
-Headless rendering cannot know the exact browser font fallback that will display the final SVG.
-This can show up as clipped trailing characters or slightly different wrapping when a browser,
-WebView, or user font stack resolves text differently from merman's built-in headless metrics.
-
-For browser previews where label geometry must match the displayed font stack, provide a host text
-measurer. The helper below measures text with an offscreen DOM probe and falls back to merman's
-vendored measurer when the DOM is unavailable or a request is not handled:
+For a custom cache, service worker, or fetch policy, retain the wrapper's loader and pass the actual response or bytes through wasm-bindgen's `module_or_path` contract:
 
 ```ts
 import {
-  createBrowserTextMeasurer,
   initMerman,
-  renderSvgWithTextMeasurer,
+  loadMermanWasmModule,
+  MERMAN_WASM_URL,
 } from "@mermanjs/web";
 
-await initMerman();
-
-const measureText = createBrowserTextMeasurer();
-const svg = renderSvgWithTextMeasurer(
-  "flowchart TD\nA[Start] --> B{Condition?}",
-  measureText,
-  {
-    site_config: {
-      fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
-      themeVariables: {
-        fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
-      },
-    },
-  }
-);
+const wasm = await fetch(MERMAN_WASM_URL, { cache: "reload" });
+await initMerman({ loader: loadMermanWasmModule, wasm });
 ```
 
-Use the same font family in both the binding options and your surrounding UI/CSS. If rendering in a
-Web Worker, keep using `renderSvg()` with the headless measurer, or send measurement requests to the
-main thread through your own worker protocol.
+## Runtime Lifecycle
 
-`createBrowserTextMeasurer()` measures the natural no-wrap width for HTML-like labels before it
-applies `maxWidth`. Custom measurers should keep that behavior; returning `maxWidth` for a short
-label can make the diagram wider than Mermaid would make it in the browser.
+Initialize Merman once per browser realm and reuse it; repeated `initMerman()` calls share the cached initialization and module. There is no separate WASM unload API, so a main-thread runtime lives for the page realm. The package does not create or own a Worker: a host that loads Merman in a dedicated Worker must terminate that Worker after initialization failure, replacement, or application teardown. Synchronous WASM calls cannot be interrupted from the same realm, so Worker termination is the hard cancellation boundary. Dispose every `BrowserTextMeasurementSession` created by `createBrowserTextMeasurementSession()` as soon as it is no longer needed.
 
-`analyze()` returns the diagnostics payload JSON object for a standalone Mermaid diagram.
-`analyzeDocument(source, options, uri)` uses the shared document source model to analyze standalone
-`.mmd`, Markdown, or MDX documents and returns diagnostics, related locations, and fixes in
-host-document coordinates. Downstream lint tools should use `analyzeDocument()` when they scan
-Markdown files and want Merman as an optional analysis engine without adopting the LSP.
+Call `runtimeCatalog()` after initialization when an integration needs to inspect the compiled capabilities, operations, and resource profiles. Validate the flat catalog's local relations and tolerate newly introduced stable IDs; do not infer availability from package names or Cargo feature names. Resource limits are described in [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md); browser preview normally uses the `interactive` profile, while a public submission service needs host-level timeout, memory, concurrency, and process-isolation controls in addition to `constrained` limits.
 
-`analysisFacts(source, options)` and `analyzeDocumentFacts(source, options, uri)` return the richer
-analysis facts payload. Use these when an integration needs parser provenance, per-diagram
-document/body spans, semantic items, references, expected syntax, or typed Flowchart facts. The
-diagnostics shape remains compatible with `analyze()` / `analyzeDocument()`; the additional
-`diagrams[].syntax` data is for editor, lint, and preview integrations that want Merman's parser
-facts without speaking LSP.
+## Maintainer Build
 
-This web surface is an integration bridge, not a request that external linters copy Merman policy.
-Adapters should preserve `merman.*` rule ids for Merman diagnostics and layer their own style rules
-under their own namespaces.
-
-## Custom wasm loading
-
-By default, `initMerman()` dynamically imports `../pkg/merman_wasm.js`. If a bundler or CDN setup
-needs to provide the wasm-bindgen module or wasm URL explicitly, pass initialization options:
-
-```ts
-import type { MermanWasmModule } from "@mermanjs/web";
-
-await initMerman({
-  loader: async () =>
-    (await import("@mermanjs/web/pkg/merman_wasm.js")) as MermanWasmModule,
-  wasm: new URL("@mermanjs/web/pkg/merman_wasm_bg.wasm", import.meta.url),
-});
+```sh
+npm install --prefix platforms/web
+npm run build --prefix platforms/web
+npm run test:wasm-inputs --prefix platforms/web
+npm run smoke --prefix platforms/web
 ```
 
-Concurrent calls share the same in-flight initialization promise.
+`web-surface-descriptor.json` maps package names to exact artifact profiles. Cargo feature selection lives in the artifact-profile authority; this workspace derives its WASM build and package assembly from that authority instead of maintaining a second feature matrix. Use `npm run verify:wasm-inputs --prefix platforms/web` to validate all generated WASM inputs and `npm run verify:packages --prefix platforms/web` to enforce the one-WASM, legal-material, provenance, export, and size-admission invariants.
 
-## WASM loading best practices
+Package evidence is intentionally layered. The artifact profile and runtime catalog prove the compiled Rust/WASM capabilities. The recorded static-module closure proves only the JavaScript and declaration files reachable from that package entry; explicit source tests independently require and forbid the workflow modules for each surface. Shared catalogs and types describe the lockstep package group and do not imply that a workflow implementation is compiled into a slim WASM artifact.
 
-The published `@mermanjs/web` package currently ships the `browser-full` artifact. It is intended for
-playgrounds, diagram editors, documentation previews, and applications that need headless Mermaid
-rendering in the browser. Treat it as a feature module, not as first-paint UI code:
-
-- Call `initMerman()` lazily when the editor, preview pane, or first diagram render is needed.
-- Preload on route hover, editor open, or `requestIdleCallback` when you know rendering is likely.
-- Keep one initialized module per page; `initMerman()` is asynchronous, idempotent, and shares
-  concurrent initialization work.
-- Serve `pkg/merman_wasm_bg.wasm` with `Content-Type: application/wasm`, gzip or brotli
-  compression, and long-lived immutable caching for versioned assets.
-- Use `renderSvg()` in framework code and mount the returned SVG string through your normal
-  framework path. Use `renderSvgElement()` / `renderSvgToElement()` only on the main thread because
-  they require `DOMParser` and `document`.
-
-The package publishes subpaths for the core, render, ASCII, and full browser artifacts. Call
-`bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
-`analysis`, `core_full`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language`
-capabilities.
-The slim subpaths are capability-specific entry points, not full API aliases. They type-re-export
-the shared public option/result types and stable helper values, then export only the runtime
-wrappers that make sense for that surface. Use `@mermanjs/web/full` or the default import when you
-want one module namespace with render, ASCII, and editor-language wrappers together.
-`selectedRegistryProfile()` reports the active Mermaid registry profile and
-`diagramFamilyCapabilities()` reports the diagram parser/render facts registered in the current
-artifact. Artifacts with `bindingCapabilities().analysis === true` also expose `lintRuleCatalog()`
-for analyzer rule ids, evidence references, default profiles, origins, configurability, and
-fixability.
-
-Each published subpath has its own runtime state. Initializing `@mermanjs/web/core` in the same
-process as `@mermanjs/web/full` does not reuse or contaminate the default full module's capability
-cache.
-
-## Web Worker integration
-
-`@mermanjs/web` does not bundle an opinionated worker wrapper yet. Worker queues, cancellation,
-timeouts, transfer protocol, and framework integration usually belong to the host application. The
-recommended pattern is to initialize Merman once inside a module worker and send SVG strings back to
-the main thread:
-
-```ts
-// merman.worker.ts
-import { initMerman, renderSvg, type SvgBindingOptions } from "@mermanjs/web";
-
-type RenderRequest = {
-  id: string;
-  source: string;
-  options?: SvgBindingOptions;
-};
-
-let ready: Promise<unknown> | null = null;
-
-self.onmessage = async (event: MessageEvent<RenderRequest>) => {
-  const { id, source, options } = event.data;
-  try {
-    ready ??= initMerman();
-    await ready;
-    self.postMessage({ id, ok: true, svg: renderSvg(source, options) });
-  } catch (error) {
-    self.postMessage({
-      id,
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-};
-```
-
-```ts
-// main thread
-const worker = new Worker(new URL("./merman.worker.ts", import.meta.url), {
-  type: "module",
-});
-
-worker.postMessage({
-  id: "diagram-1",
-  source: "flowchart TD\nA[Hello] --> B[World]",
-  options: { svg: { pipeline: "readable" } },
-});
-```
-
-Use a worker for large documents, repeated batch rendering, or editor keystroke previews where
-synchronous rendering could block input. For occasional single-diagram renders, lazy main-thread
-initialization is usually simpler.
-
-## API surface
-
-The default `@mermanjs/web` entry point and `@mermanjs/web/full` expose the full wrapper set:
-
-- `initMerman()`, `getMerman()`, `isMermanInitialized()`
-- `renderSvg()`, `renderSvgWithTextMeasurer()`, `renderSvgElement()`, `renderSvgToElement()`
-- `renderAscii()`
-- `parseJson()`, `parseObject()`
-- `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
-- `analyze()`, `analyzeJson()`, `analyzeDocument()`, `analysisFacts()`,
-  `analyzeDocumentFacts()`, `validate()`
-- `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
-  `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
-  `editorReferences()`, `editorPrepareRename()`, `editorRename()`,
-  `editorSemanticTokenLegend()`, `editorSemanticTokens()`
-- `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
-- `SUPPORTED_DIAGRAMS`, `SUPPORTED_ASCII_DIAGRAMS`, `isDiagramType()`, `isAsciiDiagramType()`
-- `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
-- `abiVersion()`, `packageVersion()`, `encodeOptions()`
-
-`@mermanjs/web/core` exports initialization, analysis/facts, validation, metadata, ABI/package
-metadata, shared types, stable constants, type guards, and `encodeOptions()`.
-`@mermanjs/web/render` adds the SVG, parse, layout, DOM SVG, and browser text-measurement helpers.
-`@mermanjs/web/render-only` exposes the same render helpers without the diagnostics analysis
-wrappers.
-`@mermanjs/web/ascii` adds `renderAscii()`, `asciiSupportedDiagrams()`, and
-`asciiCapabilities()` without the diagnostics analysis wrappers. Unsupported wrappers are absent
-from slim entry points rather than exported as throwing stubs.
-
-All render, parse, layout, analysis, validation, editor, and metadata functions require
-`initMerman()` first. The editor functions are stateless document queries backed by
-`merman-editor-core`; they return UTF-16 positions/ranges so Monaco and LSP adapters can project the
-same completion, diagnostics, hover, symbol, code-action, rename, and semantic-token semantics.
-Editor query results expose semantic fact provenance where applicable, matching the
-`ParserComplete`, `ParserRecovered`, and `TextScan` boundary used by `merman-editor-core`.
-`supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
-`supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
-metadata drifts from the TypeScript surface. `lintRuleCatalog()` is available only on
-analysis-capable artifacts. ASCII support is typed separately from SVG diagram metadata because
-some terminal-friendly renderers, such as `treeView`, can be exposed through
-`asciiSupportedDiagrams()` even when they are not part of the public SVG `supportedDiagrams()`
-list.
-
-## Benchmarking against Mermaid JS
-
-The web binding is suitable for browser-to-browser benchmarks after initialization:
-
-1. Build `@mermanjs/web` once.
-2. Launch one headless Chromium instance.
-3. Initialize `@mermanjs/web` and Mermaid JS before measuring.
-4. Measure repeated `renderSvg()` calls against repeated `mermaid.render()` calls on the same
-   fixtures, theme, viewport width, and warmup/measurement windows.
-
-This is the useful comparison for playground and browser embedding performance. Native
-`merman-cli` benchmarks should be reported separately because they do not include the same runtime
-or DOM costs as Mermaid JS.
-
-## License
-
-This package is dual-licensed under either Apache-2.0 or MIT. See `LICENSE` for the full license
-texts. Mermaid compatibility and upstream Mermaid MIT attribution are documented in
-[`THIRD_PARTY_NOTICES.md`](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md).
+The private workspace itself is never published. Release automation packs and verifies every admitted package as a version-locked group, then performs staged dist-tag reconciliation without rebuilding in the privileged publish job.

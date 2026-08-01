@@ -75,9 +75,9 @@
           "title": "Important information! You can write\nnotes.",
           "title_label": {
             "x": 158.0,
-            "y": 123.0,
-            "width": 254.234,
-            "height": 48.0
+            "y": 135.0,
+            "width": 200.0,
+            "height": 72.0
           },
           "requested_dir": null,
           "effective_dir": "TB",

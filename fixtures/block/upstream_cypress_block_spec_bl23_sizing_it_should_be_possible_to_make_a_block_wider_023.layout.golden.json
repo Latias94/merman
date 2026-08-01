@@ -5,34 +5,84 @@
       "nodes": [
         {
           "id": "A",
-          "x": 37.422,
+          "x": 32.08,
           "y": -20.0,
-          "width": 74.844,
+          "width": 64.16,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 120.266,
+          "x": 104.24,
           "y": -20.0,
-          "width": 74.844,
+          "width": 64.16,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 182.398,
+          "x": 158.36,
           "y": -20.0,
-          "width": 33.422,
+          "width": 28.08,
           "height": 32.0,
           "is_cluster": false
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "A",
+          "allocated": {
+            "x": 32.08,
+            "y": -20.0,
+            "width": 64.16,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 64.16,
+            "height": 32.0,
+            "radius": 5.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "B",
+          "allocated": {
+            "x": 104.24,
+            "y": -20.0,
+            "width": 64.16,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 64.16,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "C",
+          "allocated": {
+            "x": 158.36,
+            "y": -20.0,
+            "width": 28.08,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 28.08,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -36.0,
-        "max_x": 199.109,
+        "max_x": 172.4,
         "max_y": 0.0
       }
     }

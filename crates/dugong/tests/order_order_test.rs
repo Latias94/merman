@@ -9,6 +9,15 @@ fn new_graph() -> Graph<NodeLabel, WeightLabel, ()> {
     g
 }
 
+fn new_undirected_graph() -> Graph<NodeLabel, WeightLabel, ()> {
+    let mut g: Graph<NodeLabel, WeightLabel, ()> = Graph::new(GraphOptions {
+        directed: false,
+        ..Default::default()
+    });
+    g.set_default_edge_label(|| WeightLabel { weight: 1.0 });
+    g
+}
+
 fn set_path(g: &mut Graph<NodeLabel, WeightLabel, ()>, path: &[&str]) {
     for w in path.windows(2) {
         g.set_edge(w[0], w[1]);
@@ -170,4 +179,33 @@ fn order_can_skip_the_optimal_ordering() {
     );
     let layering = util::build_layer_matrix(&g);
     assert_eq!(cross_count(&g, &layering), 1.0);
+}
+
+#[test]
+fn order_preserves_undirected_incident_edge_barycenters() {
+    let mut g = new_undirected_graph();
+    for v in ["a", "b"] {
+        g.set_node(
+            v,
+            NodeLabel {
+                rank: Some(0),
+                ..Default::default()
+            },
+        );
+    }
+    for v in ["x", "y"] {
+        g.set_node(
+            v,
+            NodeLabel {
+                rank: Some(1),
+                ..Default::default()
+            },
+        );
+    }
+    g.set_edge("a", "y");
+    g.set_edge("b", "x");
+
+    order(&mut g, OrderOptions::default());
+
+    assert_eq!(util::build_layer_matrix(&g)[1], ["y", "x"]);
 }

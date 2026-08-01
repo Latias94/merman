@@ -2,261 +2,208 @@
 
 use std::fmt::Write as _;
 
+use crate::flowchart::FlowchartShape;
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::{fmt, fmt_display};
+use crate::svg::parity::fmt;
+use crate::{Error, Result};
 
-const FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
-const FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
-const FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
-
-pub(in super::super) fn render_flowchart_v2_shape(
+pub(in super::super) fn render_flowchart_shape(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> bool {
-    let shape = common.shape;
-    let layout_node = common.layout_node;
-    let style = common.style;
+) -> Result<bool> {
+    let resolved_shape = FlowchartShape::resolve(common.shape)?;
 
-    match shape {
-        // Flowchart v2 shapes with no label group are handled earlier.
-
-        // Flowchart v2 hourglass/collate: Mermaid clears `node.label` but still emits an empty
-        // label group via `labelHelper(...)`, preserving the parsed label type.
-        "hourglass" | "collate" => {
+    match resolved_shape {
+        FlowchartShape::Anchor
+        | FlowchartShape::Choice
+        | FlowchartShape::CrossedCircle
+        | FlowchartShape::FilledCircle
+        | FlowchartShape::ForkJoin
+        | FlowchartShape::FramedCircle
+        | FlowchartShape::LightningBolt
+        | FlowchartShape::SmallCircle => {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "Flowchart shape {} ({resolved_shape:?}) bypassed its no-label renderer",
+                    common.shape
+                ),
+            });
+        }
+        FlowchartShape::Bang => {
+            super::render_bang(out, ctx, common, label, details);
+        }
+        FlowchartShape::BowTieRectangle => {
+            super::render_bow_tie_rect(out, ctx, common, label, details);
+        }
+        FlowchartShape::BraceLeft | FlowchartShape::BraceRight | FlowchartShape::Braces => {
+            // The shared renderer uses the original spelling to select left/right/both braces.
+            super::render_curly_brace_comment(out, ctx, common, label, details);
+        }
+        FlowchartShape::Circle => {
+            super::render_circle(out, common);
+        }
+        FlowchartShape::Cloud => {
+            super::render_cloud(out, ctx, common, label, details);
+        }
+        FlowchartShape::CurvedTrapezoid => {
+            super::render_curved_trapezoid(out, ctx, common, label, details);
+        }
+        FlowchartShape::Cylinder => {
+            super::render_cylinder(out, ctx, common, label);
+        }
+        FlowchartShape::Datastore => {
+            super::render_datastore(out, common);
+        }
+        FlowchartShape::Delay => {
+            super::render_delay(out, ctx, common, label, details);
+        }
+        FlowchartShape::Diamond => {
+            super::render_diamond(out, common, details);
+        }
+        FlowchartShape::DividedRectangle => {
+            super::render_divided_rect(out, common, label, details);
+        }
+        FlowchartShape::Document => {
+            super::render_wave_document(out, ctx, common, label, details);
+        }
+        FlowchartShape::DoubleCircle => {
+            super::render_double_circle(out, common);
+        }
+        FlowchartShape::Ellipse => {
+            return Err(Error::InvalidModel {
+                message:
+                    "Flowchart ellipse is present in FlowDB but broken in Mermaid 11.16's renderer"
+                        .to_string(),
+            });
+        }
+        FlowchartShape::Hexagon => {
+            super::render_hexagon(out, common, details);
+        }
+        FlowchartShape::HorizontalCylinder => {
+            super::render_horizontal_cylinder(out, ctx, common, label);
+        }
+        FlowchartShape::Hourglass => {
+            // Mermaid clears `node.label` but still emits an empty label group.
             label.text = "";
             super::render_hourglass_collate(out, common, details);
         }
-
-        // Flowchart v2 card/notched-rectangle.
-        "notch-rect" | "notched-rectangle" | "card" => {
-            super::render_notched_rectangle(out, common);
+        FlowchartShape::Icon => {
+            super::render_icon(out, ctx, common, label, details);
+            return Ok(true);
         }
-
-        // Flowchart v2 delay / half-rounded rectangle.
-        "delay" | "half-rounded-rectangle" => {
-            super::render_delay(out, ctx, common, label, details);
+        FlowchartShape::IconCircle => {
+            super::render_icon_circle(out, ctx, common, label, details)?;
+            return Ok(true);
         }
-
-        // Flowchart v2 lined cylinder (Disk storage).
-        "lin-cyl" | "disk" | "lined-cylinder" => {
-            super::render_lined_cylinder(out, common, label);
+        FlowchartShape::IconRounded => {
+            super::render_icon_rounded(out, ctx, common, label, details)?;
+            return Ok(true);
         }
-
-        // Flowchart v2 curved trapezoid (Display).
-        "curv-trap" | "display" | "curved-trapezoid" => {
-            super::render_curved_trapezoid(out, ctx, common, label, details);
+        FlowchartShape::IconSquare => {
+            super::render_icon_square(out, ctx, common, label, details)?;
+            return Ok(true);
         }
-
-        // Flowchart v2 divided rectangle (Divided process).
-        "div-rect" | "div-proc" | "divided-rectangle" | "divided-process" => {
-            super::render_divided_rect(out, common, label, details);
-        }
-
-        // Flowchart v2 notched pentagon (Loop limit).
-        "notch-pent" | "loop-limit" | "notched-pentagon" => {
-            super::render_notched_pentagon(out, ctx, common, label, details);
-        }
-
-        // Flowchart v2 bow tie rectangle (Stored data).
-        "bow-rect" | "stored-data" | "bow-tie-rectangle" => {
-            super::render_bow_tie_rect(out, ctx, common, label, details);
-        }
-
-        // Flowchart v2 datastore: rectangular node with only top and bottom borders.
-        "datastore" | "data-store" => {
-            super::render_datastore(out, common);
-        }
-
-        // Flowchart v2 tagged rectangle (Tagged process).
-        "tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process" => {
-            super::render_tag_rect(out, ctx, common, label, details);
-        }
-
-        // Flowchart v2 wave edged rectangle (Document).
-        "doc" | "document" => {
-            super::render_wave_document(out, ctx, common, label, details);
-        }
-
-        // Flowchart v2 lined wave edged rectangle (Lined document).
-        "lin-doc" | "lined-document" => {
-            super::render_lined_wave_document(out, ctx, common, label, details);
-        }
-
-        // Flowchart v2 tagged wave edged rectangle (Tagged document).
-        "tag-doc" | "tagged-document" => {
-            super::render_tagged_wave_document(out, ctx, common, label, details);
-        }
-
-        // Flowchart v2 triangle (Extract).
-        "tri" | "extract" | "triangle" => {
-            super::render_triangle_extract(out, ctx, common, label, details);
-        }
-
-        // Flowchart v2 shaded process / lined rectangle.
-        "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" | "shaded-process" => {
-            super::render_shaded_process(out, common, label, details);
-        }
-
-        // Flowchart v2 curly brace/comment shapes (rendering-elements).
-        "comment" | "brace" | "brace-l" | "brace-r" | "braces" => {
-            super::render_curly_brace_comment(out, ctx, common, label, details);
-        }
-
-        "imageSquare" => {
+        FlowchartShape::ImageSquare => {
             if super::try_render_image_square(out, ctx, common, label, details) {
-                return true;
+                return Ok(true);
             }
+            return missing_asset_error(common.shape, "image");
         }
-        "icon" => {
-            if super::try_render_icon(out, ctx, common, label, details) {
-                return true;
-            }
-        }
-        "iconSquare" => {
-            if super::try_render_icon_square(out, ctx, common, label, details) {
-                return true;
-            }
-        }
-        "manual-file" | "flipped-triangle" | "flip-tri" => {
-            super::render_manual_file(out, ctx, common, label, details);
-        }
-        "manual-input" | "sloped-rectangle" | "sl-rect" => {
-            super::render_manual_input(out, ctx, common, label, details);
-        }
-        "docs" | "documents" | "st-doc" | "stacked-document" => {
-            super::render_stacked_document(out, ctx, common, label, details);
-        }
-        "procs" | "processes" | "st-rect" | "stacked-rectangle" => {
-            super::render_stacked_rectangle(out, common, label, details);
-        }
-        "paper-tape" | "flag" => {
-            super::render_paper_tape(out, ctx, common, label, details);
-        }
-        "subroutine" | "fr-rect" | "subproc" | "subprocess" | "framed-rectangle" => {
-            super::render_subroutine(out, common);
-        }
-        "cylinder" | "cyl" | "db" | "database" => {
-            super::render_cylinder(out, ctx, common, label);
-        }
-        "h-cyl" | "das" | "horizontal-cylinder" => {
-            super::render_horizontal_cylinder(out, ctx, common, label);
-        }
-        "win-pane" | "internal-storage" | "window-pane" => {
-            super::render_window_pane(out, common, label, details);
-        }
-        "diamond" | "question" | "diam" | "decision" => {
-            super::render_diamond(out, common, details);
-        }
-        "circle" => {
-            super::render_circle(out, common);
-        }
-        "doublecircle" | "dbl-circ" | "double-circle" => {
-            super::render_double_circle(out, common);
-        }
-        "roundedRect" | "rounded" | "event" => {
-            super::render_rounded_rect(out, ctx, common, details);
-        }
-        "note" => {
-            super::render_note(out, ctx, common, details);
-        }
-        "stadium" | "terminal" | "pill" => {
-            super::render_stadium(out, ctx, common, label, details);
-        }
-        "hexagon" | "hex" | "prepare" => {
-            super::render_hexagon(out, common, details);
-        }
-        "lean_right" | "lean-r" | "lean-right" | "in-out" => {
-            super::render_lean_right(out, common, details);
-        }
-        "lean_left" | "lean-l" | "lean-left" | "out-in" => {
-            super::render_lean_left(out, common, details);
-        }
-        "trapezoid" | "trap-b" | "priority" | "trapezoid-bottom" => {
-            super::render_trapezoid(out, common, details);
-        }
-        "inv_trapezoid" | "inv-trapezoid" | "trap-t" | "manual" | "trapezoid-top" => {
+        FlowchartShape::InvertedTrapezoid => {
             super::render_inv_trapezoid(out, common, details);
         }
-        "odd" => {
+        FlowchartShape::LeanLeft => {
+            super::render_lean_left(out, common, details);
+        }
+        FlowchartShape::LeanRight => {
+            super::render_lean_right(out, common, details);
+        }
+        FlowchartShape::LinedCylinder => {
+            super::render_lined_cylinder(out, common, label);
+        }
+        FlowchartShape::LinedDocument => {
+            super::render_lined_wave_document(out, ctx, common, label, details);
+        }
+        FlowchartShape::ManualFile => {
+            super::render_manual_file(out, ctx, common, label, details);
+        }
+        FlowchartShape::ManualInput => {
+            super::render_manual_input(out, ctx, common, label, details);
+        }
+        FlowchartShape::NotchedPentagon => {
+            super::render_notched_pentagon(out, ctx, common, label, details);
+        }
+        FlowchartShape::NotchedRectangle => {
+            super::render_notched_rectangle(out, common);
+        }
+        FlowchartShape::Note => {
+            super::render_note(out, ctx, common, details);
+        }
+        FlowchartShape::Odd => {
             super::render_odd(out, common, label, details);
         }
-        "text" => {
-            // Mermaid `text.ts`: invisible rect used only to size/position the label.
-            let w = layout_node.width.max(0.0);
-            let h = layout_node.height.max(0.0);
+        FlowchartShape::PaperTape => {
+            super::render_paper_tape(out, ctx, common, label, details);
+        }
+        FlowchartShape::Process => {
+            super::render_process_rectangle(out, common, details);
+        }
+        FlowchartShape::RoundedRectangle => {
+            super::render_rounded_rect(out, ctx, common, details);
+        }
+        FlowchartShape::ShadedProcess => {
+            super::render_shaded_process(out, common, label, details);
+        }
+        FlowchartShape::StackedDocument => {
+            super::render_stacked_document(out, ctx, common, label, details);
+        }
+        FlowchartShape::StackedRectangle => {
+            super::render_stacked_rectangle(out, common, label, details);
+        }
+        FlowchartShape::Stadium => {
+            super::render_stadium(out, ctx, common, label, details);
+        }
+        FlowchartShape::Subroutine => {
+            super::render_subroutine(out, common);
+        }
+        FlowchartShape::TaggedDocument => {
+            super::render_tagged_wave_document(out, ctx, common, label, details);
+        }
+        FlowchartShape::TaggedRectangle => {
+            super::render_tag_rect(out, ctx, common, label, details);
+        }
+        FlowchartShape::Text => {
+            let w = common.layout_node.width.max(0.0);
+            let h = common.layout_node.height.max(0.0);
             let _ = write!(
                 out,
                 r#"<rect class="text" style="{}" rx="0" ry="0" x="{}" y="{}" width="{}" height="{}"/>"#,
-                escape_attr(style),
+                escape_attr(common.style),
                 fmt(-w / 2.0),
                 fmt(-h / 2.0),
                 fmt(w),
                 fmt(h)
             );
         }
-        _ => {
-            let w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
-            let rough_paths = if common.look_is_hand_drawn() {
-                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
-                    super::super::roughjs::roughjs_hachure_paths_for_rect(
-                        -w / 2.0,
-                        -h / 2.0,
-                        w,
-                        h,
-                        common.fill_color,
-                        common.stroke_color,
-                        common.stroke_width,
-                        common.stroke_dasharray,
-                        FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT,
-                        FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP,
-                        FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS,
-                        common.hand_drawn_seed,
-                    )
-                })
-            } else {
-                None
-            };
-
-            if let Some((fill_d, stroke_d)) = rough_paths {
-                let _ = write!(
-                    out,
-                    r#"<g class="basic label-container" style="{}">"#,
-                    escape_attr(common.rough_group_style)
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"/>"#,
-                    escape_attr(&fill_d),
-                    escape_attr(common.fill_color),
-                    fmt_display(FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT as f64),
-                );
-                let _ = write!(
-                    out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-                    escape_attr(&stroke_d),
-                    escape_attr(common.stroke_color),
-                    common.stroke_width,
-                    escape_attr(common.stroke_dasharray),
-                );
-                out.push_str("</g>");
-                return false;
-            }
-
-            let _ = write!(
-                out,
-                r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-                escape_attr(style),
-                fmt(-w / 2.0),
-                fmt(-h / 2.0),
-                fmt(w),
-                fmt(h)
-            );
+        FlowchartShape::Trapezoid => {
+            super::render_trapezoid(out, common, details);
+        }
+        FlowchartShape::Triangle => {
+            super::render_triangle_extract(out, ctx, common, label, details);
+        }
+        FlowchartShape::WindowPane => {
+            super::render_window_pane(out, common, label, details);
         }
     }
 
-    false
+    Ok(false)
+}
+
+fn missing_asset_error<T>(shape: &str, asset: &str) -> Result<T> {
+    Err(Error::InvalidModel {
+        message: format!("Flowchart {shape} node is missing its {asset} source"),
+    })
 }

@@ -1,4 +1,7 @@
-use merman::render::{LayoutOptions, SvgRenderOptions, headless_layout_options, sanitize_svg_id};
+use merman::svg::{
+    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
+    sanitize_svg_id,
+};
 use merman_core::{Engine, ParseOptions};
 use std::env;
 use std::fs;
@@ -42,6 +45,15 @@ struct Args {
     seconds: u64,
     batch_size: Option<usize>,
     diagram_id: Option<String>,
+}
+
+struct ProfileCase<'a> {
+    engine: &'a Engine,
+    source: &'a str,
+    parse_options: ParseOptions,
+    layout_options: &'a LayoutOptions,
+    environment: &'a RenderEnvironment,
+    svg_options: &'a SvgRenderOptions,
 }
 
 impl Args {
@@ -129,8 +141,8 @@ Usage:
 
 Stages:
   parse       repeatedly parse Mermaid source into the render model
-  layout      parse once, then repeatedly layout the parsed render model
-  render      parse and layout once, then repeatedly render SVG
+  layout      parse once, then repeatedly prepare the typed layout artifact
+  render      parse once, then repeatedly prepare the typed artifact and render SVG
   end-to-end  repeatedly parse, layout, and render SVG
 "
     );
@@ -147,6 +159,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::new();
     let parse_options = ParseOptions::strict();
     let layout_options: LayoutOptions = headless_layout_options();
+    let environment = RenderEnvironment::deterministic();
     let svg_options = SvgRenderOptions {
         diagram_id: Some(diagram_id_for(&args.input, args.diagram_id.as_deref())),
         ..SvgRenderOptions::default()
@@ -154,34 +167,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let duration = Duration::from_secs(args.seconds);
     let batch_size = args.batch_size();
+    let case = ProfileCase {
+        engine: &engine,
+        source: &source,
+        parse_options,
+        layout_options: &layout_options,
+        environment: &environment,
+        svg_options: &svg_options,
+    };
     let (iterations, checksum, elapsed) = match args.stage {
-        Stage::Parse => run_parse(&engine, &source, parse_options, duration, batch_size)?,
-        Stage::Layout => run_layout(
-            &engine,
-            &source,
-            parse_options,
-            &layout_options,
-            duration,
-            batch_size,
-        )?,
-        Stage::Render => run_render(
-            &engine,
-            &source,
-            parse_options,
-            &layout_options,
-            &svg_options,
-            duration,
-            batch_size,
-        )?,
-        Stage::EndToEnd => run_end_to_end(
-            &engine,
-            &source,
-            parse_options,
-            &layout_options,
-            &svg_options,
-            duration,
-            batch_size,
-        )?,
+        Stage::Parse => run_parse(&case, duration, batch_size)?,
+        Stage::Layout => run_layout(&case, duration, batch_size)?,
+        Stage::Render => run_render(&case, duration, batch_size)?,
+        Stage::EndToEnd => run_end_to_end(&case, duration, batch_size)?,
     };
 
     eprintln!(
@@ -208,99 +206,97 @@ fn diagram_id_for(path: &Path, explicit: Option<&str>) -> String {
 }
 
 fn run_parse(
-    engine: &Engine,
-    source: &str,
-    parse_options: ParseOptions,
+    case: &ProfileCase<'_>,
     duration: Duration,
     batch_size: usize,
 ) -> Result<(u64, usize, Duration), Box<dyn std::error::Error>> {
-    engine
-        .parse_diagram_for_render_model_sync(source, parse_options)?
+    case.engine
+        .parse_diagram_for_render_model_sync(case.source, case.parse_options)?
         .ok_or("no Mermaid diagram detected")?;
 
     run_for_duration(duration, batch_size, || {
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(black_box(source), parse_options)?
+        let parsed = case
+            .engine
+            .parse_diagram_for_render_model_sync(black_box(case.source), case.parse_options)?
             .ok_or("no Mermaid diagram detected")?;
-        Ok(parsed.model.kind().len())
+        Ok(parsed.model().kind().len())
     })
 }
 
 fn run_layout(
-    engine: &Engine,
-    source: &str,
-    parse_options: ParseOptions,
-    layout_options: &LayoutOptions,
+    case: &ProfileCase<'_>,
     duration: Duration,
     batch_size: usize,
 ) -> Result<(u64, usize, Duration), Box<dyn std::error::Error>> {
-    let parsed = engine
-        .parse_diagram_for_render_model_sync(source, parse_options)?
+    let parsed = case
+        .engine
+        .parse_diagram_for_render_model_sync(case.source, case.parse_options)?
         .ok_or("no Mermaid diagram detected")?;
-    merman_render::layout_parsed_render_layout_only(&parsed, layout_options)?;
+    merman_render::family::prepare(
+        parsed.clone(),
+        case.layout_options,
+        case.environment.begin_session()?,
+    )?;
 
     run_for_duration(duration, batch_size, || {
-        let layouted =
-            merman_render::layout_parsed_render_layout_only(black_box(&parsed), layout_options)?;
-        black_box(layouted);
+        let artifact = merman_render::family::prepare(
+            black_box(parsed.clone()),
+            case.layout_options,
+            case.environment.begin_session()?,
+        )?;
+        black_box(artifact);
         Ok(1)
     })
 }
 
 fn run_render(
-    engine: &Engine,
-    source: &str,
-    parse_options: ParseOptions,
-    layout_options: &LayoutOptions,
-    svg_options: &SvgRenderOptions,
+    case: &ProfileCase<'_>,
     duration: Duration,
     batch_size: usize,
 ) -> Result<(u64, usize, Duration), Box<dyn std::error::Error>> {
-    let parsed = engine
-        .parse_diagram_for_render_model_sync(source, parse_options)?
+    let parsed = case
+        .engine
+        .parse_diagram_for_render_model_sync(case.source, case.parse_options)?
         .ok_or("no Mermaid diagram detected")?;
-    let layouted = merman_render::layout_parsed_render_layout_only(&parsed, layout_options)?;
-    merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
-        &layouted,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        svg_options,
-    )?;
+    merman_render::family::prepare(
+        parsed.clone(),
+        case.layout_options,
+        case.environment.begin_session()?,
+    )?
+    .render_svg(case.svg_options, &SvgDebugOptions::default())?;
 
     run_for_duration(duration, batch_size, || {
-        let svg = merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
-            black_box(&layouted),
-            &parsed.model,
-            &parsed.meta.effective_config,
-            parsed.meta.title.as_deref(),
-            layout_options.text_measurer.as_ref(),
-            svg_options,
+        let artifact = merman_render::family::prepare(
+            black_box(parsed.clone()),
+            case.layout_options,
+            case.environment.begin_session()?,
         )?;
-        Ok(svg.len())
+        let svg = artifact.render_svg(case.svg_options, &SvgDebugOptions::default())?;
+        Ok(svg.svg().len())
     })
 }
 
 fn run_end_to_end(
-    engine: &Engine,
-    source: &str,
-    parse_options: ParseOptions,
-    layout_options: &LayoutOptions,
-    svg_options: &SvgRenderOptions,
+    case: &ProfileCase<'_>,
     duration: Duration,
     batch_size: usize,
 ) -> Result<(u64, usize, Duration), Box<dyn std::error::Error>> {
-    merman::render::render_svg_sync(engine, source, parse_options, layout_options, svg_options)?
-        .ok_or("no Mermaid diagram detected")?;
+    merman::svg::render_svg_sync(
+        case.engine,
+        case.source,
+        case.parse_options,
+        case.layout_options,
+        case.svg_options,
+    )?
+    .ok_or("no Mermaid diagram detected")?;
 
     run_for_duration(duration, batch_size, || {
-        let svg = merman::render::render_svg_sync(
-            engine,
-            black_box(source),
-            parse_options,
-            layout_options,
-            svg_options,
+        let svg = merman::svg::render_svg_sync(
+            case.engine,
+            black_box(case.source),
+            case.parse_options,
+            case.layout_options,
+            case.svg_options,
         )?
         .ok_or("no Mermaid diagram detected")?;
         Ok(svg.len())

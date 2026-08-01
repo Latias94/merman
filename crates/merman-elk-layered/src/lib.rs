@@ -6,46 +6,40 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/intermediate/IntermediateProcessorStrategy.java
 //! - https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/graph
 
-pub mod common;
-pub mod compound;
-pub mod configurator;
-pub mod graph;
-pub mod importer;
-pub mod intermediate;
-pub mod options;
-pub mod p1cycles;
-pub mod p2layers;
-pub mod p3order;
-pub mod p4nodes;
-pub mod p5edges;
-pub mod pipeline;
-pub mod random;
-pub mod selfloops;
-pub mod transform;
+mod common;
+mod compound;
+mod configurator;
+mod graph;
+mod importer;
+mod intermediate;
+mod options;
+mod p1cycles;
+mod p2layers;
+mod p3order;
+mod p4nodes;
+mod p5edges;
+mod pipeline;
+mod random;
+mod selfloops;
+mod transform;
 
-pub use compound::compare_compound_segments;
+// The source-port graph and phase implementations are deliberately private. A raw `LGraph`
+// may carry ELK's `randomSeed = 0` sentinel, so only public pipeline entry points are allowed to
+// execute it: they configure the graph first and either fail closed or resolve it from an
+// operation-owned seed. Keep phase helpers crate-private even when they are useful for parity
+// work; diagnostics must go through the guarded pipeline APIs below.
 pub use configurator::{LayeredSpacings, configure_graph_properties, configured_options};
 pub use graph::{
     CompoundEdgeSegment, CrossHierarchyEdge, EdgeLabelPlacement, GraphProperties, LGraph, LLabel,
     LMargin, LNode, LNodeKind, LPadding, LPoint, LPort, LSize, LabelSide, Layer, LayeredEdge,
     PortRef, PortSide, PortType, SelfHyperLoop, SelfHyperLoopLabels, SelfLoopEdge, SelfLoopHolder,
     SelfLoopLabelAlignment, SelfLoopLabelRef, SelfLoopPort, SelfLoopType,
-    create_external_port_dummy, reverse_edge,
 };
 pub use importer::{
     ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, ImportError, ImportResult,
-    import_graph,
+    import_graph, import_graph_with_operation_seed, import_graph_with_operation_seed_at_scope,
 };
-pub use intermediate::{
-    IntermediateError, IntermediateResult, calculate_layer_sizes_and_graph_height,
-    insert_label_dummies, merge_hyperedge_dummies, position_interactive_external_ports,
-    postprocess_layer_constraints, preprocess_layer_constraints,
-    process_hierarchical_port_constraints, process_hierarchical_port_dummy_sizes,
-    process_hierarchical_port_orthogonal_edges, process_hierarchical_port_positions,
-    process_inverted_ports, remove_label_dummies, restore_reversed_edges,
-    reverse_edges_for_edge_and_layer_constraints, select_label_sides, split_edge, split_long_edges,
-    switch_label_dummies,
-};
+pub use intermediate::IntermediateError;
 pub use options::{
     Alignment, CycleBreakingStrategy, DirectionCongruency, EdgeLabelSideSelection, EdgeRouting,
     ElkDirection, ElkPadding, FixedAlignment, GreedySwitchType, HierarchyHandling, LayerConstraint,
@@ -53,29 +47,30 @@ pub use options::{
     OrderingStrategy, PortConstraints, PortSortingStrategy, SelfLoopDistributionStrategy,
     SelfLoopOrderingStrategy, SpacingOptions,
 };
-pub use p2layers::layer_network_simplex;
-pub use p3order::counting::CrossingsCounter;
-pub use p3order::sweep::{
-    CrossMinType, HierarchySweepDebugTrace, HierarchySweepNodeDebug,
-    debug_crossings_layer_sweep_hierarchical_with_type, minimize_crossings_layer_sweep,
-    minimize_crossings_layer_sweep_with_type,
-};
-pub use p3order::{
-    long_edge_target_node_preprocessing, process_port_sides, set_port_side, sort_by_input_model,
-    sort_port_lists, target_node,
-};
-pub use p4nodes::{
-    calculate_innermost_node_margins, calculate_label_and_node_sizes, place_nodes_linear_segments,
-    place_nodes_network_simplex, place_nodes_simple, process_in_layer_constraints,
-};
+pub use p3order::sweep::{HierarchySweepDebugTrace, HierarchySweepNodeDebug};
 pub use pipeline::{
     GraphExecution, LayeredPhase, PipelineError, PipelineResult, ProcessorKind, ProcessorSlot,
     assemble_processors, assemble_processors_for_graph, execute_ported_compound_processors,
     execute_ported_compound_processors_until, execute_ported_compound_processors_until_processor,
     execute_ported_processors, execute_processors_until, execute_processors_until_processor,
+    inspect_compound_crossings_after_processor,
 };
-pub use random::JavaRandom;
-pub use selfloops::{
-    postprocess_self_loops, preprocess_self_loops, restore_self_loop_ports, route_self_loops,
-};
-pub use transform::{GraphTransformMode, transform_graph_direction};
+pub use random::{OperationSeed, RandomSeedError};
+
+/// Phase implementations are intentionally not public. In particular, this must fail to compile:
+/// a raw graph has not crossed the fallible configuration boundary that resolves or rejects
+/// ELK's `randomSeed = 0` sentinel.
+///
+/// ```compile_fail
+/// use merman_elk_layered::{LGraph, LayeredOptions};
+///
+/// let mut graph = LGraph::new(
+///     "root",
+///     LayeredOptions {
+///         random_seed: 0,
+///         ..Default::default()
+///     },
+/// );
+/// merman_elk_layered::p1cycles::break_cycles_greedy(&mut graph);
+/// ```
+const _RAW_PHASES_ARE_NOT_PUBLIC: () = ();

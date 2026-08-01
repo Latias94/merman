@@ -110,14 +110,6 @@ pub(super) fn apply_spectral_start_positions(
         Some(v) => v,
         None => return false,
     };
-    if std::env::var("MANATEE_FCOSE_DEBUG_SPECTRAL_DUMP")
-        .ok()
-        .as_deref()
-        == Some("1")
-    {
-        eprintln!("[manatee-fcose-spectral-dump] x_coords={x_coords:?}");
-        eprintln!("[manatee-fcose-spectral-dump] y_coords={y_coords:?}");
-    }
 
     for i in 0..n_real {
         let x = x_coords[i];
@@ -127,44 +119,6 @@ pub(super) fn apply_spectral_start_positions(
         }
         nodes[i].left = x - nodes[i].width / 2.0;
         nodes[i].top = y - nodes[i].height / 2.0;
-    }
-
-    if std::env::var("MANATEE_FCOSE_DEBUG_SPECTRAL")
-        .ok()
-        .as_deref()
-        == Some("1")
-    {
-        let mut min_x = f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut max_y = f64::NEG_INFINITY;
-        for n in nodes.iter().take(n_real) {
-            min_x = min_x.min(n.center_x());
-            min_y = min_y.min(n.center_y());
-            max_x = max_x.max(n.center_x());
-            max_y = max_y.max(n.center_y());
-        }
-        eprintln!(
-            "[manatee-fcose-spectral] n_real={} transformed_n={} sample_size={} x=[{:.3},{:.3}] y=[{:.3},{:.3}]",
-            n_real, node_size, sample_size, min_x, max_x, min_y, max_y
-        );
-    }
-
-    if std::env::var("MANATEE_FCOSE_DEBUG_SPECTRAL_DUMP")
-        .ok()
-        .as_deref()
-        == Some("1")
-    {
-        eprintln!("[manatee-fcose-spectral-dump] node_size={node_size} sample_size={sample_size}");
-        eprintln!("[manatee-fcose-spectral-dump] samples={samples:?}");
-        eprintln!("[manatee-fcose-spectral-dump] phi:");
-        for row in &phi {
-            eprintln!("[manatee-fcose-spectral-dump]   {:?}", row);
-        }
-        eprintln!("[manatee-fcose-spectral-dump] inv:");
-        for row in &inv {
-            eprintln!("[manatee-fcose-spectral-dump]   {:?}", row);
-        }
     }
 
     true
@@ -677,14 +631,6 @@ fn power_iteration(
     for i in 0..n {
         y1[i] = rng.next_f64_unit();
         y2[i] = rng.next_f64_unit();
-    }
-    if std::env::var("MANATEE_FCOSE_DEBUG_SPECTRAL_DUMP")
-        .ok()
-        .as_deref()
-        == Some("1")
-    {
-        eprintln!("[manatee-fcose-spectral-dump] y1_init={y1:?}");
-        eprintln!("[manatee-fcose-spectral-dump] y2_init={y2:?}");
     }
     normalize_in_place(&mut y1);
     normalize_in_place(&mut y2);

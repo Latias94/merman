@@ -15,24 +15,36 @@ base64.workspace = true
 brotli.workspace = true
 flate2.workspace = true
 fs2.workspace = true
-futures.workspace = true
+futures = { workspace = true, features = ["executor"] }
 dugong = { path = "../dugong" }
-merman = { path = "../merman" }
+lalrpop.workspace = true
+merman = { path = "../merman", default-features = false, features = ["svg"] }
+merman-analysis.workspace = true
+merman-bindings-core = { workspace = true, features = ["analysis", "ascii", "jpeg", "pdf", "png", "svg"] }
 merman-core = { path = "../merman-core" }
-merman-layout-elk = { workspace = true, features = ["layered"] }
-merman-render = { path = "../merman-render", features = ["elk-layout"] }
+merman-editor-core.workspace = true
+merman-fixture-render-context = { path = "../merman-fixture-render-context" }
+merman-layout-elk.workspace = true
+merman-render = { path = "../merman-render", features = [
+    "layout-cytoscape",
+    "layout-elk",
+] }
+merman-typst-plugin = { path = "../merman-typst-plugin", default-features = false }
 regex.workspace = true
 roxmltree.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-serde-saphyr.workspace = true
+serde-saphyr = { workspace = true, features = ["deserialize", "serialize"] }
 sha2.workspace = true
 thiserror.workspace = true
+tempfile = "3.27.0"
 toml.workspace = true
+tree-sitter = "=0.26.5"
+tree-sitter-typescript = "=0.23.2"
 wasmi.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }

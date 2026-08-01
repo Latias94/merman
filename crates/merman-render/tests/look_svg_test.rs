@@ -2,29 +2,42 @@ use futures::executor::block_on;
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_svg(diagram_id: &str, source: &str) -> String {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
+    render_svg_with_engine(diagram_id, &engine, source, session)
+}
+
+fn render_svg_with_engine(
+    diagram_id: &str,
+    engine: &Engine,
+    source: &str,
+    session: merman_render::environment::RenderSession,
+) -> String {
+    let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
 
-    render_layouted_svg(
-        &out,
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            diagram_id: Some(diagram_id.to_string()),
-            apply_root_overrides: false,
-            ..SvgRenderOptions::default()
-        },
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 struct LookDomCase {
@@ -36,7 +49,7 @@ struct LookDomCase {
 
 #[test]
 fn configured_look_reaches_declared_dom_consumers() {
-    let cases = [
+    let cases = vec![
         LookDomCase {
             name: "flowchart",
             diagram_id: "look-flowchart",
@@ -78,7 +91,7 @@ erDiagram
         LookDomCase {
             name: "state",
             diagram_id: "look-state",
-            source: r##"%%{init: {"look": "neo", "themeVariables": {"mainBkg": "#606060", "stateBorder": "#040404", "strokeWidth": 4}}}%%
+            source: r##"%%{init: {"look": "neo", "themeVariables": {"mainBkg": "#606060", "nodeBorder": "#040404", "strokeWidth": 4}}}%%
 stateDiagram-v2
 [*] --> Active
 state Active {
@@ -89,16 +102,6 @@ state Active {
                 r#"data-look="neo""#,
                 r##"[data-look="neo"].statediagram-cluster rect{fill:#606060;stroke:#040404;stroke-width:4;}"##,
             ],
-        },
-        LookDomCase {
-            name: "mindmap",
-            diagram_id: "look-mindmap",
-            source: r#"%%{init: {"look": "neo"}}%%
-mindmap
-  Root
-    Child
-"#,
-            expected_fragments: &[r#"id="look-mindmap-node_0" data-look="neo""#],
         },
         LookDomCase {
             name: "requirement",
@@ -133,6 +136,22 @@ kanban
         },
     ];
 
+    #[cfg(feature = "layout-cytoscape")]
+    let cases = {
+        let mut cases = cases;
+        cases.push(LookDomCase {
+            name: "mindmap",
+            diagram_id: "look-mindmap",
+            source: r#"%%{init: {"look": "neo"}}%%
+mindmap
+  Root
+    Child
+"#,
+            expected_fragments: &[r#"id="look-mindmap-node_0" data-look="neo""#],
+        });
+        cases
+    };
+
     for case in cases {
         let svg = render_svg(case.diagram_id, case.source);
 
@@ -153,14 +172,21 @@ kanban
 
 #[test]
 fn sequence_look_matrix_covers_css_theme_consumption() {
-    let svg = render_svg(
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "look": "neo",
+        "themeVariables": {
+            "dropShadow": "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"
+        }
+    })));
+    let svg = render_svg_with_engine(
         "look-sequence",
-        r##"%%{init: {"look": "neo", "themeVariables": {"dropShadow": "drop-shadow(1px 2px 3px rgba(0,0,0,.4))"}}}%%
-sequenceDiagram
+        &engine,
+        r#"sequenceDiagram
   participant A
   participant B
   A->>B: Hi
-"##,
+"#,
+        RenderEnvironment::deterministic().begin_session().unwrap(),
     );
 
     assert!(

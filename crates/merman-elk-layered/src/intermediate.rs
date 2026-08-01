@@ -938,30 +938,32 @@ fn move_center_labels_to_dummy(graph: &mut LGraph, edge_index: usize, dummy: usi
     }
 
     graph.edges[edge_index].labels = retained;
-    graph.layerless_nodes[dummy].labels = moved;
+    graph.layerless_nodes[dummy].represented_labels = moved;
 }
 
 fn size_label_dummy(graph: &mut LGraph, dummy: usize, thickness: f64) {
     let edge_label_spacing = graph.options.spacing.edge_label;
     let label_label_spacing = graph.options.spacing.label_label;
     let mut width = 0.0;
-    let mut height = 0.0;
+    // LongEdgeSplitter initializes the dummy's height to the edge thickness before
+    // LabelDummyInserter adds the represented labels and its own thickness allowance.
+    let mut height = thickness;
 
     if graph.options.direction.is_vertical() {
-        for label in &graph.layerless_nodes[dummy].labels {
+        for label in &graph.layerless_nodes[dummy].represented_labels {
             width += label.size.width + label_label_spacing;
             height = f64::max(height, label.size.height);
         }
-        if !graph.layerless_nodes[dummy].labels.is_empty() {
+        if !graph.layerless_nodes[dummy].represented_labels.is_empty() {
             width -= label_label_spacing;
         }
         height += edge_label_spacing + thickness;
     } else {
-        for label in &graph.layerless_nodes[dummy].labels {
+        for label in &graph.layerless_nodes[dummy].represented_labels {
             width = f64::max(width, label.size.width);
             height += label.size.height + label_label_spacing;
         }
-        if !graph.layerless_nodes[dummy].labels.is_empty() {
+        if !graph.layerless_nodes[dummy].represented_labels.is_empty() {
             height -= label_label_spacing;
         }
         height += edge_label_spacing + thickness;
@@ -1289,7 +1291,7 @@ pub fn switch_label_dummies(graph: &mut LGraph) {
 
     for label_dummy in label_dummies {
         if let Some(info) = LabelDummyInfo::new(graph, label_dummy) {
-            let target_layer = find_center_layer_target_id(graph, &info);
+            let target_layer = find_median_layer_target_id(&info);
             assign_label_dummy_layer(graph, &info, target_layer);
             update_long_edge_before_label_dummy_info(graph, info.label_dummy);
         }
@@ -2250,31 +2252,11 @@ fn gather_right_long_edge_dummies(graph: &LGraph, label_dummy: usize) -> Option<
     Some(out)
 }
 
-fn find_center_layer_target_id(graph: &LGraph, info: &LabelDummyInfo) -> usize {
-    let layer_width_sums = compute_layer_width_sums(graph, info);
-    let threshold = layer_width_sums.last().copied().unwrap_or(0.0) / 2.0;
-    for (offset, width_sum) in layer_width_sums.iter().enumerate() {
-        if *width_sum >= threshold {
-            return info.leftmost_layer_id + offset;
-        }
-    }
-    info.leftmost_layer_id + info.left_long_edge_dummies.len()
-}
-
-fn compute_layer_width_sums(graph: &LGraph, info: &LabelDummyInfo) -> Vec<f64> {
+fn find_median_layer_target_id(info: &LabelDummyInfo) -> usize {
+    // Layered.melk defaults center-edge labels to MEDIAN_LAYER. Java's LabelDummySwitcher uses
+    // the lower median when an edge spans an even number of eligible dummy layers.
     let total = info.rightmost_layer_id - info.leftmost_layer_id + 1;
-    let edge_node_spacing = graph.options.spacing.edge_node_between_layers * 2.0;
-    let node_node_spacing = graph.options.spacing.node_node_between_layers;
-    let min_space_between_layers = edge_node_spacing.max(node_node_spacing);
-    let mut width_sums = Vec::with_capacity(total);
-    let mut current_sum = -min_space_between_layers;
-
-    for layer in info.leftmost_layer_id..=info.rightmost_layer_id {
-        current_sum += graph.layers[layer].size.width + min_space_between_layers;
-        width_sums.push(current_sum);
-    }
-
-    width_sums
+    info.leftmost_layer_id + (total - 1) / 2
 }
 
 fn assign_label_dummy_layer(graph: &mut LGraph, info: &LabelDummyInfo, target_layer: usize) {
@@ -2399,7 +2381,7 @@ fn apply_label_side(graph: &mut LGraph, label_dummy: usize, side: LabelSide) {
     }
 
     let effective_side = if graph.layerless_nodes[label_dummy]
-        .labels
+        .represented_labels
         .iter()
         .all(|label| label.inline)
     {
@@ -2409,7 +2391,7 @@ fn apply_label_side(graph: &mut LGraph, label_dummy: usize, side: LabelSide) {
     };
 
     graph.layerless_nodes[label_dummy].label_side = effective_side;
-    for label in &mut graph.layerless_nodes[label_dummy].labels {
+    for label in &mut graph.layerless_nodes[label_dummy].represented_labels {
         label.label_side = Some(effective_side);
     }
 
@@ -2465,7 +2447,7 @@ fn place_label_dummy_labels(graph: &mut LGraph, label_dummy: usize) {
     let label_label_spacing = graph.options.spacing.label_label;
     let labels_below_edge = graph.layerless_nodes[label_dummy].label_side == LabelSide::Below;
     let inline = graph.layerless_nodes[label_dummy]
-        .labels
+        .represented_labels
         .iter()
         .all(|label| label.inline);
     let mut label_position = graph.layerless_nodes[label_dummy].position;
@@ -2483,7 +2465,7 @@ fn place_label_dummy_labels(graph: &mut LGraph, label_dummy: usize) {
                 -thickness - edge_label_spacing
             },
     };
-    let mut labels = std::mem::take(&mut graph.layerless_nodes[label_dummy].labels);
+    let mut labels = std::mem::take(&mut graph.layerless_nodes[label_dummy].represented_labels);
 
     if graph.options.direction.is_vertical() {
         place_labels_for_vertical_layout(
@@ -4068,11 +4050,58 @@ mod tests {
             graph.layerless_nodes[dummy].long_edge_target,
             Some(original_target)
         );
-        assert_eq!(graph.layerless_nodes[dummy].labels.len(), 1);
-        assert_eq!(graph.layerless_nodes[dummy].labels[0].text, "choice");
+        assert!(graph.layerless_nodes[dummy].labels.is_empty());
+        assert_eq!(graph.layerless_nodes[dummy].represented_labels.len(), 1);
+        assert_eq!(
+            graph.layerless_nodes[dummy].represented_labels[0].text,
+            "choice"
+        );
         assert!(graph.edges[edge_index].labels.is_empty());
         assert_eq!(graph.node_incoming_edges(dummy).len(), 1);
         assert_eq!(graph.node_outgoing_edges(dummy).len(), 1);
+    }
+
+    #[test]
+    fn horizontal_inline_label_dummy_retains_split_edge_thickness() {
+        let mut center = ElkInputLabel::center("choice", 30.0, 12.0);
+        center.placement = EdgeLabelPlacement::Center;
+        let mut labelled = edge("A-B", "A", "B");
+        labelled.label = Some(center);
+        let mut graph = graph(vec![node("A"), node("B")], vec![labelled]);
+        graph.options.direction = ElkDirection::Right;
+
+        insert_label_dummies(&mut graph);
+
+        let dummy = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.kind == LNodeKind::Label)
+            .unwrap();
+        assert_eq!(graph.layerless_nodes[dummy].size.height, 18.0);
+
+        apply_label_side(&mut graph, dummy, LabelSide::Below);
+
+        assert_eq!(graph.layerless_nodes[dummy].size.height, 13.0);
+        assert!(
+            graph.layerless_nodes[dummy]
+                .ports
+                .iter()
+                .all(|port| port.position.y == 6.5)
+        );
+    }
+
+    #[test]
+    fn default_median_label_dummy_strategy_uses_lower_median_layer() {
+        let info = |leftmost_layer_id, rightmost_layer_id| LabelDummyInfo {
+            label_dummy: 0,
+            left_long_edge_dummies: Vec::new(),
+            right_long_edge_dummies: Vec::new(),
+            leftmost_layer_id,
+            rightmost_layer_id,
+        };
+
+        assert_eq!(find_median_layer_target_id(&info(3, 4)), 3);
+        assert_eq!(find_median_layer_target_id(&info(3, 5)), 4);
     }
 
     #[test]
@@ -4111,6 +4140,7 @@ mod tests {
                 .iter()
                 .any(|node| graph.layerless_nodes[*node].kind == LNodeKind::Label)
         }));
+        assert!(graph.layerless_nodes[dummy].represented_labels.is_empty());
         assert_eq!(graph.edges[edge_index].labels.len(), 1);
         assert_eq!(graph.edges[edge_index].labels[0].text, "choice");
         assert!(
@@ -4183,19 +4213,21 @@ mod tests {
             .unwrap();
         graph.layerless_nodes[dummy].position = LPoint { x: 20.0, y: 40.0 };
         graph.layerless_nodes[dummy].size.height = 14.0;
-        graph.layerless_nodes[dummy].labels.push(LLabel {
-            text: "short".to_string(),
-            size: LSize {
-                width: 12.0,
-                height: 4.0,
-            },
-            position: LPoint::default(),
-            placement: EdgeLabelPlacement::Center,
-            inline: true,
-            label_side: None,
-            end_label_edge: None,
-            original_label_edge: None,
-        });
+        graph.layerless_nodes[dummy]
+            .represented_labels
+            .push(LLabel {
+                text: "short".to_string(),
+                size: LSize {
+                    width: 12.0,
+                    height: 4.0,
+                },
+                position: LPoint::default(),
+                placement: EdgeLabelPlacement::Center,
+                inline: true,
+                label_side: None,
+                end_label_edge: None,
+                original_label_edge: None,
+            });
 
         remove_label_dummies(&mut graph);
 

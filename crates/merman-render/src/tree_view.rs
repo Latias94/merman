@@ -18,36 +18,36 @@ const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
 pub(crate) const TREE_VIEW_ICON_SIZE: f64 = 14.0;
 const TREE_VIEW_ICON_GAP: f64 = 4.0;
 const TREE_VIEW_DESCRIPTION_GAP: f64 = 16.0;
+pub(crate) const TREE_VIEW_DIRECTORY_FONT_WEIGHT: &str = "bold";
+pub(crate) const TREE_VIEW_DESCRIPTION_FONT_STYLE: &str = "italic";
 // Mermaid extends each highlight past the current tree width, then reserves room for its stroke.
 pub(crate) const TREE_VIEW_HIGHLIGHT_RECT_EXTENSION: f64 = 8.0;
 pub(crate) const TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE: f64 = 2.0;
 pub(crate) const TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH: f64 =
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION + TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE;
 
-pub fn layout_tree_view_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<TreeViewDiagramLayout> {
-    let model: TreeViewDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_tree_view_diagram_typed(&model, effective_config, measurer)
-}
-
-pub fn layout_tree_view_diagram_typed(
+pub(crate) fn layout_tree_view_diagram_typed(
     model: &TreeViewDiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<TreeViewDiagramLayout> {
     let cfg = TreeViewConfigView::new(effective_config).layout_settings();
     validate_tree_view_render_depth(&model.root)?;
-    let style = TextStyle {
+    let label_style = TextStyle {
+        font_family: Some(cfg.font_family.clone()),
         font_size: cfg.label_font_size,
         ..Default::default()
     };
+    let mut directory_label_style = label_style.clone();
+    directory_label_style.font_weight = Some(TREE_VIEW_DIRECTORY_FONT_WEIGHT.to_string());
+    let mut description_style = label_style.clone();
+    description_style.font_style = Some(TREE_VIEW_DESCRIPTION_FONT_STYLE.to_string());
     let mut ctx = LayoutCtx {
         cfg: cfg.clone(),
         measurer,
-        style,
+        label_style,
+        directory_label_style,
+        description_style,
         total_height: 0.0,
         total_width: 0.0,
         nodes: Vec::new(),
@@ -104,7 +104,9 @@ fn validate_tree_view_render_depth(root: &TreeViewNode) -> Result<()> {
 struct LayoutCtx<'a> {
     cfg: TreeViewLayoutSettings,
     measurer: &'a dyn TextMeasurer,
-    style: TextStyle,
+    label_style: TextStyle,
+    directory_label_style: TextStyle,
+    description_style: TextStyle,
     total_height: f64,
     total_width: f64,
     nodes: Vec<TreeViewNodeLayout>,
@@ -162,8 +164,16 @@ fn push_node_layout(ctx: &mut LayoutCtx<'_>, node: &TreeViewNode, depth: usize) 
     } else {
         0.0
     };
-    let label_width = tree_view_label_bbox_width_px(ctx.measurer, &node.name, &ctx.style);
-    let label_height = tree_view_label_bbox_height_px(ctx.cfg.label_font_size);
+    let label_style = if node.node_type == TREE_VIEW_DIRECTORY_NODE_TYPE {
+        &ctx.directory_label_style
+    } else {
+        &ctx.label_style
+    };
+    let label_width = tree_view_label_bbox_width_px(ctx.measurer, &node.name, label_style);
+    let label_height = ctx
+        .measurer
+        .measure_svg_raw_text_bbox_height_px(&node.name, label_style)
+        .max(0.0);
     let height = label_height + ctx.cfg.padding_y * 2.0;
     let width = label_width + ctx.cfg.padding_x * 2.0 + icon_offset;
     let y = ctx.total_height;
@@ -220,7 +230,7 @@ fn align_tree_view_descriptions(ctx: &mut LayoutCtx<'_>) {
             continue;
         };
         let description_width =
-            tree_view_label_bbox_width_px(ctx.measurer, description, &ctx.style);
+            tree_view_label_bbox_width_px(ctx.measurer, description, &ctx.description_style);
         node.description_x = Some(description_x);
         node.description_width = Some(description_width);
         ctx.total_width = ctx
@@ -252,22 +262,14 @@ fn push_vertical_line(ctx: &mut LayoutCtx<'_>, node_index: usize, last_child_idx
     });
 }
 
-fn tree_view_label_bbox_height_px(font_size: f64) -> f64 {
-    (font_size.max(1.0) * 1.15).ceil()
-}
-
 fn tree_view_label_bbox_width_px(
     measurer: &dyn TextMeasurer,
     label: &str,
     style: &TextStyle,
 ) -> f64 {
-    if style.font_size > 16.0 {
-        measurer.measure(label, style).width.max(0.0)
-    } else {
-        measurer
-            .measure_svg_raw_text_bbox_width_px(label, style)
-            .max(0.0)
-    }
+    measurer
+        .measure_svg_raw_text_bbox_width_px(label, style)
+        .max(0.0)
 }
 
 fn resolve_tree_view_node_icon(
@@ -327,4 +329,48 @@ fn qualify_tree_view_icon(icon: &str, default_icon_pack: &str) -> String {
 
 pub(crate) fn is_tree_view_highlight_class(css_class: Option<&str>) -> bool {
     css_class.is_some_and(|class| class.split_whitespace().any(|part| part == "highlight"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+
+    #[test]
+    fn layout_rejects_typed_model_beyond_nesting_limit() {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        let mut child = TreeViewNode {
+            id: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
+            level: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
+            name: "leaf".to_string(),
+            children: Vec::new(),
+            ..Default::default()
+        };
+        for depth in (0..=MAX_DIAGRAM_NESTING_DEPTH).rev() {
+            child = TreeViewNode {
+                id: depth as i64,
+                level: depth as i64,
+                name: format!("n{depth}"),
+                children: vec![child],
+                ..Default::default()
+            };
+        }
+
+        let model = TreeViewDiagramRenderModel {
+            root: TreeViewNode {
+                children: vec![child],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let error =
+            layout_tree_view_diagram_typed(&model, &Value::Object(Default::default()), &measurer)
+                .unwrap_err();
+        assert!(
+            error.to_string().contains("treeView nesting depth exceeds"),
+            "{error}"
+        );
+    }
 }

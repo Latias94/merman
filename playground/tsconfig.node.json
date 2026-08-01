@@ -4,10 +4,15 @@
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowJs": true,
     "outDir": "node_modules/.tmp/tsconfig-node",
     "tsBuildInfoFile": "node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "allowSyntheticDefaultImports": true,
     "strict": true
   },
-  "include": ["vite.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "scripts/csp-policy.mjs",
+    "scripts/opaque-realm-csp.mjs"
+  ]
 }

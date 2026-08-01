@@ -1,17 +1,44 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "source": {
     "mermaid_version": "11.16.0",
     "mermaid_cli_version": "11.16.0",
     "mermaid_source_tag": "mermaid@11.16.0",
     "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
-    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
-    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "package_json_sha256": "947577fc1c008c828ad20eb732d3f864105083c53dde42c53078cfc2cb0cebc9",
+    "package_lock_sha256": "ee4807cdbff1f78777c661b066e1382f81e49677ec1f10d591aa8951915f063a",
     "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
-    "renderer_revision": "xtask-upstream-svg-v2"
+    "renderer_revision": "xtask-upstream-svg-v3"
   },
   "attestation": {
-    "mode": "adopted-existing"
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "locale": "en-US",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
   },
   "complete": true,
   "fixtures": {
@@ -87,7 +114,7 @@
     },
     "stress_mindmap_html_sanitization_013": {
       "input_sha256": "3b0a694108d4e750ed9128f5fb8727e277bf52824c964aa51ecb589dd6594d7c",
-      "svg_sha256": "8ab7f21a8891b9480b85229e37d3d7b01b83c975334625f332e78015970b03f2",
+      "svg_sha256": "2d5b282e9c177698a3f52e2f8a161c25976a5d56f3ee76f2953788ee77c2e999",
       "renderer_profile": "mmdc-default"
     },
     "stress_mindmap_html_sanitization_links_034": {
@@ -122,7 +149,7 @@
     },
     "stress_mindmap_markdown_emphasis_icons_014": {
       "input_sha256": "76fccbab937bebe79d8a80da164f9e979e691367ccc97fd03a0fc8e246db094f",
-      "svg_sha256": "0e7f4e07e453a0f6b8ac43edd86eb3c3926652de5bf90299fc0bc70fc6e24c1c",
+      "svg_sha256": "d60f173dc59451f7023b4fff0e622963a36cbda1bca26c87f428a41f2c99486f",
       "renderer_profile": "mmdc-default"
     },
     "stress_mindmap_markdown_mixed_raw_blocks_038": {
@@ -137,7 +164,7 @@
     },
     "stress_mindmap_multiline_markdown_021": {
       "input_sha256": "47312ace24699e3f22cd4d81bb647ed88a48c9de97b7c8c18ef85e3e8184f460",
-      "svg_sha256": "5ad14b07bfe780a855c041e590f80d9fb421e1198fbc3df5d7f0fc5569c1e057",
+      "svg_sha256": "ac6f1fba213dc451a3a1f1fa74e7a7e9d4b32bb8bf6ca2bce285a6ec29ef3587",
       "renderer_profile": "mmdc-default"
     },
     "stress_mindmap_proto_constructor_ids_033": {
@@ -167,7 +194,7 @@
     },
     "stress_mindmap_unicode_punct_020": {
       "input_sha256": "6b75dbaa5d7dd17b865a52928b472f0a9b5e5636c59160bf0f711f21d11d9825",
-      "svg_sha256": "5ca61a548a32cca5302a60827714ace40b419455e75fbfd5920739e776193e6b",
+      "svg_sha256": "46984cbb63b6f60dfa8dcee0370c34583a33dbcefa2518a22a4e90fa250cbef9",
       "renderer_profile": "mmdc-default"
     },
     "stress_mindmap_unicode_rtl_mixed_029": {
@@ -276,8 +303,8 @@
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017": {
-      "input_sha256": "79b51a4ff0a85be30e5f21781b6d47a213b693238ca8e31f0441c66128ac6050",
-      "svg_sha256": "971ea3e0aed3ec587371a3766490a3aa361982a2e69fd1f361c4c87672768430",
+      "input_sha256": "e010f0f50bd19fbc65d2130cd4e6b6197118a47f22c9e1e11726a9ff2f5edd1a",
+      "svg_sha256": "00cfa3990cf5f21bd5a46021ee43600dd96f87e9744daf01752223b9cd6e40a7",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_mindmap_spec_has_a_label_with_char_sequence_graph_018": {
@@ -377,7 +404,7 @@
     },
     "upstream_docs_mindmap_markdown_strings_028": {
       "input_sha256": "d34688197fc3593a7b62592bfac23991f50dcb4342d310979f24e94754941123",
-      "svg_sha256": "8b0ba8c43edc7823acf7f2d5a700f56622dd150d9f11328eae5a367d35ba5697",
+      "svg_sha256": "e3931952e1798f2f5148712515f9cfa59204cffe2e135c45cc33b446e8a96ba5",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_mindmap_rounded_square_009": {

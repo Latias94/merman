@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "England's History Timeline",
     "accTitle": null,
     "accDescr": null,

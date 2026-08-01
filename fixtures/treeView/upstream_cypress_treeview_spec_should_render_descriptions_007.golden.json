@@ -1,0 +1,112 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory",
+      "children": [
+        {
+          "id": 1,
+          "level": 12,
+          "name": "src",
+          "nodeType": "directory",
+          "children": [
+            {
+              "id": 2,
+              "level": 16,
+              "name": "index.js",
+              "nodeType": "file",
+              "description": "app entry point",
+              "children": []
+            },
+            {
+              "id": 3,
+              "level": 16,
+              "name": "config.ts",
+              "nodeType": "file",
+              "description": "runtime configuration",
+              "children": []
+            },
+            {
+              "id": 4,
+              "level": 16,
+              "name": "utils",
+              "nodeType": "directory",
+              "description": "shared helpers",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "level": 12,
+          "name": "package.json",
+          "nodeType": "file",
+          "description": "project manifest",
+          "children": []
+        },
+        {
+          "id": 6,
+          "level": 12,
+          "name": "README.md",
+          "nodeType": "file",
+          "children": []
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/",
+        "nodeType": "directory"
+      },
+      {
+        "id": 1,
+        "level": 12,
+        "name": "src",
+        "nodeType": "directory"
+      },
+      {
+        "id": 2,
+        "level": 16,
+        "name": "index.js",
+        "nodeType": "file",
+        "description": "app entry point"
+      },
+      {
+        "id": 3,
+        "level": 16,
+        "name": "config.ts",
+        "nodeType": "file",
+        "description": "runtime configuration"
+      },
+      {
+        "id": 4,
+        "level": 16,
+        "name": "utils",
+        "nodeType": "directory",
+        "description": "shared helpers"
+      },
+      {
+        "id": 5,
+        "level": 12,
+        "name": "package.json",
+        "nodeType": "file",
+        "description": "project manifest"
+      },
+      {
+        "id": 6,
+        "level": 12,
+        "name": "README.md",
+        "nodeType": "file"
+      }
+    ]
+  }
+}

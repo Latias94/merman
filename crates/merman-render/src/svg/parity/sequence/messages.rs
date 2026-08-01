@@ -3,7 +3,7 @@ use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_objec
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceMathHeightMode, sequence_activation_stack_bounds,
-    sequence_activation_start_x, sequence_text_line_step_px,
+    sequence_text_line_step_px,
 };
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
@@ -71,14 +71,14 @@ fn actor_center_x(ctx: &SequenceMessageRenderContext<'_>, actor_id: &str) -> Opt
 
 struct SequenceAutonumberActivationBounds {
     width: f64,
-    stacks: BTreeMap<String, Vec<f64>>,
+    depths: BTreeMap<String, usize>,
 }
 
 impl SequenceAutonumberActivationBounds {
     fn new(width: f64) -> Self {
         Self {
             width,
-            stacks: BTreeMap::new(),
+            depths: BTreeMap::new(),
         }
     }
 
@@ -92,21 +92,19 @@ impl SequenceAutonumberActivationBounds {
                 let Some(actor_id) = msg.from.as_deref() else {
                     return true;
                 };
-                let Some(cx) = actor_center_x(ctx, actor_id) else {
+                if actor_center_x(ctx, actor_id).is_none() {
                     return true;
-                };
-                let stack = self.stacks.entry(actor_id.to_string()).or_default();
-                let stacked_size = stack.len();
-                let startx = sequence_activation_start_x(cx, stacked_size, self.width);
-                stack.push(startx);
+                }
+                let depth = self.depths.entry(actor_id.to_string()).or_default();
+                *depth = depth.saturating_add(1);
                 true
             }
             LINETYPE_ACTIVE_END => {
                 let Some(actor_id) = msg.from.as_deref() else {
                     return true;
                 };
-                if let Some(stack) = self.stacks.get_mut(actor_id) {
-                    let _ = stack.pop();
+                if let Some(depth) = self.depths.get_mut(actor_id) {
+                    *depth = depth.saturating_sub(1);
                 }
                 true
             }
@@ -116,10 +114,7 @@ impl SequenceAutonumberActivationBounds {
 
     fn actor_bounds(&self, actor_id: &str, center_x: f64) -> (f64, f64) {
         sequence_activation_stack_bounds(
-            self.stacks
-                .get(actor_id)
-                .into_iter()
-                .flat_map(|stack| stack.iter().copied()),
+            self.depths.get(actor_id).copied().unwrap_or_default(),
             center_x,
             self.width,
         )
@@ -303,9 +298,10 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
             let line_step = sequence_text_line_step_px(ctx.actor_label_font_size);
             let bounded_width = (p0.x - p1.x).abs().max(0.0);
             // Mermaid aligns message label text based on `sequence.messageAlign`.
+            let label_start_x = p0.x.min(p1.x);
             let (label_x, label_anchor) = match ctx.message_align {
-                "right" => (p1.x - 10.0, "end"),
-                "left" => (p0.x + 10.0, "start"),
+                "right" => (label_start_x + bounded_width - ctx.wrap_padding, "end"),
+                "left" => (label_start_x + ctx.wrap_padding, "start"),
                 _ => (lbl.x, "middle"),
             };
             if let Some(katex) = sequence_katex_label(
@@ -330,7 +326,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                     + SEQUENCE_MESSAGE_WRAP_PADDING_SIDES * ctx.wrap_padding)
                     .max(ctx.sequence_width)
                     .max(1.0);
-                let raw_lines = crate::text::wrap_label_like_mermaid_lines(
+                let raw_lines = crate::sequence::wrap_sequence_label_like_mermaid_lines(
                     text,
                     ctx.measurer,
                     ctx.loop_text_style,

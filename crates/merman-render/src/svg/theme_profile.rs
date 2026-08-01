@@ -1,12 +1,9 @@
 use merman_core::MermaidConfig;
+use merman_core::theme_color::{ColorChannel, ThemeColor};
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
-use super::pipeline::{
-    CssOverridePolicy, CssOverridePostprocessor, DropNativeDuplicateFallbacksPostprocessor,
-    GitGraphBranchLabelBaselinePostprocessor, RootBackgroundPostprocessor,
-    SanitizeCssPostprocessor, ScopedCssPostprocessor, SvgPipeline, SvgPipelinePreset,
-};
+use super::pipeline::{CssOverridePolicy, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HostThemeAppearance {
@@ -595,17 +592,18 @@ impl HostThemeProfile {
         }
         merge_object(&mut root, &self.site_config);
 
-        let canvas_color = self
-            .roles
-            .canvas
-            .as_deref()
-            .filter(|s| !s.trim().is_empty())
+        let canvas_color = root
+            .get("themeVariables")
+            .and_then(Value::as_object)
+            .and_then(|variables| variables.get("background"))
+            .and_then(Value::as_str)
             .map(str::trim)
-            .map(str::to_string);
+            .filter(|color| !color.is_empty())
+            .map(str::to_owned);
 
         CompiledHostTheme {
             site_config: MermaidConfig::from_value(Value::Object(root)),
-            output: CompiledHostThemeOutput {
+            output: SvgOutputPolicy {
                 preset: self.output.pipeline.into(),
                 css_override_policy: self.output.css_override_policy,
                 root_background_color: match &self.output.root_background {
@@ -676,70 +674,16 @@ impl HostThemeProfileBuilder {
 #[derive(Debug, Clone)]
 pub struct CompiledHostTheme {
     pub site_config: MermaidConfig,
-    pub output: CompiledHostThemeOutput,
+    pub output: SvgOutputPolicy,
 }
 
 impl CompiledHostTheme {
-    pub fn into_parts(self) -> (MermaidConfig, CompiledHostThemeOutput) {
+    pub fn into_parts(self) -> (MermaidConfig, SvgOutputPolicy) {
         (self.site_config, self.output)
     }
 
     pub fn pipeline(&self) -> SvgPipeline {
         self.output.pipeline()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompiledHostThemeOutput {
-    pub preset: SvgPipelinePreset,
-    pub css_override_policy: CssOverridePolicy,
-    pub root_background_color: Option<String>,
-    pub drop_native_duplicate_fallbacks: bool,
-    pub scoped_css: Option<String>,
-}
-
-impl CompiledHostThemeOutput {
-    pub fn pipeline(&self) -> SvgPipeline {
-        let mut pipeline = SvgPipeline::from_preset(self.preset);
-
-        if matches!(
-            self.css_override_policy,
-            CssOverridePolicy::StripExistingImportant
-        ) {
-            pipeline.push_postprocessor(CssOverridePostprocessor::strip_existing_important());
-        }
-
-        if self.drop_native_duplicate_fallbacks {
-            pipeline.push_postprocessor(DropNativeDuplicateFallbacksPostprocessor);
-        }
-
-        if matches!(self.preset, SvgPipelinePreset::ResvgSafe) {
-            pipeline.push_postprocessor(GitGraphBranchLabelBaselinePostprocessor);
-        }
-
-        if let Some(color) = self
-            .root_background_color
-            .as_deref()
-            .filter(|color| !color.trim().is_empty())
-        {
-            pipeline.push_postprocessor(RootBackgroundPostprocessor::new(color.trim()));
-        }
-
-        if let Some(css) = self
-            .scoped_css
-            .as_deref()
-            .filter(|css| !css.trim().is_empty())
-        {
-            pipeline.push_postprocessor(
-                ScopedCssPostprocessor::new(css.to_string())
-                    .with_override_policy(self.css_override_policy),
-            );
-            if matches!(self.preset, SvgPipelinePreset::ResvgSafe) {
-                pipeline.push_postprocessor(SanitizeCssPostprocessor);
-            }
-        }
-
-        pipeline
     }
 }
 
@@ -1190,31 +1134,31 @@ fn put_str(map: &mut Map<String, Value>, key: &str, value: &str) {
 
 fn merge_object(target: &mut Map<String, Value>, source: &Map<String, Value>) {
     for (key, value) in source {
-        target.insert(key.clone(), value.clone());
+        match (target.get_mut(key), value) {
+            (Some(Value::Object(target)), Value::Object(source)) => {
+                merge_object(target, source);
+            }
+            _ => {
+                target.insert(key.clone(), value.clone());
+            }
+        }
     }
 }
 
 fn readable_text_color(color: &str) -> String {
-    let Some((r, g, b)) = parse_hex_rgb(color) else {
+    let Ok(color) = ThemeColor::parse(color.trim()) else {
         return "#ffffff".to_string();
     };
-    let luminance = relative_luminance(r, g, b);
+    let luminance = relative_luminance(
+        color.channel(ColorChannel::Red) / 255.0,
+        color.channel(ColorChannel::Green) / 255.0,
+        color.channel(ColorChannel::Blue) / 255.0,
+    );
     if luminance > 0.45 {
         "#000000".to_string()
     } else {
         "#ffffff".to_string()
     }
-}
-
-fn parse_hex_rgb(color: &str) -> Option<(f64, f64, f64)> {
-    let raw = color.trim().strip_prefix('#')?;
-    if raw.len() != 6 || !raw.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        return None;
-    }
-    let r = u8::from_str_radix(&raw[0..2], 16).ok()? as f64 / 255.0;
-    let g = u8::from_str_radix(&raw[2..4], 16).ok()? as f64 / 255.0;
-    let b = u8::from_str_radix(&raw[4..6], 16).ok()? as f64 / 255.0;
-    Some((r, g, b))
 }
 
 fn relative_luminance(r: f64, g: f64, b: f64) -> f64 {
@@ -1437,6 +1381,9 @@ mod tests {
         output.drop_native_duplicate_fallbacks = true;
 
         let compiled = HostThemeProfile::builder().output(output).build().compile();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
 <text class="task">Make tea</text>
 <g transform="translate(0,0)">
@@ -1447,7 +1394,10 @@ mod tests {
 </g>
 </svg>"##;
 
-        let out = compiled.pipeline().process_to_string(svg).unwrap();
+        let out = compiled
+            .pipeline()
+            .process_to_string(svg, &session)
+            .unwrap();
 
         assert_eq!(
             out.matches(r#"data-merman-foreignobject="fallback""#)
@@ -1498,6 +1448,56 @@ mod tests {
     }
 
     #[test]
+    fn nested_theme_overrides_preserve_unrelated_derived_fields() {
+        let profile = HostThemeProfile::builder()
+            .roles(HostThemeRoles {
+                text: Some("#111111".to_string()),
+                line: Some("#222222".to_string()),
+                ..HostThemeRoles::default()
+            })
+            .theme_variable("treeView", serde_json::json!({ "labelColor": "#abcdef" }))
+            .site_config("packet", serde_json::json!({ "rowHeight": 42 }))
+            .build();
+
+        let compiled = profile.compile();
+        let config = compiled.site_config.as_value();
+
+        assert_eq!(
+            config["themeVariables"]["treeView"]["labelColor"],
+            "#abcdef"
+        );
+        assert_eq!(config["themeVariables"]["treeView"]["lineColor"], "#222222");
+        assert_eq!(config["packet"]["rowHeight"], 42);
+        assert_eq!(config["packet"]["labelColor"], "#111111");
+    }
+
+    #[test]
+    fn canvas_output_uses_the_final_effective_theme_variable() {
+        let profile = HostThemeProfile::builder()
+            .roles(HostThemeRoles {
+                canvas: Some("#010101".to_string()),
+                ..HostThemeRoles::default()
+            })
+            .output(HostThemeOutput::resvg_safe_editor())
+            .site_config(
+                "themeVariables",
+                serde_json::json!({ "background": "#fefefe" }),
+            )
+            .build();
+
+        let compiled = profile.compile();
+
+        assert_eq!(
+            compiled.site_config.as_value()["themeVariables"]["background"],
+            "#fefefe"
+        );
+        assert_eq!(
+            compiled.output.root_background_color.as_deref(),
+            Some("#fefefe")
+        );
+    }
+
+    #[test]
     fn empty_profile_compiles_to_empty_site_config() {
         let compiled = HostThemeProfile::default().compile();
 
@@ -1510,13 +1510,30 @@ mod tests {
     fn compiled_output_builds_host_pipeline() {
         let compiled = HostThemeProfile::editor_dark().compile();
         let pipeline = compiled.pipeline();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
         let out = pipeline
             .process_to_string(
                 r#"<svg id="host" style="background-color: white;"><style>.node{fill:red !important;}</style><text>A</text></svg>"#,
+                &session,
             )
             .unwrap();
 
         assert!(!out.contains("!important"));
-        assert!(out.contains("background-color: #0f172a;"));
+        let document = roxmltree::Document::parse(&out).unwrap();
+        let style = document
+            .root_element()
+            .attribute("style")
+            .unwrap_or_default();
+        assert!(style.contains("background-color:#0f172a"), "{style}");
+    }
+
+    #[test]
+    fn host_palette_readability_accepts_the_shared_color_surface() {
+        assert_eq!(readable_text_color("white"), "#000000");
+        assert_eq!(readable_text_color("rgb(255 255 255 / .2)"), "#000000");
+        assert_eq!(readable_text_color("rebeccapurple"), "#ffffff");
+        assert_eq!(readable_text_color("var(--host-color)"), "#ffffff");
     }
 }

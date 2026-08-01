@@ -1,49 +1,46 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 import { parseSmokeCli, smokeUsage } from "./smoke-cli.mjs";
 import {
-  allSurfaceRuntimeExportNames,
-  allSurfaceValueExportNames,
-  surfaces,
+  allPackageRuntimeExportNames,
+  allPackageValueExportNames,
+  webPackages,
 } from "./surface-manifest.mjs";
+import { assertRuntimeOwnerEvidence } from "./wasm-build/runtime-evidence.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
+const tokenEquivalenceEvidence = JSON.parse(
+  await readFile(
+    path.join(repoRoot, "editor-language", "token-equivalence-v1.json"),
+    "utf8"
+  )
+);
 const args = process.argv.slice(2);
-const fullSurface = surfaces.find((surface) => surface.entry === "full");
-if (!fullSurface) {
-  throw new Error("surface manifest is missing the full entry");
+const fullPackage = webPackages.find((descriptor) => descriptor.id === "full");
+if (!fullPackage) {
+  throw new Error("package manifest is missing the full package");
 }
-const editorRuntimeExports = fullSurface.runtimeExportNames.filter((name) =>
+const editorRuntimeExports = fullPackage.runtimeExportNames.filter((name) =>
   name.startsWith("editor")
 );
 
-const surfaceSmokeCases = [
-  surfaceSmokeCase("default", ".", "pkg"),
-  ...surfaces.map((surface) =>
-    surfaceSmokeCase(surface.entry, `./${surface.entry}`, surface.pkgDirRel)
-  ),
-];
+const packageSmokeCases = webPackages;
 
 if (args.length === 0) {
-  for (const smokeCase of surfaceSmokeCases) {
+  await runPureDistSmoke();
+  for (const descriptor of packageSmokeCases) {
     const result = spawnSync(
       process.execPath,
       [
         fileURLToPath(import.meta.url),
-        "--entry",
-        smokeCase.entry,
-        "--pkg-dir-rel",
-        smokeCase.pkgDirRel,
-        "--wasm-module-subpath",
-        smokeCase.wasmModuleSubpath,
-        "--wasm-binary-rel",
-        smokeCase.wasmBinaryRel,
-        "--manifest-rel",
-        smokeCase.manifestRel,
+        "--package-id",
+        descriptor.id,
       ],
       {
         cwd: packageRoot,
@@ -52,7 +49,7 @@ if (args.length === 0) {
     );
     if (result.error) {
       console.error(
-        `@mermanjs/web smoke failed to spawn ${smokeCase.name}: ${result.error.message}`
+        `@mermanjs/web smoke failed to spawn ${descriptor.id}: ${result.error.message}`
       );
       process.exit(1);
     }
@@ -60,43 +57,54 @@ if (args.length === 0) {
       process.exit(result.status ?? 1);
     }
   }
-  await runSameProcessSurfaceSmoke();
+  await runSameProcessPackageSmoke();
   console.log(
-    `@mermanjs/web smoke matrix passed surfaces=${surfaceSmokeCases
-      .map((smokeCase) => smokeCase.name)
+    `@mermanjs/web smoke matrix passed packages=${packageSmokeCases
+      .map((descriptor) => descriptor.id)
       .join(",")}`
   );
   process.exit(0);
 }
 
 const {
-  entrySubpath,
-  pkgDirRel,
-  wasmModuleSubpath,
-  wasmBinaryRel,
-  manifestRel,
+  packageId,
 } = parseCli(args);
+const packageDescriptor = packageDescriptorForId(packageId);
+const browserPackageRoot = path.join(packageRoot, packageDescriptor.package_dir);
 
-const api = await import(toPackageSpecifier(entrySubpath));
-const exportedWasmModule = await import(toPackageSpecifier(wasmModuleSubpath));
-const surfaceContract = surfaceContractForEntry(entrySubpath);
+const packageApi = await import(packageEntryUrl(packageDescriptor));
+const textMeasurementAbi = await import(sharedDistUrl("generated/text-measurement-abi.js"));
+const exportedWasmModule = await import(
+  pathToFileURL(path.join(browserPackageRoot, "artifacts", "wasm", "merman_wasm.js")).href,
+);
+const surfaceContract = packageContract(packageDescriptor);
+const api = projectInternalApiForSurface(
+  await import(sharedDistUrl("index.js")),
+  surfaceContract,
+);
+const cytoscapeLayoutDiagramTypes = new Set(["architecture", "mindmap"]);
 
 assert.equal(typeof exportedWasmModule.default, "function");
-assertSurfaceExports(api, surfaceContract);
-if (typeof import.meta.resolve === "function") {
-  assert.match(
-    import.meta.resolve(toPackageSpecifier(wasmBinaryRel)),
-    /merman_wasm_bg\.wasm$/
-  );
-}
-
-const wasmBinary = await readFile(path.join(packageRoot, wasmBinaryRel));
-await exportedWasmModule.default({ module_or_path: wasmBinary });
-await api.initMerman({
-  wasm: {
-    module_or_path: wasmBinary,
-  },
+assertSurfaceExports(packageApi, surfaceContract);
+const wasmBinary = await readFile(path.join(browserPackageRoot, "artifacts", "wasm", "merman_wasm_bg.wasm"));
+let customLoaderCalled = false;
+const initializeBrowserPackage = () =>
+  packageApi.initMerman({
+    loader: async () => {
+      customLoaderCalled = true;
+      return exportedWasmModule;
+    },
+    wasm: wasmBinary,
+  });
+assert.throws(initializeBrowserPackage, /browser main-thread or Web Worker realm/);
+assert.equal(customLoaderCalled, false, "Node must not invoke a custom browser-package loader");
+await withNodeDomShim(() => {
+  assert.throws(initializeBrowserPackage, /browser main-thread or Web Worker realm/);
 });
+assert.equal(customLoaderCalled, false, "Node DOM shims must not invoke a browser-package loader");
+await assertNoDeprecatedWasmBindgenInitWarning(() =>
+  api.initMerman({ loader: async () => exportedWasmModule, wasm: wasmBinary })
+);
 
 const source = "flowchart TD\nA[Hello] --> B[World]";
 const deterministicTime = {
@@ -106,20 +114,106 @@ const deterministicTime = {
 const options = {
   ...deterministicTime,
   svg: { pipeline: "readable" },
-  layout: { text_measurer: "deterministic" },
+  environment: { text_measurement: "deterministic" },
 };
 const presetManifest = JSON.parse(
-  await readFile(path.join(packageRoot, manifestRel), "utf8")
+  await readFile(path.join(browserPackageRoot, "artifacts", "provenance.json"), "utf8")
 );
 
 class FakeMeasureElement {
-  style = {};
-  textContent = "";
+  constructor(tagName = "div", canvasContext = null) {
+    this.tagName = tagName;
+    this.canvasContext = canvasContext;
+  }
 
-  setAttribute() {}
+  style = {};
+  attributes = new Map();
+  children = [];
+  _textContent = "";
+
+  get textContent() {
+    if (this.children.length > 0) {
+      return this.children.map((child) => child.textContent || "").join("");
+    }
+    return this._textContent;
+  }
+
+  set textContent(value) {
+    this._textContent = value || "";
+    this.children = [];
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
+  getAttributeNames() {
+    return [...this.attributes.keys()];
+  }
+
+  inheritedAttribute(name) {
+    return this.attributes.get(name) ?? this.parentElement?.inheritedAttribute?.(name);
+  }
+
+  appendChild(child) {
+    child.parentElement = this;
+    this.children.push(child);
+    return child;
+  }
+
+  replaceChildren(...children) {
+    this.children = [];
+    for (const child of children) {
+      this.appendChild(child);
+    }
+  }
+
+  remove() {
+    this.removed = true;
+  }
+
+  getContext(kind) {
+    assert.equal(this.tagName, "canvas");
+    assert.equal(kind, "2d");
+    return this.canvasContext;
+  }
+
+  effectiveFontSize() {
+    return (
+      parseFloat(this.style.fontSize) ||
+      parseFloat(this.parentElement?.style?.fontSize) ||
+      16
+    );
+  }
+
+  getBBox() {
+    const fontSize = this.effectiveFontSize();
+    const rows =
+      this.children.filter((child) => child.tagName === "tspan").map((child) => child.textContent) ||
+      [];
+    const lines = rows.length > 0 ? rows : [this.textContent || ""];
+    const width = Math.max(...lines.map((line) => line.length * fontSize * 0.6), 0);
+    const height = Math.max(1, lines.length) * fontSize * 1.1;
+    const anchor = this.inheritedAttribute("text-anchor");
+    const middleBaseline = this.inheritedAttribute("dominant-baseline") === "middle";
+    return {
+      x: anchor === "middle" ? -width / 2 : 0,
+      y: -fontSize + (middleBaseline ? fontSize * 0.25 : 0),
+      width,
+      height,
+    };
+  }
+
+  getComputedTextLength() {
+    return (this.textContent || "").length * this.effectiveFontSize() * 0.4;
+  }
 
   getBoundingClientRect() {
-    const fontSize = parseFloat(this.style.fontSize) || 16;
+    const fontSize = this.effectiveFontSize();
     const lineHeight = parseFloat(this.style.lineHeight) || fontSize;
     const naturalWidth = (this.textContent || "").length * fontSize * 0.5;
     const fixedWidth =
@@ -142,16 +236,33 @@ class FakeMeasureElement {
 }
 
 assert.equal(api.isMermanInitialized(), true);
-assert.equal(api.abiVersion(), 2);
+assert.ok(Number.isSafeInteger(api.transportApiVersion()));
+assert.ok(api.transportApiVersion() > 0);
+assert.equal(
+  api.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+  textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION
+);
+assert.equal(Object.isFrozen(api.UNAVAILABLE_DIAGRAM_DETECTION), true);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
-if (surfaceContract.render) {
+const runtimeCatalog = api.runtimeCatalog();
+const capabilities = runtimeCatalog.capabilities;
+const hasCapability = (id) => capabilities.capability_ids.includes(id);
+const completeCytoscapeRenderSurface = hasCapability("layout-cytoscape");
+if (hasCapability("svg")) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
   assert.equal(typeof api.layoutJsonWithTextMeasurer, "function");
-  assert.equal(typeof api.createBrowserTextMeasurer, "function");
-  assert.equal(api.createBrowserTextMeasurer()({ text: "Node", font_size: 16 }), undefined);
+  assert.equal(typeof api.createBrowserTextMeasurementSession, "function");
+  assert.equal(typeof api.createBrowserTextMeasurer, "undefined");
+  const unavailableSession = api.createBrowserTextMeasurementSession();
+  assert.equal(unavailableSession.measure({ text: "Node", font_size: 16 }), undefined);
+  unavailableSession.dispose();
+  unavailableSession.dispose();
+  assert.equal(unavailableSession.measure({ text: "Node", font_size: 16 }), undefined);
   withFakeMeasureDom(() => {
-    const browserMeasurer = api.createBrowserTextMeasurer();
+    const measurementSession = api.createBrowserTextMeasurementSession();
+    const browserMeasurer = measurementSession.measure;
     const shortLabel = browserMeasurer(textMeasureRequest("Condition?", 200));
+    assert.equal(shortLabel.kind, "metrics");
     assert.ok(shortLabel.width > 0);
     assert.ok(
       shortLabel.width < 200,
@@ -163,39 +274,140 @@ if (surfaceContract.render) {
     );
     assert.equal(longLabel.width, 200);
     assert.ok(longLabel.line_count > 1);
+    assert.ok(longLabel.raw_width === undefined);
+
+    const computed = browserMeasurer(
+      textMeasureRequest("Computed", null, "computed-length", "svg-like")
+    );
+    assert.equal(computed.kind, "length");
+    assert.equal(computed.length, "Computed".length * 16 * 0.4);
+
+    const rawBBox = browserMeasurer(
+      textMeasureRequest("Raw", null, "raw-bbox-width", "svg-like")
+    );
+    assert.equal(rawBBox.kind, "length");
+    assert.equal(rawBBox.length, "Raw".length * 16 * 0.6);
+
+    const clientRect = browserMeasurer(
+      textMeasureRequest("Client", null, "bounding-client-rect-width", "svg-like")
+    );
+    assert.equal(clientRect.kind, "length");
+    assert.equal(clientRect.length, "Client".length * 16 * 0.5);
+
+    const rawCreateTextYOffset = browserMeasurer(
+      textMeasureRequest("Formatted", null, "create-text-bbox-y-offset", "svg-like")
+    );
+    const middleCreateTextYOffset = browserMeasurer(
+      textMeasureRequest("Formatted", null, "create-text-middle-bbox-y-offset", "svg-like")
+    );
+    assert.equal(rawCreateTextYOffset.length, -16);
+    assert.equal(middleCreateTextYOffset.length, -12);
+    assert.equal(
+      browserMeasurer(
+        textMeasureRequest("Formatted", null, "create-text-bbox-y-offset", "svg-like")
+      ).length,
+      -16
+    );
+
+    const mermaidDimensions = browserMeasurer(
+      textMeasureRequest(
+        "Mermaid dimensions",
+        null,
+        "mermaid-calculate-text-dimensions",
+        "svg-like"
+      )
+    );
+    assert.equal(mermaidDimensions.kind, "metrics");
+    assert.equal(mermaidDimensions.line_count, 1);
+    assert.ok(mermaidDimensions.width > 0);
+    assert.ok(mermaidDimensions.height > 0);
+
+    const canvasWidth = browserMeasurer(
+      textMeasureRequest("Canvas", null, "canvas-measure-text-width", "svg-like")
+    );
+    assert.equal(canvasWidth.kind, "length");
+    assert.equal(canvasWidth.length, "Canvas".length * 16 * 0.55);
+
+    const extents = browserMeasurer(
+      textMeasureRequest("Centered", null, "bbox-x", "svg-like")
+    );
+    assert.equal(extents.bbox_left, extents.bbox_right);
+    assert.ok(extents.bbox_left > 0);
+
+    const wrappedWithRaw = browserMeasurer(
+      textMeasureRequest(
+        "Condition ".repeat(40),
+        200,
+        "wrapped-with-raw-width",
+        "html-like"
+      )
+    );
+    assert.equal(wrappedWithRaw.width, 200);
+    assert.ok(wrappedWithRaw.raw_width > wrappedWithRaw.width);
+
+    const svgWrapped = browserMeasurer(
+      textMeasureRequest("one two three four five", 60, "wrapped", "svg-like")
+    );
+    assert.ok(svgWrapped.line_count > 1);
+    measurementSession.dispose();
+    measurementSession.dispose();
+    assert.equal(
+      browserMeasurer(textMeasureRequest("Disposed", null, "measure", "svg-like")),
+      undefined
+    );
   });
 }
 
-const capabilities = api.bindingCapabilities();
-const defaultCapabilities = api.DEFAULT_BINDING_CAPABILITIES;
-assert.equal(typeof capabilities.render, "boolean");
-assert.equal(typeof capabilities.analysis, "boolean");
-assert.equal(typeof capabilities.ascii, "boolean");
-assert.equal(typeof capabilities.core_full, "boolean");
-assert.equal(typeof capabilities.core_host, "boolean");
-assert.equal(typeof capabilities.ratex_math, "boolean");
-assert.equal(typeof capabilities.editor_language, "boolean");
-assert.equal(typeof capabilities.text_measurement, "object");
-assert.equal(typeof capabilities.text_measurement.vendored, "boolean");
-assert.equal(typeof capabilities.text_measurement.deterministic, "boolean");
-assert.equal(typeof capabilities.text_measurement.host_callback, "boolean");
-assert.equal(typeof capabilities.text_measurement.font_assets, "boolean");
-assert.equal(capabilities.render, surfaceContract.render);
-assert.equal(capabilities.analysis, surfaceContract.analysis);
-assert.equal(capabilities.ascii, surfaceContract.ascii);
-assert.equal(capabilities.editor_language, surfaceContract.editor);
-assert.equal(capabilities.text_measurement.host_callback, capabilities.render);
-assert.equal(capabilities.editor_language, presetManifest.capabilities.editor_language);
-assert.equal(capabilities.analysis, presetManifest.capabilities.analysis);
-assert.equal(defaultCapabilities.render, surfaceContract.render);
-assert.equal(defaultCapabilities.analysis, surfaceContract.analysis);
-assert.equal(defaultCapabilities.ascii, surfaceContract.ascii);
-assert.equal(defaultCapabilities.editor_language, surfaceContract.editor);
-assert.equal(defaultCapabilities.text_measurement.host_callback, defaultCapabilities.render);
-
-const registryProfile = api.selectedRegistryProfile();
-assert.match(registryProfile, /^(full|tiny)$/);
-assert.equal(registryProfile, capabilities.core_full ? "full" : "tiny");
+assert.equal(runtimeCatalog.schema_version, 1);
+assert.equal(runtimeCatalog.transport_api_version, api.transportApiVersion());
+assert.equal(runtimeCatalog.package_version, api.packageVersion());
+assert.deepEqual(runtimeCatalog.capabilities, capabilities);
+assert.equal(
+  runtimeCatalog.registry.diagram_family_count,
+  api.diagramFamilyCapabilities().length
+);
+assert.equal(
+  runtimeCatalog.resources.general_binding_default_profile,
+  "interactive"
+);
+assert.equal(runtimeCatalog.resources.cli_default_profile, "trusted-native");
+const resourceLimitIds = runtimeCatalog.resources.limits
+  .map((limit) => limit.id)
+  .sort();
+const expectedResourceLimitIds = [
+  ...(hasCapability("ascii") ? ["max_ascii_grid_cells"] : []),
+  ...(hasCapability("analysis") ? ["max_document_diagrams"] : []),
+  ...(hasCapability("svg") ? ["max_layout_work_units"] : []),
+  "max_model_items",
+  "max_model_nesting_depth",
+  "max_model_text_bytes",
+  "max_source_bytes",
+  ...(hasCapability("svg") ? ["max_svg_bytes", "max_svg_elements"] : []),
+].sort();
+assert.deepEqual(resourceLimitIds, expectedResourceLimitIds);
+assertRuntimeOwnerEvidence(capabilities, {
+  runtime_capability_ids: presetManifest.runtime_capability_ids,
+  runtime_output_ids: presetManifest.outputs,
+});
+assert.ok(
+  capabilities.output_ids.every((outputId) =>
+    capabilities.operation_ids.includes(outputId)
+  )
+);
+assert.ok(
+  capabilities.system_adapter_ids.every((adapterId) =>
+    capabilities.capability_ids.includes(adapterId)
+  )
+);
+assert.deepEqual(capabilities.system_adapter_ids, []);
+if (hasCapability("svg")) {
+  assert.deepEqual(capabilities.text_measurement, {
+    protocol_version: textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION,
+    provider_ids: ["host-callback", "vendored"],
+  });
+} else {
+  assert.equal(capabilities.text_measurement, null);
+}
 
 const familyCapabilities = api.diagramFamilyCapabilities();
 assert.equal(Array.isArray(familyCapabilities), true);
@@ -203,14 +415,21 @@ assert.equal(
   familyCapabilities.some(
     (capability) =>
       capability.diagram_type === "flowchart" &&
+      capability.logical_family_kind === "flowchart" &&
       capability.metadata_id === "flowchart" &&
+      capability.render_model_kind === "flowchart" &&
+      capability.has_detector &&
       capability.has_semantic_parser &&
-      capability.has_render_parser
+      capability.has_editor_parser &&
+      capability.has_combined_parser &&
+      capability.has_render_parser &&
+      !capability.has_header &&
+      capability.config_namespace === "flowchart"
   ),
   true
 );
 
-if (capabilities.analysis) {
+if (hasCapability("analysis")) {
   const lintRules = api.lintRuleCatalog();
   assert.equal(Array.isArray(lintRules), true);
   const rawLintRuleCatalog = exportedWasmModule.lintRuleCatalog();
@@ -249,6 +468,7 @@ if (capabilities.analysis) {
   assert.equal(flowchartFacts.valid, true);
   assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
   assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
+  assert.equal(flowchartFacts.diagrams[0].syntax.effective_layout, "dagre");
   assert.equal(
     flowchartFacts.diagrams[0].syntax.flowchart.nodes.some((node) => node.id === "A"),
     true
@@ -266,7 +486,57 @@ if (capabilities.analysis) {
     true
   );
 
-  const degradedSequenceFacts = api.analysisFacts(
+  assert.deepEqual(api.detectDiagramFacts("flowchart TD\nA-->B\n", deterministicTime), {
+    status: "available",
+    validity: "valid",
+    diagramType: "flowchart",
+    syntaxId: "flowchart-v2",
+    effectiveLayoutId: "dagre",
+  });
+  assert.deepEqual(
+    api.detectDiagramFacts("classDiagram\nclass A\n", {
+      ...deterministicTime,
+      site_config: { layout: "elk" },
+    }),
+    {
+      status: "available",
+      validity: "valid",
+      diagramType: "class",
+      syntaxId: "class",
+      effectiveLayoutId: "elk",
+    }
+  );
+  const unavailableDetection = {
+    status: "unavailable",
+    validity: "unknown",
+    diagramType: null,
+    syntaxId: null,
+    effectiveLayoutId: null,
+  };
+  assert.deepEqual(api.detectDiagramFacts("", deterministicTime), unavailableDetection);
+  assert.deepEqual(
+    api.detectDiagramFacts("unknownDiagram\nA-->B\n", deterministicTime),
+    unavailableDetection
+  );
+  assert.deepEqual(
+    api.detectDiagramFacts("flowchart TD\nA[unterminated\n", deterministicTime),
+    {
+      status: "available",
+      validity: "recoverable-invalid",
+      diagramType: "flowchart",
+      syntaxId: "flowchart-v2",
+      effectiveLayoutId: "dagre",
+    }
+  );
+  assert.deepEqual(api.detectDiagramFacts("flowchart-elk TD\nA-->B\n", deterministicTime), {
+    status: "available",
+    validity: "valid",
+    diagramType: "flowchart",
+    syntaxId: "flowchart-elk",
+    effectiveLayoutId: "elk",
+  });
+
+  const mappedSequenceFacts = api.analysisFacts(
     [
       "---",
       "title: quoted",
@@ -278,12 +548,12 @@ if (capabilities.analysis) {
     ].join("\n"),
     deterministicTime
   );
-  assert.equal(degradedSequenceFacts.valid, true);
+  assert.equal(mappedSequenceFacts.valid, true);
   assert.equal(
-    degradedSequenceFacts.diagrams[0].syntax.fact_source,
-    "parser_complete_degraded_spans"
+    mappedSequenceFacts.diagrams[0].syntax.fact_source,
+    "parser_complete"
   );
-  assert.equal(degradedSequenceFacts.diagrams[0].syntax.source_mapped_spans, false);
+  assert.equal(mappedSequenceFacts.diagrams[0].syntax.source_mapped_spans, true);
 
   const markdownFacts = api.analyzeDocumentFacts(
     "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
@@ -331,16 +601,17 @@ if (capabilities.analysis) {
   assert.equal(typeof api.analyze, "undefined");
   assert.equal(typeof api.analyzeJson, "undefined");
   assert.equal(typeof api.analysisFacts, "undefined");
+  assert.equal(typeof api.detectDiagramFacts, "undefined");
   assert.equal(typeof api.analyzeDocument, "undefined");
   assert.equal(typeof api.analyzeDocumentFacts, "undefined");
   assert.equal(typeof api.validate, "undefined");
   assert.equal(typeof api.lintRuleCatalog, "undefined");
 }
 
-assertEditorLanguageSurface(capabilities.editor_language);
+assertEditorLanguageSurface(hasCapability("editor"));
 
-if (capabilities.render) {
-  assert.equal(capabilities.text_measurement.host_callback, true);
+if (hasCapability("svg")) {
+  assert.ok(capabilities.text_measurement?.provider_ids.includes("host-callback"));
 
   const rawGantt = `gantt
 title Project Development Plan
@@ -357,7 +628,7 @@ User Testing    :c2, after c1, 5d`;
   assert.match(
     api.renderSvg(rawGantt, {
       svg: { pipeline: "readable" },
-      layout: { text_measurer: "deterministic" },
+      environment: { text_measurement: "deterministic" },
     }),
     /<svg/
   );
@@ -367,23 +638,52 @@ User Testing    :c2, after c1, 5d`;
   assert.match(svg, /Hello/);
 
   let measureCallCount = 0;
+  const measurementPhases = new Set();
+  const measurementOperations = new Set();
   const hostTextMeasurer = (request) => {
     measureCallCount += 1;
-    return {
-      width: Math.max(1, request.text.length * 8),
-      height: Math.max(1, request.line_height || request.font_size),
-      line_count: 1,
-    };
+    measurementPhases.add(request.phase);
+    measurementOperations.add(request.operation);
+    return hostTextMeasurementResult(request);
   };
   const measuredSvg = api.renderSvgWithTextMeasurer(source, hostTextMeasurer, options);
   assert.match(measuredSvg, /<svg/);
   assert.match(measuredSvg, /Hello/);
+  assert.ok(
+    measurementPhases.size > 0 &&
+    [...measurementPhases].every((phase) =>
+      ["layout", "wrap", "svg-bbox", "computed-length"].includes(phase)
+    )
+  );
   assert.ok(measureCallCount > 0);
+  assert.ok(measurementOperations.has("wrapped"));
+
+  if (completeCytoscapeRenderSurface) {
+    const architectureOperations = new Map();
+    const architectureSvg = api.renderSvgWithTextMeasurer(
+      "architecture-beta\n  service api(server)[API service]\n",
+      (request) => {
+        architectureOperations.set(request.operation, request.phase);
+        return hostTextMeasurementResult(request);
+      },
+      options
+    );
+    assert.match(architectureSvg, /<svg/);
+    assert.ok(
+      architectureOperations.has("create-text-middle-bbox-y-offset"),
+      "Architecture host measurement must transport the signed middle-baseline offset"
+    );
+    assert.equal(
+      architectureOperations.get("create-text-middle-bbox-y-offset"),
+      "svg-bbox"
+    );
+  }
+
   const measuredLayout = api.layoutJsonWithTextMeasurer(source, hostTextMeasurer, options);
   assert.equal(typeof JSON.parse(measuredLayout), "object");
   for (const fallbackResult of [
     undefined,
-    { handled: false, width: 1, height: 1 },
+    { handled: false },
   ]) {
     let fallbackCallCount = 0;
     const fallbackSvg = api.renderSvgWithTextMeasurer(
@@ -403,36 +703,35 @@ User Testing    :c2, after c1, 5d`;
     { width: 1, height: 1, line_count: 0 },
   ]) {
     let fallbackCallCount = 0;
-    assert.throws(
-      () =>
-        api.renderSvgWithTextMeasurer(
-          source,
-          () => {
-            fallbackCallCount += 1;
-            return invalidResult;
-          },
-          options
-        ),
-      /host text measurer returned/
+    const fallbackSvg = api.renderSvgWithTextMeasurer(
+      source,
+      () => {
+        fallbackCallCount += 1;
+        return invalidResult;
+      },
+      options
     );
+    assert.match(fallbackSvg, /<svg/);
+    assert.match(fallbackSvg, /Hello/);
     assert.ok(fallbackCallCount > 0);
   }
-  assert.throws(
-    () =>
-      api.renderSvgWithTextMeasurer(
-        source,
-        () => {
-          throw new Error("host measurer failed");
-        },
-        options
-      ),
-    /host measurer failed/
+  let throwingCallCount = 0;
+  const throwingFallbackSvg = api.renderSvgWithTextMeasurer(
+    source,
+    () => {
+      throwingCallCount += 1;
+      throw new Error("host measurer failed");
+    },
+    options
   );
+  assert.match(throwingFallbackSvg, /<svg/);
+  assert.match(throwingFallbackSvg, /Hello/);
+  assert.ok(throwingCallCount > 0);
 
   assert.equal(typeof api.parseObject(source, deterministicTime), "object");
   assert.equal(typeof api.layoutObject(source, options), "object");
 
-  if (capabilities.analysis) {
+  if (hasCapability("analysis")) {
     const valid = api.validate(source, deterministicTime);
     assert.equal(valid.valid, true);
     assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
@@ -442,7 +741,7 @@ User Testing    :c2, after c1, 5d`;
     assert.equal(api.isBindingStatusCodeName(invalid.code_name), true);
   }
 } else {
-  if (capabilities.analysis) {
+  if (hasCapability("analysis")) {
     const valid = api.validate(source, deterministicTime);
     assert.equal(valid.valid, true);
     assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
@@ -457,11 +756,12 @@ User Testing    :c2, after c1, 5d`;
   assert.equal(typeof api.parseObject, "undefined");
   assert.equal(typeof api.layoutJson, "undefined");
   assert.equal(typeof api.layoutObject, "undefined");
+  assert.equal(typeof api.createBrowserTextMeasurementSession, "undefined");
   assert.equal(typeof api.createBrowserTextMeasurer, "undefined");
-  assert.equal(capabilities.text_measurement.host_callback, false);
+  assert.equal(capabilities.text_measurement, null);
 }
 
-if (capabilities.ascii) {
+if (hasCapability("ascii")) {
   const ascii = api.renderAscii(source, deterministicTime);
   assert.match(ascii, /Hello/);
   assert.match(ascii, /World/);
@@ -472,12 +772,12 @@ if (capabilities.ascii) {
 }
 
 assert.match(api.encodeOptions(options), /deterministic/);
-if (capabilities.render) {
+if (hasCapability("svg")) {
   assert.throws(() => api.renderSvgElement(source), /requires a browser DOM/);
 }
 
 assert.deepEqual(api.supportedThemes(), [...api.SUPPORTED_THEMES]);
-if (capabilities.render) {
+if (hasCapability("svg")) {
   assert.deepEqual(api.supportedHostThemePresets(), [
     ...api.SUPPORTED_HOST_THEME_PRESETS,
   ]);
@@ -485,56 +785,107 @@ if (capabilities.render) {
   assert.equal(typeof api.supportedHostThemePresets, "undefined");
 }
 
-if (capabilities.core_full) {
-  assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
-  assert.equal(
-    familyCapabilities.some((capability) => capability.diagram_type === "mindmap"),
-    true
-  );
-} else {
-  for (const diagram of api.supportedDiagrams()) {
-    assert.equal(api.isDiagramType(diagram), true);
-  }
-  assert.equal(
-    familyCapabilities.some((capability) => capability.diagram_type === "mindmap"),
-    false
-  );
+assert.deepEqual(api.supportedDiagrams(), [...api.SUPPORTED_DIAGRAMS]);
+assert.equal(
+  familyCapabilities.some((capability) => capability.diagram_type === "mindmap"),
+  true
+);
+for (const diagram of api.supportedDiagrams()) {
+  assert.equal(api.isDiagramType(diagram), true);
 }
 
-if (capabilities.ascii) {
+if (hasCapability("ascii")) {
   const asciiDiagrams = api.asciiSupportedDiagrams();
   for (const diagram of asciiDiagrams) {
     assert.equal(api.isAsciiDiagramType(diagram), true);
   }
 }
 
-function textMeasureRequest(text, maxWidth) {
+function textMeasureRequest(text, maxWidth, operation = "wrapped", wrapMode = "html-like") {
   return {
+    operation,
+    phase:
+      operation.startsWith("wrapped")
+        ? "wrap"
+        : operation === "canvas-measure-text-width"
+          ? "layout"
+          : "svg-bbox",
     text,
     font_family: "Trebuchet MS, sans-serif",
     font_size: 16,
     font_weight: "normal",
     font_style: "normal",
     max_width: maxWidth,
-    has_max_width: true,
+    has_max_width: maxWidth !== null,
     line_height: 24,
     letter_spacing: 0,
     word_spacing: 0,
-    wrap_mode: "html-like",
+    wrap_mode: wrapMode,
     direction: "ltr",
     white_space: "break-spaces",
   };
 }
 
+function hostTextMeasurementResult(request) {
+  const width = Math.max(1, request.text.length * 8);
+  const height = Math.max(1, request.line_height || request.font_size);
+  switch (request.operation) {
+    case "measure":
+    case "wrapped":
+    case "mermaid-calculate-text-dimensions":
+      return { kind: "metrics", width, height, line_count: 1 };
+    case "computed-length":
+    case "simple-bbox-width":
+    case "raw-bbox-width":
+    case "bounding-client-rect-width":
+    case "tspan-bbox-width":
+    case "wrap-probe-bbox-width":
+    case "canvas-measure-text-width":
+      return { kind: "length", length: width };
+    case "tspan-bbox-height":
+    case "simple-bbox-height":
+    case "raw-bbox-height":
+      return { kind: "length", length: height };
+    case "create-text-bbox-y-offset":
+      return { kind: "length", length: 1 };
+    case "create-text-middle-bbox-y-offset":
+      return { kind: "length", length: -1 };
+    case "bbox-x":
+    case "bbox-x-with-ascii-overhang":
+    case "title-bbox-x":
+      return { kind: "horizontal-extents", bbox_left: width / 2, bbox_right: width / 2 };
+    case "wrapped-with-raw-width":
+      return {
+        kind: "wrapped-with-raw-width",
+        width,
+        height,
+        line_count: 1,
+        raw_width: width,
+      };
+    default:
+      return undefined;
+  }
+}
+
 function withFakeMeasureDom(run) {
   const originalDocument = globalThis.document;
+  const canvasContext = {
+    font: "",
+    measureText(text) {
+      return { width: text.length * 16 * 0.55 };
+    },
+  };
   globalThis.document = {
     body: {
       appendChild() {},
     },
     createElement(tagName) {
-      assert.equal(tagName, "div");
-      return new FakeMeasureElement();
+      assert.ok(tagName === "div" || tagName === "canvas");
+      return new FakeMeasureElement(tagName, tagName === "canvas" ? canvasContext : null);
+    },
+    createElementNS(namespace, tagName) {
+      assert.equal(namespace, "http://www.w3.org/2000/svg");
+      return new FakeMeasureElement(tagName);
     },
   };
 
@@ -579,13 +930,22 @@ const fixtureNames = {
 
 const repositoryFixturePaths = {
   cynefin: ["fixtures", "cynefin", "basic_domains_transitions.mmd"],
+  eventmodeling: ["fixtures", "eventmodeling", "upstream_docs_eventmodeling_minimum.mmd"],
+  ishikawa: ["fixtures", "ishikawa", "upstream_docs_ishikawa_basic.mmd"],
   railroad: ["fixtures", "railroad", "basic_ir.mmd"],
   railroadAbnf: ["fixtures", "railroadAbnf", "repetition_optional_numval.mmd"],
   railroadEbnf: ["fixtures", "railroadEbnf", "choice_optional_repetition.mmd"],
   railroadPeg: ["fixtures", "railroadPeg", "prefix_suffix_any.mmd"],
+  swimlane: ["fixtures", "swimlane", "basic_flowchart_reuse.mmd"],
+  treeView: ["fixtures", "treeView", "upstream_docs_treeview_basic.mmd"],
+  wardley: [
+    "fixtures",
+    "wardley",
+    "upstream_cypress_wardley_spec_1_should_render_tea_shop_001.mmd",
+  ],
 };
 
-if (capabilities.render) {
+if (hasCapability("svg")) {
   for (const diagram of api.supportedDiagrams()) {
     const fixtureName = fixtureNames[diagram];
     const repositoryFixturePath = repositoryFixturePaths[diagram];
@@ -601,21 +961,51 @@ if (capabilities.render) {
         )
       : path.join(repoRoot, ...repositoryFixturePath);
     const fixture = await readFile(fixturePath, "utf8");
-    assert.match(api.renderSvg(fixture, deterministicTime), /<svg/);
+    try {
+      assert.match(api.renderSvg(fixture, deterministicTime), /<svg/);
+    } catch (error) {
+      assert.equal(
+        completeCytoscapeRenderSurface,
+        false,
+        `complete render surface failed to render ${diagram}`
+      );
+      assert.equal(
+        cytoscapeLayoutDiagramTypes.has(diagram),
+        true,
+        `unexpected render feature absence for ${diagram}`
+      );
+      assert.equal(error?.code_name, "MERMAN_UNSUPPORTED_OPERATION");
+      assert.equal(error?.kind, "missing-capability");
+      assert.equal(error?.capability_id, "layout-cytoscape");
+      assert.match(
+        error?.message ?? "",
+        new RegExp(
+          "compiled renderer lacks capability `layout-cytoscape` required by diagram `" +
+            diagram +
+            "`"
+        )
+      );
+    }
+    if (hasCapability("analysis")) {
+      const detection = api.detectDiagramFacts(fixture, deterministicTime);
+      assert.equal(detection.status, "available", `detection unavailable for ${diagram}`);
+      assert.equal(detection.diagramType, diagram, `detection mismatch for ${diagram}`);
+      assert.equal(typeof detection.syntaxId, "string");
+      assert.equal(typeof detection.effectiveLayoutId, "string");
+      if (diagram === "swimlane") {
+        assert.equal(detection.effectiveLayoutId, "swimlane");
+      }
+    }
   }
 }
 
 console.log(
   [
     "@mermanjs/web smoke passed",
-    `entry=${entrySubpath}`,
+    `package=${packageDescriptor.name}`,
     `diagrams=${api.supportedDiagrams().length}`,
-    `render=${capabilities.render}`,
-    `analysis=${capabilities.analysis}`,
-    `ascii=${capabilities.ascii}`,
-    `core_full=${capabilities.core_full}`,
-    `ratex_math=${capabilities.ratex_math}`,
-    `editor_language=${capabilities.editor_language}`,
+    `capabilities=${capabilities.capability_ids.join(",") || "none"}`,
+    `outputs=${capabilities.output_ids.join(",") || "none"}`,
     `text_measurement=${JSON.stringify(capabilities.text_measurement)}`,
   ].join(" ")
 );
@@ -629,8 +1019,33 @@ function assertEditorLanguageSurface(enabled) {
       assert.equal(typeof api[apiName], "undefined");
       assert.equal(typeof exportedWasmModule[apiName], "undefined");
     }
+    assert.equal(typeof exportedWasmModule.EditorSession, "undefined");
     return;
   }
+
+  assert.equal(typeof exportedWasmModule.EditorSession, "function");
+  const editorSession = api.createEditorSession(
+    editorSource,
+    1,
+    editorUri,
+    deterministicTime
+  );
+  assert.equal(editorSession.version, 1);
+  assert.equal(editorSession.uri, editorUri);
+  assert.equal(Array.isArray(editorSession.diagnostics().diagnostics), true);
+  assert.equal(typeof editorSession.searchDocumentSymbols, "function");
+  assert.equal(typeof editorSession.workspaceSymbols, "undefined");
+  assert.ok(
+    editorSession
+      .searchDocumentSymbols("A")
+      .some((symbol) => symbol.name === "A"),
+  );
+  editorSession.update("flowchart TD\nA-->B\nB-->C\n", 2);
+  assert.equal(editorSession.version, 2);
+  assert.ok(editorSession.semanticTokens() instanceof Uint32Array);
+  editorSession.dispose();
+  editorSession.dispose();
+  assert.throws(() => editorSession.diagnostics(), /editor session is disposed/i);
 
   const completions = api.editorCompletions(
     "flowchart TD\nA-->B\nC-->\n",
@@ -641,6 +1056,11 @@ function assertEditorLanguageSurface(enabled) {
 
   const diagnostics = api.editorDiagnostics(editorSource, deterministicTime, editorUri);
   assert.equal(Array.isArray(diagnostics.diagnostics), true);
+  assert.ok(
+    api
+      .editorSearchDocumentSymbols(editorSource, "A", editorUri, deterministicTime)
+      .some((symbol) => symbol.name === "A"),
+  );
 
   const editorLintOptions = {
     ...deterministicTime,
@@ -731,110 +1151,421 @@ function assertEditorLanguageSurface(enabled) {
     assert.match(error.message, messagePattern);
   }
 
-  const legend = api.editorSemanticTokenLegend();
-  assert.ok(legend.tokenTypes.length > 0);
+  assert.deepEqual(
+    api.editorDiagramDetection(
+      "flowchart TD\nA[unterminated\n",
+      undefined,
+      editorUri
+    ),
+    {
+      status: "available",
+      validity: "recoverable-invalid",
+      diagramType: "flowchart",
+      syntaxId: "flowchart-v2",
+      effectiveLayoutId: "dagre",
+    }
+  );
+
+  const descriptor = api.editorSemanticTokenDescriptor();
+  const descriptorCopy = api.editorSemanticTokenDescriptor();
+  assert.notEqual(descriptorCopy, descriptor);
+  assert.notEqual(descriptorCopy.renamePolicies, descriptor.renamePolicies);
+  assert.notEqual(descriptorCopy.tokenTypes, descriptor.tokenTypes);
+  assert.notEqual(descriptorCopy.modifiers, descriptor.modifiers);
+  assert.notEqual(descriptorCopy.packed, descriptor.packed);
+  assert.notEqual(descriptorCopy.packed.fieldOrder, descriptor.packed.fieldOrder);
+  assert.notEqual(descriptorCopy.overlayPrecedence, descriptor.overlayPrecedence);
+  descriptorCopy.tokenTypes[0].id = "mutated";
+  descriptorCopy.renamePolicies[0] = "mutated";
+  descriptorCopy.packed.fieldOrder[0] = "mutated";
+  const descriptorAfterMutation = api.editorSemanticTokenDescriptor();
+  assert.equal(descriptorAfterMutation.tokenTypes[0].id, descriptor.tokenTypes[0].id);
+  assert.equal(
+    descriptorAfterMutation.renamePolicies[0],
+    descriptor.renamePolicies[0]
+  );
+  assert.equal(
+    descriptorAfterMutation.packed.fieldOrder[0],
+    descriptor.packed.fieldOrder[0]
+  );
+  assert.equal(descriptor.digest, api.SEMANTIC_TOKEN_DESCRIPTOR_DIGEST);
+  assert.equal(tokenEquivalenceEvidence.schema_version, descriptor.schemaVersion);
+  assert.equal(
+    tokenEquivalenceEvidence.descriptor_digest,
+    api.SEMANTIC_TOKEN_DESCRIPTOR_DIGEST
+  );
+  assert.equal(tokenEquivalenceEvidence.packed_encoding, descriptor.packed.encoding);
+  assert.equal(
+    tokenEquivalenceEvidence.words_per_token,
+    api.SEMANTIC_TOKEN_RECORD_WIDTH
+  );
+  assert.deepEqual(
+    descriptor.tokenTypeLspNames,
+    api.SEMANTIC_TOKEN_TYPE_LSP_NAMES
+  );
   const semanticTokens = api.editorSemanticTokens(
     "flowchart TD\nAlpha-->Beta\nAlpha-->Gamma\n",
     editorUri
   );
   assert.ok(semanticTokens.length > 0);
-  assert.ok(semanticTokens.every((token) => legend.tokenTypes.includes(token.tokenType)));
+  assert.ok(semanticTokens instanceof Uint32Array);
+  assert.equal(semanticTokens.length % api.SEMANTIC_TOKEN_RECORD_WIDTH, 0);
+  for (
+    let offset = 0;
+    offset < semanticTokens.length;
+    offset += api.SEMANTIC_TOKEN_RECORD_WIDTH
+  ) {
+    assert.ok(semanticTokens[offset + 2] > 0);
+    assert.ok(semanticTokens[offset + 3] <= api.SEMANTIC_TOKEN_VALID_TYPE_CODE_MAX);
+    assert.equal(
+      semanticTokens[offset + 4] & ~api.SEMANTIC_TOKEN_VALID_MODIFIER_MASK,
+      0
+    );
+  }
+
+  assert.equal(tokenEquivalenceEvidence.family_cases.length, 35);
+  assert.equal(tokenEquivalenceEvidence.recovery_cases.length, 1);
+  for (const tokenCase of [
+    ...tokenEquivalenceEvidence.family_cases,
+    ...tokenEquivalenceEvidence.recovery_cases,
+  ]) {
+    const uri = `file:///token-equivalence/${tokenCase.id}.mmd`;
+    const actual = api.editorSemanticTokens(tokenCase.source, uri);
+    assert.ok(actual instanceof Uint32Array, `${tokenCase.id} packed transport type`);
+    assert.deepEqual(
+      Array.from(actual),
+      tokenCase.packed_words,
+      `${tokenCase.id} packed semantic tokens`
+    );
+    assert.equal(
+      sha256(JSON.stringify(Array.from(actual))),
+      tokenCase.packed_sha256,
+      `${tokenCase.id} packed digest`
+    );
+    const detection = api.editorDiagramDetection(tokenCase.source, undefined, uri);
+    assert.equal(detection.status, "available", `${tokenCase.id} detection status`);
+    assert.equal(detection.validity, tokenCase.detection_validity);
+    assert.equal(detection.diagramType, tokenCase.family);
+    assert.equal(detection.syntaxId, tokenCase.syntax_id);
+    assert.equal(detection.effectiveLayoutId, tokenCase.effective_layout_id);
+  }
 
   for (const apiName of [
     "editorDiagnostics",
+    "editorDiagramDetection",
     "editorCodeActions",
     "editorCompletions",
     "editorHover",
     "editorDocumentSymbols",
-    "editorWorkspaceSymbols",
+    "editorSearchDocumentSymbols",
     "editorDefinition",
     "editorReferences",
     "editorPrepareRename",
     "editorRename",
-    "editorSemanticTokenLegend",
+    "editorSemanticTokenDescriptor",
     "editorSemanticTokens",
   ]) {
     assert.equal(typeof exportedWasmModule[apiName], "function");
   }
+  assert.equal(typeof exportedWasmModule.editorWorkspaceSymbols, "undefined");
 }
 
-function assertUnsupportedFormat(run) {
+function sha256(value) {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+function assertUnsupportedOperation(run) {
   let error = null;
   try {
     run();
   } catch (caught) {
     error = caught;
   }
-  assert.ok(error, "expected MERMAN_UNSUPPORTED_FORMAT error");
-  assert.equal(error.code_name, "MERMAN_UNSUPPORTED_FORMAT");
+  assert.ok(error, "expected MERMAN_UNSUPPORTED_OPERATION error");
+  assert.equal(error.code_name, "MERMAN_UNSUPPORTED_OPERATION");
 }
 
-async function runSameProcessSurfaceSmoke() {
+async function runSameProcessPackageSmoke() {
   const source = "flowchart TD\nA[Hello] --> B[World]";
   const options = {
     fixed_today: "2026-06-10",
     fixed_local_offset_minutes: 0,
     svg: { pipeline: "readable" },
-    layout: { text_measurer: "deterministic" },
+    environment: { text_measurement: "deterministic" },
   };
-  const core = await import(toPackageSpecifier("./core"));
-  const full = await import(toPackageSpecifier("./full"));
+  const analysisDescriptor = packageDescriptorForId("analysis");
+  const fullDescriptor = packageDescriptorForId("full");
+  const { bindSurfaceRuntime } = await import(sharedDistUrl("surface-runtime.js"));
+  const analysisWasm = await import(
+    pathToFileURL(
+      path.join(packageRoot, analysisDescriptor.package_dir, "artifacts", "wasm", "merman_wasm.js")
+    ).href,
+  );
+  const fullWasm = await import(
+    pathToFileURL(
+      path.join(packageRoot, fullDescriptor.package_dir, "artifacts", "wasm", "merman_wasm.js")
+    ).href,
+  );
+  const analysisImplementation = await runtimeImplementationForSurface(
+    analysisDescriptor,
+  );
+  const fullImplementation = await runtimeImplementationForSurface(
+    fullDescriptor,
+  );
+  const analysis = projectInternalApiForSurface(
+    bindSurfaceRuntime(async () => analysisWasm, analysisImplementation),
+    packageContract(analysisDescriptor),
+  );
+  const full = projectInternalApiForSurface(
+    bindSurfaceRuntime(async () => fullWasm, fullImplementation),
+    packageContract(fullDescriptor),
+  );
 
-  await core.initMerman({
-    wasm: {
-      module_or_path: await readFile(
-        path.join(packageRoot, "pkg/core/merman_wasm_bg.wasm")
-      ),
-    },
+  await analysis.initMerman({
+    wasm: await readFile(
+      path.join(packageRoot, analysisDescriptor.package_dir, "artifacts", "wasm", "merman_wasm_bg.wasm")
+    ),
   });
-  assert.equal(core.bindingCapabilities().render, false);
-  assert.equal(typeof core.renderSvg, "undefined");
+  assert.equal(
+    analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
+    false
+  );
+  assert.equal(typeof analysis.renderSvg, "undefined");
 
   await full.initMerman({
-    wasm: {
-      module_or_path: await readFile(
-        path.join(packageRoot, "pkg/full/merman_wasm_bg.wasm")
+    wasm: await readFile(
+      path.join(packageRoot, fullDescriptor.package_dir, "artifacts", "wasm", "merman_wasm_bg.wasm")
+    ),
+  });
+  assert.equal(
+    full.runtimeCatalog().capabilities.capability_ids.includes("svg"),
+    true
+  );
+  assert.equal(
+    full.runtimeCatalog().resources.general_binding_default_profile,
+    "interactive"
+  );
+  assert.match(full.renderSvg(source, options), /<svg/);
+  assert.equal(
+    analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
+    false
+  );
+  assert.equal(typeof analysis.renderSvg, "undefined");
+}
+
+async function runtimeImplementationForSurface(descriptor) {
+  const implementation = {};
+  for (const { specifier, exportNames } of descriptor.runtimeExportModules) {
+    const module = await import(
+      sharedDistUrl(specifier.replace(/^\.\.\//, ""))
+    );
+    for (const name of exportNames) {
+      implementation[name] = module[name];
+    }
+  }
+  return implementation;
+}
+
+async function withNodeDomShim(run) {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: {} });
+  try {
+    return await run();
+  } finally {
+    restoreGlobalProperty("window", previousWindow);
+    restoreGlobalProperty("document", previousDocument);
+  }
+}
+
+function restoreGlobalProperty(name, descriptor) {
+  if (descriptor) {
+    Object.defineProperty(globalThis, name, descriptor);
+  } else {
+    delete globalThis[name];
+  }
+}
+
+async function assertNoDeprecatedWasmBindgenInitWarning(run) {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.map(String).join(" "));
+  try {
+    await run();
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.deepEqual(
+    warnings.filter((warning) =>
+      warning.includes("deprecated parameters for the initialization function")
+    ),
+    [],
+    "the public wrapper must own wasm-bindgen's object-shaped initialization contract"
+  );
+}
+
+async function runPureDistSmoke() {
+  const catalogSpecifier = sharedDistUrl("public-catalog.js");
+  const svgSafetySpecifier = sharedDistUrl("svg-safety.js");
+  const textMeasurementAbiSpecifier = sharedDistUrl("generated/text-measurement-abi.js");
+  const catalogFile = fileURLToPath(catalogSpecifier);
+  const svgSafetyFile = fileURLToPath(svgSafetySpecifier);
+  const textMeasurementAbiFile = fileURLToPath(textMeasurementAbiSpecifier);
+  assert.equal(catalogFile, path.join(packageRoot, "dist", "public-catalog.js"));
+  assert.equal(svgSafetyFile, path.join(packageRoot, "dist", "svg-safety.js"));
+  assert.equal(
+    textMeasurementAbiFile,
+    path.join(packageRoot, "dist", "generated", "text-measurement-abi.js")
+  );
+  await assertPureDistModuleGraph([
+    catalogFile,
+    svgSafetyFile,
+    textMeasurementAbiFile,
+  ]);
+
+  const [catalog, svgSafety, textMeasurementAbi] = await Promise.all([
+    import(catalogSpecifier),
+    import(svgSafetySpecifier),
+    import(textMeasurementAbiSpecifier),
+  ]);
+  assert.equal(catalog.SUPPORTED_DIAGRAMS.length, 35);
+  assert.equal(catalog.isDiagramType("swimlane"), true);
+  assert.equal(catalog.normalizeThemeName("neo-dark"), "neo-dark");
+  assert.equal("initMerman" in catalog, false);
+  assert.equal(typeof svgSafety.assertSafeSvgForDom, "function");
+  assert.equal(textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 1);
+  assert.deepEqual(
+    textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ code }) => code),
+    Array.from({ length: 19 }, (_, code) => code)
+  );
+  assert.deepEqual(
+    textMeasurementAbi.HOST_TEXT_MEASUREMENT_RESULT_KINDS.map(({ code }) => code),
+    Array.from({ length: 4 }, (_, code) => code)
+  );
+  assert.equal(
+    new Set(
+      textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ name }) => name)
+    ).size,
+    19
+  );
+  assert.deepEqual(
+    textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS
+      .filter(({ acceptsSignedLength }) => acceptsSignedLength)
+      .map(({ name }) => name),
+    ["create-text-bbox-y-offset", "create-text-middle-bbox-y-offset"]
+  );
+  svgSafety.assertSafeSvgForDom('<svg xmlns="http://www.w3.org/2000/svg" />');
+  assert.throws(
+    () =>
+      svgSafety.assertSafeSvgForDom(
+        '<svg xmlns="http://www.w3.org/2000/svg"><script /></svg>'
       ),
+    /active embedded content/
+  );
+}
+
+async function assertPureDistModuleGraph(entries) {
+  const distRoot = path.join(packageRoot, "dist");
+  const pending = [...entries];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const file = path.resolve(pending.pop());
+    if (visited.has(file)) continue;
+    const relative = path.relative(distRoot, file);
+    assert.ok(
+      relative && !relative.startsWith("..") && !path.isAbsolute(relative),
+      `pure Web subpath escaped dist: ${file}`
+    );
+    assert.notEqual(relative, "index.js", "pure Web subpath reached the WASM facade");
+    visited.add(file);
+
+    const source = await readFile(file, "utf8");
+    for (const specifier of moduleSpecifiers(source, file)) {
+      assert.ok(
+        specifier.startsWith("."),
+        `pure Web subpath has a non-local dependency: ${specifier}`
+      );
+      pending.push(path.resolve(path.dirname(file), specifier));
+    }
+  }
+}
+
+function moduleSpecifiers(source, file) {
+  const syntax = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS
+  );
+  const specifiers = [];
+  const visit = (node) => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteralLike(node.moduleSpecifier)
+    ) {
+      specifiers.push(node.moduleSpecifier.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      specifiers.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(syntax);
+  return specifiers;
+}
+
+function packageContract(descriptor) {
+  return {
+    ...descriptor,
+    render: descriptor.runtimeExportNames.includes("renderSvg"),
+    analysis: descriptor.runtimeExportNames.includes("analyze"),
+    ascii: descriptor.runtimeExportNames.includes("renderAscii"),
+    editor: descriptor.runtimeExportNames.includes("editorDiagnostics"),
+  };
+}
+
+function projectInternalApiForSurface(api, contract) {
+  const allowed = new Set([
+    ...contract.runtimeExportNames,
+    ...contract.valueExportNames,
+  ]);
+  const surfaceOwnedExports = new Set([
+    ...allPackageRuntimeExportNames,
+    ...allPackageValueExportNames,
+  ]);
+  return new Proxy(api, {
+    get(target, property, receiver) {
+      if (
+        typeof property === "string" &&
+        surfaceOwnedExports.has(property) &&
+        !allowed.has(property)
+      ) {
+        return undefined;
+      }
+      return Reflect.get(target, property, receiver);
     },
   });
-  assert.equal(full.bindingCapabilities().render, true);
-  assert.match(full.renderSvg(source, options), /<svg/);
-  assert.equal(core.bindingCapabilities().render, false);
-  assert.equal(typeof core.renderSvg, "undefined");
-}
-
-function surfaceContractForEntry(subpath) {
-  const trimmed = subpath.replace(/^\.\//, "").replace(/^\//, "");
-  if (subpath === "." || trimmed === "index" || trimmed === "full") {
-    return buildSurfaceContract(fullSurface);
-  }
-
-  const surface = surfaces.find((candidate) => candidate.entry === trimmed);
-  if (!surface) {
-    throw new Error(`unknown smoke entry subpath: ${subpath}`);
-  }
-  return buildSurfaceContract(surface);
-}
-
-function buildSurfaceContract(surface) {
-  return {
-    ...surface,
-    render: surface.runtimeExportNames.includes("renderSvg"),
-    analysis: surface.runtimeExportNames.includes("analyze"),
-    ascii: surface.runtimeExportNames.includes("renderAscii"),
-    editor: surface.runtimeExportNames.includes("editorDiagnostics"),
-  };
 }
 
 function assertSurfaceExports(moduleApi, contract) {
   const expectedRuntimeExports = new Set(contract.runtimeExportNames);
   const expectedValueExports = new Set(contract.valueExportNames);
 
-  for (const name of allSurfaceRuntimeExportNames) {
+  assert.equal(typeof moduleApi.MERMAN_WASM_URL, "string");
+  assert.equal(typeof moduleApi.loadMermanWasmModule, "function");
+
+  for (const name of allPackageRuntimeExportNames) {
     assertExport(moduleApi, name, expectedRuntimeExports.has(name));
   }
 
-  for (const name of allSurfaceValueExportNames) {
+  for (const name of allPackageValueExportNames) {
     assertExport(moduleApi, name, expectedValueExports.has(name));
   }
 }
@@ -847,33 +1578,28 @@ function assertExport(moduleApi, name, enabled) {
   }
 }
 
-function toPackageSpecifier(subpath) {
-  if (subpath === "." || subpath === "" || subpath === "./index") {
-    return "@mermanjs/web";
-  }
-  if (subpath.startsWith("./")) {
-    return `@mermanjs/web/${subpath.slice(2)}`;
-  }
-  return `@mermanjs/web/${subpath.replace(/^\//, "")}`;
+function packageDescriptorForId(id) {
+  const descriptor = webPackages.find((candidate) => candidate.id === id);
+  if (!descriptor) throw new Error(`Unknown Web package ${id}.`);
+  return descriptor;
 }
 
-function parseCli(inputArgs, root = packageRoot) {
+function packageEntryUrl(descriptor) {
+  return pathToFileURL(
+    path.join(packageRoot, descriptor.package_dir, "dist", "package-entries", `${descriptor.id}.js`),
+  ).href;
+}
+
+function sharedDistUrl(relative) {
+  return pathToFileURL(path.join(packageRoot, "dist", relative)).href;
+}
+
+function parseCli(inputArgs) {
   try {
-    return parseSmokeCli(inputArgs, root);
+    return parseSmokeCli(inputArgs);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     console.error(smokeUsage());
     process.exit(2);
   }
-}
-
-function surfaceSmokeCase(name, entry, pkgDirRel) {
-  return {
-    name,
-    entry,
-    pkgDirRel,
-    wasmModuleSubpath: `./${pkgDirRel}/merman_wasm.js`,
-    wasmBinaryRel: `${pkgDirRel}/merman_wasm_bg.wasm`,
-    manifestRel: `${pkgDirRel}/merman_wasm_preset.json`,
-  };
 }

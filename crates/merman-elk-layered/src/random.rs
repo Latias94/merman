@@ -4,11 +4,148 @@
 //! - https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.alg.layered/src/org/eclipse/elk/alg/layered/GraphConfigurator.java
 //! - OpenJDK `java.util.Random` seed scrambling and `nextInt(int)` semantics.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 const MULTIPLIER: u64 = 0x5DEECE66D;
 const ADDEND: u64 = 0xB;
 const MASK: u64 = (1u64 << 48) - 1;
+
+/// A nonzero seed captured once by the owner of a layout operation.
+///
+/// This is deliberately distinct from ELK's configured `randomSeed`: ELK uses `0` in that
+/// option as an *unseeded sentinel*, while a Merman operation always owns a nonzero entropy
+/// source. The source port can then replace only the sentinel without changing the configured
+/// Java `i32` values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OperationSeed(std::num::NonZeroU64);
+
+impl OperationSeed {
+    /// Creates the seed token from a render/layout operation's already-captured random seed.
+    ///
+    /// Callers must create one token per operation and reuse it for every graph belonging to that
+    /// operation. Requiring `NonZeroU64` prevents a source `randomSeed = 0` sentinel from being
+    /// accidentally repurposed as the operation key.
+    pub const fn from_operation_seed(seed: std::num::NonZeroU64) -> Self {
+        Self(seed)
+    }
+
+    const fn value(self) -> u64 {
+        self.0.get()
+    }
+}
+
+/// Failure to resolve ELK's upstream unseeded random sentinel at an execution boundary.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum RandomSeedError {
+    #[error(
+        "ELK graph `{graph_path}` uses randomSeed=0; execute it through an operation-owned seed"
+    )]
+    Unresolved { graph_path: String },
+}
+
+/// The only source-port boundary that creates ELK's graph-level Java random generator.
+///
+/// Keeping this phase explicit makes a later port of another Java random boundary unable to
+/// silently share the GraphConfigurator stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RandomSeedPhase {
+    GraphConfigurator,
+}
+
+impl RandomSeedPhase {
+    const fn domain_label(self) -> &'static str {
+        match self {
+            Self::GraphConfigurator => "GraphConfigurator.configureGraphProperties",
+        }
+    }
+}
+
+/// Resolves ELK's `randomSeed` sentinel without ambient process randomness.
+///
+/// Raw source-port graphs start in `RequireExplicit` mode. Only adapter code that owns an
+/// operation can install `Operation`, and even then the configured source value is preserved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RandomSeedAuthority {
+    RequireExplicit,
+    Operation(OperationSeed),
+}
+
+impl RandomSeedAuthority {
+    pub(crate) const fn require_explicit() -> Self {
+        Self::RequireExplicit
+    }
+
+    pub(crate) const fn operation(seed: OperationSeed) -> Self {
+        Self::Operation(seed)
+    }
+
+    /// Resolves a configured seed at a specific source-port random boundary.
+    ///
+    /// ELK stores `randomSeed` as an `i32`, but Java's `Random` accepts an `i64`. Nonzero
+    /// configured values preserve ELK's exact signed `i32 -> i64` conversion. The upstream zero
+    /// sentinel is derived from the owning operation, stable graph path, random boundary, and
+    /// invocation without truncating the operation seed to `i32`.
+    pub(crate) fn resolve(
+        self,
+        configured_seed: i32,
+        graph_path: &[&str],
+        phase: RandomSeedPhase,
+        configuration_invocation: u64,
+    ) -> Result<i64, RandomSeedError> {
+        if configured_seed != 0 {
+            return Ok(i64::from(configured_seed));
+        }
+        let Self::Operation(operation_seed) = self else {
+            return Err(RandomSeedError::Unresolved {
+                graph_path: graph_path.join("/"),
+            });
+        };
+        Ok(derive_java_seed(
+            operation_seed,
+            graph_path,
+            phase,
+            configuration_invocation,
+        ))
+    }
+}
+
+fn derive_java_seed(
+    operation_seed: OperationSeed,
+    graph_path: &[&str],
+    phase: RandomSeedPhase,
+    configuration_invocation: u64,
+) -> i64 {
+    // FNV-1a plus an avalanche step gives a stable, target-independent Java long. This is only
+    // used to replace ELK's unseeded sentinel; configured nonzero values pass through untouched.
+    // The phase and invocation components mirror ELK constructing fresh Java random streams at
+    // distinct source boundaries while retaining replayable operation ownership.
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for component in std::iter::once("merman-elk-layered.random-seed.v2")
+        .chain(std::iter::once(phase.domain_label()))
+        .chain(graph_path.iter().copied())
+    {
+        for byte in component.as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
+        }
+        hash ^= 0xff;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
+    }
+    for byte in operation_seed
+        .value()
+        .to_le_bytes()
+        .into_iter()
+        .chain(configuration_invocation.to_le_bytes())
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01B3);
+    }
+    hash ^= hash >> 30;
+    hash = hash.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    hash ^= hash >> 27;
+    hash = hash.wrapping_mul(0x94d0_49bb_1331_11eb);
+    hash ^= hash >> 31;
+
+    hash as i64
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JavaRandom {
@@ -19,14 +156,6 @@ impl JavaRandom {
     pub fn new(seed: i64) -> Self {
         Self {
             seed: ((seed as u64) ^ MULTIPLIER) & MASK,
-        }
-    }
-
-    pub fn from_layout_seed(seed: i32) -> Self {
-        if seed == 0 {
-            Self::new(unseeded_seed())
-        } else {
-            Self::new(i64::from(seed))
         }
     }
 
@@ -82,15 +211,8 @@ impl JavaRandom {
 
 impl Default for JavaRandom {
     fn default() -> Self {
-        Self::from_layout_seed(1)
+        Self::new(1)
     }
-}
-
-fn unseeded_seed() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos() as i64)
-        .unwrap_or(1)
 }
 
 #[cfg(test)]
@@ -116,5 +238,71 @@ mod tests {
 
         let mut random = JavaRandom::new(1);
         assert_eq!(random.next_long(), -4964420948893066024);
+    }
+
+    #[test]
+    fn explicit_java_seed_zero_is_deterministic() {
+        let mut random = JavaRandom::new(0);
+
+        assert_eq!(random.next_int(3), Some(0));
+        assert_eq!(random.next_int(3), Some(1));
+        assert_eq!(random.next_int(10), Some(9));
+
+        let mut random = JavaRandom::new(0);
+        assert_eq!(random.next_long(), -4962768465676381896);
+    }
+
+    #[test]
+    fn operation_seed_authority_preserves_nonzero_java_i32_values() {
+        let authority = RandomSeedAuthority::operation(operation_seed());
+        for configured in [i32::MIN, -1, 1, i32::MAX] {
+            assert_eq!(
+                authority.resolve(configured, &["root"], RandomSeedPhase::GraphConfigurator, 0,),
+                Ok(i64::from(configured))
+            );
+        }
+    }
+
+    #[test]
+    fn raw_authority_rejects_elk_zero() {
+        assert_eq!(
+            RandomSeedAuthority::require_explicit().resolve(
+                0,
+                &["root"],
+                RandomSeedPhase::GraphConfigurator,
+                0,
+            ),
+            Err(RandomSeedError::Unresolved {
+                graph_path: "root".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn operation_seed_fallback_is_stable_and_graph_path_invocation_scoped() {
+        let authority = RandomSeedAuthority::operation(operation_seed());
+        let root = authority.resolve(0, &["root"], RandomSeedPhase::GraphConfigurator, 0);
+        let nested =
+            authority.resolve(0, &["root", "group"], RandomSeedPhase::GraphConfigurator, 0);
+
+        assert_eq!(
+            root,
+            authority.resolve(0, &["root"], RandomSeedPhase::GraphConfigurator, 0)
+        );
+        assert_eq!(
+            nested,
+            authority.resolve(0, &["root", "group"], RandomSeedPhase::GraphConfigurator, 0,)
+        );
+        assert_ne!(root, nested);
+        assert_ne!(
+            root,
+            authority.resolve(0, &["root"], RandomSeedPhase::GraphConfigurator, 1)
+        );
+    }
+
+    fn operation_seed() -> OperationSeed {
+        OperationSeed::from_operation_seed(
+            std::num::NonZeroU64::new(0x1234_5678_9abc_def0).expect("nonzero operation seed"),
+        )
     }
 }

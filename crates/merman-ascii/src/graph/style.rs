@@ -1,8 +1,8 @@
 use super::model::{GraphEdgeStyle, GraphGroupStyle, GraphNodeStyle};
 use crate::style_color::{parse_border_color, parse_css_color};
-use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartV2Model};
+use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartModel};
 
-pub(super) fn resolve_node_style(model: &FlowchartV2Model, node: &FlowNode) -> GraphNodeStyle {
+pub(super) fn resolve_node_style(model: &FlowchartModel, node: &FlowNode) -> GraphNodeStyle {
     let mut style = GraphNodeStyle::default();
     for class_name in &node.classes {
         if let Some(class_styles) = model.class_defs.get(class_name) {
@@ -13,7 +13,7 @@ pub(super) fn resolve_node_style(model: &FlowchartV2Model, node: &FlowNode) -> G
     style
 }
 
-pub(super) fn resolve_edge_style(model: &FlowchartV2Model, edge: &FlowEdge) -> GraphEdgeStyle {
+pub(super) fn resolve_edge_style(model: &FlowchartModel, edge: &FlowEdge) -> GraphEdgeStyle {
     let mut style = GraphEdgeStyle::default();
     if let Some(defaults) = &model.edge_defaults {
         apply_edge_declarations(&mut style, &defaults.style);
@@ -27,10 +27,7 @@ pub(super) fn resolve_edge_style(model: &FlowchartV2Model, edge: &FlowEdge) -> G
     style
 }
 
-pub(super) fn resolve_group_style(
-    model: &FlowchartV2Model,
-    group: &FlowSubgraph,
-) -> GraphGroupStyle {
+pub(super) fn resolve_group_style(model: &FlowchartModel, group: &FlowSubgraph) -> GraphGroupStyle {
     let mut style = GraphGroupStyle::default();
     for class_name in &group.classes {
         if let Some(class_styles) = model.class_defs.get(class_name) {

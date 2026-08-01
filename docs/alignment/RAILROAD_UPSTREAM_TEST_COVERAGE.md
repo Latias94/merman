@@ -45,24 +45,23 @@ Scope: Mermaid tag `@11.16.0`.
 
 ## Fixture Coverage
 
-- `fixtures/railroad/basic_ir.mmd`
-  - Semantic snapshot: `fixtures/railroad/basic_ir.golden.json`
-  - Layout snapshot: `fixtures/railroad/basic_ir.layout.golden.json`
-- `fixtures/railroadEbnf/choice_optional_repetition.mmd`
-  - Semantic snapshot: `fixtures/railroadEbnf/choice_optional_repetition.golden.json`
-  - Layout snapshot: `fixtures/railroadEbnf/choice_optional_repetition.layout.golden.json`
-- `fixtures/railroadAbnf/repetition_optional_numval.mmd`
-  - Semantic snapshot: `fixtures/railroadAbnf/repetition_optional_numval.golden.json`
-  - Layout snapshot: `fixtures/railroadAbnf/repetition_optional_numval.layout.golden.json`
-- `fixtures/railroadPeg/prefix_suffix_any.mmd`
-  - Semantic snapshot: `fixtures/railroadPeg/prefix_suffix_any.golden.json`
-  - Layout snapshot: `fixtures/railroadPeg/prefix_suffix_any.layout.golden.json`
+- The active corpus contains 13 fixtures, partitioned by source:
+  - 9 Mermaid Cypress render cases from `repo-ref/mermaid/cypress/integration/rendering/railroad/railroad.spec.ts`:
+    five IR cases, two EBNF cases, one ABNF case, and one PEG case.
+  - 4 local syntax/parser fixtures, one for each dialect, covering the compact IR, EBNF, ABNF, and
+    PEG forms used by the semantic/editor tests:
+    `fixtures/railroad/basic_ir.mmd`, `fixtures/railroadEbnf/choice_optional_repetition.mmd`,
+    `fixtures/railroadAbnf/repetition_optional_numval.mmd`, and
+    `fixtures/railroadPeg/prefix_suffix_any.mmd`.
+- Every active fixture has a semantic golden, a typed-layout golden, and a pinned Mermaid SVG. The
+  Cypress set supplies source-backed renderer evidence; the four local fixtures keep parser/editor
+  and dialect-specific edge cases in the ordinary snapshot lane.
 
 ## Upstream SVG Baselines
 
-All four Railroad variants are admitted to the primary SVG parity matrix. Each normalized fixture
-has a complete Mermaid `@11.16.0` baseline under its `fixtures/upstream-svgs/railroad*/` directory,
-with per-file input/SVG hashes and an explicit `adopted-existing` provenance attestation. The four
+All four Railroad variants are admitted to the primary SVG parity matrix. The 13 normalized fixtures
+have complete Mermaid `@11.16.0` baselines under the four `fixtures/upstream-svgs/railroad*/`
+directories, with per-file input/SVG hashes and explicit provenance attestations. The four
 family-local compare commands and the ordinary `compare-all-svgs` structural DOM gate cover the
 committed corpus; browser-derived root-height differences remain in the exact root residual lane.
 
@@ -73,3 +72,13 @@ committed corpus; browser-derived root-height differences remain in the exact ro
   consume them in drawing; the local compatibility renderer follows the upstream rendering behavior.
 - The upstream 11.16 renderer does not draw repetition separator or maximum cardinality metadata;
   the local layout keeps those parser facts in the model but does not invent extra SVG semantics.
+
+## Verification
+
+```text
+cargo run -p xtask -- compare-railroad-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- compare-railroad-ebnf-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- compare-railroad-abnf-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- compare-railroad-peg-svgs --check-dom --dom-mode parity --dom-decimals 3
+cargo run -p xtask -- check-upstream-svgs --diagram railroad --check-dom --dom-mode parity --dom-decimals 3
+```

@@ -3,14 +3,14 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -361.2,
+        "min_x": -361.206,
         "min_y": -39.989,
         "max_x": 92.0,
         "max_y": 540.145
       },
-      "total_width": 453.2,
+      "total_width": 453.206,
       "total_height": 580.134,
-      "viewbox_x": -361.2,
+      "viewbox_x": -361.206,
       "viewbox_y": -39.989,
       "padding": 20.0,
       "use_max_width": true,
@@ -42,7 +42,7 @@
         }
       },
       "spine": {
-        "x1": -341.2,
+        "x1": -341.206,
         "y1": 392.857,
         "x2": 0.0,
         "y2": 392.857,
@@ -109,7 +109,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -152.779,
+                    "min_x": -152.775,
                     "min_y": 295.838,
                     "max_x": -60.935,
                     "max_y": 331.638
@@ -138,7 +138,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -174.589,
+                    "min_x": -174.59,
                     "min_y": 218.031,
                     "max_x": -71.87,
                     "max_y": 253.831
@@ -167,7 +167,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -173.368,
+                    "min_x": -173.365,
                     "min_y": 140.224,
                     "max_x": -82.805,
                     "max_y": 176.024
@@ -195,7 +195,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -175.818,
+                    "min_x": -175.82,
                     "min_y": 70.818,
                     "max_x": -93.74,
                     "max_y": 89.818
@@ -274,16 +274,16 @@
         {
           "upper": {
             "line": {
-              "x1": -175.818,
+              "x1": -175.82,
               "y1": 392.857,
-              "x2": -230.493,
+              "x2": -230.495,
               "y2": 3.823,
               "class_name": "ishikawa-branch",
               "marker_start": true
             },
             "label_group": {
               "label_box": {
-                "x": -284.413,
+                "x": -284.415,
                 "y": -19.989,
                 "width": 107.84,
                 "height": 23.0
@@ -294,15 +294,15 @@
                   "Equipment"
                 ],
                 "class_name": "ishikawa-label cause",
-                "x": -230.493,
+                "x": -230.495,
                 "y": -7.177,
                 "anchor": "middle",
                 "line_height": 16.8,
                 "font_size": 16.0,
                 "bbox": {
-                  "min_x": -264.413,
+                  "min_x": -264.415,
                   "min_y": -17.989,
-                  "max_x": -196.573,
+                  "max_x": -196.575,
                   "max_y": 1.011
                 }
               }
@@ -310,9 +310,9 @@
             "sub_groups": [
               {
                 "line": {
-                  "x1": -182.653,
+                  "x1": -182.655,
                   "y1": 344.228,
-                  "x2": -252.653,
+                  "x2": -252.655,
                   "y2": 344.228,
                   "class_name": "ishikawa-sub-branch",
                   "marker_start": true
@@ -323,24 +323,24 @@
                     "SENSOR"
                   ],
                   "class_name": "ishikawa-label align",
-                  "x": -252.653,
+                  "x": -252.655,
                   "y": 344.228,
                   "anchor": "end",
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -310.246,
+                    "min_x": -310.255,
                     "min_y": 333.415,
-                    "max_x": -252.653,
+                    "max_x": -252.655,
                     "max_y": 352.415
                   }
                 }
               },
               {
                 "line": {
-                  "x1": -229.319,
+                  "x1": -229.321,
                   "y1": 344.228,
-                  "x2": -236.154,
+                  "x2": -236.156,
                   "y2": 295.599,
                   "class_name": "ishikawa-sub-branch",
                   "marker_start": true
@@ -351,24 +351,24 @@
                     "Dirty sensor"
                   ],
                   "class_name": "ishikawa-label up",
-                  "x": -236.154,
+                  "x": -236.156,
                   "y": 295.599,
                   "anchor": "end",
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -319.357,
+                    "min_x": -319.356,
                     "min_y": 276.599,
-                    "max_x": -236.154,
+                    "max_x": -236.156,
                     "max_y": 295.599
                   }
                 }
               },
               {
                 "line": {
-                  "x1": -205.986,
+                  "x1": -205.988,
                   "y1": 344.228,
-                  "x2": -219.655,
+                  "x2": -219.657,
                   "y2": 246.969,
                   "class_name": "ishikawa-sub-branch",
                   "marker_start": true
@@ -379,24 +379,24 @@
                     "Damaged sensor"
                   ],
                   "class_name": "ishikawa-label up",
-                  "x": -219.655,
+                  "x": -219.657,
                   "y": 246.969,
                   "anchor": "end",
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -322.702,
+                    "min_x": -322.697,
                     "min_y": 227.969,
-                    "max_x": -219.655,
+                    "max_x": -219.657,
                     "max_y": 246.969
                   }
                 }
               },
               {
                 "line": {
-                  "x1": -203.156,
+                  "x1": -203.158,
                   "y1": 198.34,
-                  "x2": -278.156,
+                  "x2": -278.158,
                   "y2": 198.34,
                   "class_name": "ishikawa-sub-branch",
                   "marker_start": true
@@ -407,24 +407,24 @@
                     "LENS"
                   ],
                   "class_name": "ishikawa-label align",
-                  "x": -278.156,
+                  "x": -278.158,
                   "y": 198.34,
                   "anchor": "end",
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -316.562,
+                    "min_x": -316.558,
                     "min_y": 187.528,
-                    "max_x": -278.156,
+                    "max_x": -278.158,
                     "max_y": 206.528
                   }
                 }
               },
               {
                 "line": {
-                  "x1": -259.406,
+                  "x1": -259.408,
                   "y1": 198.34,
-                  "x2": -266.24,
+                  "x2": -266.242,
                   "y2": 149.711,
                   "class_name": "ishikawa-sub-branch",
                   "marker_start": true
@@ -435,24 +435,24 @@
                     "Dirty lens"
                   ],
                   "class_name": "ishikawa-label up",
-                  "x": -266.24,
+                  "x": -266.242,
                   "y": 149.711,
                   "anchor": "end",
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -333.287,
+                    "min_x": -333.282,
                     "min_y": 130.711,
-                    "max_x": -266.24,
+                    "max_x": -266.242,
                     "max_y": 149.711
                   }
                 }
               },
               {
                 "line": {
-                  "x1": -240.656,
+                  "x1": -240.658,
                   "y1": 198.34,
-                  "x2": -254.325,
+                  "x2": -254.326,
                   "y2": 101.082,
                   "class_name": "ishikawa-sub-branch",
                   "marker_start": true
@@ -463,24 +463,24 @@
                     "Damaged lens"
                   ],
                   "class_name": "ishikawa-label up",
-                  "x": -254.325,
+                  "x": -254.326,
                   "y": 101.082,
                   "anchor": "end",
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -341.2,
+                    "min_x": -341.206,
                     "min_y": 82.082,
-                    "max_x": -254.325,
+                    "max_x": -254.326,
                     "max_y": 101.082
                   }
                 }
               },
               {
                 "line": {
-                  "x1": -221.906,
+                  "x1": -221.908,
                   "y1": 198.34,
-                  "x2": -242.409,
+                  "x2": -242.411,
                   "y2": 52.452,
                   "class_name": "ishikawa-sub-branch",
                   "marker_start": true
@@ -492,15 +492,15 @@
                     "lens"
                   ],
                   "class_name": "ishikawa-label up",
-                  "x": -242.409,
+                  "x": -242.411,
                   "y": 52.452,
                   "anchor": "end",
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -327.362,
+                    "min_x": -327.371,
                     "min_y": 16.652,
-                    "max_x": -242.409,
+                    "max_x": -242.411,
                     "max_y": 52.452
                   }
                 }
@@ -509,16 +509,16 @@
           },
           "lower": {
             "line": {
-              "x1": -175.818,
+              "x1": -175.82,
               "y1": 392.857,
-              "x2": -190.73,
+              "x2": -190.732,
               "y2": 498.957,
               "class_name": "ishikawa-branch",
               "marker_start": true
             },
             "label_group": {
               "label_box": {
-                "x": -251.53,
+                "x": -251.532,
                 "y": 497.145,
                 "width": 121.6,
                 "height": 23.0
@@ -529,15 +529,15 @@
                   "Environment"
                 ],
                 "class_name": "ishikawa-label cause",
-                "x": -190.73,
+                "x": -190.732,
                 "y": 509.957,
                 "anchor": "middle",
                 "line_height": 16.8,
                 "font_size": 16.0,
                 "bbox": {
-                  "min_x": -231.53,
+                  "min_x": -231.532,
                   "min_y": 499.145,
-                  "max_x": -149.93,
+                  "max_x": -149.932,
                   "max_y": 518.145
                 }
               }
@@ -545,9 +545,9 @@
             "sub_groups": [
               {
                 "line": {
-                  "x1": -180.789,
+                  "x1": -180.791,
                   "y1": 428.224,
-                  "x2": -210.789,
+                  "x2": -210.791,
                   "y2": 428.224,
                   "class_name": "ishikawa-sub-branch",
                   "marker_start": true
@@ -559,24 +559,24 @@
                     "too quickly"
                   ],
                   "class_name": "ishikawa-label align",
-                  "x": -210.789,
+                  "x": -210.791,
                   "y": 428.224,
                   "anchor": "end",
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -306.945,
+                    "min_x": -306.951,
                     "min_y": 409.011,
-                    "max_x": -210.789,
+                    "max_x": -210.791,
                     "max_y": 444.811
                   }
                 }
               },
               {
                 "line": {
-                  "x1": -185.759,
+                  "x1": -185.761,
                   "y1": 463.591,
-                  "x2": -215.759,
+                  "x2": -215.761,
                   "y2": 463.591,
                   "class_name": "ishikawa-sub-branch",
                   "marker_start": true
@@ -587,15 +587,15 @@
                     "Too dark"
                   ],
                   "class_name": "ishikawa-label align",
-                  "x": -215.759,
+                  "x": -215.761,
                   "y": 463.591,
                   "anchor": "end",
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -273.837,
+                    "min_x": -273.841,
                     "min_y": 452.778,
-                    "max_x": -215.759,
+                    "max_x": -215.761,
                     "max_y": 471.778
                   }
                 }

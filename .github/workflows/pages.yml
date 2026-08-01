@@ -7,8 +7,12 @@ on:
       - master
     paths:
       - ".github/workflows/pages.yml"
+      - "abi/**"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "LICENSE-*"
+      - "THIRD_PARTY_NOTICES.md"
+      - "THIRD_PARTY_LICENSES/**"
       - "crates/**"
       - "docs/release/WASM_SIZE_BUDGETS.json"
       - "platforms/web/**"
@@ -16,12 +20,17 @@ on:
       - "scripts/check-svg-safety-policy.mjs"
       - "scripts/generate-svg-safety-policy.mjs"
       - "scripts/svg-safety-policy.mjs"
+      - "scripts/sync-release-legal-materials.py"
       - "tools/vscode-extension/src/preview-svg-safety-policy.ts"
   pull_request:
     paths:
       - ".github/workflows/pages.yml"
+      - "abi/**"
       - "Cargo.lock"
       - "Cargo.toml"
+      - "LICENSE-*"
+      - "THIRD_PARTY_NOTICES.md"
+      - "THIRD_PARTY_LICENSES/**"
       - "crates/**"
       - "docs/release/WASM_SIZE_BUDGETS.json"
       - "platforms/web/**"
@@ -29,6 +38,7 @@ on:
       - "scripts/check-svg-safety-policy.mjs"
       - "scripts/generate-svg-safety-policy.mjs"
       - "scripts/svg-safety-policy.mjs"
+      - "scripts/sync-release-legal-materials.py"
       - "tools/vscode-extension/src/preview-svg-safety-policy.ts"
   workflow_dispatch:
 
@@ -61,16 +71,35 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: |
             platforms/web/package-lock.json
             playground/package-lock.json
+            playground/tests/package-lock.json
+
+      - name: Install npm toolchain
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@11.17.0
+
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@wasm-tools
 
       - name: Install WASM tools
         run: |
           cargo install wasm-bindgen-cli --version 0.2.108 --locked
           cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Verify generated browser contracts
+        run: |
+          python3 scripts/sync-release-legal-materials.py --check
+          cargo run -p xtask -- verify-mermaid-reference
+          cargo run -p xtask -- verify-editor-token-descriptor
+          cargo run -p xtask -- verify-text-measurement-protocol
+          cargo run -p xtask -- verify-web-diagram-catalog
+          cargo run -p xtask -- verify-playground-example-catalog
+
+      - name: Check exact Web WASM size budgets
+        run: cargo run --locked -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
@@ -79,7 +108,7 @@ jobs:
         run: npm run build --prefix platforms/web
 
       - name: Verify web package
-        run: npm run prepack --prefix platforms/web
+        run: npm run verify:packages --prefix platforms/web
 
       - name: Smoke web package
         run: npm run smoke --prefix platforms/web
@@ -87,14 +116,43 @@ jobs:
       - name: Install playground dependencies
         run: npm ci --prefix playground
 
+      - name: Install playground browser-test dependencies
+        run: npm ci --prefix playground/tests
+
+      - name: Verify playground dependency boundaries
+        run: npm run verify:dependencies --prefix playground
+
+      - name: Install playground browsers
+        run: npm run install:browsers --prefix playground/tests
+
       - name: Test playground
         run: npm test --prefix playground
+
+      - name: Lint playground
+        run: npm run lint --prefix playground
 
       - name: Build playground
         run: npm run build --prefix playground
 
       - name: Verify playground dist
         run: npm run verify:dist --prefix playground
+
+      - name: Smoke playground in supported browsers
+        run: npm run test:browser:smoke:built --prefix playground
+
+      - name: Test playground in Chromium
+        run: npm run test:browser:chromium --prefix playground
+
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playground-browser-failure-${{ github.run_attempt }}
+          path: |
+            playground/playwright-report
+            playground/test-results
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Configure Pages
         if: github.event_name != 'pull_request'

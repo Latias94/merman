@@ -74,7 +74,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
 
     let wave_rect_path = path_from_points(&points);
     let (mut wave_fill_d, wave_stroke_d) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &wave_rect_path,
                 common.fill_color,
@@ -93,7 +93,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_tagged_wave_docume
 
     let tag_path = path_from_points(&tag_points);
     let (tag_fill_d, tag_stroke_d) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &tag_path,
                 common.fill_color,

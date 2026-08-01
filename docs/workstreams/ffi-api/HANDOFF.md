@@ -49,7 +49,7 @@ null buffer free, and panic containment.
 
 `FFI-050` is complete with concerns:
 
-- RaTeX math is already available through `layout.math_renderer = "ratex"` when the `ratex-math`
+- RaTeX math is already available through `environment.math_renderer = "ratex"` when the `ratex-math`
   feature is enabled.
 - `raster,ratex-math` feature gates pass.
 - PNG/JPEG/PDF FFI functions are intentionally deferred. They should be split into a narrower

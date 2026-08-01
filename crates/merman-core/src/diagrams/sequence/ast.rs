@@ -1,4 +1,4 @@
-pub(crate) enum Action {
+pub(super) enum Action {
     SetTitle(String),
     SetAccTitle(String),
     SetAccDescr(String),

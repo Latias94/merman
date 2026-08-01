@@ -7,6 +7,7 @@
         "id": "0",
         "domId": "node_0",
         "label": "A root with a long text that wraps to keep the node size in check",
+        "labelType": "markdown",
         "isGroup": false,
         "shape": "rect",
         "width": 200,

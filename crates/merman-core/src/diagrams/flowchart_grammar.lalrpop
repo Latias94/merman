@@ -3,8 +3,9 @@
 grammar;
 
 use crate::diagrams::flowchart::{
-  ClassAssignStmt, ClassDefStmt, ClickStmt, Edge, FlowchartAst, LabeledText, LinkStyleStmt,
-  LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
+  ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
+  LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken, Stmt, StyleStmt, SubgraphBlock,
+  SubgraphHeader, TitleKind, Tok
 };
 use crate::SourceSpan;
 
@@ -25,7 +26,7 @@ extern {
     StyleSep => Tok::StyleSep,
 
     Direction => Tok::Direction(<String>),
-    DirectionStmt => Tok::DirectionStmt(<String>),
+    DirectionStmt => Tok::DirectionStmt(<DirectionStatementToken>),
     Id => Tok::Id(<String>),
     NodeLabel => Tok::NodeLabel(<NodeLabelToken>),
     Arrow => Tok::Arrow(<LinkToken>),
@@ -90,7 +91,7 @@ Statement: Stmt = {
   <g:NodeGroupOnly> => Stmt::Chain { nodes: g, edges: Vec::new() },
   <n:NodeRef> => Stmt::Node(Box::new(n)),
   <sg:SubgraphBlock> => Stmt::Subgraph(sg),
-  <d:DirectionStmt> => Stmt::Direction(d),
+  <d:DirectionStmt> => Stmt::Direction(d.direction),
   <s:StyleStmt> => Stmt::Style(s),
   <c:ClassDefStmt> => Stmt::ClassDef(c),
   <c:ClassAssignStmt> => Stmt::ClassAssign(c),

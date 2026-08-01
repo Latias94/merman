@@ -1,0 +1,4 @@
+interface:
+  display_name: "Optimize Merman Performance"
+  short_description: "Evidence-driven Merman performance optimization"
+  default_prompt: "Use $optimize-merman-performance to diagnose and improve this Merman performance problem without changing semantics."

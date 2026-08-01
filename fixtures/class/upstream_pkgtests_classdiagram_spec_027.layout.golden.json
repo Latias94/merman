@@ -1,21 +1,21 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Square",
-          "x": 171.52,
+          "x": 165.698,
           "y": 131.0,
-          "width": 268.039,
+          "width": 256.396,
           "height": 192.0,
           "is_cluster": false
         },
         {
           "id": "space",
-          "x": 171.52,
+          "x": 165.698,
           "y": 131.0,
-          "width": 343.039,
+          "width": 331.396,
           "height": 262.0,
           "is_cluster": true
         }
@@ -24,15 +24,15 @@
       "clusters": [
         {
           "id": "space",
-          "x": 171.52,
+          "x": 165.698,
           "y": 131.0,
-          "width": 343.039,
+          "width": 331.396,
           "height": 262.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "space",
           "title_label": {
-            "x": 171.52,
+            "x": 165.698,
             "y": 12.0,
             "width": 34.4,
             "height": 24.0
@@ -47,7 +47,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 343.039,
+        "max_x": 331.396,
         "max_y": 262.0
       }
     }

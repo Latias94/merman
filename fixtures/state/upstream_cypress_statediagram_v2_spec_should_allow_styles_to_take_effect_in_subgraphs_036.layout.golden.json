@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "C",
-          "x": 125.156,
+          "x": 125.16,
           "y": 65.5,
-          "width": 164.313,
+          "width": 164.32,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "D",
-          "x": 374.469,
+          "x": 374.48,
           "y": 65.5,
-          "width": 164.313,
+          "width": 164.32,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "roundWithTitle",
-          "x": 125.156,
+          "x": 125.16,
           "y": 65.5,
-          "width": 234.313,
+          "width": 234.32,
           "height": 115.0,
           "is_cluster": true
         }
@@ -32,17 +32,17 @@
       "clusters": [
         {
           "id": "roundWithTitle",
-          "x": 125.156,
+          "x": 125.16,
           "y": 65.5,
-          "width": 234.313,
+          "width": 234.32,
           "height": 115.0,
           "diff": -8.0,
           "offset_y": 20.0,
           "title": "roundWithTitle",
           "title_label": {
-            "x": 125.156,
+            "x": 125.16,
             "y": 21.0,
-            "width": 98.563,
+            "width": 98.56,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 456.625,
+        "max_x": 456.64,
         "max_y": 123.0
       }
     }

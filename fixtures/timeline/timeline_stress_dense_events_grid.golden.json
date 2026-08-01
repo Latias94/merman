@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Dense grid (many periods × many events)",
     "accTitle": null,
     "accDescr": null,

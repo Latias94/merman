@@ -1,11 +1,25 @@
 use merman_core::{Engine, ParseOptions};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::model::ErDiagramLayout;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn layout_er(text: &str) -> ErDiagramLayout {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("ER layout");
+    let projection = artifact.layout_json().expect("serialize ER layout");
+    serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("ER layout projection")
 }
 
 #[test]
@@ -16,15 +30,7 @@ fn er_layout_produces_positions_and_routes() {
         .join("basic.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ErDiagram(layout) = out.layout else {
-        panic!("expected ErDiagram layout");
-    };
+    let layout = layout_er(&text);
 
     assert!(layout.nodes.len() >= 3);
     assert!(layout.edges.len() >= 2);
@@ -55,15 +61,7 @@ fn er_layout_emits_markers_and_dashes_from_rel_spec() {
         .join("upstream_relationship_aliases.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ErDiagram(layout) = out.layout else {
-        panic!("expected ErDiagram layout");
-    };
+    let layout = layout_er(&text);
 
     let mut has_marker = false;
     let mut has_dashed = false;
@@ -81,4 +79,72 @@ fn er_layout_emits_markers_and_dashes_from_rel_spec() {
         has_dashed,
         "expected at least one NON_IDENTIFYING relationship to be dashed"
     );
+}
+
+#[test]
+fn er_dagre_recursive_relationship_keeps_original_node_before_helper_ranks() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("er")
+        .join(
+            "upstream_cypress_erdiagram_spec_should_render_an_er_diagram_with_a_recursive_relationship_002.mmd",
+        );
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let layout = layout_er(&text);
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing ER layout node {id}"))
+    };
+    let customer = node("entity-CUSTOMER-0");
+    let helper_1 = node("entity-CUSTOMER-0---entity-CUSTOMER-0---1");
+    let helper_2 = node("entity-CUSTOMER-0---entity-CUSTOMER-0---2");
+    let order = node("entity-ORDER-1");
+    let line_item = node("entity-LINE-ITEM-2");
+
+    assert!(customer.y < helper_1.y && helper_1.y < helper_2.y);
+    assert!((helper_1.y - order.y).abs() < 1e-9);
+    assert!((helper_2.y - line_item.y).abs() < 1e-9);
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn er_layout_config_selects_source_ported_elk_geometry() {
+    let elk_source = r#"---
+config:
+  layout: elk
+---
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE-ITEM : contains
+  CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
+"#;
+    let dagre_source = r#"erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE-ITEM : contains
+  CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
+"#;
+
+    let elk = layout_er(elk_source);
+    let dagre = layout_er(dagre_source);
+
+    let elk_positions = elk
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node.x, node.y))
+        .collect::<Vec<_>>();
+    let dagre_positions = dagre
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node.x, node.y))
+        .collect::<Vec<_>>();
+    assert_ne!(elk_positions, dagre_positions);
+    assert!(elk.edges.iter().all(|edge| {
+        edge.points.windows(2).all(|segment| {
+            (segment[0].x - segment[1].x).abs() < 1e-9 || (segment[0].y - segment[1].y).abs() < 1e-9
+        })
+    }));
 }

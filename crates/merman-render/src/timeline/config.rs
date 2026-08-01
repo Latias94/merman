@@ -48,6 +48,7 @@ impl<'a> TimelineConfigView<'a> {
             font_size: config_theme_or_root_font_size_px(self.effective_config, DEFAULT_FONT_SIZE)
                 .max(1.0),
             font_weight: None,
+            font_style: None,
         }
     }
 

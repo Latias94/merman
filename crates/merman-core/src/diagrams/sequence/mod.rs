@@ -1,11 +1,11 @@
-lalrpop_util::lalrpop_mod!(
+include_checked_in_lalrpop_parser!(
     #[allow(
         clippy::empty_line_after_outer_attr,
         clippy::type_complexity,
         clippy::result_large_err
     )]
     sequence_grammar,
-    "/diagrams/sequence_grammar.rs"
+    "sequence_grammar.rs"
 );
 
 // Mermaid 11.15.x sequence diagram constants (SequenceDB.LINETYPE / PLACEMENT).
@@ -45,10 +45,16 @@ mod lexer;
 mod parse;
 mod render_model;
 
-pub(crate) use ast::Action;
+use ast::Action;
 pub(crate) use lexer::{LexError, Tok};
 
-pub use parse::{parse_sequence, parse_sequence_editor_facts, parse_sequence_model_for_render};
+pub(crate) use parse::parse_sequence_json_and_editor_facts;
+pub(crate) use parse::{parse_sequence, parse_sequence_model_for_render};
+#[cfg(test)]
+pub(crate) use parse::{
+    reset_sequence_syntax_construction_count, sequence_syntax_construction_count,
+};
+pub(crate) use render_model::render_model_to_compat_json;
 pub use render_model::{
     SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
     SequenceMessagePayload, SequenceNote,
@@ -56,6 +62,7 @@ pub use render_model::{
 
 #[cfg(test)]
 mod tests {
+    use super::render_model_to_compat_json;
     use crate::{Engine, ParseOptions, RenderSemanticModel};
 
     #[test]
@@ -72,11 +79,47 @@ mod tests {
             )
             .expect("parse should succeed")
             .expect("sequence diagram should be detected");
-        let RenderSemanticModel::Sequence(model) = parsed.model else {
+        let RenderSemanticModel::Sequence(model) = parsed.model() else {
             panic!("expected typed Sequence render model");
         };
 
         assert_eq!(model.messages[0].message_text(), "[Action 1]");
         assert_eq!(model.messages[2].message_text(), "[Action 2]");
+    }
+
+    #[test]
+    fn typed_render_model_projects_exact_compatibility_json() {
+        let source = r#"sequenceDiagram
+title: Delivery
+accTitle: Delivery sequence
+autonumber 10 5
+participant Alice
+actor Bob
+box rgb(240,240,240) Team
+participant Carol
+end
+Alice->>Bob: Request
+Note over Alice,Bob: Review
+create participant Worker
+Bob->>Worker: Start
+destroy Worker
+Worker-->>Bob: Done"#;
+        let engine = crate::Engine::new();
+        let compat = engine
+            .parse_diagram_sync(source, crate::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let typed = engine
+            .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let crate::RenderSemanticModel::Sequence(model) = typed.model() else {
+            panic!("expected Sequence render model");
+        };
+
+        assert_eq!(
+            render_model_to_compat_json(model, typed.metadata()).unwrap(),
+            compat.model
+        );
     }
 }

@@ -58,7 +58,7 @@ The contract has these rules:
      wrappers may add typed helpers after the JSON contract is stable.
    - Callers must ignore unknown fields and tolerate missing optional fields.
 
-3. `validate_json` remains a compatibility projection during alpha migration.
+3. `validate_json` remains a compatibility projection during migration.
    - Existing callers keep top-level `valid`, `error`, `message`, `code`, and `code_name` fields.
    - Once analysis exists, validation should be derived from diagnostics instead of calling a
      render-owned parse path directly.
@@ -94,6 +94,56 @@ The contract has these rules:
      supported rules, and message quality.
    - Production analysis must not shell out to Node or invoke Mermaid JS as an authoritative
      fallback unless a future ADR explicitly changes the runtime boundary.
+
+### Current Rust ownership amendment
+
+The original JSON contract remains stable, but the rich Rust ownership model is now explicitly
+two-phase. `Analyzer::analyze_generation*` captures one sealed, immutable `AnalysisGeneration`
+containing source mapping, parser disposition, normalized editor facts, and policy-neutral
+diagnostic candidates. The generation retains its opaque analyzer-environment identity and source
+descriptor, not the heavyweight site configuration, runtime policy, source limit, or an initial
+diagnostic payload.
+
+`AnalysisGeneration::project` accepts an `AnalysisDiagnosticPolicy` and produces the current
+`AnalysisPayload`. Diagnostic-policy-only changes therefore reproject the same generation and
+preserve parser/editor identity. Snapshot-policy or parser-environment changes require a new
+generation. Payload-only `Analyzer::analyze*` and facts adapters use the same private capture and
+projection pipeline without introducing another rich ownership type.
+
+The source descriptor is semantic input, not output decoration. Analyzer entry points dispatch
+`Markdown` and `Mdx` descriptors through the canonical fence/document pipeline and apply the
+document-diagram limit; only `Diagram` descriptors produce a whole-document diagram. This prevents
+editor snapshots from pairing a host-document identity with standalone Mermaid evidence.
+
+Caller-requested cancellation exists only around the cancellable lifecycle and never becomes a
+ready generation, diagnostic, or cache entry. Rich cancellable capture consumes caller-owned
+`Arc<str>` through `Analyzer::analyze_generation_shared_cancellable`, so the operation never hides
+a full-source ownership promotion inside its cancellation boundary. Borrowed rich capture remains
+the non-cancellable convenience path. A parser-controlled path that returns outer cancellation to
+a non-cancellable facade violates that facade's parser contract and is represented by the existing
+`Error::ParseCancelled` compatibility error. Analysis projects that contract violation as the
+protected `merman.internal.parser_contract_violation` internal diagnostic instead of a Mermaid
+syntax error. Controlled facades preserve the same outer cancellation for the caller.
+
+One document-level quick fix may belong to several diagnostics. `DiagnosticFix` therefore shares
+its immutable edit slice across candidate, payload, editor, and LSP projections. Each diagnostic
+and schema-1 JSON object still exposes the complete ordered edit array, while retained-memory
+accounting charges a shared allocation once per owning analysis object. Schema 1 consequently
+retains linear in-process memory without claiming linear wire size; edit-table deduplication belongs
+to a future schema revision.
+
+Init-directive migration fixes are optional derived artifacts. Captured source-config overrides,
+frontmatter input and materialization, nesting, edit count, and final output have independent
+bounds: 1 MiB config ownership, 1 MiB frontmatter input, 1 MiB materialized YAML, 64 levels, 128
+edits, and 2 MiB of final replacement text. Exceeding a bound suppresses only the fix, never the
+diagnostic. Discovery, YAML parsing, scanning, and output writes are controlled. Scalar formatting
+inside the serializer remains an explicitly bounded atomic region; the output bound does not claim
+an exact peak allocator capacity.
+
+The alpha migration intentionally retains no deprecated Rust aliases: `AnalysisResult` became
+`AnalysisGeneration`, `Analyzer::analyze_result` became `Analyzer::analyze_generation`, and the
+document `*_result` functions became `*_generation`. The TypeScript `AnalysisResult` remains the
+name of the independently versioned schema-1 diagnostic wire/API result.
 
 The canonical JSON shape starts as:
 
@@ -209,7 +259,7 @@ Ship a standalone linter before changing the shared bindings.
 - Document-level analysis gives JavaScript lint adapters a non-LSP bridge for `.mmd`, Markdown,
   and MDX while preserving host-document coordinates.
 - Binding packages gain a richer payload without changing every host around a Rust enum.
-- Existing `validate` users have a migration bridge during alpha.
+- Existing `validate` users have a temporary migration bridge.
 - Parser families need incremental span and warning upgrades.
 - Documentation and tests must distinguish implemented APIs from reserved protocol extensions:
   `textDocument/diagnostic` pull is implemented, but `workspace/diagnostic` remains unimplemented
@@ -227,6 +277,7 @@ Ship a standalone linter before changing the shared bindings.
 3. Do not implement `workspace/diagnostic` until unopened workspace-file scanning has a documented
    owner, cache model, and test coverage.
 4. Add new quick fixes only through deterministic `DiagnosticFix` metadata emitted by analysis
-   rules, with LSP rejecting unsafe or overlapping edit sets before projection.
+   rules, with LSP rejecting unsafe or overlapping edit sets before projection. Reuse shared
+   immutable edit storage when one document-wide action is attached to multiple diagnostics.
 5. Keep internal projection diagnostics in the complete rule catalog for observability, but out of
    public configurable rule metadata unless a future ADR deliberately exposes host policy for them.

@@ -24,7 +24,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
 }
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
-    model: &crate::flowchart::FlowchartV2Model,
+    model: &crate::flowchart::FlowchartModel,
     effective_config_value: &serde_json::Value,
     diagram_type: &str,
 ) -> FlowchartRenderConfig {
@@ -66,8 +66,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         .map(|d| d.style.clone())
         .unwrap_or_default();
 
-    let node_border_color = config.theme_color("nodeBorder", "#9370DB");
-    let node_fill_color = config.theme_color("mainBkg", "#ECECFF");
+    let node_border_color = config.theme_token("nodeBorder", "#9370DB");
+    let node_fill_color = config.theme_token("mainBkg", "#ECECFF");
 
     FlowchartRenderConfig {
         font_family,

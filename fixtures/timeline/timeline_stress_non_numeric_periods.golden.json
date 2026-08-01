@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Non-numeric periods",
     "accTitle": null,
     "accDescr": null,

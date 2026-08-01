@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Links, brackets, and <br> tokens",
     "accTitle": null,
     "accDescr": null,

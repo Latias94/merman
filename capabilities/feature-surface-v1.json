@@ -1,0 +1,372 @@
+{
+  "schema_version": 1,
+  "descriptor_id": "merman-feature-surface",
+  "targets": [
+    {
+      "id": "native",
+      "description": "Native Rust, CLI, and native binding artifacts."
+    },
+    {
+      "id": "web",
+      "description": "Browser wasm-bindgen artifacts."
+    },
+    {
+      "id": "typst",
+      "description": "Pure-WASM Typst plugin artifacts."
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "svg",
+      "kind": "output",
+      "description": "Render Mermaid input as SVG.",
+      "targets": ["native", "web", "typst"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "SVG requests return a typed missing-capability error when SVG is not compiled."
+      }
+    },
+    {
+      "id": "analysis",
+      "kind": "api",
+      "description": "Expose diagnostics and semantic analysis APIs.",
+      "targets": ["native", "web", "typst"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Analysis requests return a typed missing-capability error when analysis is not compiled."
+      }
+    },
+    {
+      "id": "editor",
+      "kind": "api",
+      "description": "Expose parser-backed editor intelligence APIs.",
+      "targets": ["native", "web"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Editor requests return a typed missing-capability error when editor support is not compiled."
+      }
+    },
+    {
+      "id": "ascii",
+      "kind": "output",
+      "description": "Render supported Mermaid semantics as terminal text.",
+      "targets": ["native", "web"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "ASCII requests return a typed missing-capability error when ASCII output is not compiled."
+      }
+    },
+    {
+      "id": "png",
+      "kind": "output",
+      "description": "Export rendered diagrams as PNG.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "PNG requests return a typed missing-capability error when PNG is not compiled."
+      }
+    },
+    {
+      "id": "jpeg",
+      "kind": "output",
+      "description": "Export rendered diagrams as JPEG.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "JPEG requests return a typed missing-capability error when JPEG is not compiled."
+      }
+    },
+    {
+      "id": "pdf",
+      "kind": "output",
+      "description": "Export rendered diagrams as PDF.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "PDF requests return a typed missing-capability error when PDF is not compiled."
+      }
+    },
+    {
+      "id": "layout-cytoscape",
+      "kind": "engine",
+      "description": "Enable Mermaid Cytoscape-backed layout behavior.",
+      "targets": ["native", "web", "typst"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "A request requiring Cytoscape layout returns a typed missing-capability error when the engine is absent."
+      }
+    },
+    {
+      "id": "layout-elk",
+      "kind": "engine",
+      "description": "Enable Mermaid ELK-backed layout behavior.",
+      "targets": ["native", "web", "typst"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "A request requiring ELK layout returns a typed missing-capability error when the engine is absent."
+      }
+    },
+    {
+      "id": "math",
+      "kind": "engine",
+      "description": "Render Mermaid math labels with the selected math engine.",
+      "targets": ["native", "web"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Math-bearing render requests return a typed missing-capability error when math is absent."
+      }
+    },
+    {
+      "id": "system-clock",
+      "kind": "adapter",
+      "description": "Compile the native system clock adapter.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "Native clock selection returns a typed missing-capability error when the adapter is absent."
+      }
+    },
+    {
+      "id": "system-timezone",
+      "kind": "adapter",
+      "description": "Compile the native system time-zone adapter.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "System time-zone selection returns a typed missing-capability error when the adapter is absent."
+      }
+    },
+    {
+      "id": "system-random",
+      "kind": "adapter",
+      "description": "Compile the native system randomness adapter.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "System randomness selection returns a typed missing-capability error when the adapter is absent."
+      }
+    },
+    {
+      "id": "system-timing",
+      "kind": "adapter",
+      "description": "Compile the native monotonic timing adapter.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "System timing selection returns a typed missing-capability error when the adapter is absent."
+      }
+    },
+    {
+      "id": "icons",
+      "kind": "tool",
+      "description": "Compile CLI local Iconify pack loading.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Local Iconify pack loading is absent from the compiled CLI when this leaf is disabled."
+      }
+    },
+    {
+      "id": "markdown",
+      "kind": "tool",
+      "description": "Compile CLI Markdown batch conversion.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Markdown conversion is absent from the compiled CLI when this leaf is disabled."
+      }
+    },
+    {
+      "id": "network-icons",
+      "kind": "tool",
+      "description": "Compile CLI network icon loading commands.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Network icon commands are absent from the compiled CLI when this leaf is disabled."
+      }
+    },
+    {
+      "id": "parallel-markdown",
+      "kind": "tool",
+      "description": "Compile parallel CLI Markdown batch processing.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Parallel Markdown execution is absent from the compiled CLI when this leaf is disabled."
+      }
+    },
+    {
+      "id": "shell-completions",
+      "kind": "tool",
+      "description": "Compile CLI shell completion generation.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Shell completion commands are absent from the compiled CLI when this leaf is disabled."
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "svg",
+      "capability": "svg",
+      "description": "Scalable Vector Graphics output.",
+      "media_type": "image/svg+xml",
+      "targets": ["native", "web", "typst"]
+    },
+    {
+      "id": "ascii",
+      "capability": "ascii",
+      "description": "Plain terminal text output.",
+      "media_type": "text/plain; charset=utf-8",
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "png",
+      "capability": "png",
+      "description": "Portable Network Graphics output.",
+      "media_type": "image/png",
+      "targets": ["native"]
+    },
+    {
+      "id": "jpeg",
+      "capability": "jpeg",
+      "description": "JPEG image output.",
+      "media_type": "image/jpeg",
+      "targets": ["native"]
+    },
+    {
+      "id": "pdf",
+      "capability": "pdf",
+      "description": "Portable Document Format output.",
+      "media_type": "application/pdf",
+      "targets": ["native"]
+    }
+  ],
+  "binding_operations": [
+    {
+      "id": "svg",
+      "capability": "svg",
+      "description": "Render Mermaid input as SVG.",
+      "media_type": "image/svg+xml",
+      "requires_uri": false,
+      "targets": ["native", "web", "typst"]
+    },
+    {
+      "id": "png",
+      "capability": "png",
+      "description": "Render Mermaid input as PNG.",
+      "media_type": "image/png",
+      "requires_uri": false,
+      "targets": ["native"]
+    },
+    {
+      "id": "jpeg",
+      "capability": "jpeg",
+      "description": "Render Mermaid input as JPEG.",
+      "media_type": "image/jpeg",
+      "requires_uri": false,
+      "targets": ["native"]
+    },
+    {
+      "id": "pdf",
+      "capability": "pdf",
+      "description": "Render Mermaid input as PDF.",
+      "media_type": "application/pdf",
+      "requires_uri": false,
+      "targets": ["native"]
+    },
+    {
+      "id": "ascii",
+      "capability": "ascii",
+      "description": "Render Mermaid input as terminal text.",
+      "media_type": "text/plain; charset=utf-8",
+      "requires_uri": false,
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "semantic-json",
+      "capability": null,
+      "description": "Parse Mermaid input into canonical semantic JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "layout-json",
+      "capability": "svg",
+      "description": "Render Mermaid input into layout model JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "svg-plan-json",
+      "capability": "svg",
+      "description": "Plan the capabilities required to render Mermaid input as SVG.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "analysis-json",
+      "capability": "analysis",
+      "description": "Analyze Mermaid input and return diagnostics JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web", "typst"]
+    },
+    {
+      "id": "analysis-facts-json",
+      "capability": "analysis",
+      "description": "Analyze Mermaid input and return semantic facts JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "validation-json",
+      "capability": "analysis",
+      "description": "Validate Mermaid input and return validation JSON.",
+      "media_type": "application/json",
+      "requires_uri": false,
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "document-analysis-json",
+      "capability": "analysis",
+      "description": "Analyze a URI-backed Mermaid document and return diagnostics JSON.",
+      "media_type": "application/json",
+      "requires_uri": true,
+      "targets": ["native", "web"]
+    },
+    {
+      "id": "document-analysis-facts-json",
+      "capability": "analysis",
+      "description": "Analyze a URI-backed Mermaid document and return semantic facts JSON.",
+      "media_type": "application/json",
+      "requires_uri": true,
+      "targets": ["native", "web"]
+    }
+  ]
+}

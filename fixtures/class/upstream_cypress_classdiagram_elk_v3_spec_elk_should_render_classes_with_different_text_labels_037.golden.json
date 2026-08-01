@@ -1,7 +1,7 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "model": {
-    "type": "classDiagram",
+    "type": "class",
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -218,8 +218,8 @@
       "C13": {
         "id": "C13",
         "type": "",
-        "label": "With CittÃ  foreign language",
-        "text": "With CittÃ  foreign language",
+        "label": "With Città foreign language",
+        "text": "With Città foreign language",
         "cssClasses": "default",
         "methods": [],
         "members": [],

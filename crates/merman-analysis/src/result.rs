@@ -1,81 +1,376 @@
+use crate::analyzer::{AnalysisDiagnosticPolicy, AnalysisEnvironmentIdentity, Analyzer};
+use crate::diagnostic_projection::{DiagnosticCandidate, append_projected_diagnostic_candidates};
 use crate::editor::FenceExpectedSyntax;
+use crate::payload::DiagnosticRetainedWeight;
 use crate::{
+    ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisCancellationToken, AnalysisCancelled,
     AnalysisDiagnostic, AnalysisPayload, DocumentDiagram, DocumentDiagramKind, FenceDelimiter,
-    FenceLineItem, FenceMarker, FenceReferenceGroup, FenceSemanticItem, FenceTextIndex,
-    FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
+    FenceDelimiterSpans, FenceLineItem, FenceMarker, FenceReferenceGroup, FenceSemanticItem,
+    FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
 };
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::mem::size_of;
 
-#[derive(Debug, Clone)]
-pub struct AnalysisResult {
-    payload: AnalysisPayload,
-    source_map: SourceMap,
-    diagrams: Vec<AnalyzedDiagram>,
+use crate::retained_weight::{
+    ARC_ALLOCATION_OVERHEAD, RetainedWeight, conservative_btree_entry_bytes,
+};
+
+/// One sealed rich capture bound to an exact parser environment and snapshot policy.
+#[derive(Debug)]
+pub struct AnalysisGeneration {
+    storage: Box<AnalysisGenerationStorage>,
 }
 
-impl AnalysisResult {
-    pub fn new(
+#[derive(Debug)]
+struct AnalysisGenerationStorage {
+    source_map: SourceMap,
+    diagrams: Vec<AnalyzedDiagram>,
+    document_candidates: Vec<DiagnosticCandidate>,
+    environment_identity: AnalysisEnvironmentIdentity,
+    source: SourceDescriptor,
+}
+
+#[derive(Debug)]
+pub enum AnalysisCaptureOutcome {
+    Ready(AnalysisGeneration),
+    Rejected(AnalysisRejection),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnalysisRejection {
+    payload: Box<AnalysisPayload>,
+    resource_limit: AnalysisResourceLimit,
+}
+
+/// The exact admission budget that rejected an analysis before a generation was created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum AnalysisResourceLimit {
+    SourceBytes {
+        source_len: usize,
+        max_source_bytes: usize,
+    },
+    DocumentDiagrams {
+        observed_document_diagrams: usize,
+        max_document_diagrams: usize,
+    },
+}
+
+impl AnalysisResourceLimit {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::SourceBytes { .. } => {
+                merman_core::resources::InputResourceLimitId::MaxSourceBytes.as_str()
+            }
+            Self::DocumentDiagrams { .. } => crate::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+        }
+    }
+
+    pub const fn observed(self) -> usize {
+        match self {
+            Self::SourceBytes { source_len, .. } => source_len,
+            Self::DocumentDiagrams {
+                observed_document_diagrams,
+                ..
+            } => observed_document_diagrams,
+        }
+    }
+
+    pub const fn maximum(self) -> usize {
+        match self {
+            Self::SourceBytes {
+                max_source_bytes, ..
+            } => max_source_bytes,
+            Self::DocumentDiagrams {
+                max_document_diagrams,
+                ..
+            } => max_document_diagrams,
+        }
+    }
+}
+
+impl fmt::Display for AnalysisResourceLimit {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{} observed={} max={}",
+            self.id(),
+            self.observed(),
+            self.maximum()
+        )
+    }
+}
+
+impl AnalysisCaptureOutcome {
+    pub fn as_ready(&self) -> Option<&AnalysisGeneration> {
+        match self {
+            Self::Ready(generation) => Some(generation),
+            Self::Rejected(_) => None,
+        }
+    }
+
+    pub fn into_ready(self) -> Result<AnalysisGeneration, AnalysisRejection> {
+        match self {
+            Self::Ready(generation) => Ok(generation),
+            Self::Rejected(rejection) => Err(rejection),
+        }
+    }
+
+    pub fn rejection(&self) -> Option<&AnalysisRejection> {
+        match self {
+            Self::Ready(_) => None,
+            Self::Rejected(rejection) => Some(rejection),
+        }
+    }
+}
+
+impl AnalysisRejection {
+    pub(crate) fn source_limit(
         source: SourceDescriptor,
-        source_map: SourceMap,
         diagnostics: Vec<AnalysisDiagnostic>,
-        diagrams: Vec<AnalyzedDiagram>,
+        source_len: usize,
+        max_source_bytes: usize,
     ) -> Self {
         Self {
-            payload: AnalysisPayload::new(source, diagnostics),
-            source_map,
-            diagrams,
+            payload: Box::new(AnalysisPayload::new(source, diagnostics)),
+            resource_limit: AnalysisResourceLimit::SourceBytes {
+                source_len,
+                max_source_bytes,
+            },
+        }
+    }
+
+    pub(crate) fn document_diagram_limit(
+        source: SourceDescriptor,
+        diagnostics: Vec<AnalysisDiagnostic>,
+        observed_document_diagrams: usize,
+        max_document_diagrams: usize,
+    ) -> Self {
+        Self {
+            payload: Box::new(AnalysisPayload::new(source, diagnostics)),
+            resource_limit: AnalysisResourceLimit::DocumentDiagrams {
+                observed_document_diagrams,
+                max_document_diagrams,
+            },
         }
     }
 
     pub fn payload(&self) -> &AnalysisPayload {
-        &self.payload
+        self.payload.as_ref()
     }
 
     pub fn into_payload(self) -> AnalysisPayload {
-        self.payload
+        *self.payload
+    }
+
+    pub const fn resource_limit(&self) -> AnalysisResourceLimit {
+        self.resource_limit
+    }
+}
+
+impl AnalysisGeneration {
+    pub(crate) fn new(
+        source_map: SourceMap,
+        diagrams: Vec<AnalyzedDiagram>,
+        analyzer: &Analyzer,
+    ) -> Self {
+        let environment_identity = analyzer.environment_identity().clone();
+        let source = analyzer.options().source().clone();
+        Self {
+            storage: Box::new(AnalysisGenerationStorage {
+                source_map,
+                diagrams,
+                document_candidates: Vec::new(),
+                environment_identity,
+                source,
+            }),
+        }
+    }
+
+    pub(crate) fn with_document_candidates(mut self, candidates: Vec<DiagnosticCandidate>) -> Self {
+        self.storage.document_candidates = candidates;
+        self
+    }
+
+    /// Projects diagnostics without parsing or mutating this generation.
+    pub fn project(&self, policy: &AnalysisDiagnosticPolicy) -> AnalysisPayload {
+        let cancellation = AnalysisCancellationToken::new();
+        self.project_cancellable(policy, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
+    }
+
+    /// Cancellable form of [`Self::project`].
+    pub fn project_cancellable(
+        &self,
+        policy: &AnalysisDiagnosticPolicy,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<AnalysisPayload, AnalysisCancelled> {
+        cancellation.checkpoint()?;
+        let mut diagnostics = Vec::with_capacity(self.storage.document_candidates.len());
+        append_projected_diagnostic_candidates(
+            &mut diagnostics,
+            &self.storage.document_candidates,
+            policy,
+            cancellation,
+        )?;
+        for diagram in &self.storage.diagrams {
+            cancellation.checkpoint()?;
+            append_projected_diagnostic_candidates(
+                &mut diagnostics,
+                &diagram.diagnostic_candidates,
+                policy,
+                cancellation,
+            )?;
+        }
+        cancellation.checkpoint()?;
+        AnalysisPayload::new_cancellable(self.storage.source.clone(), diagnostics, cancellation)
+    }
+
+    pub fn environment_identity(&self) -> &AnalysisEnvironmentIdentity {
+        &self.storage.environment_identity
+    }
+
+    pub fn source(&self) -> &SourceDescriptor {
+        &self.storage.source
     }
 
     pub fn source_map(&self) -> &SourceMap {
-        &self.source_map
+        &self.storage.source_map
+    }
+
+    /// Estimates heap owned by this generation while excluding the shared source buffer.
+    ///
+    /// The generation retains only its opaque environment identity and source metadata from the
+    /// capture policy. The estimate includes those allocations, the full lazy `SourceMap` metric
+    /// allowance, and saturates on overflow.
+    pub fn estimated_owned_heap_bytes_excluding_source(&self) -> usize {
+        let mut weight = RetainedWeight::new(size_of::<AnalysisGenerationStorage>());
+        let mut diagnostic_weight = DiagnosticRetainedWeight::default();
+        weight.add(
+            self.storage
+                .source_map
+                .estimated_owned_heap_bytes_excluding_source(),
+        );
+        weight.add_array::<AnalyzedDiagram>(self.storage.diagrams.capacity());
+        for diagram in &self.storage.diagrams {
+            weight.add(diagram.estimated_owned_heap_bytes_excluding_source(&mut diagnostic_weight));
+        }
+        weight.add_array::<DiagnosticCandidate>(self.storage.document_candidates.capacity());
+        for candidate in &self.storage.document_candidates {
+            candidate.add_estimated_owned_heap_bytes(&mut diagnostic_weight);
+        }
+        weight.add(diagnostic_weight.finish());
+        weight.add(ARC_ALLOCATION_OVERHEAD);
+        weight.add(self.storage.source.estimated_owned_heap_bytes());
+        weight.finish()
     }
 
     pub fn diagrams(&self) -> &[AnalyzedDiagram] {
-        &self.diagrams
+        &self.storage.diagrams
     }
 
-    pub fn diagnostics(&self) -> &[AnalysisDiagnostic] {
-        &self.payload.diagnostics
+    #[cfg(test)]
+    pub(crate) fn diagnostic_candidate_rule_ids(&self) -> Vec<&'static str> {
+        self.storage
+            .document_candidates
+            .iter()
+            .chain(
+                self.storage
+                    .diagrams
+                    .iter()
+                    .flat_map(|diagram| diagram.diagnostic_candidates.iter()),
+            )
+            .map(DiagnosticCandidate::rule_id)
+            .collect()
     }
 
-    pub fn to_facts_payload(&self) -> AnalysisFactsPayload {
-        AnalysisFactsPayload::from_result(self)
+    pub(crate) fn to_facts_payload(
+        &self,
+        policy: &AnalysisDiagnosticPolicy,
+    ) -> AnalysisFactsPayload {
+        let payload = self.project(policy);
+        AnalysisFactsPayload::from_generation(self, &payload)
     }
+}
+
+/// Parser-owned diagram outcome that is independent from diagnostic policy and severity.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagramParseDisposition {
+    Parsed,
+    Recovered,
+    #[default]
+    Unavailable,
 }
 
 #[derive(Debug, Clone)]
 pub struct AnalyzedDiagram {
-    pub source_id: String,
-    pub index: usize,
-    pub kind: DocumentDiagramKind,
-    pub source: SourceDescriptor,
-    pub start: usize,
-    pub body_start: usize,
-    pub body_end: usize,
-    pub end: usize,
-    pub text: SharedTextSlice,
-    pub fence_delimiter: Option<FenceDelimiter>,
-    pub diagnostics: Vec<AnalysisDiagnostic>,
-    pub syntax: AnalysisSyntaxFacts,
+    pub(crate) source_id: String,
+    pub(crate) index: usize,
+    pub(crate) kind: DocumentDiagramKind,
+    pub(crate) source: SourceDescriptor,
+    pub(crate) start: usize,
+    pub(crate) body_start: usize,
+    pub(crate) body_end: usize,
+    pub(crate) end: usize,
+    pub(crate) text: SharedTextSlice,
+    pub(crate) fence_delimiter: Option<FenceDelimiter>,
+    pub(crate) fence_delimiter_spans: Option<FenceDelimiterSpans>,
+    pub(crate) syntax: AnalysisSyntaxFacts,
+    pub(crate) diagnostic_candidates: Vec<DiagnosticCandidate>,
+    pub(crate) parse_disposition: DiagramParseDisposition,
 }
 
 impl AnalyzedDiagram {
-    pub fn from_document_diagram(
+    pub fn source_id(&self) -> &str {
+        &self.source_id
+    }
+
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+
+    pub const fn kind(&self) -> DocumentDiagramKind {
+        self.kind
+    }
+
+    pub fn source(&self) -> &SourceDescriptor {
+        &self.source
+    }
+
+    pub fn document_range(&self) -> std::ops::Range<usize> {
+        self.start..self.end
+    }
+
+    pub fn body_range(&self) -> std::ops::Range<usize> {
+        self.body_start..self.body_end
+    }
+
+    pub fn text(&self) -> &SharedTextSlice {
+        &self.text
+    }
+
+    pub const fn fence_delimiter(&self) -> Option<FenceDelimiter> {
+        self.fence_delimiter
+    }
+
+    pub fn fence_delimiter_spans(&self) -> Option<&FenceDelimiterSpans> {
+        self.fence_delimiter_spans.as_ref()
+    }
+
+    pub fn syntax(&self) -> &AnalysisSyntaxFacts {
+        &self.syntax
+    }
+
+    pub(crate) fn from_document_diagram(
         diagram: &DocumentDiagram,
-        diagnostics: Vec<AnalysisDiagnostic>,
         syntax: AnalysisSyntaxFacts,
+        diagnostic_candidates: Vec<DiagnosticCandidate>,
+        parse_disposition: DiagramParseDisposition,
     ) -> Self {
         Self {
             source_id: diagram.id.clone(),
@@ -88,15 +383,38 @@ impl AnalyzedDiagram {
             end: diagram.end,
             text: diagram.text.clone(),
             fence_delimiter: diagram.fence_delimiter,
-            diagnostics,
+            fence_delimiter_spans: diagram.fence_delimiter_spans.clone(),
             syntax,
+            diagnostic_candidates,
+            parse_disposition,
         }
+    }
+
+    /// Returns the parser-owned outcome retained by this analysis generation.
+    pub fn parse_disposition(&self) -> DiagramParseDisposition {
+        self.parse_disposition
+    }
+
+    fn estimated_owned_heap_bytes_excluding_source(
+        &self,
+        diagnostic_weight: &mut DiagnosticRetainedWeight,
+    ) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_string(&self.source_id);
+        weight.add(self.source.estimated_owned_heap_bytes());
+        weight.add(self.syntax.estimated_owned_heap_bytes());
+        weight.add_array::<DiagnosticCandidate>(self.diagnostic_candidates.capacity());
+        for candidate in &self.diagnostic_candidates {
+            candidate.add_estimated_owned_heap_bytes(diagnostic_weight);
+        }
+        weight.finish()
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct AnalysisSyntaxFacts {
     pub diagram_type: Option<String>,
+    pub effective_layout: Option<String>,
     pub text_index: FenceTextIndex,
     pub flowchart: Option<AnalysisFlowchartFacts>,
 }
@@ -105,15 +423,17 @@ impl AnalysisSyntaxFacts {
     pub fn new(diagram_type: Option<String>, text_index: FenceTextIndex) -> Self {
         Self {
             diagram_type,
+            effective_layout: None,
             text_index,
             flowchart: None,
         }
     }
 
-    pub fn text_scan(text: &str, diagram_type: Option<String>) -> Self {
+    pub fn unavailable(diagram_type: Option<String>) -> Self {
         Self {
-            text_index: FenceTextIndex::from_text(text, diagram_type.as_deref()),
+            text_index: FenceTextIndex::default(),
             diagram_type,
+            effective_layout: None,
             flowchart: None,
         }
     }
@@ -126,9 +446,25 @@ impl AnalysisSyntaxFacts {
         self.flowchart = flowchart;
         self
     }
+
+    pub fn with_effective_layout(mut self, effective_layout: Option<String>) -> Self {
+        self.effective_layout = effective_layout;
+        self
+    }
+
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_optional_string(&self.diagram_type);
+        weight.add_optional_string(&self.effective_layout);
+        weight.add(self.text_index.estimated_owned_heap_bytes());
+        if let Some(flowchart) = &self.flowchart {
+            weight.add(flowchart.estimated_owned_heap_bytes());
+        }
+        weight.finish()
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AnalysisFactsPayload {
     pub version: u32,
     pub valid: bool,
@@ -138,19 +474,77 @@ pub struct AnalysisFactsPayload {
     pub diagrams: Vec<AnalysisDiagramFacts>,
 }
 
+#[derive(Deserialize)]
+struct AnalysisFactsPayloadTransport {
+    version: u32,
+    valid: bool,
+    summary: Summary,
+    source: SourceDescriptor,
+    diagnostics: Vec<AnalysisDiagnostic>,
+    diagrams: Vec<AnalysisDiagramFacts>,
+}
+
+impl<'de> Deserialize<'de> for AnalysisFactsPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Facts are a JSON binding wire contract. Read an untyped transport first so the
+        // version boundary is checked before any potentially incompatible nested field.
+        let raw = serde_json::Value::deserialize(deserializer)?;
+        let version = raw
+            .get("version")
+            .ok_or_else(|| serde::de::Error::missing_field("version"))
+            .and_then(|value| {
+                serde_json::from_value::<u32>(value.clone()).map_err(serde::de::Error::custom)
+            })?;
+        if version != ANALYSIS_FACTS_PAYLOAD_VERSION {
+            return Err(serde::de::Error::custom(format_args!(
+                "unsupported analysis facts payload version {version}; expected {ANALYSIS_FACTS_PAYLOAD_VERSION}"
+            )));
+        }
+
+        let transport: AnalysisFactsPayloadTransport =
+            serde_json::from_value(raw).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            version: transport.version,
+            valid: transport.valid,
+            summary: transport.summary,
+            source: transport.source,
+            diagnostics: transport.diagnostics,
+            diagrams: transport.diagrams,
+        })
+    }
+}
+
 impl AnalysisFactsPayload {
-    pub fn from_result(result: &AnalysisResult) -> Self {
+    pub(crate) fn from_generation(
+        generation: &AnalysisGeneration,
+        payload: &AnalysisPayload,
+    ) -> Self {
         Self {
-            version: result.payload.version,
-            valid: result.payload.valid,
-            summary: result.payload.summary,
-            source: result.payload.source.clone(),
-            diagnostics: result.payload.diagnostics.clone(),
-            diagrams: result
-                .diagrams
+            version: ANALYSIS_FACTS_PAYLOAD_VERSION,
+            valid: payload.valid,
+            summary: payload.summary,
+            source: payload.source.clone(),
+            diagnostics: payload.diagnostics.clone(),
+            diagrams: generation
+                .diagrams()
                 .iter()
-                .map(|diagram| AnalysisDiagramFacts::from_diagram(diagram, &result.source_map))
+                .map(|diagram| AnalysisDiagramFacts::from_diagram(diagram, generation.source_map()))
                 .collect(),
+        }
+    }
+
+    pub fn from_rejection(rejection: &AnalysisRejection) -> Self {
+        let payload = rejection.payload();
+        Self {
+            version: ANALYSIS_FACTS_PAYLOAD_VERSION,
+            valid: payload.valid,
+            summary: payload.summary,
+            source: payload.source.clone(),
+            diagnostics: payload.diagnostics.clone(),
+            diagrams: Vec::new(),
         }
     }
 
@@ -173,6 +567,8 @@ pub struct AnalysisDiagramFacts {
     pub body_span: Option<crate::DiagnosticSpan>,
     pub text_len: usize,
     pub fence_delimiter: Option<AnalysisFenceDelimiterFacts>,
+    #[serde(default)]
+    pub parse_disposition: DiagramParseDisposition,
     pub syntax: AnalysisDiagramSyntaxFacts,
 }
 
@@ -189,6 +585,7 @@ impl AnalysisDiagramFacts {
             fence_delimiter: diagram
                 .fence_delimiter
                 .map(AnalysisFenceDelimiterFacts::from),
+            parse_disposition: diagram.parse_disposition(),
             syntax: AnalysisDiagramSyntaxFacts::from_syntax(
                 &diagram.syntax,
                 source_map,
@@ -208,7 +605,7 @@ impl From<FenceDelimiter> for AnalysisFenceDelimiterFacts {
     fn from(value: FenceDelimiter) -> Self {
         Self {
             marker: fence_marker_name(value.marker()).to_string(),
-            len: value.len(),
+            len: value.marker_len(),
         }
     }
 }
@@ -216,6 +613,8 @@ impl From<FenceDelimiter> for AnalysisFenceDelimiterFacts {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisDiagramSyntaxFacts {
     pub diagram_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_layout: Option<String>,
     pub fact_source: FenceTextIndexSource,
     pub parser_backed: bool,
     pub recovered: bool,
@@ -242,6 +641,7 @@ impl AnalysisDiagramSyntaxFacts {
 
         Self {
             diagram_type: syntax.diagram_type.clone(),
+            effective_layout: syntax.effective_layout.clone(),
             fact_source,
             parser_backed: fact_source.is_parser_backed(),
             recovered: fact_source.is_recovered(),
@@ -298,20 +698,225 @@ pub struct AnalysisFlowchartFacts {
 }
 
 impl AnalysisFlowchartFacts {
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_optional_string(&self.direction);
+        weight.add(
+            self.class_defs
+                .len()
+                .saturating_mul(conservative_btree_entry_bytes::<String, Vec<String>>()),
+        );
+        for (name, classes) in &self.class_defs {
+            weight.add_string(name);
+            add_string_vec_weight(&mut weight, classes);
+        }
+        if let Some(defaults) = &self.edge_defaults {
+            weight.add_optional_string(&defaults.interpolate);
+            add_string_vec_weight(&mut weight, &defaults.style);
+        }
+        add_string_vec_weight(&mut weight, &self.vertex_calls);
+        weight.add_array::<AnalysisFlowchartNodeFacts>(self.nodes.capacity());
+        for node in &self.nodes {
+            weight.add(node.estimated_owned_heap_bytes());
+        }
+        weight.add_array::<AnalysisFlowchartEdgeFacts>(self.edges.capacity());
+        for edge in &self.edges {
+            weight.add(edge.estimated_owned_heap_bytes());
+        }
+        weight.add_array::<AnalysisFlowchartSubgraphFacts>(self.subgraphs.capacity());
+        for subgraph in &self.subgraphs {
+            weight.add(subgraph.estimated_owned_heap_bytes());
+        }
+        weight.add(
+            self.tooltips
+                .len()
+                .saturating_mul(conservative_btree_entry_bytes::<String, String>()),
+        );
+        for (name, tooltip) in &self.tooltips {
+            weight.add_string(name);
+            weight.add_string(tooltip);
+        }
+        weight.finish()
+    }
+
+    #[cfg(test)]
     pub(crate) fn try_from_model(
         model: &Value,
     ) -> Result<Option<Self>, AnalysisFlowchartFactsProjectionError> {
+        let cancellation = crate::AnalysisCancellationToken::new();
+        Self::try_from_model_cancellable(model, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled")
+    }
+
+    pub(crate) fn try_from_model_cancellable(
+        model: &Value,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<Result<Option<Self>, AnalysisFlowchartFactsProjectionError>, crate::AnalysisCancelled>
+    {
+        cancellation.checkpoint()?;
         let diagram_type = model.get("type").and_then(Value::as_str);
         if !matches!(
             diagram_type,
             Some("flowchart" | "flowchart-v2" | "flowchart-elk")
         ) {
-            return Ok(None);
+            return Ok(Ok(None));
         }
 
-        serde_json::from_value(model.clone())
-            .map(Some)
-            .map_err(AnalysisFlowchartFactsProjectionError::from)
+        let facts: Result<Self, CancellableFlowchartProjectionError> = (|| {
+            Ok(Self {
+                direction: deserialize_optional_model_field_cancellable(
+                    model,
+                    "direction",
+                    cancellation,
+                )?,
+                class_defs: deserialize_model_map_cancellable(model, "classDefs", cancellation)?,
+                edge_defaults: deserialize_optional_model_field_cancellable(
+                    model,
+                    "edgeDefaults",
+                    cancellation,
+                )?,
+                vertex_calls: deserialize_model_array_cancellable(
+                    model,
+                    "vertexCalls",
+                    cancellation,
+                )?,
+                nodes: deserialize_model_array_cancellable(model, "nodes", cancellation)?,
+                edges: deserialize_model_array_cancellable(model, "edges", cancellation)?,
+                subgraphs: deserialize_model_array_cancellable(model, "subgraphs", cancellation)?,
+                tooltips: deserialize_model_map_cancellable(model, "tooltips", cancellation)?,
+            })
+        })();
+        match facts {
+            Ok(facts) => {
+                cancellation.checkpoint()?;
+                Ok(Ok(Some(facts)))
+            }
+            Err(CancellableFlowchartProjectionError::Cancelled) => Err(crate::AnalysisCancelled),
+            Err(CancellableFlowchartProjectionError::Invalid(error)) => {
+                cancellation.checkpoint()?;
+                Ok(Err(error))
+            }
+        }
+    }
+}
+
+fn add_string_vec_weight(weight: &mut RetainedWeight, values: &Vec<String>) {
+    weight.add_array::<String>(values.capacity());
+    for value in values {
+        weight.add_string(value);
+    }
+}
+
+fn deserialize_optional_model_field_cancellable<T>(
+    model: &Value,
+    field: &'static str,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Option<T>, CancellableFlowchartProjectionError>
+where
+    T: DeserializeOwned,
+{
+    match model.get(field) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => {
+            checkpoint_model_value(value, cancellation)?;
+            T::deserialize(value)
+                .map(Some)
+                .map_err(AnalysisFlowchartFactsProjectionError::from)
+                .map_err(CancellableFlowchartProjectionError::Invalid)
+        }
+    }
+}
+
+fn deserialize_model_array_cancellable<T>(
+    model: &Value,
+    field: &'static str,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<T>, CancellableFlowchartProjectionError>
+where
+    T: DeserializeOwned,
+{
+    let Some(value) = model.get(field) else {
+        return Ok(Vec::new());
+    };
+    let Some(values) = value.as_array() else {
+        return Err(CancellableFlowchartProjectionError::Invalid(
+            AnalysisFlowchartFactsProjectionError::invalid_field(field, "an array"),
+        ));
+    };
+
+    let mut projected = Vec::with_capacity(values.len());
+    for value in values {
+        cancellation.checkpoint()?;
+        checkpoint_model_value(value, cancellation)?;
+        projected.push(
+            T::deserialize(value)
+                .map_err(AnalysisFlowchartFactsProjectionError::from)
+                .map_err(CancellableFlowchartProjectionError::Invalid)?,
+        );
+    }
+    Ok(projected)
+}
+
+fn deserialize_model_map_cancellable<T>(
+    model: &Value,
+    field: &'static str,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<BTreeMap<String, T>, CancellableFlowchartProjectionError>
+where
+    T: DeserializeOwned,
+{
+    let Some(value) = model.get(field) else {
+        return Ok(BTreeMap::new());
+    };
+    let Some(values) = value.as_object() else {
+        return Err(CancellableFlowchartProjectionError::Invalid(
+            AnalysisFlowchartFactsProjectionError::invalid_field(field, "an object"),
+        ));
+    };
+
+    let mut projected = BTreeMap::new();
+    for (key, value) in values {
+        cancellation.checkpoint()?;
+        checkpoint_model_value(value, cancellation)?;
+        projected.insert(
+            key.clone(),
+            T::deserialize(value)
+                .map_err(AnalysisFlowchartFactsProjectionError::from)
+                .map_err(CancellableFlowchartProjectionError::Invalid)?,
+        );
+    }
+    Ok(projected)
+}
+
+fn checkpoint_model_value(
+    root: &Value,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<(), CancellableFlowchartProjectionError> {
+    let mut stack = vec![root];
+    let mut visited = 0usize;
+    while let Some(value) = stack.pop() {
+        if visited.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        visited += 1;
+        match value {
+            Value::Array(values) => stack.extend(values.iter().rev()),
+            Value::Object(values) => stack.extend(values.values()),
+            _ => {}
+        }
+    }
+    cancellation.checkpoint()?;
+    Ok(())
+}
+
+enum CancellableFlowchartProjectionError {
+    Cancelled,
+    Invalid(AnalysisFlowchartFactsProjectionError),
+}
+
+impl From<crate::AnalysisCancelled> for CancellableFlowchartProjectionError {
+    fn from(_: crate::AnalysisCancelled) -> Self {
+        Self::Cancelled
     }
 }
 
@@ -327,6 +932,14 @@ impl fmt::Display for AnalysisFlowchartFactsProjectionError {
 }
 
 impl std::error::Error for AnalysisFlowchartFactsProjectionError {}
+
+impl AnalysisFlowchartFactsProjectionError {
+    fn invalid_field(field: &str, expected: &str) -> Self {
+        Self {
+            message: format!("flowchart model field `{field}` must be {expected}"),
+        }
+    }
+}
 
 impl From<serde_json::Error> for AnalysisFlowchartFactsProjectionError {
     fn from(error: serde_json::Error) -> Self {
@@ -379,6 +992,30 @@ pub struct AnalysisFlowchartNodeFacts {
     pub have_callback: bool,
 }
 
+impl AnalysisFlowchartNodeFacts {
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_string(&self.id);
+        for value in [
+            &self.label,
+            &self.label_type,
+            &self.layout_shape,
+            &self.icon,
+            &self.form,
+            &self.pos,
+            &self.img,
+            &self.constraint,
+            &self.link,
+            &self.link_target,
+        ] {
+            weight.add_optional_string(value);
+        }
+        add_string_vec_weight(&mut weight, &self.classes);
+        add_string_vec_weight(&mut weight, &self.styles);
+        weight.finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisFlowchartEdgeFacts {
     pub id: String,
@@ -406,6 +1043,28 @@ pub struct AnalysisFlowchartEdgeFacts {
     pub length: usize,
 }
 
+impl AnalysisFlowchartEdgeFacts {
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_string(&self.id);
+        weight.add_string(&self.from);
+        weight.add_string(&self.to);
+        for value in [
+            &self.label,
+            &self.label_type,
+            &self.edge_type,
+            &self.stroke,
+            &self.interpolate,
+            &self.animation,
+        ] {
+            weight.add_optional_string(value);
+        }
+        add_string_vec_weight(&mut weight, &self.classes);
+        add_string_vec_weight(&mut weight, &self.style);
+        weight.finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisFlowchartSubgraphFacts {
     pub id: String,
@@ -420,6 +1079,20 @@ pub struct AnalysisFlowchartSubgraphFacts {
     pub styles: Vec<String>,
     #[serde(default)]
     pub nodes: Vec<String>,
+}
+
+impl AnalysisFlowchartSubgraphFacts {
+    fn estimated_owned_heap_bytes(&self) -> usize {
+        let mut weight = RetainedWeight::default();
+        weight.add_string(&self.id);
+        weight.add_string(&self.title);
+        weight.add_optional_string(&self.dir);
+        weight.add_optional_string(&self.label_type);
+        add_string_vec_weight(&mut weight, &self.classes);
+        add_string_vec_weight(&mut weight, &self.styles);
+        add_string_vec_weight(&mut weight, &self.nodes);
+        weight.finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -475,8 +1148,14 @@ pub struct AnalysisSemanticItemFacts {
     pub detail: Option<String>,
     pub kind: crate::EditorSymbolKind,
     pub role: crate::FenceSemanticRole,
+    #[serde(default = "missing_rename_policy")]
+    pub rename_policy: crate::FenceRenamePolicy,
     pub span: AnalysisFactSpan,
     pub selection: AnalysisFactSpan,
+}
+
+fn missing_rename_policy() -> crate::FenceRenamePolicy {
+    crate::FenceRenamePolicy::None
 }
 
 impl AnalysisSemanticItemFacts {
@@ -486,6 +1165,7 @@ impl AnalysisSemanticItemFacts {
             detail: item.detail.clone(),
             kind: item.kind,
             role: item.role,
+            rename_policy: item.rename_policy,
             span: AnalysisFactSpan::from_local(item.span, source_map, body_start),
             selection: AnalysisFactSpan::from_local(item.selection, source_map, body_start),
         }
@@ -547,6 +1227,24 @@ fn fence_marker_name(marker: FenceMarker) -> &'static str {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn diagram_parse_disposition_uses_stable_snake_case_values() {
+        for (disposition, wire_value) in [
+            (DiagramParseDisposition::Parsed, "parsed"),
+            (DiagramParseDisposition::Recovered, "recovered"),
+            (DiagramParseDisposition::Unavailable, "unavailable"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(disposition).unwrap(),
+                json!(wire_value)
+            );
+            assert_eq!(
+                serde_json::from_value::<DiagramParseDisposition>(json!(wire_value)).unwrap(),
+                disposition
+            );
+        }
+    }
 
     #[test]
     fn flowchart_facts_accept_legacy_flowchart_models() {

@@ -28,8 +28,8 @@
     "cytoscape": {
       "path": "repo-ref/cytoscape.js",
       "url": "https://github.com/cytoscape/cytoscape.js.git",
-      "ref": "v3.33.1",
-      "commit": "72af5edb6cd988851f42dc25f9e1092fd2d9e7cf"
+      "ref": "v3.34.0",
+      "commit": "22716bfb75834b56fa6679648b0abb06f4ae691c"
     },
     "cytoscape-cose-bilkent": {
       "path": "repo-ref/cytoscape-cose-bilkent",
@@ -82,8 +82,8 @@
     "dompurify": {
       "path": "repo-ref/dompurify",
       "url": "https://github.com/cure53/DOMPurify.git",
-      "ref": "3.4.0",
-      "commit": "5b16e0b892e82b1779d62b9928b43c4c4ff290b9"
+      "ref": "3.4.12",
+      "commit": "a9ca1e537422319a557a9a2aa61f003b23b4a197"
     },
     "sanitize-url": {
       "path": "repo-ref/sanitize-url",
@@ -99,9 +99,15 @@
     },
     "zenuml-core": {
       "path": "repo-ref/zenuml-core",
-      "url": "https://github.com/mermaid-js/zenuml-core",
-      "ref": "v3.45.4",
-      "commit": "2b0847a22ba0e95c1c70877af4c04e4e6c51c8b6"
+      "url": "https://github.com/mermaid-js/zenuml-core.git",
+      "ref": "v3.47.8",
+      "commit": "c81406671c0833baebb9fac08a0cbcdc99b3907d"
+    },
+    "zenuml-core-candidate": {
+      "path": "repo-ref/zenuml-core-3.50.1",
+      "url": "https://github.com/mermaid-js/zenuml-core.git",
+      "ref": "v3.50.1",
+      "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36"
     }
   }
 }

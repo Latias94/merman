@@ -7,6 +7,7 @@
         "id": "0",
         "domId": "node_0",
         "label": "the root",
+        "labelType": "markdown",
         "isGroup": false,
         "shape": "hexagon",
         "width": 200,

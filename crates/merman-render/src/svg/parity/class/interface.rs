@@ -1,12 +1,12 @@
 use crate::entities::decode_entities_minimal_cow;
-use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use crate::model::{Bounds, LayoutNode};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 use std::fmt::Write as _;
 
 use super::super::{escape_attr_display, escape_xml_into, fmt};
 use super::ClassSvgInterface;
 use super::bounds::include_xywh;
+use super::label::class_math_html_label;
 use super::node::ClassNodeRenderPosition;
 
 pub(super) struct ClassInterfaceRenderContext<'a> {
@@ -15,6 +15,8 @@ pub(super) struct ClassInterfaceRenderContext<'a> {
     pub text_style: &'a TextStyle,
     pub line_height: f64,
     pub look: &'a str,
+    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
 pub(super) struct ClassInterfaceRenderState<'a> {
@@ -67,7 +69,7 @@ pub(super) fn render_class_interface_node(
 
     let _ = write!(
         out,
-        r#"<g class="node undefined" id="{}-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>"#,
+        r#"<g class="node undefined" id="{}-{}" data-look="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel">"#,
         escape_attr_display(ctx.diagram_id),
         escape_attr_display(&iface.id),
         escape_attr_display(ctx.look),
@@ -81,13 +83,21 @@ pub(super) fn render_class_interface_node(
         fmt(top),
         fmt(fo_w),
         fmt(fo_h),
-        class_text_overrides::class_html_label_max_width_px(),
+        MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
     );
-    for (idx, line) in label_text.split('\n').enumerate() {
-        if idx > 0 {
-            out.push_str("<br />");
+    if let Some(math_html) =
+        class_math_html_label(label_text.as_ref(), ctx.mermaid_config, ctx.math_renderer)
+    {
+        out.push_str(&math_html);
+    } else {
+        out.push_str("<p>");
+        for (idx, line) in label_text.split('\n').enumerate() {
+            if idx > 0 {
+                out.push_str("<br />");
+            }
+            escape_xml_into(out, line);
         }
-        escape_xml_into(out, line);
+        out.push_str("</p>");
     }
-    out.push_str("</p></span></div></foreignObject></g></g>");
+    out.push_str("</span></div></foreignObject></g></g>");
 }

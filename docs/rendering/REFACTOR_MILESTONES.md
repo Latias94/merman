@@ -31,17 +31,18 @@ Exit criteria:
 
 - No code changes required.
 
-### R1: Shared root viewport + `<svg>` root writer (starter)
+### R1: Shared Root Viewport + `<svg>` ownership
 
 Deliverables:
 
-- A shared helper for root viewport override application (viewBox + max-width).
-- A shared root `<svg>` writer adopted in **one** diagram end-to-end (recommended: ER).
+- One Root Viewport interface for computed family or emitted-content bounds, sizing, and root
+  attributes.
+- Shared root emission adopted by every built-in family.
 
 Exit criteria:
 
 - All gates green.
-- The new helper is used in at least one diagram with unchanged DOM output.
+- Direct family root emission and production fixture pins are absent.
 
 ### R2: Root writer adopted across Stage B diagrams
 
@@ -76,13 +77,13 @@ Exit criteria:
 
 - Reduced file sizes for the largest renderers (`flowchart.rs`, `class.rs`) without behavior change.
 
-### R4: Tooling automation for overrides
+### R4: Generalized measurement-profile tooling
 
 Deliverables:
 
-- A stable `xtask` command that can update root viewport overrides from a compare report.
-- Inventory/reporting for stale overrides.
+- A reproducible `gen-font-metrics` command that emits only generalized font and DOM-shape facts.
+- An architecture guard that rejects fixture ids and complete-label answers in production data.
 
 Exit criteria:
 
-- Updating overrides is “one command” and can be done without manual copy/paste.
+- Generated profiles validate against an independent corpus without adding a runtime fixture path.

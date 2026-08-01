@@ -1,0 +1,94 @@
+{
+  "diagramType": "cynefin",
+  "layout": {
+    "CynefinDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1080.0,
+        "max_y": 780.0
+      },
+      "width": 1000.0,
+      "height": 700.0,
+      "padding": 40.0,
+      "total_width": 1080.0,
+      "total_height": 780.0,
+      "use_max_width": true,
+      "show_domain_descriptions": true,
+      "boundary_amplitude": 15.0,
+      "seed": 1.0,
+      "domain_layouts": [
+        {
+          "name": "complex",
+          "cx": 250.0,
+          "cy": 175.0,
+          "x": 0.0,
+          "y": 0.0,
+          "width": 500.0,
+          "height": 350.0
+        },
+        {
+          "name": "complicated",
+          "cx": 750.0,
+          "cy": 175.0,
+          "x": 500.0,
+          "y": 0.0,
+          "width": 500.0,
+          "height": 350.0
+        },
+        {
+          "name": "chaotic",
+          "cx": 250.0,
+          "cy": 525.0,
+          "x": 0.0,
+          "y": 350.0,
+          "width": 500.0,
+          "height": 350.0
+        },
+        {
+          "name": "clear",
+          "cx": 750.0,
+          "cy": 525.0,
+          "x": 500.0,
+          "y": 350.0,
+          "width": 500.0,
+          "height": 350.0
+        },
+        {
+          "name": "confusion",
+          "cx": 500.0,
+          "cy": 350.0,
+          "x": 350.0,
+          "y": 245.0,
+          "width": 300.0,
+          "height": 210.0
+        }
+      ],
+      "items": [
+        {
+          "domain": "complex",
+          "label": "Adaptive work",
+          "x": 204.12,
+          "y": 200.0,
+          "width": 91.76,
+          "height": 26.0,
+          "text_x": 45.88,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "clear",
+          "label": "Standard work",
+          "x": 703.22,
+          "y": 550.0,
+          "width": 93.56,
+          "height": 26.0,
+          "text_x": 46.78,
+          "text_y": 13.0,
+          "overflow": false
+        }
+      ],
+      "transitions": []
+    }
+  }
+}

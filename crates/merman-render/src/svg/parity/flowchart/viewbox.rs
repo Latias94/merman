@@ -4,6 +4,7 @@ use std::borrow::Cow;
 
 use rustc_hash::FxHashMap;
 
+use super::super::timing::RenderTiming;
 use super::viewbox_node_bounds::include_flowchart_node_rendered_bounds;
 use super::*;
 
@@ -11,7 +12,7 @@ const TITLE_FONT_SIZE_PX: f64 = 18.0;
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderedBoundsRequest<'view, 'data> {
     pub ctx: &'view FlowchartRenderCtx<'data>,
-    pub layout: &'view FlowchartV2Layout,
+    pub layout: &'view FlowchartLayout,
     pub subgraph_title_y_shift: f64,
 }
 
@@ -27,8 +28,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartViewboxBoundsRequest<
     pub diagram_title: Option<&'title str>,
     pub font_family: &'borrow str,
     pub title_top_margin: f64,
-    pub timing_enabled: bool,
-    pub viewbox_edge_curve_bounds: &'borrow mut web_time::Duration,
+    pub timing: RenderTiming,
+    pub viewbox_edge_curve_bounds: &'borrow mut std::time::Duration,
     pub detail: &'borrow mut FlowchartRenderDetails,
     pub edge_path_cache: &'borrow mut FxHashMap<&'view str, FlowchartEdgePathCacheEntry>,
 }
@@ -133,12 +134,7 @@ where
         .into_iter()
         .flatten()
         {
-            let label_width = if ctx.edge_html_labels {
-                flowchart_html_edge_label_width_for_layout(ctx, lbl.width)
-            } else {
-                lbl.width
-            };
-            let hw = label_width / 2.0;
+            let hw = lbl.width / 2.0;
             let hh = lbl.height / 2.0;
             let svg_label_y_offset = if ctx.edge_html_labels { 0.0 } else { 1.0 };
             include_rect(
@@ -172,7 +168,7 @@ where
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data, F>(
     request: FlowchartViewboxBoundsRequest<'_, '_, 'data, '_>,
     effective_parent_for_id: &F,
-) -> FlowchartViewboxBounds
+) -> Result<FlowchartViewboxBounds>
 where
     F: Fn(&str) -> Option<&'data str>,
 {
@@ -183,7 +179,7 @@ where
         diagram_title,
         font_family,
         title_top_margin,
-        timing_enabled,
+        timing,
         viewbox_edge_curve_bounds,
         detail,
         edge_path_cache,
@@ -208,8 +204,8 @@ where
     // polyline points). Headlessly, approximate that by unioning a tight bbox over each rendered
     // edge path `d` into our base bbox.
     {
-        let _g = timing_enabled
-            .then(|| super::super::timing::TimingGuard::new(viewbox_edge_curve_bounds));
+        let edge_bounds_base = (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y);
+        let _g = timing.section(viewbox_edge_curve_bounds);
         let mut lca_scratch: Vec<&str> = Vec::new();
         let mut scratch = FlowchartEdgeDataPointsScratch::default();
         let mut root_offsets: FxHashMap<&str, FlowchartRootOffsets> =
@@ -225,7 +221,7 @@ where
         for e in render_edges {
             let e = e.as_ref();
             let root_id = {
-                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_lca);
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_lca);
                 lca_for_ids(
                     e.from.as_str(),
                     e.to.as_str(),
@@ -235,7 +231,7 @@ where
                 .unwrap_or("")
             };
             let off = {
-                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_offsets);
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_offsets);
                 *root_offsets.entry(root_id).or_insert_with(|| {
                     flowchart_cluster_root_offsets(ctx, root_id).unwrap_or(FlowchartRootOffsets {
                         origin_x: 0.0,
@@ -247,7 +243,7 @@ where
 
             let Some(geom) = ({
                 detail.viewbox_edge_curve_geom_calls += 1;
-                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_geom);
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_geom);
                 flowchart_compute_edge_path_geom(
                     FlowchartEdgePathGeomRequest {
                         ctx,
@@ -270,7 +266,7 @@ where
             }
 
             {
-                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_bbox_union);
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_bbox_union);
                 if let Some(pb) = geom.pb {
                     bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x);
                     bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform);
@@ -283,9 +279,33 @@ where
                     FlowchartEdgePathCacheEntry {
                         origin_x: off.origin_x,
                         origin_y: off.origin_y,
+                        abs_top_transform: off.abs_top_transform,
                         geom,
                     },
                 );
+            }
+        }
+
+        if ctx.swimlane_direction.is_some() {
+            super::swimlane::apply_line_hops_to_edge_geometries(
+                edge_path_cache,
+                render_edges,
+                ctx.config,
+                ctx.work_meter,
+            )?;
+
+            // Line hops are a render-time replacement of the original path. Rebuild edge bounds
+            // from the same post-processed geometry that SVG emission consumes, while retaining
+            // node, cluster, and label bounds as the base.
+            (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y) = edge_bounds_base;
+            for cache_entry in edge_path_cache.values() {
+                let _g = detail_guard(timing, &mut detail.viewbox_edge_curve_bbox_union);
+                if let Some(pb) = cache_entry.geom.pb {
+                    bbox_min_x = bbox_min_x.min(pb.min_x + cache_entry.origin_x);
+                    bbox_min_y = bbox_min_y.min(pb.min_y + cache_entry.abs_top_transform);
+                    bbox_max_x = bbox_max_x.max(pb.max_x + cache_entry.origin_x);
+                    bbox_max_y = bbox_max_y.max(pb.max_y + cache_entry.abs_top_transform);
+                }
             }
         }
     }
@@ -298,6 +318,7 @@ where
             font_family: Some(font_family.to_string()),
             font_size: TITLE_FONT_SIZE_PX,
             font_weight: None,
+            font_style: None,
         };
         let (title_left, title_right) = ctx.measurer.measure_svg_title_bbox_x(title, &title_style);
         let baseline_y = -title_top_margin;
@@ -309,14 +330,14 @@ where
         bbox_max_y = bbox_max_y.max(baseline_y + descent);
     }
 
-    FlowchartViewboxBounds {
+    Ok(FlowchartViewboxBounds {
         diagram_title,
         title_anchor_x,
         bbox_min_x,
         bbox_min_y,
         bbox_max_x,
         bbox_max_y,
-    }
+    })
 }
 
 fn lca_for_ids<'a, F>(

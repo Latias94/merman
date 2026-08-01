@@ -12,7 +12,8 @@ fn parse_er_render_model(input: &str) -> RenderSemanticModel {
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("ER diagram should parse")
         .expect("ER diagram should be detected")
-        .model
+        .into_parts()
+        .1
 }
 
 fn parse_er_model(input: &str) -> ErDiagramRenderModel {

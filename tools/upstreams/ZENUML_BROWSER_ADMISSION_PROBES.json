@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "projects": [
+    "chromium-desktop",
+    "chromium-mobile"
+  ],
+  "categories": {
+    "execution-isolation": [
+      {
+        "id": "sandbox-allows-scripts-only",
+        "description": "The external Mermaid frame grants scripts without same-origin authority."
+      },
+      {
+        "id": "opaque-origin",
+        "description": "The external Mermaid frame executes with a unique opaque origin."
+      },
+      {
+        "id": "zenuml-first-load-success",
+        "description": "Advanced ZenUML renders in a fresh external execution realm."
+      },
+      {
+        "id": "zenuml-first-load-parent-publication",
+        "description": "The fresh ZenUML result crosses the strict parent publication boundary."
+      },
+      {
+        "id": "zenuml-reused-realm-success",
+        "description": "Advanced ZenUML renders again in the authenticated reused realm."
+      },
+      {
+        "id": "zenuml-reused-realm-parent-publication",
+        "description": "The reused ZenUML result crosses the strict parent publication boundary."
+      },
+      {
+        "id": "self-navigation-first-request-recorded",
+        "description": "The unavoidable first self-navigation request is recorded exactly once."
+      },
+      {
+        "id": "self-navigation-removes-frame",
+        "description": "A self-navigation attempt removes the external execution frame."
+      },
+      {
+        "id": "self-navigation-poisons-realm",
+        "description": "A self-navigation attempt prevents any later operation on that realm."
+      },
+      {
+        "id": "invalid-render-has-no-publication",
+        "description": "Invalid external source cannot produce a parent publication artifact."
+      },
+      {
+        "id": "invalid-render-poisons-realm",
+        "description": "An invalid external render poisons the failed realm."
+      },
+      {
+        "id": "replacement-realm-renders-zenuml",
+        "description": "A replacement realm renders advanced ZenUML after a poisoned predecessor."
+      },
+      {
+        "id": "replacement-render-parent-publication",
+        "description": "The replacement ZenUML result crosses the strict parent publication boundary."
+      }
+    ],
+    "security": [
+      {
+        "id": "parent-access-denied",
+        "description": "The opaque frame cannot inspect its parent location."
+      },
+      {
+        "id": "origin-storage-denied",
+        "description": "Ambient localStorage and sessionStorage are unavailable."
+      },
+      {
+        "id": "indexeddb-denied",
+        "description": "Ambient IndexedDB access is unavailable."
+      },
+      {
+        "id": "cookie-access-denied",
+        "description": "Ambient cookie access is unavailable."
+      },
+      {
+        "id": "fetch-egress-denied",
+        "description": "Direct fetch cannot reach the harness server."
+      },
+      {
+        "id": "xhr-egress-denied",
+        "description": "XMLHttpRequest cannot reach the harness server."
+      },
+      {
+        "id": "websocket-egress-denied",
+        "description": "WebSocket cannot connect to the harness server."
+      },
+      {
+        "id": "eventsource-egress-denied",
+        "description": "EventSource cannot connect to the harness server."
+      },
+      {
+        "id": "worker-creation-denied",
+        "description": "The opaque frame cannot create a worker."
+      },
+      {
+        "id": "image-subresource-denied",
+        "description": "An external image subresource cannot load."
+      },
+      {
+        "id": "beacon-egress-denied",
+        "description": "A queued beacon produces no server-side request."
+      },
+      {
+        "id": "blocked-request-attempt-observed",
+        "description": "The browser observes a denied request attempt, proving the probe executed."
+      },
+      {
+        "id": "server-http-egress-zero",
+        "description": "The harness server receives no denied HTTP request."
+      },
+      {
+        "id": "server-websocket-egress-zero",
+        "description": "The harness server receives no denied WebSocket connection."
+      },
+      {
+        "id": "ephemeral-storage-frozen",
+        "description": "The injected bounded storage facade is immutable."
+      },
+      {
+        "id": "ephemeral-local-storage-bounded",
+        "description": "The bounded local facade retains an in-budget value."
+      },
+      {
+        "id": "ephemeral-session-storage-isolated",
+        "description": "The bounded session facade retains its own in-budget value."
+      },
+      {
+        "id": "ephemeral-storage-quota-enforced",
+        "description": "The bounded storage facade rejects an over-budget value."
+      }
+    ]
+  }
+}

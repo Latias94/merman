@@ -1,9 +1,10 @@
-#![cfg(feature = "render")]
+#![cfg(feature = "svg")]
 
 use merman::MermaidConfig;
-use merman::render::HeadlessRenderer;
-use serde_json::{Map, Value};
+use merman::svg::HeadlessRenderer;
+use merman_fixture_render_context::RenderContextCatalog;
 use std::collections::BTreeSet;
+#[cfg(feature = "png")]
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -60,32 +61,31 @@ fn fixture_paths_for_dirs(family_dirs: &[&str]) -> Vec<PathBuf> {
     out
 }
 
-fn fixture_site_config_overrides() -> &'static Map<String, Value> {
-    static OVERRIDES: OnceLock<Map<String, Value>> = OnceLock::new();
-    OVERRIDES.get_or_init(|| {
-        let value: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/_config/site_config_overrides.json"
-        ))
-        .expect("valid fixture site config override manifest");
-        match value {
-            Value::Object(map) => map,
-            other => {
-                panic!("fixture site config override manifest must be a JSON object, got {other:?}")
-            }
-        }
+fn fixture_render_contexts() -> &'static RenderContextCatalog {
+    static CATALOG: OnceLock<RenderContextCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        RenderContextCatalog::load(workspace_root().join("fixtures"))
+            .expect("valid fixture render context catalog")
     })
 }
 
 fn fixture_site_config_for_relative_name(relative_name: &str) -> Option<merman::MermaidConfig> {
-    let key = relative_name
+    let relative = relative_name
         .strip_prefix("fixtures/")
         .unwrap_or(relative_name);
-    fixture_site_config_overrides()
-        .get(key)
-        .cloned()
-        .map(merman::MermaidConfig::from_value)
+    let path = workspace_root().join("fixtures").join(relative);
+    fixture_render_contexts()
+        .context_for_fixture(&path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "invalid fixture render context lookup for {}: {error}",
+                path.display()
+            )
+        })
+        .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
 }
 
+#[cfg(feature = "layout-cytoscape")]
 fn fixture_sample_paths() -> Vec<PathBuf> {
     let fixtures_root = workspace_root().join("fixtures");
     let mut out = Vec::new();
@@ -201,6 +201,7 @@ fn audit_name_filter() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+#[cfg(feature = "layout-cytoscape")]
 fn is_representative_fixture_name(name: &str) -> bool {
     name.starts_with("stress_")
         || name.starts_with("kanban_stress_")
@@ -274,7 +275,19 @@ fn is_docs_placeholder_fixture(source: &str) -> bool {
 }
 
 fn is_known_unrenderable_fixture(relative_name: &str, source: &str) -> bool {
-    if relative_name.contains("parser_only_spec") {
+    let path = Path::new(relative_name);
+    let diagram = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str());
+    let stem = path.file_stem().and_then(|name| name.to_str());
+    if diagram
+        .zip(stem)
+        .and_then(|(diagram, stem)| {
+            merman_fixture_render_context::parser_only_fixture_reason(diagram, stem)
+        })
+        .is_some()
+    {
         return true;
     }
 
@@ -290,7 +303,6 @@ fn is_known_unrenderable_fixture(relative_name: &str, source: &str) -> bool {
             // Strict public rendering should reject them; the all-supported renderability audit
             // skips them so it can keep testing contentful Treemap fixtures.
             | "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db.mmd"
-            | "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db_parser_only_.mmd"
     )
 }
 
@@ -370,13 +382,15 @@ fn assert_expected_labels_and_colors(
     }
 }
 
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn assert_rasterizes_when_enabled(name: &str, source: &str, svg: &str) {
-    let png =
-        merman::render::raster::svg_to_png(svg, &merman::render::raster::RasterOptions::default())
-            .unwrap_or_else(|err| {
-                panic!("{name}: resvg-safe output should rasterize to PNG: {err}")
-            });
+    let session = merman::svg::RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("fixture render session");
+    let svg = merman::svg::finalize_resvg_svg(svg, &session)
+        .unwrap_or_else(|err| panic!("{name}: output should pass terminal validation: {err}"));
+    let png = merman::svg::export::svg_to_png(&svg, &merman::svg::export::RasterOptions::default())
+        .unwrap_or_else(|err| panic!("{name}: resvg-safe output should rasterize to PNG: {err}"));
 
     assert!(
         png.starts_with(b"\x89PNG\r\n\x1a\n") && png.len() > 8,
@@ -387,7 +401,7 @@ fn assert_rasterizes_when_enabled(name: &str, source: &str, svg: &str) {
     }
 }
 
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn assert_png_has_visible_non_background_ink(name: &str, png_bytes: &[u8]) {
     let cursor = Cursor::new(png_bytes);
     let decoder = png::Decoder::new(cursor);
@@ -429,7 +443,7 @@ fn assert_png_has_visible_non_background_ink(name: &str, png_bytes: &[u8]) {
     );
 }
 
-#[cfg(feature = "raster")]
+#[cfg(feature = "png")]
 fn rgba_pixel_visibly_differs_from_background(pixel: &[u8], background: &[u8]) -> bool {
     let channel_delta = |i: usize| pixel[i].abs_diff(background[i]) as u16;
     let alpha_delta = channel_delta(3);
@@ -437,9 +451,9 @@ fn rgba_pixel_visibly_differs_from_background(pixel: &[u8], background: &[u8]) -
     alpha_delta > 3 || (pixel[3] > 0 && rgb_delta > 8)
 }
 
-#[cfg(not(feature = "raster"))]
+#[cfg(not(feature = "png"))]
 fn assert_rasterizes_when_enabled(_name: &str, _source: &str, _svg: &str) {
-    // Raster validation runs when this test is executed with `--features raster`.
+    // PNG validation runs when this test is executed with `--features png`.
 }
 
 fn source_has_visible_diagram_content(source: &str) -> bool {
@@ -746,6 +760,86 @@ fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
 }
 
 #[test]
+fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
+    let source = r#"quadrantChart
+  title Reach and engagement
+  x-axis Low Reach --> High Reach
+  y-axis Low Engagement --> High Engagement
+  Campaign A: [0.3, 0.6]
+"#;
+    let renderer = HeadlessRenderer::new()
+        .with_vendored_text_measurer()
+        .with_diagram_id("quadrant-artifact-lanes");
+
+    let raw_svg = renderer
+        .render_svg_sync(source)
+        .expect("raw/source render should succeed")
+        .expect("quadrant should be detected");
+    assert!(
+        raw_svg.contains(r#"fill="hsl(240, 100%, NaN%)""#),
+        "raw/source output must preserve the pinned Mermaid token: {raw_svg}"
+    );
+
+    let resvg_safe_svg = renderer
+        .render_svg_resvg_safe_sync(source)
+        .expect("resvg-safe render should succeed")
+        .expect("quadrant should be detected");
+    assert_resvg_safe_output("quadrant-artifact-lanes", source, &resvg_safe_svg);
+
+    let document = roxmltree::Document::parse(&resvg_safe_svg).expect("valid resvg-safe XML");
+    let point = document
+        .descendants()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("quadrant point circle");
+    assert_eq!(point.attribute("fill"), Some("#000000"));
+    assert_eq!(point.attribute("stroke"), Some("none"));
+}
+
+#[test]
+#[cfg(feature = "layout-cytoscape")]
+fn font_only_public_themes_keep_upstream_palette_in_resvg_safe_output() {
+    let themes = [
+        ("default", "hsl(240, 100%, 76.2745098039%)"),
+        ("dark", "#1f2020"),
+        (
+            "forest",
+            "hsl(78.1578947368, 58.4615384615%, 64.5098039216%)",
+        ),
+        ("neutral", "#555"),
+        ("base", "hsl(40.5882352941, 100%, 68.3333333333%)"),
+    ];
+    let families = [
+        ("radar", "radar-beta\naxis A, B\ncurve sample{1, 2}\n"),
+        ("kanban", "kanban\n  Todo\n    item1\n"),
+        ("mindmap", "mindmap\n  root((Root))\n    child(Child)\n"),
+        (
+            "timeline",
+            "timeline\n  section Release\n    Plan : Build\n",
+        ),
+    ];
+
+    for (theme, expected_scale) in themes {
+        let site_config = MermaidConfig::from_value(serde_json::json!({
+            "theme": theme,
+            "themeVariables": {
+                "fontFamily": "Inter, sans-serif"
+            }
+        }));
+
+        for (family, source) in families {
+            let name = format!("font-only-{theme}-{family}");
+            let svg =
+                render_resvg_safe_with_options(&name, source, false, Some(site_config.clone()));
+            assert_resvg_safe_output(&name, source, &svg);
+            assert!(
+                svg.contains(expected_scale),
+                "{name}: resvg-safe output must preserve the pinned Mermaid cScale0 {expected_scale:?}: {svg}"
+            );
+        }
+    }
+}
+
+#[test]
 fn host_reported_diagrams_render_headless_resvg_safe() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
@@ -818,6 +912,7 @@ fn host_reported_diagrams_render_headless_resvg_safe() {
 }
 
 #[test]
+#[cfg(feature = "layout-cytoscape")]
 fn representative_fixtures_render_headless_resvg_safe() {
     let fixtures = fixture_sample_paths();
     assert!(
@@ -927,10 +1022,13 @@ fn known_error_golden_fixtures_are_skipped_by_manual_audit() {
         "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db.mmd",
         "treemap\nclassDef c fill:#ff0000, stroke:rgb(1\\,2\\,3), color;\n"
     ));
-    assert!(is_known_unrenderable_fixture(
-        "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db_parser_only_.mmd",
-        "treemap\nclassDef c fill:#ff0000, stroke:rgb(1\\,2\\,3), color;\n"
-    ));
+    assert!(
+        !is_known_unrenderable_fixture(
+            "fixtures/flowchart/new_parser_only_spec.mmd",
+            "flowchart TD\nA-->B\n"
+        ),
+        "a parser-only-looking filename must not grant a renderability exemption"
+    );
 }
 
 #[test]

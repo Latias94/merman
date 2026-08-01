@@ -1,0 +1,1625 @@
+{
+  "schemaVersion": 1,
+  "contexts": [
+    {
+      "fixture": "class/upstream_interactivity_security_level_loose_spec.mmd",
+      "fixtureSha256": "2c745b1c95beee97098865df4b829575029c4ff5b7918662ca94f8d9dc9c5883",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "class/upstream_interactivity_security_level_sandbox_target_top_spec.mmd",
+      "fixtureSha256": "5afda0e9e5d4408438f87c43d38080fa23307c74625a2fb3efd9609f237664dd",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "sandbox"
+      }
+    },
+    {
+      "fixture": "flowchart/local_flowchart_elk_hardening_cluster_boundary_styles_004.mmd",
+      "fixtureSha256": "567bc38c9bcef7960c775b3e0bac80dc8945e2111e80e067c78abb12039ac925",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/local_flowchart_elk_hardening_compound_parent_child_edges_001.mmd",
+      "fixtureSha256": "019973ec90d0aa89a2a27e18060044e74407a1bfab073190b3eebd76184cfbd8",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/stress_flowchart_html_labels_default_class_077.mmd",
+      "fixtureSha256": "cead2740efa9b00d7e86ba4f6413d31d4674d8feb0a6d1305ace530f4c14dd01",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/stress_flowchart_markdown_mixed_raw_blocks_078.mmd",
+      "fixtureSha256": "a891ec616bd64bdfebad366d7bda7a1fe680218e48369c74fe0e4d480335e227",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_036.mmd",
+      "fixtureSha256": "2cb57e51813ecf06fbc53962849a62930dbe50b31977bec5aef7de4897db99cb",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_2388_elk_handling_default_in_the_node_name_037.mmd",
+      "fixtureSha256": "35007bb960aa4266b833c801b8d6583aa32d1a36fe4c361f16b0cf6cdc23e8ea",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_2824_elk_clipping_of_edges_038.mmd",
+      "fixtureSha256": "069fc0ee8890ceb3de7f79bd7b44510f0c7c415b211b75853ba2f3051fc8f8ac",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_50_elk_handle_nested_subgraphs_in_reverse_order_009.mmd",
+      "fixtureSha256": "9c59011e0ea12f8374770f25a4c75d0c33f9ac5e55edfbdd7030ec820a21d735",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_51_elk_handle_nested_subgraphs_in_reverse_order_010.mmd",
+      "fixtureSha256": "9c59011e0ea12f8374770f25a4c75d0c33f9ac5e55edfbdd7030ec820a21d735",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_52_elk_handle_nested_subgraphs_in_several_levels_011.mmd",
+      "fixtureSha256": "ec6889c35f3396d8f13c4cf18d5f463cd31ea72dc3ed5c5e24de9a5aa85bd14f",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_53_elk_handle_nested_subgraphs_with_edges_in_and_out_012.mmd",
+      "fixtureSha256": "f1d6b47974f2b57cfe4ef9d220c8470449f5dce23f8b0fba37a89f3a4202aa67",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_54_elk_handle_nested_subgraphs_with_outgoing_links_013.mmd",
+      "fixtureSha256": "8c0df24164d0c179df2dfbce9db8816fcd7485e2a2b88693f1563f94a5ee5dfa",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_55_elk_handle_nested_subgraphs_with_outgoing_links_2_014.mmd",
+      "fixtureSha256": "fd2697b2895a79cbe4051bda460bf5e1e4cbc95f3f29d08a56d2d6352f722eef",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_56_elk_handle_nested_subgraphs_with_outgoing_links_3_015.mmd",
+      "fixtureSha256": "cdcd6326f546c9f297dbdfd47913d8d187b323aab8ec788ea7c3d2426f06df34",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_57_elk_handle_nested_subgraphs_with_outgoing_links_2_017.mmd",
+      "fixtureSha256": "a97b9e7a022fa7e0b4af423fc759f36a62380c7fd8169bc87a409a0b5b13a970",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_57_elk_handle_nested_subgraphs_with_outgoing_links_4_016.mmd",
+      "fixtureSha256": "7450cad060bda757224d3b9bb207ce59df82b7e2757a13f2bd598a1081b2d603",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_57_x_handle_nested_subgraphs_with_outgoing_links_5_018.mmd",
+      "fixtureSha256": "f5f6ba77e589135066eaac577e7ae03486e5f8b2b2305272648af5027c439423",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_58_elk_handle_styling_with_style_expressions_019.mmd",
+      "fixtureSha256": "d5325d16428c3a0d2a776f33d528d1f5a5a5ce1ca59f690108dd364a7e8a8367",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_59_elk_handle_styling_of_subgraphs_and_links_020.mmd",
+      "fixtureSha256": "9180a6df3d5517951fc720f182a3705ac7581737256768149e384ed9c6d9e6a5",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_60_elk_handle_styling_for_all_node_shapes_v2_021.mmd",
+      "fixtureSha256": "bbd7a553cffec41409bb08275eac9101abe74024bde703abe08859268ff85963",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_61_elk_fontawesome_icons_in_edge_labels_022.mmd",
+      "fixtureSha256": "dfb1f0cfacf0c0652ff0b58df503dd804ae4dc914b4167fe4f6c9c487fbe2bbf",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_62_elk_should_render_styled_subgraphs_023.mmd",
+      "fixtureSha256": "3988ec6c7f7e1f72492222d977b0af037aee32de17463e8a9020893941c5368d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_63_elk_title_on_subgraphs_should_be_themeable_024.mmd",
+      "fixtureSha256": "a38219ac288dbb19c1b08c12610347487d068c747872a78206e3fafd694b75f3",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_65_elk_text_color_from_classes_025.mmd",
+      "fixtureSha256": "fe3e8af6ac6cfc3a5f125552c73c27fdaf2bf587073e2f4761e63297bb3496c3",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_66_elk_more_nested_subgraph_cases_tb_026.mmd",
+      "fixtureSha256": "faab6718c204d0017840238ee3ac447b065c7103814e34ecf395e665fe8bebab",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_67_elk_more_nested_subgraph_cases_rl_027.mmd",
+      "fixtureSha256": "70b565fe026e97a7a060b579176aa32ef5d2c0875cd994f00ae58270f4f092f3",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_68_elk_more_nested_subgraph_cases_bt_028.mmd",
+      "fixtureSha256": "f8050f2d8a52057e5cbe94542cc00021c4d42a937b64e330953e17ff0610269e",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_69_elk_more_nested_subgraph_cases_lr_029.mmd",
+      "fixtureSha256": "6e183995ddca124f37aeadbc7e1315a71ac94828b11bc6d82c9885895d752655",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_6_elk_should_render_non_escaped_with_html_labels_007.mmd",
+      "fixtureSha256": "9074ef16b9ab5deebf79fd312d64bf750776d113a62522852bbd09079213dc72",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_70_elk_handle_nested_subgraph_cases_tb_link_out_and_link_between_030.mmd",
+      "fixtureSha256": "1335bf3c9537f2b740b75daf83557fa43b640dcbda6c88557881b8887ec3100d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_71_elk_handle_nested_subgraph_cases_rl_link_out_and_link_between_031.mmd",
+      "fixtureSha256": "0ce3147e3b65260447659fa89b6bde991fea645ae8febf9849982eccd432598d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_72_elk_handle_nested_subgraph_cases_bt_link_out_and_link_between_032.mmd",
+      "fixtureSha256": "5c3d55d6291c5a8a3cae4141f7e80f0d573959411e90ef66a38ba6a8bc1525c1",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_74_elk_handle_labels_for_multiple_edges_from_and_to_the_same_cou_034.mmd",
+      "fixtureSha256": "05195f0247422c1af0299243082a2b0dc35a7293ddae62b0c57ddab0b0a6cec0",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_74_elk_handle_nested_subgraph_cases_rl_link_out_and_link_between_033.mmd",
+      "fixtureSha256": "0ce3147e3b65260447659fa89b6bde991fea645ae8febf9849982eccd432598d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_elk_spec_76_elk_handle_unicode_encoded_character_with_html_labels_true_035.mmd",
+      "fixtureSha256": "b644d2489803e2ae4f3529dd2f06c6c193d004a25aa17a342cac024542d7af2a",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_handdrawn_spec_fdh37_should_render_non_escaped_with_html_labels_037.mmd",
+      "fixtureSha256": "925d29abfb850e5aff089913bceaebc750231e793f89c1d398cc408a2dbe0255",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_spec_25_handle_link_click_events_link_anchor_mailto_other_protocol_sc_025.mmd",
+      "fixtureSha256": "b18c361d4a6185e356092db0b665f5ea945e33232ca63ed7a191efa046a4c73c",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_spec_37_should_render_non_escaped_with_html_labels_037.mmd",
+      "fixtureSha256": "b7ee79a46705565ebec33f7724803cc65f4c077f82a1bba991da0d2eb8e71173",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_spec_58_handle_styling_with_style_expressions_038.mmd",
+      "fixtureSha256": "2aa47285e6c4c9a3d890e8f5039a429b8a5315c331c75a4c78772798ccb1a25a",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_spec_60_handle_styling_for_all_node_shapes_039.mmd",
+      "fixtureSha256": "179ce4321f1be9e355bb51dd69122a4b06e7d0a9d466a7c454769f7a4f3b6a75",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_spec_61_fontawesome_icons_in_edge_labels_040.mmd",
+      "fixtureSha256": "8fe383d15d468a8b89c9893ac0e194f66453bcf87f58a814c3dd822fadc97aaf",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_spec_62_fontawesome_icons_in_edge_labels_041.mmd",
+      "fixtureSha256": "141aa9b337f3cfd7cf507a8945e0704bb4271f84daa5ac359a8f4222cee11e0d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_spec_63_fontawesome_icons_in_edge_labels_042.mmd",
+      "fixtureSha256": "2c02a436f82c95c78be73dd1c36fc5e049bee3ec54924b192e0265f996d60af7",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_spec_66_apply_class_called_default_on_node_called_default_045.mmd",
+      "fixtureSha256": "782011737b1ad3546d56075f080b8d619694293bf33968cc9209a2780fab6a81",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_spec_67_should_be_able_to_style_default_node_independently_046.mmd",
+      "fixtureSha256": "29a2b7f4ad294e110889387956883836a29392b95d1af13b10b252bc5531c5a0",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_2050_handling_of_different_rendering_direction_in_subgraphs_038.mmd",
+      "fixtureSha256": "28a04264f3673c0224b2f9a6e7f4be5ec77e124c9a5413e67eb2032a1f5d189c",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_2388_handling_default_in_the_node_name_039.mmd",
+      "fixtureSha256": "93a7c413895e3b7b0cfcc788b98710a3fb6e1f4a7fed365502a5efad2bc3f59d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_2824_clipping_of_edges_040.mmd",
+      "fixtureSha256": "8f9cd6041d93f14ec3baa28d309fa0caf533319fdd5d6bf1e13426c7e5472145",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_50_handle_nested_subgraphs_in_reverse_order_009.mmd",
+      "fixtureSha256": "5762f350fbea5821b27d49677bb8100f2fe12ca9f7de1ab7ccf339a4a995c7f5",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_52_handle_nested_subgraphs_in_several_levels_011.mmd",
+      "fixtureSha256": "5972a7663b03cc14a083d21da405e30e36ce0cc4ed837b2541689daa520f0e72",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_53_handle_nested_subgraphs_with_edges_in_and_out_012.mmd",
+      "fixtureSha256": "c083dcb8c3c3719bec4ddfbbe8384d8fd922d5f06570c0db256b344d4ce8259c",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_54_handle_nested_subgraphs_with_outgoing_links_013.mmd",
+      "fixtureSha256": "68ec2459afd987f48d8add759dd4f97a39bb9fe7ccec54ca774add5834911aac",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_55_handle_nested_subgraphs_with_outgoing_links_2_014.mmd",
+      "fixtureSha256": "7d7d4de0ab5b0eeeb56fee7428a52aa53a956332b3edea445d6f762976eb44f4",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_56_handle_nested_subgraphs_with_outgoing_links_3_015.mmd",
+      "fixtureSha256": "d525434251fe29052b2866dbc6622b2ff55040870e6be8ae7cfe729964a7ab7e",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_2_017.mmd",
+      "fixtureSha256": "aeeb54a83bb881c01c2961d44627ee325afafde450de0d2daa5c7bf27daa0d97",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_016.mmd",
+      "fixtureSha256": "c27dd1cdbdf04f761c037c02042ba0ec6f2374bfe407034be1e9c9fc1d9535ee",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_57_x_handle_nested_subgraphs_with_outgoing_links_5_018.mmd",
+      "fixtureSha256": "410ecbcff85d974d8475c2823e9f994c309baf20244cb58cf40c58c4bf2d4f26",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_58_handle_styling_with_style_expressions_019.mmd",
+      "fixtureSha256": "5aa7f6c95c718d8d316d157c7367fae9ea32fe9a9fa77e7bacd6cc344249b687",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_59_handle_styling_of_subgraphs_and_links_020.mmd",
+      "fixtureSha256": "bdf2efbae79b6eb9db0b5d6076fda6e58a04caa08bdf5d5e17065a2ee1047094",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_021.mmd",
+      "fixtureSha256": "913ee975becbdabe00aa3792aa0731167041f36d78dfb57e0f8a78f791870d25",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_61_fontawesome_icons_in_edge_labels_022.mmd",
+      "fixtureSha256": "d1f48e3c57d27cab2e1bfd9303ee82ac2ca3bb6da752adeae43f9296124ffb25",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_62_should_render_styled_subgraphs_023.mmd",
+      "fixtureSha256": "ec19e015e808e1ddfa38c318cad33e0ef5a20c9833fc86cd6028f01a78882462",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_63_title_on_subgraphs_should_be_themeable_024.mmd",
+      "fixtureSha256": "cb0efdbce1ae6133cb73b84ecb8697acdb85400a453043e223986f47ee3290aa",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_65_1_text_color_from_classes_025.mmd",
+      "fixtureSha256": "a91f8849725097e980aab76924ea0d129a730805ad2aa563dd1eeb552747e0d3",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_65_2_bold_text_from_classes_026.mmd",
+      "fixtureSha256": "efbc99fbc3a71ca98553a07c1169ff37c30070eda9fc3c81186f05521e28e74d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_65_3_bigger_font_from_classes_027.mmd",
+      "fixtureSha256": "4bfc406b41c291021aeb86518935dca8c9de98ea460a47e238af06ce5cb449af",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_66_more_nested_subgraph_cases_tb_028.mmd",
+      "fixtureSha256": "cb531d477248235686332a6f3c041cd8ff14dfcfbaec21c402d26615901c5884",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_67_more_nested_subgraph_cases_rl_029.mmd",
+      "fixtureSha256": "6c23c1b706e74570bc7afa3bccc8b571a8bb6acf9e8d3bb5597c83847bede7b7",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_68_more_nested_subgraph_cases_bt_030.mmd",
+      "fixtureSha256": "c602b8b38a9d2caaf50c0b35de558c6fde1c6eb59690c97bdafd371b78c1c5bc",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_69_more_nested_subgraph_cases_lr_031.mmd",
+      "fixtureSha256": "f2aa4f4217342b2d1e23176cda178d874de04b0d7f3a3c34df757f7ab7ad0260",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_6_should_render_non_escaped_with_html_labels_006.mmd",
+      "fixtureSha256": "9afdf0f4b8792de020a2f807a5311d9fc4a20260b2b19f24a0cd70a850144408",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_6a_should_render_complex_html_in_labels_with_sandbox_security_007.mmd",
+      "fixtureSha256": "49ded0f616c06fedf284bc424fc3def676c159cd388f68c6f8c487367a94541f",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "sandbox"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_70_handle_nested_subgraph_cases_tb_link_out_and_link_between_sub_032.mmd",
+      "fixtureSha256": "4fae53810cbc1b57d10cb22a5eefe394896154fb53fd4241448c0211da3cc636",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_71_handle_nested_subgraph_cases_rl_link_out_and_link_between_sub_033.mmd",
+      "fixtureSha256": "9193c9d881c8024f0a9652a518111121ce68f3c9551167ecc6d6c114282d01fc",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_72_handle_nested_subgraph_cases_bt_link_out_and_link_between_sub_034.mmd",
+      "fixtureSha256": "3d86091310af92b828c95fa78715cd4f2fca19dc207310068ad6bcf249e719f4",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_74_handle_labels_for_multiple_edges_from_and_to_the_same_couple_036.mmd",
+      "fixtureSha256": "49cd33d07c6a16c3771f88819fdb3ddbb02802cc540f4ddfa210c91ef0ea4d2d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_cypress_flowchart_v2_spec_76_handle_unicode_encoded_character_with_html_labels_true_037.mmd",
+      "fixtureSha256": "9a516077f13a30468dd269c9fd5df449c2564fce0a49f1927e237fcaa3c1bf4c",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flow_interactions_callbacks_loose_spec.mmd",
+      "fixtureSha256": "f84e865ab79a3da2b2a7089a6f6e943cd747063867f7183144cf9e9606fac352",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flow_node_data_shape_aliases_spec.mmd",
+      "fixtureSha256": "c7d5bf784a891b93d53de5d3c4b6a2103431913bfe96f4edfab058032a84bd08",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_bigger_font_from_classes_spec.mmd",
+      "fixtureSha256": "5426d88b1409971e0229b19df9db072edca7b2ac6f9c1c4e093133038c62abf8",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_bold_text_from_classes_spec.mmd",
+      "fixtureSha256": "2a9b5a4eaa73e5ff29545b3c55058f90fbb13eef0086e34612729cfc66554ad2",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_clipping_of_edges_spec.mmd",
+      "fixtureSha256": "7ef6b9f6b073a4933398fc54c78a609fd9d5a714c4f69c53def57d5eea802648",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_default_in_node_name_spec.mmd",
+      "fixtureSha256": "bfe5e1aa37c798731f4372320e78876cff97bd02f1030660477e44e4ba416061",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_icons_in_edge_labels_spec.mmd",
+      "fixtureSha256": "883861c7e4cc03fa1ac350f68928d9e0b064648d1e6ade5a3f20e7a7a20b2f8b",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_more_nested_subgraph_cases_bt_spec.mmd",
+      "fixtureSha256": "a2a292625a3cc6e5a098865d729b7e57d266c3396b1aa49b245fd99275f8356c",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_more_nested_subgraph_cases_lr_spec.mmd",
+      "fixtureSha256": "88fcef84e6fb4633bab32be054ae7fa5e05947330f52159fc0dd67d08143caba",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_more_nested_subgraph_cases_rl_spec.mmd",
+      "fixtureSha256": "635fb233c00202076ec10dc752a12f62a3bc25d2fb9bf54cef5863e05318f99f",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_more_nested_subgraph_cases_tb_spec.mmd",
+      "fixtureSha256": "cbd7b42162b5495fd8178c1514065899a5f25cd71659a7c97f1ac9140758660e",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_multiple_labeled_edges_between_same_nodes_spec.mmd",
+      "fixtureSha256": "fb1db282b4022dcf89fa07bc6345856bda7dda0128619dee75f5f05e058b06fe",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_nested_subgraph_link_out_and_between_bt_spec.mmd",
+      "fixtureSha256": "a4d6b1dbed464e3b7b850400ea104008fb9627c33a043f7adef99cedb9217123",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_nested_subgraph_link_out_and_between_rl_spec.mmd",
+      "fixtureSha256": "0b13cb6cd66465a37af68e09c65238be182173a1966499b81e63212e3de25d35",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_nested_subgraph_link_out_and_between_tb_spec.mmd",
+      "fixtureSha256": "c6823be3bc92d3a108d29746aeb5512b65a1775c722cbb4e17a37a86f8b2baf8",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_outgoing_links_2_spec.mmd",
+      "fixtureSha256": "25cb3f98269faf15cf906e947c11f9f2d51fe88ce12667a06304a960d8efe1b0",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_outgoing_links_2b_spec.mmd",
+      "fixtureSha256": "1bcc44d16a709a60bd0a2a03afd2fe252c288b3c6253fb265144edaa391728dd",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_outgoing_links_3_spec.mmd",
+      "fixtureSha256": "1620e39c91e0f6850c312c8642b3f76c5361d8dfa474463c0d903fd3e624aa9b",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_outgoing_links_4_spec.mmd",
+      "fixtureSha256": "85330747349feffb60168539e53daaa43ea60b5412ac28b1f3b71433ff5fdd1b",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_outgoing_links_5_spec.mmd",
+      "fixtureSha256": "ab64980ca546c61986bed539bf467e707e0df4300954c6deb09416bc5399307c",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_outgoing_links_spec.mmd",
+      "fixtureSha256": "9a810871a9be92c0ccfb02a7143e591d982e6740650adeb048bcf38cf4af02b5",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_shape_styling_matrix_spec.mmd",
+      "fixtureSha256": "f6581a7a3081c7b021fdd22d21d837f9ad3c45b99cbd608088c54d70c513926d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_style_expressions_spec.mmd",
+      "fixtureSha256": "9b992ec19fb6f85b6cd180eb94e061be60bbe036ccd3b1f62db17eaa1f540dfc",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_styled_subgraphs_spec.mmd",
+      "fixtureSha256": "ded297eeeed8086f0bbe1538ae0ce6ecbbf844b13f99c08313303a7194962965",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_subgraph_title_themeable_spec.mmd",
+      "fixtureSha256": "1df5b44f393dbad31171c0699e4cd56bed6e9d8921a26aa13c8212e4f05508ae",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_subgraphs_and_link_styles_spec.mmd",
+      "fixtureSha256": "68a68b564d70930f421d156bb8a122484c5aab87682c9a42314c1b2de7f3a4bc",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_text_color_from_classes_spec.mmd",
+      "fixtureSha256": "0b64e3254ac535f7d232b8c5656eadf270777a3a8ecc6247695a16a22f281493",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_unescaped_with_html_labels_spec.mmd",
+      "fixtureSha256": "1aaac5c18415c354f0f9b3daa3d9597288b600141295c8b1b3c8936324bf3453",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "flowchart/upstream_flowchart_v2_unicode_encoded_character_html_labels_true_spec.mmd",
+      "fixtureSha256": "86f088a58ab32cb4d46e997924850ad9351e53c812fa6ce2037ae182adec2a0d",
+      "provenance": {
+        "kind": "frontmatter",
+        "configPath": [
+          "config",
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "gantt/click_call_and_href_same_line_loose.mmd",
+      "fixtureSha256": "edd0f94c16e90920a9389685824530cbe4755d22b05fcac10ce9f2c3e0e19b2f",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "gantt/click_callback_args_parsing.mmd",
+      "fixtureSha256": "368fc12f460d113c4f94bcfb1647d75ca395c7ea93528564f60107e4cea37d45",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "gantt/click_callback_no_args_loose.mmd",
+      "fixtureSha256": "4cd4a4a1464e0675090bb0ff5b846c0f9429b8fe2c8c667306c34f768764ea12",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "gantt/click_href_and_call_same_line_loose.mmd",
+      "fixtureSha256": "b63b64433aa65b4a1edf91984060fb0d4822d39e1be7387875f681248c140544",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "gantt/click_loose.mmd",
+      "fixtureSha256": "158475a982403ee21f24f91847049228cbf4146983b3a7da5377bc9b1e0db60b",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "gantt/click_multiple_ids_href_loose.mmd",
+      "fixtureSha256": "de01805b8a0169cbb0fd1936fe67bf0d38be116919c335c7a344b55e6e06f99e",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    },
+    {
+      "fixture": "gantt/click_proto_ids_loose.mmd",
+      "fixtureSha256": "929acab9bdfca45ea1410e41a06eeb2ea5930b0a5ee80ae1d82cd480d0774b2a",
+      "provenance": {
+        "kind": "directive",
+        "directive": "init",
+        "occurrence": 0,
+        "configPath": [
+          "securityLevel"
+        ]
+      },
+      "siteConfig": {
+        "securityLevel": "loose"
+      }
+    }
+  ]
+}

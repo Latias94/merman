@@ -1,0 +1,77 @@
+{
+  "diagramType": "railroadAbnf",
+  "model": {
+    "type": "railroadAbnf",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "scheme",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "nonterminal",
+              "name": "ALPHA"
+            },
+            {
+              "type": "repetition",
+              "element": {
+                "type": "choice",
+                "alternatives": [
+                  {
+                    "type": "nonterminal",
+                    "name": "ALPHA"
+                  },
+                  {
+                    "type": "nonterminal",
+                    "name": "DIGIT"
+                  },
+                  {
+                    "type": "terminal",
+                    "value": "+"
+                  },
+                  {
+                    "type": "terminal",
+                    "value": "-"
+                  },
+                  {
+                    "type": "terminal",
+                    "value": "."
+                  }
+                ]
+              },
+              "min": 0,
+              "max": null
+            }
+          ]
+        }
+      },
+      {
+        "name": "digit",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "terminal",
+              "value": "0"
+            },
+            {
+              "type": "terminal",
+              "value": "1"
+            },
+            {
+              "type": "terminal",
+              "value": "2"
+            },
+            {
+              "type": "terminal",
+              "value": "3"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

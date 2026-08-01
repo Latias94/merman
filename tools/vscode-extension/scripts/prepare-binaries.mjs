@@ -8,7 +8,7 @@ const extensionRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(extensionRoot, "../..");
 const platformKey = `${process.platform}-${process.arch}`;
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
-const targetProfile = process.env.MERMAN_VSCODE_TARGET_PROFILE ?? "release";
+const targetProfile = process.env.MERMAN_VSCODE_TARGET_PROFILE ?? "dist";
 const targetDir =
   process.env.MERMAN_VSCODE_TARGET_DIR ??
   path.join(repoRoot, "target", targetProfile);
@@ -40,6 +40,12 @@ if (missing.length > 0) {
   for (const filePath of missing) {
     console.error(`- ${filePath}`);
   }
-  console.error("Build them first, for example: cargo build --release -p merman-lsp -p merman-cli");
+  console.error("Build them first with the separate exact artifact recipes:");
+  console.error(
+    "- python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked",
+  );
+  console.error(
+    "- python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked",
+  );
   process.exit(1);
 }

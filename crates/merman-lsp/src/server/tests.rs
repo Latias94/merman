@@ -1,168 +1,273 @@
-use super::MermanLanguageServer;
-use super::stale_diagnostic_recompute_error;
-use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
-use crate::document_store::{
-    DocumentDiagnosticState, DocumentStore, DocumentSyncError, StoredDocument,
-    WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
+use std::str::FromStr;
+
+use super::semantic_token_planning_error;
+use super::test_support::TestService;
+use super::{
+    CLIENT_LOG_TRUNCATION_SUFFIX, MAX_CLIENT_LOG_MESSAGE_BYTES, MermanLanguageServer,
+    bounded_client_log_message,
 };
+use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
+use crate::session::{
+    ClientEffectKey, DocumentDiscardedSource, DocumentResourceLimit, DocumentSyncError,
+    LSP_CLIENT_EFFECT_QUEUE_LIMIT, StoredDocument, default_lsp_analysis_options,
+};
+use crate::snapshot::snapshot_for_test;
 use crate::structure::{
     document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references, rename,
     selection_ranges,
 };
+use futures::StreamExt;
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, Analyzer, DiagnosticCategory,
-    DiagnosticFix, DiagnosticFixEdit, DiagnosticSeverity, SourceMap,
+    AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, DiagnosticCategory, DiagnosticFix,
+    DiagnosticFixEdit, SourceKind, SourceMap, source_descriptor_for_kind,
+    source_limit_diagnostic_span,
 };
-use merman_core::ParseOptions;
-use merman_editor_core::DocumentKind;
+use merman_core::EditorRenamePolicy;
+use merman_editor_core::{DocumentKind, semantic_token_descriptor};
 use tower::{Service, ServiceExt};
-use tower_lsp::LanguageServer;
-use tower_lsp::jsonrpc::Request;
-use tower_lsp::lsp_types::SemanticTokensResult;
-use tower_lsp::lsp_types::{
-    CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DocumentChanges,
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    DocumentSymbolResponse, FoldingRangeParams, FoldingRangeProviderCapability,
-    GotoDefinitionResponse, HoverContents, HoverParams, InitializeParams, NumberOrString, Position,
-    Range, RenameParams, SelectionRangeParams, SelectionRangeProviderCapability,
-    SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
-    VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
+use tower_lsp_server::LanguageServer;
+use tower_lsp_server::jsonrpc::Request;
+use tower_lsp_server::ls_types::SemanticTokensResult;
+use tower_lsp_server::ls_types::{
+    CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CompletionParams,
+    CompletionResponse, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentChanges, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse,
+    FoldingRangeParams, FoldingRangeProviderCapability, GotoDefinitionResponse, HoverContents,
+    HoverParams, InitializeParams, LogMessageParams, MessageType, NumberOrString, Position,
+    PublishDiagnosticsParams, Range, RenameParams, SelectionRangeParams,
+    SelectionRangeProviderCapability, SemanticTokensParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    Uri, VersionedTextDocumentIdentifier,
 };
-use tower_lsp::lsp_types::{HoverProviderCapability, OneOf};
+use tower_lsp_server::ls_types::{HoverProviderCapability, OneOf};
+
+fn test_service() -> (
+    crate::MermanLspService,
+    crate::MermanClientSocket,
+    MermanLanguageServer,
+) {
+    let TestService {
+        service,
+        socket,
+        backend,
+        ..
+    } = super::test_support::service();
+    (service, socket, backend)
+}
+
+fn test_session_service() -> (
+    crate::MermanLspService,
+    crate::MermanClientSocket,
+    crate::session::LanguageSession,
+) {
+    let TestService {
+        service,
+        socket,
+        session,
+        ..
+    } = super::test_support::service();
+    (service, socket, session)
+}
+
+async fn assert_cached_snapshot_identity(
+    server: &MermanLanguageServer,
+    uri: &Uri,
+    expected: &std::sync::Arc<crate::snapshot::DocumentSnapshot>,
+) {
+    let actual = server
+        .snapshot_for_uri(uri)
+        .await
+        .expect("expected cached snapshot");
+    assert!(std::sync::Arc::ptr_eq(expected, &actual));
+    assert_eq!(actual.version(), expected.version());
+}
 
 #[test]
 fn service_can_be_constructed_without_a_tokio_runtime() {
     let (_service, _socket) = MermanLanguageServer::service();
-    let (_service, _socket) = MermanLanguageServer::service_with_refresh();
 }
 
 #[test]
-fn published_server_constructor_signatures_remain_source_compatible() {
-    let _: fn(tower_lsp::Client) -> MermanLanguageServer = MermanLanguageServer::new;
-    let _: fn() -> (
-        tower_lsp::LspService<MermanLanguageServer>,
-        tower_lsp::ClientSocket,
-    ) = MermanLanguageServer::service;
+fn published_server_constructor_signatures_use_tower_lsp_server_types() {
+    let _: fn() -> (crate::MermanLspService, crate::MermanClientSocket) =
+        MermanLanguageServer::service;
 }
 
-#[test]
-fn snapshot_build_requests_keep_cached_contexts_invalidatable() {
-    let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/workspace-symbols.mmd").unwrap();
-    store.upsert(uri.clone(), 1, "flowchart TD\nA[old] --> B\n".to_string());
-
-    let (contexts, requests) = store.snapshot_build_requests();
-    assert_eq!(contexts.len(), 1);
-    assert!(requests.is_empty());
-    assert!(store.is_snapshot_contexts_current(&contexts));
-
-    store.upsert_text(
-        uri,
-        2,
-        "flowchart TD\nA[new] --> C\n".to_string(),
-        DocumentKind::Diagram,
-    );
-
-    assert!(!store.is_snapshot_contexts_current(&contexts));
+async fn initialize_test_service(service: &mut crate::MermanLspService) {
+    let request = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": { "diagnostic": {} }
+            }
+        }))
+        .id(1)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("initialize response");
+    assert!(response.is_ok());
 }
 
-#[test]
-fn diagnostic_state_is_bound_to_document_epoch() {
-    let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/diagnostic-state.mmd").unwrap();
-    store.upsert_text(
-        uri.clone(),
-        1,
-        "flowchart TD\nA-->B\n".to_string(),
-        DocumentKind::Diagram,
-    );
-    let context = store
-        .diagnostic_context(&uri)
-        .expect("expected diagnostic context");
-    let state = DocumentDiagnosticState {
-        result_id: "result-1".to_string(),
-        diagnostics: Vec::new(),
-    };
-
-    assert!(store.set_diagnostic_state_if_current(&context, state.clone()));
-    assert_eq!(
-        store
-            .diagnostic_state(&uri)
-            .expect("expected cached diagnostics")
-            .result_id,
-        "result-1"
-    );
-
-    store.upsert_text(
-        uri.clone(),
-        2,
-        "flowchart TD\nA-->C\n".to_string(),
-        DocumentKind::Diagram,
-    );
-
-    assert!(store.diagnostic_state(&uri).is_none());
-    assert!(!store.set_diagnostic_state_if_current(&context, state));
+async fn initialize_push_test_service(service: &mut crate::MermanLspService) {
+    let request = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": { "versionSupport": true }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("initialize response");
+    assert!(response.is_ok());
 }
 
-#[test]
-fn analyzer_configuration_change_classifies_diagnostic_only_rule_changes() {
-    let current = AnalysisOptions::default();
-    let next = AnalysisOptions::default().with_rule_config(
-        AnalysisRuleConfig::default()
-            .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
-    );
-
-    assert_eq!(
-        crate::document_store::analyzer_configuration_change(&current, &next),
-        crate::document_store::AnalyzerConfigurationChange::DiagnosticsOnly
-    );
+async fn saturate_client_effect_queue(session: &crate::session::LanguageSession) {
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    session
+        .enqueue_latest_client_effect(ClientEffectKey::document_for_test("blocker"), async move {
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        })
+        .await;
+    started_rx
+        .await
+        .expect("blocking client effect should start");
+    for index in 0..LSP_CLIENT_EFFECT_QUEUE_LIMIT {
+        session
+            .enqueue_latest_client_effect(
+                ClientEffectKey::document_for_test(format!("queued-{index}")),
+                async {},
+            )
+            .await;
+    }
 }
 
-#[test]
-fn analyzer_configuration_change_classifies_snapshot_affecting_changes() {
-    let current = AnalysisOptions::default();
-    let changed_parse = AnalysisOptions::default().with_parse_options(ParseOptions::lenient());
-    let changed_resource = AnalysisOptions::default().with_max_source_bytes(Some(1));
-    let changed_date =
-        AnalysisOptions::default().with_fixed_today(Some("2026-07-02".parse().unwrap()));
+async fn block_client_effect_worker(
+    session: &crate::session::LanguageSession,
+) -> tokio::sync::oneshot::Sender<()> {
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    session
+        .enqueue_latest_client_effect(
+            ClientEffectKey::document_for_test("controlled-blocker"),
+            async move {
+                let _ = started_tx.send(());
+                let _ = release_rx.await;
+            },
+        )
+        .await;
+    started_rx
+        .await
+        .expect("controlled client effect should start");
+    release_tx
+}
 
-    for next in [changed_parse, changed_resource, changed_date] {
-        assert_eq!(
-            crate::document_store::analyzer_configuration_change(&current, &next),
-            crate::document_store::AnalyzerConfigurationChange::SnapshotAffecting
-        );
+async fn initialize_test_backend(server: &MermanLanguageServer, capabilities: serde_json::Value) {
+    let params: InitializeParams = serde_json::from_value(serde_json::json!({
+        "capabilities": capabilities,
+    }))
+    .expect("valid initialize params");
+    server.initialize(params).await.expect("initialize backend");
+}
+
+fn diagnostic_only_configuration() -> DidChangeConfigurationParams {
+    DidChangeConfigurationParams {
+        settings: serde_json::json!({
+            "lint": {
+                "disable_rules": ["merman.git_graph.duplicate_commit_id"]
+            }
+        }),
     }
 }
 
 #[test]
-fn analyzer_configuration_change_classifies_unchanged_options() {
-    let current = AnalysisOptions::default();
+fn semantic_token_planner_failures_are_typed_internal_errors() {
+    let snapshot = snapshot_for_test(
+        Uri::from_str("file:///tmp/token-plan-error.mmd").unwrap(),
+        7,
+        "flowchart TD\nA --> B\n",
+    );
+    let error = semantic_token_planning_error(
+        &snapshot,
+        merman_editor_core::TokenPlanError::PositionOverflow { value: usize::MAX },
+    );
 
     assert_eq!(
-        crate::document_store::analyzer_configuration_change(&current, &current),
-        crate::document_store::AnalyzerConfigurationChange::Unchanged
+        error.code,
+        tower_lsp_server::jsonrpc::ErrorCode::InternalError
+    );
+    assert_eq!(error.message, "semantic token planning failed");
+    assert_eq!(
+        error.data,
+        Some(serde_json::json!({
+            "code": "merman.lsp.semantic_token_planning_failed",
+            "detail": format!("token position {} exceeds the packed u32 contract", usize::MAX),
+        }))
     );
 }
 
 #[test]
-fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_version() {
-    let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+fn invalid_semantic_token_ranges_are_invalid_params() {
+    let snapshot = snapshot_for_test(
+        Uri::from_str("file:///tmp/token-range-error.mmd").unwrap(),
+        7,
+        "flowchart TD\nA --> B\n",
+    );
+    let range = merman_editor_core::Range::new(
+        merman_editor_core::Position::new(1, 4),
+        merman_editor_core::Position::new(1, 2),
+    );
+    let error = semantic_token_planning_error(
+        &snapshot,
+        merman_editor_core::TokenPlanError::ReversedRange { range },
+    );
 
-    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
-    let document = store.open_text(
+    assert_eq!(
+        error.code,
+        tower_lsp_server::jsonrpc::ErrorCode::InvalidParams
+    );
+    assert_eq!(
+        error.message,
+        "semantic token range start 1:4 is after end 1:2"
+    );
+    assert!(error.data.is_none());
+}
+
+#[test]
+fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_version() {
+    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n";
+    let document = StoredDocument::resource_limited(
         uri.clone(),
         5,
-        "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
+        DocumentResourceLimit {
+            source_len: source.len(),
+            max_source_bytes: 8,
+            span: source_limit_diagnostic_span(source),
+        },
     );
-    let analyzer =
-        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
-
+    let analyzer = merman_analysis::Analyzer::with_options(
+        AnalysisOptions::default().with_max_source_bytes(Some(8)),
+    );
     let diagnostics = MermanLanguageServer::diagnostics_for_document(&document, &analyzer);
 
     assert_eq!(diagnostics.len(), 1);
@@ -179,7 +284,7 @@ fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_
     );
     assert_eq!(
         diagnostics[0].range,
-        Range::new(Position::new(0, 0), Position::new(0, 0))
+        Range::new(Position::new(0, 0), Position::new(2, 0))
     );
     assert_eq!(
         diagnostics[0]
@@ -191,25 +296,69 @@ fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_
 }
 
 #[test]
-fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase() {
-    let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+fn diagnostics_for_document_diagram_rejection_use_canonical_resource_payload() {
+    let uri = Uri::from_str("file:///tmp/limited.md").unwrap();
+    let source = concat!(
+        "```mermaid\nflowchart TD\nA-->B\n```\n",
+        "```mermaid\nsequenceDiagram\nA->>B: hi\n```\n",
+    );
+    let options = AnalysisOptions::default().with_max_document_diagrams(Some(1));
+    let descriptor = source_descriptor_for_kind(Some(uri.as_str()), SourceKind::Markdown);
+    let rejection = options
+        .resource_limits()
+        .preflight_document(source, &descriptor)
+        .expect("the second Mermaid fence must exceed the document budget");
+    let document = StoredDocument::analysis_rejected(
+        uri,
+        5,
+        DocumentKind::Markdown,
+        std::sync::Arc::from(source),
+        rejection,
+    );
 
-    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
-    store.open_text(
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(
+        &document,
+        &merman_analysis::Analyzer::with_options(options),
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code,
+        Some(NumberOrString::String(
+            "merman.resource.document_diagrams_exceeded".to_string()
+        ))
+    );
+    assert_eq!(
+        diagnostics[0].range,
+        Range::new(Position::new(4, 0), Position::new(4, 3))
+    );
+    assert!(!diagnostics[0].message.contains("document_sync_lost"));
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("documentVersion")),
+        Some(&serde_json::json!(5))
+    );
+}
+
+#[test]
+fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase() {
+    let uri = Uri::from_str("file:///tmp/large.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n";
+    let document = StoredDocument::discarded(
         uri.clone(),
         5,
-        "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
+        DocumentDiscardedSource {
+            source_len: source.len(),
+            previous_max_source_bytes: 8,
+            span: source_limit_diagnostic_span(source),
+        },
     );
-    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(64)));
-    let document = store
-        .get(&uri)
-        .expect("expected discarded document")
-        .clone();
-    let analyzer =
-        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(64)));
-
+    let analyzer = merman_analysis::Analyzer::with_options(
+        AnalysisOptions::default().with_max_source_bytes(Some(64)),
+    );
     let diagnostics = MermanLanguageServer::diagnostics_for_document(&document, &analyzer);
 
     assert_eq!(diagnostics.len(), 1);
@@ -235,16 +384,13 @@ fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase(
 
 #[test]
 fn diagnostics_for_unsynced_documents_request_full_replacement() {
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-    let document = StoredDocument {
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+    let document = StoredDocument::sync_error(
         uri,
-        version: 9,
-        text: "".into(),
-        kind: DocumentKind::Diagram,
-        resource_limit: None,
-        discarded_source: None,
-        sync_error: Some(DocumentSyncError::InvalidIncrementalRange),
-    };
+        9,
+        DocumentKind::Diagram,
+        DocumentSyncError::InvalidIncrementalRange,
+    );
 
     let diagnostics = MermanLanguageServer::diagnostics_for_document(
         &document,
@@ -265,6 +411,37 @@ fn diagnostics_for_unsynced_documents_request_full_replacement() {
             .as_ref()
             .and_then(|data| data.get("documentVersion")),
         Some(&serde_json::json!(9))
+    );
+}
+
+#[test]
+fn diagnostics_for_discarded_sources_preserve_rejection_metadata_after_ranged_edits() {
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+    let document = StoredDocument::sync_error(
+        uri,
+        10,
+        DocumentKind::Diagram,
+        DocumentSyncError::FullReplacementRequired {
+            source_len: 21,
+            last_max_source_bytes: 8,
+        },
+    );
+
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(
+        &document,
+        &merman_analysis::Analyzer::new(),
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0].message.contains("21-byte source"));
+    assert!(diagnostics[0].message.contains("8-byte limit"));
+    assert!(diagnostics[0].message.contains("full document replacement"));
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("documentVersion")),
+        Some(&serde_json::json!(10))
     );
 }
 
@@ -336,20 +513,312 @@ fn capabilities_report_the_full_server_envelope() {
         capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["configSchema"],
         CONFIG_SCHEMA_METHOD
     );
+    let descriptor = semantic_token_descriptor();
+    assert_eq!(
+        capabilities.experimental.as_ref().unwrap()["merman"]["editorLanguage"],
+        serde_json::json!({
+            "schemaVersion": descriptor.schema_version,
+            "descriptorDigest": descriptor.digest,
+            "packedEncoding": descriptor.packed.encoding,
+            "wordsPerToken": descriptor.packed.words_per_token,
+            "renamePolicies": EditorRenamePolicy::IDS,
+        })
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn configuration_side_effects_follow_the_changed_policy_scope() {
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    initialize_test_backend(
+        server,
+        serde_json::json!({
+            "textDocument": {
+                "semanticTokens": {
+                    "requests": { "full": true },
+                    "tokenTypes": ["keyword"],
+                    "tokenModifiers": [],
+                    "formats": ["relative"]
+                }
+            },
+            "workspace": {
+                "semanticTokens": { "refreshSupport": true }
+            }
+        }),
+    )
+    .await;
+    let uri = Uri::from_str("file:///tmp/configuration-effects.mmd").unwrap();
+
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri,
+                language_id: "mermaid".to_string(),
+                version: 1,
+                text: "gitGraph\ncommit id:\"dup\"\ncommit id:\"dup\"\n".to_string(),
+            },
+        })
+        .await;
+    assert_eq!(server.session.client_effect_admission_count(), 1);
+
+    server
+        .did_change_configuration(DidChangeConfigurationParams {
+            settings: serde_json::Value::Null,
+        })
+        .await;
+    assert_eq!(server.session.client_effect_admission_count(), 1);
+    assert_eq!(server.session.refresh_request_counts(), (0, 0));
+
+    server
+        .did_change_configuration(diagnostic_only_configuration())
+        .await;
+    assert_eq!(server.session.client_effect_admission_count(), 2);
+    assert_eq!(
+        server.session.refresh_request_counts(),
+        (0, 0),
+        "diagnostic-only changes must not refresh semantic tokens"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn pull_diagnostic_effects_require_negotiated_refresh_support() {
+    for (refresh_support, expected_refreshes) in [(false, 0), (true, 1)] {
+        let (_service, _socket, server) = test_service();
+        let server = &server;
+        initialize_test_backend(
+            server,
+            serde_json::json!({
+                "textDocument": { "diagnostic": {} },
+                "workspace": {
+                    "diagnostics": { "refreshSupport": refresh_support }
+                }
+            }),
+        )
+        .await;
+        let uri = Uri::from_str("file:///tmp/pull-diagnostic-effects.mmd").unwrap();
+
+        server
+            .did_open(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri,
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "gitGraph\ncommit id:\"dup\"\ncommit id:\"dup\"\n".to_string(),
+                },
+            })
+            .await;
+        server
+            .did_change_configuration(diagnostic_only_configuration())
+            .await;
+
+        assert_eq!(
+            server.session.client_effect_admission_count(),
+            0,
+            "pull diagnostics must not enqueue no-op push effects"
+        );
+        assert_eq!(
+            server.session.refresh_request_counts(),
+            (0, expected_refreshes)
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn push_diagnostics_admit_exactly_one_effect_per_document_event() {
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    initialize_test_backend(server, serde_json::json!({})).await;
+    let uri = Uri::from_str("file:///tmp/push-effect-count.mmd").unwrap();
+
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 1,
+                text: "flowchart TD\nA-->B\n".to_string(),
+            },
+        })
+        .await;
+    server
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "flowchart LR\nA-->B\n".to_string(),
+            }],
+        })
+        .await;
+    server
+        .did_save(DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+            text: None,
+        })
+        .await;
+
+    assert_eq!(server.session.client_effect_admission_count(), 3);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn queued_diagnostic_sync_clears_a_document_closed_before_execution() {
+    let (mut service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
+    initialize_push_test_service(&mut service).await;
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/queued-diagnostic-close.mmd").unwrap();
+    let release = block_client_effect_worker(&server.session).await;
+
+    assert!(
+        server
+            .session
+            .open_document(uri.clone(), 1, String::new(), DocumentKind::Diagram,)
+            .await
+    );
+    server.enqueue_diagnostic_sync(uri.clone()).await;
+    server.session.close_document(&uri).await;
+
+    release.send(()).expect("client effect gate should be open");
+    let notification = socket.next().await.expect("expected diagnostic clear");
+    server.session.wait_client_effects_idle().await;
+    assert_eq!(notification.method(), "textDocument/publishDiagnostics");
+    let params: PublishDiagnosticsParams = serde_json::from_value(
+        notification
+            .params()
+            .cloned()
+            .expect("diagnostic clear params"),
+    )
+    .expect("valid diagnostic clear params");
+    assert_eq!(params.uri, uri);
+    assert_eq!(params.version, None);
+    assert!(params.diagnostics.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn queued_diagnostic_sync_publishes_a_document_opened_before_execution() {
+    let (mut service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
+    initialize_push_test_service(&mut service).await;
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/queued-diagnostic-open.mmd").unwrap();
+    let release = block_client_effect_worker(&server.session).await;
+
+    server.enqueue_diagnostic_sync(uri.clone()).await;
+    assert!(
+        server
+            .session
+            .open_document(uri.clone(), 7, String::new(), DocumentKind::Diagram,)
+            .await
+    );
+
+    release.send(()).expect("client effect gate should be open");
+    let notification = socket
+        .next()
+        .await
+        .expect("expected current diagnostic publish");
+    server.session.wait_client_effects_idle().await;
+    assert_eq!(notification.method(), "textDocument/publishDiagnostics");
+    let params: PublishDiagnosticsParams = serde_json::from_value(
+        notification
+            .params()
+            .cloned()
+            .expect("diagnostic publish params"),
+    )
+    .expect("valid diagnostic publish params");
+    assert_eq!(params.uri, uri);
+    assert_eq!(params.version, Some(7));
+    assert!(!params.diagnostics.is_empty());
+}
+
+#[test]
+fn client_log_messages_have_a_bounded_utf8_allocation() {
+    let oversized = "界".repeat(MAX_CLIENT_LOG_MESSAGE_BYTES);
+    let bounded = bounded_client_log_message(oversized);
+
+    assert!(bounded.len() <= MAX_CLIENT_LOG_MESSAGE_BYTES);
+    assert!(bounded.capacity() <= MAX_CLIENT_LOG_MESSAGE_BYTES);
+    assert!(bounded.ends_with(CLIENT_LOG_TRUNCATION_SUFFIX));
+
+    let mut oversized_capacity = String::with_capacity(MAX_CLIENT_LOG_MESSAGE_BYTES * 2);
+    oversized_capacity.push_str("small");
+    let bounded = bounded_client_log_message(oversized_capacity);
+    assert_eq!(bounded, "small");
+    assert!(bounded.capacity() <= MAX_CLIENT_LOG_MESSAGE_BYTES);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stalled_configuration_error_log_is_bounded() {
+    let (_service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
+    let server = &server;
+    initialize_test_backend(server, serde_json::json!({})).await;
+    let release = block_client_effect_worker(&server.session).await;
+    let mut resources = serde_json::Map::new();
+    resources.insert(
+        "界".repeat(MAX_CLIENT_LOG_MESSAGE_BYTES),
+        serde_json::Value::from(1),
+    );
+
+    server
+        .did_change_configuration(DidChangeConfigurationParams {
+            settings: serde_json::json!({
+                "resources": serde_json::Value::Object(resources)
+            }),
+        })
+        .await;
+
+    release.send(()).expect("client effect gate should be open");
+    let notification = socket
+        .next()
+        .await
+        .expect("expected bounded configuration error log");
+    server.session.wait_client_effects_idle().await;
+    assert_eq!(notification.method(), "window/logMessage");
+    let params: LogMessageParams =
+        serde_json::from_value(notification.params().cloned().expect("client log params"))
+            .expect("valid client log params");
+    assert_eq!(params.typ, MessageType::ERROR);
+    assert!(params.message.len() <= MAX_CLIENT_LOG_MESSAGE_BYTES);
+    assert!(params.message.ends_with(CLIENT_LOG_TRUNCATION_SUFFIX));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stalled_client_logs_are_latest_wins() {
+    let (_service, socket, server) = test_service();
+    let (mut socket, _responses) = socket.split();
+    let server = &server;
+    let release = block_client_effect_worker(&server.session).await;
+
+    server
+        .enqueue_log_message(MessageType::INFO, "obsolete client log")
+        .await;
+    server
+        .enqueue_log_message(MessageType::ERROR, "latest client log")
+        .await;
+
+    release.send(()).expect("client effect gate should be open");
+    let notification = socket.next().await.expect("expected latest client log");
+    server.session.wait_client_effects_idle().await;
+    assert_eq!(notification.method(), "window/logMessage");
+    let params: LogMessageParams =
+        serde_json::from_value(notification.params().cloned().expect("client log params"))
+            .expect("valid client log params");
+    assert_eq!(params.typ, MessageType::ERROR);
+    assert_eq!(params.message, "latest client log");
 }
 
 #[test]
 fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
-    let uri = Url::parse("untitled:notes").unwrap();
-    let document = StoredDocument {
-        uri: uri.clone(),
-        version: 7,
-        text: "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".into(),
-        kind: DocumentKind::Markdown,
-        resource_limit: None,
-        discarded_source: None,
-        sync_error: None,
-    };
+    let uri = Uri::from_str("untitled:notes").unwrap();
+    let document = StoredDocument::available(
+        uri.clone(),
+        7,
+        DocumentKind::Markdown,
+        "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n",
+    );
     let diagnostics = MermanLanguageServer::diagnostics_for_document(
         &document,
         &merman_analysis::Analyzer::new(),
@@ -389,16 +858,13 @@ fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
 
 #[test]
 fn diagnostics_include_rich_editor_projection_warnings() {
-    let uri = Url::parse("file:///tmp/cynefin.mmd").unwrap();
-    let document = StoredDocument {
+    let uri = Uri::from_str("file:///tmp/cynefin.mmd").unwrap();
+    let document = StoredDocument::available(
         uri,
-        version: 3,
-        text: "cynefin-beta\n  complicated --> complicated : \"Self-loop\"\n".into(),
-        kind: DocumentKind::Diagram,
-        resource_limit: None,
-        discarded_source: None,
-        sync_error: None,
-    };
+        3,
+        DocumentKind::Diagram,
+        "cynefin-beta\n  complicated --> complicated : \"Self-loop\"\n",
+    );
 
     let diagnostics = MermanLanguageServer::diagnostics_for_document(
         &document,
@@ -413,10 +879,10 @@ fn diagnostics_include_rich_editor_projection_warnings() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn did_open_diagnostics_cache_analysis_for_editor_requests() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+async fn did_open_diagnostics_and_editor_requests_reuse_one_snapshot() {
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -428,14 +894,15 @@ async fn did_open_diagnostics_cache_analysis_for_editor_requests() {
             },
         })
         .await;
+    server.session.wait_client_effects_idle().await;
 
-    let diagnostic_snapshot = {
-        let mut store = server.store.lock().await;
-        assert!(store.get(&uri).is_some());
-        assert!(store.has_snapshot(&uri));
-        assert!(store.has_analysis_payload(&uri));
-        store.snapshot(&uri).expect("expected diagnostic snapshot")
-    };
+    let probe = server.session.probe();
+    assert!(probe.document(&uri).await.is_some());
+    assert_eq!(probe.cache_state(&uri).await, (true, true));
+    let diagnostic_snapshot = probe
+        .cached_snapshot(&uri)
+        .await
+        .expect("expected diagnostic snapshot");
 
     let hover = server
         .hover(HoverParams {
@@ -449,12 +916,11 @@ async fn did_open_diagnostics_cache_analysis_for_editor_requests() {
         .unwrap();
 
     assert!(hover.is_some());
-    let editor_snapshot = server
-        .store
-        .lock()
+    assert!(probe.cache_state(&uri).await.0);
+    let editor_snapshot = probe
+        .cached_snapshot(&uri)
         .await
-        .snapshot(&uri)
-        .expect("expected editor snapshot");
+        .expect("expected cached snapshot");
     assert!(std::sync::Arc::ptr_eq(
         &diagnostic_snapshot,
         &editor_snapshot
@@ -462,10 +928,285 @@ async fn did_open_diagnostics_cache_analysis_for_editor_requests() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn r24_language_capabilities_reuse_one_analysis_snapshot_identity() {
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    server
+        .client_profile
+        .set(crate::client_profile::ClientProtocolProfile::permissive())
+        .expect("test profile should initialize once");
+    let uri = Uri::from_str("file:///tmp/r24-identity.mmd").unwrap();
+    let version = 11;
+
+    server
+        .session
+        .update_configuration(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
+                    .unwrap(),
+            ),
+        )
+        .await;
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                version,
+                "flowchart\nsubgraph group\nA-->B\nA-->C\nend\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    assert!(!server.session.probe().cache_state(&uri).await.0);
+
+    let report = server
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("diagnostics should use the shared snapshot");
+    let diagnostics = match report {
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
+            report.full_document_diagnostic_report.items
+        }
+        other => panic!("unexpected diagnostic report: {other:?}"),
+    };
+    let direction_diagnostic = diagnostics
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code
+                == Some(NumberOrString::String(
+                    "merman.authoring.flowchart.explicit_direction".to_string(),
+                ))
+        })
+        .expect("expected snapshot-owned flowchart direction diagnostic");
+    let shared = server
+        .snapshot_for_uri(&uri)
+        .await
+        .expect("diagnostics should cache the shared snapshot");
+    assert_eq!(shared.version(), version);
+
+    let detection = shared
+        .detection()
+        .expect("diagram detection should be projected by the shared snapshot");
+    assert_eq!(detection.diagram_type, "flowchart");
+    assert_eq!(detection.syntax_id, "flowchart-v2");
+    assert_eq!(detection.effective_layout_id, "dagre");
+
+    let completion = server
+        .completion(CompletionParams {
+            text_document_position: TextDocumentPositionParams::new(
+                TextDocumentIdentifier { uri: uri.clone() },
+                Position::new(2, 1),
+            ),
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+            context: None,
+        })
+        .await
+        .expect("completion request");
+    assert!(completion.is_some());
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let hover = server
+        .hover(HoverParams {
+            text_document_position_params: TextDocumentPositionParams::new(
+                TextDocumentIdentifier { uri: uri.clone() },
+                Position::new(1, 0),
+            ),
+            work_done_progress_params: Default::default(),
+        })
+        .await
+        .expect("hover request");
+    assert!(hover.is_some());
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let symbols = server
+        .document_symbol(DocumentSymbolParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("document symbol request");
+    assert!(symbols.is_some());
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let rename_position = TextDocumentPositionParams::new(
+        TextDocumentIdentifier { uri: uri.clone() },
+        Position::new(2, 0),
+    );
+    assert!(
+        server
+            .prepare_rename(rename_position.clone())
+            .await
+            .expect("prepare rename request")
+            .is_some()
+    );
+    assert!(
+        server
+            .rename(RenameParams {
+                text_document_position: rename_position,
+                new_name: "Renamed".to_string(),
+                work_done_progress_params: Default::default(),
+            })
+            .await
+            .expect("rename request")
+            .is_some()
+    );
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let code_actions = server
+        .code_action(CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: direction_diagnostic.range,
+            context: CodeActionContext {
+                diagnostics: vec![direction_diagnostic],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("code action request")
+        .expect("expected snapshot-owned quick fix");
+    assert!(code_actions.iter().any(|action| {
+        matches!(
+            action,
+            CodeActionOrCommand::CodeAction(action)
+                if action.title == "Insert `TB` into the flowchart header"
+        )
+    }));
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+
+    let tokens = server
+        .semantic_tokens_full(SemanticTokensParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("semantic token request");
+    assert!(matches!(
+        tokens,
+        Some(SemanticTokensResult::Tokens(tokens)) if !tokens.data.is_empty()
+    ));
+    assert_cached_snapshot_identity(server, &uri, &shared).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn code_actions_use_current_diagnostics_after_diagnostic_only_configuration_change() {
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    server
+        .client_profile
+        .set(crate::client_profile::ClientProtocolProfile::permissive())
+        .expect("test profile should initialize once");
+    let uri = Uri::from_str("file:///tmp/current-diagnostic-code-action.mmd").unwrap();
+
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                1,
+                "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    let original_snapshot = server
+        .snapshot_for_uri(&uri)
+        .await
+        .expect("expected initial snapshot");
+    let execution_count = server.session.analysis_execution_count();
+
+    let change = server
+        .session
+        .update_configuration(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
+                    .unwrap(),
+            ),
+        )
+        .await;
+    assert!(change.affects_diagnostics());
+    assert!(!change.affects_snapshots());
+    assert_eq!(
+        server.session.probe().cache_state(&uri).await,
+        (false, false),
+        "a snapshot-only read keeps no complete cache entry; diagnostic-only configuration defers projection to demand"
+    );
+    assert_eq!(
+        server.session.analysis_execution_count(),
+        execution_count,
+        "diagnostic reprojection must not schedule another analysis"
+    );
+
+    let context = server
+        .session
+        .diagnostic_context(&uri)
+        .await
+        .expect("expected diagnostic context");
+    let diagnostic = server
+        .diagnostic_publisher()
+        .expect("the default test client uses push diagnostics")
+        .diagnostics_for_current_context(&context)
+        .await
+        .expect("diagnostic analysis should succeed")
+        .expect("expected current diagnostics")
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code
+                == Some(NumberOrString::String(
+                    "merman.authoring.flowchart.explicit_direction".to_string(),
+                ))
+        })
+        .expect("expected current flowchart direction diagnostic");
+
+    let actions = server
+        .code_action(CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: diagnostic.range,
+            context: CodeActionContext {
+                diagnostics: vec![diagnostic],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
+        .await
+        .expect("code action request")
+        .expect("expected a server-owned quick fix");
+    assert!(actions.iter().any(|action| {
+        matches!(
+            action,
+            CodeActionOrCommand::CodeAction(action)
+                if action.title == "Insert `TB` into the flowchart header"
+        )
+    }));
+    assert_cached_snapshot_identity(server, &uri, &original_snapshot).await;
+    assert_eq!(
+        server.session.analysis_execution_count(),
+        execution_count,
+        "diagnostics and code actions must consume the reprojected generation"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn did_open_uses_language_id_and_change_preserves_document_kind() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("untitled:notes").unwrap();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    let uri = Uri::from_str("untitled:notes").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -482,12 +1223,9 @@ async fn did_open_uses_language_id_and_change_preserves_document_kind() {
         .snapshot_for_uri(&uri)
         .await
         .expect("expected markdown snapshot");
-    assert_eq!(snapshot.kind, DocumentKind::Markdown);
-    assert_eq!(snapshot.fences.len(), 1);
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
-    );
+    assert_eq!(snapshot.kind(), DocumentKind::Markdown);
+    assert_eq!(snapshot.fences().len(), 1);
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
 
     server
         .did_change(DidChangeTextDocumentParams {
@@ -507,16 +1245,16 @@ async fn did_open_uses_language_id_and_change_preserves_document_kind() {
         .snapshot_for_uri(&uri)
         .await
         .expect("expected changed markdown snapshot");
-    assert_eq!(snapshot.kind, DocumentKind::Markdown);
-    assert_eq!(snapshot.fences.len(), 1);
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("sequence"));
+    assert_eq!(snapshot.kind(), DocumentKind::Markdown);
+    assert_eq!(snapshot.fences().len(), 1);
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("sequence"));
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn did_change_rejects_stale_document_versions() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -557,27 +1295,29 @@ async fn did_change_rejects_stale_document_versions() {
         })
         .await;
 
-    let stored = {
-        let store = server.store.lock().await;
-        store.get(&uri).expect("expected stored document").clone()
-    };
+    let stored = server
+        .session
+        .probe()
+        .document(&uri)
+        .await
+        .expect("expected stored document");
     assert_eq!(stored.version, 3);
-    assert!(stored.text.contains("sequenceDiagram"));
-    assert!(!stored.text.contains("stale"));
+    assert!(stored.text().unwrap().contains("sequenceDiagram"));
+    assert!(!stored.text().unwrap().contains("stale"));
 
     let snapshot = server
         .snapshot_for_uri(&uri)
         .await
         .expect("expected current snapshot");
-    assert_eq!(snapshot.version, 3);
-    assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("sequence"));
+    assert_eq!(snapshot.version(), 3);
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("sequence"));
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn did_change_applies_incremental_changes_in_order() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -611,111 +1351,649 @@ async fn did_change_applies_incremental_changes_in_order() {
         })
         .await;
 
-    let stored = {
-        let store = server.store.lock().await;
-        store.get(&uri).expect("expected stored document").clone()
-    };
+    let stored = server
+        .session
+        .probe()
+        .document(&uri)
+        .await
+        .expect("expected stored document");
     assert_eq!(stored.version, 2);
-    assert_eq!(stored.text.as_ref(), "flowchart TD\nA-->C\nC-->D\n");
+    assert_eq!(
+        stored.text().unwrap().as_ref(),
+        "flowchart TD\nA-->C\nC-->D\n"
+    );
 
     let snapshot = server
         .snapshot_for_uri(&uri)
         .await
         .expect("expected changed snapshot");
-    assert_eq!(
-        snapshot.fences[0].diagram_type.as_deref(),
-        Some("flowchart-v2")
+    assert_eq!(snapshot.fences()[0].diagram_type(), Some("flowchart-v2"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_routes_pipelined_messages_after_initialize_completes() {
+    let (mut service, _socket, session) = test_session_service();
+    let uri = Uri::from_str("file:///tmp/pipelined-initialize.mmd").unwrap();
+
+    let initialize = service.call(
+        Request::build("initialize")
+            .params(serde_json::to_value(InitializeParams::default()).unwrap())
+            .id(1)
+            .finish(),
+    );
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+
+    let (initialize, open) = tokio::join!(initialize, open);
+    assert!(initialize.unwrap().expect("initialize response").is_ok());
+    assert!(open.unwrap().is_none());
+    assert!(
+        session.probe().document(&uri).await.is_some(),
+        "didOpen must be routed after the earlier initialize succeeds"
     );
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn stale_diagnostic_context_returns_content_modified_error() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+async fn dropping_either_session_endpoint_terminates_all_work_exactly_once() {
+    let (service, socket, socket_session) = test_session_service();
 
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
+    drop(socket);
+    socket_session.wait_stopped().await;
+    assert!(socket_session.analysis_is_cancelled());
+    assert_eq!(socket_session.termination_count(), 1);
+
+    drop(service);
+    assert_eq!(socket_session.termination_count(), 1);
+
+    let (service, socket, service_session) = test_session_service();
+
+    drop(service);
+    service_session.wait_stopped().await;
+    assert!(service_session.analysis_is_cancelled());
+    assert_eq!(service_session.termination_count(), 1);
+
+    drop(socket);
+    assert_eq!(service_session.termination_count(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn exit_cancels_queued_mutations_and_stops_new_admission() {
+    let (mut service, socket, session) = test_session_service();
+    let uri = Uri::from_str("file:///tmp/exit-cancels-queued-open.mmd").unwrap();
+
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let exit = service.call(Request::build("exit").finish());
+
+    assert!(exit.await.unwrap().is_none());
+    assert!(open.await.unwrap().is_none());
+    assert!(session.probe().document(&uri).await.is_none());
+    assert!(
+        service
+            .call(Request::build(RULE_CATALOG_METHOD).id(2).finish())
+            .await
+            .unwrap()
+            .is_none(),
+        "terminated sessions must not admit new work"
+    );
+    assert_eq!(session.termination_count(), 1);
+
+    drop(socket);
+    drop(service);
+    assert_eq!(session.termination_count(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn exit_preserves_an_already_admitted_shutdown_error() {
+    let (mut service, socket) = MermanLanguageServer::service();
+
+    let shutdown = service.call(Request::build("shutdown").id(1).finish());
+    let exit = service.call(Request::build("exit").finish());
+
+    assert!(exit.await.unwrap().is_none());
+    let response = shutdown
+        .await
+        .unwrap()
+        .expect("the rejected shutdown should retain its response");
+    assert!(response.error().is_some());
+
+    drop(socket);
+    drop(service);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn client_effect_backpressure_does_not_hold_the_mutation_fence() {
+    let (mut service, _socket, session) = test_session_service();
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    assert!(
+        service
+            .ready()
+            .await
+            .unwrap()
+            .call(initialize)
+            .await
+            .unwrap()
+            .is_some_and(|response| response.is_ok())
+    );
+    let uri = Uri::from_str("file:///tmp/effect-backpressure.mmd").unwrap();
+    saturate_client_effect_queue(&session).await;
+
+    let save = service.call(
+        Request::build("textDocument/didSave")
+            .params(
+                serde_json::to_value(DidSaveTextDocumentParams {
+                    text_document: TextDocumentIdentifier { uri },
+                    text: None,
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    tokio::pin!(save);
+    assert!(futures::poll!(&mut save).is_pending());
+
+    let response = service
+        .call(Request::build(RULE_CATALOG_METHOD).id(2).finish())
+        .await
+        .unwrap()
+        .expect("a read after the committed save should not wait for client capacity");
+    assert!(response.is_ok());
+
+    session.terminate();
+    assert!(save.await.unwrap().is_none());
+    session.wait_stopped().await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn client_log_backpressure_does_not_hold_mutation_fences() {
+    let cases = [
+        ("initialized", serde_json::json!({})),
+        (
+            "workspace/didChangeConfiguration",
+            serde_json::json!({
+                "settings": {
+                    "lint": {
+                        "rule_severities": [{
+                            "rule_id": "merman.resource.source_bytes_exceeded",
+                            "severity": "hint"
+                        }]
+                    }
+                }
+            }),
+        ),
+    ];
+
+    for (method, params) in cases {
+        let (mut service, _socket, session) = test_session_service();
+        initialize_test_service(&mut service).await;
+        saturate_client_effect_queue(&session).await;
+
+        let notification = service.call(Request::build(method).params(params).finish());
+        tokio::pin!(notification);
+        assert!(futures::poll!(&mut notification).is_pending());
+
+        let response = service
+            .call(Request::build(RULE_CATALOG_METHOD).id(2).finish())
+            .await
+            .unwrap()
+            .expect("a read should not wait for client log capacity");
+        assert!(response.is_ok());
+
+        session.terminate();
+        assert!(notification.await.unwrap().is_none());
+        session.wait_stopped().await;
     }
-    let context = {
-        let store = server.store.lock().await;
-        store
-            .diagnostic_context(&uri)
-            .expect("expected diagnostic context")
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reads_wait_for_an_earlier_unpolled_shutdown() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
+
+    let shutdown = service.call(Request::build("shutdown").id(2).finish());
+    let rule_catalog = service.call(Request::build(RULE_CATALOG_METHOD).id(3).finish());
+    tokio::pin!(rule_catalog);
+    assert!(futures::poll!(&mut rule_catalog).is_pending());
+
+    let shutdown = shutdown
+        .await
+        .unwrap()
+        .expect("shutdown response after initialize");
+    assert!(shutdown.is_ok());
+    let rule_catalog = rule_catalog
+        .await
+        .unwrap()
+        .expect("post-shutdown request response");
+    assert!(rule_catalog.is_error());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_admission_preserves_open_change_and_close_order() {
+    let (mut service, _socket, session) = test_session_service();
+    initialize_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/ordered-sync.mmd").unwrap();
+
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let change = service.call(
+        Request::build("textDocument/didChange")
+            .params(
+                serde_json::to_value(DidChangeTextDocumentParams {
+                    text_document: VersionedTextDocumentIdentifier {
+                        uri: uri.clone(),
+                        version: 2,
+                    },
+                    content_changes: vec![TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text: "flowchart TD\nA-->C\n".to_string(),
+                    }],
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let (open, change) = tokio::join!(open, change);
+    assert!(open.unwrap().is_none());
+    assert!(change.unwrap().is_none());
+
+    let document = session
+        .probe()
+        .document(&uri)
+        .await
+        .expect("change must follow open");
+    assert_eq!(document.version, 2);
+    assert_eq!(document.text().unwrap().as_ref(), "flowchart TD\nA-->C\n");
+
+    let reopen = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 3,
+                        text: "flowchart TD\nA-->D\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let close = service.call(
+        Request::build("textDocument/didClose")
+            .params(
+                serde_json::to_value(DidCloseTextDocumentParams {
+                    text_document: TextDocumentIdentifier { uri: uri.clone() },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let (reopen, close) = tokio::join!(reopen, close);
+    assert!(reopen.unwrap().is_none());
+    assert!(close.unwrap().is_none());
+
+    assert!(
+        session.probe().document(&uri).await.is_none(),
+        "close must follow the queued reopen"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn session_admission_orders_configuration_before_document_open() {
+    let (mut service, _socket, session) = test_session_service();
+    initialize_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/configuration-before-open.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n";
+
+    session
+        .update_configuration(
+            default_lsp_analysis_options().with_max_source_bytes(Some(source.len() - 1)),
+        )
+        .await;
+
+    let configuration = service.call(
+        Request::build("workspace/didChangeConfiguration")
+            .params(
+                serde_json::to_value(DidChangeConfigurationParams {
+                    settings: serde_json::Value::Null,
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: source.to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let (configuration, open) = tokio::join!(configuration, open);
+    assert!(configuration.unwrap().is_none());
+    assert!(open.unwrap().is_none());
+
+    let document = session
+        .probe()
+        .document(&uri)
+        .await
+        .expect("open must run after the queued configuration");
+    assert_eq!(document.version, 1);
+    assert_eq!(document.text().unwrap().as_ref(), source);
+    assert_eq!(document.resource_limit(), None);
+    assert_eq!(document.sync_error_state(), None);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn read_requests_wait_for_earlier_unpolled_mutations() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/read-after-open.mmd").unwrap();
+
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA[opened]-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let hover = service.call(
+        Request::build("textDocument/hover")
+            .params(
+                serde_json::to_value(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier { uri: uri.clone() },
+                        Position::new(1, 2),
+                    ),
+                    work_done_progress_params: Default::default(),
+                })
+                .unwrap(),
+            )
+            .id(2)
+            .finish(),
+    );
+    tokio::pin!(hover);
+    assert!(futures::poll!(&mut hover).is_pending());
+
+    assert!(open.await.unwrap().is_none());
+    let response = hover
+        .await
+        .unwrap()
+        .expect("hover response after admitted open");
+    assert!(response.is_ok());
+    assert_ne!(response.result(), Some(&serde_json::Value::Null));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn completion_after_an_unpolled_change_uses_only_the_committed_text() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    initialize_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/completion-after-change.mmd").unwrap();
+
+    let open = service
+        .call(
+            Request::build("textDocument/didOpen")
+                .params(
+                    serde_json::to_value(DidOpenTextDocumentParams {
+                        text_document: TextDocumentItem {
+                            uri: uri.clone(),
+                            language_id: "mermaid".to_string(),
+                            version: 1,
+                            text: concat!(
+                                "flowchart TD\n",
+                                "A-->B\n",
+                                "classDef old fill:#f00\n",
+                                "class A o\n",
+                            )
+                            .to_string(),
+                        },
+                    })
+                    .unwrap(),
+                )
+                .finish(),
+        )
+        .await;
+    assert!(open.unwrap().is_none());
+
+    let change = service.call(
+        Request::build("textDocument/didChange")
+            .params(
+                serde_json::to_value(DidChangeTextDocumentParams {
+                    text_document: VersionedTextDocumentIdentifier {
+                        uri: uri.clone(),
+                        version: 2,
+                    },
+                    content_changes: vec![TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text: concat!(
+                            "flowchart TD\n",
+                            "A-->B\n",
+                            "classDef fresh fill:#0f0\n",
+                            "class A f\n",
+                        )
+                        .to_string(),
+                    }],
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let completion = service.call(
+        Request::build("textDocument/completion")
+            .params(
+                serde_json::to_value(CompletionParams {
+                    text_document_position: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier { uri },
+                        Position::new(3, 9),
+                    ),
+                    work_done_progress_params: Default::default(),
+                    partial_result_params: Default::default(),
+                    context: None,
+                })
+                .unwrap(),
+            )
+            .id(2)
+            .finish(),
+    );
+    tokio::pin!(completion);
+    assert!(futures::poll!(&mut completion).is_pending());
+
+    assert!(change.await.unwrap().is_none());
+    let response = completion
+        .await
+        .unwrap()
+        .expect("completion response after admitted change");
+    assert!(response.is_ok());
+    let result: CompletionResponse = serde_json::from_value(
+        response
+            .result()
+            .cloned()
+            .expect("successful completion result"),
+    )
+    .expect("valid completion response");
+    let items = match result {
+        CompletionResponse::Array(items) => items,
+        CompletionResponse::List(list) => list.items,
     };
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
+    assert!(items.iter().any(|item| item.label == "fresh"));
+    assert!(!items.iter().any(|item| item.label == "old"));
+}
 
-    let error = server
+#[tokio::test(flavor = "current_thread")]
+async fn cancellation_reaches_a_read_waiting_for_an_earlier_mutation() {
+    let (mut service, _socket, session) = test_session_service();
+    initialize_test_service(&mut service).await;
+    let uri = Uri::from_str("file:///tmp/cancel-before-route.mmd").unwrap();
+
+    let open = service.call(
+        Request::build("textDocument/didOpen")
+            .params(
+                serde_json::to_value(DidOpenTextDocumentParams {
+                    text_document: TextDocumentItem {
+                        uri: uri.clone(),
+                        language_id: "mermaid".to_string(),
+                        version: 1,
+                        text: "flowchart TD\nA-->B\n".to_string(),
+                    },
+                })
+                .unwrap(),
+            )
+            .finish(),
+    );
+    let hover = service.call(
+        Request::build("textDocument/hover")
+            .params(
+                serde_json::to_value(HoverParams {
+                    text_document_position_params: TextDocumentPositionParams::new(
+                        TextDocumentIdentifier { uri: uri.clone() },
+                        Position::new(1, 0),
+                    ),
+                    work_done_progress_params: Default::default(),
+                })
+                .unwrap(),
+            )
+            .id(2)
+            .finish(),
+    );
+    tokio::pin!(hover);
+    assert!(futures::poll!(&mut hover).is_pending());
+
+    let cancel = service.call(
+        Request::build("$/cancelRequest")
+            .params(serde_json::json!({ "id": 2 }))
+            .finish(),
+    );
+
+    assert!(cancel.await.unwrap().is_none());
+    let hover = match futures::poll!(&mut hover) {
+        std::task::Poll::Ready(response) => response,
+        std::task::Poll::Pending => {
+            panic!("cancelled read must not remain pinned behind ordered admission")
+        }
+    }
+    .unwrap()
+    .expect("cancelled hover response");
+    assert_eq!(
+        hover.error().expect("request cancellation error").code,
+        tower_lsp_server::jsonrpc::ErrorCode::RequestCancelled
+    );
+    assert!(
+        session.probe().document(&uri).await.is_none(),
+        "the predecessor must still be unpolled when cancellation resolves"
+    );
+
+    assert!(open.await.unwrap().is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stale_push_diagnostic_context_is_suppressed() {
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    let context = server
+        .session
+        .diagnostic_context(&uri)
+        .await
+        .expect("expected diagnostic context");
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                2,
+                "flowchart TD\nA-->C\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+
+    let diagnostics = server
+        .diagnostic_publisher()
+        .expect("the default test client uses push diagnostics")
         .diagnostics_for_current_context(&context)
         .await
-        .ok_or_else(stale_diagnostic_recompute_error)
-        .expect_err("stale context should fail");
+        .expect("stale push diagnostics should be suppressed cleanly");
 
-    assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
-    assert!(error.message.contains("diagnostic document changed"));
+    assert!(diagnostics.is_none());
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn stale_semantic_tokens_record_returns_content_modified_error() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-    let context = crate::snapshot_context::snapshot_context_for_uri(
-        &server.store,
-        &uri,
-        crate::snapshot_context::SnapshotContextKind::SemanticTokens,
-    )
-    .await
-    .expect("snapshot context build should not fail")
-    .expect("expected snapshot context");
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-
-    let error = server
-        .record_semantic_tokens_state(&context, Vec::new(), Some("stale-result".to_string()))
-        .await
-        .expect_err("stale semantic tokens should fail");
-
-    assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
-    assert!(error.message.contains("semantic tokens document changed"));
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn stale_initial_diagnostic_context_recomputes_latest_document() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+async fn diagnostic_pull_uses_latest_document() {
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .initialize(
@@ -731,37 +2009,47 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
         .await
         .unwrap();
 
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-    let context = {
-        let store = server.store.lock().await;
-        store
-            .diagnostic_context(&uri)
-            .expect("expected diagnostic context")
-    };
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA[unterminated\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                1,
+                "flowchart TD\nA-->B\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                2,
+                "flowchart TD\nA[unterminated\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
 
-    let (_context, diagnostics) = server
-        .diagnostics_or_recompute_latest(context)
+    let report = server
+        .diagnostic(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier { uri },
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        })
         .await
-        .expect("latest diagnostic context should recompute");
+        .expect("latest diagnostic context should be analyzed");
+    let diagnostics = match report {
+        DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(report)) => {
+            report.full_document_diagnostic_report.items
+        }
+        other => panic!("unexpected diagnostic report: {other:?}"),
+    };
     let parse_diagnostic = diagnostics
-        .iter()
+        .into_iter()
         .find(|diagnostic| {
             diagnostic.code
                 == Some(NumberOrString::String(
@@ -769,62 +2057,15 @@ async fn stale_initial_diagnostic_context_recomputes_latest_document() {
                 ))
         })
         .expect("expected latest parse diagnostic");
-    let data = parse_diagnostic
-        .data
-        .as_ref()
-        .expect("expected diagnostic data");
+    let data = parse_diagnostic.data.expect("expected diagnostic data");
     assert_eq!(data["documentVersion"], 2);
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn stale_diagnostic_commit_returns_content_modified_error() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            1,
-            "flowchart TD\nA-->B\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-    let context = {
-        let store = server.store.lock().await;
-        store
-            .diagnostic_context(&uri)
-            .expect("expected diagnostic context")
-    };
-    let state = DocumentDiagnosticState {
-        result_id: MermanLanguageServer::diagnostic_result_id(&[]),
-        diagnostics: Vec::new(),
-    };
-    {
-        let mut store = server.store.lock().await;
-        store.upsert_text(
-            uri.clone(),
-            2,
-            "flowchart TD\nA-->C\n".to_string(),
-            DocumentKind::Diagram,
-        );
-    }
-
-    let error = server
-        .commit_diagnostic_state_if_current(&context, state)
-        .await
-        .expect_err("stale diagnostic commit should fail");
-
-    assert_eq!(error.code, tower_lsp::jsonrpc::ErrorCode::ContentModified);
-    assert!(error.message.contains("diagnostic document changed"));
-}
-
-#[tokio::test(flavor = "current_thread")]
 async fn diagnostic_pull_reuses_cached_previous_result() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -875,9 +2116,9 @@ async fn diagnostic_pull_reuses_cached_previous_result() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .did_open(DidOpenTextDocumentParams {
@@ -948,13 +2189,8 @@ async fn code_action_rejects_stale_diagnostic_edits_after_document_change() {
 
 #[test]
 fn structure_helpers_produce_hover_and_nested_symbols() {
-    let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-    let snapshot = store.upsert(
-        uri.clone(),
-        1,
-        "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-    );
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+    let snapshot = snapshot_for_test(uri.clone(), 1, "flowchart TD\nsubgraph group\nA-->B\nend\n");
 
     let hover = hover(&snapshot, Position::new(1, 0)).unwrap();
     let text = match hover.contents {
@@ -967,11 +2203,11 @@ fn structure_helpers_produce_hover_and_nested_symbols() {
     assert_eq!(selection_ranges.len(), 1);
     assert!(selection_ranges[0].parent.is_some());
 
-    let markdown_uri = Url::parse("file:///tmp/example.md").unwrap();
-    let markdown_snapshot = store.upsert(
+    let markdown_uri = Uri::from_str("file:///tmp/example.md").unwrap();
+    let markdown_snapshot = snapshot_for_test(
         markdown_uri,
         1,
-        "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+        "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n",
     );
     let folding_ranges = folding_ranges(&markdown_snapshot);
     assert!(
@@ -997,9 +2233,8 @@ fn structure_helpers_produce_hover_and_nested_symbols() {
 
 #[test]
 fn structure_helpers_cover_navigation_surface() {
-    let mut store = DocumentStore::new();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-    let snapshot = store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+    let snapshot = snapshot_for_test(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n");
     let position = Position::new(1, 0);
 
     assert!(matches!(
@@ -1033,9 +2268,9 @@ fn structure_helpers_cover_navigation_surface() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_handlers_return_hover_and_symbols() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let (_service, _socket, server) = test_service();
+    let server = &server;
+    let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
 
     server
         .initialize(
@@ -1072,19 +2307,38 @@ async fn lsp_handlers_return_hover_and_symbols() {
         .await
         .unwrap();
 
-    {
-        let mut store = server.store.lock().await;
-        store.upsert(
-            uri.clone(),
-            1,
-            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
-        );
-        store.upsert(
-            Url::parse("file:///tmp/example.md").unwrap(),
-            1,
-            "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
-        );
-    }
+    server
+        .session
+        .update_configuration(
+            default_lsp_analysis_options().with_rule_config(
+                AnalysisRuleConfig::default()
+                    .with_rule_enabled("merman.authoring.flowchart.explicit_direction")
+                    .unwrap(),
+            ),
+        )
+        .await;
+    assert!(
+        server
+            .session
+            .open_document(
+                uri.clone(),
+                1,
+                "flowchart\nsubgraph group\nA-->B\nend\n".to_string(),
+                DocumentKind::Diagram,
+            )
+            .await
+    );
+    assert!(
+        server
+            .session
+            .open_document(
+                Uri::from_str("file:///tmp/example.md").unwrap(),
+                1,
+                "before\n```mermaid\nflowchart TD\nA-->B\n```\nafter\n".to_string(),
+                DocumentKind::Markdown,
+            )
+            .await
+    );
 
     let hover = server
         .hover(HoverParams {
@@ -1114,7 +2368,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
     let folding_ranges = server
         .folding_range(FoldingRangeParams {
             text_document: TextDocumentIdentifier {
-                uri: Url::parse("file:///tmp/example.md").unwrap(),
+                uri: Uri::from_str("file:///tmp/example.md").unwrap(),
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1146,7 +2400,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
             range: Range {
                 start: Position::new(1, 0),
-                end: Position::new(2, 7),
+                end: Position::new(2, 5),
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1158,20 +2412,26 @@ async fn lsp_handlers_return_hover_and_symbols() {
         Some(SemanticTokensRangeResult::Tokens(tokens)) if !tokens.data.is_empty()
     ));
 
-    let map = SourceMap::new("bad");
-    let fix_span = map.whole_source_span().unwrap();
-    let diagnostic = AnalysisDiagnostic::error(
-        "merman.test.fix",
-        DiagnosticCategory::Semantic,
-        "test diagnostic",
-    )
-    .with_fix(
-        DiagnosticFix::new(
-            "Replace invalid text",
-            vec![DiagnosticFixEdit::new(fix_span, "fixed")],
-        )
-        .preferred(),
-    );
+    let context = server
+        .session
+        .diagnostic_context(&uri)
+        .await
+        .expect("expected snapshot-backed diagnostics");
+    let diagnostic = server
+        .diagnostic_publisher()
+        .expect("the default test client uses push diagnostics")
+        .diagnostics_for_current_context(&context)
+        .await
+        .expect("diagnostic analysis should succeed")
+        .expect("expected current diagnostics")
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic.code
+                == Some(NumberOrString::String(
+                    "merman.authoring.flowchart.explicit_direction".to_string(),
+                ))
+        })
+        .expect("expected flowchart direction diagnostic");
     let code_actions = server
         .code_action(CodeActionParams {
             text_document: TextDocumentIdentifier { uri: uri.clone() },
@@ -1180,7 +2440,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
                 end: Position::new(0, 3),
             },
             context: CodeActionContext {
-                diagnostics: vec![analysis_diagnostic_to_versioned_lsp(&diagnostic, &uri, 1)],
+                diagnostics: vec![diagnostic],
                 only: Some(vec![CodeActionKind::QUICKFIX]),
                 trigger_kind: None,
             },
@@ -1194,13 +2454,13 @@ async fn lsp_handlers_return_hover_and_symbols() {
     assert!(matches!(
         &code_actions[0],
         CodeActionOrCommand::CodeAction(action)
-            if action.title == "Replace invalid text"
+            if action.title == "Insert `TB` into the flowchart header"
                 && action.kind == Some(CodeActionKind::QUICKFIX)
                 && action.is_preferred == Some(true)
     ));
 
     let document_symbols = server
-        .document_symbol(tower_lsp::lsp_types::DocumentSymbolParams {
+        .document_symbol(tower_lsp_server::ls_types::DocumentSymbolParams {
             text_document: TextDocumentIdentifier { uri },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1211,76 +2471,6 @@ async fn lsp_handlers_return_hover_and_symbols() {
         document_symbols,
         Some(DocumentSymbolResponse::Flat(_))
     ));
-
-    let workspace_symbols = server
-        .symbol(WorkspaceSymbolParams {
-            partial_result_params: Default::default(),
-            work_done_progress_params: Default::default(),
-            query: "group".to_string(),
-        })
-        .await
-        .unwrap()
-        .expect("expected workspace symbol response");
-    assert!(!workspace_symbols.is_empty());
-    assert!(
-        workspace_symbols
-            .iter()
-            .any(|symbol| symbol.name == "group")
-    );
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn workspace_symbols_builds_all_missing_snapshots_on_first_request() {
-    let (service, _socket) = MermanLanguageServer::service();
-    let server = service.inner();
-    let document_count = WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE * 5 + 1;
-    let last_index = document_count - 1;
-    let last_symbol = format!("target_{last_index:02}");
-    let first_symbol = "target_00".to_string();
-    let first_uri = Url::parse("file:///tmp/workspace-00.mmd").unwrap();
-
-    {
-        let mut store = server.store.lock().await;
-        for index in 0..document_count {
-            let uri = Url::parse(&format!("file:///tmp/workspace-{index:02}.mmd")).unwrap();
-            store.upsert_text(
-                uri,
-                1,
-                format!("flowchart TD\nsubgraph target_{index:02}\nA{index}-->B{index}\nend\n"),
-                DocumentKind::Diagram,
-            );
-        }
-    }
-
-    let workspace_symbols = server
-        .symbol(WorkspaceSymbolParams {
-            partial_result_params: Default::default(),
-            work_done_progress_params: Default::default(),
-            query: "target_".to_string(),
-        })
-        .await
-        .unwrap()
-        .expect("expected workspace symbol response");
-
-    assert!(
-        workspace_symbols
-            .iter()
-            .any(|symbol| symbol.name == first_symbol && symbol.location.uri == first_uri),
-        "workspace symbol request should include the first document"
-    );
-    assert!(
-        workspace_symbols
-            .iter()
-            .any(|symbol| symbol.name == last_symbol),
-        "workspace symbol request should include documents beyond a single snapshot batch"
-    );
-
-    let store = server.store.lock().await;
-    let (_contexts, requests) = store.snapshot_build_requests();
-    assert!(
-        requests.is_empty(),
-        "workspace symbol refresh should build every current document before responding"
-    );
 }
 
 #[tokio::test(flavor = "current_thread")]

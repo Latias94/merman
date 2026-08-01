@@ -210,7 +210,7 @@ Dedicated Flowchart ELK lane:
   through `compare-flowchart-svgs --filter upstream_docs_layouts_how_to_use_001 --check-dom
   --dom-mode parity --dom-decimals 3 --force-elk-fixture`.
 - Duplicate layout bodies are kept as exact-call fixtures for upstream traceability. Use
-  `cargo run -p xtask -- audit-flowchart-elk-source-backed-coverage` for the current exact-call and
+  `cargo run -p xtask -- audit-flowchart-elk-parity-coverage` for the current exact-call and
   unique-body mapping.
 - `fixtures/flowchart/upstream_cypress_flowchart_elk_spec_render_with_stylized_arrows_063.mmd` is
   sourced from the ELK spec file but does not encode `layout: elk` in the fixture text.

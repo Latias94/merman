@@ -28,7 +28,6 @@
     "cargo run -p xtask -- profile-budget check-deps --profile pure-wasm --package merman-core --target wasm32-unknown-unknown --no-default-features --depth 3",
     "cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <typst-plugin.wasm>",
     "cargo run -p xtask -- typst-plugin-smoke --wasm <typst-plugin.wasm>",
-    "wasm-tools print <typst-plugin.wasm>",
     "cargo fmt --all --check",
     "cargo nextest run -p merman-core -p merman-render -p merman-bindings-core"
   ],

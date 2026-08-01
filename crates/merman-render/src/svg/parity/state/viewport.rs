@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn state_viewport_bounds_from_layout(layout: &StateDiagramV2Layout) -> Option<Bounds> {
+pub(super) fn state_viewport_bounds_from_layout(layout: &StateDiagramLayout) -> Option<Bounds> {
     fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
         let w = (max_x - min_x).abs();
         let h = (max_y - min_y).abs();

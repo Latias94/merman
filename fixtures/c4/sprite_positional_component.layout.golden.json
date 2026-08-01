@@ -6,13 +6,13 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 782.0,
-        "max_y": 419.0
+        "max_y": 418.0
       },
       "width": 832.0,
-      "height": 429.0,
+      "height": 428.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Component",
       "title": "C4Component sprite (positional) on Component",
       "boundaries": [
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 632.0,
-          "height": 303.0,
+          "height": 302.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -53,7 +53,7 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 153.0,
+          "height": 152.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -70,23 +70,23 @@
           "label": {
             "text": "API",
             "y": 86.0,
-            "width": 28.0,
-            "height": 17.0,
+            "width": 24.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[Rust]",
-            "y": 108.0,
+            "y": 109.0,
             "width": 31.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Handles requests.",
             "y": 142.0,
-            "width": 113.0,
-            "height": 16.0,
+            "width": 99.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -97,7 +97,7 @@
           "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 105.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -114,23 +114,23 @@
           "label": {
             "text": "DB",
             "y": 38.0,
-            "width": 24.0,
-            "height": 17.0,
+            "width": 19.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[Postgres]",
-            "y": 60.0,
+            "y": 61.0,
             "width": 51.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Stores data.",
             "y": 94.0,
-            "width": 76.0,
-            "height": 16.0,
+            "width": 71.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         }
@@ -142,19 +142,19 @@
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
-            "y": 255.873
+            "y": 255.245
           },
           "end_point": {
             "x": 466.0,
-            "y": 258.221
+            "y": 257.462
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "queries",
             "y": 0.0,
-            "width": 39.0,
-            "height": 14.0,
+            "width": 34.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": null,

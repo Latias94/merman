@@ -1,3 +1,5 @@
+#import "units.typ": canonical-css-px-string, css-px-number-string, css-px-string
+
 #let dictionary-or-none(value, name) = {
   if value == none {
     none
@@ -43,31 +45,26 @@
   }
 }
 
-#let choose-theme-name(theme-name, base-theme) = {
-  if theme-name != none {
-    theme-name
+#let font-descriptor-name(font) = {
+  if type(font) == str {
+    font
+  } else if type(font) == dictionary {
+    if "name" not in font or type(font.at("name")) != str {
+      panic("merman typography font descriptor must contain a string name")
+    }
+    font.at("name")
   } else {
-    base-theme
-  }
-}
-
-#let choose-diagram-id(id, diagram-id) = {
-  if diagram-id != none {
-    diagram-id
-  } else {
-    id
+    panic("merman typography font must contain only strings or font descriptors")
   }
 }
 
 #let font-family-value(font) = {
   if font == none {
     none
-  } else if type(font) == str {
-    str(font)
   } else if type(font) == array {
-    font.join(", ")
+    font.map(font-descriptor-name).join(", ")
   } else {
-    panic("merman typography font must be a string or array")
+    font-descriptor-name(font)
   }
 }
 
@@ -75,9 +72,13 @@
   if size == none {
     none
   } else if type(size) == str {
-    size
+    canonical-css-px-string(size, name: "merman typography size")
+  } else if type(size) == length {
+    css-px-string(size, name: "merman typography size")
+  } else if type(size) == int or type(size) == float {
+    css-px-number-string(size, name: "merman typography size")
   } else {
-    repr(size)
+    panic("merman typography size must be a CSS px string, absolute Typst length, or pixel number")
   }
 }
 
@@ -151,25 +152,33 @@
   merge-dict(out, host-theme, "merman host-theme")
 }
 
-#let build-site-config(site-config, theme, theme-name, base-theme) = {
-  if site-config != none {
-    site-config
-  } else if theme != none or theme-name != none or base-theme != none {
-    (
-      theme: choose-theme-name(theme-name, base-theme),
-      themeVariables: theme,
-    )
+#let apply-theme-site-config(site-config, theme, theme-name, base-theme) = {
+  let theme-name = choose-value(base-theme, theme-name)
+  if theme == none and theme-name == none {
+    dictionary-or-none(site-config, "merman site-config")
   } else {
-    none
+    let out = if site-config == none {
+      (:)
+    } else {
+      dictionary-or-none(site-config, "merman site-config")
+    }
+    let out = if theme-name != none {
+      (: ..out, theme: theme-name)
+    } else {
+      out
+    }
+    if theme != none {
+      (: ..out, themeVariables: theme)
+    } else {
+      out
+    }
   }
 }
 
 #let build-layout-options(
   layout,
-  text-measurer,
-  math-renderer,
-  viewport-width,
-  viewport-height,
+  container-width,
+  container-height,
   base-layout: none,
 ) = {
   if layout != none {
@@ -180,26 +189,46 @@
     } else {
       (:)
     }
-    let out = if viewport-width != none {
-      (: ..out, viewport_width: viewport-width)
+    let out = if container-width != none {
+      (: ..out, container_width: container-width)
     } else {
       out
     }
-    let out = if viewport-height != none {
-      (: ..out, viewport_height: viewport-height)
+    let out = if container-height != none {
+      (: ..out, container_height: container-height)
     } else {
       out
     }
-    let out = if text-measurer != none {
-      (: ..out, text_measurer: text-measurer)
-    } else {
-      out
-    }
-    let out = if math-renderer != none {
-      (: ..out, math_renderer: math-renderer)
-    } else {
-      out
-    }
+    out
+  }
+}
+
+#let layout-container-width(layout) = {
+  let layout = dictionary-or-none(layout, "merman layout")
+  if layout != none and "container_width" in layout {
+    layout.at("container_width")
+  } else {
+    none
+  }
+}
+
+#let build-environment-options(
+  environment,
+  text-measurement,
+  math-renderer,
+  base-environment: none,
+) = {
+  let out = merge-dict(base-environment, environment, "merman environment")
+  let out = if text-measurement != none {
+    let out = if out == none { (:) } else { out }
+    (: ..out, text_measurement: text-measurement)
+  } else {
+    out
+  }
+  if math-renderer != none {
+    let out = if out == none { (:) } else { out }
+    (: ..out, math_renderer: math-renderer)
+  } else {
     out
   }
 }
@@ -217,13 +246,14 @@
   diagram-id: none,
   background: none,
   layout: none,
+  environment: none,
   scoped-css: none,
   css-override-policy: none,
   drop-native-duplicate-fallbacks: none,
-  text-measurer: none,
+  text-measurement: none,
   math-renderer: none,
-  viewport-width: none,
-  viewport-height: none,
+  container-width: none,
+  container-height: none,
   fixed-today: none,
   fixed-local-offset-minutes: none,
   figure: none,
@@ -241,13 +271,14 @@
     diagram-id: diagram-id,
     background: background,
     layout: layout,
+    environment: environment,
     scoped-css: scoped-css,
     css-override-policy: css-override-policy,
     drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
-    text-measurer: text-measurer,
+    text-measurement: text-measurement,
     math-renderer: math-renderer,
-    viewport-width: viewport-width,
-    viewport-height: viewport-height,
+    container-width: container-width,
+    container-height: container-height,
     fixed-today: fixed-today,
     fixed-local-offset-minutes: fixed-local-offset-minutes,
     figure: figure,
@@ -269,13 +300,14 @@
   diagram-id: none,
   background: none,
   layout: none,
+  environment: none,
   scoped-css: none,
   css-override-policy: none,
   drop-native-duplicate-fallbacks: none,
-  text-measurer: none,
+  text-measurement: none,
   math-renderer: none,
-  viewport-width: none,
-  viewport-height: none,
+  container-width: none,
+  container-height: none,
   fixed-today: none,
   fixed-local-offset-minutes: none,
 ) = {
@@ -284,11 +316,23 @@
   let profile-host-theme = profile-field(profile, "host-theme", alt: "host_theme")
   let profile-typography = profile-field(profile, "typography")
   let profile-layout = profile-field(profile, "layout")
+  let profile-layout-container-width = layout-container-width(profile-layout)
+  let profile-environment = profile-field(profile, "environment")
+  let profile-text-measurement = profile-field(profile, "text-measurement")
+  let profile-math-renderer = profile-field(profile, "math-renderer")
 
-  let site-config = choose-value(profile-site-config, site-config)
-  let theme = choose-value(profile-field(profile, "theme"), theme)
-  let theme-name = choose-value(profile-field(profile, "theme-name", alt: "theme_name"), theme-name)
-  let base-theme = choose-value(profile-field(profile, "base-theme", alt: "base_theme"), base-theme)
+  let profile-site-config = apply-theme-site-config(
+    profile-site-config,
+    profile-field(profile, "theme"),
+    profile-field(profile, "theme-name", alt: "theme_name"),
+    profile-field(profile, "base-theme", alt: "base_theme"),
+  )
+  let site-config = if site-config == none {
+    profile-site-config
+  } else {
+    dictionary-or-none(site-config, "merman site-config")
+  }
+  let site-config = apply-theme-site-config(site-config, theme, theme-name, base-theme)
   let pipeline = choose-value(profile-field(profile, "pipeline"), pipeline, default: "resvg-safe")
   let id = choose-value(profile-field(profile, "id"), id)
   let diagram-id = choose-value(profile-field(profile, "diagram-id", alt: "diagram_id"), diagram-id)
@@ -306,21 +350,13 @@
     ),
     drop-native-duplicate-fallbacks,
   )
-  let text-measurer = choose-value(
-    profile-field(profile, "text-measurer", alt: "text_measurer"),
-    text-measurer,
+  let container-width = choose-value(
+    profile-field(profile, "container-width", alt: "container_width"),
+    container-width,
   )
-  let math-renderer = choose-value(
-    profile-field(profile, "math-renderer", alt: "math_renderer"),
-    math-renderer,
-  )
-  let viewport-width = choose-value(
-    profile-field(profile, "viewport-width", alt: "viewport_width"),
-    viewport-width,
-  )
-  let viewport-height = choose-value(
-    profile-field(profile, "viewport-height", alt: "viewport_height"),
-    viewport-height,
+  let container-height = choose-value(
+    profile-field(profile, "container-height", alt: "container_height"),
+    container-height,
   )
   let fixed-today = choose-value(profile-field(profile, "fixed-today", alt: "fixed_today"), fixed-today)
   let fixed-local-offset-minutes = choose-value(
@@ -344,18 +380,26 @@
     (
       fixed_today: fixed-today,
       fixed_local_offset_minutes: fixed-local-offset-minutes,
-      site_config: build-site-config(site-config, theme, theme-name, base-theme),
+      site_config: site-config,
       host_theme: host-theme,
       layout: build-layout-options(
         layout,
-        text-measurer,
-        math-renderer,
-        viewport-width,
-        viewport-height,
+        container-width,
+        container-height,
         base-layout: profile-layout,
       ),
+      environment: build-environment-options(
+        environment,
+        text-measurement,
+        math-renderer,
+        base-environment: build-environment-options(
+          profile-environment,
+          profile-text-measurement,
+          profile-math-renderer,
+        ),
+      ),
       svg: (
-        diagram_id: choose-diagram-id(id, diagram-id),
+        diagram_id: choose-value(id, diagram-id),
         pipeline: pipeline,
         root_background_color: background,
         scoped_css: scoped-css,
@@ -369,20 +413,19 @@
     binding_options: binding-options,
     direct_layout: layout,
     direct_options: options,
-    direct_viewport_width: viewport-width,
+    direct_container_width: container-width,
     profile_layout: profile-layout,
+    profile_layout_container_width: profile-layout-container-width,
     profile_options: profile-options,
   )
 }
 
 #let config-with-context-width(config, width) = {
-  if config.direct_layout != none or config.direct_viewport_width != none or config.direct_options != none or config.profile_options != none {
+  if width == none or config.direct_layout != none or config.direct_container_width != none or config.direct_options != none or config.profile_options != none or config.profile_layout_container_width != none {
     config
   } else {
     let binding-options = config.binding_options
     let layout = build-layout-options(
-      none,
-      none,
       none,
       width,
       none,

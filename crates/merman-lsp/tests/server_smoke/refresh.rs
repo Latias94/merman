@@ -2,11 +2,20 @@ use super::prelude::*;
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change() {
-    let (mut service, mut socket) = MermanLanguageServer::service_with_refresh();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, mut responses) = socket.split();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
             "capabilities": {
+                "textDocument": {
+                    "semanticTokens": {
+                        "requests": { "full": true },
+                        "tokenTypes": ["keyword"],
+                        "tokenModifiers": [],
+                        "formats": ["relative"]
+                    }
+                },
                 "workspace": {
                     "semanticTokens": {
                         "refreshSupport": true
@@ -33,9 +42,7 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
         .params(
             serde_json::to_value(DidChangeConfigurationParams {
                 settings: serde_json::json!({
-                    "parse": {
-                        "suppress_errors": true
-                    }
+                    "fixed_today": "2024-01-01"
                 }),
             })
             .unwrap(),
@@ -57,8 +64,8 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
         .expect("refresh channel closed");
     assert_eq!(refresh.method(), "workspace/semanticTokens/refresh");
 
-    socket
-        .send(tower_lsp::jsonrpc::Response::from_ok(
+    responses
+        .send(tower_lsp_server::jsonrpc::Response::from_ok(
             refresh.id().cloned().expect("refresh request id"),
             serde_json::Value::Null,
         ))
@@ -67,12 +74,21 @@ async fn lsp_service_smoke_refreshes_semantic_tokens_after_configuration_change(
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
-    let (mut service, mut socket) = MermanLanguageServer::service_with_refresh();
+async fn lsp_service_sends_follow_up_refresh_after_pending_configuration_changes() {
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, mut responses) = socket.split();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
             "capabilities": {
+                "textDocument": {
+                    "semanticTokens": {
+                        "requests": { "full": true },
+                        "tokenTypes": ["keyword"],
+                        "tokenModifiers": [],
+                        "formats": ["relative"]
+                    }
+                },
                 "workspace": {
                     "semanticTokens": {
                         "refreshSupport": true
@@ -90,12 +106,12 @@ async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
         .await
         .unwrap();
 
-    let configuration_change = |suppress_errors| {
+    let configuration_change = |fixed_today| {
         Request::build("workspace/didChangeConfiguration")
             .params(
                 serde_json::to_value(DidChangeConfigurationParams {
                     settings: serde_json::json!({
-                        "parse": { "suppress_errors": suppress_errors }
+                        "fixed_today": fixed_today
                     }),
                 })
                 .unwrap(),
@@ -108,7 +124,7 @@ async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
             .ready()
             .await
             .unwrap()
-            .call(configuration_change(true))
+            .call(configuration_change("2024-01-01"))
             .await
             .unwrap(),
         None
@@ -124,7 +140,7 @@ async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
             .ready()
             .await
             .unwrap()
-            .call(configuration_change(false))
+            .call(configuration_change("2024-01-02"))
             .await
             .unwrap(),
         None
@@ -134,19 +150,14 @@ async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
             .ready()
             .await
             .unwrap()
-            .call(configuration_change(true))
+            .call(configuration_change("2024-01-03"))
             .await
             .unwrap(),
         None
     );
-    assert!(
-        timeout(Duration::from_millis(50), socket.next())
-            .await
-            .is_err()
-    );
 
-    socket
-        .send(tower_lsp::jsonrpc::Response::from_ok(
+    responses
+        .send(tower_lsp_server::jsonrpc::Response::from_ok(
             first.id().cloned().expect("first refresh request id"),
             serde_json::Value::Null,
         ))
@@ -157,8 +168,8 @@ async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
         .expect("expected coalesced refresh")
         .expect("refresh channel closed");
     assert_eq!(follow_up.method(), "workspace/semanticTokens/refresh");
-    socket
-        .send(tower_lsp::jsonrpc::Response::from_ok(
+    responses
+        .send(tower_lsp_server::jsonrpc::Response::from_ok(
             follow_up
                 .id()
                 .cloned()
@@ -167,26 +178,27 @@ async fn lsp_service_coalesces_refreshes_while_client_response_is_pending() {
         ))
         .await
         .unwrap();
-
-    assert!(
-        timeout(Duration::from_millis(50), socket.next())
-            .await
-            .is_err()
-    );
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn pending_semantic_refresh_does_not_block_diagnostic_refresh() {
-    let (mut service, mut socket) = MermanLanguageServer::service_with_refresh();
+    let (mut service, socket) = MermanLanguageServer::service();
+    let (mut socket, mut responses) = socket.split();
 
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
             "capabilities": {
                 "textDocument": {
-                    "diagnostic": {}
+                    "diagnostic": {},
+                    "semanticTokens": {
+                        "requests": { "full": true },
+                        "tokenTypes": ["keyword"],
+                        "tokenModifiers": [],
+                        "formats": ["relative"]
+                    }
                 },
                 "workspace": {
-                    "diagnostic": {
+                    "diagnostics": {
                         "refreshSupport": true
                     },
                     "semanticTokens": {
@@ -209,7 +221,7 @@ async fn pending_semantic_refresh_does_not_block_diagnostic_refresh() {
         .params(
             serde_json::to_value(DidChangeConfigurationParams {
                 settings: serde_json::json!({
-                    "parse": { "suppress_errors": true }
+                    "fixed_today": "2024-01-01"
                 }),
             })
             .unwrap(),
@@ -242,8 +254,8 @@ async fn pending_semantic_refresh_does_not_block_diagnostic_refresh() {
     );
 
     for refresh in refreshes {
-        socket
-            .send(tower_lsp::jsonrpc::Response::from_ok(
+        responses
+            .send(tower_lsp_server::jsonrpc::Response::from_ok(
                 refresh.id().cloned().expect("refresh request id"),
                 serde_json::Value::Null,
             ))

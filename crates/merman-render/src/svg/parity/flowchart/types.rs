@@ -13,19 +13,22 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) ty: f64,
     pub(in crate::svg::parity::flowchart) measurer: &'a dyn TextMeasurer,
     pub(in crate::svg::parity::flowchart) config: &'a merman_core::MermaidConfig,
+    pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,
+    pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
     pub(in crate::svg::parity::flowchart) math_renderer:
         Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(in crate::svg::parity::flowchart) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(in crate::svg::parity::flowchart) node_html_labels: bool,
     pub(in crate::svg::parity::flowchart) edge_html_labels: bool,
-    pub(in crate::svg::parity::flowchart) source_backed_edge_label_bboxes: bool,
-    pub(in crate::svg::parity::flowchart) source_ported_elk_rendering: bool,
+    pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
     pub(in crate::svg::parity::flowchart) node_fill_color: String,
     pub(in crate::svg::parity::flowchart) default_edge_interpolate: String,
     pub(in crate::svg::parity::flowchart) default_edge_style: Vec<String>,
-    pub(in crate::svg::parity::flowchart) trace_edge_id: Option<String>,
+    pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
+    pub(in crate::svg::parity::flowchart) trace_collector:
+        Option<&'a crate::svg::FlowchartEdgeTraceCollector>,
     pub(in crate::svg::parity::flowchart) subgraph_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) edge_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) nodes_by_id:
@@ -42,6 +45,12 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(in crate::svg::parity::flowchart) layout_clusters_by_id:
         FxHashMap<&'a str, &'a LayoutCluster>,
+    pub(in crate::svg::parity::flowchart) swimlane_direction:
+        Option<crate::model::SwimlaneDirection>,
+    pub(in crate::svg::parity::flowchart) swimlane_lanes_by_id:
+        FxHashMap<&'a str, &'a crate::model::SwimlaneLaneLayout>,
+    pub(in crate::svg::parity::flowchart) swimlane_edge_label_edges_by_node_id:
+        FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
     pub(in crate::svg::parity::flowchart) dom_node_order_by_root:
         &'a std::collections::HashMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_dom_index: FxHashMap<&'a str, usize>,
@@ -56,22 +65,22 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
 #[derive(Debug, Default, Clone)]
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
     pub(in crate::svg::parity::flowchart) root_calls: u32,
-    pub(in crate::svg::parity::flowchart) clusters: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) edges_select: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) edge_paths: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) edge_labels: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) dom_order: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) nodes: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) node_style_compile: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) node_roughjs: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) clusters: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) edges_select: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) edge_paths: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) edge_labels: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) dom_order: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) nodes: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) node_style_compile: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) node_roughjs: std::time::Duration,
     pub(in crate::svg::parity::flowchart) node_roughjs_calls: u32,
-    pub(in crate::svg::parity::flowchart) node_label_html: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) node_label_html: std::time::Duration,
     pub(in crate::svg::parity::flowchart) node_label_html_calls: u32,
-    pub(in crate::svg::parity::flowchart) nested_roots: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_lca: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_offsets: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom: web_time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_bbox_union: web_time::Duration,
+    pub(in crate::svg::parity::flowchart) nested_roots: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_lca: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_offsets: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_bbox_union: std::time::Duration,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom_calls: u32,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom_skipped_bounds: u32,
 }
@@ -92,7 +101,12 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     pub(in crate::svg::parity::flowchart) d: String,
     pub(in crate::svg::parity::flowchart) pb: Option<path_bounds::SvgPathBounds>,
+    /// Exact point list serialized into `data-points` by Mermaid's `insertEdge`.
+    pub(in crate::svg::parity::flowchart) data_points: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) data_points_b64: String,
+    pub(in crate::svg::parity::flowchart) original_path_length: Option<f64>,
+    pub(in crate::svg::parity::flowchart) path_length: Option<f64>,
+    pub(in crate::svg::parity::flowchart) line_hop_applied: bool,
     pub(in crate::svg::parity::flowchart) label_position: Option<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) bounds_skipped_for_viewbox: bool,
 }
@@ -101,15 +115,16 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
 pub(in crate::svg::parity) struct FlowchartEdgePathCacheEntry {
     pub(in crate::svg::parity::flowchart) origin_x: f64,
     pub(in crate::svg::parity::flowchart) origin_y: f64,
+    pub(in crate::svg::parity::flowchart) abs_top_transform: f64,
     pub(in crate::svg::parity::flowchart) geom: FlowchartEdgePathGeom,
 }
 
 #[inline]
 pub(in crate::svg::parity::flowchart) fn detail_guard<'a>(
-    enabled: bool,
-    dst: &'a mut web_time::Duration,
+    timing: timing::RenderTiming,
+    dst: &'a mut std::time::Duration,
 ) -> Option<timing::TimingGuard<'a>> {
-    enabled.then(|| timing::TimingGuard::new(dst))
+    timing.section(dst)
 }
 
 #[derive(Debug, Clone, Copy)]

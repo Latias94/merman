@@ -1,62 +1,89 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "type": "zenuml",
     "title": null,
-    "accTitle": null,
-    "accDescr": null,
-    "actorOrder": [
-      "Alice",
-      "Bob"
-    ],
-    "actors": {
-      "Alice": {
+    "starter": null,
+    "participants": [
+      {
         "name": "Alice",
-        "description": "Alice",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 9,
+            "end": 14
+          },
+          {
+            "start": 35,
+            "end": 40
+          }
+        ],
+        "width": null
       },
-      "Bob": {
+      {
         "name": "Bob",
-        "description": "Bob",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      }
-    },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Hello",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Reply",
-        "wrap": false,
-        "type": 1,
-        "activate": false
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 16,
+            "end": 19
+          },
+          {
+            "start": 29,
+            "end": 32
+          }
+        ],
+        "width": null
       }
     ],
-    "notes": [],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+    "groups": [],
+    "statements": [
+      {
+        "id": "zenuml-statement-0",
+        "comment": null,
+        "span": {
+          "start": 9,
+          "end": 27
+        },
+        "kind": "message",
+        "explicit_from": "Alice",
+        "resolved_from": "Alice",
+        "resolved_to": "Bob",
+        "label": "Hello",
+        "assignment": null,
+        "style": "asynchronous",
+        "body": []
+      },
+      {
+        "id": "zenuml-statement-1",
+        "comment": null,
+        "span": {
+          "start": 29,
+          "end": 48
+        },
+        "kind": "return",
+        "explicit_from": "Bob",
+        "resolved_from": "Bob",
+        "explicit_to": "Alice",
+        "resolved_to": "Alice",
+        "label": "Reply"
       }
-    }
+    ],
+    "type": "zenuml"
   }
 }

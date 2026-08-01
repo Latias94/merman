@@ -19,6 +19,8 @@ pub struct TextStyle {
     pub font_family: Option<String>,
     pub font_size: f64,
     pub font_weight: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_style: Option<String>,
 }
 
 impl Default for TextStyle {
@@ -27,6 +29,7 @@ impl Default for TextStyle {
             font_family: None,
             font_size: 16.0,
             font_weight: None,
+            font_style: None,
         }
     }
 }

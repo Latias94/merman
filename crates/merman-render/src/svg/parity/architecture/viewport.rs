@@ -1,78 +1,18 @@
 use crate::model::Bounds;
 
-use super::super::{fmt, fmt_string, svg_emitted_bounds_from_svg};
-use super::model::ArchitectureModelAccess;
-use super::root::ArchitectureRootOpen;
+use super::super::{root_svg, svg_emitted_bounds_from_svg};
 
-pub(super) struct ArchitectureRootViewportContext<'a, M: ArchitectureModelAccess> {
+pub(super) struct ArchitectureRootViewportContext<'a, 'id> {
     pub(super) out: String,
-    pub(super) model: &'a M,
-    pub(super) root_open: ArchitectureRootOpen,
+    pub(super) root_viewport: &'a root_svg::RootViewportContext<'id>,
+    pub(super) root_document: root_svg::RootDocument,
     pub(super) content_bounds: Option<Bounds>,
     pub(super) padding_px: f64,
+    pub(super) half_icon: f64,
     pub(super) icon_size_px: f64,
     pub(super) use_max_width: bool,
+    pub(super) is_empty: bool,
     pub(super) trust_content_bounds: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ArchitectureRootViewportProfile {
-    groups_len: usize,
-    edges_len: usize,
-    service_count: usize,
-    junction_count: usize,
-    has_inverse_arrow_mesh_edge: bool,
-}
-
-impl ArchitectureRootViewportProfile {
-    fn from_model<M: ArchitectureModelAccess>(model: &M) -> Self {
-        let groups_len = model.groups_len();
-        let edges_len = model.edges_len();
-        let service_count = model.services().count();
-        let junction_count = model.junctions().count();
-        let is_arrow_mesh_profile =
-            groups_len == 0 && service_count == 5 && junction_count == 0 && edges_len == 8;
-        let has_inverse_arrow_mesh_edge = is_arrow_mesh_profile
-            && model
-                .edges()
-                .any(|edge| edge.lhs_dir == 'L' && edge.rhs_dir == 'B');
-
-        Self {
-            groups_len,
-            edges_len,
-            service_count,
-            junction_count,
-            has_inverse_arrow_mesh_edge,
-        }
-    }
-
-    fn skips_height_snap(self) -> bool {
-        self.groups_len == 0
-            && self.service_count == 5
-            && self.junction_count == 0
-            && self.edges_len == 8
-            && !self.has_inverse_arrow_mesh_edge
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct ArchitectureRootViewport {
-    min_x: f64,
-    min_y: f64,
-    width: f64,
-    height: f64,
-}
-
-impl ArchitectureRootViewport {
-    fn view_box_attr(self) -> String {
-        format!(
-            "{} {} {} {}",
-            fmt(self.min_x),
-            fmt(self.min_y),
-            fmt(self.width),
-            fmt(self.height)
-        )
-    }
 }
 
 fn architecture_root_bbox_from_svg(
@@ -107,73 +47,42 @@ fn architecture_root_bbox_from_svg(
     bounds
 }
 
-fn architecture_root_viewport_from_bbox(
-    bounds: &Bounds,
-    padding_px: f64,
-    profile: ArchitectureRootViewportProfile,
-) -> ArchitectureRootViewport {
-    let mut viewport = ArchitectureRootViewport {
-        min_x: bounds.min_x - padding_px,
-        min_y: bounds.min_y - padding_px,
-        width: ((bounds.max_x - bounds.min_x) + 2.0 * padding_px).max(1.0),
-        height: ((bounds.max_y - bounds.min_y) + 2.0 * padding_px).max(1.0),
-    };
-
-    // Upstream Architecture viewports are driven by browser `getBBox()` + padding, but the
-    // underlying geometry comes from a mix of FCoSE layout and SVG transforms. In practice,
-    // most root viewBox components land on an `f32` lattice (see long dyadic fractions in
-    // upstream fixtures). Snap `x/y/w` to that lattice for stable parity-root comparisons.
-    //
-    // Exception: the common 5-service arrow-mesh profile (non-inverse variant) uses a
-    // height that is *not* exactly representable as `f32` in upstream output, so avoid forcing
-    // `f32` quantization of `h` for that profile.
-    viewport.min_x = (viewport.min_x as f32) as f64;
-    viewport.min_y = (viewport.min_y as f32) as f64;
-    viewport.width = (viewport.width as f32) as f64;
-    if !profile.skips_height_snap() {
-        viewport.height = (viewport.height as f32) as f64;
-    }
-
-    viewport
-}
-
-pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
-    ctx: ArchitectureRootViewportContext<'_, M>,
-) -> String {
+pub(super) fn finalize_architecture_root_viewport(
+    ctx: ArchitectureRootViewportContext<'_, '_>,
+) -> crate::Result<root_svg::RootedSvg> {
     let ArchitectureRootViewportContext {
         mut out,
-        model,
-        root_open,
+        root_viewport,
+        root_document,
         content_bounds,
         padding_px,
+        half_icon,
         icon_size_px,
         use_max_width,
+        is_empty,
         trust_content_bounds,
     } = ctx;
 
-    let b =
-        architecture_root_bbox_from_svg(&out, content_bounds, icon_size_px, trust_content_bounds);
-    let profile = ArchitectureRootViewportProfile::from_model(model);
-    let viewport = architecture_root_viewport_from_bbox(&b, padding_px, profile);
-
-    let view_box_attr = viewport.view_box_attr();
-    let max_w_attr = fmt_string(viewport.width);
-
-    let mut replacements: Vec<(usize, std::ops::Range<usize>, &str)> =
-        Vec::with_capacity(if use_max_width { 2 } else { 1 });
-    replacements.push((
-        root_open.viewbox_placeholder_range.start,
-        root_open.viewbox_placeholder_range,
-        view_box_attr.as_str(),
-    ));
-    if use_max_width && let Some(range) = root_open.max_width_placeholder_range {
-        replacements.push((range.start, range, max_w_attr.as_str()));
-    }
-    replacements.sort_by_key(|(start, _, _)| std::cmp::Reverse(*start));
-    for (_, range, replacement) in replacements {
-        out.replace_range(range, replacement);
-    }
-    out
+    let root_bounds = if is_empty {
+        root_svg::DiagramBounds::from_view_box(-half_icon, -half_icon, icon_size_px, icon_size_px)
+    } else {
+        let bounds = architecture_root_bbox_from_svg(
+            &out,
+            content_bounds,
+            icon_size_px,
+            trust_content_bounds,
+        );
+        root_svg::DiagramBounds::from_extents(
+            bounds.min_x,
+            bounds.min_y,
+            bounds.max_x,
+            bounds.max_y,
+            padding_px,
+        )
+    };
+    let root_spec = root_svg::RootViewportSpec::mermaid_or_intrinsic(root_bounds, use_max_width);
+    let root_document = root_viewport.finish_document(&mut out, root_document, root_spec)?;
+    root_document.complete(out)
 }
 
 #[cfg(test)]
@@ -187,68 +96,6 @@ mod tests {
             max_x,
             max_y,
         }
-    }
-
-    fn profile(
-        groups_len: usize,
-        edges_len: usize,
-        service_count: usize,
-        junction_count: usize,
-        has_inverse_arrow_mesh_edge: bool,
-    ) -> ArchitectureRootViewportProfile {
-        ArchitectureRootViewportProfile {
-            groups_len,
-            edges_len,
-            service_count,
-            junction_count,
-            has_inverse_arrow_mesh_edge,
-        }
-    }
-
-    #[test]
-    fn architecture_root_viewport_snaps_xy_width_and_height_to_f32_lattice() {
-        let b = bounds(1.123456789, 2.123456789, 111.987654321, 222.987654321);
-        let padding = 40.0;
-
-        let viewport =
-            architecture_root_viewport_from_bbox(&b, padding, profile(1, 2, 3, 4, false));
-
-        let raw_min_x = b.min_x - padding;
-        let raw_min_y = b.min_y - padding;
-        let raw_width = (b.max_x - b.min_x) + 2.0 * padding;
-        let raw_height = (b.max_y - b.min_y) + 2.0 * padding;
-        assert_eq!(viewport.min_x, (raw_min_x as f32) as f64);
-        assert_eq!(viewport.min_y, (raw_min_y as f32) as f64);
-        assert_eq!(viewport.width, (raw_width as f32) as f64);
-        assert_eq!(viewport.height, (raw_height as f32) as f64);
-    }
-
-    #[test]
-    fn architecture_root_viewport_preserves_non_inverse_arrow_mesh_height_precision() {
-        let b = bounds(0.25, 1.5, 100.75, 201.123456789);
-        let padding = 40.0;
-        let raw_height = (b.max_y - b.min_y) + 2.0 * padding;
-        assert_ne!(raw_height, (raw_height as f32) as f64);
-
-        let viewport =
-            architecture_root_viewport_from_bbox(&b, padding, profile(0, 8, 5, 0, false));
-
-        assert_eq!(viewport.height, raw_height);
-        assert_eq!(
-            viewport.width,
-            (((b.max_x - b.min_x) + 2.0 * padding) as f32) as f64
-        );
-    }
-
-    #[test]
-    fn architecture_root_viewport_snaps_inverse_arrow_mesh_height() {
-        let b = bounds(0.25, 1.5, 100.75, 201.123456789);
-        let padding = 40.0;
-        let raw_height = (b.max_y - b.min_y) + 2.0 * padding;
-
-        let viewport = architecture_root_viewport_from_bbox(&b, padding, profile(0, 8, 5, 0, true));
-
-        assert_eq!(viewport.height, (raw_height as f32) as f64);
     }
 
     #[test]
@@ -287,5 +134,66 @@ mod tests {
         assert_eq!(b.min_y, -200.0);
         assert_eq!(b.max_x, 200.0);
         assert_eq!(b.max_y, 200.0);
+    }
+
+    #[test]
+    fn architecture_root_viewport_preserves_f64_bbox_and_padding() {
+        let diagram_id = "architecture-f64-root";
+        let root_viewport = root_svg::RootViewportContext::new(
+            crate::family::RenderFamilyKind::Architecture,
+            diagram_id,
+        );
+        let mut out = String::new();
+        let root_document = root_viewport
+            .begin_document(
+                &mut out,
+                root_svg::DeferredRootSpec::mermaid_or_intrinsic(true),
+                root_svg::RootChrome::new(diagram_id, "architecture"),
+            )
+            .unwrap();
+        out.push_str("</svg>");
+        let content = bounds(
+            1.123_456_789,
+            2.123_456_789,
+            111.987_654_321,
+            222.987_654_321,
+        );
+        let padding = 40.0;
+
+        let svg = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
+            out,
+            root_viewport: &root_viewport,
+            root_document,
+            content_bounds: Some(content.clone()),
+            padding_px: padding,
+            half_icon: 40.0,
+            icon_size_px: 80.0,
+            use_max_width: true,
+            is_empty: false,
+            trust_content_bounds: true,
+        })
+        .unwrap()
+        .into_string_for(crate::family::RenderFamilyKind::Architecture)
+        .unwrap();
+        let view_box = svg
+            .split_once("viewBox=\"")
+            .unwrap()
+            .1
+            .split_once('"')
+            .unwrap()
+            .0
+            .split_whitespace()
+            .map(|part| part.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            view_box,
+            vec![
+                content.min_x - padding,
+                content.min_y - padding,
+                content.max_x - content.min_x + 2.0 * padding,
+                content.max_y - content.min_y + 2.0 * padding,
+            ]
+        );
     }
 }

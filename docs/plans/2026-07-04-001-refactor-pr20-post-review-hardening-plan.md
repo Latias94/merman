@@ -78,7 +78,7 @@ The branch is still unreleased, so the safer long-term move is to tighten source
 - AE5. Passing binding options as `{ "analysis": { "lint": { ... } } }` or `{ "merman": { "resources": { ... } } }` affects analysis the same way as direct top-level options.
 - AE6. TypeScript accepts `resources.max_class_nodes`, `resources.max_class_edges`, `resources.max_class_namespaces`, `ascii.relation_summary_diagnostics`, and `ascii.relationSummaryDiagnostics`.
 - AE7. A pull-diagnostic request racing with a newer document version does not return JSON-RPC internal error for normal typing.
-- AE8. `parse_editor_semantic_facts_with_type_sync("flowchart", ...)` returns parser-backed flowchart facts for supported flowchart syntax.
+- AE8. `parse_editor_semantic_facts_with_type_sync("flowchart", source)` returns parser-backed flowchart facts for supported flowchart syntax.
 - AE9. External users of `merman-lsp` can still construct/start `MermanLanguageServer`, but cannot import internal handler/store modules as public semver surface.
 - AE10. README extension-development steps succeed by either preparing packaged binaries or enabling Cargo fallback; they no longer imply `target/debug` is discovered automatically.
 
@@ -264,7 +264,7 @@ flowchart TB
 - **Execution note:** Add the failing `parse_editor_semantic_facts_with_type_sync("flowchart", ...)` regression first.
 - **Patterns to follow:** Existing flowchart editor facts tests using `flowchart-v2`; family registry aliases in `crates/merman-core/src/family.rs`.
 - **Test scenarios:**
-  - `parse_editor_semantic_facts_with_type_sync("flowchart", "flowchart TD\nA-->B\n", strict)` returns symbols/facts for `A` and `B`.
+  - `parse_editor_semantic_facts_with_type_sync("flowchart", "flowchart TD\nA-->B\n")` returns symbols/facts for `A` and `B`.
   - Analysis facts for a legacy `flowchart` type include flowchart facts when the model is equivalent.
   - `flowchart-elk` still routes through the existing ELK-specific arm.
 - **Verification:** Core, analysis, and editor-core focused tests prove parser-backed facts for the legacy id.

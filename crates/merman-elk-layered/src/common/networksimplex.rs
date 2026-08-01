@@ -73,53 +73,6 @@ impl NGraph {
             .collect()
     }
 
-    pub fn is_acyclic(&mut self) -> bool {
-        for (id, node) in self.node_order.iter().copied().enumerate() {
-            self.nodes[node].internal_id = id;
-        }
-
-        let mut incident = vec![0usize; self.node_order.len()];
-        let mut layer = vec![0i32; self.node_order.len()];
-        for node in self.node_order.iter().copied() {
-            incident[self.nodes[node].internal_id] += self.nodes[node].incoming_edges.len();
-        }
-
-        let mut roots = VecDeque::new();
-        for node in self.node_order.iter().copied() {
-            if self.nodes[node].incoming_edges.is_empty() {
-                roots.push_back(node);
-            }
-        }
-        if roots.is_empty() && !self.node_order.is_empty() {
-            return false;
-        }
-
-        while let Some(node) = roots.pop_front() {
-            let node_internal = self.nodes[node].internal_id;
-            for edge_index in self.nodes[node].outgoing_edges.clone() {
-                let target = self.edges[edge_index].target;
-                let target_internal = self.nodes[target].internal_id;
-                layer[target_internal] = layer[target_internal].max(layer[node_internal] + 1);
-                incident[target_internal] = incident[target_internal].saturating_sub(1);
-                if incident[target_internal] == 0 {
-                    roots.push_back(target);
-                }
-            }
-        }
-
-        for node in self.node_order.iter().copied() {
-            for edge_index in &self.nodes[node].outgoing_edges {
-                let edge = &self.edges[*edge_index];
-                if layer[self.nodes[edge.target].internal_id]
-                    <= layer[self.nodes[edge.source].internal_id]
-                {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
     fn remove_active_node(&mut self, node: usize) {
         if let Some(position) = self
             .node_order

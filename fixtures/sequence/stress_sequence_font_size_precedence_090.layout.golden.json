@@ -22,15 +22,15 @@
         {
           "id": "note-1",
           "x": 375.0,
-          "y": 122.5,
+          "y": 123.0,
           "width": 150.0,
-          "height": 31.0,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-A",
           "x": 75.0,
-          "y": 190.5,
+          "y": 191.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "actor-bottom-B",
           "x": 275.0,
-          "y": 190.5,
+          "y": 191.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -64,7 +64,7 @@
           "label": {
             "x": 174.0,
             "y": 80.0,
-            "width": 20.0,
+            "width": 20.2,
             "height": 11.0
           },
           "start_label_left": null,
@@ -88,7 +88,7 @@
             },
             {
               "x": 75.0,
-              "y": 158.0
+              "y": 159.0
             }
           ],
           "label": null,
@@ -113,7 +113,7 @@
             },
             {
               "x": 275.0,
-              "y": 158.0
+              "y": 159.0
             }
           ],
           "label": null,
@@ -131,7 +131,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 500.0,
-        "max_y": 234.0
+        "max_y": 235.0
       }
     }
   }

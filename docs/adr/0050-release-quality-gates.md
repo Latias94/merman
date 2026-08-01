@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted; updated 2026-07-15 for Mermaid `@11.16.0` and ADR-0062.
 
 ## Context
 
@@ -63,22 +63,12 @@ Rationale:
   browser-adjacent behaviors converge.
 - strict mode is best treated as a “parity KPI” (trendable mismatch counts) rather than a hard gate.
 
-### Fixture-derived root viewport overrides are acceptable for publishing
+### Production fixture overrides are forbidden
 
-For known upstream fixture deltas where browser float/serialization behavior is the dominant
-source of drift, we allow fixture-derived root viewport overrides keyed by `diagram_id` (fixture
-stem). These are sourced directly from the upstream SVG baselines and applied only to the root
-viewport surface.
-
-The override footprint is tracked under:
-
-- `crates/merman-render/src/generated/*_root_overrides_11_12_2.rs`
-
-And summarized via:
-
-- `cargo run -p xtask -- report-overrides`
-
-This keeps the release gates stable while we iteratively reduce the need for overrides.
+Root viewports are computed from family-owned or emitted-content bounds through the shared Root
+Viewport module. Fixture ids and complete label strings are verification inputs, never production
+lookup keys. Browser-only root differences may be admitted only as a narrow, explicit comparator
+residual under ADR-0062; changed or additional mismatches must still fail the release gate.
 
 ## Consequences
 
@@ -86,6 +76,4 @@ This keeps the release gates stable while we iteratively reduce the need for ove
   viewport contract (`parity-root` at 3 decimals).
 - “Strict SVG XML equality” is not promised for early releases; it remains an explicit future
   convergence goal.
-- Root viewport overrides become a first-class, auditable mechanism for managing browser float
-  deltas without weakening semantic/structural regression coverage.
-
+- Browser float residuals remain explicit verification policy and cannot alter production output.

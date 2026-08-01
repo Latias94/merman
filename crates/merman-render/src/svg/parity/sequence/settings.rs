@@ -9,6 +9,7 @@ pub(super) struct SequenceRenderSettings {
     pub(super) box_text_margin: f64,
     pub(super) message_align: String,
     pub(super) label_box_height: f64,
+    pub(super) label_box_width: f64,
     pub(super) right_angles: bool,
     pub(super) wrap_padding: f64,
     pub(super) sequence_width: f64,
@@ -37,6 +38,9 @@ impl SequenceRenderSettings {
             .sequence_string("messageAlign")
             .unwrap_or_else(|| "center".to_string());
         let label_box_height = config.sequence_json_number_min("labelBoxHeight", 20.0, 0.0);
+        let label_box_width = config
+            .sequence_json_number_min("labelBoxWidth", 50.0, 0.0)
+            .max(50.0);
         let right_angles = config.sequence_bool("rightAngles", false);
         let wrap_padding = config.sequence_json_number_min("wrapPadding", 10.0, 0.0);
         let sequence_width = config.sequence_json_number_min("width", 150.0, 1.0);
@@ -54,11 +58,13 @@ impl SequenceRenderSettings {
             font_family: config.root_string("fontFamily"),
             font_size: actor_label_font_size,
             font_weight: Some("400".to_string()),
+            font_style: None,
         };
         let note_text_style = TextStyle {
             font_family: loop_text_style.font_family.clone(),
             font_size: actor_label_font_size,
             font_weight: Some("400".to_string()),
+            font_style: None,
         };
         let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
         let rect_default_fill =
@@ -79,6 +85,7 @@ impl SequenceRenderSettings {
             box_text_margin,
             message_align,
             label_box_height,
+            label_box_width,
             right_angles,
             wrap_padding,
             sequence_width,
@@ -178,5 +185,25 @@ mod tests {
         let settings = SequenceRenderSettings::from_effective_config(&cfg);
 
         assert!(settings.force_menus);
+    }
+
+    #[test]
+    fn sequence_render_settings_choose_bare_rect_fill_fallbacks() {
+        for (theme_variables, expected) in [
+            (
+                json!({
+                    "rectBkgColor": "#112233",
+                    "actorBkg": "#445566",
+                }),
+                "#112233",
+            ),
+            (json!({ "actorBkg": "#445566" }), "#445566"),
+            (json!({}), "rgba(128, 128, 128, 0.5)"),
+        ] {
+            let settings = SequenceRenderSettings::from_effective_config(&json!({
+                "themeVariables": theme_variables,
+            }));
+            assert_eq!(settings.rect_default_fill, expected);
+        }
     }
 }

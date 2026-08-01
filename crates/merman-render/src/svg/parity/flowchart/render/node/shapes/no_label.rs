@@ -10,7 +10,7 @@ use super::super::roughjs::{
     RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_paths_for_svg_path,
 };
 
-pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_no_label(
+pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_label(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
@@ -20,11 +20,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
         // Flowchart v2 anchor: a tiny dot used as an invisible anchor node. Mermaid ignores
         // `node.label` and does not emit a label group.
         "anchor" => {
-            let d =
-                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
-                    roughjs_circle_path_d(2.0, common.hand_drawn_seed)
-                })
-                .unwrap_or_else(|| "M0,0".to_string());
+            let d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+                roughjs_circle_path_d(2.0, common.hand_drawn_seed)
+            })
+            .unwrap_or_else(|| "M0,0".to_string());
             let _ = write!(
                 out,
                 r##"<g class="anchor" style=""><path d="{}" stroke="none" stroke-width="0" fill="black"/></g>"##,
@@ -39,21 +38,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
             true
         }
         "fr-circ" | "framed-circle" | "stop" => {
-            let line_color = util::theme_color(ctx.config.as_value(), "lineColor", "#333333");
+            let line_color = util::theme_token(ctx.config.as_value(), "lineColor", "#333333");
             let inner_fill =
                 util::config_string(ctx.config.as_value(), &["themeVariables", "stateBorder"])
                     .unwrap_or_else(|| ctx.node_border_color.clone());
 
-            let outer_d =
-                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
-                    roughjs_circle_path_d(14.0, common.hand_drawn_seed)
-                })
-                .unwrap_or_else(|| "M0,0".to_string());
-            let inner_d =
-                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
-                    roughjs_circle_path_d(5.0, common.hand_drawn_seed)
-                })
-                .unwrap_or_else(|| "M0,0".to_string());
+            let outer_d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+                roughjs_circle_path_d(14.0, common.hand_drawn_seed)
+            })
+            .unwrap_or_else(|| "M0,0".to_string());
+            let inner_d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+                roughjs_circle_path_d(5.0, common.hand_drawn_seed)
+            })
+            .unwrap_or_else(|| "M0,0".to_string());
 
             let _ = write!(
                 out,
@@ -84,9 +81,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
             } else {
                 (10.0, 70.0)
             };
-            let line_color = util::theme_color(ctx.config.as_value(), "lineColor", "#333333");
+            let line_color = util::theme_token(ctx.config.as_value(), "lineColor", "#333333");
             let (fill_d, stroke_d) =
-                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+                super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_paths_for_rect(RoughRectSpec {
                         x: -w / 2.0,
                         y: -h / 2.0,
@@ -95,7 +92,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
                         fill: &line_color,
                         stroke: &line_color,
                         stroke_width: common.stroke_width,
-                        seed: common.hand_drawn_seed,
+                        randomness: common.hand_drawn_seed,
                     })
                 })
                 .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
@@ -154,7 +151,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
             ];
             let path_data = path_from_points(&points);
             let (fill_d, stroke_d) =
-                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+                super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_paths_for_svg_path(
                         &path_data,
                         common.fill_color,
@@ -195,11 +192,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
                 common.style.into()
             };
 
-            let d =
-                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
-                    roughjs_circle_path_d(14.0, common.hand_drawn_seed)
-                })
-                .unwrap_or_else(|| "M0,0".into());
+            let d = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+                roughjs_circle_path_d(14.0, common.hand_drawn_seed)
+            })
+            .unwrap_or_else(|| "M0,0".into());
             let _ = write!(
                 out,
                 r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"##,
@@ -222,7 +218,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
             let radius = 30.0;
 
             let circle_d =
-                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+                super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_circle_path_d(radius * 2.0, common.hand_drawn_seed)
                 })
                 .unwrap_or_else(|| "M0,0".into());
@@ -246,7 +242,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_n
                 point_q3.1
             );
             let (line_fill_d, line_stroke_d) =
-                super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+                super::super::helpers::timed_node_roughjs(common.timing, details, || {
                     roughjs_paths_for_svg_path(
                         &line_path,
                         common.fill_color,

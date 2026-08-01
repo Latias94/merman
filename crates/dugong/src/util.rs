@@ -8,7 +8,6 @@ use crate::graphlib::{Graph, GraphOptions};
 use crate::{EdgeLabel, GraphLabel, NodeLabel, Point};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use web_time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -215,20 +214,6 @@ where
             layer.into_iter().map(|(_, id)| id).collect()
         })
         .collect()
-}
-
-pub fn time_to_writer<T>(name: &str, writer: &mut dyn std::io::Write, f: impl FnOnce() -> T) -> T {
-    let start = Instant::now();
-    let out = f();
-    let ms = start.elapsed().as_millis();
-    let _ = writeln!(writer, "{name} time: {ms}ms");
-    let _ = writer.flush();
-    out
-}
-
-pub fn time<T>(name: &str, f: impl FnOnce() -> T) -> T {
-    let mut stdout = std::io::stdout();
-    time_to_writer(name, &mut stdout, f)
 }
 
 pub fn normalize_ranks<E, G>(g: &mut Graph<NodeLabel, E, G>)

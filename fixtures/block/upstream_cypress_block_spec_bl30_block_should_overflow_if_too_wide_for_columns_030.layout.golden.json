@@ -5,42 +5,108 @@
       "nodes": [
         {
           "id": "fit",
-          "x": 57.539,
+          "x": 52.32,
           "y": -60.0,
-          "width": 115.078,
+          "width": 104.64,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "overflow",
-          "x": 88.309,
+          "x": 80.48,
           "y": -20.0,
-          "width": 176.617,
+          "width": 160.96,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "short",
-          "x": 26.77,
+          "x": 24.16,
           "y": 20.0,
-          "width": 53.539,
+          "width": 48.32,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "also_overflow",
-          "x": 119.078,
+          "x": 108.64,
           "y": 20.0,
-          "width": 115.078,
+          "width": 104.64,
           "height": 32.0,
           "is_cluster": false
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "fit",
+          "allocated": {
+            "x": 52.32,
+            "y": -60.0,
+            "width": 104.64,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 104.64,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "overflow",
+          "allocated": {
+            "x": 80.48,
+            "y": -20.0,
+            "width": 160.96,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 160.96,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "short",
+          "allocated": {
+            "x": 24.16,
+            "y": 20.0,
+            "width": 48.32,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 48.32,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "also_overflow",
+          "allocated": {
+            "x": 108.64,
+            "y": 20.0,
+            "width": 104.64,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 104.64,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -76.0,
-        "max_x": 176.617,
+        "max_x": 160.96,
         "max_y": 36.0
       }
     }

@@ -3,12 +3,10 @@ use crate::architecture_metrics::{
     architecture_measure_cytoscape_node_bbox_extras, architecture_node_bbox_extras_to_manatee,
 };
 use crate::config::{config_f64, json_f64, value_at};
-use crate::json::from_value_ref;
 use crate::model::{
     ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds,
-    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout,
-    ArchitectureFcoseDebugNodeBounds, ArchitectureFcoseDebugStage, ArchitectureFcoseRelocateDebug,
-    Bounds, LayoutEdge, LayoutNode, LayoutPoint,
+    ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout, Bounds, LayoutEdge,
+    LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
@@ -17,7 +15,6 @@ use merman_core::diagrams::architecture::{
     ArchitectureDiagramRenderModel, ArchitectureLayoutDirection,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
-use serde::Deserialize;
 use serde_json::Value;
 
 fn architecture_relative_placement_constraints<'a>(
@@ -123,62 +120,10 @@ fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     cur.as_bool()
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureNodeModel {
-    id: String,
-    #[serde(rename = "type")]
-    node_type: String,
-    #[serde(default)]
-    title: Option<String>,
-    #[serde(default, rename = "in")]
-    in_group: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureEdgeModel {
-    #[serde(rename = "lhsId", alias = "lhs")]
-    lhs_id: String,
-    #[serde(rename = "rhsId", alias = "rhs")]
-    rhs_id: String,
-    #[serde(default, rename = "lhsDir")]
-    lhs_dir: Option<String>,
-    #[serde(default, rename = "rhsDir")]
-    rhs_dir: Option<String>,
-    #[serde(default)]
-    title: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureGroupModel {
-    id: String,
-    #[serde(default, rename = "in")]
-    in_group: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureModel {
-    #[serde(default)]
-    nodes: Vec<ArchitectureNodeModel>,
-    #[serde(default)]
-    groups: Vec<ArchitectureGroupModel>,
-    #[serde(default)]
-    edges: Vec<ArchitectureEdgeModel>,
-    #[serde(default, rename = "layoutHints")]
-    layout_hints: Vec<ArchitectureLayoutHintModel>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureLayoutHintModel {
-    direction: String,
-    #[serde(default)]
-    members: Vec<String>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArchitectureNodeType {
     Service,
     Junction,
-    Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -277,7 +222,10 @@ fn js_to_uint32(value: f64) -> u64 {
     value.trunc().rem_euclid(UINT32_MODULUS) as u64
 }
 
-fn architecture_seed_policy(value: Option<&Value>) -> manatee::FcoseRandomPolicy {
+fn architecture_seed_policy(
+    value: Option<&Value>,
+    operation_seed: u64,
+) -> manatee::FcoseRandomPolicy {
     let numeric_seed = value
         .and_then(json_f64)
         .filter(|value| value.is_finite())
@@ -286,14 +234,19 @@ fn architecture_seed_policy(value: Option<&Value>) -> manatee::FcoseRandomPolicy
         .and_then(Value::as_f64)
         .is_some_and(|value| value == 0.0);
     let policy = if is_json_number_zero {
-        manatee::FcoseRandomPolicy::ambient(manatee::FcoseRandomSource::Mulberry32)
+        // Mermaid leaves Math.random in place for architecture.seed=0. Merman captures that
+        // operation-owned stream at session start, then consumes it continuously across FCoSE
+        // reruns instead of introducing a second process-global random source.
+        manatee::FcoseRandomPolicy::seeded(manatee::FcoseRandomSource::Mulberry32, operation_seed)
+            .with_reset_seed_each_run(false)
     } else {
         manatee::FcoseRandomPolicy::seeded(
             manatee::FcoseRandomSource::Mulberry32,
             js_to_uint32(numeric_seed),
         )
+        .with_reset_seed_each_run(true)
     };
-    policy.with_seed_offset(0).with_reset_seed_each_run(true)
+    policy.with_seed_offset(0)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -467,67 +420,6 @@ struct ArchitectureModelView<'a> {
 }
 
 impl<'a> ArchitectureModelView<'a> {
-    fn from_json(model: &'a ArchitectureModel) -> Self {
-        let nodes = model
-            .nodes
-            .iter()
-            .map(|n| ArchitectureNodeView {
-                id: n.id.as_str(),
-                node_type: match n.node_type.as_str() {
-                    "service" => ArchitectureNodeType::Service,
-                    "junction" => ArchitectureNodeType::Junction,
-                    _ => ArchitectureNodeType::Other,
-                },
-                title: n.title.as_deref(),
-                in_group: n.in_group.as_deref(),
-            })
-            .collect();
-
-        let groups = model
-            .groups
-            .iter()
-            .map(|g| ArchitectureGroupView {
-                id: g.id.as_str(),
-                in_group: g.in_group.as_deref(),
-            })
-            .collect();
-
-        let edges = model
-            .edges
-            .iter()
-            .map(|e| ArchitectureEdgeView {
-                lhs_id: e.lhs_id.as_str(),
-                rhs_id: e.rhs_id.as_str(),
-                lhs_dir: e.lhs_dir.as_deref().and_then(|s| s.chars().next()),
-                rhs_dir: e.rhs_dir.as_deref().and_then(|s| s.chars().next()),
-                title: e.title.as_deref(),
-            })
-            .collect();
-
-        let layout_hints = model
-            .layout_hints
-            .iter()
-            .filter_map(|hint| {
-                let direction = match hint.direction.as_str() {
-                    "row" => ArchitectureLayoutDirection::Row,
-                    "column" => ArchitectureLayoutDirection::Column,
-                    _ => return None,
-                };
-                Some(ArchitectureLayoutHintView {
-                    direction,
-                    members: hint.members.iter().map(String::as_str).collect(),
-                })
-            })
-            .collect();
-
-        Self {
-            nodes,
-            groups,
-            edges,
-            layout_hints,
-        }
-    }
-
     fn from_typed(model: &'a ArchitectureDiagramRenderModel) -> Self {
         let nodes = model
             .nodes
@@ -591,14 +483,18 @@ struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
     text_measurer: &'m dyn TextMeasurer,
     icon_size: f64,
     font_size_px: f64,
-    font_family: &'m str,
 }
 
-fn architecture_cytoscape_text_style(font_size_px: f64, font_family: &str) -> TextStyle {
+const CYTOSCAPE_DEFAULT_FONT_FAMILY: &str = "Helvetica Neue,Helvetica,sans-serif";
+
+fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
     TextStyle {
-        font_family: Some(font_family.to_string()),
+        // Mermaid sets only `font-size` on Architecture nodes, so Cytoscape retains its own
+        // default canvas font family rather than inheriting Mermaid's root Trebuchet stack.
+        font_family: Some(CYTOSCAPE_DEFAULT_FONT_FAMILY.to_string()),
         font_size: font_size_px,
         font_weight: None,
+        font_style: None,
     }
 }
 
@@ -625,9 +521,8 @@ fn architecture_fcose_node_bounds_extras<'a>(
         text_measurer,
         icon_size,
         font_size_px,
-        font_family,
     } = input;
-    let text_style = architecture_cytoscape_text_style(font_size_px, font_family);
+    let text_style = architecture_cytoscape_text_style(font_size_px);
 
     let mut node_bounds_extras: FxHashMap<&str, manatee::BoundsExtras> = FxHashMap::default();
     node_bounds_extras.reserve(model.nodes.len().saturating_mul(2));
@@ -650,15 +545,10 @@ fn architecture_fcose_node_bounds_extras<'a>(
 
 #[derive(Debug, Clone)]
 struct ArchitectureFcoseInputPlan<'a> {
-    node_ids: Vec<&'a str>,
     compound_ids: Vec<&'a str>,
-    node_index_by_id: FxHashMap<&'a str, usize>,
-    spatial_maps: Vec<IndexMap<&'a str, (i32, i32)>>,
     graph: manatee::algo::fcose::IndexedGraph,
     options: manatee::algo::fcose::IndexedFcoseOptions,
     random_policy: manatee::FcoseRandomPolicy,
-    default_edge_length: f64,
-    compound_padding_px: f64,
 }
 
 struct ArchitectureFcoseInputPlanInput<'m, 'a> {
@@ -1156,20 +1046,15 @@ fn build_architecture_fcose_input_plan<'a>(
         // Mermaid Architecture runs the layout twice (`layout.run()` inside `layoutstop`),
         // while the additive random policy models each independently wrapped call.
         rerun: true,
-        random_seed: fcose_random_policy.seed().unwrap_or_default(),
+        random_seed: fcose_random_policy.seed(),
         random_seed_offset: None,
     };
 
     Ok(ArchitectureFcoseInputPlan {
-        node_ids,
         compound_ids,
-        node_index_by_id,
-        spatial_maps,
         graph,
         options,
         random_policy: fcose_random_policy,
-        default_edge_length,
-        compound_padding_px,
     })
 }
 
@@ -1179,9 +1064,8 @@ fn architecture_cytoscape_service_bounds<'a>(
     text_measurer: &dyn TextMeasurer,
     icon_size: f64,
     font_size_px: f64,
-    font_family: &str,
 ) -> Vec<ArchitectureCytoscapeServiceBounds> {
-    let text_style = architecture_cytoscape_text_style(font_size_px, font_family);
+    let text_style = architecture_cytoscape_text_style(font_size_px);
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len().saturating_mul(2));
     for node in nodes {
@@ -1210,8 +1094,7 @@ fn architecture_cytoscape_service_bounds<'a>(
         );
         let label_metrics = label_bounds.map(|label| ArchitectureCytoscapeServiceLabelMetrics {
             text_width: label.metrics.width,
-            half_width: label.half_width,
-            applied_scale: label.metrics.applied_scale,
+            half_width: label.metrics.half_width,
         });
         let contribution =
             architecture_cytoscape_child_contribution_bounds(&body_bounds, label_bounds.as_ref());
@@ -1254,7 +1137,6 @@ fn architecture_bounds_from_layout_rect(rect: manatee::graph::LayoutRect) -> Bou
 #[derive(Debug, Clone, Default)]
 struct ArchitectureFcoseResultProjection {
     compound_bounds: Vec<ArchitectureCompoundBounds>,
-    debug_stages: Vec<ArchitectureFcoseDebugStage>,
 }
 
 fn project_architecture_fcose_result(
@@ -1279,130 +1161,25 @@ fn project_architecture_fcose_result(
         }
     }
 
-    let mut debug_stages = Vec::with_capacity(result.debug_stages.len());
-    for stage in result.debug_stages {
-        let node_displacements = stage.node_displacements;
-        let stage_nodes = stage
-            .node_bounds
-            .into_iter()
-            .enumerate()
-            .filter_map(|(idx, b)| {
-                let displacement = node_displacements
-                    .get(idx)
-                    .map(|p| LayoutPoint { x: p.x, y: p.y });
-                if let Some(node_id) = plan.node_ids.get(idx) {
-                    Some(ArchitectureFcoseDebugNodeBounds {
-                        id: (*node_id).to_string(),
-                        kind: "node".to_string(),
-                        bounds: architecture_bounds_from_layout_rect(b),
-                        displacement,
-                    })
-                } else {
-                    let group_idx = idx.checked_sub(plan.node_ids.len())?;
-                    plan.compound_ids.get(group_idx).map(|group_id| {
-                        ArchitectureFcoseDebugNodeBounds {
-                            id: (*group_id).to_string(),
-                            kind: "group".to_string(),
-                            bounds: architecture_bounds_from_layout_rect(b),
-                            displacement,
-                        }
-                    })
-                }
-            })
-            .collect();
-        let stage_compound_bounds = stage
-            .compound_bounds
-            .into_iter()
-            .enumerate()
-            .filter_map(|(idx, b)| {
-                plan.compound_ids
-                    .get(idx)
-                    .map(|group_id| ArchitectureCompoundBounds {
-                        id: (*group_id).to_string(),
-                        bounds: architecture_bounds_from_layout_rect(b),
-                    })
-            })
-            .collect();
-        debug_stages.push(ArchitectureFcoseDebugStage {
-            run_index: stage.run_index,
-            tag: stage.tag,
-            iterations: stage.iterations,
-            bbox: stage.bbox.map(architecture_bounds_from_layout_rect),
-            nodes: stage_nodes,
-            compound_bounds: stage_compound_bounds,
-            relocate: stage.relocate.map(|r| ArchitectureFcoseRelocateDebug {
-                original_center: LayoutPoint {
-                    x: r.original_center.x,
-                    y: r.original_center.y,
-                },
-                rect_center: LayoutPoint {
-                    x: r.rect_center.x,
-                    y: r.rect_center.y,
-                },
-                delta: LayoutPoint {
-                    x: r.delta.x,
-                    y: r.delta.y,
-                },
-            }),
-        });
-    }
-
-    ArchitectureFcoseResultProjection {
-        compound_bounds,
-        debug_stages,
-    }
+    ArchitectureFcoseResultProjection { compound_bounds }
 }
 
-pub fn layout_architecture_diagram(
-    model: &Value,
-    effective_config: &Value,
-    _text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
-) -> Result<ArchitectureDiagramLayout> {
-    let model_json: ArchitectureModel = from_value_ref(model)?;
-    let model_view = ArchitectureModelView::from_json(&model_json);
-    layout_architecture_diagram_model(
-        &model_view,
-        effective_config,
-        _text_measurer,
-        use_manatee_layout,
-    )
-}
-
-pub fn layout_architecture_diagram_typed(
+pub(crate) fn layout_architecture_diagram_typed(
     model: &ArchitectureDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
+    operation_seed: u64,
 ) -> Result<ArchitectureDiagramLayout> {
     let model = ArchitectureModelView::from_typed(model);
-    layout_architecture_diagram_model(&model, effective_config, text_measurer, use_manatee_layout)
+    layout_architecture_diagram_model(&model, effective_config, text_measurer, operation_seed)
 }
 
 fn layout_architecture_diagram_model(
     model: &ArchitectureModelView<'_>,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
+    operation_seed: u64,
 ) -> Result<ArchitectureDiagramLayout> {
-    let timing_enabled = std::env::var("MERMAN_ARCHITECTURE_LAYOUT_TIMING")
-        .ok()
-        .as_deref()
-        == Some("1");
-    #[derive(Debug, Default, Clone)]
-    struct ArchitectureLayoutTimings {
-        total: web_time::Duration,
-        build_adjacency_and_components: web_time::Duration,
-        positions_and_centering: web_time::Duration,
-        emit_nodes: web_time::Duration,
-        manatee_prepare: web_time::Duration,
-        manatee_layout: web_time::Duration,
-        build_edges: web_time::Duration,
-        bounds: web_time::Duration,
-    }
-    let mut timings = ArchitectureLayoutTimings::default();
-    let total_start = timing_enabled.then(web_time::Instant::now);
-
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
     let half_icon = icon_size / 2.0;
@@ -1410,7 +1187,6 @@ fn layout_architecture_diagram_model(
     let padding_px = padding_px.max(0.0);
     let font_size_px = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
     let font_size_px = font_size_px.max(1.0);
-    let font_family = crate::config::config_font_family_css(effective_config);
     let fcose_randomize =
         config_bool(effective_config, &["architecture", "randomize"]).unwrap_or(false);
     let fcose_node_separation = config_f64(effective_config, &["architecture", "nodeSeparation"])
@@ -1430,8 +1206,10 @@ fn layout_architecture_diagram_model(
         .filter(|v| v.is_finite() && *v >= 1.0)
         .map(|v| v.round() as usize)
         .unwrap_or(2500);
-    let fcose_random_policy =
-        architecture_seed_policy(value_at(effective_config, &["architecture", "seed"]));
+    let fcose_random_policy = architecture_seed_policy(
+        value_at(effective_config, &["architecture", "seed"]),
+        operation_seed,
+    );
 
     let node_bounds_extras =
         architecture_fcose_node_bounds_extras(ArchitectureFcoseNodeBoundsExtrasInput {
@@ -1439,41 +1217,11 @@ fn layout_architecture_diagram_model(
             text_measurer,
             icon_size,
             font_size_px,
-            font_family: font_family.as_str(),
         });
-    if std::env::var("MERMAN_ARCH_DEBUG_NODE_BOUNDS_EXTRAS")
-        .ok()
-        .as_deref()
-        == Some("1")
-    {
-        eprintln!(
-            "[arch-node-bounds-extras] icon_size={:.3} font_size={:.3} nodes={} extras={}",
-            icon_size,
-            font_size_px,
-            model.nodes.len(),
-            node_bounds_extras.len(),
-        );
-    }
-
     let mut nodes: Vec<LayoutNode> = Vec::new();
 
-    let positions_start = timing_enabled.then(web_time::Instant::now);
-    if let Some(s) = positions_start {
-        timings.positions_and_centering = s.elapsed();
-    }
-
     // Emit nodes in Mermaid model order (stable for snapshots and close to upstream).
-    let emit_nodes_start = timing_enabled.then(web_time::Instant::now);
     for n in &model.nodes {
-        match n.node_type {
-            ArchitectureNodeType::Service | ArchitectureNodeType::Junction => {}
-            other => {
-                return Err(Error::InvalidModel {
-                    message: format!("unsupported architecture node type: {other:?}"),
-                });
-            }
-        }
-
         nodes.push(LayoutNode {
             id: n.id.to_string(),
             // Cytoscape nodes default to `{ x: 0, y: 0 }` centers before the first layout run.
@@ -1488,15 +1236,9 @@ fn layout_architecture_diagram_model(
             label_height: None,
         });
     }
-    if let Some(s) = emit_nodes_start {
-        timings.emit_nodes = s.elapsed();
-    }
-
     let mut fcose_compound_bounds: Vec<ArchitectureCompoundBounds> = Vec::new();
-    let mut fcose_debug_stages: Vec<ArchitectureFcoseDebugStage> = Vec::new();
 
-    if use_manatee_layout && !nodes.is_empty() {
-        let manatee_prepare_start = timing_enabled.then(web_time::Instant::now);
+    if !nodes.is_empty() {
         let plan = build_architecture_fcose_input_plan(ArchitectureFcoseInputPlanInput {
             model,
             layout_nodes: &nodes,
@@ -1512,35 +1254,6 @@ fn layout_architecture_diagram_model(
             fcose_random_policy,
         })?;
 
-        if std::env::var("MERMAN_ARCH_DEBUG_FCOSE_CONSTRAINTS")
-            .ok()
-            .as_deref()
-            == Some("1")
-        {
-            eprintln!(
-                "[arch-fcose] nodes={} edges={} compounds={} spatial_maps={} index_entries={} default_edge_length={:.6} compound_padding={:.6}",
-                plan.graph.nodes.len(),
-                plan.graph.edges.len(),
-                plan.graph.compounds.len(),
-                plan.spatial_maps.len(),
-                plan.node_index_by_id.len(),
-                plan.default_edge_length,
-                plan.compound_padding_px,
-            );
-            if let Some(a) = &plan.options.alignment_constraint {
-                eprintln!("[arch-fcose] alignment.horizontal={:?}", a.horizontal);
-                eprintln!("[arch-fcose] alignment.vertical={:?}", a.vertical);
-            }
-            eprintln!(
-                "[arch-fcose] relative_placement_constraint={:?}",
-                plan.options.relative_placement_constraint
-            );
-        }
-
-        if let Some(s) = manatee_prepare_start {
-            timings.manatee_prepare = s.elapsed();
-        }
-        let manatee_layout_start = timing_enabled.then(web_time::Instant::now);
         let result = manatee::algo::fcose::layout_indexed_with_random_policy(
             &plan.graph,
             &plan.options,
@@ -1549,13 +1262,8 @@ fn layout_architecture_diagram_model(
         .map_err(|e| Error::InvalidModel {
             message: format!("manatee layout failed: {e}"),
         })?;
-        if let Some(s) = manatee_layout_start {
-            timings.manatee_layout = s.elapsed();
-        }
-
         let projection = project_architecture_fcose_result(&plan, &mut nodes, result);
         fcose_compound_bounds = projection.compound_bounds;
-        fcose_debug_stages = projection.debug_stages;
     }
 
     let cytoscape_service_bounds = architecture_cytoscape_service_bounds(
@@ -1564,10 +1272,8 @@ fn layout_architecture_diagram_model(
         text_measurer,
         icon_size,
         font_size_px,
-        font_family.as_str(),
     );
 
-    let build_edges_start = timing_enabled.then(web_time::Instant::now);
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len());
     for n in &nodes {
@@ -1745,41 +1451,13 @@ fn layout_architecture_diagram_model(
             stroke_dasharray: None,
         });
     }
-    if let Some(s) = build_edges_start {
-        timings.build_edges = s.elapsed();
-    }
-
-    let bounds_start = timing_enabled.then(web_time::Instant::now);
     let bounds = compute_bounds(&nodes, &edges);
-    if let Some(s) = bounds_start {
-        timings.bounds = s.elapsed();
-    }
-
-    if let Some(s) = total_start {
-        timings.total = s.elapsed();
-        eprintln!(
-            "[layout-timing] diagram=architecture total={:?} adjacency={:?} positions={:?} emit_nodes={:?} manatee_prepare={:?} manatee_layout={:?} build_edges={:?} bounds={:?} nodes={} edges={} groups={} use_manatee_layout={}",
-            timings.total,
-            timings.build_adjacency_and_components,
-            timings.positions_and_centering,
-            timings.emit_nodes,
-            timings.manatee_prepare,
-            timings.manatee_layout,
-            timings.build_edges,
-            timings.bounds,
-            nodes.len(),
-            edges.len(),
-            model.groups.len(),
-            use_manatee_layout,
-        );
-    }
 
     Ok(ArchitectureDiagramLayout {
         nodes,
         edges,
         cytoscape_service_bounds,
         fcose_compound_bounds,
-        fcose_debug_stages,
         bounds,
     })
 }
@@ -1871,9 +1549,6 @@ mod tests {
 
         let plan = build_test_plan(&model, &layout_nodes, &node_bounds_extras);
 
-        assert_eq!(plan.node_ids, vec!["api", "db"]);
-        assert_eq!(plan.node_index_by_id.get("api"), Some(&0));
-        assert_eq!(plan.node_index_by_id.get("db"), Some(&1));
         assert_eq!(plan.graph.nodes.len(), 2);
         assert_eq!(plan.graph.nodes[0].width, 80.0);
         assert_eq!(plan.graph.nodes[0].height, 80.0);
@@ -1893,7 +1568,9 @@ mod tests {
     }
 
     #[test]
-    fn architecture_fcose_input_plan_uses_mermaid_11_16_seed_policy() {
+    fn architecture_seed_zero_uses_an_operation_owned_continuous_stream() {
+        let seed_zero = serde_json::json!(0);
+        let random_policy = super::architecture_seed_policy(Some(&seed_zero), 77);
         let model = super::ArchitectureModelView {
             nodes: vec![super::ArchitectureNodeView {
                 id: "api",
@@ -1920,11 +1597,7 @@ mod tests {
                 fcose_randomize: false,
                 fcose_node_separation: 75.0,
                 fcose_num_iter: 2500,
-                fcose_random_policy: manatee::FcoseRandomPolicy::ambient(
-                    manatee::FcoseRandomSource::Mulberry32,
-                )
-                .with_seed_offset(0)
-                .with_reset_seed_each_run(true),
+                fcose_random_policy: random_policy,
             })
             .expect("build Architecture FCoSE input plan");
 
@@ -1932,8 +1605,8 @@ mod tests {
             plan.random_policy.source(),
             manatee::FcoseRandomSource::Mulberry32
         );
-        assert!(plan.random_policy.resets_seed_each_run());
-        assert_eq!(plan.random_policy.seed(), None);
+        assert!(!plan.random_policy.resets_seed_each_run());
+        assert_eq!(plan.random_policy.seed(), 77);
         assert_eq!(plan.random_policy.seed_offset(), Some(0));
     }
 
@@ -1944,8 +1617,8 @@ mod tests {
         assert_eq!(super::js_to_uint32(4_294_967_297.0), 1);
         let wraps_to_zero = serde_json::json!(4_294_967_296.0);
         assert_eq!(
-            super::architecture_seed_policy(Some(&wraps_to_zero)).seed(),
-            Some(0),
+            super::architecture_seed_policy(Some(&wraps_to_zero), 77).seed(),
+            0,
             "JavaScript checks seed === 0 before coercing the enabled seed with >>> 0"
         );
     }
@@ -1955,11 +1628,12 @@ mod tests {
         let number_zero = serde_json::json!(0);
         let string_zero = serde_json::json!("0");
 
-        let number_policy = super::architecture_seed_policy(Some(&number_zero));
-        let string_policy = super::architecture_seed_policy(Some(&string_zero));
+        let number_policy = super::architecture_seed_policy(Some(&number_zero), 77);
+        let string_policy = super::architecture_seed_policy(Some(&string_zero), 77);
 
-        assert_eq!(number_policy.seed(), None);
-        assert_eq!(string_policy.seed(), Some(0));
+        assert_eq!(number_policy.seed(), 77);
+        assert!(!number_policy.resets_seed_each_run());
+        assert_eq!(string_policy.seed(), 0);
         assert_eq!(
             string_policy.source(),
             manatee::FcoseRandomSource::Mulberry32
@@ -2179,7 +1853,7 @@ mod tests {
     }
 
     #[test]
-    fn architecture_fcose_result_projection_updates_nodes_and_maps_debug_ids() {
+    fn architecture_fcose_result_projection_updates_nodes_and_maps_compound_bounds() {
         let model = super::ArchitectureModelView {
             nodes: vec![
                 super::ArchitectureNodeView {
@@ -2216,28 +1890,6 @@ mod tests {
             ],
             compound_positions: vec![manatee::Point { x: 50.0, y: 60.0 }],
             compound_bounds: vec![layout_rect(5.0, 6.0, 100.0, 120.0)],
-            debug_stages: vec![manatee::algo::fcose::IndexedFcoseDebugStage {
-                run_index: 1,
-                tag: "final".to_string(),
-                iterations: Some(7),
-                bbox: Some(layout_rect(0.0, 0.0, 160.0, 180.0)),
-                node_bounds: vec![
-                    layout_rect(10.0, 20.0, 80.0, 80.0),
-                    layout_rect(30.0, 40.0, 80.0, 80.0),
-                    layout_rect(5.0, 6.0, 100.0, 120.0),
-                ],
-                node_displacements: vec![
-                    manatee::Point { x: 1.0, y: 2.0 },
-                    manatee::Point { x: 3.0, y: 4.0 },
-                    manatee::Point { x: 5.0, y: 6.0 },
-                ],
-                compound_bounds: vec![layout_rect(5.0, 6.0, 100.0, 120.0)],
-                relocate: Some(manatee::algo::fcose::IndexedFcoseRelocateDebug {
-                    original_center: manatee::Point { x: 10.0, y: 20.0 },
-                    rect_center: manatee::Point { x: 30.0, y: 40.0 },
-                    delta: manatee::Point { x: 2.0, y: 3.0 },
-                }),
-            }],
         };
 
         let projection = super::project_architecture_fcose_result(&plan, &mut layout_nodes, result);
@@ -2248,24 +1900,6 @@ mod tests {
         assert_eq!(projection.compound_bounds[0].id, "core");
         assert_eq!(projection.compound_bounds[0].bounds.min_x, 5.0);
         assert_eq!(projection.compound_bounds[0].bounds.max_y, 126.0);
-
-        let stage = &projection.debug_stages[0];
-        assert_eq!(stage.run_index, 1);
-        assert_eq!(stage.tag, "final");
-        assert_eq!(stage.nodes.len(), 3);
-        assert_eq!(stage.nodes[0].id, "api");
-        assert_eq!(stage.nodes[0].kind, "node");
-        assert_eq!(stage.nodes[1].id, "db");
-        assert_eq!(stage.nodes[2].id, "core");
-        assert_eq!(stage.nodes[2].kind, "group");
-        let group_displacement = stage.nodes[2]
-            .displacement
-            .as_ref()
-            .expect("group displacement");
-        assert_eq!((group_displacement.x, group_displacement.y), (5.0, 6.0));
-        assert_eq!(stage.compound_bounds[0].id, "core");
-        let relocate = stage.relocate.as_ref().expect("relocate debug");
-        assert_eq!((relocate.delta.x, relocate.delta.y), (2.0, 3.0));
     }
 
     #[test]
@@ -2292,27 +1926,25 @@ mod tests {
                 text_measurer: &measurer,
                 icon_size: 80.0,
                 font_size_px: 16.0,
-                font_family: crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS,
             },
         );
         let extras = node_bounds_extras.get("api").expect("api node extras");
 
-        assert_eq!(extras.top, 1.0);
-        assert_eq!(extras.bottom, 18.0);
-        assert_eq!(extras.left, 1.0);
-        assert_eq!(extras.right, 1.0);
+        assert_eq!(extras.top, 2.0);
+        assert_eq!(extras.bottom, 19.0);
+        assert_eq!(extras.left, 2.0);
+        assert_eq!(extras.right, 2.0);
     }
 
     #[test]
     fn architecture_fcose_edge_label_style_keeps_cytoscape_defaults() {
-        let node_style =
-            super::architecture_cytoscape_text_style(18.0, r#""IBM Plex Sans",Arial,sans-serif"#);
+        let node_style = super::architecture_cytoscape_text_style(18.0);
         let edge_style = super::architecture_cytoscape_edge_text_style();
 
         assert_eq!(node_style.font_size, 18.0);
         assert_eq!(
             node_style.font_family.as_deref(),
-            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
+            Some(super::CYTOSCAPE_DEFAULT_FONT_FAMILY)
         );
         assert_eq!(edge_style.font_size, 16.0);
         assert_eq!(edge_style.font_family.as_deref(), Some("sans-serif"));

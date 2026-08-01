@@ -1,90 +1,106 @@
-# ADR 0068: Render-Side Presentation Theme View
+# ADR 0068: Ordered Theme Resolution And Render Presentation Views
 
 - Status: accepted
 - Date: 2026-06-03
+- Last amended: 2026-07-20
 
 ## Context
 
-`theme-parity` established the current good boundary for Mermaid compatibility:
+Mermaid theme compatibility has two related ownership problems:
 
-- `merman-core` computes effective Mermaid config and `themeVariables`;
-- `merman-render` consumes that output while preserving parity-oriented SVG emission;
-- host styling stays outside the default renderer path and belongs in SVG postprocessors
-  (ADR-0063, ADR-0064).
+- theme construction is an ordered, mutable upstream process, not a flat JSON merge;
+- family renderers need semantic presentation roles rather than repeated raw-path fallback chains.
 
-However, renderer theme access is still shallow. Many diagram families read raw JSON paths and
-rebuild the same fallback chains independently. The 2026-06-01 architecture audit captured this as
-`ARCH-013`: "Effective config and theme access is scattered."
+The earlier render-side theme view solved the second problem but described core theme access as a
+single expansion step. That model was incomplete. In Mermaid, user variables are applied around
+derived-color calculation and explicit values are replayed afterward. A font-only override exposed
+the distinction: a flat recalculation changed `cScale*` values for Radar, Kanban, Mindmap, and
+Timeline even though font choice is not a color input.
 
-At the same time, `repo-ref/beautiful-mermaid` shows a useful contrast. Its main value is not the
-exact color presets; it is the placement of a render-side semantic theme layer between raw config
-and final SVG emission. `merman` cannot replace its Mermaid-compatible core config pipeline with
-that simplified model, but it can adopt the same architectural depth on the render side.
+Theme evidence also has three different artifact contracts. Raw SVG may preserve an exact upstream
+token that a browser resolves through CSS inheritance; computed browser presentation is the visible
+contract; resvg-safe export must replace invalid browser-only tokens with explicit valid values.
+Collapsing those lanes either breaks raw parity or hides a visible defect.
+
+Color handling has a related but distinct boundary problem. Mermaid theme construction uses Khroma
+semantics, while browser CSSOM serialization, grammar-level color whitelists, and RoughJS adapters
+have different accepted inputs and outputs. Sharing parsing and math is useful only where those
+protocols agree; treating every color-shaped string as one abstraction would silently widen security
+boundaries or change emitted SVG.
 
 ## Decision
 
-Add a render-side presentation theme view inside `merman-render`.
+1. `merman-core` owns an explicit ordered theme resolution pipeline:
+   - `DefaultSnapshot`: the generated result for the selected public theme;
+   - `OverridesApplied`: site and source values overlaid with their provenance;
+   - `Calculated`: Mermaid-compatible derived-color calculation;
+   - `ExplicitReplay`: user values replayed over the calculated snapshot.
 
-1. Keep `merman-core` authoritative for Mermaid-compatible theme expansion.
-   - `theme`, `themeVariables`, and override derivation remain owned by `merman-core`.
-   - This ADR does not move host- or product-specific theme policy into `merman-core`.
+   A `ThemeProgram` descriptor selects the pure-Rust evaluator and declares evaluated color inputs
+   for each public theme. Cross-field operations such as scale peers, surfaces, ER rows, and Git
+   palettes execute as one dependency graph between `Calculated` completion and `ExplicitReplay`;
+   they are not distributed across family renderers or repaired after rendering.
 
-2. Introduce a deeper renderer-facing theme module.
-   - The module converts `effective_config` into prepared render roles and diagram-oriented views.
-   - Shared renderer surfaces such as typography, text roles, borders, surfaces, line colors,
-     error colors, note colors, and label backgrounds should come from this module rather than
-     repeated raw JSON fallback chains.
+2. The final immutable `effective_config.themeVariables` is the only palette input to family
+   renderers. A family may not independently derive shared scale, peer, inverse, label, or surface
+   colors.
 
-3. Allow diagram-specific prepared views only when they delete real duplication.
-   - Do not centralize every diagram-local constant or layout rule.
-   - When a family truly has extra semantics, it may request a prepared role bundle from the shared
-     theme module.
+3. `merman-core::theme_color` is the single implementation of the pinned Khroma parse, channel,
+   transform, and serialization semantics used during theme construction. Invalid color inputs are
+   typed errors; theme calculation may not replace them with guessed colors or unchanged strings.
 
-4. Preserve a narrow raw-token escape hatch.
-   - Some Mermaid-owned CSS values need exact string interpolation or diagram-local handling.
-   - The shared module may expose raw resolved tokens where necessary, but direct raw access should
-     become the exception instead of the default.
+4. Browser CSSOM serialization, diagram grammar validation, and RoughJS conversion remain explicit
+   adapters with their own contracts. They may reuse the shared parser where their accepted language
+   is identical, but they may not silently broaden or narrow their protocol. In particular,
+   Railroad's CSS whitelist and the hex-only RoughJS boundary are not Khroma theme operations.
 
-5. Place renderer-owned capability growth here.
-   - Accent-derived series palettes, role-based chart colors, and similar render-time capability
-     work belong in this module.
-   - Such capability must not mutate core `themeVariables`; explicit Mermaid diagram options and
-     explicit theme variables remain authoritative when present.
+5. `merman-render` exposes `PresentationTheme` and focused family views. They convert resolved
+   tokens into typography, surfaces, borders, lines, notes, labels, and diagram-specific roles.
+   Direct raw JSON access is reserved for exact Mermaid tokens that cannot be represented by an
+   existing role; repeated fallback logic should deepen the shared view instead. Raw value accessors
+   use `theme_token` terminology so they cannot be confused with color evaluation.
 
-6. Keep host styling outside the default parity renderer.
-   - Product palette injection, app dark/light policy, and host CSS rewriting remain postprocessor
-     concerns under ADR-0064.
+6. Theme changes are verified in separate lanes:
+   - a generated artifact records the pinned Mermaid package hash, source tag, source commit,
+     complete default snapshots, complete `darkMode=true` snapshots, and a compact override-value
+     oracle;
+   - raw theme snapshots and raw SVG assert exact selected-release tokens;
+   - Chromium tests inspect computed styles for visible behavior;
+   - resvg-safe tests assert XML-safe, rasterizable, explicit values.
+
+   `cargo run -p xtask -- gen-theme-snapshot` is the only supported refresh path. It executes the
+   content-pinned Mermaid runtime, and `verify-theme-snapshot` plus the umbrella
+   `verify-generated` command reject provenance or behavior drift.
+
+7. Host or product styling remains outside parity rendering. Host theme profiles and postprocessors
+   may map product roles, but they do not mutate Mermaid's resolved theme state or redefine family
+   semantics.
 
 ## Consequences
 
-- Theme changes in shared render surfaces become more local and testable.
-- First-order renderer CSS migrations can delete repeated fallback code without weakening parity.
-- Capability growth has a named owner between Mermaid-compatible config expansion and final SVG/CSS
-  emission.
-- The renderer boundary becomes deeper, but only if we avoid turning it into a giant catch-all
-  abstraction for diagram-specific behavior.
+- Override order and value provenance are testable instead of implicit in mutation order.
+- Release snapshots and executable semantics have separate ownership: generated JSON supplies
+  exact constants and oracle evidence, while Rust owns runtime evaluation without JavaScript.
+- Font-only and partial overrides preserve upstream palettes across all consumers.
+- Duplicate RGB/HSL engines and family-local palette heuristics are deleted rather than kept as
+  compatibility fallbacks.
+- Browser inheritance and export fallbacks can differ intentionally without comparator
+  normalization or family-specific patches.
+- Renderer views remain deep only when they remove shared policy or meaningful duplication; layout
+  constants and truly family-local semantics stay with the family.
 
-## Alternatives Considered
+## Rejected Alternatives
 
-1. Keep extending the existing thin `SvgTheme` helper.
-   - Pros: smallest patch.
-   - Cons: preserves scattered fallback logic and keeps capability growth shallow.
-
-2. Move capability-oriented theme roles into `merman-core`.
-   - Pros: one central theme module.
-   - Cons: mixes Mermaid compatibility, render semantics, and host concerns into the wrong layer.
-
-3. Solve richer theming with `themeCSS` or host postprocessors only.
-   - Pros: avoids renderer refactors.
-   - Cons: CSS postprocessing happens too late for many renderer-owned semantics and does not reduce
-     raw renderer theme duplication.
-
-4. Copy `beautiful-mermaid`'s entire theme model.
-   - Pros: proven role-based design.
-   - Cons: it would discard `merman`'s stronger Mermaid config compatibility boundary and would
-     blur the distinction between renderer-owned semantics and host styling policy.
-
-## Follow-up
-
-Implement this ADR in `docs/workstreams/theme-capability-deepening`, starting with a first slice
-that migrates the highest-duplication SVG/CSS consumers before chart palette capability work.
+1. Merge JSON once and let every family derive colors.
+   This cannot reproduce Mermaid's update-and-replay ordering and causes repeated switches.
+2. Patch the four affected families.
+   The defect belongs to shared theme construction and would recur in new scale consumers.
+3. Normalize raw invalid colors to browser RGB in the comparator.
+   That changes semantic evidence and hides the difference between source and presentation.
+4. Solve parity through `themeCSS` or host postprocessing.
+   Those stages are too late for layout and renderer-owned presentation semantics.
+5. Copy an unrelated role-based theme system wholesale.
+   Merman must retain Mermaid-compatible config and token behavior while deepening its render view.
+6. Route every color-shaped value through the Khroma implementation.
+   CSSOM, grammar security, and RoughJS have different contracts; sharing a name would hide rather
+   than remove those differences.

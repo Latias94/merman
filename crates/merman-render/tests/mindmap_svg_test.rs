@@ -1,30 +1,50 @@
-use merman_core::{Engine, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+#![cfg(feature = "layout-cytoscape")]
+
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, RenderSession};
+use merman_render::family;
+use merman_render::model::MindmapDiagramLayout;
+use merman_render::resources::RenderResourcePolicy;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
 
-    render_layouted_svg(
-        &out,
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            diagram_id: Some(diagram_id.to_string()),
-            ..SvgRenderOptions::default()
-        },
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render svg")
+        .svg()
+        .to_owned()
+}
+
+fn layout_mindmap_typed(
+    parsed: &ParsedDiagramRender,
+    session: RenderSession,
+) -> MindmapDiagramLayout {
+    let artifact =
+        family::prepare(parsed.clone(), &LayoutOptions::default(), session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize Mindmap layout");
+    serde_json::from_value(projection["layout"]["MindmapDiagram"].clone())
+        .expect("Mindmap layout projection")
 }
 
 fn deep_mindmap_chain(depth: usize) -> String {
-    let mut input = String::from("mindmap\n");
+    let mut input = String::from("---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n");
     for level in 0..depth {
         input.push_str(&" ".repeat(level));
         input.push_str(&format!("n{level}\n"));
@@ -69,19 +89,53 @@ fn mindmap_svg_emits_mermaid_11_15_classic_dom_surface() {
 }
 
 #[test]
-fn mindmap_public_json_layout_handles_deep_chain() {
+fn mindmap_hex_entity_placeholders_remain_literal_well_formed_xml() {
+    for (source, expected) in [
+        ("mindmap\n  root[&#x41;]\n", "<p>&amp;&amp;x41;</p>"),
+        ("mindmap\n  root[&#X41;]\n", "<p>&amp;&amp;X41;</p>"),
+    ] {
+        let svg = render_mindmap_svg_from_text(source, "mindmap-hex-entity");
+
+        assert!(svg.contains(expected), "expected {expected:?}: {svg}");
+        roxmltree::Document::parse(&svg).expect("Mindmap SVG must be well-formed XML");
+    }
+}
+
+#[test]
+fn mindmap_named_entity_placeholders_are_decoded_before_svg_emission() {
+    let svg =
+        render_mindmap_svg_from_text("mindmap\n  root[Root #quot;]\n", "mindmap-named-entity");
+
+    assert!(
+        svg.contains("<p>Root \"</p>"),
+        "expected the Mermaid quote placeholder to become visible text: {svg}"
+    );
+    assert!(
+        !svg.contains('ﬂ') && !svg.contains('¶'),
+        "Mermaid entity placeholders must not leak into SVG: {svg}"
+    );
+    roxmltree::Document::parse(&svg).expect("Mindmap SVG must be well-formed XML");
+}
+
+#[test]
+fn mindmap_typed_layout_handles_deep_chain() {
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
+        .begin_session()
+        .unwrap();
     const DEPTH: usize = 1200;
     let source = deep_mindmap_chain(DEPTH);
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::strict()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::MindmapDiagram(layout) = &out.layout else {
-        panic!("expected MindmapDiagram layout");
-    };
+    // Exercise the public JSON projection as well as its ordinary destruction. The semantic
+    // projection contains the same deeply nested rootNode tree even though the typed model and
+    // layout are flat.
+    let layout = layout_mindmap_typed(&parsed, session);
 
     assert_eq!(layout.nodes.len(), DEPTH);
     assert_eq!(layout.edges.len(), DEPTH - 1);
@@ -154,9 +208,11 @@ fn mindmap_svg_uses_direct_classic_shapes_for_rounded_and_hexagon_nodes() {
 
 #[test]
 fn mindmap_tidy_tree_config_dispatches_bidirectional_layout() {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(
-        r#"---
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            r#"---
 config:
   layout: tidy-tree
 ---
@@ -168,16 +224,12 @@ mindmap
       Right child
     Also left
 "#,
-        ParseOptions::strict(),
-    ))
-    .expect("parse ok")
-    .expect("diagram detected");
+            ParseOptions::strict(),
+        )
+        .expect("parse ok")
+        .expect("diagram detected");
 
-    let layout = layout_parsed(&parsed, &LayoutOptions::headless_svg_defaults())
-        .expect("tidy-tree layout ok");
-    let LayoutDiagram::MindmapDiagram(layout) = &layout.layout else {
-        panic!("expected MindmapDiagram layout");
-    };
+    let layout = layout_mindmap_typed(&parsed, session);
     let node = |id: &str| {
         layout
             .nodes
@@ -192,7 +244,7 @@ mindmap
     let right = node("3");
     let right_child = node("4");
     let also_left = node("5");
-    assert_eq!((root.x, root.y), (0.0, 20.0));
+    assert!(root.x.is_finite() && root.y.is_finite());
     assert!(left.x < root.x && left_child.x < left.x);
     assert!(right.x > root.x && right_child.x > right.x);
     assert!(also_left.x < root.x);

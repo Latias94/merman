@@ -1,4 +1,4 @@
-#import "@preview/merman:0.1.0": mermaid, mermaid-result, mermaid-svg, validate-mermaid
+#import "@preview/merman:0.2.0": analyze-mermaid, mermaid, mermaid-result, mermaid-svg
 
 = merman Typst Options Example
 
@@ -8,11 +8,18 @@
   Render --> Done([Done])
 "
 
-#let validation = validate-mermaid(source)
-#let render-result = mermaid-result(source, pipeline: "readable")
+#let analysis = analyze-mermaid(source)
+#let render-result = mermaid-result(
+  source,
+  pipeline: "readable",
+  text-measurement: "deterministic",
+  math-renderer: "none",
+)
 #let failed-result = mermaid-result("flowchart TD\n  A -->")
 
-Validation result: `#validation.code_name`
+Analysis schema: `#analysis.version`
+
+Analysis valid: `#analysis.valid`
 
 Render result: `#render-result.code_name`
 

@@ -3,13 +3,16 @@
 Status: Closed
 Last updated: 2026-05-31
 
+> Superseded on 2026-07-16 by ADR-0019's Mermaid 11.16 three-plane projection. References below to
+> the deleted override manifest describe the closed 11.15 implementation and are not current
+> instructions.
+
 ## Current State
 
-The workstream was opened from the Mermaid 11.15 closeout concern. GDC-020 split
-`xtask verify-generated` into artifact-specific checks. GDC-030 made `verify-default-config` green
-through an explicit override manifest applied by `gen-default-config`. GDC-040 updated DOMPurify to
-Mermaid 11.15's resolved `dompurify@3.4.0` baseline and made `verify-generated` green. GDC-050
-reviewed the lane, ran fresh closeout gates, and closed the workstream.
+The workstream established artifact-specific verification during Mermaid 11.15. Its override
+manifest implementation has since been deleted. The current Mermaid 11.16 implementation projects
+the content-pinned runtime into separate JSON-value and key-shape artifacts, then applies a separate
+typed Merman security policy in memory. ADR-0019 owns the current contract.
 
 ## Active Task
 
@@ -31,9 +34,10 @@ reviewed the lane, ran fresh closeout gates, and closed the workstream.
 - Add artifact-specific commands before changing default config generation semantics.
 - Aggregate `verify-generated` failures across artifact families so a missing optional checkout does
   not hide a separate artifact mismatch.
-- Use `crates/xtask/default_config_overrides.json` as the reviewed default-config override manifest.
-- `gen-default-config` applies the manifest by default; `--no-local-overrides` keeps schema-only
-  output available for diagnosis.
+- Generate the upstream JSON value and config-key shape together with `gen-default-config`.
+- Use the content-pinned Mermaid runtime as the only generation authority; do not maintain a second
+  Rust replay of `defaultConfig.ts`.
+- Keep Merman's hardened secure list out of the upstream value artifact.
 - DOMPurify remains part of `verify-generated`; the required reference checkout is pinned in
   `tools/upstreams/REPOS.lock.json`.
 - Missing default DOMPurify reference material now returns an actionable `MissingReference` error

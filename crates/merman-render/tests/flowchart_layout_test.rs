@@ -1,10 +1,35 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::Error;
-use merman_render::model::{FlowchartV2Layout, LayoutDiagram};
-use merman_render::text::{TextMeasurer, VendoredFontMetricsTextMeasurer, WrapMode};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, RenderSession};
+use merman_render::family;
+use merman_render::model::FlowchartLayout;
+use merman_render::text::{TextMeasurer, WrapMode};
 use std::path::PathBuf;
-use std::sync::Arc;
+
+fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        panic!("expected Flowchart render model");
+    };
+    model
+}
+
+fn layout_flowchart_render_model(
+    parsed: &ParsedDiagramRender,
+    options: &LayoutOptions,
+    _session: &RenderSession,
+) -> merman_render::Result<FlowchartLayout> {
+    let session = RenderEnvironment::deterministic()
+        .begin_session()
+        .map_err(|error| Error::InvalidModel {
+            message: format!("render session: {error}"),
+        })?;
+    let artifact = family::prepare(parsed.clone(), options, session)?;
+    let projection = artifact.layout_json()?;
+    serde_json::from_value(projection["layout"]["FlowchartV2"].clone())
+        .map_err(merman_render::Error::from)
+}
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -20,19 +45,46 @@ fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-6
 }
 
-fn layout_flowchart(text: &str) -> Box<FlowchartV2Layout> {
+fn layout_flowchart(text: &str) -> FlowchartLayout {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-    layout
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session).expect("layout ok")
 }
 
-fn flowchart_node_center(layout: &FlowchartV2Layout, id: &str) -> (f64, f64) {
+#[test]
+fn flowchart_icon_variant_layout_uses_source_defined_frame_geometry() {
+    let layout = layout_flowchart(
+        r#"flowchart LR
+R@{ icon: "fa:bell", form: "rounded" }
+C@{ icon: "fa:bell", form: "circle" }
+"#,
+    );
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+
+    let rounded = node("R");
+    assert!(approx_eq(rounded.width, 63.0), "{rounded:?}");
+    assert!(approx_eq(rounded.height, 63.0), "{rounded:?}");
+
+    let circle = node("C");
+    let circle_diameter = 48.0 * std::f64::consts::SQRT_2 + 40.0;
+    assert!(approx_eq(circle.width, circle_diameter), "{circle:?}");
+    assert!(approx_eq(circle.height, circle_diameter), "{circle:?}");
+}
+
+fn flowchart_node_center(layout: &FlowchartLayout, id: &str) -> (f64, f64) {
     let node = layout
         .nodes
         .iter()
@@ -167,20 +219,23 @@ A --> B
 
 #[test]
 fn flowchart_layout_produces_positions_and_routes() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("flowchart")
         .join("basic.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     assert_eq!(layout.nodes.len(), 4);
     assert_eq!(layout.edges.len(), 3);
@@ -233,16 +288,18 @@ fn flowchart_inherited_subgraph_dir_does_not_force_recursive_extraction() {
 
 #[test]
 fn flowchart_layout_respects_lr_direction() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart LR\nA-->B\nB-->C\n";
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let mut by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -258,6 +315,9 @@ fn flowchart_layout_respects_lr_direction() {
 
 #[test]
 fn flowchart_layout_includes_clusters_with_title_placeholders() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("flowchart")
@@ -265,14 +325,13 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
     let text = std::fs::read_to_string(&path).expect("fixture");
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     assert_eq!(layout.clusters.len(), 5);
     let ids = layout
@@ -353,22 +412,16 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
         );
     }
 
-    let subgraphs = out
-        .semantic
-        .get("subgraphs")
-        .and_then(|v| v.as_array())
-        .expect("semantic subgraphs");
+    let model = flowchart_model(&parsed);
+    let subgraphs = &model.subgraphs;
     for sg in subgraphs {
-        let id = sg.get("id").and_then(|v| v.as_str()).expect("subgraph id");
-        let members = sg
-            .get("nodes")
-            .and_then(|v| v.as_array())
-            .expect("subgraph nodes");
+        let id = sg.id.as_str();
+        let members = &sg.nodes;
         let cluster = clusters_by_id.get(id).expect("cluster output");
         let (cmin_x, cmin_y, cmax_x, cmax_y) = rect_from_layout_cluster(cluster);
 
         for m in members {
-            let mid = m.as_str().expect("member id");
+            let mid = m.as_str();
 
             let (min_x, min_y, max_x, max_y) = if let Some(child_cluster) = clusters_by_id.get(mid)
             {
@@ -392,26 +445,14 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
 
     // Root-level isolated subgraphs are rendered recursively by Mermaid and should not overlap
     // after applying subgraph `dir`/toggle behavior and cluster padding/title extents.
-    let semantic_edges = out
-        .semantic
-        .get("edges")
-        .and_then(|v| v.as_array())
-        .expect("semantic edges");
+    let semantic_edges = &model.edges;
 
     let mut members_by_id: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
     let mut subgraph_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     for sg in subgraphs {
-        let id = sg.get("id").and_then(|v| v.as_str()).expect("subgraph id");
-        let members = sg
-            .get("nodes")
-            .and_then(|v| v.as_array())
-            .expect("subgraph nodes")
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect::<Vec<_>>();
-        members_by_id.insert(id.to_string(), members);
-        subgraph_ids.insert(id.to_string());
+        members_by_id.insert(sg.id.clone(), sg.nodes.clone());
+        subgraph_ids.insert(sg.id.clone());
     }
 
     let mut child_subgraphs: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -467,10 +508,8 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
 
         let mut has_external = false;
         for e in semantic_edges {
-            let from = e.get("from").and_then(|v| v.as_str()).expect("edge from");
-            let to = e.get("to").and_then(|v| v.as_str()).expect("edge to");
-            let in_from = leaves.contains(from);
-            let in_to = leaves.contains(to);
+            let in_from = leaves.contains(&e.from);
+            let in_to = leaves.contains(&e.to);
             if in_from ^ in_to {
                 has_external = true;
                 break;
@@ -499,20 +538,23 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
 
 #[test]
 fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     // Base cluster width should come from the layout result (cluster bounds), not from any
     // title-driven widening. Measure it from an otherwise-identical graph with a short title.
     let short_text = "flowchart TB\nsubgraph A[\"`x`\"]\n  a\nend\n";
     let long_text = "flowchart TB\nsubgraph A[\"`This is a very very very very very very very long title that should wrap`\"]\n  a\nend\n";
 
     let engine = Engine::new();
-    let parsed_short =
-        futures::executor::block_on(engine.parse_diagram(short_text, ParseOptions::default()))
-            .expect("parse ok")
-            .expect("diagram detected");
-    let out_short = layout_parsed(&parsed_short, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout_short) = out_short.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let parsed_short = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(short_text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout_short =
+        layout_flowchart_render_model(&parsed_short, &LayoutOptions::default(), &_session)
+            .expect("layout ok");
     let base_cluster = layout_short
         .clusters
         .iter()
@@ -520,15 +562,14 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
         .expect("cluster A");
     let base_width = base_cluster.width;
 
-    let parsed_long =
-        futures::executor::block_on(engine.parse_diagram(long_text, ParseOptions::default()))
-            .expect("parse ok")
-            .expect("diagram detected");
+    let parsed_long = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(long_text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed_long, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed_long, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let cluster = layout
         .clusters
@@ -556,6 +597,9 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
 
 #[test]
 fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin render session");
     let text = std::fs::read_to_string(
         workspace_root()
             .join("fixtures")
@@ -565,20 +609,19 @@ fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
     .expect("read fixture");
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-    let out = layout_parsed(
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout = layout_flowchart_render_model(
         &parsed,
         &LayoutOptions {
-            text_measurer: Arc::new(VendoredFontMetricsTextMeasurer::default()),
             ..Default::default()
         },
+        &session,
     )
     .expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
 
     let cluster = |id: &str| {
         layout
@@ -614,21 +657,22 @@ fn flowchart_recursive_cluster_title_bbox_feeds_parent_layout() {
 
 #[test]
 fn flowchart_cluster_title_margins_increase_cluster_height() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text_no_margin = "flowchart TD\nsubgraph A\na-->b\nend\n";
     let text_with_margin = "%%{init: {\"flowchart\": {\"subGraphTitleMargin\": {\"top\": 10, \"bottom\": 5}}}}%%\nflowchart TD\nsubgraph A\na-->b\nend\n";
 
     let engine = Engine::new();
 
-    let parsed_no_margin =
-        futures::executor::block_on(engine.parse_diagram(text_no_margin, ParseOptions::default()))
-            .expect("parse ok")
-            .expect("diagram detected");
-    let out_no_margin =
-        layout_parsed(&parsed_no_margin, &LayoutOptions::default()).expect("layout");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout_no_margin) = out_no_margin.layout
-    else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let parsed_no_margin = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text_no_margin, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout_no_margin =
+        layout_flowchart_render_model(&parsed_no_margin, &LayoutOptions::default(), &_session)
+            .expect("layout");
     let h0 = layout_no_margin
         .clusters
         .iter()
@@ -637,17 +681,13 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
         .height;
 
     let parsed_with_margin = futures::executor::block_on(
-        engine.parse_diagram(text_with_margin, ParseOptions::default()),
+        engine.parse_diagram_for_render_model(text_with_margin, ParseOptions::default()),
     )
     .expect("parse ok")
     .expect("diagram detected");
-    let out_with_margin =
-        layout_parsed(&parsed_with_margin, &LayoutOptions::default()).expect("layout");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout_with_margin) =
-        out_with_margin.layout
-    else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout_with_margin =
+        layout_flowchart_render_model(&parsed_with_margin, &LayoutOptions::default(), &_session)
+            .expect("layout");
     let c = layout_with_margin
         .clusters
         .iter()
@@ -661,20 +701,23 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
 
 #[test]
 fn flowchart_edge_label_is_included_in_subgraph_bounds() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     // Ensure edge labels participate in cluster bounding box calculation. Without including the
     // label node (used internally for layout), a very wide label in TB direction can extend
     // beyond the union of the member node rectangles.
     let text = "flowchart TB\nsubgraph A\n  direction TB\n  a -->|this is a very very very very very long label| b\nend\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let cluster = layout
         .clusters
@@ -715,24 +758,21 @@ fn flowchart_edge_label_is_included_in_subgraph_bounds() {
 
 #[test]
 fn flowchart_subgraph_dir_is_applied_when_cluster_has_external_edges() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     // Mermaid 11.16 extracts clusters with an explicit direction even when an edge crosses the
     // cluster boundary. The outer edge is rebound to the extracted cluster node.
     let text = "flowchart TB\nsubgraph A\n  direction LR\n  a --> b\nend\na --> c\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
-
-    assert!(
-        layout.dom_node_order_by_root.contains_key("A"),
-        "an explicit-direction cluster must be recorded as an extracted recursive root"
-    );
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let nodes_by_id = layout
         .nodes
@@ -815,6 +855,9 @@ fn flowchart_parallel_self_loops_match_graphlib_last_write_wins() {
 
 #[test]
 fn flowchart_edge_to_ancestor_cluster_keeps_explicit_nested_directions() {
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .expect("begin render session");
     let text = std::fs::read_to_string(
         workspace_root()
             .join("fixtures")
@@ -824,20 +867,19 @@ fn flowchart_edge_to_ancestor_cluster_keeps_explicit_nested_directions() {
     .expect("read fixture");
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-    let out = layout_parsed(
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    let layout = layout_flowchart_render_model(
         &parsed,
         &LayoutOptions {
-            text_measurer: Arc::new(VendoredFontMetricsTextMeasurer::default()),
             ..Default::default()
         },
+        &session,
     )
     .expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
 
     let nodes_by_id = layout
         .nodes
@@ -874,17 +916,20 @@ fn flowchart_edge_to_ancestor_cluster_keeps_explicit_nested_directions() {
 
 #[test]
 fn flowchart_nested_subgraph_labeled_edge_label_is_inside_inner_cluster() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TB\nsubgraph Outer\n  subgraph Inner\n    a -->|this is a very very long label| b\n  end\nend\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let clusters_by_id = layout
         .clusters
@@ -914,19 +959,22 @@ fn flowchart_nested_subgraph_labeled_edge_label_is_inside_inner_cluster() {
 
 #[test]
 fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     // The edge spans two different subgraphs; the label node should be assigned to the lowest
     // common compound parent (the outer subgraph), so only the outer cluster must include it.
     let text = "flowchart TB\nsubgraph Outer\n  subgraph Left\n    a\n  end\n  subgraph Right\n    b\n  end\n  a -->|this is a very very very long cross-subgraph label| b\nend\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let clusters_by_id = layout
         .clusters
@@ -964,19 +1012,22 @@ fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
 
 #[test]
 fn flowchart_html_multiline_edge_label_has_multiple_lines() {
-    // The deterministic measurer normalizes `<br/>` into `\\n`, so multiline labels should get
-    // larger height than a single-line label.
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    // The parity measurer normalizes `<br/>` into `\\n`, so multiline labels should get larger
+    // height than a single-line label.
     let text = "flowchart TB\nA -->|line1<br/>line2| B\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let edge = layout
         .edges
@@ -985,7 +1036,7 @@ fn flowchart_html_multiline_edge_label_has_multiple_lines() {
         .expect("edge A->B");
     let label = edge.label.as_ref().expect("edge label");
 
-    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let measurer = _session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
     let one = measurer.measure_wrapped(
         "line1",
         &merman_render::text::TextStyle::default(),
@@ -1000,19 +1051,22 @@ fn flowchart_html_multiline_edge_label_has_multiple_lines() {
 
 #[test]
 fn flowchart_multigraph_edges_keep_distinct_routes_and_labels() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     // Mermaid flowcharts are multigraphs; ensure we can lay out multiple edges between the same
     // endpoints without collapsing their routes/labels.
     let text = "flowchart TB\nA -->|l1| B\nA -->|l2| B\nA --> B\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let edges = layout
         .edges
@@ -1031,19 +1085,22 @@ fn flowchart_multigraph_edges_keep_distinct_routes_and_labels() {
 
 #[test]
 fn flowchart_isolated_cluster_with_multiple_labeled_edges_contains_all_labels() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     // When a cluster is isolated, we apply recursive layout (dir/toggle) and should still include
     // all internal edge labels in the cluster bounds.
     let text = "flowchart TB\nsubgraph A\n  direction TB\n  a -->|label one that is quite wide| b\n  b -->|another wide label for coverage| c\nend\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let cluster = layout
         .clusters
@@ -1075,19 +1132,22 @@ fn flowchart_isolated_cluster_with_multiple_labeled_edges_contains_all_labels() 
 
 #[test]
 fn flowchart_various_edge_styles_do_not_break_layout() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     // The renderer is headless; edge styling should not affect layout stability.
     // This test mainly ensures we don't crash and we always emit routed points.
     let text = "flowchart TB\nA --> B\nA --- C\nA -.-> D\nA ==> E\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     assert!(layout.nodes.len() >= 5);
     assert_eq!(layout.edges.len(), 4);
@@ -1098,6 +1158,9 @@ fn flowchart_various_edge_styles_do_not_break_layout() {
 
 #[test]
 fn flowchart_node_shape_dimensions_follow_mermaid_rules() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     // Verify key flowchart shapes follow pinned Mermaid sizing rules (headless approximation).
     // This mainly protects us from regressions when refactoring shape sizing.
     let text = r#"flowchart TB
@@ -1129,14 +1192,14 @@ Y@{ shape: curved-trapezoid, label: "Label" }
 "#;
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let nodes_by_id = layout
         .nodes
@@ -1144,7 +1207,7 @@ Y@{ shape: curved-trapezoid, label: "Label" }
         .map(|n| (n.id.as_str(), n))
         .collect::<std::collections::HashMap<_, _>>();
 
-    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let measurer = _session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
     let metrics = measurer.measure_wrapped(
         "Label",
         &merman_render::text::TextStyle::default(),
@@ -1664,44 +1727,119 @@ Y@{ shape: curved-trapezoid, label: "Label" }
 
 #[test]
 fn flowchart_anchor_shape_ignores_label_for_layout() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TB\nA@{ shape: anchor, label: 'Ignored by Mermaid' }\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let node = layout
         .nodes
         .iter()
         .find(|n| n.id == "A")
         .expect("anchor node");
-    assert!((node.width - 2.001_899_003_982_544).abs() <= 1e-9);
+    assert!((node.width - 2.0).abs() <= 1e-9);
     assert!((node.height - 2.0).abs() <= 1e-9);
 }
 
 #[test]
+fn flowchart_fixed_radius_circles_use_source_defined_nominal_diameters() {
+    let layout = layout_flowchart(
+        "flowchart TB\nA@{ shape: stop }\nB@{ shape: filled-circle }\nC@{ shape: crossed-circle }\n",
+    );
+
+    for (id, diameter) in [("A", 14.0), ("B", 14.0), ("C", 60.0)] {
+        let node = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"));
+        assert!(
+            approx_eq(node.width, diameter) && approx_eq(node.height, diameter),
+            "Mermaid 11.16 defines {id} as a nominal {diameter}px circle: {node:?}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_public_shape_aliases_use_their_source_geometry() {
+    let layout = layout_flowchart(
+        r#"flowchart TB
+R0@{ shape: rect, label: "same" }
+R1@{ shape: proc, label: "same" }
+R2@{ shape: process, label: "same" }
+R3@{ shape: rectangle, label: "same" }
+C0@{ shape: circle, label: "same" }
+C1@{ shape: circ, label: "same" }
+B@{ shape: bang, label: "same" }
+D@{ shape: cloud, label: "same" }
+"#,
+    );
+    let dimensions = |id: &str| {
+        let node = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"));
+        (node.width, node.height)
+    };
+
+    let process = dimensions("R0");
+    for alias in ["R1", "R2", "R3"] {
+        let actual = dimensions(alias);
+        assert!(
+            approx_eq(actual.0, process.0) && approx_eq(actual.1, process.1),
+            "{alias} must resolve to Mermaid's process rectangle: {actual:?} != {process:?}"
+        );
+    }
+
+    let circle = dimensions("C0");
+    let circ = dimensions("C1");
+    assert!(approx_eq(circle.0, circle.1));
+    assert!(approx_eq(circ.0, circle.0) && approx_eq(circ.1, circle.1));
+
+    let bang = dimensions("B");
+    assert!(
+        bang.0 > process.0 && bang.1 > process.1,
+        "Mermaid's bang arc path has a larger bbox than a process rectangle: {bang:?}"
+    );
+
+    let cloud = dimensions("D");
+    assert!(
+        cloud.0 < process.0 && cloud.1 > process.1,
+        "Mermaid's cloud arc path must use its own rendered bbox: {cloud:?}"
+    );
+}
+
+#[test]
 fn flowchart_wrapping_width_increases_height_for_long_labels() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60}}}%%\nflowchart TB\nA[This is a long label that should wrap]\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let a = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
 
-    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let measurer = _session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
     let style = merman_render::text::TextStyle::default();
     let single = measurer.measure_wrapped(
         "This is a long label that should wrap",
@@ -1725,24 +1863,27 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
 }
 
 #[test]
-fn flowchart_htmllabels_long_word_is_clamped_but_not_wrapped() {
-    // Mermaid HTML labels use `white-space: nowrap` initially and do not split long words; layout
-    // width is constrained by `max-width` but height should not increase.
+fn flowchart_htmllabels_long_word_preserves_min_content_overflow_without_wrapping() {
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    // Mermaid HTML labels use `white-space: nowrap` initially and do not split long words. The
+    // display-table min-content width may exceed `max-width`, while height remains single-line.
     let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60, \"htmlLabels\": true}}}%%\nflowchart TB\nA[Supercalifragilisticexpialidocious]\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &session)
+        .expect("layout ok");
 
     let a = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
 
-    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let measurer = session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
     let style = merman_render::text::TextStyle::default();
     let single = measurer.measure_wrapped(
         "Supercalifragilisticexpialidocious",
@@ -1757,38 +1898,59 @@ fn flowchart_htmllabels_long_word_is_clamped_but_not_wrapped() {
         "expected long word to remain single-line in HTML mode"
     );
 
-    // Width should be clamped to wrappingWidth plus squareRect padding rule.
+    // The unbreakable min-content width is allowed to overflow wrappingWidth. The squareRect
+    // shape adds four padding units around the measured label width.
     let p = 15.0;
     assert!(
-        a.width <= 60.0 + 4.0 * p + 1e-6,
-        "expected HTML mode to clamp width"
+        a.width > 60.0 + 4.0 * p,
+        "expected HTML min-content width to overflow wrappingWidth (actual={}, single={})",
+        a.width,
+        single.width
+    );
+    assert!(
+        (a.width - (single.width + 4.0 * p)).abs() < 1e-6,
+        "expected shape width to preserve the measured min-content width"
     );
 }
 
 #[test]
 fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     // In SVG-like mode (`htmlLabels=false`), Mermaid's text wrapping logic can split long words to
     // satisfy the width constraint, increasing height.
-    let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60, \"htmlLabels\": false}}}%%\nflowchart TB\nA[Supercalifragilisticexpialidocious]\n";
+    let text = "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"wrappingWidth\": 60, \"htmlLabels\": false}}}%%\nflowchart TB\nA[Supercalifragilisticexpialidocious]\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let a = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
 
-    let measurer = merman_render::text::DeterministicTextMeasurer::default();
-    let style = merman_render::text::TextStyle::default();
+    let measurer = _session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
+    let style = merman_render::text::TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+        font_style: None,
+    };
     let single = measurer.measure_wrapped(
         "Supercalifragilisticexpialidocious",
         &style,
         None,
+        WrapMode::SvgLike,
+    );
+    let wrapped = measurer.measure_wrapped(
+        "Supercalifragilisticexpialidocious",
+        &style,
+        Some(60.0),
         WrapMode::SvgLike,
     );
 
@@ -1802,12 +1964,18 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
     let p = 15.0;
     assert!(
         a.width <= 60.0 + 4.0 * p + 1e-6,
-        "expected SVG-like mode to constrain width via wrapping"
+        "expected SVG-like mode to constrain width via wrapping (actual={}, single={}, wrapped={})",
+        a.width,
+        single.width,
+        wrapped.width
     );
 }
 
 #[test]
 fn flowchart_svglike_markdown_node_labels_wrap_for_shape_layout() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"---
 config:
   htmlLabels: false
@@ -1820,14 +1988,14 @@ flowchart TB
 "#;
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let triangle = layout
         .nodes
@@ -1854,20 +2022,23 @@ flowchart TB
 
 #[test]
 fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let title = "This is a very long subgraph title that should wrap across multiple lines for layout parity";
     // Subgraph titles only wrap when the label type is `markdown` (Mermaid uses `createText(...)`
     // with the default width=200).
     let text = format!("flowchart TB\nsubgraph A[\"`{title}`\"]\n  a\nend\n");
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let cluster = layout
         .clusters
@@ -1875,13 +2046,14 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
         .find(|c| c.id == "A")
         .expect("cluster A");
 
-    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let measurer = _session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
     let style = merman_render::text::TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
         font_weight: None,
+        font_style: None,
     };
-    let expected = merman_render::text::measure_markdown_with_flowchart_bold_deltas(
+    let expected = merman_render::text::measure_markdown_with_inline_styles(
         &measurer,
         title,
         &style,
@@ -1899,20 +2071,23 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
 
 #[test]
 fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let title = "Supercalifragilisticexpialidocious";
     let text = format!(
         "%%{{init: {{\"htmlLabels\": false, \"flowchart\": {{\"htmlLabels\": false}}}}}}%%\nflowchart TB\nsubgraph A[\"`{title}`\"]\n  a\nend\n"
     );
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let cluster = layout
         .clusters
@@ -1920,11 +2095,12 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
         .find(|c| c.id == "A")
         .expect("cluster A");
 
-    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let measurer = _session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
     let style = merman_render::text::TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
         font_weight: None,
+        font_style: None,
     };
     let single = measurer.measure_wrapped(title, &style, None, WrapMode::SvgLike);
     let wrapped = measurer.measure_wrapped(title, &style, Some(200.0), WrapMode::SvgLike);
@@ -1938,6 +2114,9 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
 
 #[test]
 fn flowchart_relative_font_size_class_affects_node_label_layout() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
 flowchart LR
 A[Same label]:::small
@@ -1946,14 +2125,14 @@ classDef small font-size:50%;
 "#;
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let node = |id: &str| {
         layout
@@ -1980,7 +2159,84 @@ classDef small font-size:50%;
 }
 
 #[test]
+fn flowchart_html_class_box_styles_follow_span_block_layout() {
+    let layout = layout_flowchart(
+        r#"flowchart LR
+Plain[same]
+Background[same]:::background
+Border[same]:::border
+InlineBlock[same]:::inlineBlock
+ZeroBorder[same]:::zeroBorder
+classDef background background:#bbb;
+classDef border border:1px solid red;
+classDef inlineBlock border:1px solid red,display:inline-block;
+classDef zeroBorder border:0 solid red;
+"#,
+    );
+
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+    let plain = node("Plain");
+    let background = node("Background");
+    let border = node("Border");
+    let inline_block = node("InlineBlock");
+    let zero_border = node("ZeroBorder");
+
+    assert!(approx_eq(background.height, plain.height));
+    assert!(approx_eq(background.width, plain.width));
+    assert!(approx_eq(zero_border.height, plain.height));
+    assert!(approx_eq(zero_border.width, plain.width));
+
+    assert!(
+        approx_eq(border.height, plain.height + 48.0),
+        "an inline span around Mermaid's <p> label contributes two extra 24px line boxes: plain={plain:?}, border={border:?}"
+    );
+    assert!(approx_eq(border.width, plain.width));
+
+    assert!(
+        approx_eq(inline_block.height, plain.height + 2.0),
+        "inline-block uses its border box instead of fragmented inline boxes: plain={plain:?}, inline_block={inline_block:?}"
+    );
+    assert!(approx_eq(inline_block.width, plain.width + 2.0));
+
+    let svg_class_css = layout_flowchart(
+        r#"---
+config:
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+Plain[same]
+Border[same]:::border
+classDef border border:1px solid red;
+"#,
+    );
+    let plain = svg_class_css
+        .nodes
+        .iter()
+        .find(|node| node.id == "Plain")
+        .expect("plain node");
+    let border = svg_class_css
+        .nodes
+        .iter()
+        .find(|node| node.id == "Border")
+        .expect("border node");
+    assert!(
+        approx_eq(border.height, plain.height),
+        "flowchart.htmlLabels=false emits class selectors for SVG shapes, so the border declaration must not affect the foreignObject span: plain={plain:?}, border={border:?}"
+    );
+}
+
+#[test]
 fn flowchart_whole_label_font_style_italic_affects_node_label_layout() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = r#"%%{init: {"flowchart": {"htmlLabels": true}}}%%
 flowchart LR
 A[Moving]:::italic
@@ -1989,14 +2245,14 @@ classDef italic font-style:italic;
 "#;
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let node = |id: &str| {
         layout
@@ -2024,6 +2280,9 @@ classDef italic font-style:italic;
 
 #[test]
 fn cyclic_subgraph_membership_reports_recoverable_error() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let cases = [
         (
             "self-contained",
@@ -2064,12 +2323,14 @@ fn cyclic_subgraph_membership_reports_recoverable_error() {
 
     let engine = Engine::new();
     for (name, text, expected_message) in cases {
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-                .unwrap_or_else(|err| panic!("parse {name}: {err}"))
-                .unwrap_or_else(|| panic!("diagram detected for {name}"));
+        let parsed = futures::executor::block_on(
+            engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+        )
+        .unwrap_or_else(|err| panic!("parse {name}: {err}"))
+        .unwrap_or_else(|| panic!("diagram detected for {name}"));
 
-        let err = match layout_parsed(&parsed, &LayoutOptions::default()) {
+        let err = match layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        {
             Ok(_) => panic!("{name} should be a recoverable error"),
             Err(err) => err,
         };
@@ -2085,16 +2346,19 @@ fn cyclic_subgraph_membership_reports_recoverable_error() {
 
 #[test]
 fn non_cyclic_subgraph_membership_chain_still_lays_out() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph B\n    C\n  end\n  C --> D\n";
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let cluster_ids = layout
         .clusters
@@ -2107,16 +2371,19 @@ fn non_cyclic_subgraph_membership_chain_still_lays_out() {
 
 #[test]
 fn duplicate_subgraph_membership_with_empty_later_group_still_lays_out() {
+    let _session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
     let text = "flowchart TD\n  subgraph A\n    B\n  end\n  subgraph X\n    B\n  end\n  B --> C\n";
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
-        panic!("expected FlowchartV2 layout");
-    };
+    let layout = layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session)
+        .expect("layout ok");
 
     let cluster_ids = layout
         .clusters

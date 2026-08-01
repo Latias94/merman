@@ -1,32 +1,20 @@
 use crate::client_profile::{ClientProtocolProfile, SemanticTokenProjection};
 use crate::snapshot::DocumentSnapshot;
-use merman_editor_core::{
-    SemanticToken as CoreSemanticToken,
-    semantic_tokens_for_snapshot as core_semantic_tokens_for_snapshot,
-    semantic_tokens_for_snapshot_range as core_semantic_tokens_for_snapshot_range,
-};
 #[cfg(test)]
+use merman_editor_core::semantic_token_descriptor;
 use merman_editor_core::{
-    SemanticTokenKind, SemanticTokenModifier as CoreSemanticTokenModifier,
-    semantic_token_legend as core_semantic_token_legend, token_modifier_index, token_type_index,
+    PlannedToken, SEMANTIC_TOKEN_DESCRIPTOR_DIGEST, SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN,
+    SemanticTokenPlan, TokenPlanError, plan_semantic_tokens_for_snapshot,
+    plan_semantic_tokens_for_snapshot_range,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use tower_lsp::lsp_types::{
+use tower_lsp_server::ls_types::{
     Range, SemanticToken, SemanticTokens, SemanticTokensDelta, SemanticTokensEdit,
     SemanticTokensFullDeltaResult, SemanticTokensOptions,
 };
 #[cfg(test)]
-use tower_lsp::lsp_types::{SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct AbsoluteToken {
-    line: u32,
-    start: u32,
-    length: u32,
-    token_type: u32,
-    token_modifiers_bitset: u32,
-}
+use tower_lsp_server::ls_types::{SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend};
 
 pub(crate) fn semantic_tokens_options_with_profile(
     profile: &ClientProtocolProfile,
@@ -38,58 +26,75 @@ pub(crate) fn semantic_tokens_options_with_profile(
 }
 
 #[cfg(test)]
-pub fn semantic_tokens_legend() -> SemanticTokensLegend {
-    ClientProtocolProfile::permissive()
-        .semantic_tokens
-        .expect("permissive profile enables semantic tokens")
-        .legend()
+fn semantic_tokens_legend() -> SemanticTokensLegend {
+    let descriptor = semantic_token_descriptor();
+    SemanticTokensLegend {
+        token_types: descriptor
+            .token_kinds
+            .iter()
+            .map(|kind| SemanticTokenType::new(kind.lsp_name))
+            .collect(),
+        token_modifiers: descriptor
+            .modifiers
+            .iter()
+            .map(|modifier| SemanticTokenModifier::new(modifier.lsp_name))
+            .collect(),
+    }
 }
 
 #[cfg(test)]
-pub fn semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> SemanticTokens {
-    semantic_tokens_for_snapshot_with_profile(snapshot, &ClientProtocolProfile::permissive())
-        .expect("permissive profile enables semantic tokens")
+fn semantic_tokens_for_snapshot(
+    snapshot: &DocumentSnapshot,
+) -> Result<SemanticTokens, TokenPlanError> {
+    let plan = token_plan(snapshot)?;
+    Ok(SemanticTokens {
+        result_id: None,
+        data: encode_relative_tokens(plan.tokens()),
+    })
 }
 
 pub(crate) fn semantic_tokens_for_snapshot_with_profile(
     snapshot: &DocumentSnapshot,
     profile: &ClientProtocolProfile,
-) -> Option<SemanticTokens> {
-    let projection = profile.semantic_tokens.as_ref()?;
-    Some(semantic_tokens_from_absolute_tokens_with_result_id(
-        absolute_tokens_for_snapshot(snapshot, projection),
-        None,
-    ))
+) -> Result<Option<SemanticTokens>, TokenPlanError> {
+    let projection = profile.semantic_tokens.as_ref();
+    let Some(projection) = projection else {
+        return Ok(None);
+    };
+    let plan = token_plan(snapshot)?;
+    Ok(Some(SemanticTokens {
+        result_id: None,
+        data: encode_relative_tokens_with_projection(plan.tokens(), projection),
+    }))
 }
 
 #[cfg(test)]
-pub fn semantic_tokens_for_snapshot_range(
+fn semantic_tokens_for_snapshot_range(
     snapshot: &DocumentSnapshot,
     range: Range,
-) -> SemanticTokens {
-    semantic_tokens_for_snapshot_range_with_profile(
-        snapshot,
-        range,
-        &ClientProtocolProfile::permissive(),
-    )
-    .expect("permissive profile enables semantic tokens")
+) -> Result<SemanticTokens, TokenPlanError> {
+    let plan = token_plan_range(snapshot, range)?;
+    let data = encode_relative_tokens(plan.tokens());
+    Ok(SemanticTokens {
+        result_id: None,
+        data,
+    })
 }
 
 pub(crate) fn semantic_tokens_for_snapshot_range_with_profile(
     snapshot: &DocumentSnapshot,
     range: Range,
     profile: &ClientProtocolProfile,
-) -> Option<SemanticTokens> {
-    let projection = profile.semantic_tokens.as_ref()?;
-    let absolute_tokens = absolute_tokens_for_snapshot_range(snapshot, &range, projection)
-        .into_iter()
-        .filter(|token| token_overlaps_range(token, &range))
-        .collect();
-
-    Some(semantic_tokens_from_absolute_tokens_with_result_id(
-        absolute_tokens,
-        None,
-    ))
+) -> Result<Option<SemanticTokens>, TokenPlanError> {
+    let projection = profile.semantic_tokens.as_ref();
+    let Some(projection) = projection else {
+        return Ok(None);
+    };
+    let plan = token_plan_range(snapshot, range)?;
+    Ok(Some(SemanticTokens {
+        result_id: None,
+        data: encode_relative_tokens_with_projection(plan.tokens(), projection),
+    }))
 }
 
 pub fn semantic_tokens_delta_result(
@@ -110,19 +115,9 @@ pub fn semantic_tokens_delta_result(
     })
 }
 
-fn semantic_tokens_from_absolute_tokens_with_result_id(
-    absolute_tokens: Vec<AbsoluteToken>,
-    result_id: Option<String>,
-) -> SemanticTokens {
-    SemanticTokens {
-        result_id,
-        data: encode_relative_tokens(absolute_tokens),
-    }
-}
-
 pub fn semantic_tokens_result_id(snapshot: &DocumentSnapshot, tokens: &[SemanticToken]) -> String {
     let mut hasher = DefaultHasher::new();
-    snapshot.version.hash(&mut hasher);
+    snapshot.version().hash(&mut hasher);
     for token in tokens {
         token.delta_line.hash(&mut hasher);
         token.delta_start.hash(&mut hasher);
@@ -130,97 +125,85 @@ pub fn semantic_tokens_result_id(snapshot: &DocumentSnapshot, tokens: &[Semantic
         token.token_type.hash(&mut hasher);
         token.token_modifiers_bitset.hash(&mut hasher);
     }
-    format!("{}:{:016x}", snapshot.version, hasher.finish())
+    format!(
+        "{}:{}:{:016x}",
+        snapshot.version(),
+        SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
+        hasher.finish()
+    )
 }
 
-fn absolute_tokens_for_snapshot(
+fn token_plan(snapshot: &DocumentSnapshot) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_semantic_tokens_for_snapshot(snapshot.as_editor())
+}
+
+fn token_plan_range(
     snapshot: &DocumentSnapshot,
-    projection: &SemanticTokenProjection,
-) -> Vec<AbsoluteToken> {
-    core_semantic_tokens_for_snapshot(snapshot.as_editor())
-        .into_iter()
-        .filter_map(|token| project_absolute_token(token, projection))
-        .collect()
+    range: Range,
+) -> Result<SemanticTokenPlan, TokenPlanError> {
+    plan_semantic_tokens_for_snapshot_range(
+        snapshot.as_editor(),
+        merman_editor_core::Range::new(
+            merman_editor_core::Position::new(
+                range.start.line as usize,
+                range.start.character as usize,
+            ),
+            merman_editor_core::Position::new(
+                range.end.line as usize,
+                range.end.character as usize,
+            ),
+        ),
+    )
 }
 
-fn absolute_tokens_for_snapshot_range(
-    snapshot: &DocumentSnapshot,
-    range: &Range,
-    projection: &SemanticTokenProjection,
-) -> Vec<AbsoluteToken> {
-    core_semantic_tokens_for_snapshot_range(snapshot.as_editor(), range.start.line, range.end.line)
-        .into_iter()
-        .filter_map(|token| project_absolute_token(token, projection))
-        .collect()
-}
-
-fn project_absolute_token(
-    token: CoreSemanticToken,
-    projection: &SemanticTokenProjection,
-) -> Option<AbsoluteToken> {
-    Some(AbsoluteToken {
-        line: token.line,
-        start: token.start,
-        length: token.length,
-        token_type: projection.token_type(token.kind)?,
-        token_modifiers_bitset: projection.token_modifier_bitset(token.modifier),
+#[cfg(test)]
+fn encode_relative_tokens<'a>(
+    tokens: impl IntoIterator<Item = &'a PlannedToken>,
+) -> Vec<SemanticToken> {
+    encode_relative_tokens_with(tokens, |token| {
+        Some((token.kind.code(), token.modifier_bits))
     })
 }
 
-fn token_overlaps_range(token: &AbsoluteToken, range: &Range) -> bool {
-    let range_start_line = range.start.line;
-    let range_start_character = range.start.character;
-    let range_end_line = range.end.line;
-    let range_end_character = range.end.character;
-    let token_line = token.line;
-    let token_start = token.start;
-    let token_end = token.start + token.length;
-
-    if token_line < range_start_line || token_line > range_end_line {
-        return false;
-    }
-
-    if range_start_line == range_end_line {
-        return token_line == range_start_line
-            && token_end > range_start_character
-            && token_start < range_end_character;
-    }
-
-    if token_line == range_start_line {
-        return token_end > range_start_character;
-    }
-
-    if token_line == range_end_line {
-        return token_start < range_end_character;
-    }
-
-    true
+fn encode_relative_tokens_with_projection<'a>(
+    tokens: impl IntoIterator<Item = &'a PlannedToken>,
+    projection: &SemanticTokenProjection,
+) -> Vec<SemanticToken> {
+    encode_relative_tokens_with(tokens, |token| {
+        projection.token_type(token.kind).map(|token_type| {
+            (
+                token_type,
+                projection.token_modifier_bitset(token.modifier_bits),
+            )
+        })
+    })
 }
 
-fn encode_relative_tokens(absolute_tokens: Vec<AbsoluteToken>) -> Vec<SemanticToken> {
+fn encode_relative_tokens_with<'a>(
+    tokens: impl IntoIterator<Item = &'a PlannedToken>,
+    project: impl Fn(&PlannedToken) -> Option<(u32, u32)>,
+) -> Vec<SemanticToken> {
     let mut previous_line = 0u32;
     let mut previous_start = 0u32;
-
-    absolute_tokens
+    tokens
         .into_iter()
-        .map(|token| {
-            let delta_line = token.line.saturating_sub(previous_line);
+        .filter_map(|token| {
+            let (token_type, token_modifiers_bitset) = project(token)?;
+            let delta_line = token.line - previous_line;
             let delta_start = if delta_line == 0 {
-                token.start.saturating_sub(previous_start)
+                token.start - previous_start
             } else {
                 token.start
             };
-
             previous_line = token.line;
             previous_start = token.start;
-
-            SemanticToken {
+            Some(SemanticToken {
                 delta_line,
                 delta_start,
                 length: token.length,
-                token_type: token.token_type,
-                token_modifiers_bitset: token.token_modifiers_bitset,
-            }
+                token_type,
+                token_modifiers_bitset,
+            })
         })
         .collect()
 }
@@ -250,10 +233,18 @@ fn semantic_tokens_delta_edit(
 
     let previous_end = previous_tokens.len().saturating_sub(suffix_tokens);
     let current_end = current_tokens.len().saturating_sub(suffix_tokens);
+    let flattened_prefix = prefix_tokens
+        .checked_mul(SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN)
+        .and_then(|value| u32::try_from(value).ok())
+        .expect("semantic token delta prefix fits the LSP u32 contract");
+    let flattened_delete_count = (previous_end - prefix_tokens)
+        .checked_mul(SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN)
+        .and_then(|value| u32::try_from(value).ok())
+        .expect("semantic token delta deletion fits the LSP u32 contract");
 
     Some(SemanticTokensEdit {
-        start: (prefix_tokens * 5) as u32,
-        delete_count: ((previous_end - prefix_tokens) * 5) as u32,
+        start: flattened_prefix,
+        delete_count: flattened_delete_count,
         data: if prefix_tokens < current_end {
             Some(current_tokens[prefix_tokens..current_end].to_vec())
         } else {
@@ -263,129 +254,249 @@ fn semantic_tokens_delta_edit(
 }
 
 #[cfg(test)]
-fn token_type(kind: SemanticTokenKind) -> u32 {
-    token_type_index(kind)
-}
-
-#[cfg(test)]
-fn token_modifier_bitset(modifier: CoreSemanticTokenModifier) -> u32 {
-    1 << token_modifier_index(modifier)
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document_store::DocumentStore;
-    use tower_lsp::lsp_types::{Position, Url};
+    use crate::client_profile::ClientProtocolProfile;
+    use crate::snapshot::snapshot_for_test;
+    use merman_editor_core::{PlannedTokenKind, PlannedTokenModifier};
+    use serde::Deserialize;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::str::FromStr;
+    use tower_lsp_server::ls_types::{Position, Uri};
 
-    #[test]
-    fn semantic_tokens_legend_and_encoding_follow_editor_core_order() {
-        let core_legend = core_semantic_token_legend();
-        let lsp_legend = semantic_tokens_legend();
+    #[derive(Debug, Deserialize)]
+    struct TokenEquivalenceEvidence {
+        descriptor_digest: String,
+        words_per_token: usize,
+        family_cases: Vec<TokenEquivalenceCase>,
+        recovery_cases: Vec<TokenEquivalenceCase>,
+    }
 
-        assert_eq!(
-            lsp_legend.token_types,
-            vec![
-                SemanticTokenType::NAMESPACE,
-                SemanticTokenType::CLASS,
-                SemanticTokenType::STRUCT,
-                SemanticTokenType::VARIABLE,
-                SemanticTokenType::PROPERTY,
-                SemanticTokenType::EVENT,
-                SemanticTokenType::FUNCTION,
-                SemanticTokenType::STRING,
-            ]
-        );
-        assert_eq!(
-            lsp_legend.token_modifiers,
-            vec![
-                SemanticTokenModifier::new("mermanEntity"),
-                SemanticTokenModifier::new("mermanOutline"),
-                SemanticTokenModifier::new("mermanPayload"),
-            ]
-        );
-        for (index, kind) in core_legend.token_types.iter().copied().enumerate() {
-            assert_eq!(token_type(kind), index as u32);
-        }
-        for (index, modifier) in core_legend.token_modifiers.iter().copied().enumerate() {
-            assert_eq!(token_modifier_index(modifier), index as u32);
-        }
+    #[derive(Debug, Deserialize)]
+    struct TokenEquivalenceCase {
+        id: String,
+        family: String,
+        source: String,
+        detection_validity: String,
+        syntax_id: String,
+        effective_layout_id: String,
+        packed_words: Vec<u32>,
     }
 
     #[test]
-    fn semantic_tokens_project_entity_outline_and_payload_roles() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
+    fn legend_is_the_generated_descriptor_order() {
+        let descriptor = semantic_token_descriptor();
+        let legend = semantic_tokens_legend();
+
+        assert_eq!(
+            legend.token_types,
+            descriptor
+                .token_kinds
+                .iter()
+                .map(|kind| SemanticTokenType::new(kind.lsp_name))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            legend.token_modifiers,
+            descriptor
+                .modifiers
+                .iter()
+                .map(|modifier| SemanticTokenModifier::new(modifier.lsp_name))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            descriptor
+                .token_kinds
+                .iter()
+                .enumerate()
+                .all(|(index, kind)| kind.kind.code() == index as u32
+                    && kind.lsp_index == index as u32)
+        );
+        assert!(
+            descriptor
+                .modifiers
+                .iter()
+                .enumerate()
+                .all(|(index, modifier)| {
+                    modifier.modifier.index() == index as u32
+                        && modifier.lsp_index == index as u32
+                        && modifier.bit == 1 << index
+                })
+        );
+    }
+
+    #[test]
+    fn full_sequence_is_the_planner_packed_sequence() {
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let snapshot = snapshot_for_test(
             uri,
             1,
             concat!(
-                "gantt\n",
-                "title Roadmap\n",
-                "section Demo\n",
-                "Task 1: id1,2014-01-01,1d\n",
-                "Task 2: id2,after id1,2d\n",
-            )
-            .to_string(),
+                "flowchart TD\n",
+                "alpha[\"Emoji 🤓\"] --> beta\n",
+                "%% trailing comment\n",
+            ),
         );
+        let plan = plan_semantic_tokens_for_snapshot(snapshot.as_editor()).unwrap();
+        let lsp = semantic_tokens_for_snapshot(&snapshot).unwrap();
 
-        let tokens = semantic_tokens_for_snapshot(&snapshot);
-
-        assert!(tokens.data.iter().any(|token| {
-            token.token_type == token_type(SemanticTokenKind::Variable)
-                && token.token_modifiers_bitset
-                    == token_modifier_bitset(CoreSemanticTokenModifier::Entity)
-        }));
-        assert!(tokens.data.iter().any(|token| {
-            token.token_type == token_type(SemanticTokenKind::Namespace)
-                && token.token_modifiers_bitset
-                    == token_modifier_bitset(CoreSemanticTokenModifier::Outline)
-        }));
-        assert!(tokens.data.iter().any(|token| {
-            token.token_type == token_type(SemanticTokenKind::String)
-                && token.token_modifiers_bitset
-                    == token_modifier_bitset(CoreSemanticTokenModifier::Payload)
-        }));
+        assert_eq!(flatten_tokens(&lsp.data), plan.packed());
+        assert!(
+            plan.tokens()
+                .iter()
+                .any(|token| token.kind == PlannedTokenKind::Keyword)
+        );
+        assert!(
+            plan.tokens()
+                .iter()
+                .any(|token| { token.modifier_bits & PlannedTokenModifier::Entity.bit() != 0 })
+        );
     }
 
     #[test]
-    fn semantic_tokens_use_absolute_markdown_ranges_and_utf16_lengths() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.md").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "before\n```mermaid\nsequenceDiagram\ntitle: Diagram 🤓\n```\nafter\n".to_string(),
+    fn projection_filters_unsupported_tokens_before_reencoding_relative_positions() {
+        let capabilities: tower_lsp_server::ls_types::ClientCapabilities =
+            serde_json::from_value(serde_json::json!({
+                "textDocument": {
+                    "semanticTokens": {
+                        "requests": { "full": true },
+                        "tokenTypes": ["string"],
+                        "tokenModifiers": ["mermanPayload"],
+                        "formats": ["relative"]
+                    }
+                }
+            }))
+            .unwrap();
+        let profile = ClientProtocolProfile::negotiate(&capabilities);
+        let projection = profile
+            .semantic_tokens
+            .as_ref()
+            .expect("string-only client should negotiate semantic tokens");
+        let planned = vec![
+            PlannedToken {
+                line: 0,
+                start: 0,
+                length: 4,
+                kind: PlannedTokenKind::Keyword,
+                modifier_bits: 0,
+            },
+            PlannedToken {
+                line: 2,
+                start: 5,
+                length: 7,
+                kind: PlannedTokenKind::String,
+                modifier_bits: PlannedTokenModifier::Payload.bit(),
+            },
+            PlannedToken {
+                line: 2,
+                start: 14,
+                length: 3,
+                kind: PlannedTokenKind::Identifier,
+                modifier_bits: PlannedTokenModifier::Entity.bit(),
+            },
+            PlannedToken {
+                line: 5,
+                start: 1,
+                length: 4,
+                kind: PlannedTokenKind::String,
+                modifier_bits: PlannedTokenModifier::Payload.bit(),
+            },
+        ];
+
+        assert_eq!(
+            encode_relative_tokens_with_projection(&planned, projection),
+            vec![semantic_token(2, 5, 7, 0, 1), semantic_token(3, 1, 4, 0, 1),]
         );
-        let tokens = semantic_tokens_for_snapshot(&snapshot);
-        let decoded = decode_tokens(&tokens.data);
-
-        let payload_start = snapshot.text.find("Diagram 🤓").unwrap();
-        let payload_end = payload_start + "Diagram 🤓".len();
-        let payload_span = snapshot
-            .source_map
-            .span(payload_start, payload_end)
-            .expect("payload span should map");
-        let payload_line = payload_span.lsp_range.start.line as u32;
-        let payload_start_character = payload_span.lsp_range.start.character as u32;
-        let payload_length =
-            (payload_span.lsp_range.end.character - payload_span.lsp_range.start.character) as u32;
-
-        assert!(decoded.iter().any(|token| {
-            token.line == payload_line
-                && token.start == payload_start_character
-                && token.length == payload_length
-                && token.token_type == token_type(SemanticTokenKind::String)
-                && token.token_modifiers_bitset
-                    == token_modifier_bitset(CoreSemanticTokenModifier::Payload)
-        }));
     }
 
     #[test]
-    fn semantic_tokens_range_filters_to_requested_markdown_fence() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.md").unwrap();
-        let snapshot = store.upsert(
+    fn unavailable_semantics_are_a_valid_empty_plan_not_a_planner_failure() {
+        let uri = Uri::from_str("file:///tmp/unknown.mmd").unwrap();
+        let snapshot = snapshot_for_test(uri, 1, "not a Mermaid diagram\n");
+
+        let tokens = semantic_tokens_for_snapshot(&snapshot).unwrap();
+        assert!(tokens.data.is_empty());
+    }
+
+    #[test]
+    fn all_family_and_recovery_sequences_match_the_generated_cross_surface_evidence() {
+        let evidence_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("editor-language/token-equivalence-v1.json");
+        let evidence: TokenEquivalenceEvidence = serde_json::from_str(
+            &fs::read_to_string(&evidence_path).expect("generated token equivalence evidence"),
+        )
+        .expect("valid token equivalence evidence");
+        assert_eq!(evidence.descriptor_digest, SEMANTIC_TOKEN_DESCRIPTOR_DIGEST);
+        assert_eq!(
+            evidence.words_per_token,
+            SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN
+        );
+        assert_eq!(evidence.family_cases.len(), 35);
+        assert_eq!(evidence.recovery_cases.len(), 1);
+
+        for (version, case) in evidence
+            .family_cases
+            .iter()
+            .chain(&evidence.recovery_cases)
+            .enumerate()
+        {
+            let uri = Uri::from_str(&format!("file:///token-equivalence/{}.mmd", case.id)).unwrap();
+            let snapshot = snapshot_for_test(uri, version as i32 + 1, case.source.clone());
+            let tokens = semantic_tokens_for_snapshot(&snapshot).unwrap();
+
+            assert_eq!(
+                flatten_tokens(&tokens.data),
+                case.packed_words,
+                "{} ({}) LSP packed sequence",
+                case.id,
+                case.family
+            );
+            assert_eq!(
+                snapshot
+                    .detection()
+                    .map(|detection| detection.diagram_type.as_str()),
+                Some(case.family.as_str()),
+                "{} diagram detection",
+                case.id
+            );
+            assert_eq!(
+                snapshot
+                    .detection()
+                    .map(|detection| match detection.validity {
+                        merman_editor_core::DiagramDetectionValidity::Valid => "valid",
+                        merman_editor_core::DiagramDetectionValidity::RecoverableInvalid => {
+                            "recoverable-invalid"
+                        }
+                    }),
+                Some(case.detection_validity.as_str()),
+                "{} recovery identity",
+                case.id
+            );
+            assert_eq!(
+                snapshot
+                    .detection()
+                    .map(|detection| detection.syntax_id.as_str()),
+                Some(case.syntax_id.as_str()),
+                "{} syntax identity",
+                case.id
+            );
+            assert_eq!(
+                snapshot
+                    .detection()
+                    .map(|detection| detection.effective_layout_id.as_str()),
+                Some(case.effective_layout_id.as_str()),
+                "{} effective layout identity",
+                case.id
+            );
+        }
+    }
+
+    #[test]
+    fn range_filters_absolute_plan_then_reencodes_relative_tokens() {
+        let uri = Uri::from_str("file:///tmp/example.md").unwrap();
+        let snapshot = snapshot_for_test(
             uri,
             1,
             concat!(
@@ -397,143 +508,135 @@ mod tests {
                 "middle\n",
                 "```mermaid\n",
                 "sequenceDiagram\n",
-                "title: Second\n",
+                "title: Second 🤓\n",
                 "```\n",
                 "outro\n",
-            )
-            .to_string(),
+            ),
         );
-
-        let tokens = semantic_tokens_for_snapshot_range(
-            &snapshot,
-            Range::new(Position::new(6, 0), Position::new(10, 0)),
-        );
-        let decoded = decode_tokens(&tokens.data);
-
-        let first_start = snapshot.text.find("First").unwrap();
-        let first_span = snapshot
-            .source_map
-            .span(first_start, first_start + "First".len())
-            .expect("first title span should map");
-        let second_start = snapshot.text.find("Second").unwrap();
-        let second_span = snapshot
-            .source_map
-            .span(second_start, second_start + "Second".len())
-            .expect("second title span should map");
-        let second_line = second_span.lsp_range.start.line as u32;
-        let second_start_character = second_span.lsp_range.start.character as u32;
-        let second_length =
-            (second_span.lsp_range.end.character - second_span.lsp_range.start.character) as u32;
-        let payload_bitset = token_modifier_bitset(CoreSemanticTokenModifier::Payload);
-
-        assert!(decoded.iter().any(|token| {
-            token.line == second_line
-                && token.start == second_start_character
-                && token.length == second_length
-                && token.token_type == token_type(SemanticTokenKind::String)
-                && token.token_modifiers_bitset == payload_bitset
-        }));
-        assert!(
-            !decoded
-                .iter()
-                .any(|token| token.line == first_span.lsp_range.start.line as u32),
-            "range request should not return tokens from the first fence: {decoded:?}"
-        );
-    }
-
-    #[test]
-    fn semantic_tokens_split_multiline_payload_spans() {
-        let mut store = DocumentStore::new();
-        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
-        let snapshot = store.upsert(
-            uri,
-            1,
-            "gantt\naccDescr {\nline one\nline two\n}\n".to_string(),
-        );
-        let tokens = semantic_tokens_for_snapshot(&snapshot);
-        let decoded = decode_tokens(&tokens.data);
-        let payload_bitset = token_modifier_bitset(CoreSemanticTokenModifier::Payload);
-        let payload_tokens = decoded
+        let range = Range::new(Position::new(6, 0), Position::new(10, 0));
+        let plan = plan_semantic_tokens_for_snapshot(snapshot.as_editor()).unwrap();
+        let expected = plan
+            .tokens()
             .iter()
             .filter(|token| {
-                token.token_type == token_type(SemanticTokenKind::String)
-                    && token.token_modifiers_bitset == payload_bitset
+                let token_end = token.start + token.length;
+                token.line >= range.start.line
+                    && token.line <= range.end.line
+                    && (token.line != range.start.line || token_end > range.start.character)
+                    && (token.line != range.end.line || token.start < range.end.character)
+            })
+            .map(|token| {
+                (
+                    token.line,
+                    token.start,
+                    token.length,
+                    token.kind.code(),
+                    token.modifier_bits,
+                )
             })
             .collect::<Vec<_>>();
-
-        assert!(
-            payload_tokens.len() >= 2,
-            "expected multiline payload to produce per-line semantic tokens: {decoded:?}"
+        let actual = decode_tokens(
+            &semantic_tokens_for_snapshot_range(&snapshot, range)
+                .unwrap()
+                .data,
         );
+
+        assert_eq!(actual, expected);
+        assert!(actual.iter().all(|token| (6..=10).contains(&token.0)));
     }
 
     #[test]
-    fn semantic_tokens_delta_result_prefers_edits_over_full_tokens() {
+    fn result_id_binds_document_tokens_to_descriptor_digest() {
+        let uri = Uri::from_str("file:///tmp/example.mmd").unwrap();
+        let snapshot = snapshot_for_test(uri, 7, "flowchart TD\nA --> B\n");
+        let tokens = semantic_tokens_for_snapshot(&snapshot).unwrap();
+        let result_id = semantic_tokens_result_id(&snapshot, &tokens.data);
+
+        assert!(result_id.starts_with("7:sha256:"));
+        assert!(result_id.contains(SEMANTIC_TOKEN_DESCRIPTOR_DIGEST));
+    }
+
+    #[test]
+    fn delta_uses_generated_record_width_and_preserves_sequence_suffix() {
         let previous = vec![
-            SemanticToken {
-                delta_line: 0,
-                delta_start: 0,
-                length: 3,
-                token_type: token_type(SemanticTokenKind::Namespace),
-                token_modifiers_bitset: 0,
-            },
-            SemanticToken {
-                delta_line: 0,
-                delta_start: 4,
-                length: 2,
-                token_type: token_type(SemanticTokenKind::String),
-                token_modifiers_bitset: token_modifier_bitset(CoreSemanticTokenModifier::Payload),
-            },
+            semantic_token(0, 0, 3, 0, 0),
+            semantic_token(0, 4, 2, 9, PlannedTokenModifier::Payload.bit()),
+            semantic_token(1, 0, 1, 1, 0),
         ];
         let current = vec![
-            SemanticToken {
-                delta_line: 0,
-                delta_start: 0,
-                length: 3,
-                token_type: token_type(SemanticTokenKind::Namespace),
-                token_modifiers_bitset: 0,
-            },
-            SemanticToken {
-                delta_line: 0,
-                delta_start: 5,
-                length: 2,
-                token_type: token_type(SemanticTokenKind::String),
-                token_modifiers_bitset: token_modifier_bitset(CoreSemanticTokenModifier::Payload),
-            },
+            semantic_token(0, 0, 3, 0, 0),
+            semantic_token(0, 5, 2, 9, PlannedTokenModifier::Payload.bit()),
+            semantic_token(1, 0, 1, 1, 0),
         ];
 
         let result = semantic_tokens_delta_result(&previous, &current, "next".to_string());
         let SemanticTokensFullDeltaResult::TokensDelta(delta) = result else {
             panic!("expected delta tokens");
         };
-
         assert_eq!(delta.result_id.as_deref(), Some("next"));
         assert_eq!(delta.edits.len(), 1);
-        assert!(!delta.edits[0].data.as_ref().unwrap().is_empty());
+        assert_eq!(
+            delta.edits[0].start,
+            SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN as u32
+        );
+        assert_eq!(
+            delta.edits[0].delete_count,
+            SEMANTIC_TOKEN_PACKED_WORDS_PER_TOKEN as u32
+        );
+        assert_eq!(delta.edits[0].data.as_deref(), Some(&current[1..2]));
     }
 
-    fn decode_tokens(tokens: &[SemanticToken]) -> Vec<AbsoluteToken> {
+    fn semantic_token(
+        delta_line: u32,
+        delta_start: u32,
+        length: u32,
+        token_type: u32,
+        token_modifiers_bitset: u32,
+    ) -> SemanticToken {
+        SemanticToken {
+            delta_line,
+            delta_start,
+            length,
+            token_type,
+            token_modifiers_bitset,
+        }
+    }
+
+    fn flatten_tokens(tokens: &[SemanticToken]) -> Vec<u32> {
+        tokens
+            .iter()
+            .flat_map(|token| {
+                [
+                    token.delta_line,
+                    token.delta_start,
+                    token.length,
+                    token.token_type,
+                    token.token_modifiers_bitset,
+                ]
+            })
+            .collect()
+    }
+
+    fn decode_tokens(tokens: &[SemanticToken]) -> Vec<(u32, u32, u32, u32, u32)> {
         let mut line = 0u32;
         let mut start = 0u32;
-        let mut decoded = Vec::new();
-
-        for token in tokens {
-            line += token.delta_line;
-            if token.delta_line == 0 {
-                start += token.delta_start;
-            } else {
-                start = token.delta_start;
-            }
-
-            decoded.push(AbsoluteToken {
-                line,
-                start,
-                length: token.length,
-                token_type: token.token_type,
-                token_modifiers_bitset: token.token_modifiers_bitset,
-            });
-        }
-
-        decoded
+        tokens
+            .iter()
+            .map(|token| {
+                line += token.delta_line;
+                if token.delta_line == 0 {
+                    start += token.delta_start;
+                } else {
+                    start = token.delta_start;
+                }
+                (
+                    line,
+                    start,
+                    token.length,
+                    token.token_type,
+                    token.token_modifiers_bitset,
+                )
+            })
+            .collect()
     }
 }

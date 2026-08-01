@@ -1,7 +1,7 @@
 # Zed Mermaid Issue Audit
 
 Date: 2026-05-28
-Updated: 2026-06-08
+Updated: 2026-07-27
 
 This audit maps Mermaid-related Zed issues and PRs to merman behavior. It focuses on the Zed
 migration from `mermaid-rs-renderer` to `merman` in zed-industries/zed#57644, plus the issue shapes
@@ -14,24 +14,64 @@ Older audited Zed trees did not vendor `merman` source. They had an internal
 Zed-specific theme/accent/resvg post-processing. Later PR zed-industries/zed#57967 updated that
 dependency to `0.6` and adopted `SvgPipeline::resvg_safe()`.
 
-The current `repo-ref/zed` checkout is more release-relevant: `Cargo.lock` pins `merman`,
-`merman-core`, `merman-render`, and `roughr-merman` to
-`git+https://github.com/zed-industries/merman?tag=v0.6.2-with-patches#06094471f97acb10d0eebf8b92bac19ba2928eea`.
-Its `crates/mermaid_render` wrapper calls the public `merman` API shape that alpha.2 must keep
-usable for a future upgrade:
+The current `repo-ref/zed` checkout is `09c5c2747443f646e2f33963295fd4b1ac797eaa`.
+Its `Cargo.lock` pins `merman`, `merman-core`, `merman-render`, and `roughr-merman` to
+`git+https://github.com/zed-industries/merman?tag=v0.6.2-with-patches#9acc3960f04a7deeb08079d60fa8183f15e8bde1`.
+The wrapper currently calls this public API shape:
 
 - `merman::MermaidConfig::from_value(...)` for host theme variables,
 - `merman::render::HeadlessRenderer::new().with_site_config(...).with_vendored_text_measurer().with_diagram_id(...)`,
 - `SvgPipeline::resvg_safe().with_postprocessor(CssOverridePostprocessor::strip_existing_important())`,
 - `HeadlessRenderer::render_svg_with_pipeline_sync(...)`.
 
-Alpha.2 adds `crates/merman/tests/zed_editor_contract.rs` so this integration shape is covered
-inside merman itself: configured SVG ids, host theme config, fallback text, `foreignObject`
+It then performs Zed-specific `strip_foreignobject`, element fixup, accent assignment, and CSS
+injection after Merman has completed terminal validation. That ordering invalidates the final
+resvg-safe evidence. Zed also hands the resulting string to GPUI's shared default `usvg::Options`;
+the default image string resolver treats `<image href>` values as host file paths. Merman's own
+PNG/JPG/PDF exporters disable that resolver, but the protection does not follow a plain SVG string
+into GPUI. On upgrade, Zed should:
+
+- use `HostThemeProfile` or the equivalent `MermaidConfig` for theme variables,
+- replace its duplicate fallback pass with
+  `SvgPipeline::with_drop_native_duplicate_fallbacks(true)`,
+- keep only product-specific accent assignment and palette generation in Zed,
+- register those remaining transformations as `SvgPostprocessor` passes before the terminal preset,
+- use `ScopedCssPostprocessor` for selector scoping and CSS insertion, and
+- consume `HeadlessRenderer::render_resvg_compatible_svg_with_pipeline_sync(...)` so the final
+  artifact remains sealed.
+
+Current Merman additionally closes non-navigation rendering resources in the resvg-safe terminal
+stage, which prevents Flowchart image paths from reaching GPUI. Zed should still use a
+Mermaid-specific `usvg::Options` with `ImageHrefResolver::resolve_string` disabled as independent
+defense in depth; changing the shared GPUI resolver would alter unrelated SVG product behavior.
+Because GPUI rasterizes the SVG directly, that Mermaid-specific path must also bound and inspect
+inline PNG/JPEG/GIF/WebP data URLs before decode. `ResvgCompatibleSvg` proves that resource
+locations are closed, not that an embedded image has a cheap decoded representation.
+
+`crates/merman/tests/zed_editor_contract.rs` covers this target integration shape inside merman:
+configured SVG ids, host theme config, fallback text, `foreignObject`
 removal, generic class text escaping, unsafe CSS stripping, invalid visual-attribute cleanup, and
 representative Zed preview diagram families. Treat Zed wrapper code as requirements evidence, not
 as code to copy into this repository.
 
-## Coverage Map
+## Recent Issue Signal
+
+The newest public Zed issues and competing fixes were reviewed newest first. Open status does not
+mean the defect belongs in Merman: several reports are caused by Zed's detector, family allowlist,
+font database, or direct GPUI raster path.
+
+| Date | Zed issue / PR | Current boundary | Merman evidence or required action |
+| --- | --- | --- | --- |
+| 2026-07-26 | [zed#61678](https://github.com/zed-industries/zed/pull/61678) (open PR) | Incomplete host-side fix | It handles YAML frontmatter only and deliberately leaves the reported leading `%%{init}%%` case unresolved. Prefer detector delegation in zed#61644 so Zed cannot drift from Merman's preprocessor. |
+| 2026-07-25 | [zed#61644](https://github.com/zed-industries/zed/pull/61644) (open PR) | Correct host detector fix | Delegating type detection to Merman covers frontmatter, directives, and leading comments with the same preprocessing path used by rendering. This is preferable to copying another preamble parser into Zed. |
+| 2026-07-25 | [zed#61617](https://github.com/zed-industries/zed/issues/61617) (open issue) | Fixed in Merman; Zed pin is stale | Merman PR #29 replaced unsafe byte-offset Gantt date slicing and added Japanese/full-width regressions. Zed's `v0.6.2-with-patches` pin predates the fix and must be updated. |
+| 2026-07-24 | [zed#61586](https://github.com/zed-industries/zed/issues/61586) (open issue) | Host font-rasterization boundary | Merman can measure with vendored or host-provided fonts, but GPUI/usvg selects the actual glyph fallback used for pixels. Zed must make its Mermaid font database and fallback selection cover the document's scripts. |
+| 2026-07-20 | [zed#61361](https://github.com/zed-industries/zed/issues/61361) (open issue) | Zed first-token detector bug | Merman already preprocesses frontmatter, directives, and comments before detection. Zed should call that detector, as zed#61644 does, rather than reject the source before Merman sees it. |
+| 2026-07-02 | [zed#60272](https://github.com/zed-industries/zed/issues/60272) (open issue) | Intentional Zed family-admission boundary | Merman parses and renders C4 with a dedicated fixture corpus. Zed explicitly excludes C4 until its host theme CSS makes text readable; this is not a missing Merman family. |
+| 2026-06-21 | [zed#59651](https://github.com/zed-industries/zed/issues/59651) (open issue) | Fixed in the current Merman worktree | Sequence layout now records canonical block start, stop, and section coordinates. SVG consumes those facts instead of reconstructing vertical geometry with fixed offsets; the issue's nested note/loop/alt source is a structural regression test. |
+| 2026-06-05 | [zed#58707](https://github.com/zed-industries/zed/issues/58707) (open issue) | Covered by current Merman | Class relation cardinality terminals are emitted with measured positive bounds in normal and hand-drawn output. Zed must update its Merman pin before treating the old preview as current behavior. |
+
+## Historical Coverage Map
 
 | Zed issue / PR | Issue class | merman status | Evidence |
 | --- | --- | --- | --- |
@@ -44,18 +84,22 @@ as code to copy into this repository.
 | zed-industries/zed#50243 | Gantt `displayMode: compact` frontmatter | Already broadly covered, plus Zed fixture | Existing upstream Gantt compact fixtures remain; `fixtures/zed_issues/zed_50243_gantt_compact_frontmatter.mmd` is included in the Zed smoke. |
 | zed-industries/zed#50558 / #50238 / #50485 | Class inheritance, stereotypes, dotted lines, earlier mermaid-rs fixes | Covered by existing class corpus; Zed smoke added for inheritance | `fixtures/zed_issues/zed_50558_class_inheritance.mmd` renders headless. |
 | zed-industries/zed#56199 / #50176 / #50470 / #50280 | Old renderer panics on partial shapes / empty subgraphs / hex parsing | Covered at Result boundary | `fixtures/zed_issues/zed_56199_flowchart_partial_parallelogram.mmd` is rendered with lenient parsing as an error SVG without panicking. Empty subgraph coverage already exists in flowchart tests. |
-| zed-industries/zed#57967 | Upgrade to `merman = "0.6"` and `SvgPipeline::resvg_safe()` changes preview colors/fallback overlays | Host theme boundary plus optional merman pipeline support | Zed's color cleanup is host palette policy. The generic fallback duplicate issue is covered by `DropNativeDuplicateFallbacksPostprocessor`, which removes only fallback groups whose text duplicates native SVG text. See `docs/workstreams/headless-parity-deepening/JOURNAL/2026-06-02-zed-resvg-safe-theme-feedback.md`. |
+| zed-industries/zed#57967 | Upgrade to `merman = "0.6"` and `SvgPipeline::resvg_safe()` changes preview colors/fallback overlays | Host theme boundary plus current merman pipeline support | Zed's color cleanup remains host palette policy. Generic duplicate fallback cleanup is now `SvgPipeline::with_drop_native_duplicate_fallbacks(true)`. Zed-specific passes must run before terminal finalization rather than rewriting the sealed output string. |
 | zed-industries/zed#57875 | `markdown_preview_theme` not reflected in Mermaid preview | Host integration boundary | `merman` exposes `MermaidConfig`, `SvgPipeline`, and host CSS postprocessors, but Zed must pass the preview theme instead of the editor theme. |
 | zed-industries/zed#56914 / #51466 / #51623 / #56695 | Fonts missing or substituted incorrectly in Zed/GPUI rasterization | Mostly host integration boundary | `merman` can use vendored measurement and host-provided font families. Actual glyph rasterization and font fallback are handled by the host SVG/raster stack. |
-| zed-industries/zed#56466 / #56468 / #51242 | Huge Mermaid diagrams can allocate oversized GPUI textures | Host boundary plus covered merman raster policy | Zed must still cap preview textures when it rasterizes SVGs itself. `merman` PNG/JPG helpers now expose target-aware `fit_to` sizing plus an explicit pixmap budget, with a default `8192px` side / `8192*8192` pixel cap for untrusted oversized diagrams. |
+| zed-industries/zed#56466 / #56468 / #51242 | Huge Mermaid diagrams can allocate oversized GPUI textures | Host boundary plus covered merman raster policy | Zed must still cap preview textures when it rasterizes SVGs itself. `merman` PNG/JPG helpers now expose target-aware `fit_to` sizing plus an explicit pixmap budget, with a default `4096px` side / `4096*4096` pixel cap for untrusted oversized diagrams. |
 
 ## Practical Conclusion
 
 `merman` should solve most old `mermaid-rs-renderer` parser/rendering failures that were fixed by
 Zed's migration, especially sequence blocks, class relationships, Gantt frontmatter, flowchart label
-parsing, ER labels, and panic containment. The remaining open Zed issues are mostly integration
-surface:
+parsing, ER labels, and panic containment. Recent issues reinforce that Zed should update from its
+patched `0.6.2` fork and keep product admission separate from parser detection. The remaining open
+Zed issues are mostly integration surface:
 
+- detection should delegate to Merman before Zed applies its supported-family allowlist,
+- C4 and other deliberately blocked families need Zed theme/admission work rather than another
+  Merman parser,
 - theme selection must be wired from the host preview theme,
 - host-specific palette replacement should stay in the host or an explicit postprocessor,
 - font fallback and glyph rasterization live in the host SVG renderer,

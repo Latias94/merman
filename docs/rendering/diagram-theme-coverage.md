@@ -15,17 +15,17 @@ families.
 | Class | `PresentationTheme::class_diagram()` in `crates/merman-render/src/svg/parity/class/css.rs` | Covered for class text, node, border, cluster, note roles. | Note, gradient, and shadow roles are still partly scattered. |
 | Sequence | `PresentationTheme::sequence_diagram()` in `crates/merman-render/src/svg/parity/sequence/css.rs` | Covered for actor, signal, note, label box, activation roles. | Some visible SVG attributes rely on CSS override rather than initialized themed attrs. |
 | State | `PresentationTheme::state_diagram()` in `crates/merman-render/src/svg/parity/state/style.rs` | Covered for transition, state, label, note, special-state roles. | Marker fill remains mostly CSS-driven. |
-| ER | Shared ER CSS and local `theme_color` reads | Covered for entity box, relationship line, text, and border signals. | Needs an `er_diagram()` view for marker, row fill, and shadow roles. |
+| ER | Shared ER CSS and resolved `theme_token` reads | Covered for entity box, relationship line, text, and border signals. | Needs an `er_diagram()` view for marker, row fill, and shadow roles. |
 | Requirement | Shared requirement CSS and visible node attrs in `crates/merman-render/src/svg/parity/requirement.rs` | Covered for requirement node surface, border, text, and relationship line roles. | Requirement-specific status/risk decorations may need additional semantic roles later. |
 | Architecture | Architecture CSS reads `archEdge*` and `archGroup*` variables | Covered for edge and group border roles. | Built-in icon foreground/background is not fully themeable. |
 | C4 | C4 renderer reads `c4.*` config defaults | Partially covered by profile-generated `c4.*_bg_color` and `*_border_color`. | C4 needs dedicated profile roles for external/container/component text and boundary styling. |
-| Mindmap | Local `git*` and `cScale*` palette reads | Covered through series palette bridge. | Palette logic should eventually share a prepared series theme. |
+| Mindmap | Final resolved `git*` and `cScale*` token reads | Covered through series palette bridge. | Family rendering projects the core-resolved scale without deriving a second palette. |
 | Kanban | Local `git*` and `cScale*` palette reads | Covered through series palette bridge and common roles. | Disabled states and root background remain local defaults. |
 | Timeline | `PresentationTheme::timeline()` | Covered through `cScale*`, `git*`, text, and line variables. | Some visible line attrs still have local black defaults. |
-| GitGraph | Local `git*` and `gitBranchLabel*` palette reads | Covered through series palette bridge. | Merge/cherry-pick inner marks keep fixed colors. |
+| GitGraph | Final resolved `git*` and `gitBranchLabel*` token reads | Covered through series palette bridge. | Merge/cherry-pick inner marks keep fixed colors. |
 | XY Chart | `PresentationTheme::xychart()` and `xyChart.plotColorPalette` | Covered through `xyChart.plotColorPalette`, axis roles, and text roles. | Data label color has a separate fallback path. |
 | Quadrant Chart | `PresentationTheme::quadrantchart()` during layout | Covered through quadrant fill/text/border variables. | SVG stage is layout-driven and does not carry a separate theme view. |
-| Pie | Pie CSS and `pie1..pie12` theme variables | Covered through series palette bridge and pie text/border roles. | Legend and slice palette logic remains diagram-local. |
+| Pie | Pie CSS and final resolved `pie1..pie12` theme variables | Covered through series palette bridge and pie text/border roles. | Layout and legend consume one resolved scale; the renderer does not derive another palette. |
 | Sankey | `sankey.*` config and default Tableau palette | Not generically covered by series palette. | Node colors are keyed by node id; use raw `sankey.nodeColors` or host postprocessing. |
 | Radar | Local `SvgTheme` reads `radar.*` and `cScale*` | Covered through generated `radar.*`, series palette, and common roles. | Needs a `RadarTheme` view in `PresentationTheme` to reduce local reads. |
 | Treemap | `treemap.*` config and `cScale*` labels | Covered through generated `treemap.*` and common roles. | Needs a `TreemapTheme` view to reduce local reads. |

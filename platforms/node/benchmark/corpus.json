@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "roots": ["../../../fixtures"],
+  "extensions": [".mmd"],
+  "binding_options": {
+    "version": 2,
+    "runtime_policy": "deterministic",
+    "resources": {
+      "profile": "trusted-native"
+    }
+  },
+  "operation_options": {
+    "version": 2
+  },
+  "workloads": {
+    "cold_svg": {
+      "operation_id": "svg",
+      "path": "@benchmark/cold-flowchart-smoke.mmd",
+      "source": "flowchart TD\nA-->B"
+    },
+    "concurrency_svg": {
+      "operation_id": "svg",
+      "path": "@benchmark/concurrency-flowchart-smoke.mmd",
+      "source": "flowchart TD\nA-->B"
+    }
+  }
+}

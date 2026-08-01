@@ -58,4 +58,4 @@ type: Engineering Log
 - Added regression coverage for inside-self-loop nested graph creation and kept source-backed probe
   coverage green.
 - Verified `cargo test -p merman-elk-layered --tests`, `cargo test -p merman-layout-elk --tests`,
-  `cargo run -p xtask -- check-flowchart-elk-source-backed-probes`, and `cargo fmt --all`.
+  the Flowchart ELK parity gate, and `cargo fmt --all`.

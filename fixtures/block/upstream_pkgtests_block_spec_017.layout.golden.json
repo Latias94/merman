@@ -5,34 +5,122 @@
       "nodes": [
         {
           "id": "block1",
-          "x": 29.781,
+          "x": 29.44,
           "y": 0.0,
-          "width": 59.563,
+          "width": 58.88,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "blockArrow",
-          "x": 97.344,
+          "x": 96.32,
           "y": 0.0,
-          "width": 59.563,
+          "width": 58.88,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "block2",
-          "x": 164.906,
+          "x": 163.2,
           "y": 0.0,
-          "width": 59.563,
+          "width": 58.88,
           "height": 40.0,
           "is_cluster": false
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "block1",
+          "allocated": {
+            "x": 29.44,
+            "y": 0.0,
+            "width": 58.88,
+            "height": 40.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 58.88,
+            "height": 40.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "blockArrow",
+          "allocated": {
+            "x": 96.32,
+            "y": 0.0,
+            "width": 58.88,
+            "height": 40.0
+          },
+          "boundary": {
+            "shape": "polygon",
+            "points": [
+              {
+                "x": 20.0,
+                "y": -4.0
+              },
+              {
+                "x": 20.0,
+                "y": -4.0
+              },
+              {
+                "x": 56.8,
+                "y": -4.0
+              },
+              {
+                "x": 56.8,
+                "y": 0.0
+              },
+              {
+                "x": 76.8,
+                "y": -20.0
+              },
+              {
+                "x": 56.8,
+                "y": -40.0
+              },
+              {
+                "x": 56.8,
+                "y": -36.0
+              },
+              {
+                "x": 20.0,
+                "y": -36.0
+              },
+              {
+                "x": 20.0,
+                "y": -36.0
+              }
+            ],
+            "translation": {
+              "x": -38.4,
+              "y": 20.0
+            }
+          }
+        },
+        {
+          "id": "block2",
+          "allocated": {
+            "x": 163.2,
+            "y": 0.0,
+            "width": 58.88,
+            "height": 40.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 58.88,
+            "height": 40.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -20.0,
-        "max_x": 194.688,
+        "max_x": 192.64,
         "max_y": 20.0
       }
     }

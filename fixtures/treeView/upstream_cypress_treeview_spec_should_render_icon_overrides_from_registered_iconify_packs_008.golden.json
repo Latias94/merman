@@ -1,0 +1,96 @@
+{
+  "diagramType": "treeView",
+  "model": {
+    "type": "treeView",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory",
+      "children": [
+        {
+          "id": 1,
+          "level": 12,
+          "name": "data",
+          "nodeType": "directory",
+          "children": [
+            {
+              "id": 2,
+              "level": 16,
+              "name": "model.bin",
+              "nodeType": "file",
+              "icon": "fa:bell",
+              "children": []
+            },
+            {
+              "id": 3,
+              "level": 16,
+              "name": "weights.h5",
+              "nodeType": "file",
+              "icon": "folder",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "level": 12,
+          "name": "src",
+          "nodeType": "directory",
+          "children": [
+            {
+              "id": 5,
+              "level": 16,
+              "name": "index.js",
+              "nodeType": "file",
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "id": 0,
+        "level": -1,
+        "name": "/",
+        "nodeType": "directory"
+      },
+      {
+        "id": 1,
+        "level": 12,
+        "name": "data",
+        "nodeType": "directory"
+      },
+      {
+        "id": 2,
+        "level": 16,
+        "name": "model.bin",
+        "nodeType": "file",
+        "icon": "fa:bell"
+      },
+      {
+        "id": 3,
+        "level": 16,
+        "name": "weights.h5",
+        "nodeType": "file",
+        "icon": "folder"
+      },
+      {
+        "id": 4,
+        "level": 12,
+        "name": "src",
+        "nodeType": "directory"
+      },
+      {
+        "id": 5,
+        "level": 16,
+        "name": "index.js",
+        "nodeType": "file"
+      }
+    ]
+  }
+}

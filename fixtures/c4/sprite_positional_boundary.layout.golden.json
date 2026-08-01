@@ -5,14 +5,14 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 931.0,
+        "max_x": 916.0,
         "max_y": 554.0
       },
-      "width": 981.0,
+      "width": 966.0,
       "height": 564.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Context",
       "title": "C4Context sprite (positional) on Boundary",
       "boundaries": [
@@ -21,7 +21,7 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 781.0,
+          "width": 766.0,
           "height": 438.0,
           "image": {
             "width": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -49,7 +49,7 @@
           "parent_boundary": "global",
           "x": 150.0,
           "y": 170.0,
-          "width": 681.0,
+          "width": 666.0,
           "height": 284.0,
           "image": {
             "width": 48.0,
@@ -59,15 +59,15 @@
           "label": {
             "text": "Bank Boundary",
             "y": 56.0,
-            "width": 118.0,
-            "height": 17.0,
+            "width": 97.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[company]",
-            "y": 78.0,
-            "width": 65.0,
-            "height": 16.0,
+            "y": 79.0,
+            "width": 58.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -98,17 +98,17 @@
           "label": {
             "text": "Customer",
             "y": 86.0,
-            "width": 75.0,
-            "height": 17.0,
+            "width": 63.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "A customer of the bank.",
-            "y": 123.0,
-            "width": 148.0,
-            "height": 16.0,
+            "y": 124.0,
+            "width": 140.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -118,7 +118,7 @@
           "type_c4_shape": "system",
           "x": 516.0,
           "y": 270.0,
-          "width": 265.0,
+          "width": 250.0,
           "height": 86.0,
           "margin": 50.0,
           "image": {
@@ -136,17 +136,17 @@
           "label": {
             "text": "Internet Banking System",
             "y": 38.0,
-            "width": 188.0,
-            "height": 17.0,
+            "width": 165.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Allows customers to view account data.",
-            "y": 75.0,
-            "width": 245.0,
-            "height": 16.0,
+            "y": 76.0,
+            "width": 230.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         }
@@ -158,26 +158,26 @@
           "rel_type": "rel",
           "start_point": {
             "x": 416.0,
-            "y": 347.355
+            "y": 347.531
           },
           "end_point": {
             "x": 516.0,
-            "y": 355.68
+            "y": 353.264
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "Uses",
             "y": 0.0,
-            "width": 27.0,
-            "height": 14.0,
+            "width": 23.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": {
             "text": "HTTPS",
             "y": 0.0,
             "width": 36.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": null

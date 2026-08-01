@@ -4,34 +4,62 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.8.0-alpha.4] - Unreleased
+
+0.8.0-alpha.4 completes Merman's Mermaid 11.16 language and rendering surface while giving CLI, editor, browser, and native users explicit product contracts. It is a deliberately breaking prerelease; use the [alpha.3 to alpha.4 upgrade guide](docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md) for surface-specific migration steps.
+
+### Highlights
+
+- Completed parser, editor, typed layout, and SVG support for all 35 Mermaid 11.16 diagram families, including Cynefin, Railroad, Swimlane, and Wardley. #21 #22 #23 #24
+- Reworked `merman-cli` around explicit native `render` and `batch` workflows plus a pinned `mmdc@11.16.0` compatibility path, with recoverable transactional output, bounded resource acquisition, generated completions, and recursive man pages.
+- Made `merman-lsp` more reliable during rapid edits and request saturation by sharing versioned analysis, suppressing stale results, bounding retained work, and keeping cancellation and shutdown reachable. #26
+- Split browser delivery into lockstep full, render, analysis, editor, and ASCII packages, and rebuilt the Playground around isolated runtime, editor, compare, and benchmark lifecycles.
+- Replaced the C, Android, and Flutter ABI 2 path with generated ABI 3 contracts, and aligned Apple and Python UniFFI packages with the same runtime capability model.
+- Reduced the dependency closure of analysis-only products and removed repeated work from Requirement, Mindmap, Kanban, Class, and layered-layout hot paths.
+
+### Performance and footprint
+
+- A historical same-host checkpoint reduced the measured lint/analysis CLI binary from 25,477,648 to 8,166,352 bytes (67.95% smaller) and its resolved normal dependencies from 333 to 123 (63.06% fewer) compared with alpha.3; final release measurements must be refreshed against the tagged commit before treating those figures as final.
+- Removed repeated effective-config cloning and reused operation-scoped label preparation in Requirement, Mindmap, Kanban, and Class paths; the Dagre-compatible layered layout now retains indexed ordering, conflict, and positioning work instead of rebuilding equivalent intermediate state.
+- Complete products now cover a broader Mermaid 11.16 capability set and are not uniformly smaller or faster than alpha.3. See the [refactoring evidence report](docs/release/ALPHA3_TO_ALPHA4_REFACTORING_REPORT.md) and [performance plan](docs/performance/PERF_PLAN.md) for scoped measurements, rejected hypotheses, and remaining release refresh work.
 
 ### Breaking changes
 
 - Updated the compatibility target from Mermaid `11.15.0` to `11.16.0`; integrations that retain semantic, layout, or SVG parity snapshots should regenerate them.
-- Marked `EditorSemanticSymbol`, `EditorSemanticFacts`, `FenceSemanticItem`, and `FenceReferenceGroup` as non-exhaustive so parser-owned completion and rename metadata can evolve; Rust callers that construct them should migrate from struct literals to the provided constructors, `Default`, and `with_*` methods. #26
-- `merman-lsp --no-default-features` no longer includes the bundled stdio binary or stdio transport exports; embedders that use those surfaces should enable the new `stdio` feature explicitly. #26
+- Replaced the advertised root CLI rendering surface with explicit `render`, `batch`, and `mmdc` workflows. Existing root `-i/-o` invocations remain permanent hidden aliases for `mmdc`; native `render` and `batch` now advertise `-f/--format`, while their hidden `-e` aliases warn during `0.8.x` and are removed in `v0.9.0`. Capability automation must also migrate to schema 2 / CLI contract 3 and read `descriptor.digest`.
+- Replaced `@mermanjs/web` capability subpaths and raw `pkg/**` imports with standalone `@mermanjs/web*` packages. Runtime discovery now uses `runtimeCatalog()` instead of `bindingCapabilities()` / `selectedRegistryProfile()`; browser text measurement uses an owned `createBrowserTextMeasurementSession()`, and semantic tokens use `editorSemanticTokenDescriptor()` plus packed `Uint32Array` data.
+- Removed the historical Cargo and runtime registry profiles `full`, `tiny`, `core-full`, and `core_full`. Disable defaults when absence matters and select observable capability leaves such as `svg`, `layout-cytoscape`, `layout-elk`, `math`, `analysis`, or `ascii`.
+- Replaced the C, Android, and Flutter ABI 2 path with generated ABI 3, Options JSON schema 2, opaque reusable engines, generic operation dispatch, typed missing-capability errors, and runtime capability/resource catalogs. Apple and Python callers must upgrade each generated UniFFI wrapper with its matching native artifact; generic UniFFI options now belong in `MermanOperationRequest.options_json`.
+- Reworked Rust analysis and editor ownership around sealed `AnalysisGeneration` values, explicit ready/rejected outcomes, parser-only facts schema 1, private snapshot/diagnostic policies, and cancellable shared-source entry points. See the [Rust and embedding API migration](docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md#rust-and-embedding-api-migration) section for exact type, method, builder, and symbol-search replacements.
+- Replaced low-level rendering entry points and independent layout/SVG service selection with `HeadlessRenderer`, one `RenderSession`, and operation-owned `RenderEnvironment` policy. Migrate viewport fields to `container_width` / `container_height`, use descriptor-driven resource profiles, and remove legacy Manatee and Flowchart ELK backend selectors.
+- Reworked embedded LSP ownership around the ordered `MermanLspService`, a one-time `MermanClientSocket::split()`, and bounded control/ordinary admission. Enable the `stdio` feature explicitly when building the bundled server, and send catalog/schema requests through the ordered service. #26
+- Typst calls now always enforce the `constrained` resource policy; caller-provided trusted or unbounded profiles and numeric overrides are replaced at the plugin boundary.
 
 ### New and changed
 
-- Added parser and editor facts, typed layout, and SVG rendering for `cynefin-beta` and all four Railroad dialects: `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, and `railroad-peg-beta`. #21 #24
-- Added parse-only support for `swimlane-beta` through shared Flowchart semantics and Mermaid 11.16 configuration defaults; dedicated Swimlane layout and SVG admission remain deferred.
-- Aligned Mermaid 11.16 behavior across existing diagrams, including Flowchart and State self-loops, Sequence blocks and wrapping, Ishikawa recursive DOM structure, TreeView ordering, XYChart point labels, Architecture hints, Pie highlighting, Gantt timing, and config/frontmatter handling.
-- Upstream SVG tooling now verifies pinned source, renderer runtime, browser timezone and fonts, input, and SVG provenance and promotes complete family batches transactionally under cross-process locks.
-- Parity gates now compare the complete mismatch set against narrow policies for documented browser-only Sequence and Railroad residuals, so changed or additional mismatches still fail.
-- Language-tooling crates now forward the full diagram registry, config parsing, and sanitization features independently, while `merman-lsp` reports the selected registry profile to clients. #26
+- Separated oversized-output policy by format: SVG retains vector-specific limits, PNG/JPEG preflight final pixmap and embedded-image budgets, PDF owns page and filter-bitmap budgets, and Markdown batches reserve aggregate scheduling weight. The CLI exposes scoped raster, PDF, embedded-image, and batch-concurrency controls.
+- Centralized built-in SVG root emission around source-backed bounds, responsive/fixed sizing, accessibility metadata, escaping, and deferred finalization; fixture-scoped viewport pins and exact-label production tables are removed. #22
+- Added a generated 35-family Playground example catalog with source provenance and search, plus isolated Compare and Bench realms that expose explicit failures and downloadable local benchmark evidence.
+- Added deterministic Bash, Elvish, Fish, PowerShell, and Zsh completion assets plus recursive command man pages to release archives; cargo-binstall maps to project-built archives, and the repository also carries a reusable Nix source package and stable-only Scoop/WinGet submission candidates.
+- Made published crates and native/Web artifacts carry exact third-party notices, deterministic dependency projections, package-content verification, source provenance, checksums, and scoped release credentials; parser, renderer, SVG-pipeline, and C-ABI fuzz targets now run under sanitizer CI. #25
+- Made Android source builds reproducible through the checked-in Gradle Wrapper and one Java 17, AGP 9.2, NDK r29, and Dokka 2.2 version catalog, with complete AAR, POM, native-slice, source, checksum, and API-documentation verification.
 
 ### Fixes and polish
 
-- TreeView now embeds configured Iconify pack bodies at Mermaid's 14px size and shows the standard unknown icon for missing packs or entries. #23
-- Removed 37 obsolete fixture-scoped root viewport pins and tightened the no-growth guard to the 183-entry Mermaid 11.16 inventory. #22
-- Kept centered Railroad choice branches straight when equivalent lane coordinates differ only because of floating-point addition order. #22
-- Fixed Mermaid 11.16 edge cases in TreeView annotation boundaries, 14px built-in icons, and highlight bounds; Cynefin inline syntax, frontmatter titles, and global fonts; Architecture reserved IDs; and generated XYChart axis defaults. #21
-- Hardened upstream SVG maintenance so full-family generation removes obsolete fixture baselines transactionally, compare/audit readers cannot race shared Mermaid CLI installs, and root-override audits consume root attributes captured from the locked compare generation. #21
-- Unified fixture importer reject/defer rollback handling so all import sources restore the same transaction state after a failed baseline or deferred-fixture operation. #21
-- LSP responses now honor negotiated snippet, markup, diagnostic, code-action, and semantic-token capabilities, and no longer advertise project-wide symbol search when only open documents are indexed. #26
-- LSP diagnostics and editor requests now share one versioned analysis through a bounded single-flight executor; incremental UTF-16 positions clamp to line ends, cancellation and refresh requests cannot strand handler capacity, and completion and rename rules follow each diagram family. #26
-- The stdio server now follows the LSP shutdown/exit lifecycle and keeps protocol stdout clean, while the VS Code extension reads resource-scoped source-action settings from the matching document URI. #26
+- Closed `resvg-safe` non-navigation resource access: structural references are limited to same-document fragments, ordinary images require approved decodable inline raster data URLs, and PNG/JPEG/PDF exporters continue to disable string-href resolution independently.
+- Fixed Mermaid 11.16 rendering and parsing edge cases across Flowchart and State self-loops, Sequence blocks and wrapping, TreeView icons and bounds, centered Railroad choices, Cynefin inline syntax, Packet accessibility descriptions, Architecture ids and seeds, XYChart labels, Pie highlighting, and Ishikawa structure. #21 #22 #23 #24
+- Applied Mermaid's staged theme calculation consistently across Radar, Kanban, Mindmap, Timeline, Cynefin, and QuadrantChart, including font-only and partial overrides and valid resvg-safe fallbacks.
+- Fixed Block connectors to terminate on visible shape geometry, enforced Flowchart limits before Dagre/ELK/Swimlane dispatch, and preserved target-date daylight-saving semantics for Gantt without overflow at fixed-offset boundaries.
+- Fixed `initMerman({ wasm })` to accept a URL, `Response`, byte buffer, or compiled `WebAssembly.Module`; callers no longer need wasm-bindgen's deprecated `{ module_or_path }` envelope.
+- Prevented valid diagram ids from colliding with deferred root `viewBox` or `max-width` placeholders during SVG emission.
+- Polished the Playground with persistent editor/config/preview state, generated example search, keyboard-correct tabs and dialogs, synchronized system theme, safe-area and dynamic-viewport sizing, local Monaco assets, and accessible focus behavior.
+- Made LSP capability negotiation accurate for snippets, markup, diagnostics, code actions, semantic tokens, and document-only symbols; stdio now keeps protocol stdout clean and follows the shutdown/exit lifecycle. #26
+
+### Known limitations
+
+- The in-process Node transport remains a private, unadmitted candidate; Node.js and SSR users should continue to invoke `merman-cli` as a subprocess. Local N-API versus Node-WASM measurements remain engineering evidence, not an alpha.4 package claim.
+- Final same-host alpha.3 comparisons for complete and minimal SVG products must be refreshed against the release tag; browser-WASM throughput also lacks an equivalent-contract Mermaid.js comparison.
+- Typst remains on an independent release track, and repository manifests do not prove that an alpha.4 package or artifact is already available from every declared registry or release channel.
 
 ## [0.8.0-alpha.3] - 2026-07-09
 
@@ -113,7 +141,7 @@ This alpha focuses on Mermaid 11.15 parity, safer host integrations, and packagi
 
 ### Security
 
-- Hardened `resvg_safe` SVG cleanup for raw SVG and rendered icon fragments by stripping active SVG elements, event-handler attributes, unsafe URL attributes, and unsafe style/presentation `url(...)` values while preserving local paint/reference URLs and raster data images.
+- Hardened `resvg_safe` SVG cleanup for raw SVG and rendered icon fragments by stripping active SVG elements, event-handler attributes, unsafe URL attributes, and unsafe style/presentation `url(...)` values while preserving same-document fragment paint/reference URLs and raster data images.
 - Hardened diagram config and Mermaid style parsing against CSS injection while preserving trusted site-level compatibility options.
 - Added raster security regressions for default PNG/JPG pixmap budgets, custom raster size limits, and oversized intrinsic SVG rejection before PDF conversion.
 - Added a `Security Audit` GitHub Actions workflow for Rust dependency changes and weekly scheduled audit runs.
@@ -170,7 +198,7 @@ Merman 0.7.0 is the first non-prerelease 0.7 line. It stabilizes the Mermaid 11.
 
 ### Breaking Changes
 
-- Carries forward the 0.7 alpha API changes: detector construction uses `for_pinned_mermaid_baseline()`, known-type parser methods use `*_with_type*`, raster sizing uses the new target-aware `RasterOptions`, and theme metadata APIs use the supported-theme naming.
+- Carries forward the 0.7 prerelease API changes: detector construction uses `for_pinned_mermaid_baseline()`, known-type parser methods use `*_with_type*`, raster sizing uses the new target-aware `RasterOptions`, and theme metadata APIs use the supported-theme naming.
 
 ### Added
 

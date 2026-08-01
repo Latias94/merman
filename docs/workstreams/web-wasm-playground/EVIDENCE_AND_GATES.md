@@ -334,8 +334,8 @@ Results:
 Changes:
 
 - Added stateless `@mermanjs/web` editor APIs backed by `merman-editor-core` for diagnostics,
-  code actions, completion, hover, document symbols, workspace symbols, definition, references,
-  prepare-rename, rename, semantic-token legend, and semantic tokens.
+  code actions, completion, hover, document symbols, single-document symbol search, definition,
+  references, prepare-rename, rename, semantic-token legend, and semantic tokens.
 - Wired the playground Monaco language service to the browser editor APIs for diagnostics,
   completion, hover, code actions, document symbols, definition, references, rename, and semantic
   tokens. Static snippets and lexical tokenization remain loading/fallback behavior.

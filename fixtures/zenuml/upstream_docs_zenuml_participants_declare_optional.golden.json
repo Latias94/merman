@@ -1,62 +1,105 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "type": "zenuml",
     "title": "Declare participant (optional)",
-    "accTitle": null,
-    "accDescr": null,
-    "actorOrder": [
-      "Bob",
-      "Alice"
-    ],
-    "actors": {
-      "Bob": {
+    "starter": null,
+    "participants": [
+      {
         "name": "Bob",
-        "description": "Bob",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "color": null,
+        "groupId": null,
+        "explicit": true,
+        "isStarter": false,
+        "declarationSpan": {
+          "start": 52,
+          "end": 55
+        },
+        "occurrences": [
+          {
+            "start": 52,
+            "end": 55
+          },
+          {
+            "start": 77,
+            "end": 80
+          },
+          {
+            "start": 93,
+            "end": 96
+          }
+        ],
+        "width": null
       },
-      "Alice": {
+      {
         "name": "Alice",
-        "description": "Alice",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      }
-    },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Hi Bob",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Hi Alice",
-        "wrap": false,
-        "type": 0,
-        "activate": false
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "color": null,
+        "groupId": null,
+        "explicit": true,
+        "isStarter": false,
+        "declarationSpan": {
+          "start": 60,
+          "end": 65
+        },
+        "occurrences": [
+          {
+            "start": 60,
+            "end": 65
+          },
+          {
+            "start": 70,
+            "end": 75
+          },
+          {
+            "start": 98,
+            "end": 103
+          }
+        ],
+        "width": null
       }
     ],
-    "notes": [],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+    "groups": [],
+    "statements": [
+      {
+        "id": "zenuml-statement-0",
+        "comment": null,
+        "span": {
+          "start": 70,
+          "end": 89
+        },
+        "kind": "message",
+        "explicit_from": "Alice",
+        "resolved_from": "Alice",
+        "resolved_to": "Bob",
+        "label": "Hi Bob",
+        "assignment": null,
+        "style": "asynchronous",
+        "body": []
+      },
+      {
+        "id": "zenuml-statement-1",
+        "comment": null,
+        "span": {
+          "start": 93,
+          "end": 114
+        },
+        "kind": "message",
+        "explicit_from": "Bob",
+        "resolved_from": "Bob",
+        "resolved_to": "Alice",
+        "label": "Hi Alice",
+        "assignment": null,
+        "style": "asynchronous",
+        "body": []
       }
-    }
+    ],
+    "type": "zenuml"
   }
 }

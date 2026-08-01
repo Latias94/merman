@@ -1,24 +1,34 @@
 use std::collections::VecDeque;
 
+use crate::{
+    EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, SourceSpan,
+    editor::EditorLexemeJournal,
+};
+
 mod ast;
 mod db;
 mod parse;
 mod render_model;
 
+pub(crate) use render_model::render_model_to_compat_json;
 pub use render_model::{
     StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
     StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
-    StateDiagramRenderState, StateDiagramRenderStyleClass,
+    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
 };
 
-pub use parse::{parse_state, parse_state_editor_facts, parse_state_model_for_render};
+pub(crate) use parse::{parse_state, parse_state_model_for_render};
+
+pub(crate) use parse::parse_state_json_and_editor_facts;
+#[cfg(test)]
+pub(crate) use parse::{reset_state_syntax_construction_count, state_syntax_construction_count};
 
 pub(crate) use ast::{ClickStmt, Note, RelationStmt, StateStmt, Stmt};
 
-lalrpop_util::lalrpop_mod!(
+include_checked_in_lalrpop_parser!(
     #[allow(clippy::empty_line_after_outer_attr, clippy::filter_map_identity)]
     state_grammar,
-    "/diagrams/state_grammar.rs"
+    "state_grammar.rs"
 );
 
 #[derive(Debug, Clone)]
@@ -68,6 +78,7 @@ pub(crate) enum Tok {
 pub(crate) struct LexError {
     pub message: String,
     pub span: Option<crate::SourceSpan>,
+    pub expected_syntax: Option<crate::EditorExpectedSyntax>,
 }
 
 impl LexError {
@@ -75,6 +86,7 @@ impl LexError {
         Self {
             message: message.into(),
             span: None,
+            expected_syntax: None,
         }
     }
 
@@ -82,7 +94,13 @@ impl LexError {
         Self {
             message: message.into(),
             span: Some(span),
+            expected_syntax: None,
         }
+    }
+
+    fn expecting(mut self, kind: crate::EditorExpectedSyntaxKind, span: crate::SourceSpan) -> Self {
+        self.expected_syntax = Some(crate::EditorExpectedSyntax::new(kind, span));
+        self
     }
 }
 
@@ -100,22 +118,511 @@ enum Mode {
     StateId,
 }
 
-struct Lexer<'input> {
+fn note_block_terminator_range(input: &str) -> Option<(usize, usize)> {
+    let mut line_start = 0usize;
+    for line_with_ending in input.split_inclusive('\n') {
+        let line_end = line_start + line_with_ending.trim_end_matches(['\r', '\n']).len();
+        if line_start > 0 {
+            let line = &input[line_start..line_end];
+            let leading = line.len() - line.trim_start_matches(char::is_whitespace).len();
+            let content = &line[leading..];
+            if content
+                .trim_end_matches(char::is_whitespace)
+                .eq_ignore_ascii_case("end note")
+            {
+                let marker_start = line_start + leading;
+                return Some((marker_start, marker_start + "end note".len()));
+            }
+        }
+        line_start += line_with_ending.len();
+    }
+    None
+}
+
+struct Lexer<'input, 'journal> {
     input: &'input str,
+    lexemes: &'journal mut EditorLexemeJournal<'input>,
     pos: usize,
     pending: VecDeque<(usize, Tok, usize)>,
     modes: Vec<Mode>,
     emitted_eof_newline: bool,
 }
 
-impl<'input> Lexer<'input> {
-    fn new(input: &'input str) -> Self {
+impl<'input, 'journal> Lexer<'input, 'journal> {
+    fn new(input: &'input str, lexemes: &'journal mut EditorLexemeJournal<'input>) -> Self {
         Self {
             input,
+            lexemes,
             pos: 0,
             pending: VecDeque::new(),
             modes: vec![Mode::Default],
             emitted_eof_newline: false,
+        }
+    }
+
+    fn push_lexeme(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
+        self.lexemes.push(
+            kind,
+            EditorLexemeModifiers::NONE,
+            SourceSpan::new(start, end),
+        );
+    }
+
+    fn push_modified_lexeme(
+        &mut self,
+        kind: EditorLexemeKind,
+        modifier: EditorLexemeModifier,
+        start: usize,
+        end: usize,
+    ) {
+        self.lexemes.push(
+            kind,
+            EditorLexemeModifiers::from_modifier(modifier),
+            SourceSpan::new(start, end),
+        );
+    }
+
+    fn emit_token(
+        &mut self,
+        token: (usize, Tok, usize),
+    ) -> std::result::Result<(usize, Tok, usize), LexError> {
+        self.record_token_lexemes(&token.1, token.0, token.2);
+        Ok(token)
+    }
+
+    fn emit_result(
+        &mut self,
+        result: std::result::Result<(usize, Tok, usize), LexError>,
+    ) -> std::result::Result<(usize, Tok, usize), LexError> {
+        match result {
+            Ok(token) => self.emit_token(token),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn record_token_lexemes(&mut self, token: &Tok, start: usize, end: usize) {
+        match token {
+            Tok::Newline => {}
+            Tok::Sd => self.push_lexeme(EditorLexemeKind::Keyword, start, end),
+            Tok::As
+            | Tok::Note
+            | Tok::ClassDef
+            | Tok::Class
+            | Tok::Style
+            | Tok::Click
+            | Tok::Href => self.record_keyword_words(start, end, 1),
+            Tok::LeftOf | Tok::RightOf => self.record_keyword_words(start, end, 2),
+            Tok::Arrow | Tok::Concurrent => {
+                self.push_lexeme(EditorLexemeKind::Operator, start, end)
+            }
+            Tok::StructStart | Tok::StructStop => {
+                self.push_lexeme(EditorLexemeKind::Delimiter, start, end)
+            }
+            Tok::EdgeState => self.push_lexeme(EditorLexemeKind::Literal, start, end),
+            Tok::Id(_) | Tok::CompositState(_) => {
+                self.push_lexeme(EditorLexemeKind::Identifier, start, end)
+            }
+            Tok::Fork(_) | Tok::Join(_) | Tok::Choice(_) => {
+                self.record_typed_state_token(start, end)
+            }
+            Tok::StyledId(_) => self.record_styled_identifier(start, end),
+            Tok::Descr(_) => self.record_prefixed_text(start, end, b':'),
+            Tok::StateDescr(_) | Tok::StringLit(_) => self.record_quoted_text(start, end),
+            Tok::NoteText(_) => self.record_note_text(start, end),
+            Tok::HideEmptyDescription => self.record_keyword_words(start, end, 3),
+            Tok::ScaleWidth(_) => self.record_scale_width(start, end),
+            Tok::ClassDefId(_) => self.push_modified_lexeme(
+                EditorLexemeKind::Identifier,
+                EditorLexemeModifier::Definition,
+                start,
+                end,
+            ),
+            Tok::ClassEntityIds(_) | Tok::StyleIds(_) => {
+                self.record_identifier_list(start, end, Some(EditorLexemeModifier::Reference))
+            }
+            Tok::StyleClass(_) => self.record_trimmed(
+                EditorLexemeKind::Identifier,
+                start,
+                end,
+                Some(EditorLexemeModifier::Reference),
+            ),
+            Tok::ClassDefStyleOpts(_) | Tok::StyleDefStyleOpts(_) => {
+                self.record_trimmed(EditorLexemeKind::Style, start, end, None)
+            }
+            Tok::Direction(direction) => self.record_direction(start, end, direction),
+            Tok::AccTitle(_) => self.record_keyword_value(start, end, "accTitle", Some(b':')),
+            Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => {
+                self.record_keyword_value(start, end, "accDescr", None)
+            }
+        }
+    }
+
+    fn record_trimmed(
+        &mut self,
+        kind: EditorLexemeKind,
+        start: usize,
+        end: usize,
+        modifier: Option<EditorLexemeModifier>,
+    ) {
+        let Some((trimmed_start, trimmed_end)) = self.trimmed_bounds(start, end) else {
+            return;
+        };
+        if let Some(modifier) = modifier {
+            self.push_modified_lexeme(kind, modifier, trimmed_start, trimmed_end);
+        } else {
+            self.push_lexeme(kind, trimmed_start, trimmed_end);
+        }
+    }
+
+    fn trimmed_bounds(&self, start: usize, end: usize) -> Option<(usize, usize)> {
+        let raw = self.input.get(start..end)?;
+        let leading = raw.len().saturating_sub(raw.trim_start().len());
+        let trailing = raw.trim_end().len();
+        (leading < trailing).then_some((start + leading, start + trailing))
+    }
+
+    fn record_keyword_words(&mut self, start: usize, end: usize, expected: usize) {
+        let Some(raw) = self.input.get(start..end) else {
+            return;
+        };
+        let mut words = Vec::new();
+        let mut cursor = 0usize;
+        while cursor < raw.len() && words.len() < expected {
+            while raw
+                .as_bytes()
+                .get(cursor)
+                .is_some_and(u8::is_ascii_whitespace)
+            {
+                cursor += 1;
+            }
+            let word_start = cursor;
+            while raw
+                .as_bytes()
+                .get(cursor)
+                .is_some_and(|byte| byte.is_ascii_alphabetic())
+            {
+                cursor += 1;
+            }
+            if word_start == cursor {
+                break;
+            }
+            words.push((start + word_start, start + cursor));
+        }
+        for (word_start, word_end) in words {
+            self.push_lexeme(EditorLexemeKind::Keyword, word_start, word_end);
+        }
+    }
+
+    fn record_scale_width(&mut self, start: usize, end: usize) {
+        let Some(raw) = self.input.get(start..end) else {
+            return;
+        };
+        let Some(scale_end) = raw
+            .get(.."scale".len())
+            .filter(|value| value.eq_ignore_ascii_case("scale"))
+            .map(str::len)
+        else {
+            return;
+        };
+        self.push_lexeme(EditorLexemeKind::Keyword, start, start + scale_end);
+        let mut cursor = scale_end;
+        while raw
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            cursor += 1;
+        }
+        let number_start = cursor;
+        while raw.as_bytes().get(cursor).is_some_and(u8::is_ascii_digit) {
+            cursor += 1;
+        }
+        if number_start < cursor {
+            self.push_lexeme(
+                EditorLexemeKind::Number,
+                start + number_start,
+                start + cursor,
+            );
+        }
+        while raw
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            cursor += 1;
+        }
+        if raw
+            .get(cursor..cursor + "width".len())
+            .is_some_and(|value| value.eq_ignore_ascii_case("width"))
+        {
+            self.push_lexeme(
+                EditorLexemeKind::Keyword,
+                start + cursor,
+                start + cursor + "width".len(),
+            );
+        }
+    }
+
+    fn record_styled_identifier(&mut self, start: usize, end: usize) {
+        let Some(raw) = self.input.get(start..end) else {
+            return;
+        };
+        let Some(separator) = raw.find(":::") else {
+            self.push_lexeme(EditorLexemeKind::Identifier, start, end);
+            return;
+        };
+        if separator > 0 {
+            let kind = if raw[..separator].eq("[*]") {
+                EditorLexemeKind::Literal
+            } else {
+                EditorLexemeKind::Identifier
+            };
+            self.push_lexeme(kind, start, start + separator);
+        }
+        self.push_lexeme(
+            EditorLexemeKind::Delimiter,
+            start + separator,
+            start + separator + 3,
+        );
+        if separator + 3 < raw.len() {
+            self.push_modified_lexeme(
+                EditorLexemeKind::Identifier,
+                EditorLexemeModifier::Reference,
+                start + separator + 3,
+                end,
+            );
+        }
+    }
+
+    fn record_identifier_list(
+        &mut self,
+        start: usize,
+        end: usize,
+        modifier: Option<EditorLexemeModifier>,
+    ) {
+        let Some(raw) = self.input.get(start..end) else {
+            return;
+        };
+        let mut cursor = 0usize;
+        while cursor < raw.len() {
+            while raw
+                .as_bytes()
+                .get(cursor)
+                .is_some_and(u8::is_ascii_whitespace)
+            {
+                cursor += 1;
+            }
+            if raw.as_bytes().get(cursor) == Some(&b',') {
+                self.push_lexeme(
+                    EditorLexemeKind::Delimiter,
+                    start + cursor,
+                    start + cursor + 1,
+                );
+                cursor += 1;
+                continue;
+            }
+            let item_start = cursor;
+            while raw
+                .as_bytes()
+                .get(cursor)
+                .is_some_and(|byte| !byte.is_ascii_whitespace() && *byte != b',')
+            {
+                cursor += 1;
+            }
+            if item_start < cursor {
+                if let Some(modifier) = modifier {
+                    self.push_modified_lexeme(
+                        EditorLexemeKind::Identifier,
+                        modifier,
+                        start + item_start,
+                        start + cursor,
+                    );
+                } else {
+                    self.push_lexeme(
+                        EditorLexemeKind::Identifier,
+                        start + item_start,
+                        start + cursor,
+                    );
+                }
+            }
+        }
+    }
+
+    fn record_prefixed_text(&mut self, start: usize, end: usize, prefix: u8) {
+        let Some(raw) = self.input.get(start..end) else {
+            return;
+        };
+        if raw.as_bytes().first() == Some(&prefix) {
+            self.push_lexeme(EditorLexemeKind::Delimiter, start, start + 1);
+            self.record_trimmed(EditorLexemeKind::String, start + 1, end, None);
+        } else {
+            self.record_trimmed(EditorLexemeKind::String, start, end, None);
+        }
+    }
+
+    fn record_quoted_text(&mut self, start: usize, end: usize) {
+        let Some((trimmed_start, trimmed_end)) = self.trimmed_bounds(start, end) else {
+            return;
+        };
+        let raw = &self.input[trimmed_start..trimmed_end];
+        if raw.starts_with('"') && raw.ends_with('"') && raw.len() >= 2 {
+            self.push_lexeme(
+                EditorLexemeKind::Delimiter,
+                trimmed_start,
+                trimmed_start + 1,
+            );
+            if raw.len() > 2 {
+                self.push_lexeme(EditorLexemeKind::String, trimmed_start + 1, trimmed_end - 1);
+            }
+            self.push_lexeme(EditorLexemeKind::Delimiter, trimmed_end - 1, trimmed_end);
+        } else {
+            self.push_lexeme(EditorLexemeKind::String, trimmed_start, trimmed_end);
+        }
+    }
+
+    fn record_note_text(&mut self, start: usize, end: usize) {
+        if let Some(raw) = self.input.get(start..end)
+            && let Some((marker_start, marker_end)) = note_block_terminator_range(raw)
+        {
+            self.record_trimmed(EditorLexemeKind::String, start, start + marker_start, None);
+            self.record_keyword_words(start + marker_start, start + marker_end, 2);
+            return;
+        }
+
+        let Some((trimmed_start, trimmed_end)) = self.trimmed_bounds(start, end) else {
+            return;
+        };
+        let raw = &self.input[trimmed_start..trimmed_end];
+        if raw.starts_with('"') && raw.ends_with('"') {
+            self.record_quoted_text(trimmed_start, trimmed_end);
+            return;
+        }
+        if raw.starts_with(':') {
+            self.record_prefixed_text(trimmed_start, trimmed_end, b':');
+            return;
+        }
+        self.push_lexeme(EditorLexemeKind::String, trimmed_start, trimmed_end);
+    }
+
+    fn record_typed_state_token(&mut self, start: usize, end: usize) {
+        let Some((trimmed_start, trimmed_end)) = self.trimmed_bounds(start, end) else {
+            return;
+        };
+        let raw = &self.input[trimmed_start..trimmed_end];
+        let marker_start = raw
+            .rfind("<<")
+            .or_else(|| raw.rfind("[["))
+            .unwrap_or(raw.len());
+        if marker_start > 0 {
+            self.record_trimmed(
+                EditorLexemeKind::Identifier,
+                trimmed_start,
+                trimmed_start + marker_start,
+                None,
+            );
+        }
+        if marker_start < raw.len() {
+            self.push_lexeme(
+                EditorLexemeKind::Literal,
+                trimmed_start + marker_start,
+                trimmed_end,
+            );
+        }
+    }
+
+    fn record_keyword_value(
+        &mut self,
+        start: usize,
+        end: usize,
+        keyword: &str,
+        required_delimiter: Option<u8>,
+    ) {
+        let Some(raw) = self.input.get(start..end) else {
+            return;
+        };
+        if !raw
+            .get(..keyword.len())
+            .is_some_and(|value| value.eq_ignore_ascii_case(keyword))
+        {
+            return;
+        }
+        self.push_lexeme(EditorLexemeKind::Keyword, start, start + keyword.len());
+        let mut cursor = keyword.len();
+        while raw
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            cursor += 1;
+        }
+        let delimiter = required_delimiter.or_else(|| {
+            raw.as_bytes()
+                .get(cursor)
+                .copied()
+                .filter(|byte| matches!(byte, b':' | b'{'))
+        });
+        if let Some(delimiter) = delimiter
+            && raw.as_bytes().get(cursor) == Some(&delimiter)
+        {
+            self.push_lexeme(
+                EditorLexemeKind::Delimiter,
+                start + cursor,
+                start + cursor + 1,
+            );
+            cursor += 1;
+        }
+        while raw
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            cursor += 1;
+        }
+        let mut value_end = raw.trim_end().len();
+        if delimiter == Some(b'{') && value_end > cursor && raw.as_bytes()[value_end - 1] == b'}' {
+            self.push_lexeme(
+                EditorLexemeKind::Delimiter,
+                start + value_end - 1,
+                start + value_end,
+            );
+            value_end -= 1;
+        }
+        if cursor < value_end {
+            let kind = if keyword.eq_ignore_ascii_case("direction") {
+                EditorLexemeKind::Literal
+            } else {
+                EditorLexemeKind::String
+            };
+            self.push_lexeme(kind, start + cursor, start + value_end);
+        }
+    }
+
+    fn record_direction(&mut self, start: usize, end: usize, direction: &str) {
+        let Some(raw) = self.input.get(start..end) else {
+            return;
+        };
+        let keyword = "direction";
+        if !raw
+            .get(..keyword.len())
+            .is_some_and(|value| value.eq_ignore_ascii_case(keyword))
+        {
+            return;
+        }
+        self.push_lexeme(EditorLexemeKind::Keyword, start, start + keyword.len());
+        let mut cursor = keyword.len();
+        while raw
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            cursor += 1;
+        }
+        let value_end = cursor.saturating_add(direction.len());
+        if raw
+            .get(cursor..value_end)
+            .is_some_and(|value| value.eq_ignore_ascii_case(direction))
+        {
+            self.push_lexeme(EditorLexemeKind::Literal, start + cursor, start + value_end);
         }
     }
 
@@ -224,11 +731,19 @@ impl<'input> Lexer<'input> {
 
     fn skip_comment(&mut self) -> bool {
         if self.starts_with("%%") {
+            let start = self.pos;
             let _ = self.read_to_newline();
+            // Mermaid `%%` comments are removed by global preprocessing before this lexer runs.
+            // Keep this branch source-correct for direct lexer probes without duplicating ownership.
+            if start < self.pos {
+                self.push_lexeme(EditorLexemeKind::Comment, start, self.pos);
+            }
             return true;
         }
         if self.peek() == Some(b'#') {
+            let start = self.pos;
             let _ = self.read_to_newline();
+            self.push_lexeme(EditorLexemeKind::Comment, start, self.pos);
             return true;
         }
         false
@@ -270,12 +785,13 @@ impl<'input> Lexer<'input> {
         None
     }
 
-    fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
+    fn lex_direction(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
         if !self.starts_with_word_ci("direction") {
             return None;
         }
         self.pos += "direction".len();
+        let keyword_end = self.pos;
         self.skip_ws();
         let dir_start = self.pos;
         while let Some(b) = self.peek() {
@@ -288,9 +804,22 @@ impl<'input> Lexer<'input> {
         let dir = self.input[dir_start..self.pos].trim().to_string();
         if matches!(dir.as_str(), "TB" | "BT" | "RL" | "LR") {
             let _ = self.read_to_newline();
-            return Some((start, Tok::Direction(dir), self.pos));
+            return Some(Ok((start, Tok::Direction(dir), self.pos)));
         }
-        None
+        let selection = crate::SourceSpan::new(dir_start, self.pos);
+        self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
+        if selection.start < selection.end {
+            self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
+        }
+        let _ = self.read_to_newline();
+        Some(Err(LexError::with_span(
+            "invalid state direction",
+            selection,
+        )
+        .expecting(
+            crate::EditorExpectedSyntaxKind::DirectionValue,
+            selection,
+        )))
     }
 
     fn lex_accessibility(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
@@ -331,9 +860,11 @@ impl<'input> Lexer<'input> {
             let body_start = self.pos;
             let tail = &self.input.as_bytes()[self.pos..];
             let Some(end_rel) = tail.iter().position(|&b| b == b'}') else {
-                return Some(Err(LexError::new(
-                    "Unterminated accDescr block; missing '}'",
-                )));
+                self.pos = self.input.len();
+                self.record_keyword_value(start, self.pos, "accDescr", None);
+                // Mermaid's Jison lexer consumes this exclusive-state tail at EOF without
+                // returning a semantic token. Resume at EOF so the parser sees an empty diagram.
+                return None;
             };
             let body = self.input[body_start..body_start + end_rel].to_string();
             self.pos = body_start + end_rel + 1;
@@ -458,14 +989,13 @@ impl<'input> Lexer<'input> {
                         "Internal lexer error: invalid UTF-8 boundary",
                     )));
                 };
-                let rest_lower = rest.to_ascii_lowercase();
-                let Some(idx) = rest_lower.find("end note") else {
+                let Some((marker_start, marker_end)) = note_block_terminator_range(rest) else {
                     return Some(Err(LexError::new(
                         "Unterminated note block; missing 'end note'",
                     )));
                 };
-                let t = Self::normalize_note_block_text(&rest[..idx]);
-                self.pos += idx + "end note".len();
+                let t = Self::normalize_note_block_text(&rest[..marker_start]);
+                self.pos += marker_end;
                 t
             };
 
@@ -569,7 +1099,9 @@ impl<'input> Lexer<'input> {
         }
 
         if self.starts_with_word_ci("state") {
+            let start = self.pos;
             self.pos += "state".len();
+            self.push_lexeme(EditorLexemeKind::Keyword, start, self.pos);
             self.push_mode(Mode::State);
             return None;
         }
@@ -751,7 +1283,7 @@ impl<'input> Lexer<'input> {
         self.pos += 1;
         let body_start = self.pos;
         while let Some(b) = self.peek() {
-            if b == b'\n' || b == b';' || b == b':' {
+            if b == b'\n' || b == b';' {
                 break;
             }
             self.pos += 1;
@@ -808,12 +1340,12 @@ impl<'input> Lexer<'input> {
     }
 }
 
-impl Iterator for Lexer<'_> {
+impl Iterator for Lexer<'_, '_> {
     type Item = std::result::Result<(usize, Tok, usize), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(item) = self.pending.pop_front() {
-            return Some(Ok(item));
+            return Some(self.emit_token(item));
         }
 
         if self.pos >= self.input.len() {
@@ -821,11 +1353,11 @@ impl Iterator for Lexer<'_> {
                 return None;
             }
             self.emitted_eof_newline = true;
-            return Some(Ok((self.pos, Tok::Newline, self.pos)));
+            return Some(self.emit_token((self.pos, Tok::Newline, self.pos)));
         }
         self.skip_ws();
         if let Some(nl) = self.lex_newline() {
-            return Some(Ok(nl));
+            return Some(self.emit_token(nl));
         }
         if self.skip_comment() {
             return self.next();
@@ -834,47 +1366,50 @@ impl Iterator for Lexer<'_> {
         if self.mode() == Mode::StateId
             && let Some(tok) = self.lex_state_mode_token()
         {
-            return Some(tok);
+            return Some(self.emit_result(tok));
         }
 
         if let Some(sd) = self.lex_sd_header() {
-            return Some(Ok(sd));
+            return Some(self.emit_token(sd));
         }
 
         if let Some(dir) = self.lex_direction() {
-            return Some(Ok(dir));
+            return Some(self.emit_result(dir));
         }
 
         if let Some(acc) = self.lex_accessibility() {
-            return Some(acc);
+            return Some(self.emit_result(acc));
+        }
+        if self.pos >= self.input.len() {
+            return self.next();
         }
 
         if !matches!(self.mode(), Mode::State | Mode::StateId)
             && let Some(tok) = self.lex_stmt_line()
         {
-            return Some(tok);
+            return Some(self.emit_result(tok));
         }
 
         if self.mode() == Mode::State
             && let Some(tok) = self.lex_state_mode_token()
         {
-            return Some(tok);
+            return Some(self.emit_result(tok));
         }
 
         let start = self.pos;
         if self.starts_with("-->") {
             self.pos += 3;
-            return Some(Ok((start, Tok::Arrow, self.pos)));
+            return Some(self.emit_token((start, Tok::Arrow, self.pos)));
         }
 
         if self.mode() == Mode::Struct && self.starts_with("--") {
             self.pos += 2;
-            return Some(Ok((start, Tok::Concurrent, self.pos)));
+            return Some(self.emit_token((start, Tok::Concurrent, self.pos)));
         }
 
         if self.starts_with("[*]") && !self.starts_with("[*]:::") {
             self.pos += 3;
-            return Some(Ok((start, Tok::EdgeState, self.pos)));
+            return Some(self.emit_token((start, Tok::EdgeState, self.pos)));
         }
 
         if self.peek() == Some(b'{') {
@@ -883,7 +1418,7 @@ impl Iterator for Lexer<'_> {
                 self.pop_mode();
             }
             self.push_mode(Mode::Struct);
-            return Some(Ok((start, Tok::StructStart, self.pos)));
+            return Some(self.emit_token((start, Tok::StructStart, self.pos)));
         }
 
         if self.peek() == Some(b'}') {
@@ -891,23 +1426,23 @@ impl Iterator for Lexer<'_> {
             if self.mode() == Mode::Struct {
                 self.pop_mode();
             }
-            return Some(Ok((start, Tok::StructStop, self.pos)));
+            return Some(self.emit_token((start, Tok::StructStop, self.pos)));
         }
 
         if let Some(tok) = self.lex_string_lit() {
-            return Some(tok);
+            return Some(self.emit_result(tok));
         }
 
         if let Some(tok) = self.lex_styled_id() {
-            return Some(Ok(tok));
+            return Some(self.emit_token(tok));
         }
 
         if let Some(tok) = self.lex_descr() {
-            return Some(Ok(tok));
+            return Some(self.emit_token(tok));
         }
 
         if let Some(tok) = self.lex_id() {
-            return Some(Ok(tok));
+            return Some(self.emit_token(tok));
         }
 
         let bad = self
@@ -917,5 +1452,26 @@ impl Iterator for Lexer<'_> {
             .unwrap_or('?');
         self.pos += bad.len_utf8().max(1);
         Some(Err(LexError::new(format!("Unexpected character '{bad}'"))))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Lexer, Tok};
+    use crate::editor::EditorLexemeJournal;
+
+    #[test]
+    fn state_descriptions_preserve_following_colons() {
+        let input = "stateDiagram-v2\nmyState : status: active\n";
+        let mut journal = EditorLexemeJournal::family_lexer(input);
+        let descriptions: Vec<_> = Lexer::new(input, &mut journal)
+            .map(|event| event.expect("state token").1)
+            .filter_map(|token| match token {
+                Tok::Descr(description) => Some(description),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(descriptions, vec!["status: active"]);
     }
 }

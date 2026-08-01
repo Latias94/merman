@@ -1,20 +1,32 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-07-02
+Last updated: 2026-08-01
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
 Swift, Flutter/Dart FFI, and Python UniFFI package.
 
-Unknown fields are ignored. Invalid JSON, invalid UTF-8, unsupported enum values, or non-finite
-numeric values return binding errors instead of panicking.
+Reusable engines keep construction options as an immutable baseline. Each operation may supply
+request options that deeply merge over that baseline: nested objects merge recursively, while
+arrays and scalar leaves replace the baseline value. Request-local overrides do not mutate later
+operations. Runtime policy is engine-owned, so reusable requests cannot set it; one-shot operations
+may select it while constructing their temporary engine. Resource options are deliberately
+stricter: a request may only tighten the constructor's artifact-wide resource ceiling, and an
+explicit limit must belong to the selected operation.
+
+Schema `2` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
+or removed path cannot be silently ignored. Invalid JSON, invalid UTF-8,
+unsupported enum values, or non-finite numeric values return binding errors instead of panicking.
+Omitting `version` selects the current schema `2`; explicit legacy versions are rejected rather
+than translated implicitly.
 
 ## Full Shape
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
   "host_theme": {
@@ -56,7 +68,6 @@ numeric values return binding errors instead of panicking.
     "xychartVerticalPlotHeight": 5,
     "xychartCategoryBandWidth": 3,
     "xychartHorizontalPlotWidth": 10,
-    "maxGridCells": 250000,
     "relationSummaryDiagnostics": false,
     "theme": {
       "foreground": "#e5e7eb",
@@ -69,20 +80,34 @@ numeric values return binding errors instead of panicking.
     }
   },
   "layout": {
-    "viewport_width": 1024,
-    "viewport_height": 768,
-    "text_measurer": "vendored",
-    "math_renderer": "none",
-    "flowchart_elk_backend": "source-ported"
+    "container_width": 1024,
+    "container_height": 768
+  },
+  "environment": {
+    "text_measurement": "vendored",
+    "math_renderer": "none"
   },
   "resources": {
     "profile": "interactive",
-    "max_source_bytes": 2097152,
-    "max_svg_bytes": 25165824,
-    "max_flowchart_nodes": 8000,
-    "max_flowchart_edges": 16000,
-    "max_flowchart_subgraphs": 2000,
-    "max_label_bytes": 2097152
+    "limits": {
+      "max_source_bytes": 2097152,
+      "max_model_items": 32000,
+      "max_model_text_bytes": 2097152,
+      "max_model_nesting_depth": 256,
+      "max_layout_work_units": 250000,
+      "max_svg_elements": 250000,
+      "max_svg_bytes": 25165824,
+      "max_document_diagrams": 256,
+      "max_ascii_grid_cells": 250000,
+      "max_raster_width": 4096,
+      "max_raster_height": 4096,
+      "max_raster_pixels": 16777216,
+      "max_embedded_image_bytes": 16777216,
+      "max_total_embedded_image_bytes": 33554432,
+      "max_embedded_image_pixels": 16777216,
+      "max_total_embedded_image_pixels": 33554432,
+      "max_pdf_filter_image_pixels": 33554432
+    }
   },
   "lint": {
     "profile": "recommended",
@@ -107,6 +132,21 @@ numeric values return binding errors instead of panicking.
     "css_override_policy": "preserve",
     "root_background_color": "#0f172a",
     "drop_native_duplicate_fallbacks": false
+  },
+  "raster": {
+    "scale": 2,
+    "background": "#ffffff",
+    "fit_to": { "width": 1200 }
+  },
+  "jpeg": {
+    "quality": 85
+  },
+  "pdf": {
+    "background": "transparent",
+    "page_policy": {
+      "kind": "fit-css-width",
+      "max_width_px": 1200
+    }
   }
 }
 ```
@@ -117,24 +157,54 @@ Every field is optional.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `version` | integer | ignored | Reserved for future options-schema versioning. |
-| `fixed_today` | string | system local date | Fixed local "today" date in `YYYY-MM-DD` format for time-dependent diagrams such as Gantt. |
-| `fixed_local_offset_minutes` | integer | system local timezone | Fixed local timezone offset in minutes for deterministic local-time parsing and rendering. |
+| `version` | integer | `2` | Options-schema version. Version `1` is the incompatible alpha.3 grammar and is rejected. Omitting the field uses the current schema-2 grammar for convenience callers; durable SDK integrations should send `2` explicitly. |
+| `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
+| `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date in `YYYY-MM-DD` format for time-dependent diagrams such as Gantt. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
+| `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
 | `host_theme` | object | none | Opt-in host/editor theme profile compiled into Mermaid config and SVG output settings. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
-| `layout` | object | defaults | Layout and text measurement behavior. |
+| `layout` | object | defaults | Per-request layout container dimensions. |
+| `environment` | object | defaults | Public selection of operation-owned text measurement and optional math rendering. |
 | `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
 | `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
+| `raster` | object | defaults | Shared PNG/JPEG scale, background, and fit-box behavior. Requires a compiled PNG or JPEG output. |
+| `jpeg` | object | defaults | JPEG-specific encoding behavior. Requires the compiled JPEG output. |
+| `pdf` | object | defaults | PDF page and background behavior. Requires the compiled PDF output. |
+
+## Runtime Policy
+
+Omitting `runtime_policy` always selects `deterministic`, regardless of which system adapters were
+compiled into the artifact. That policy uses Unix epoch time, UTC, a fixed operation seed, and no
+timing instrumentation. This makes identical options reproducible across native artifacts, WASM,
+and hosts with different local settings.
+
+Set `"runtime_policy": "native"` only when the operation should consult the host clock, complete
+system time-zone rules, and random source. Compiling system adapters makes the policy available; it
+does not select it. An artifact missing any required adapter rejects the native policy at engine
+creation with a typed missing-capability error instead of silently falling back to deterministic
+state. Native timing instrumentation remains a separate explicit capability and is not enabled by
+the native policy.
+
+Generic binding operation metadata records the selected policy as
+`"runtime_policy": "deterministic"` or `"runtime_policy": "native"`. Hosts should retain that
+metadata with rendered or analyzed output when reproducibility matters.
+
+PNG and JPEG operations also include an `output_plan` object with requested and effective pixel
+dimensions and scale. PDF operations include requested and effective filter-image scale and pixel
+counts. A true `limited` flag means the selected resource ceiling reduced the requested plan; hosts
+should report the effective values rather than assuming the request was applied unchanged.
 
 ## Fixed Time Options
 
 `fixed_today` and `fixed_local_offset_minutes` are host-level deterministic controls for diagrams
 whose semantics depend on local time. Gantt uses them for date parsing, relative fallback dates,
 and render-model generation. They apply to parse JSON, layout JSON, SVG rendering, validation, and
-ASCII render entry points that parse Mermaid source through the shared engine.
+ASCII render entry points that parse Mermaid source through the shared engine. These values
+override the selected runtime policy; they do not implicitly switch a deterministic engine to the
+native policy.
 
 ## Lint Options
 
@@ -239,7 +309,7 @@ postprocessing options. Default rendering is unchanged when `host_theme` is omit
       "success": "#34d399"
     },
     "series_palette": ["#60a5fa", "#34d399", "#f59e0b"],
-    "themeVariables": {
+    "theme_variables": {
       "nodeBorder": "#38bdf8"
     },
     "output": {
@@ -253,7 +323,7 @@ postprocessing options. Default rendering is unchanged when `host_theme` is omit
 ```
 
 `host_theme.appearance` accepts `light` or `dark`. `host_theme.output.pipeline` accepts `parity`,
-`readable`, `resvg-safe`, or `resvg_safe`. `host_theme.output.root_background` accepts `none`,
+`readable`, or `resvg-safe`. `host_theme.output.root_background` accepts `none`,
 `canvas`, or a single CSS declaration value. `host_theme.output.drop_native_duplicate_fallbacks`
 opts into removing fallback groups whose text duplicates native `<text>` after readable or
 `resvg-safe` fallback generation. It is off by default because repeated labels can be intentional in
@@ -261,31 +331,35 @@ unrelated nodes. An empty `{ "host_theme": {} }` is a no-op and does not force M
 
 `host_theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
 `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`,
-`themeVariables`, `site_config`, and `output` fields override the preset. Host theme presets are
+`theme_variables`, `site_config`, and `output` fields override the preset. Host theme presets are
 separate from Mermaid core theme names returned by `supported_themes`. Binding surfaces expose the
 stable preset list through `supported_host_theme_presets` / `supportedHostThemePresets`-style
 metadata helpers.
 
 Merge precedence is Mermaid defaults, then `host_theme` derived config, then explicit
-`host_theme.themeVariables` / `host_theme.site_config`, then top-level `site_config`, then diagram
+`host_theme.theme_variables` / `host_theme.site_config`, then top-level `site_config`, then diagram
 directives. Explicit `svg.*` options override profile output options.
 
 ## Parse Options
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `parse.suppress_errors` | boolean | `false` | Enables lenient parsing when true. |
+| `parse.suppress_errors` | boolean | `false` | Enables lenient parse, render, and ASCII operations when true. It is not an analysis option. |
 
 ## Analysis Consumers
 
 Diagnostics-first analysis, validation projection, CLI linting, Markdown/MDX scanning, and future
-LSP adapters use the same `options_json` envelope. Analysis consumers should honor options that
-affect parsing, deterministic time, Mermaid site config, and resource limits:
+LSP adapters use the same `options_json` envelope. Analysis consumers honor options that affect
+deterministic time, Mermaid site config, and resource limits while retaining family parse failures
+in the closed analysis snapshot:
 
 - `fixed_today` and `fixed_local_offset_minutes` for time-dependent diagram semantics;
 - `site_config` and diagram directives for Mermaid-compatible parse/config behavior;
-- `parse.*` for parser strictness;
 - `resources.*` for source and model budgets.
+
+`parse.suppress_errors` is deliberately excluded from analysis. It remains a top-level shared
+binding option for parse, render, and ASCII operations, and is rejected inside `analysis` or
+`merman` analysis wrappers.
 
 Render-only options such as `layout.*`, `svg.*`, and host text-measurement settings should not be
 required for the default analyzer. Layout-backed or render-backed diagnostics may opt into those
@@ -303,60 +377,205 @@ not affect SVG, parse JSON, layout JSON, or validation output.
 | `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
 | `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`, `truecolor`, or `html`. |
 | `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
+| `ascii.box_border_padding` / `ascii.boxBorderPadding` | non-negative integer | `1` | Horizontal padding inside terminal node boxes. |
+| `ascii.graph_padding_x` / `ascii.graphPaddingX` | non-negative integer | `5` | Horizontal padding around terminal graph layouts. |
+| `ascii.graph_padding_y` / `ascii.graphPaddingY` | non-negative integer | `5` | Vertical padding around terminal graph layouts. |
+| `ascii.sequence_participant_spacing` / `ascii.sequenceParticipantSpacing` | non-negative integer | `5` | Minimum spacing between sequence participants. |
+| `ascii.sequence_message_spacing` / `ascii.sequenceMessageSpacing` | non-negative integer | `1` | Vertical spacing between sequence messages. |
+| `ascii.sequence_self_message_width` / `ascii.sequenceSelfMessageWidth` | integer at least `2` | `4` | Width reserved for sequence self-message loops. |
 | `ascii.sequence_mirror_actors` / `ascii.sequenceMirrorActors` | boolean | `false` | Renders mirrored bottom participant boxes for sequence diagrams. |
 | `ascii.xychart_vertical_plot_height` / `ascii.xychartVerticalPlotHeight` | positive integer | `5` | Compact vertical XYChart plot height. |
 | `ascii.xychart_category_band_width` / `ascii.xychartCategoryBandWidth` | positive integer | `3` | Compact vertical XYChart category width. |
 | `ascii.xychart_horizontal_plot_width` / `ascii.xychartHorizontalPlotWidth` | positive integer | `10` | Compact horizontal XYChart value axis width. |
-| `ascii.max_grid_cells` / `ascii.maxGridCells` | positive integer | `250000` | Maximum terminal grid cells for graph-like ASCII layouts before fallback or error behavior. |
 | `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` fallback summaries include a `reason:` row such as `grid_budget actual=12 limit=1`, `crossing`, `route_collision`, or `overlay_collision`. |
 
 `relationSummaryDiagnostics` is intentionally opt-in. Default text output stays stable and omits
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests
 that need to classify why a dense Class/ER relation layout used a summary.
 
+The terminal-grid budget is resource policy, not an ASCII presentation option. Set `resources.limits.max_ascii_grid_cells`; the removed `ascii.max_grid_cells` and `ascii.maxGridCells` fields are rejected with a migration error.
+
 ## Layout Options
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `layout.viewport_width` | positive finite number | renderer default | Overrides layout viewport width. |
-| `layout.viewport_height` | positive finite number | renderer default | Overrides layout viewport height. |
-| `layout.text_measurer` | string | renderer default | `vendored` or `deterministic`. |
-| `layout.math_renderer` | string | renderer default | `none` or `ratex`. `ratex` requires the `ratex-math` feature. |
-| `layout.flowchart_elk_backend` | string | `source-ported` | `source-ported`, `source_ported`, `source`, or `compat`. Selects the Flowchart ELK backend. |
+| `layout.container_width` | positive finite number | renderer default | Available width of the host layout container in CSS pixels. |
+| `layout.container_height` | positive finite number | renderer default | Available height of the host layout container in CSS pixels. |
 
-`text_measurer=deterministic` is useful for repeatable tests. `text_measurer=vendored` uses bundled
-font metrics when available.
-`flowchart_elk_backend=compat` is an alpha fallback for the older lightweight Flowchart ELK backend;
-the default source-ported backend follows the pinned Mermaid adapter and Eclipse ELK layered port.
+Container dimensions describe the element that owns diagram layout, not the browser page viewport
+or the final SVG viewBox. The removed `layout.viewport_width` and `layout.viewport_height` names
+are rejected; update requests rather than relying on an alias.
 
-## Resource Options
-
-`resources` controls render-wide deterministic budgets. These limits are separate from raster
-pixel/PDF limits; disabling raster limits does not disable source, layout, label, or SVG limits.
+## Render Environment Options
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `resources.profile` | string | `interactive` | `interactive`, `typst-package`, `trusted-native`, or `unbounded-for-trusted-input`. |
-| `resources.max_source_bytes` | positive integer | profile value | Source bytes checked before parse/render work. |
-| `resources.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
-| `resources.max_flowchart_nodes` | positive integer | profile value | Flowchart nodes plus subgraph layout nodes. |
-| `resources.max_flowchart_edges` | positive integer | profile value | Flowchart edge cardinality. |
-| `resources.max_flowchart_subgraphs` | positive integer | profile value | Flowchart hierarchy cardinality. |
-| `resources.max_label_bytes` | positive integer | profile value | Aggregate Flowchart ids, labels, subgraph titles, and tooltips. |
+| `environment.text_measurement` | string | `vendored` | `vendored`, `parity`, or `deterministic`. |
+| `environment.math_renderer` | string | `none` | `none` or `ratex`. `ratex` requires the `math` feature. |
 
-`interactive` is the default for binding surfaces. `typst-package` is tighter and is injected by the
-Typst plugin when the caller does not provide `resources`. `trusted-native` is intended for CLI or
+This is a breaking schema change: `layout.text_measurer` and `layout.math_renderer` are rejected.
+Move them to `environment.text_measurement` and `environment.math_renderer`, respectively.
+
+Root Viewport is an operation-owned rendering protocol, not a binding option. Diagram families
+provide source-backed content bounds and family-specific root semantics; the shared protocol
+normalizes dimensions, computes sizing and `viewBox`, emits root attributes and accessibility
+chrome, and finalizes deferred roots. The public `environment` object configures only text
+measurement and optional math rendering. Container dimensions belong under `layout.*`; SVG identity
+and host-owned output postprocessing belong under `svg.*`. Unknown `environment` fields are rejected.
+
+## Resource Options
+
+`resources` controls artifact-wide deterministic budgets. Cargo features decide which capabilities
+are compiled; the resource profile bounds work inside the selected semantic, SVG, or native export
+operation. Native PNG, JPEG, and PDF export also scans the host system font database on first use
+and caches it for the process lifetime. That host-dependent scan is not caller-configurable and is
+not bounded by `resources.*`; multi-tenant or hard-limit hosts must isolate the process accordingly.
+
+Native PNG, JPEG, and PDF embedded images accept only `data:` URLs. The exporters do not resolve
+filesystem paths or network URLs. Their default decode budgets allow 16,777,216 bytes and
+16,777,216 intrinsic pixels per image, and 33,554,432 bytes and 33,554,432 intrinsic pixels in
+aggregate. These four budgets are part of `resources.limits` so constructor ceilings and
+per-request tightening use the same contract as semantic and SVG limits.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `resources.profile` | string | `interactive` | `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`. |
+| `resources.limits.max_source_bytes` | positive integer | profile value | Source bytes checked before parse/render work. |
+| `resources.limits.max_document_diagrams` | non-negative integer | profile value | Host-document analysis Mermaid fence count for Markdown and MDX; `0` rejects the first Mermaid fence. |
+| `resources.limits.max_model_items` | positive integer | profile value | Aggregate semantic entities and relationships across every diagram family. |
+| `resources.limits.max_model_text_bytes` | positive integer | profile value | Aggregate UTF-8 text retained by the typed semantic model. |
+| `resources.limits.max_model_nesting_depth` | positive integer | profile value | Maximum semantic nesting depth before layout. |
+| `resources.limits.max_layout_work_units` | positive integer | profile value | Deterministic family-accounted derived geometry and layout candidate work. |
+| `resources.limits.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
+| `resources.limits.max_svg_elements` | positive integer | profile value | SVG element cardinality checked before recursive postprocessing. |
+| `resources.limits.max_ascii_grid_cells` | positive integer | profile value | Terminal grid cells allocated by graph-like ASCII layout. |
+| `resources.limits.max_raster_width` | positive integer | profile value | Maximum final PNG or JPEG width in pixels. |
+| `resources.limits.max_raster_height` | positive integer | profile value | Maximum final PNG or JPEG height in pixels. |
+| `resources.limits.max_raster_pixels` | positive integer | profile value | Maximum final PNG or JPEG pixel count. |
+| `resources.limits.max_embedded_image_bytes` | positive integer | profile value | Maximum decoded data-URL bytes for one embedded image in PNG, JPEG, or PDF export. |
+| `resources.limits.max_total_embedded_image_bytes` | positive integer | profile value | Maximum aggregate decoded data-URL bytes across embedded images. |
+| `resources.limits.max_embedded_image_pixels` | positive integer | profile value | Maximum intrinsic pixels for one embedded raster image. |
+| `resources.limits.max_total_embedded_image_pixels` | positive integer | profile value | Maximum aggregate intrinsic pixels across embedded raster images. |
+| `resources.limits.max_pdf_filter_image_pixels` | positive integer | profile value | Maximum retained pixel area for PDF filter-image rasterization after deterministic downsampling. |
+
+The seven render/model limits are intentionally family-neutral. Each family performs source-backed,
+deterministic accounting for its own nodes, relationships, nesting, synthesized geometry, and
+candidate scans, then charges those values to the shared model and layout budgets. Hosts therefore
+choose a workload profile instead of maintaining diagram-specific threshold tables.
+
+`max_document_diagrams` belongs to host-document analysis, not to a single Mermaid diagram or render policy. Document-analysis operations accept and preserve it, while standalone analysis, model, layout, ASCII, SVG, and export operations reject it as out of scope. Profiles define this dimension consistently with every other binding resource: `interactive` allows 256 diagrams, `constrained` 128, `trusted-native` 1,024, and `unbounded-for-trusted-input` leaves it unbounded.
+
+`max_ascii_grid_cells` belongs to ASCII layout. It replaces the removed `ascii.max_grid_cells` option so constructor ceilings, per-request tightening, runtime metadata, and every generated SDK builder use one policy path.
+
+`max_pdf_filter_image_pixels` belongs only to PDF export. It bounds the retained raster area created when SVG filters require an intermediate image; a request may tighten the constructor ceiling, while the exporter deterministically downsamples within that ceiling or returns a structured resource error when no valid plan exists.
+
+The runtime catalog also reports six native-export hard caps: `max_svg_conversion_isolation_depth`, `max_svg_conversion_filter_primitives_per_filter`, `max_total_svg_conversion_filter_primitives`, `max_svg_conversion_subroots`, `max_nested_svg_images`, and `svg_backend_tree_nodes`. They describe fixed recursion and structure guards owned by the export backend. They remain finite under `unbounded-for-trusted-input` and cannot be supplied in `resources.limits`; generated builders reject attempts to override them.
+
+A reusable engine constructor accepts the union of resource limits enforced by its compiled operations. Per-request overlays are operation-specific: standalone analysis accepts the source budget and host-document analysis additionally accepts the document fence budget; semantic JSON and SVG planning accept source/model budgets; ASCII additionally accepts its terminal-grid budget; layout JSON additionally accepts layout work; SVG accepts the render budget; PNG and JPEG additionally accept raster and embedded-image budgets; PDF accepts embedded-image and filter-image budgets. An overlay may
+select a stricter effective profile or lower a limit, but it cannot raise a constructor limit,
+replace a finite ceiling with an unbounded value, clear `resources`, or set an unrelated limit.
+One-shot operations may choose any valid profile, but their explicit limits follow the same
+operation ownership.
+
+`interactive` is the default for binding surfaces. `constrained` is tighter and is enforced by
+the Typst plugin for every call; caller-provided `resources.limits` may tighten that transport
+ceiling, while a looser profile or override returns an options error. `trusted-native` is intended for CLI or
 controlled batch rendering. `unbounded-for-trusted-input` is an explicit opt-out for trusted inputs,
 not a browser or server default.
+
+The profile is a resource-policy choice, not a promise of isolation. `interactive` assumes a
+cooperative author and is suitable for an editor or local preview; it does not stop a hostile or
+multi-tenant caller from consuming CPU after admission. A public service should select
+`constrained` and additionally enforce a wall-clock timeout, memory limit, concurrency quota, and
+preemption or process isolation at the host boundary. `trusted-native` is for a controlled CLI or
+batch job. `unbounded-for-trusted-input` must only be used inside an outer trusted sandbox.
+
+### Profile Decision Table
+
+| Workload | Profile | Required host controls | Output guidance |
+| --- | --- | --- | --- |
+| Browser editor/Playground preview | `interactive` | Abort stale requests; cap concurrent renders | `parity` SVG for browser display |
+| Public upload or multi-tenant API | `constrained` | Timeout, memory, concurrency, and preemption/isolation | `resvg-safe` before raster/PDF conversion |
+| Local `merman-cli` export | `trusted-native` | Process-level cancellation for batch automation | Choose `parity` or `resvg-safe` per consumer |
+| Typst package transport | `constrained` | Typst host remains responsible for process limits | Package-owned SVG contract |
+| Large, fully trusted offline export | `unbounded-for-trusted-input` | Outer process/container isolation and explicit output quotas | Caller owns final output limits |
+
+These defaults are engineering admission baselines, not latency or memory SLOs. Hosts should
+measure their own diagrams and set explicit overrides only after observing peak memory and timeout
+behavior. The SVG backend also enforces an internal tree-depth capability; it is not a public
+override because increasing it would not make the backend stack-safe.
+
+### Calibration Evidence
+
+Resource-policy changes require a reproducible stress run and a record of the observed boundary:
+
+```sh
+cargo bench -p merman --bench flowchart_stress
+cargo bench -p merman --bench mindmap_layout_stress
+cargo nextest run -p merman-render -p merman-bindings-core
+```
+
+For each changed budget, record the fixture/source hash, profile, explicit overrides, host target,
+peak RSS (or WASM linear memory), timeout, successful output size, and the first rejected cardinality.
+Do not infer a safe limit from a single warm render: compare cold parse, layout, SVG postprocess, and
+failure paths separately. The benchmark methodology documents the phase boundaries and evidence
+format used by the Playground and comparison tools.
+
+Limit ids are closed under Options JSON schema `2`: an unknown id, a value below the
+descriptor's minimum, a non-overridable hard cap, or a removed flat or family-specific field is
+rejected.
+The runtime contract publishes every accepted id, its phase, whether it is overridable, and the
+exact value or `null` for every profile. This avoids copying profile values into host libraries.
+
+## Runtime Contract Discovery
+
+Query the loaded artifact rather than inferring capabilities or resource values from a package
+name. Runtime-contract schema `1` includes the transport API version, package identity,
+`options_schema_versions`, binding-owned `payload_schemas`, `metadata_ids`, transport-callable
+capability/output/operation IDs, and the resource descriptor. Each resource limit records its
+`operation_ids`, so a generic SDK can show only limits accepted by the selected operation. The
+system adapter IDs contain clock, time-zone, and randomness only when the all-or-nothing `native`
+policy is selectable; incomplete native sets and timing instrumentation unified by another Cargo
+user are omitted. Every artifact exposes the input limits enforced by the invariant
+`semantic-json` operation. SVG artifacts expose the complete render limit set; narrower analysis
+and ASCII artifacts publish only the additional limits their callable operations enforce.
+
+The same catalog's `output_contracts` array has exactly one entry for every
+`capabilities.output_ids` value. Each entry publishes its media type and nullable system-font and
+embedded-image environment contracts. Hosts should validate the complete nested shape before using
+those facts while tolerating additive object fields within schema `1`. Native PNG, JPEG, and PDF
+entries disclose first-use, process-global, host-dependent system-font discovery and an
+embedded-image policy limited to data URLs with default decode budgets; SVG and ASCII report both
+environment contracts as `null`.
+
+| Surface | API |
+| --- | --- |
+| C | `MermanNativeApi.runtime_catalog()` after `merman_get_native_api()` |
+| Android/Kotlin | `MermanEngine.runtimeCatalogJson()` |
+| Apple/Swift | `MermanEngine().runtimeCatalogJson()` |
+| Flutter/Dart | `Merman.open().runtimeCatalog` |
+| UniFFI/Python | `MermanEngine.runtime_catalog_json()` / `merman.get_runtime_catalog(engine)` |
+| Web/TypeScript | `runtimeCatalog()` |
+
+The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `3`, and payload
+schema numbers. Reject a contract schema newer than the host understands before interpreting its
+nested fields. Detailed language catalogs are not embedded in this flat object: use the
+transport's named metadata API (`metadata_collect` for the C ABI) for
+`supported-diagrams`, `diagram-family-capabilities`, lint rules, themes, and ASCII capabilities.
+Schema-1 consumers must tolerate additive fields. Bundled SDK wrappers require the complete current
+shape for every field they decode; they do not silently emulate older producers. A generic C host
+may accept an older compatible producer only when it feature-detects omitted discovery fields and
+does not depend on them.
 
 ## SVG Options
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
-| `svg.pipeline` | string | `parity` | `parity`, `readable`, `resvg-safe`, or `resvg_safe`. |
+| `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
+| `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
 | `svg.scoped_css` | string | none | Host-owned CSS injected after Mermaid CSS and scoped to the root SVG id. |
-| `svg.css_override_policy` | string | `preserve` | `preserve`, `strip-existing-important`, or `strip_existing_important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied, and can override `host_theme.output.css_override_policy`. |
+| `svg.css_override_policy` | string | `preserve` | `preserve` or `strip-existing-important`. Controls whether existing Mermaid `!important` flags are stripped before host CSS is applied, and can override `host_theme.output.css_override_policy`. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 
@@ -383,6 +602,25 @@ semantics, and renderer-specific compatibility.
 `background-color` value, or adds one when missing. This is useful for editor previews that need the
 diagram canvas to match the host surface. The value must be a single CSS declaration value; use
 `"transparent"` when the host wants no opaque root background.
+
+## Native Export Options
+
+`raster` applies to PNG and JPEG, `jpeg` applies only to JPEG, and `pdf` applies only to PDF. A reusable engine constructor accepts the option groups compiled into its artifact, while a one-shot call or request overlay rejects groups unrelated to that operation. An artifact without the corresponding output rejects the known group instead of silently ignoring it.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `raster.scale` | positive finite number | `1` | Device-pixel scaling applied before the output resource ceiling. |
+| `raster.background` | supported color string | transparent | `transparent`, `white`, `black`, or 3/4/6/8-digit hex. JPEG requires an opaque result. |
+| `raster.fit_to.width` | positive integer | none | Optional target width in pixels. At least one fit dimension is required. |
+| `raster.fit_to.height` | positive integer | none | Optional target height in pixels. At least one fit dimension is required. |
+| `jpeg.quality` | integer from `1` to `100` | exporter default | JPEG encoder quality. |
+| `pdf.background` | supported color string | transparent | Optional PDF page background using the same supported color vocabulary. |
+| `pdf.filter_scale` / `pdf.filterScale` | positive finite number | `4` | Requested sampling scale for localized SVG filter images. The exporter may reduce it to satisfy `max_pdf_filter_image_pixels`. |
+| `pdf.page_policy.kind` | string | `fit-svg` | `fit-svg`, `fixed`, or `fit-css-width`. |
+| `pdf.page_policy.width_pt` / `height_pt` | positive finite number | required by `fixed` | Fixed PDF page dimensions in points. |
+| `pdf.page_policy.max_width_px` | positive finite number | required by `fit-css-width` | Maximum responsive SVG width in CSS pixels before conversion to PDF points. |
+
+PDF filter sampling is explicit, while its localized-image ceiling remains part of `resources.limits`. Generic operation metadata reports the requested and effective scale when the exporter reduces sampling to satisfy `max_pdf_filter_image_pixels`.
 
 ## Examples
 
@@ -454,12 +692,15 @@ Deterministic layout for tests:
 
 ```json
 {
+  "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
+  "environment": {
+    "text_measurement": "deterministic"
+  },
   "layout": {
-    "text_measurer": "deterministic",
-    "viewport_width": 1024,
-    "viewport_height": 768
+    "container_width": 1024,
+    "container_height": 768
   }
 }
 ```
@@ -479,8 +720,10 @@ Strict resource profile override:
 ```json
 {
   "resources": {
-    "profile": "typst-package",
-    "max_flowchart_nodes": 500
+    "profile": "constrained",
+    "limits": {
+      "max_model_items": 500
+    }
   }
 }
 ```
@@ -489,24 +732,37 @@ Strict resource profile override:
 
 Invalid options produce binding errors:
 
-| Error | Code name |
+| Error | Native ABI 3 status |
 | --- | --- |
-| Invalid UTF-8 | `MERMAN_UTF8_ERROR` |
-| Invalid JSON | `MERMAN_OPTIONS_JSON_ERROR` |
-| Unsupported option value | `MERMAN_INVALID_ARGUMENT` |
-| Feature-gated format disabled | `MERMAN_UNSUPPORTED_FORMAT` |
-| Resource budget exceeded | `MERMAN_RESOURCE_LIMIT_EXCEEDED` |
+| Invalid UTF-8 | `MERMAN_NATIVE_STATUS_UTF8_ERROR` |
+| Invalid JSON | `MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR` |
+| Unsupported option value | `MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` |
+| Feature-gated operation disabled | `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` |
+| Resource budget exceeded | `MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED` |
+
+Resource failures add an optional `details.resource` object to the existing error JSON. It contains `limit_id`, `phase`, `actual`, `max`, and `profile`. Consumers that understand payload schema `1` should tolerate this additive object; non-resource errors omit `details`, preserving the previous shape.
 
 Platform wrappers surface those errors through their native exception type:
 
-- C ABI: non-zero `MermanResult.code` with a JSON error payload.
-- Android: `MermanException`.
-- Apple: `MermanError.binding`.
-- Flutter/Dart: `MermanException`.
-- Python UniFFI: `MermanError.Binding`.
+- C ABI: non-zero `MermanNativeStatus`, mirrored in `MermanNativeResult.status`, with the structured
+  JSON error payload in `MermanNativeResult.metadata_or_error_json`.
+- Android: `MermanException.resourceDetails`.
+- Apple: the optional `resource` field on `MermanError.binding`.
+- Flutter/Dart: `MermanException.resourceDetails`.
+- Python UniFFI: the optional `resource` field on `MermanError.Binding`.
 
 ## Typed Wrapper Follow-On
 
-The stable low-level contract should remain JSON so the C ABI does not grow for every option. Higher
-level platform packages can add typed option builders later, then serialize to this JSON shape
-internally.
+The stable low-level contract remains JSON so the C ABI does not grow for every option. Generated
+typed builders now sit above that contract and are produced from the Rust resource descriptor:
+
+| Platform | Generated API |
+| --- | --- |
+| C | include `merman_resource_contract.h`; `MERMAN_BINDING_OPTIONS_SCHEMA_VERSION`, stable profile/limit string macros, and `*_MINIMUM` / `*_OVERRIDABLE` describe the JSON document the host serializes |
+| Android/Kotlin | `MermanResourceOptionsBuilder` / `MermanResourceOptions` with an optional profile and `MermanResourceOverrideId` |
+| Apple/Swift | generated `resourceOptionsJson(profile:overrides:)` |
+| Flutter/Dart | `MermanResourceOptionsBuilder` / `MermanResourceOptions` with optional profile and `MermanResourceOverrideId` |
+| Python/UniFFI | `ResourceOptionsBuilder` / `ResourceOptions` with optional profile and `ResourceOverrideId` / `MermanResourceOverrideId` |
+| Web/TypeScript | closed `ResourceProfile`/`ResourceOverrideId` unions and `resourceOptions()`; use `rawResourceOptionsJson()` only for an explicitly external contract |
+
+Builders validate profile IDs, overridable limit IDs, and each descriptor-owned minimum before serialization. Leaving profile unset emits no `resources.profile`, so a reusable request inherits its constructor ceiling instead of silently selecting `interactive`. They do not duplicate the profile budget table; hosts should query the runtime contract when presenting values or settings UI.

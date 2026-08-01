@@ -1,10 +1,13 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_block_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::resources::RenderResourcePolicy;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use regex::Regex;
 
 fn render_block_svg_from_text(text: &str) -> String {
     let engine = Engine::new();
@@ -12,22 +15,71 @@ fn render_block_svg_from_text(text: &str) -> String {
 }
 
 fn render_block_svg_from_text_with_engine(engine: &Engine, text: &str) -> String {
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::headless_svg_defaults()).expect("layout ok");
-    let LayoutDiagram::BlockDiagram(layout) = &out.layout else {
-        panic!("expected BlockDiagram layout");
-    };
-
-    render_block_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        &SvgRenderOptions::default(),
+    try_render_block_svg_from_text_with_engine_and_policy(
+        engine,
+        text,
+        RenderResourcePolicy::interactive(),
     )
     .expect("svg render ok")
+}
+
+fn try_render_block_svg_from_text_with_engine(
+    engine: &Engine,
+    text: &str,
+) -> merman_render::Result<String> {
+    try_render_block_svg_from_text_with_engine_and_policy(
+        engine,
+        text,
+        RenderResourcePolicy::interactive(),
+    )
+}
+
+fn try_render_block_svg_from_text_with_engine_and_policy(
+    engine: &Engine,
+    text: &str,
+    resource_policy: RenderResourcePolicy,
+) -> merman_render::Result<String> {
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(resource_policy)
+        .begin_session()
+        .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?;
+
+    Ok(artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?
+        .svg()
+        .to_owned())
+}
+
+fn translated_center(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
+    let transform = node.attribute("transform").expect("node transform");
+    let captures = Regex::new(
+        r"^translate\(\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*\)$",
+    )
+    .expect("valid transform regex")
+    .captures(transform)
+    .expect("translate(x, y) transform");
+    (
+        captures[1].parse().expect("numeric translate x"),
+        captures[2].parse().expect("numeric translate y"),
+    )
+}
+
+fn path_start(path: roxmltree::Node<'_, '_>) -> (f64, f64) {
+    let d = path.attribute("d").expect("path data");
+    let captures =
+        Regex::new(r"^M\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d*)?|\.\d+))")
+            .expect("valid path regex")
+            .captures(d)
+            .expect("path starts with an absolute move");
+    (
+        captures[1].parse().expect("numeric path x"),
+        captures[2].parse().expect("numeric path y"),
+    )
 }
 
 fn deep_block_chain(depth: usize) -> String {
@@ -67,7 +119,12 @@ fn block_svg_scopes_text_and_edge_colors_for_html_labels() {
 #[test]
 fn block_public_svg_render_handles_deep_chain() {
     const DEPTH: usize = 1200;
-    let svg = render_block_svg_from_text(&deep_block_chain(DEPTH));
+    let svg = try_render_block_svg_from_text_with_engine_and_policy(
+        &Engine::new(),
+        &deep_block_chain(DEPTH),
+        RenderResourcePolicy::unbounded_for_trusted_input(),
+    )
+    .expect("deep Block SVG render");
 
     assert!(
         svg.contains(r#"id="merman-leaf""#),
@@ -134,13 +191,16 @@ fn block_svg_keeps_blank_placeholder_label_paragraph() {
 
 #[test]
 fn block_svg_honors_configured_node_text_color() {
-    let engine = legacy_init_theme_compat_engine();
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "nodeTextColor": "#123456"
+        }
+    })));
     let svg = render_block_svg_from_text_with_engine(
         &engine,
-        r##"%%{init: {"themeVariables": {"nodeTextColor": "#123456"}}}%%
-block
+        r#"block
   A["Alpha"]
-"##,
+"#,
     );
 
     assert!(
@@ -154,7 +214,7 @@ fn block_svg_fades_cluster_theme_colors() {
     let engine = legacy_init_theme_compat_engine();
     let svg = render_block_svg_from_text_with_engine(
         &engine,
-        r##"%%{init: {"themeVariables": {"clusterBkg": "#112233", "clusterBorder": "#445566"}}}%%
+        r##"%%{init: {"themeVariables": {"clusterBkg": "rebeccapurple", "clusterBorder": "hsl(80, 100%, 96.2745098039%)"}}}%%
 block
   block
     A["Alpha"]
@@ -164,8 +224,143 @@ block
 
     assert!(
         svg.contains(
-            r#"#merman .node .cluster{fill:rgba(17, 34, 51, 0.5);stroke:rgba(68, 85, 102, 0.2);stroke-width:1px;}"#
+            r#"#merman .node .cluster{fill:rgba(102, 51, 153, 0.5);stroke:rgba(248.6666666666, 255, 235.9999999999, 0.2);stroke-width:1px;}"#
         ),
         "expected block composite cluster CSS to follow Mermaid 11.15 fade() colors"
     );
+}
+
+#[test]
+fn block_svg_rejects_unsupported_cluster_theme_color() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "clusterBkg": "not-a-css-color"
+        }
+    })));
+    let error = try_render_block_svg_from_text_with_engine(
+        &engine,
+        r#"block
+  block
+    A["Alpha"]
+  end
+"#,
+    )
+    .expect_err("unsupported khroma color must fail the render operation");
+
+    assert!(error.to_string().contains("not-a-css-color"));
+}
+
+#[test]
+fn block_svg_normalizes_khroma_colors_and_preserves_css_tokens() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A["HSL"]
+  B["Alpha"]
+  C["Variable"]
+  style A color:hsl(80 100% 96%)
+  style B color:#8090a080
+  style C color:var(--MyColor)
+"#,
+    );
+
+    assert!(svg.contains("color: rgb(248, 255, 235); display: table-cell;"));
+    assert!(svg.contains("color: rgba(128, 144, 160, 0.502); display: table-cell;"));
+    assert!(svg.contains("color: var(--MyColor); display: table-cell;"));
+}
+
+#[test]
+fn block_circle_edge_starts_on_the_rendered_circle_boundary() {
+    let svg = render_block_svg_from_text(
+        r##"block-beta
+  columns 3
+  user(("User")):3
+  space:3
+  ui["Web UI"] api["API Server"] db[("Database")]
+
+  user --> ui
+  ui --> api
+  api --> db
+
+  style user fill:#ffe0b2,stroke:#fb8c00
+  style db fill:#bbdefb,stroke:#1e88e5
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let user = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-user"))
+        .expect("rendered user node");
+    let circle = user
+        .descendants()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("rendered user circle");
+    let edge = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "flowchart-link")
+                })
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("user-ui"))
+        })
+        .expect("user to ui edge");
+
+    let (center_x, center_y) = translated_center(user);
+    let (edge_x, edge_y) = path_start(edge);
+    let radius: f64 = circle
+        .attribute("r")
+        .expect("circle radius")
+        .parse()
+        .expect("numeric circle radius");
+    let endpoint_radius = ((edge_x - center_x).powi(2) + (edge_y - center_y).powi(2)).sqrt();
+
+    assert!(
+        (endpoint_radius - radius).abs() <= 1e-3,
+        "edge must start on the rendered circle: center=({center_x},{center_y}), endpoint=({edge_x},{edge_y}), endpoint_radius={endpoint_radius}, circle_radius={radius}, svg={svg}"
+    );
+}
+
+#[test]
+fn block_short_stadium_edge_starts_on_the_svg_clamped_boundary() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A(["A"]) --> B["B"]
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let stadium = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-A"))
+        .expect("rendered stadium node");
+    let rect = stadium
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("width").is_some())
+        .expect("rendered stadium outline");
+    let edge = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path") && node.attribute("id").is_some_and(|id| id.contains("A-B"))
+        })
+        .expect("stadium edge");
+
+    let (center_x, center_y) = translated_center(stadium);
+    let (edge_x, edge_y) = path_start(edge);
+    let width: f64 = rect
+        .attribute("width")
+        .expect("stadium width")
+        .parse()
+        .expect("numeric stadium width");
+    let height: f64 = rect
+        .attribute("height")
+        .expect("stadium height")
+        .parse()
+        .expect("numeric stadium height");
+
+    assert!(width < height, "fixture must exercise SVG radius clamping");
+    assert!((edge_x - (center_x + width / 2.0)).abs() <= 1e-3);
+    assert!((edge_y - center_y).abs() <= 1e-3);
 }

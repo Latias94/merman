@@ -96,7 +96,7 @@ fn projection_preserves_fix_metadata_per_diagnostic() {
         DiagnosticCategory::Semantic,
         "test diagnostic",
     )
-    .with_span(span.clone())
+    .with_span(span)
     .with_fix(DiagnosticFix::new(
         "Replace invalid text",
         vec![DiagnosticFixEdit::new(span, "fixed")],

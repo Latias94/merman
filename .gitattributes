@@ -8,6 +8,7 @@ LICENSE-*      text eol=lf
 
 # Core sources/docs/fixtures
 *.rs      text eol=lf
+*.lalrpop text eol=lf
 *.toml    text eol=lf
 *.md      text eol=lf
 *.json    text eol=lf
@@ -30,13 +31,27 @@ LICENSE-*      text eol=lf
 *.mjs     text eol=lf
 *.lock    text eol=lf
 
+# Legal mirrors preserve upstream license bytes; do not flag their verbatim whitespace.
+THIRD_PARTY_LICENSES/** text eol=lf -whitespace
+**/THIRD_PARTY_LICENSES/** text eol=lf -whitespace
+**/THIRD_PARTY_NOTICES.md -whitespace
+**/THIRD_PARTY_LICENSES/npm-production-dependencies.txt text eol=lf
+
 # ASCII/Unicode golden fixtures intentionally preserve trailing character cells.
 crates/merman-ascii/tests/testdata/mermaid-ascii/**/*.txt text eol=lf whitespace=-blank-at-eol
+
+# Pinned upstream source snapshots preserve Mermaid's original whitespace byte-for-byte.
+fixtures/_upstream/mermaid-11.16.0/sources/**/*.mmd text eol=lf -whitespace
+fixtures/swimlane/_upstream_ddlt/**/*.mmd text eol=lf -whitespace
 
 # Script formats
 *.ps1 text eol=lf
 *.cmd text eol=crlf
 *.bat text eol=crlf
+
+# Generated CLI assets include extensionless and Elvish files.
+crates/merman-cli/assets/completions/** text eol=lf
+crates/merman-cli/assets/man/** text eol=lf
 
 # Binary assets
 *.png binary

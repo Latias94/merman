@@ -1,0 +1,290 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 800.0,
+        "max_y": 172.0
+      },
+      "width": 800.0,
+      "height": 172.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "compact",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "%Y-%m",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "MacOS",
+        "support"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 762.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 762.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 762.5,
+          "height": 24.0,
+          "class": "section section1"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "MacOS",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            "MacOS"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "support",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 98.0,
+          "dy_em": -0.0,
+          "lines": [
+            "support"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "MacOS26",
+          "task": "MacOS 26 Tahoe ",
+          "section": "MacOS",
+          "task_type": "MacOS",
+          "order": 0.0,
+          "start_ms": 1756684800000.0,
+          "end_ms": 1756684800000.0,
+          "render_end_ms": null,
+          "milestone": true,
+          "vert": false,
+          "bar": {
+            "id": "MacOS26",
+            "x": 65.0,
+            "y": 50.0,
+            "width": 20.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task milestone task0"
+          },
+          "label": {
+            "id": "MacOS26-text",
+            "text": "MacOS 26 Tahoe ",
+            "font_size": 11.0,
+            "width": 74.36,
+            "x": 90.0,
+            "y": 63.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-74.35999999999999"
+          }
+        },
+        {
+          "id": "x86iron",
+          "task": "x86 hardware",
+          "section": "support",
+          "task_type": "support",
+          "order": 1.0,
+          "start_ms": 1756684800000.0,
+          "end_ms": 1788220800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "x86iron",
+            "x": 75.0,
+            "y": 74.0,
+            "width": 325.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done1"
+          },
+          "label": {
+            "id": "x86iron-text",
+            "text": "x86 hardware",
+            "font_size": 11.0,
+            "width": 62.37,
+            "x": 237.5,
+            "y": 87.5,
+            "class": "taskText taskText1 width-62.37"
+          }
+        },
+        {
+          "id": "x86prog",
+          "task": "x86 software",
+          "section": "support",
+          "task_type": "support",
+          "order": 2.0,
+          "start_ms": 1756684800000.0,
+          "end_ms": 1819756800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "x86prog",
+            "x": 75.0,
+            "y": 98.0,
+            "width": 650.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done1"
+          },
+          "label": {
+            "id": "x86prog-text",
+            "text": "x86 software",
+            "font_size": 11.0,
+            "width": 62.37,
+            "x": 400.0,
+            "y": 111.5,
+            "class": "taskText taskText1 width-62.37"
+          }
+        },
+        {
+          "id": "MacOS27",
+          "task": "MacOS 27 ",
+          "section": "MacOS",
+          "task_type": "MacOS",
+          "order": 0.0,
+          "start_ms": 1788220800000.0,
+          "end_ms": 1788220800000.0,
+          "render_end_ms": null,
+          "milestone": true,
+          "vert": false,
+          "bar": {
+            "id": "MacOS27",
+            "x": 390.0,
+            "y": 50.0,
+            "width": 20.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task milestone task0"
+          },
+          "label": {
+            "id": "MacOS27-text",
+            "text": "MacOS 27 ",
+            "font_size": 11.0,
+            "width": 45.21,
+            "x": 415.0,
+            "y": 63.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-45.21"
+          }
+        },
+        {
+          "id": "MacOS28",
+          "task": "MacOS 28 ",
+          "section": "MacOS",
+          "task_type": "MacOS",
+          "order": 0.0,
+          "start_ms": 1819756800000.0,
+          "end_ms": 1819756800000.0,
+          "render_end_ms": null,
+          "milestone": true,
+          "vert": false,
+          "bar": {
+            "id": "MacOS28",
+            "x": 715.0,
+            "y": 50.0,
+            "width": 20.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task milestone task0"
+          },
+          "label": {
+            "id": "MacOS28-text",
+            "text": "MacOS 28 ",
+            "font_size": 11.0,
+            "width": 45.21,
+            "x": 710.0,
+            "y": 63.5,
+            "class": "taskTextOutsideLeft taskTextOutside0"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 1759276800000.0,
+          "x": 102.0,
+          "label": "2025-10"
+        },
+        {
+          "time_ms": 1767225600000.0,
+          "x": 184.0,
+          "label": "2026-01"
+        },
+        {
+          "time_ms": 1775001600000.0,
+          "x": 264.0,
+          "label": "2026-04"
+        },
+        {
+          "time_ms": 1782864000000.0,
+          "x": 345.0,
+          "label": "2026-07"
+        },
+        {
+          "time_ms": 1790812800000.0,
+          "x": 427.0,
+          "label": "2026-10"
+        },
+        {
+          "time_ms": 1798761600000.0,
+          "x": 509.0,
+          "label": "2027-01"
+        },
+        {
+          "time_ms": 1806537600000.0,
+          "x": 589.0,
+          "label": "2027-04"
+        },
+        {
+          "time_ms": 1814400000000.0,
+          "x": 670.0,
+          "label": "2027-07"
+        }
+      ],
+      "top_ticks": [],
+      "title": null,
+      "title_x": 400.0,
+      "title_y": 25.0
+    }
+  }
+}

@@ -3,7 +3,7 @@
   "layout": {
     "GitGraphDiagram": {
       "bounds": {
-        "min_x": -111.234,
+        "min_x": -111.24,
         "min_y": -20.0,
         "max_x": 408.0,
         "max_y": 106.0
@@ -20,14 +20,14 @@
           "name": "main",
           "index": 0.0,
           "pos": 0.0,
-          "bbox_width": 30.719,
+          "bbox_width": 30.72,
           "bbox_height": 17.6
         },
         {
           "name": "branch1",
           "index": 1.0,
           "pos": 90.0,
-          "bbox_width": 50.234,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         }
       ],

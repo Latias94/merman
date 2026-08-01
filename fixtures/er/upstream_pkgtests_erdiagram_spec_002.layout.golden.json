@@ -5,8 +5,8 @@
       "nodes": [
         {
           "id": "entity-X-0",
-          "x": 50.0,
-          "y": 42.0,
+          "x": 58.0,
+          "y": 50.0,
           "width": 100.0,
           "height": 84.0,
           "is_cluster": false
@@ -14,10 +14,10 @@
       ],
       "edges": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 100.0,
-        "max_y": 84.0
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 108.0,
+        "max_y": 92.0
       }
     }
   }

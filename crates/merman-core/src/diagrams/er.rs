@@ -1,15 +1,47 @@
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
+    EditorCompletionCandidate, EditorCompletionVocabulary, EditorExpectedSyntax,
+    EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseControl,
+    ParseControlResult, ParseMetadata, Result, SourceSpan,
+    editor::{
+        EditorLexemeBatchResult, EditorLexemeJournal, editor_keyword_value_span,
+        format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span,
+    },
 };
 use serde_json::{Value, json};
+#[cfg(test)]
+use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
-lalrpop_util::lalrpop_mod!(
+const ER_COMPLETION_DIRECTIONS: &[EditorCompletionCandidate] = &[
+    EditorCompletionCandidate::keyword("TB", "top to bottom"),
+    EditorCompletionCandidate::keyword("BT", "bottom to top"),
+    EditorCompletionCandidate::keyword("LR", "left to right"),
+    EditorCompletionCandidate::keyword("RL", "right to left"),
+];
+
+const ER_COMPLETION_VOCABULARY: EditorCompletionVocabulary =
+    EditorCompletionVocabulary::new(&[], ER_COMPLETION_DIRECTIONS);
+
+#[cfg(test)]
+thread_local! {
+    static ER_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_er_syntax_construction_count() {
+    ER_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn er_syntax_construction_count() -> usize {
+    ER_SYNTAX_CONSTRUCTION_COUNT.get()
+}
+
+include_checked_in_lalrpop_parser!(
     #[allow(clippy::empty_line_after_outer_attr)]
     er_grammar,
-    "/diagrams/er_grammar.rs"
+    "er_grammar.rs"
 );
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -316,32 +348,40 @@ impl ErDb {
     }
 
     fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
-        let mut value = serde_json::to_value(self.into_render_model())
-            .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e.to_string()))?;
-        let Value::Object(obj) = &mut value else {
-            return Ok(value);
-        };
-
-        obj.insert("type".to_string(), json!(meta.diagram_type));
-        obj.insert(
-            "constants".to_string(),
-            json!({
-                "cardinality": {
-                    "zeroOrOne": "ZERO_OR_ONE",
-                    "zeroOrMore": "ZERO_OR_MORE",
-                    "oneOrMore": "ONE_OR_MORE",
-                    "onlyOne": "ONLY_ONE",
-                    "mdParent": "MD_PARENT",
-                },
-                "identification": {
-                    "nonIdentifying": "NON_IDENTIFYING",
-                    "identifying": "IDENTIFYING",
-                }
-            }),
-        );
-
-        Ok(value)
+        let model = self.into_render_model();
+        render_model_to_compat_json(&model, meta)
     }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &ErDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    let mut value = serde_json::to_value(model)
+        .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e.to_string()))?;
+    let Value::Object(obj) = &mut value else {
+        return Ok(value);
+    };
+
+    obj.insert("type".to_string(), json!(meta.diagram_type));
+    obj.insert(
+        "constants".to_string(),
+        json!({
+            "cardinality": {
+                "zeroOrOne": "ZERO_OR_ONE",
+                "zeroOrMore": "ZERO_OR_MORE",
+                "oneOrMore": "ONE_OR_MORE",
+                "onlyOne": "ONLY_ONE",
+                "mdParent": "MD_PARENT",
+            },
+            "identification": {
+                "nonIdentifying": "NON_IDENTIFYING",
+                "identifying": "IDENTIFYING",
+            }
+        }),
+    );
+
+    Ok(value)
 }
 
 fn split_styles(raw: &str) -> Vec<String> {
@@ -354,63 +394,183 @@ fn split_styles(raw: &str) -> Vec<String> {
         .collect()
 }
 
-fn parse_er_db(code: &str, meta: &ParseMetadata) -> Result<ErDb> {
-    let actions = er_grammar::ActionsParser::new()
-        .parse(Lexer::new(code))
-        .map_err(|e| {
-            Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(&e, code.len()),
-            )
-        })?;
+type ErLexicalEvent = std::result::Result<(usize, Tok, usize), LexError>;
+type ErGrammarError = lalrpop_util::ParseError<usize, Tok, LexError>;
 
-    let mut db = ErDb::new();
-    for a in actions {
-        db.apply(a);
-    }
-    Ok(db)
+struct ErSyntax {
+    events: Vec<ErLexicalEvent>,
+    lexemes: EditorLexemeBatchResult,
 }
 
-pub fn parse_er_model_for_render(code: &str, meta: &ParseMetadata) -> Result<ErDiagramRenderModel> {
-    let db = parse_er_db(code, meta)?;
-    Ok(db.into_render_model())
-}
-
-pub fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let db = parse_er_db(code, meta)?;
-    db.into_model(meta)
-}
-
-pub fn parse_er_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let parse_result = er_grammar::ActionsParser::new().parse(Lexer::new(code));
-    let mut facts = collect_er_editor_facts_from_tokens(code);
-    if let Err(error) = parse_result {
-        let span = lalrpop_recovery_span(&error, code.len());
-        facts.mark_recovered_from_parse_error(
-            format!(
-                "er parser recovered after parse error: {}",
-                format_lalrpop_parse_error(&error)
-            ),
-            Some(span),
-        );
+impl ErSyntax {
+    fn lex(code: &str, control: &ParseControl) -> ParseControlResult<Self> {
+        let mut journal = EditorLexemeJournal::family_lexer(code);
+        let events = {
+            let lexer = Lexer::new(code, &mut journal);
+            let mut events = Vec::new();
+            for event in lexer {
+                if events.len() % 128 == 0 {
+                    control.checkpoint()?;
+                }
+                events.push(event);
+            }
+            events
+        };
+        control.checkpoint()?;
+        Ok(Self {
+            events,
+            lexemes: journal.finish(),
+        })
     }
 
-    facts
+    fn into_editor_facts_and_actions(
+        self,
+        code: &str,
+        control: &ParseControl,
+    ) -> ParseControlResult<(
+        EditorSemanticFacts,
+        std::result::Result<Vec<Action>, ErGrammarError>,
+    )> {
+        let mut facts =
+            EditorSemanticFacts::new().with_completion_vocabulary(ER_COMPLETION_VOCABULARY);
+        let mut collector = ErEditorFactCollector::default();
+        for (index, event) in self.events.iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            match event {
+                Ok((start, token, end)) => collector.accept(code, token, *start, *end, &mut facts),
+                Err(error) => {
+                    facts.mark_recovered();
+                    if let Some(expected) = error.expected_syntax.as_ref() {
+                        facts.push_expected_syntax(expected.clone());
+                    }
+                }
+            }
+        }
+        collector.finish(&mut facts);
+        facts.replace_family_lexemes(self.lexemes);
+        control.checkpoint()?;
+        let mut emitted = 0usize;
+        let controlled_events = self.events.into_iter().take_while(|_| {
+            let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+            emitted = emitted.saturating_add(1);
+            active
+        });
+        let actions = er_grammar::ActionsParser::new().parse(controlled_events);
+        control.checkpoint()?;
+        Ok((facts, actions))
+    }
 }
 
-fn collect_er_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let mut collector = ErEditorFactCollector::default();
+struct ErSemanticSource {
+    db: ErDb,
+    editor_facts: EditorSemanticFacts,
+}
 
-    let mut lexer = Lexer::new(code);
-    while let Some(result) = lexer.next() {
-        match result {
-            Ok((start, token, end)) => collector.accept(token, start, end, &mut facts),
-            Err(_) => facts.mark_recovered(),
+struct ErSemanticFailure {
+    error: ErGrammarError,
+    editor_facts: EditorSemanticFacts,
+}
+
+impl ErSemanticFailure {
+    fn recovery_span(&self, fallback_offset: usize) -> SourceSpan {
+        match &self.error {
+            lalrpop_util::ParseError::User { error } => error.span,
+            _ => lalrpop_recovery_span(&self.error, fallback_offset),
         }
     }
 
-    facts
+    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
+        self.into_error_and_editor_facts(meta, fallback_offset).0
+    }
+
+    fn into_error_and_editor_facts(
+        self,
+        meta: &ParseMetadata,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        self.into_error_and_editor_facts_for_type(&meta.diagram_type, fallback_offset)
+    }
+
+    fn into_error_and_editor_facts_for_type(
+        mut self,
+        diagram_type: &str,
+        fallback_offset: usize,
+    ) -> (Error, EditorSemanticFacts) {
+        let error = Error::diagram_parse_diagnostic(
+            diagram_type.to_string(),
+            lalrpop_parse_diagnostic(&self.error, fallback_offset),
+        );
+        let span = self.recovery_span(fallback_offset);
+        self.editor_facts.mark_recovered_from_parse_error(
+            format!(
+                "er parser recovered after parse error: {}",
+                format_lalrpop_parse_error(&self.error)
+            ),
+            Some(span),
+        );
+        (error, self.editor_facts)
+    }
+}
+
+fn construct_er_semantic_source(
+    code: &str,
+    control: &ParseControl,
+) -> ParseControlResult<std::result::Result<ErSemanticSource, Box<ErSemanticFailure>>> {
+    let syntax = ErSyntax::lex(code, control)?;
+    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code, control)?;
+    let actions = match actions {
+        Ok(actions) => actions,
+        Err(error) => {
+            return Ok(Err(Box::new(ErSemanticFailure {
+                error,
+                editor_facts,
+            })));
+        }
+    };
+
+    let mut db = ErDb::new();
+    for (index, a) in actions.into_iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        db.apply(a);
+    }
+    control.checkpoint()?;
+    Ok(Ok(ErSemanticSource { db, editor_facts }))
+}
+
+fn parse_er_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ErSemanticSource> {
+    construct_er_semantic_source(code, &ParseControl::new())
+        .expect("a private parse control cannot be cancelled")
+        .map_err(|failure| (*failure).into_parse_error(meta, code.len()))
+}
+
+pub(crate) fn parse_er_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<ErDiagramRenderModel> {
+    Ok(parse_er_semantic_source(code, meta)?.db.into_render_model())
+}
+
+pub(crate) fn parse_er(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    parse_er_semantic_source(code, meta)?.db.into_model(meta)
+}
+
+pub(crate) fn parse_er_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+    control: &ParseControl,
+) -> ParseControlResult<crate::family::CombinedSemanticParse> {
+    let construction = construct_er_semantic_source(code, control)?;
+    let parsed = crate::family::CombinedSemanticParse::from_construction(
+        construction,
+        |ErSemanticSource { db, editor_facts }| (db.into_model(meta), editor_facts),
+        |failure| (*failure).into_error_and_editor_facts(meta, code.len()),
+    );
+    control.checkpoint()?;
+    Ok(parsed)
 }
 
 #[derive(Debug, Default)]
@@ -418,7 +578,21 @@ struct ErEditorFactCollector {
     pending_entity: Option<ErTokenSymbol>,
     expected_id_list: Option<ExpectedErIdList>,
     in_attribute_block: bool,
+    in_alias: bool,
+    in_relationship_role: bool,
     attr_word_index: usize,
+}
+
+impl ErEditorFactCollector {
+    fn finish(&mut self, facts: &mut EditorSemanticFacts) {
+        self.push_pending_entity(facts);
+    }
+
+    fn finish_line(&mut self, facts: &mut EditorSemanticFacts) {
+        if !self.in_alias && !self.in_relationship_role {
+            self.push_pending_entity(facts);
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -437,9 +611,20 @@ enum ExpectedErIdList {
 }
 
 impl ErEditorFactCollector {
-    fn accept(&mut self, token: Tok, start: usize, end: usize, facts: &mut EditorSemanticFacts) {
+    fn accept(
+        &mut self,
+        code: &str,
+        token: &Tok,
+        start: usize,
+        end: usize,
+        facts: &mut EditorSemanticFacts,
+    ) {
         match token {
-            Tok::ErDiagram | Tok::Newline => self.reset_line_state(),
+            Tok::ErDiagram => self.reset_line_state(),
+            Tok::Newline => {
+                self.finish_line(facts);
+                self.reset_line_state();
+            }
             Tok::StyleKw => {
                 facts.push_directive_prefix("style");
                 self.expected_id_list = Some(ExpectedErIdList::StyleEntities);
@@ -456,14 +641,34 @@ impl ErEditorFactCollector {
                 self.push_pending_entity(facts);
                 self.expected_id_list = Some(ExpectedErIdList::InlineClasses);
             }
-            Tok::IdList(ids) => self.push_id_list(ids, facts),
+            Tok::IdList(ids) => self.push_id_list(ids.clone(), facts),
             Tok::Name(name) => {
                 if self.in_attribute_block {
                     return;
                 }
+                if self.in_alias {
+                    self.push_context_payload(facts, name.clone(), "er entity alias", start, end);
+                    return;
+                }
+                if self.in_relationship_role {
+                    self.push_context_payload(
+                        facts,
+                        name.clone(),
+                        "er relationship role",
+                        start,
+                        end,
+                    );
+                    self.in_relationship_role = false;
+                    return;
+                }
+                let span = if end.saturating_sub(start) == name.len().saturating_add(2) {
+                    SourceSpan::new(start + 1, end - 1)
+                } else {
+                    SourceSpan::new(start, end)
+                };
                 let symbol = ErTokenSymbol {
-                    name,
-                    span: SourceSpan::new(start, end),
+                    name: name.clone(),
+                    span,
                 };
                 if let Some(entity) = self.pending_entity.replace(symbol) {
                     self.push_entity_symbol(facts, entity, "er entity reference");
@@ -476,7 +681,10 @@ impl ErEditorFactCollector {
             | Tok::MdParent
             | Tok::Identifying
             | Tok::NonIdentifying => self.push_pending_entity(facts),
-            Tok::Colon => self.push_pending_entity(facts),
+            Tok::Colon => {
+                self.push_pending_entity(facts);
+                self.in_relationship_role = true;
+            }
             Tok::BlockStart => {
                 self.push_pending_entity(facts);
                 self.in_attribute_block = true;
@@ -491,17 +699,17 @@ impl ErEditorFactCollector {
                     return;
                 }
                 let span = SourceSpan::new(start, end);
-                if self.attr_word_index % 2 == 0 {
+                if self.attr_word_index.is_multiple_of(2) {
                     self.push_payload_symbol(
                         facts,
-                        word,
+                        word.clone(),
                         "er attribute type",
                         EditorSemanticKind::String,
                         span,
                         span,
                     );
                 } else {
-                    self.push_attribute_symbol(facts, word, span);
+                    self.push_attribute_symbol(facts, word.clone(), span);
                 }
                 self.attr_word_index += 1;
             }
@@ -515,7 +723,7 @@ impl ErEditorFactCollector {
                 if self.in_attribute_block {
                     self.push_payload_symbol(
                         facts,
-                        key,
+                        key.clone(),
                         "er attribute key",
                         EditorSemanticKind::Property,
                         SourceSpan::new(start, end),
@@ -533,7 +741,7 @@ impl ErEditorFactCollector {
                     };
                     self.push_payload_symbol(
                         facts,
-                        comment,
+                        comment.clone(),
                         "er attribute comment",
                         EditorSemanticKind::String,
                         span,
@@ -543,17 +751,41 @@ impl ErEditorFactCollector {
             }
             Tok::AccTitle(_) => facts.push_directive_prefix("accTitle"),
             Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => facts.push_directive_prefix("accDescr"),
-            Tok::Direction(_)
-            | Tok::Str(_)
-            | Tok::RestOfLine(_)
-            | Tok::SquareStart
-            | Tok::SquareStop => {}
+            Tok::SquareStart => {
+                self.push_pending_entity(facts);
+                self.in_alias = true;
+            }
+            Tok::SquareStop => self.in_alias = false,
+            Tok::Str(value) => {
+                let detail = if self.in_alias {
+                    Some("er entity alias")
+                } else if self.in_relationship_role {
+                    self.in_relationship_role = false;
+                    Some("er relationship role")
+                } else {
+                    None
+                };
+                if let Some(detail) = detail {
+                    self.push_context_payload(facts, value.clone(), detail, start, end);
+                }
+            }
+            Tok::Direction(_) => {
+                if let Some(span) = editor_keyword_value_span(code, start, end, "direction") {
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::DirectionValue,
+                        span,
+                    ));
+                }
+            }
+            Tok::RestOfLine(_) => {}
         }
     }
 
     fn reset_line_state(&mut self) {
         self.pending_entity = None;
         self.expected_id_list = None;
+        self.in_alias = false;
+        self.in_relationship_role = false;
         if !self.in_attribute_block {
             self.attr_word_index = 0;
         }
@@ -664,6 +896,30 @@ impl ErEditorFactCollector {
             selection,
         ));
     }
+
+    fn push_context_payload(
+        &self,
+        facts: &mut EditorSemanticFacts,
+        name: String,
+        detail: &'static str,
+        start: usize,
+        end: usize,
+    ) {
+        let span = SourceSpan::new(start, end);
+        let selection = if end.saturating_sub(start) == name.len().saturating_add(2) {
+            SourceSpan::new(start + 1, end - 1)
+        } else {
+            span
+        };
+        self.push_payload_symbol(
+            facts,
+            name,
+            detail,
+            EditorSemanticKind::String,
+            span,
+            selection,
+        );
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -707,9 +963,26 @@ enum Tok {
     Comment(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct LexError {
     message: String,
+    span: SourceSpan,
+    expected_syntax: Option<EditorExpectedSyntax>,
+}
+
+impl LexError {
+    fn new(message: impl Into<String>, span: SourceSpan) -> Self {
+        Self {
+            message: message.into(),
+            span,
+            expected_syntax: None,
+        }
+    }
+
+    fn expecting(mut self, kind: EditorExpectedSyntaxKind, span: SourceSpan) -> Self {
+        self.expected_syntax = Some(EditorExpectedSyntax::new(kind, span));
+        self
+    }
 }
 
 impl std::fmt::Display for LexError {
@@ -722,7 +995,7 @@ impl std::error::Error for LexError {}
 
 impl crate::error::ParseErrorSourceSpan for LexError {
     fn source_span(&self) -> Option<crate::SourceSpan> {
-        None
+        Some(self.span)
     }
 }
 
@@ -737,20 +1010,271 @@ enum Mode {
     LineRest,
 }
 
-struct Lexer<'input> {
+struct Lexer<'input, 'journal> {
     input: &'input str,
+    lexemes: &'journal mut EditorLexemeJournal<'input>,
     pos: usize,
     pending: VecDeque<(usize, Tok, usize)>,
     mode: Mode,
 }
 
-impl<'input> Lexer<'input> {
-    fn new(input: &'input str) -> Self {
+impl<'input, 'journal> Lexer<'input, 'journal> {
+    fn new(input: &'input str, lexemes: &'journal mut EditorLexemeJournal<'input>) -> Self {
+        #[cfg(test)]
+        ER_SYNTAX_CONSTRUCTION_COUNT.set(ER_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
         Self {
             input,
+            lexemes,
             pos: 0,
             pending: VecDeque::new(),
             mode: Mode::Default,
+        }
+    }
+
+    fn push_lexeme(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
+        self.lexemes.push(
+            kind,
+            EditorLexemeModifiers::NONE,
+            SourceSpan::new(start, end),
+        );
+    }
+
+    fn push_modified_lexeme(
+        &mut self,
+        kind: EditorLexemeKind,
+        modifier: EditorLexemeModifier,
+        start: usize,
+        end: usize,
+    ) {
+        self.lexemes.push(
+            kind,
+            EditorLexemeModifiers::from_modifier(modifier),
+            SourceSpan::new(start, end),
+        );
+    }
+
+    fn emit_token(
+        &mut self,
+        token: (usize, Tok, usize),
+    ) -> std::result::Result<(usize, Tok, usize), LexError> {
+        self.record_token_lexemes(&token.1, token.0, token.2);
+        Ok(token)
+    }
+
+    fn emit_result(
+        &mut self,
+        result: std::result::Result<(usize, Tok, usize), LexError>,
+    ) -> std::result::Result<(usize, Tok, usize), LexError> {
+        match result {
+            Ok(token) => self.emit_token(token),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn record_token_lexemes(&mut self, token: &Tok, start: usize, end: usize) {
+        match token {
+            Tok::Newline => {}
+            Tok::ErDiagram | Tok::StyleKw | Tok::ClassDefKw | Tok::ClassKw => {
+                self.push_lexeme(EditorLexemeKind::Keyword, start, end)
+            }
+            Tok::Name(_) | Tok::AttrWord(_) => self.record_string_or_identifier(start, end),
+            Tok::Str(_) | Tok::Comment(_) => self.record_quoted_string(start, end),
+            Tok::IdList(ids) => self.record_id_list(ids, start, end),
+            Tok::RestOfLine(_) => self.record_trimmed(EditorLexemeKind::Style, start, end),
+            Tok::AccTitle(_) => self.record_keyword_value(start, end, "accTitle"),
+            Tok::AccDescr(_) | Tok::AccDescrMultiline(_) => {
+                self.record_keyword_value(start, end, "accDescr")
+            }
+            Tok::Direction(direction) => self.record_direction(start, end, direction),
+            Tok::BlockStart
+            | Tok::BlockStop
+            | Tok::SquareStart
+            | Tok::SquareStop
+            | Tok::StyleSeparator
+            | Tok::Colon
+            | Tok::Comma => self.push_lexeme(EditorLexemeKind::Delimiter, start, end),
+            Tok::Question => self.push_lexeme(EditorLexemeKind::Operator, start, end),
+            Tok::ZeroOrOne
+            | Tok::ZeroOrMore
+            | Tok::OneOrMore
+            | Tok::OnlyOne
+            | Tok::MdParent
+            | Tok::Identifying
+            | Tok::NonIdentifying => self.push_lexeme(EditorLexemeKind::Operator, start, end),
+            Tok::AttrKey(_) => self.push_modified_lexeme(
+                EditorLexemeKind::Keyword,
+                EditorLexemeModifier::Readonly,
+                start,
+                end,
+            ),
+        }
+    }
+
+    fn trimmed_bounds(&self, start: usize, end: usize) -> Option<(usize, usize)> {
+        let raw = self.input.get(start..end)?;
+        let leading = raw.len().saturating_sub(raw.trim_start().len());
+        let trailing = raw.trim_end().len();
+        (leading < trailing).then_some((start + leading, start + trailing))
+    }
+
+    fn record_trimmed(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
+        if let Some((start, end)) = self.trimmed_bounds(start, end) {
+            self.push_lexeme(kind, start, end);
+        }
+    }
+
+    fn record_string_or_identifier(&mut self, start: usize, end: usize) {
+        let Some((start, end)) = self.trimmed_bounds(start, end) else {
+            return;
+        };
+        let raw = &self.input[start..end];
+        if (raw.starts_with('"') && raw.ends_with('"'))
+            || (raw.starts_with('`') && raw.ends_with('`'))
+        {
+            self.record_quoted_string(start, end);
+        } else {
+            self.push_lexeme(EditorLexemeKind::Identifier, start, end);
+        }
+    }
+
+    fn record_quoted_string(&mut self, start: usize, end: usize) {
+        let Some((start, end)) = self.trimmed_bounds(start, end) else {
+            return;
+        };
+        let raw = &self.input[start..end];
+        let delimiter = raw.as_bytes().first().copied();
+        if raw.len() >= 2
+            && delimiter.is_some_and(|byte| matches!(byte, b'"' | b'`'))
+            && raw.as_bytes().last().copied() == delimiter
+        {
+            self.push_lexeme(EditorLexemeKind::Delimiter, start, start + 1);
+            if end > start + 2 {
+                self.push_lexeme(EditorLexemeKind::String, start + 1, end - 1);
+            }
+            self.push_lexeme(EditorLexemeKind::Delimiter, end - 1, end);
+        } else {
+            self.push_lexeme(EditorLexemeKind::String, start, end);
+        }
+    }
+
+    fn record_id_list(&mut self, ids: &SpannedIdList, start: usize, end: usize) {
+        let mut cursor = start;
+        for id in &ids.ids {
+            if cursor < id.span.start
+                && let Some(gap) = self.input.get(cursor..id.span.start)
+            {
+                for (offset, byte) in gap.bytes().enumerate() {
+                    if byte == b',' {
+                        self.push_lexeme(
+                            EditorLexemeKind::Delimiter,
+                            cursor + offset,
+                            cursor + offset + 1,
+                        );
+                    }
+                }
+            }
+            self.push_lexeme(EditorLexemeKind::Identifier, id.span.start, id.span.end);
+            cursor = id.span.end;
+        }
+        if cursor < end
+            && let Some(gap) = self.input.get(cursor..end)
+        {
+            for (offset, byte) in gap.bytes().enumerate() {
+                if byte == b',' {
+                    self.push_lexeme(
+                        EditorLexemeKind::Delimiter,
+                        cursor + offset,
+                        cursor + offset + 1,
+                    );
+                }
+            }
+        }
+    }
+
+    fn record_keyword_value(&mut self, start: usize, end: usize, keyword: &str) {
+        let Some(raw) = self.input.get(start..end) else {
+            return;
+        };
+        if !raw
+            .get(..keyword.len())
+            .is_some_and(|value| value.eq_ignore_ascii_case(keyword))
+        {
+            return;
+        }
+        self.push_lexeme(EditorLexemeKind::Keyword, start, start + keyword.len());
+        let mut cursor = keyword.len();
+        while raw
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            cursor += 1;
+        }
+        if raw
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(|byte| matches!(byte, b':' | b'{'))
+        {
+            self.push_lexeme(
+                EditorLexemeKind::Delimiter,
+                start + cursor,
+                start + cursor + 1,
+            );
+            cursor += 1;
+        }
+        while raw
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            cursor += 1;
+        }
+        let mut value_end = raw.trim_end().len();
+        if raw.as_bytes().get(value_end.wrapping_sub(1)) == Some(&b'}') {
+            self.push_lexeme(
+                EditorLexemeKind::Delimiter,
+                start + value_end - 1,
+                start + value_end,
+            );
+            value_end -= 1;
+        }
+        if cursor < value_end {
+            let kind = if keyword.eq_ignore_ascii_case("direction") {
+                EditorLexemeKind::Literal
+            } else {
+                EditorLexemeKind::String
+            };
+            self.push_lexeme(kind, start + cursor, start + value_end);
+        }
+    }
+
+    fn record_direction(&mut self, start: usize, end: usize, direction: &str) {
+        let Some(raw) = self.input.get(start..end) else {
+            return;
+        };
+        let keyword = "direction";
+        if !raw
+            .get(..keyword.len())
+            .is_some_and(|value| value.eq_ignore_ascii_case(keyword))
+        {
+            return;
+        }
+        self.push_lexeme(EditorLexemeKind::Keyword, start, start + keyword.len());
+        let mut cursor = keyword.len();
+        while raw
+            .as_bytes()
+            .get(cursor)
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            cursor += 1;
+        }
+        let value_end = cursor.saturating_add(direction.len());
+        if raw
+            .get(cursor..value_end)
+            .is_some_and(|value| value.eq_ignore_ascii_case(direction))
+        {
+            self.push_lexeme(EditorLexemeKind::Literal, start + cursor, start + value_end);
         }
     }
 
@@ -861,9 +1385,12 @@ impl<'input> Lexer<'input> {
             let consumed_ws = rest.len() - rest_trim.len();
             self.pos = after + consumed_ws + 1;
             let Some(end_rel) = self.input[self.pos..].find('}') else {
-                return Some(Err(LexError {
-                    message: "Unterminated accDescr block; missing '}'".to_string(),
-                }));
+                self.record_keyword_value(start, self.input.len(), "accDescr");
+                self.pos = self.input.len();
+                return Some(Err(LexError::new(
+                    "Unterminated accDescr block; missing '}'",
+                    SourceSpan::new(start, self.input.len()),
+                )));
             };
             let body = self.input[self.pos..self.pos + end_rel].to_string();
             self.pos = self.pos + end_rel + 1;
@@ -879,31 +1406,42 @@ impl<'input> Lexer<'input> {
         Some(Ok((start, Tok::AccDescr(s.trim().to_string()), self.pos)))
     }
 
-    fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
+    fn lex_direction(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
         if !self.starts_with_word_ci("direction") {
             return None;
         }
         self.pos += "direction".len();
+        let keyword_end = self.pos;
         self.skip_ws_default();
-        let rest = &self.input[self.pos..].to_ascii_uppercase();
-        let dir = if rest.starts_with("TB") {
-            self.pos += 2;
+        let value_start = self.pos;
+        while self
+            .peek()
+            .is_some_and(|byte| !byte.is_ascii_whitespace() && byte != b';')
+        {
+            self.pos += 1;
+        }
+        let value_end = self.pos;
+        let _ = self.read_to_newline();
+        let value = &self.input[value_start..value_end];
+        let selection = SourceSpan::new(value_start, value_end);
+        let dir = if value.eq_ignore_ascii_case("TB") {
             "TB"
-        } else if rest.starts_with("BT") {
-            self.pos += 2;
+        } else if value.eq_ignore_ascii_case("BT") {
             "BT"
-        } else if rest.starts_with("LR") {
-            self.pos += 2;
+        } else if value.eq_ignore_ascii_case("LR") {
             "LR"
-        } else if rest.starts_with("RL") {
-            self.pos += 2;
+        } else if value.eq_ignore_ascii_case("RL") {
             "RL"
         } else {
-            return None;
+            self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
+            if selection.start < selection.end {
+                self.push_lexeme(EditorLexemeKind::Literal, selection.start, selection.end);
+            }
+            return Some(Err(LexError::new("invalid ER direction", selection)
+                .expecting(EditorExpectedSyntaxKind::DirectionValue, selection)));
         };
-        let _ = self.read_to_newline();
-        Some((start, Tok::Direction(dir.to_string()), self.pos))
+        Some(Ok((start, Tok::Direction(dir.to_string()), self.pos)))
     }
 
     fn lex_keyword(&mut self) -> Option<(usize, Tok, usize)> {
@@ -947,8 +1485,9 @@ impl<'input> Lexer<'input> {
             let id_start = self.pos;
             let mut id_end = self.pos;
             for (rel, ch) in self.input[self.pos..].char_indices() {
-                let ok =
-                    !ch.is_ascii() || ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '*');
+                let ok = !ch.is_ascii()
+                    || ch.is_ascii_alphanumeric()
+                    || matches!(ch, '_' | '-' | '*' | '.');
                 if !ok {
                     break;
                 }
@@ -1043,7 +1582,7 @@ impl<'input> Lexer<'input> {
             self.pos += "one".len();
             return Some((start, Tok::OnlyOne, self.pos));
         }
-        if lower.starts_with('1') {
+        if self.one_starts_numeric_cardinality() {
             self.pos += 1;
             return Some((start, Tok::OnlyOne, self.pos));
         }
@@ -1097,6 +1636,36 @@ impl<'input> Lexer<'input> {
         None
     }
 
+    fn one_starts_numeric_cardinality(&self) -> bool {
+        let Some(after_one) = self.input[self.pos..].strip_prefix('1') else {
+            return false;
+        };
+
+        if ["--", "..", ".-", "-."]
+            .iter()
+            .any(|operator| after_one.starts_with(operator))
+        {
+            return true;
+        }
+
+        let Some(first) = after_one.chars().next() else {
+            return false;
+        };
+        if !first.is_whitespace() {
+            return false;
+        }
+
+        after_one
+            .trim_start_matches(char::is_whitespace)
+            .chars()
+            .next()
+            .is_some_and(|next| {
+                next.is_ascii_alphabetic()
+                    || next.is_ascii_digit()
+                    || matches!(next, '_' | '"' | '\'')
+            })
+    }
+
     fn lex_punct(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         match self.peek()? {
@@ -1146,9 +1715,10 @@ impl<'input> Lexer<'input> {
         self.skip_ws_block();
         if self.pos >= self.input.len() {
             self.mode = Mode::Default;
-            return Some(Err(LexError {
-                message: "EOF inside attribute block".to_string(),
-            }));
+            return Some(Err(LexError::new(
+                "EOF inside attribute block",
+                SourceSpan::new(self.pos, self.pos),
+            )));
         }
         if self.peek() == Some(b'}') {
             return None;
@@ -1164,25 +1734,41 @@ impl<'input> Lexer<'input> {
         if self.peek() == Some(b'"') {
             self.pos += 1;
             let Some(rel_end) = self.input[self.pos..].find('"') else {
-                return Some(Err(LexError {
-                    message: "Unterminated comment string; missing '\"'".to_string(),
-                }));
+                return Some(Err(LexError::new(
+                    "Unterminated comment string; missing '\"'",
+                    SourceSpan::new(start, self.input.len()),
+                )));
             };
             let s = self.input[self.pos..self.pos + rel_end].to_string();
             self.pos = self.pos + rel_end + 1;
             return Some(Ok((start, Tok::Comment(s), self.pos)));
         }
         if self.peek() == Some(b'`') {
+            let delimiter_start = self.pos;
             self.pos += 1;
             let body_start = self.pos;
             let Some(rel_end) = self.input[self.pos..].find('`') else {
-                return Some(Err(LexError {
-                    message: "Unterminated attribute word; missing '`'".to_string(),
-                }));
+                return Some(Err(LexError::new(
+                    "Unterminated attribute word; missing '`'",
+                    SourceSpan::new(start, self.input.len()),
+                )));
             };
             let body_end = self.pos + rel_end;
+            if body_end == body_start {
+                self.pos = body_end + 1;
+                return Some(Err(LexError::new(
+                    "Empty backtick attribute word",
+                    SourceSpan::new(delimiter_start, self.pos),
+                )));
+            }
             let s = self.input[body_start..body_end].to_string();
             self.pos = body_end + 1;
+            self.push_lexeme(
+                EditorLexemeKind::Delimiter,
+                delimiter_start,
+                delimiter_start + 1,
+            );
+            self.push_lexeme(EditorLexemeKind::Delimiter, body_end, body_end + 1);
             return Some(Ok((body_start, Tok::AttrWord(s), body_end)));
         }
         if let Some(two) = self.input[self.pos..].get(..2) {
@@ -1217,9 +1803,10 @@ impl<'input> Lexer<'input> {
         }
         if end == start_word {
             self.pos += self.peek().map(|_| 1).unwrap_or(0);
-            return Some(Err(LexError {
-                message: format!("Unexpected character inside attribute block at {start_word}"),
-            }));
+            return Some(Err(LexError::new(
+                format!("Unexpected character inside attribute block at {start_word}"),
+                SourceSpan::new(start_word, self.pos),
+            )));
         }
         self.pos = end;
         let raw = &self.input[start_word..end];
@@ -1243,9 +1830,10 @@ impl<'input> Lexer<'input> {
                 || !c.is_ascii()
         });
         if !first_ok || !rest_ok {
-            return Some(Err(LexError {
-                message: "Invalid attribute word".to_string(),
-            }));
+            return Some(Err(LexError::new(
+                "Invalid attribute word",
+                SourceSpan::new(start_word, end),
+            )));
         }
         Some(Ok((start, Tok::AttrWord(raw.to_string()), self.pos)))
     }
@@ -1258,9 +1846,10 @@ impl<'input> Lexer<'input> {
         if self.peek()? == b'"' {
             self.pos += 1;
             let Some(rel_end) = self.input[self.pos..].find('"') else {
-                return Some(Err(LexError {
-                    message: "Unterminated string literal; missing '\"'".to_string(),
-                }));
+                return Some(Err(LexError::new(
+                    "Unterminated string literal; missing '\"'",
+                    SourceSpan::new(start, self.input.len()),
+                )));
             };
             let s = self.input[self.pos..self.pos + rel_end].to_string();
             self.pos = self.pos + rel_end + 1;
@@ -1279,7 +1868,8 @@ impl<'input> Lexer<'input> {
 
         let mut end = self.pos;
         for (rel, ch) in self.input[self.pos..].char_indices() {
-            let ok = !ch.is_ascii() || ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '*');
+            let ok =
+                !ch.is_ascii() || ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '*' | '.');
             if !ok {
                 break;
             }
@@ -1294,12 +1884,12 @@ impl<'input> Lexer<'input> {
     }
 }
 
-impl<'input> Iterator for Lexer<'input> {
+impl Iterator for Lexer<'_, '_> {
     type Item = std::result::Result<(usize, Tok, usize), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(tok) = self.pending.pop_front() {
-            return Some(Ok(tok));
+            return Some(self.emit_token(tok));
         }
 
         loop {
@@ -1311,9 +1901,10 @@ impl<'input> Iterator for Lexer<'input> {
             if self.pos >= self.input.len() {
                 if self.mode == Mode::Block {
                     self.mode = Mode::Default;
-                    return Some(Err(LexError {
-                        message: "EOF inside attribute block".to_string(),
-                    }));
+                    return Some(Err(LexError::new(
+                        "EOF inside attribute block",
+                        SourceSpan::new(self.pos, self.pos),
+                    )));
                 }
                 return None;
             }
@@ -1323,54 +1914,101 @@ impl<'input> Iterator for Lexer<'input> {
             }
 
             if let Some(tok) = self.lex_block_token() {
-                return Some(tok);
+                return Some(self.emit_result(tok));
             }
 
             if let Some(tok) = self.lex_rest_of_line() {
-                return Some(Ok(tok));
+                return Some(self.emit_token(tok));
             }
 
             if let Some(tok) = self.lex_newline() {
-                return Some(Ok(tok));
+                return Some(self.emit_token(tok));
             }
 
             if let Some(tok) = self.lex_acc_title() {
-                return Some(tok);
+                return Some(self.emit_result(tok));
             }
 
             if let Some(tok) = self.lex_acc_descr() {
-                return Some(tok);
+                return Some(self.emit_result(tok));
             }
 
             if let Some(tok) = self.lex_direction() {
-                return Some(Ok(tok));
+                return Some(self.emit_result(tok));
             }
 
             if let Some(tok) = self.lex_keyword() {
-                return Some(Ok(tok));
+                return Some(self.emit_token(tok));
             }
 
             if let Some(tok) = self.lex_id_list() {
-                return Some(Ok(tok));
+                return Some(self.emit_token(tok));
             }
 
             if let Some(tok) = self.lex_punct() {
-                return Some(Ok(tok));
+                return Some(self.emit_token(tok));
             }
 
             if let Some(tok) = self.lex_rel_tokens() {
-                return Some(Ok(tok));
+                return Some(self.emit_token(tok));
             }
 
             if let Some(tok) = self.lex_name_or_str() {
-                return Some(tok);
+                return Some(self.emit_result(tok));
             }
 
             let start = self.pos;
             self.pos += 1;
-            return Some(Err(LexError {
-                message: format!("Unexpected character at {start}"),
-            }));
+            return Some(Err(LexError::new(
+                format!("Unexpected character at {start}"),
+                SourceSpan::new(start, self.pos),
+            )));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MermaidConfig;
+
+    fn meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "er".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn er_typed_projection_matches_complete_compat_json() {
+        let text = concat!(
+            "erDiagram\n",
+            "accTitle: Orders\n",
+            "CUSTOMER ||--o{ ORDER : places\n",
+        );
+        let meta = meta();
+        let compat = parse_er(text, &meta).unwrap();
+        let typed = parse_er_model_for_render(text, &meta).unwrap();
+        let projection = render_model_to_compat_json(&typed, &meta).unwrap();
+
+        assert_eq!(projection, compat);
+        assert_eq!(projection["type"], json!("er"));
+        assert_eq!(projection["accDescr"], Value::Null);
+        assert_eq!(
+            projection["constants"]["cardinality"]["onlyOne"],
+            json!("ONLY_ONE")
+        );
+    }
+
+    #[test]
+    fn er_accepts_decimal_and_dotted_entity_names() {
+        let model = parse_er("erDiagram\n1.5 ||--|| Sales.Order : owns\n", &meta())
+            .expect("ER entities with dots and decimal names should parse");
+
+        assert!(model["entities"].get("1.5").is_some());
+        assert!(model["entities"].get("Sales.Order").is_some());
+        assert_eq!(model["relationships"].as_array().map(Vec::len), Some(1));
     }
 }

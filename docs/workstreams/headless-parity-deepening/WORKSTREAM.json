@@ -2,8 +2,8 @@
   "schema_version": 1,
   "slug": "headless-parity-deepening",
   "title": "Headless Parity Deepening",
-  "status": "active",
-  "updated": "2026-06-05",
+  "status": "closed",
+  "updated": "2026-07-21",
   "scope_kind": "execution",
   "problem": "Post-Mermaid-11.15 structural parity work has shifted from broad missing features to root residual governance, measurement seams, baseline-truth drift, and source-backed layout engine audits.",
   "authoritative_docs": [
@@ -45,7 +45,7 @@
     }
   ],
   "context_manifest": "docs/workstreams/headless-parity-deepening/CONTEXT.jsonl",
-  "current_task": "HPD-080",
+  "current_task": null,
   "gates": [
     "cargo fmt --check",
     "git diff --check",
@@ -77,7 +77,7 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "execute-next-task",
-    "notes": "Baseline truth, residual taxonomy, first measurement/root-bounds seams, the Sequence semantic projection pilot, unsupported-family admission rubric, HPD-090 baseline preparation, and multiple source-backed HPD-050 layout audit slices are in place. HPD-090 is closed: no broad or narrow stale stored-SVG set remains, full DOM parity is green, and no broad official fixture import is indicated. HPD-080 now overrides root-residual chasing when supported diagrams are visibly broken: prioritize blank output, hidden text, dark labels/cards, missing semantic colors, and missing Mermaid 11.15 diagram CSS/theme emission. Continue focused HPD-050 child audits when no higher-severity rendering defect is active; avoid broad rewrites or fake browser-bound parity claims."
+    "default_action": "closed",
+    "notes": "Historical Mermaid 11.15 execution evidence. This lane was superseded on 2026-07-15 by the family-owned architecture, the Mermaid 11.16 admission inventory, and the hash-bound root residual catalog. Do not resume tasks from this archive."
   }
 }

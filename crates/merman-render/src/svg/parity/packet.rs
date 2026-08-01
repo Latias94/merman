@@ -1,3 +1,3 @@
 mod render;
 
-pub(super) use render::{render_packet_diagram_svg, render_packet_diagram_svg_model};
+pub(super) use render::render_packet_diagram_svg_model;

@@ -4,79 +4,85 @@
 #include <stdio.h>
 #include <string.h>
 
-static int print_error(const char* label, int code, MermanBuffer data) {
-    fprintf(
-        stderr,
-        "%s failed (%d): %.*s\n",
-        label,
-        code,
-        (int)data.len,
-        data.data == NULL ? "" : (const char*)data.data
-    );
-    merman_buffer_free(data);
-    return 1;
+static MermanNativeSlice borrowed_slice(const uint8_t *data, size_t len) {
+    MermanNativeSlice slice;
+    slice.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice);
+    slice.data = data;
+    slice.len = len;
+    return slice;
 }
 
-static MermanHostTextMeasureResult measure_text(
-    MermanHostTextMeasureRequest request,
-    void* user_data
+static MermanNativeStatus measure_text(
+    const MermanNativeTextMeasureRequest *request,
+    MermanNativeTextMeasureResult *out_result,
+    void *user_data
 ) {
+    (void)request;
     (void)user_data;
 
-    /*
-     * Real hosts should measure with the same DOM/canvas/native text stack used for display.
-     * This example only demonstrates the callback shape and falls back for most requests.
-     */
-    if (
-        request.text_len == 5 &&
-        request.text != NULL &&
-        memcmp(request.text, "Hello", 5) == 0 &&
-        request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE
-    ) {
-        MermanHostTextMeasureResult result = {1, 40.0, request.line_height, 1};
-        return result;
+    if (out_result == NULL) {
+        return MERMAN_NATIVE_STATUS_INVALID_ARGUMENT;
     }
+    memset(out_result, 0, sizeof(*out_result));
+    out_result->struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeTextMeasureResult);
 
-    MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
-    return fallback;
+    /*
+     * Returning handled = 0 asks Merman to use its vendored measurer. Real preview hosts should
+     * fill the result for only the operations they can answer from their display font stack.
+     */
+    out_result->handled = 0;
+    return MERMAN_NATIVE_STATUS_OK;
 }
 
 int main(void) {
     static const uint8_t source[] = "flowchart TD\nA[Hello] --> B[World]";
-    static const uint8_t options[] =
-        "{"
-        "\"layout\":{\"text_measurer\":\"deterministic\"},"
-        "\"svg\":{\"diagram_id\":\"ffi engine example\",\"pipeline\":\"readable\"}"
-        "}";
+    MermanNativeApiRequest discovery;
+    MermanNativeApi api;
+    MermanNativeEngineConfig config;
+    MermanNativeOperationRequest request;
+    MermanNativeResult result;
+    MermanNativeEngineToken engine = 0;
 
-    if (merman_abi_version() != MERMAN_ABI_VERSION) {
-        fprintf(stderr, "Merman ABI mismatch\n");
+    memset(&discovery, 0, sizeof(discovery));
+    discovery.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApiRequest);
+    discovery.expected_abi_version = MERMAN_NATIVE_ABI_VERSION;
+    discovery.expected_minimum_prefix_layout_digest = borrowed_slice(
+        (const uint8_t *)MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST,
+        strlen(MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST)
+    );
+    memset(&api, 0, sizeof(api));
+    api.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi);
+    if (merman_get_native_api(&discovery, &api) != MERMAN_NATIVE_STATUS_OK) {
         return 1;
     }
 
-    MermanEngineResult engine =
-        merman_engine_new(options, sizeof(options) - 1);
-    if (engine.code != MERMAN_OK) {
-        return print_error("Merman engine creation", engine.code, engine.data);
+    memset(&config, 0, sizeof(config));
+    config.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineConfig);
+    config.options_json = borrowed_slice(NULL, 0);
+    config.text_measure = measure_text;
+    config.text_measure_user_data = NULL;
+    result = (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
+    if (api.engine_new(&config, &engine, &result) != MERMAN_NATIVE_STATUS_OK) {
+        api.result_free(&result);
+        return 1;
+    }
+    api.result_free(&result);
+
+    memset(&request, 0, sizeof(request));
+    request.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeOperationRequest);
+    request.operation = MERMAN_NATIVE_OPERATION_SVG;
+    request.source = borrowed_slice(source, sizeof(source) - 1);
+    request.uri = borrowed_slice(NULL, 0);
+    request.options_json = borrowed_slice(NULL, 0);
+    result = (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
+    if (api.execute_collect(engine, &request, &result) != MERMAN_NATIVE_STATUS_OK) {
+        api.result_free(&result);
+        api.engine_try_close(engine);
+        return 1;
     }
 
-    MermanResult callback_result =
-        merman_engine_set_text_measure_callback(engine.engine, measure_text, NULL);
-    if (callback_result.code != MERMAN_OK) {
-        merman_engine_free(engine.engine);
-        return print_error("Merman text measurement callback", callback_result.code, callback_result.data);
-    }
-    merman_buffer_free(callback_result.data);
-
-    MermanResult result =
-        merman_engine_render_svg(engine.engine, source, sizeof(source) - 1);
-    if (result.code != MERMAN_OK) {
-        merman_engine_free(engine.engine);
-        return print_error("Merman render", result.code, result.data);
-    }
-
-    printf("%.*s\n", (int)result.data.len, (const char*)result.data.data);
-    merman_buffer_free(result.data);
-    merman_engine_free(engine.engine);
-    return 0;
+    fwrite(result.data.data, 1, result.data.len, stdout);
+    fputc('\n', stdout);
+    api.result_free(&result);
+    return api.engine_try_close(engine) == MERMAN_NATIVE_STATUS_OK ? 0 : 1;
 }

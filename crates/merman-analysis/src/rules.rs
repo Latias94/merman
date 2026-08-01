@@ -1,17 +1,26 @@
 use crate::{
     AnalysisDiagnostic, AnalysisStatus, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
     DiagnosticSeverity, DiagnosticSpan, SourceMap,
+    diagnostic_projection::{
+        DiagnosticCandidate, candidates_from_diagnostics_cancellable,
+        extend_candidates_from_diagnostics_cancellable,
+    },
     source_directives::{
-        directive_keyword_spans, frontmatter_config_key_spans, init_directive_config_key_spans,
+        directive_keyword_spans_cancellable, frontmatter_config_key_spans_cancellable,
+        init_directive_config_key_spans_cancellable,
     },
 };
 use merman_core::{
     BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
     FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+    MermaidConfig,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use std::error::Error as StdError;
+use std::fmt::{Display, Formatter};
+use std::sync::OnceLock;
 
 pub const PREFER_INIT_DIRECTIVE_RULE_ID: &str = "merman.authoring.config.prefer_init_directive";
 pub const PREFER_FRONTMATTER_CONFIG_RULE_ID: &str =
@@ -25,10 +34,13 @@ pub const DIAGRAM_PARSE_RULE_ID: &str = "merman.parse.diagram_parse";
 pub const UNSUPPORTED_DIAGRAM_RULE_ID: &str = "merman.compatibility.unsupported_diagram";
 pub const RECOVERED_EDITOR_FACTS_RULE_ID: &str = "merman.parse.recovered_editor_facts";
 pub const RESOURCE_LIMIT_RULE_ID: &str = "merman.resource.source_bytes_exceeded";
+pub const DOCUMENT_DIAGRAM_LIMIT_RULE_ID: &str = "merman.resource.document_diagrams_exceeded";
 pub const MALFORMED_FRONT_MATTER_RULE_ID: &str = "merman.config.malformed_front_matter";
 pub const INVALID_DIRECTIVE_JSON_RULE_ID: &str = "merman.config.invalid_directive_json";
 pub const INVALID_FRONT_MATTER_YAML_RULE_ID: &str = "merman.config.invalid_front_matter_yaml";
+pub const INVALID_THEME_COLOR_RULE_ID: &str = "merman.config.invalid_theme_color";
 pub const PANIC_RULE_ID: &str = "merman.internal.panic";
+pub const PARSER_CONTRACT_VIOLATION_RULE_ID: &str = "merman.internal.parser_contract_violation";
 pub const INTERNAL_RULE_REGISTRY_GAP_RULE_ID: &str = "merman.internal.rule_registry_gap";
 pub const FLOWCHART_FACTS_PROJECTION_RULE_ID: &str = "merman.internal.flowchart_facts_projection";
 pub const BLOCK_WIDTH_RULE_ID: &str = "merman.block.width_exceeds_columns";
@@ -305,6 +317,21 @@ const RESOURCE_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
     fixable: false,
 };
 
+const DOCUMENT_DIAGRAM_LIMIT_RULE: RuleDescriptor = RuleDescriptor {
+    id: DOCUMENT_DIAGRAM_LIMIT_RULE_ID,
+    description: "Report host documents that exceed the configured embedded Mermaid diagram budget.",
+    evidence: &[
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
+        "docs/plans/2026-07-29-002-refactor-analysis-lsp-generation-session-plan.md",
+    ],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Resource,
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanResourcePolicy,
+    fixable: false,
+};
+
 const MALFORMED_FRONT_MATTER_RULE: RuleDescriptor = RuleDescriptor {
     id: MALFORMED_FRONT_MATTER_RULE_ID,
     description: "Report malformed YAML front matter blocks before diagram parsing.",
@@ -350,10 +377,40 @@ const INVALID_FRONT_MATTER_YAML_RULE: RuleDescriptor = RuleDescriptor {
     fixable: false,
 };
 
+const INVALID_THEME_COLOR_RULE: RuleDescriptor = RuleDescriptor {
+    id: INVALID_THEME_COLOR_RULE_ID,
+    description: "Report theme color values rejected by Mermaid's pinned Khroma calculations.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/7c0cafcf42e76bfaf79d0cbbd12edb986612f014/packages/mermaid/src/themes/theme-default.js",
+        "docs/adr/0068-render-side-presentation-theme-view.md",
+    ],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Config,
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermaidCompatibility,
+    fixable: false,
+};
+
 const PANIC_RULE: RuleDescriptor = RuleDescriptor {
     id: PANIC_RULE_ID,
     description: "Report an internal panic caught while analyzing Mermaid source.",
     evidence: &["docs/adr/0070-diagnostics-first-analysis-contract.md"],
+    default_severity: DiagnosticSeverity::Error,
+    category: DiagnosticCategory::Internal,
+    default_enabled: true,
+    default_profile: AnalysisRuleProfile::Core,
+    origin: RuleOrigin::MermanInternal,
+    fixable: false,
+};
+
+const PARSER_CONTRACT_VIOLATION_RULE: RuleDescriptor = RuleDescriptor {
+    id: PARSER_CONTRACT_VIOLATION_RULE_ID,
+    description: "Report a custom parser that returned cancellation to a non-cancellable analysis facade.",
+    evidence: &[
+        "docs/adr/0070-diagnostics-first-analysis-contract.md",
+        "docs/adr/0073-family-owned-diagram-architecture.md",
+    ],
     default_severity: DiagnosticSeverity::Error,
     category: DiagnosticCategory::Internal,
     default_enabled: true,
@@ -449,10 +506,13 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     UNSUPPORTED_DIAGRAM_RULE,
     RECOVERED_EDITOR_FACTS_RULE,
     RESOURCE_LIMIT_RULE,
+    DOCUMENT_DIAGRAM_LIMIT_RULE,
     MALFORMED_FRONT_MATTER_RULE,
     INVALID_DIRECTIVE_JSON_RULE,
     INVALID_FRONT_MATTER_YAML_RULE,
+    INVALID_THEME_COLOR_RULE,
     PANIC_RULE,
+    PARSER_CONTRACT_VIOLATION_RULE,
     INTERNAL_RULE_REGISTRY_GAP_RULE,
     FLOWCHART_FACTS_PROJECTION_RULE,
     BLOCK_WIDTH_RULE,
@@ -520,8 +580,43 @@ fn is_configurable_rule_descriptor(descriptor: RuleDescriptor) -> bool {
     )
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnalysisRuleConfigError {
+    rule_id: String,
+}
+
+impl AnalysisRuleConfigError {
+    fn not_configurable(rule_id: String) -> Self {
+        Self { rule_id }
+    }
+
+    pub fn rule_id(&self) -> &str {
+        &self.rule_id
+    }
+}
+
+impl Display for AnalysisRuleConfigError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "rule id `{}` must reference a configurable analysis rule id",
+            self.rule_id
+        )
+    }
+}
+
+impl StdError for AnalysisRuleConfigError {}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct AnalysisRuleConfig {
+    profile: AnalysisRuleProfile,
+    enabled_rules: BTreeSet<String>,
+    disabled_rules: BTreeSet<String>,
+    severity_overrides: BTreeMap<String, DiagnosticSeverity>,
+}
+
+#[derive(Deserialize)]
+struct AnalysisRuleConfigSerde {
     #[serde(default)]
     profile: AnalysisRuleProfile,
     #[serde(default)]
@@ -530,6 +625,32 @@ pub struct AnalysisRuleConfig {
     disabled_rules: BTreeSet<String>,
     #[serde(default)]
     severity_overrides: BTreeMap<String, DiagnosticSeverity>,
+}
+
+impl<'de> Deserialize<'de> for AnalysisRuleConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let serialized = AnalysisRuleConfigSerde::deserialize(deserializer)?;
+        let mut config = Self::default().with_profile(serialized.profile);
+        for rule_id in serialized.enabled_rules {
+            config
+                .enable_rule(rule_id)
+                .map_err(serde::de::Error::custom)?;
+        }
+        for rule_id in serialized.disabled_rules {
+            config
+                .disable_rule(rule_id)
+                .map_err(serde::de::Error::custom)?;
+        }
+        for (rule_id, severity) in serialized.severity_overrides {
+            config
+                .set_rule_severity(rule_id, severity)
+                .map_err(serde::de::Error::custom)?;
+        }
+        Ok(config)
+    }
 }
 
 impl AnalysisRuleConfig {
@@ -542,42 +663,67 @@ impl AnalysisRuleConfig {
         self.profile
     }
 
-    pub fn with_rule_enabled(mut self, rule_id: impl Into<String>) -> Self {
-        self.enable_rule(rule_id);
-        self
+    pub fn with_rule_enabled(
+        mut self,
+        rule_id: impl Into<String>,
+    ) -> Result<Self, AnalysisRuleConfigError> {
+        self.enable_rule(rule_id)?;
+        Ok(self)
     }
 
-    pub fn with_rule_disabled(mut self, rule_id: impl Into<String>) -> Self {
-        self.disable_rule(rule_id);
-        self
+    pub fn with_rule_disabled(
+        mut self,
+        rule_id: impl Into<String>,
+    ) -> Result<Self, AnalysisRuleConfigError> {
+        self.disable_rule(rule_id)?;
+        Ok(self)
     }
 
     pub fn with_rule_severity(
         mut self,
         rule_id: impl Into<String>,
         severity: DiagnosticSeverity,
-    ) -> Self {
-        self.set_rule_severity(rule_id, severity);
-        self
+    ) -> Result<Self, AnalysisRuleConfigError> {
+        self.set_rule_severity(rule_id, severity)?;
+        Ok(self)
     }
 
     pub fn set_profile(&mut self, profile: AnalysisRuleProfile) {
         self.profile = profile;
     }
 
-    pub fn enable_rule(&mut self, rule_id: impl Into<String>) {
-        self.enabled_rules.insert(rule_id.into());
+    pub fn enable_rule(
+        &mut self,
+        rule_id: impl Into<String>,
+    ) -> Result<(), AnalysisRuleConfigError> {
+        let rule_id = configurable_rule_id(rule_id)?;
+        self.enabled_rules.insert(rule_id);
+        Ok(())
     }
 
-    pub fn disable_rule(&mut self, rule_id: impl Into<String>) {
-        self.disabled_rules.insert(rule_id.into());
+    pub fn disable_rule(
+        &mut self,
+        rule_id: impl Into<String>,
+    ) -> Result<(), AnalysisRuleConfigError> {
+        let rule_id = configurable_rule_id(rule_id)?;
+        self.disabled_rules.insert(rule_id);
+        Ok(())
     }
 
-    pub fn set_rule_severity(&mut self, rule_id: impl Into<String>, severity: DiagnosticSeverity) {
-        self.severity_overrides.insert(rule_id.into(), severity);
+    pub fn set_rule_severity(
+        &mut self,
+        rule_id: impl Into<String>,
+        severity: DiagnosticSeverity,
+    ) -> Result<(), AnalysisRuleConfigError> {
+        let rule_id = configurable_rule_id(rule_id)?;
+        self.severity_overrides.insert(rule_id, severity);
+        Ok(())
     }
 
     pub fn is_rule_enabled(&self, descriptor: RuleDescriptor) -> bool {
+        if !is_configurable_rule_descriptor(descriptor) {
+            return descriptor.default_enabled;
+        }
         if self.disabled_rules.contains(descriptor.id) {
             return false;
         }
@@ -588,6 +734,9 @@ impl AnalysisRuleConfig {
     }
 
     pub fn severity_for(&self, descriptor: RuleDescriptor) -> DiagnosticSeverity {
+        if !is_configurable_rule_descriptor(descriptor) {
+            return descriptor.default_severity;
+        }
         self.severity_overrides
             .get(descriptor.id)
             .copied()
@@ -595,88 +744,269 @@ impl AnalysisRuleConfig {
     }
 }
 
+pub(crate) fn capture_rule_config() -> &'static AnalysisRuleConfig {
+    static CONFIG: OnceLock<AnalysisRuleConfig> = OnceLock::new();
+    CONFIG.get_or_init(|| {
+        let mut config = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Strict);
+        for descriptor in configurable_rule_descriptors() {
+            config
+                .enable_rule(descriptor.id)
+                .expect("catalogued configurable rules must be enableable");
+        }
+        config
+    })
+}
+
+fn configurable_rule_id(rule_id: impl Into<String>) -> Result<String, AnalysisRuleConfigError> {
+    let rule_id = rule_id.into();
+    if configurable_rule_descriptor(&rule_id).is_some() {
+        Ok(rule_id)
+    } else {
+        Err(AnalysisRuleConfigError::not_configurable(rule_id))
+    }
+}
+
+const PREFER_INIT_SUPPRESSORS: &[&str] = &[PREFER_FRONTMATTER_CONFIG_RULE_ID];
+
+pub(crate) fn source_lint_candidates_cancellable(
+    source: &str,
+    source_map: &SourceMap,
+    captured_config: Option<&MermaidConfig>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
+    cancellation.checkpoint()?;
+    let mut alias_config = capture_rule_config().clone();
+    alias_config
+        .disable_rule(PREFER_FRONTMATTER_CONFIG_RULE_ID)
+        .expect("frontmatter preference is configurable");
+    let alias_diagnostics = init_directive_alias_diagnostics_cancellable(
+        source,
+        source_map,
+        &alias_config,
+        cancellation,
+    )?;
+    let mut candidates = Vec::with_capacity(alias_diagnostics.len());
+    for (index, diagnostic) in alias_diagnostics.into_iter().enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        candidates
+            .push(DiagnosticCandidate::new(diagnostic).with_suppressors(PREFER_INIT_SUPPRESSORS));
+    }
+    cancellation.checkpoint()?;
+    extend_candidates_from_diagnostics_cancellable(
+        &mut candidates,
+        prefer_frontmatter_config_diagnostics_with_config_cancellable(
+            source,
+            source_map,
+            capture_rule_config(),
+            captured_config,
+            cancellation,
+        )?,
+        cancellation,
+    )?;
+    cancellation.checkpoint()?;
+    extend_candidates_from_diagnostics_cancellable(
+        &mut candidates,
+        deprecated_flowchart_html_labels_diagnostics(
+            source,
+            source_map,
+            capture_rule_config(),
+            &DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS,
+            &DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS,
+            cancellation,
+        )?,
+        cancellation,
+    )?;
+    cancellation.checkpoint()?;
+    extend_candidates_from_diagnostics_cancellable(
+        &mut candidates,
+        deprecated_external_diagram_loading_diagnostics(
+            source,
+            source_map,
+            capture_rule_config(),
+            cancellation,
+        )?,
+        cancellation,
+    )?;
+    cancellation.checkpoint()?;
+    Ok(candidates)
+}
+
+pub(crate) fn parsed_source_lint_candidates_cancellable(
+    source: &str,
+    source_map: &SourceMap,
+    diagram_type: &str,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
+    cancellation.checkpoint()?;
+    if merman_core::diagram_type_family_kind(diagram_type) != Some("flowchart") {
+        return Ok(Vec::new());
+    }
+    let diagnostics = deprecated_flowchart_html_labels_diagnostics(
+        source,
+        source_map,
+        capture_rule_config(),
+        &DEPRECATED_FLOWCHART_HTML_LABELS_FLOWCHART_INIT_WRAPPER_PATHS,
+        &[],
+        cancellation,
+    )?;
+    cancellation.checkpoint()?;
+    candidates_from_diagnostics_cancellable(diagnostics, cancellation)
+}
+
+#[cfg(test)]
 pub(crate) fn source_lint_diagnostics(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
-    let mut diagnostics = init_directive_alias_diagnostics(source, source_map, rule_config);
-    diagnostics.extend(prefer_frontmatter_config_diagnostics(
+    let cancellation = crate::AnalysisCancellationToken::new();
+    let captured_config = merman_core::Engine::new()
+        .parse_metadata_sync(source)
+        .ok()
+        .map(|metadata| metadata.config);
+    let candidates = source_lint_candidates_cancellable(
         source,
         source_map,
-        rule_config,
-    ));
-    diagnostics.extend(deprecated_flowchart_html_labels_diagnostics(
-        source,
-        source_map,
-        rule_config,
-        &DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS,
-        &DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS,
-    ));
-    diagnostics.extend(deprecated_external_diagram_loading_diagnostics(
-        source,
-        source_map,
-        rule_config,
-    ));
-    diagnostics
+        captured_config.as_ref(),
+        &cancellation,
+    )
+    .expect("a private analysis cancellation token cannot be cancelled");
+    crate::diagnostic_projection::project_diagnostic_candidates(
+        &candidates,
+        &crate::AnalysisDiagnosticPolicy {
+            rule_config: rule_config.clone(),
+        },
+        &cancellation,
+    )
+    .expect("a private analysis cancellation token cannot be cancelled")
 }
 
+#[cfg(test)]
 pub(crate) fn parsed_source_lint_diagnostics(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
     diagram_type: &str,
 ) -> Vec<AnalysisDiagnostic> {
-    if merman_core::diagram_type_family_kind(diagram_type) != Some("flowchart") {
-        return Vec::new();
-    }
-
-    deprecated_flowchart_html_labels_diagnostics(
-        source,
-        source_map,
-        rule_config,
-        &DEPRECATED_FLOWCHART_HTML_LABELS_FLOWCHART_INIT_WRAPPER_PATHS,
-        &[],
+    let cancellation = crate::AnalysisCancellationToken::new();
+    let candidates =
+        parsed_source_lint_candidates_cancellable(source, source_map, diagram_type, &cancellation)
+            .expect("a private analysis cancellation token cannot be cancelled");
+    crate::diagnostic_projection::project_diagnostic_candidates(
+        &candidates,
+        &crate::AnalysisDiagnosticPolicy {
+            rule_config: rule_config.clone(),
+        },
+        &cancellation,
     )
+    .expect("a private analysis cancellation token cannot be cancelled")
 }
 
+#[cfg(test)]
 pub(crate) fn semantic_warning_diagnostics(
     diagram_type: &str,
     model: &Value,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
-    let span = source_map.whole_source_span().ok();
-    let Some(warning_facts) = model
-        .get("warningFacts")
-        .and_then(|value| serde_json::from_value::<Vec<DiagramWarningFact>>(value.clone()).ok())
-    else {
-        return Vec::new();
-    };
-
-    semantic_warning_fact_diagnostics(diagram_type, warning_facts, span, source_map, rule_config)
+    let cancellation = crate::AnalysisCancellationToken::new();
+    semantic_warning_diagnostics_cancellable(
+        diagram_type,
+        model,
+        source_map,
+        rule_config,
+        &cancellation,
+    )
+    .expect("a private analysis cancellation token cannot be cancelled")
 }
 
-fn semantic_warning_fact_diagnostics(
+pub(crate) fn semantic_warning_diagnostics_cancellable(
+    diagram_type: &str,
+    model: &Value,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
+    cancellation.checkpoint()?;
+    let span = source_map.whole_source_span_cancellable(cancellation)?.ok();
+    let Some(warning_facts) = deserialize_warning_facts_cancellable(model, cancellation)? else {
+        return Ok(Vec::new());
+    };
+    cancellation.checkpoint()?;
+
+    semantic_warning_fact_diagnostics_cancellable(
+        diagram_type,
+        warning_facts,
+        span,
+        source_map,
+        rule_config,
+        cancellation,
+    )
+}
+
+pub(crate) fn semantic_warning_candidates_cancellable(
+    diagram_type: &str,
+    model: &Value,
+    source_map: &SourceMap,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<DiagnosticCandidate>, crate::AnalysisCancelled> {
+    let diagnostics = semantic_warning_diagnostics_cancellable(
+        diagram_type,
+        model,
+        source_map,
+        capture_rule_config(),
+        cancellation,
+    )?;
+    candidates_from_diagnostics_cancellable(diagnostics, cancellation)
+}
+
+fn deserialize_warning_facts_cancellable(
+    model: &Value,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Option<Vec<DiagramWarningFact>>, crate::AnalysisCancelled> {
+    let Some(values) = model.get("warningFacts").and_then(Value::as_array) else {
+        return Ok(None);
+    };
+
+    let mut facts = Vec::with_capacity(values.len());
+    for value in values {
+        cancellation.checkpoint()?;
+        let Ok(fact) = DiagramWarningFact::deserialize(value) else {
+            return Ok(None);
+        };
+        facts.push(fact);
+    }
+    cancellation.checkpoint()?;
+    Ok(Some(facts))
+}
+
+fn semantic_warning_fact_diagnostics_cancellable(
     diagram_type: &str,
     warning_facts: Vec<DiagramWarningFact>,
     fallback_span: Option<DiagnosticSpan>,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-) -> Vec<AnalysisDiagnostic> {
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     let mut diagnostics = Vec::with_capacity(warning_facts.len());
 
-    for fact in warning_facts {
+    for (fact_index, fact) in warning_facts.into_iter().enumerate() {
+        if fact_index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
         match warning_fact_rule_descriptor(&fact.rule_id) {
             Some(descriptor) if rule_config.is_rule_enabled(descriptor) => {
-                diagnostics.push(warning_for_fact(
+                diagnostics.push(warning_for_fact_cancellable(
                     diagram_type,
                     fact,
-                    fallback_span.clone(),
+                    fallback_span,
                     source_map,
                     descriptor,
                     rule_config,
-                ))
+                    cancellation,
+                )?)
             }
             Some(_) => {}
             None => diagnostics.push(
@@ -685,26 +1015,28 @@ fn semantic_warning_fact_diagnostics(
                         "unknown warning fact rule id `{}`: {}",
                         fact.rule_id, fact.message
                     ),
-                    fallback_span.clone(),
+                    fallback_span,
                 )
                 .with_diagram_type(diagram_type),
             ),
         }
     }
 
-    diagnostics
+    cancellation.checkpoint()?;
+    Ok(diagnostics)
 }
 
-fn warning_for_fact(
+fn warning_for_fact_cancellable(
     diagram_type: &str,
     fact: DiagramWarningFact,
     fallback_span: Option<DiagnosticSpan>,
     source_map: &SourceMap,
     descriptor: RuleDescriptor,
     rule_config: &AnalysisRuleConfig,
-) -> AnalysisDiagnostic {
-    let span = warning_fact_span(&fact, source_map, fallback_span);
-    let fix = warning_fact_fix(&fact, descriptor, source_map);
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<AnalysisDiagnostic, crate::AnalysisCancelled> {
+    let span = warning_fact_span_cancellable(&fact, source_map, fallback_span, cancellation)?;
+    let fix = warning_fact_fix_cancellable(&fact, descriptor, source_map, cancellation)?;
     let mut diagnostic = AnalysisDiagnostic::new(
         descriptor.id,
         rule_config.severity_for(descriptor),
@@ -721,27 +1053,40 @@ fn warning_for_fact(
         diagnostic = diagnostic.with_fix(fix);
     }
 
-    diagnostic
+    Ok(diagnostic)
 }
 
-fn warning_fact_span(
+fn warning_fact_span_cancellable(
     fact: &DiagramWarningFact,
     source_map: &SourceMap,
     fallback_span: Option<DiagnosticSpan>,
-) -> Option<DiagnosticSpan> {
-    fact.span
-        .and_then(|span| source_map.span(span.start, span.end).ok())
-        .or(fallback_span)
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Option<DiagnosticSpan>, crate::AnalysisCancelled> {
+    let span = match fact.span {
+        Some(span) => source_map
+            .span_cancellable(span.start, span.end, cancellation)?
+            .ok(),
+        None => None,
+    };
+    Ok(span.or(fallback_span))
 }
 
-fn warning_fact_fix(
+fn warning_fact_fix_cancellable(
     fact: &DiagramWarningFact,
     descriptor: RuleDescriptor,
     source_map: &SourceMap,
-) -> Option<DiagnosticFix> {
-    let fix_span = fact.fix_span.or(fact.span)?;
-    let fix_span = source_map.span(fix_span.start, fix_span.end).ok()?;
-    match descriptor.id {
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Option<DiagnosticFix>, crate::AnalysisCancelled> {
+    let Some(fix_span) = fact.fix_span.or(fact.span) else {
+        return Ok(None);
+    };
+    let Some(fix_span) = source_map
+        .span_cancellable(fix_span.start, fix_span.end, cancellation)?
+        .ok()
+    else {
+        return Ok(None);
+    };
+    Ok(match descriptor.id {
         FLOWCHART_EXPLICIT_DIRECTION_RULE_ID => Some(
             DiagnosticFix::new(
                 "Insert `TB` into the flowchart header",
@@ -750,7 +1095,7 @@ fn warning_fact_fix(
             .preferred(),
         ),
         _ => None,
-    }
+    })
 }
 
 fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
@@ -784,68 +1129,98 @@ pub(crate) fn internal_rule_registry_gap_diagnostic(
     diagnostic
 }
 
-fn init_directive_alias_diagnostics(
+fn init_directive_alias_diagnostics_cancellable(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-) -> Vec<AnalysisDiagnostic> {
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     if !rule_config.is_rule_enabled(PREFER_INIT_DIRECTIVE_RULE) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     if rule_config.is_rule_enabled(PREFER_FRONTMATTER_CONFIG_RULE) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let severity = rule_config.severity_for(PREFER_INIT_DIRECTIVE_RULE);
-
-    directive_keyword_spans(source)
+    let mut diagnostics = Vec::new();
+    for (index, keyword) in directive_keyword_spans_cancellable(source, cancellation)?
         .into_iter()
-        .filter_map(|keyword| {
-            (source.get(keyword.start..keyword.end) == Some("initialize"))
-                .then_some(keyword)
-        })
-        .filter_map(|keyword| {
-            let span = source_map.span(keyword.start, keyword.end).ok()?;
-            Some(
-                AnalysisDiagnostic::new(
-                    PREFER_INIT_DIRECTIVE_RULE.id,
-                    severity,
-                    PREFER_INIT_DIRECTIVE_RULE.category,
-                    "prefer `init` directive keyword over the `initialize` alias",
-                )
-                .with_span(span.clone())
-                .with_help("`initialize` is accepted as an alias; `init` is the canonical Mermaid directive keyword.")
-                .with_fix(
-                    DiagnosticFix::new(
-                        "Replace `initialize` with `init`",
-                        vec![DiagnosticFixEdit::new(span, "init")],
-                    )
-                    .preferred(),
-                ),
+        .enumerate()
+    {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        if source.get(keyword.start..keyword.end) != Some("initialize") {
+            continue;
+        }
+        let Ok(span) = source_map.span_cancellable(keyword.start, keyword.end, cancellation)?
+        else {
+            continue;
+        };
+        diagnostics.push(
+            AnalysisDiagnostic::new(
+                PREFER_INIT_DIRECTIVE_RULE.id,
+                severity,
+                PREFER_INIT_DIRECTIVE_RULE.category,
+                "prefer `init` directive keyword over the `initialize` alias",
             )
-        })
-        .collect()
+            .with_span(span)
+            .with_help("`initialize` is accepted as an alias; `init` is the canonical Mermaid directive keyword.")
+            .with_fix(
+                DiagnosticFix::new(
+                    "Replace `initialize` with `init`",
+                    vec![DiagnosticFixEdit::new(span, "init")],
+                )
+                .preferred(),
+            ),
+        );
+    }
+    cancellation.checkpoint()?;
+    Ok(diagnostics)
 }
 
-fn prefer_frontmatter_config_diagnostics(
+fn prefer_frontmatter_config_diagnostics_with_config_cancellable(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-) -> Vec<AnalysisDiagnostic> {
+    captured_config: Option<&MermaidConfig>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     if !rule_config.is_rule_enabled(PREFER_FRONTMATTER_CONFIG_RULE) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let severity = rule_config.severity_for(PREFER_FRONTMATTER_CONFIG_RULE);
-    let fix = crate::source_config_rewrite::init_directives_to_frontmatter_fix(source, source_map);
+    let fix = match captured_config {
+        Some(config) => {
+            crate::source_config_rewrite::init_directives_to_frontmatter_fix_cancellable(
+                source,
+                source_map,
+                config,
+                cancellation,
+            )?
+        }
+        None => None,
+    };
 
-    directive_keyword_spans(source)
+    let mut diagnostics = Vec::new();
+    for (index, keyword) in directive_keyword_spans_cancellable(source, cancellation)?
         .into_iter()
-        .filter_map(|keyword| {
-            matches!(source.get(keyword.start..keyword.end), Some("init" | "initialize"))
-                .then_some(keyword)
-        })
-        .filter_map(|keyword| {
-            let span = source_map.span(keyword.start, keyword.end).ok()?;
-            let mut diagnostic = AnalysisDiagnostic::new(
+        .enumerate()
+    {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        if !matches!(
+            source.get(keyword.start..keyword.end),
+            Some("init" | "initialize")
+        ) {
+            continue;
+        }
+        let Ok(span) = source_map.span_cancellable(keyword.start, keyword.end, cancellation)?
+        else {
+            continue;
+        };
+        let mut diagnostic = AnalysisDiagnostic::new(
                 PREFER_FRONTMATTER_CONFIG_RULE.id,
                 severity,
                 PREFER_FRONTMATTER_CONFIG_RULE.category,
@@ -855,12 +1230,34 @@ fn prefer_frontmatter_config_diagnostics(
             .with_help(
                 "Mermaid deprecated directives from v10.5.0; diagram authors should move configuration into the diagram frontmatter `config` block.",
             );
-            if let Some(fix) = fix.clone() {
-                diagnostic = diagnostic.with_fix(fix);
-            }
-            Some(diagnostic)
-        })
-        .collect()
+        // Every matching diagnostic retains quick-fix discoverability. `DiagnosticFix`
+        // clones share the immutable edit allocation, so an aggregate N-edit migration does
+        // not become N independent retained edit arrays.
+        if let Some(fix) = fix.clone() {
+            diagnostic = diagnostic.with_fix(fix);
+        }
+        diagnostics.push(diagnostic);
+    }
+    cancellation.checkpoint()?;
+    Ok(diagnostics)
+}
+
+#[cfg(test)]
+fn prefer_frontmatter_config_diagnostics_with_config(
+    source: &str,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+    captured_config: Option<&MermaidConfig>,
+) -> Vec<AnalysisDiagnostic> {
+    let cancellation = crate::AnalysisCancellationToken::new();
+    prefer_frontmatter_config_diagnostics_with_config_cancellable(
+        source,
+        source_map,
+        rule_config,
+        captured_config,
+        &cancellation,
+    )
+    .expect("a private analysis cancellation token cannot be cancelled")
 }
 
 fn deprecated_flowchart_html_labels_diagnostics(
@@ -869,16 +1266,20 @@ fn deprecated_flowchart_html_labels_diagnostics(
     rule_config: &AnalysisRuleConfig,
     init_matching_paths: &[&[&str]],
     frontmatter_matching_paths: &[&[&str]],
-) -> Vec<AnalysisDiagnostic> {
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     config_key_diagnostics(
         source,
         source_map,
         rule_config,
-        DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
-        init_matching_paths,
-        frontmatter_matching_paths,
-        "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
-        "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
+        ConfigKeyDiagnosticSpec {
+            descriptor: DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
+            init_matching_paths,
+            frontmatter_matching_paths,
+            message: "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
+            help: "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
+        },
+        cancellation,
     )
 }
 
@@ -886,51 +1287,78 @@ fn deprecated_external_diagram_loading_diagnostics(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-) -> Vec<AnalysisDiagnostic> {
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
     config_key_diagnostics(
         source,
         source_map,
         rule_config,
-        DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE,
-        &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS,
-        &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_FRONTMATTER_CONFIG_PATHS,
-        "deprecated external diagram loading config; use `registerExternalDiagrams` instead",
-        "Mermaid warns that `lazyLoadedDiagrams` and `loadExternalDiagramsAtStartup` are deprecated in favor of the `registerExternalDiagrams` API.",
+        ConfigKeyDiagnosticSpec {
+            descriptor: DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE,
+            init_matching_paths: &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS,
+            frontmatter_matching_paths:
+                &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_FRONTMATTER_CONFIG_PATHS,
+            message: "deprecated external diagram loading config; use `registerExternalDiagrams` instead",
+            help: "Mermaid warns that `lazyLoadedDiagrams` and `loadExternalDiagramsAtStartup` are deprecated in favor of the `registerExternalDiagrams` API.",
+        },
+        cancellation,
     )
+}
+
+struct ConfigKeyDiagnosticSpec<'a> {
+    descriptor: RuleDescriptor,
+    init_matching_paths: &'a [&'a [&'a str]],
+    frontmatter_matching_paths: &'a [&'a [&'a str]],
+    message: &'static str,
+    help: &'static str,
 }
 
 fn config_key_diagnostics(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-    descriptor: RuleDescriptor,
-    init_matching_paths: &[&[&str]],
-    frontmatter_matching_paths: &[&[&str]],
-    message: &'static str,
-    help: &'static str,
-) -> Vec<AnalysisDiagnostic> {
-    if !rule_config.is_rule_enabled(descriptor) {
-        return Vec::new();
+    spec: ConfigKeyDiagnosticSpec<'_>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<AnalysisDiagnostic>, crate::AnalysisCancelled> {
+    if !rule_config.is_rule_enabled(spec.descriptor) {
+        return Ok(Vec::new());
     }
-    let severity = rule_config.severity_for(descriptor);
+    cancellation.checkpoint()?;
+    let severity = rule_config.severity_for(spec.descriptor);
 
-    let mut spans = init_directive_config_key_spans(source, init_matching_paths);
-    spans.extend(frontmatter_config_key_spans(
+    let init_spans = init_directive_config_key_spans_cancellable(
         source,
-        frontmatter_matching_paths,
-    ));
+        spec.init_matching_paths,
+        cancellation,
+    )?;
+    let frontmatter_spans = frontmatter_config_key_spans_cancellable(
+        source,
+        spec.frontmatter_matching_paths,
+        cancellation,
+    )?;
 
-    spans
-        .into_iter()
-        .filter_map(|span| {
-            let span = source_map.span(span.start, span.end).ok()?;
-            Some(
-                AnalysisDiagnostic::new(descriptor.id, severity, descriptor.category, message)
-                    .with_span(span)
-                    .with_help(help),
+    let mut diagnostics =
+        Vec::with_capacity(init_spans.len().saturating_add(frontmatter_spans.len()));
+    for (index, span) in init_spans.into_iter().chain(frontmatter_spans).enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        let Ok(span) = source_map.span_cancellable(span.start, span.end, cancellation)? else {
+            continue;
+        };
+        diagnostics.push(
+            AnalysisDiagnostic::new(
+                spec.descriptor.id,
+                severity,
+                spec.descriptor.category,
+                spec.message,
             )
-        })
-        .collect()
+            .with_span(span)
+            .with_help(spec.help),
+        );
+    }
+    cancellation.checkpoint()?;
+    Ok(diagnostics)
 }
 
 #[cfg(test)]

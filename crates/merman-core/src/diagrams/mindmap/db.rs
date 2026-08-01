@@ -1,13 +1,13 @@
-use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, Result};
-use serde_json::{Map, Value, json};
-
 use super::render_model::{MindmapDiagramRenderEdge, MindmapDiagramRenderNode};
 use super::utils::get_i64;
 use super::{
     NODE_TYPE_BANG, NODE_TYPE_CIRCLE, NODE_TYPE_CLOUD, NODE_TYPE_DEFAULT, NODE_TYPE_HEXAGON,
     NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT,
 };
+use crate::sanitize::sanitize_text;
+use crate::{Error, MermaidConfig, ParseControl, ParseControlResult, Result};
+
+const MINDMAP_SECTION_COUNT: usize = 11;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct MindmapParseConfig {
@@ -59,7 +59,6 @@ pub(super) struct MindmapNode {
     pub(super) node_id: String,
     pub(super) level: i32,
     pub(super) descr: String,
-    pub(super) is_markdown: bool,
     pub(super) ty: i32,
     pub(super) children: Vec<i32>,
     pub(super) width: i64,
@@ -87,76 +86,23 @@ fn mindmap_node_css_classes(node: &MindmapNode) -> String {
     css.join(" ")
 }
 
-fn mindmap_layout_node_value(node: &MindmapNode, look: &str, default_shape: &'static str) -> Value {
-    let mut map = Map::new();
-    map.insert("id".to_string(), json!(node.id.to_string()));
-    map.insert("domId".to_string(), json!(format!("node_{}", node.id)));
-    map.insert("label".to_string(), json!(node.descr));
-    if node.is_markdown {
-        map.insert("labelType".to_string(), json!("markdown"));
-    }
-    map.insert("isGroup".to_string(), json!(false));
-    map.insert(
-        "shape".to_string(),
-        json!(shape_from_type(node.ty, default_shape)),
-    );
-    map.insert("width".to_string(), json!(node.width));
-    map.insert("height".to_string(), json!(node.height.unwrap_or(0)));
-    // Keep the DB padding in the semantic model (matches Mermaid mindmapDb.getData()).
-    // Shape-specific padding overrides happen at render time (see `mindmap_render_node`).
-    map.insert("padding".to_string(), json!(node.padding));
-    map.insert(
-        "cssClasses".to_string(),
-        json!(mindmap_node_css_classes(node)),
-    );
-    map.insert("cssStyles".to_string(), Value::Array(Vec::new()));
-    map.insert("look".to_string(), json!(look));
-
-    if let Some(icon) = &node.icon {
-        map.insert("icon".to_string(), json!(icon));
-    }
-    if let Some(x) = node.x {
-        map.insert("x".to_string(), json!(x));
-    }
-    if let Some(y) = node.y {
-        map.insert("y".to_string(), json!(y));
-    }
-
-    map.insert("level".to_string(), json!(node.level));
-    map.insert("nodeId".to_string(), json!(node.node_id));
-    map.insert("type".to_string(), json!(node.ty));
-    if let Some(section) = node.section {
-        map.insert("section".to_string(), json!(section));
-    }
-
-    Value::Object(map)
-}
-
 fn mindmap_render_node(
     node: &MindmapNode,
     look: &str,
     default_shape: &'static str,
 ) -> MindmapDiagramRenderNode {
-    let padding = if node.ty == NODE_TYPE_ROUNDED_RECT {
-        15_f64
-    } else {
-        node.padding as f64
-    };
-
     MindmapDiagramRenderNode {
         id: node.id.to_string(),
         dom_id: format!("node_{}", node.id),
         label: node.descr.clone(),
-        label_type: if node.is_markdown {
-            "markdown".to_string()
-        } else {
-            String::new()
-        },
+        // Mermaid's `flattenNodes()` marks every layout node as Markdown. The parser's quoted
+        // description flag only controls sanitization while the node enters this DB.
+        label_type: "markdown".to_string(),
         is_group: false,
         shape: shape_from_type(node.ty, default_shape).to_string(),
         width: node.width as f64,
         height: node.height.unwrap_or(0) as f64,
-        padding,
+        padding: node.padding as f64,
         css_classes: mindmap_node_css_classes(node),
         css_styles: Vec::new(),
         look: look.to_string(),
@@ -178,29 +124,6 @@ fn mindmap_edge_classes(parent: &MindmapNode, child: &MindmapNode) -> String {
     let edge_depth = parent.level + 1;
     classes.push_str(&format!(" edge-depth-{edge_depth}"));
     classes
-}
-
-fn mindmap_edge_value(parent: &MindmapNode, child: &MindmapNode, look: &str) -> Value {
-    let mut map = Map::new();
-    map.insert(
-        "id".to_string(),
-        json!(format!("edge_{}_{}", parent.id, child.id)),
-    );
-    map.insert("start".to_string(), json!(parent.id.to_string()));
-    map.insert("end".to_string(), json!(child.id.to_string()));
-    map.insert("type".to_string(), json!("normal"));
-    map.insert("curve".to_string(), json!("basis"));
-    map.insert("thickness".to_string(), json!("normal"));
-    map.insert("look".to_string(), json!(look));
-    map.insert(
-        "classes".to_string(),
-        json!(mindmap_edge_classes(parent, child)),
-    );
-    map.insert("depth".to_string(), json!(parent.level));
-    if let Some(section) = child.section {
-        map.insert("section".to_string(), json!(section));
-    }
-    Value::Object(map)
 }
 
 fn mindmap_render_edge(
@@ -226,6 +149,7 @@ fn mindmap_render_edge(
 pub(super) struct MindmapDb {
     pub(super) nodes: Vec<MindmapNode>,
     base_level: Option<i32>,
+    ancestry: Vec<(i32, usize)>,
 }
 
 pub(super) struct MindmapNodeInput<'a> {
@@ -241,22 +165,33 @@ impl MindmapDb {
     pub(super) fn clear(&mut self) {
         self.nodes.clear();
         self.base_level = None;
+        self.ancestry.clear();
     }
 
     pub(super) fn get_mindmap(&self) -> Option<&MindmapNode> {
         self.nodes.first()
     }
 
-    fn get_parent_index(&self, level: i32) -> Option<usize> {
-        self.nodes.iter().rposition(|n| n.level < level)
-    }
-
+    #[cfg(test)]
     pub(super) fn add_node(
         &mut self,
         input: MindmapNodeInput<'_>,
         config: &MermaidConfig,
         parse_config: MindmapParseConfig,
     ) -> Result<()> {
+        let control = ParseControl::new();
+        self.add_node_controlled(input, config, parse_config, &control)
+            .expect("a private parse control cannot be cancelled")
+    }
+
+    pub(super) fn add_node_controlled(
+        &mut self,
+        input: MindmapNodeInput<'_>,
+        config: &MermaidConfig,
+        parse_config: MindmapParseConfig,
+        control: &ParseControl,
+    ) -> ParseControlResult<Result<()>> {
+        control.checkpoint()?;
         let mut level = input.indent_level;
         let is_root;
         if self.nodes.is_empty() {
@@ -281,6 +216,7 @@ impl MindmapDb {
         }
 
         let id = self.nodes.len() as i32;
+        control.checkpoint()?;
         let node = MindmapNode {
             id,
             node_id: sanitize_text(input.id_raw, config),
@@ -290,7 +226,6 @@ impl MindmapDb {
             } else {
                 sanitize_text(input.descr_raw, config)
             },
-            is_markdown: input.descr_is_markdown,
             ty: input.ty,
             children: Vec::new(),
             width,
@@ -304,24 +239,41 @@ impl MindmapDb {
             is_root,
         };
 
-        if let Some(parent_idx) = self.get_parent_index(level) {
+        let mut popped = 0usize;
+        while self
+            .ancestry
+            .last()
+            .is_some_and(|(ancestor_level, _)| *ancestor_level >= level)
+        {
+            if popped.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            self.ancestry.pop();
+            popped = popped.saturating_add(1);
+        }
+
+        if let Some((_, parent_idx)) = self.ancestry.last().copied() {
             self.nodes[parent_idx].children.push(id);
             self.nodes.push(node);
-            return Ok(());
+            self.ancestry.push((level, id as usize));
+            control.checkpoint()?;
+            return Ok(Ok(()));
         }
 
         if is_root {
             self.nodes.push(node);
-            return Ok(());
+            self.ancestry.push((level, id as usize));
+            control.checkpoint()?;
+            return Ok(Ok(()));
         }
 
-        Err(Error::diagram_parse_fallback(
+        Ok(Err(Error::diagram_parse_fallback(
             input.diagram_type.to_string(),
             format!(
                 "There can be only one root. No parent could be found for (\"{}\")",
                 node.descr
             ),
-        ))
+        )))
     }
 
     pub(super) fn decorate_last(
@@ -341,9 +293,26 @@ impl MindmapDb {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn assign_sections(&mut self, node_id: i32, section: Option<i32>) {
+        let control = ParseControl::new();
+        self.assign_sections_controlled(node_id, section, &control)
+            .expect("a private parse control cannot be cancelled");
+    }
+
+    pub(super) fn assign_sections_controlled(
+        &mut self,
+        node_id: i32,
+        section: Option<i32>,
+        control: &ParseControl,
+    ) -> ParseControlResult<()> {
         let mut stack = vec![(node_id, section)];
+        let mut visited = 0usize;
         while let Some((node_id, section)) = stack.pop() {
+            if visited.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            visited = visited.saturating_add(1);
             let Ok(node_idx) = usize::try_from(node_id) else {
                 continue;
             };
@@ -357,131 +326,39 @@ impl MindmapDb {
                 node.section = section;
             }
 
-            let children = node.children.clone();
-            for (index, child_id) in children.into_iter().enumerate().rev() {
+            let child_count = node.children.len();
+            for index in (0..child_count).rev() {
+                if index % 128 == 0 {
+                    control.checkpoint()?;
+                }
+                let child_id = self.nodes[node_idx].children[index];
                 let child_section = if node_level == 0 {
-                    Some(index as i32)
+                    Some((index % MINDMAP_SECTION_COUNT) as i32)
                 } else {
                     section
                 };
                 stack.push((child_id, child_section));
             }
         }
+        control.checkpoint()
     }
 
-    pub(super) fn to_root_node_value(&self, node_id: i32) -> Value {
-        let Ok(node_idx) = usize::try_from(node_id) else {
-            return Value::Null;
-        };
-        if self.nodes.get(node_idx).is_none() {
-            return Value::Null;
-        }
-
-        let mut values = vec![None; self.nodes.len()];
-        let mut stack = vec![(node_id, false)];
-        while let Some((node_id, visited)) = stack.pop() {
-            let Ok(node_idx) = usize::try_from(node_id) else {
-                continue;
-            };
-            let Some(node) = self.nodes.get(node_idx) else {
-                continue;
-            };
-
-            if visited {
-                let mut map = Map::new();
-                map.insert("id".to_string(), json!(node.id));
-                map.insert("nodeId".to_string(), json!(node.node_id));
-                map.insert("level".to_string(), json!(node.level));
-                map.insert("descr".to_string(), json!(node.descr));
-                map.insert("type".to_string(), json!(node.ty));
-                let children = node
-                    .children
-                    .iter()
-                    .map(|child_id| {
-                        let Ok(child_idx) = usize::try_from(*child_id) else {
-                            return Value::Null;
-                        };
-                        values
-                            .get_mut(child_idx)
-                            .and_then(Option::take)
-                            .unwrap_or(Value::Null)
-                    })
-                    .collect();
-                map.insert("children".to_string(), Value::Array(children));
-                map.insert("width".to_string(), json!(node.width));
-                map.insert("padding".to_string(), json!(node.padding));
-
-                if let Some(section) = node.section {
-                    map.insert("section".to_string(), json!(section));
-                }
-                if let Some(height) = node.height {
-                    map.insert("height".to_string(), json!(height));
-                }
-                if let Some(class) = &node.class {
-                    map.insert("class".to_string(), json!(class));
-                }
-                if let Some(icon) = &node.icon {
-                    map.insert("icon".to_string(), json!(icon));
-                }
-                if let Some(x) = node.x {
-                    map.insert("x".to_string(), json!(x));
-                }
-                if let Some(y) = node.y {
-                    map.insert("y".to_string(), json!(y));
-                }
-                if node.is_root {
-                    map.insert("isRoot".to_string(), json!(true));
-                }
-
-                if let Some(slot) = values.get_mut(node_idx) {
-                    *slot = Some(Value::Object(map));
-                }
-            } else {
-                stack.push((node_id, true));
-                for child_id in node.children.iter().rev() {
-                    stack.push((*child_id, false));
-                }
-            }
-        }
-
-        values
-            .get_mut(node_idx)
-            .and_then(Option::take)
-            .unwrap_or(Value::Null)
-    }
-
-    pub(super) fn to_layout_node_values(&self, root_id: i32, config: &MermaidConfig) -> Vec<Value> {
-        let mut out = Vec::new();
-        let look = mindmap_look(config);
-        let default_shape = mindmap_default_shape(config);
-        let mut stack = vec![root_id];
-        while let Some(node_id) = stack.pop() {
-            let Ok(node_idx) = usize::try_from(node_id) else {
-                continue;
-            };
-            let Some(node) = self.nodes.get(node_idx) else {
-                continue;
-            };
-
-            out.push(mindmap_layout_node_value(node, &look, default_shape));
-
-            for child in node.children.iter().rev() {
-                stack.push(*child);
-            }
-        }
-        out
-    }
-
-    pub(super) fn to_layout_nodes_for_render(
+    pub(super) fn to_layout_nodes_for_render_controlled(
         &self,
         root_id: i32,
         config: &MermaidConfig,
-    ) -> Vec<MindmapDiagramRenderNode> {
+        control: &ParseControl,
+    ) -> ParseControlResult<Vec<MindmapDiagramRenderNode>> {
         let mut out = Vec::new();
         let look = mindmap_look(config);
         let default_shape = mindmap_default_shape(config);
         let mut stack = vec![root_id];
+        let mut visited = 0usize;
         while let Some(node_id) = stack.pop() {
+            if visited.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            visited = visited.saturating_add(1);
             let Ok(node_idx) = usize::try_from(node_id) else {
                 continue;
             };
@@ -495,57 +372,16 @@ impl MindmapDb {
                 stack.push(*child);
             }
         }
-        out
+        control.checkpoint()?;
+        Ok(out)
     }
 
-    pub(super) fn to_edge_values(&self, root_id: i32, config: &MermaidConfig) -> Vec<Value> {
-        struct EdgeFrame {
-            node_id: i32,
-            next_child_index: usize,
-        }
-
-        let mut edges = Vec::new();
-        let look = mindmap_look(config);
-        let mut stack = vec![EdgeFrame {
-            node_id: root_id,
-            next_child_index: 0,
-        }];
-        while let Some(frame) = stack.last_mut() {
-            let Ok(node_idx) = usize::try_from(frame.node_id) else {
-                stack.pop();
-                continue;
-            };
-            let Some(node) = self.nodes.get(node_idx) else {
-                stack.pop();
-                continue;
-            };
-            let Some(child_id) = node.children.get(frame.next_child_index).copied() else {
-                stack.pop();
-                continue;
-            };
-            frame.next_child_index += 1;
-
-            let Ok(child_idx) = usize::try_from(child_id) else {
-                continue;
-            };
-            let Some(child) = self.nodes.get(child_idx) else {
-                continue;
-            };
-
-            edges.push(mindmap_edge_value(node, child, &look));
-            stack.push(EdgeFrame {
-                node_id: child_id,
-                next_child_index: 0,
-            });
-        }
-        edges
-    }
-
-    pub(super) fn to_edges_for_render(
+    pub(super) fn to_edges_for_render_controlled(
         &self,
         root_id: i32,
         config: &MermaidConfig,
-    ) -> Vec<MindmapDiagramRenderEdge> {
+        control: &ParseControl,
+    ) -> ParseControlResult<Vec<MindmapDiagramRenderEdge>> {
         struct EdgeFrame {
             node_id: i32,
             next_child_index: usize,
@@ -557,7 +393,12 @@ impl MindmapDb {
             node_id: root_id,
             next_child_index: 0,
         }];
+        let mut visited = 0usize;
         while let Some(frame) = stack.last_mut() {
+            if visited.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            visited = visited.saturating_add(1);
             let Ok(node_idx) = usize::try_from(frame.node_id) else {
                 stack.pop();
                 continue;
@@ -585,6 +426,73 @@ impl MindmapDb {
                 next_child_index: 0,
             });
         }
-        edges
+        control.checkpoint()?;
+        Ok(edges)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_child_sections_wrap_after_eleven_slots() {
+        let config = MermaidConfig::empty_object();
+        let parse_config = MindmapParseConfig::from_config(&config);
+        let mut db = MindmapDb::default();
+        db.add_node(
+            MindmapNodeInput {
+                indent_level: 0,
+                id_raw: "root",
+                descr_raw: "root",
+                descr_is_markdown: false,
+                ty: NODE_TYPE_DEFAULT,
+                diagram_type: "mindmap",
+            },
+            &config,
+            parse_config,
+        )
+        .expect("root node");
+
+        for index in 0..15 {
+            let id = format!("child-{index}");
+            db.add_node(
+                MindmapNodeInput {
+                    indent_level: 1,
+                    id_raw: &id,
+                    descr_raw: &id,
+                    descr_is_markdown: false,
+                    ty: NODE_TYPE_DEFAULT,
+                    diagram_type: "mindmap",
+                },
+                &config,
+                parse_config,
+            )
+            .expect("root child");
+        }
+
+        db.assign_sections(0, None);
+        let sections: Vec<_> = db.nodes.iter().skip(1).map(|node| node.section).collect();
+
+        assert_eq!(
+            sections,
+            vec![
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+                Some(4),
+                Some(5),
+                Some(6),
+                Some(7),
+                Some(8),
+                Some(9),
+                Some(10),
+                Some(0),
+                Some(1),
+                Some(2),
+                Some(3),
+            ]
+        );
     }
 }

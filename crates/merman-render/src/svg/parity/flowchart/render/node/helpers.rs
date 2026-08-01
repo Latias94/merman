@@ -202,13 +202,12 @@ pub(super) fn flowchart_node_label_span_class(label_type: &str) -> &'static str 
 }
 
 pub(super) fn timed_node_roughjs<T>(
-    timing_enabled: bool,
+    timing: crate::svg::parity::timing::RenderTiming,
     details: &mut FlowchartRenderDetails,
     f: impl FnOnce() -> T,
 ) -> T {
-    if timing_enabled {
+    if let Some(start) = timing.start() {
         details.node_roughjs_calls += 1;
-        let start = web_time::Instant::now();
         let out = f();
         details.node_roughjs += start.elapsed();
         out
@@ -218,13 +217,12 @@ pub(super) fn timed_node_roughjs<T>(
 }
 
 pub(super) fn timed_node_label_html<T>(
-    timing_enabled: bool,
+    timing: crate::svg::parity::timing::RenderTiming,
     details: &mut FlowchartRenderDetails,
     f: impl FnOnce() -> T,
 ) -> T {
-    if timing_enabled {
+    if let Some(start) = timing.start() {
         details.node_label_html_calls += 1;
-        let start = web_time::Instant::now();
         let out = f();
         details.node_label_html += start.elapsed();
         out
@@ -364,11 +362,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
         node_classes,
         node_styles,
     );
-    let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
-        ctx.class_defs,
-        node_classes,
-        node_styles,
-    );
     let mut metrics = if let Some(layout_node) = layout_node {
         if let (Some(width), Some(height)) = (layout_node.label_width, layout_node.label_height) {
             crate::text::TextMetrics {
@@ -377,7 +370,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                 line_count: 0,
             }
         } else {
-            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+            crate::flowchart::flowchart_label_metrics_for_layout(
                 crate::flowchart::FlowchartLabelMetricsRequest {
                     measurer: ctx.measurer,
                     raw_label: label_text,
@@ -387,26 +380,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                     wrap_mode: ctx.node_wrap_mode,
                     config: ctx.config,
                     math_renderer: ctx.math_renderer,
-                    preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-                    whole_label_font_style: node_font_style.as_deref(),
                 },
-            );
-
-            let span_css_height_parity =
-                crate::flowchart::flowchart_node_has_span_css_height_parity(
-                    ctx.class_defs,
-                    node_classes,
-                );
-            if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
-                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                    &mut metrics,
-                    &node_text_style,
-                );
-            }
-            metrics
+            )
         }
     } else {
-        let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
                 raw_label: label_text,
@@ -416,22 +394,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn compute_node_label_metric
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
-                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-                whole_label_font_style: node_font_style.as_deref(),
             },
-        );
-
-        let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
-            ctx.class_defs,
-            node_classes,
-        );
-        if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
-            crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                &mut metrics,
-                &node_text_style,
-            );
-        }
-        metrics
+        )
     };
 
     let label_has_visual_content =

@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 148.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 148.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -34,7 +34,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -42,7 +42,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -76,7 +76,7 @@
             "id": "task1",
             "x": 75.0,
             "y": 50.0,
-            "width": 517.0,
+            "width": 325.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -87,7 +87,7 @@
             "text": "Yesterday",
             "font_size": 11.0,
             "width": 45.76,
-            "x": 333.5,
+            "x": 237.5,
             "y": 63.5,
             "class": "taskText taskText0 width-45.760000000000005"
           }
@@ -105,9 +105,9 @@
           "vert": false,
           "bar": {
             "id": "task2",
-            "x": 592.0,
+            "x": 400.0,
             "y": 74.0,
-            "width": 517.0,
+            "width": 325.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -118,7 +118,7 @@
             "text": "Today",
             "font_size": 11.0,
             "width": 26.84,
-            "x": 850.5,
+            "x": 562.5,
             "y": 87.5,
             "class": "taskText taskText0 width-26.84"
           }
@@ -134,48 +134,48 @@
         },
         {
           "time_ms": -30270391200000.0,
-          "x": 204.0,
+          "x": 156.0,
           "label": "09"
         },
         {
           "time_ms": -30270369600000.0,
-          "x": 334.0,
+          "x": 238.0,
           "label": "09"
         },
         {
           "time_ms": -30270348000000.0,
-          "x": 463.0,
+          "x": 319.0,
           "label": "09"
         },
         {
           "time_ms": -30270326400000.0,
-          "x": 592.0,
+          "x": 400.0,
           "label": "10"
         },
         {
           "time_ms": -30270304800000.0,
-          "x": 721.0,
+          "x": 481.0,
           "label": "10"
         },
         {
           "time_ms": -30270283200000.0,
-          "x": 851.0,
+          "x": 563.0,
           "label": "10"
         },
         {
           "time_ms": -30270261600000.0,
-          "x": 980.0,
+          "x": 644.0,
           "label": "10"
         },
         {
           "time_ms": -30270240000000.0,
-          "x": 1109.0,
+          "x": 725.0,
           "label": "11"
         }
       ],
       "top_ticks": [],
       "title": "Style today marker (vertical line should be 5px wide and half-transparent blue)",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

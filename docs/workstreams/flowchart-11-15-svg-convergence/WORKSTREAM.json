@@ -2,8 +2,8 @@
   "schema_version": 1,
   "slug": "flowchart-11-15-svg-convergence",
   "title": "Flowchart 11.15 SVG Convergence",
-  "status": "active",
-  "updated": "2026-06-01",
+  "status": "closed",
+  "updated": "2026-07-21",
   "scope_kind": "execution",
   "problem": "Fresh Mermaid 11.15 Flowchart comparison exposes broad SVG DOM drift that cannot be closed by a single stale-baseline refresh.",
   "authoritative_docs": [
@@ -64,7 +64,7 @@
   "lane_slug": null,
   "parent_workstream": "docs/workstreams/mermaid-11-15-complete-adaptation",
   "continue_policy": {
-    "default_action": "continue",
-    "notes": "Continue while work stays within Flowchart Mermaid 11.15 SVG DOM convergence. Split ELK layout support or other large parser/layout changes if they become the blocking surface."
+    "default_action": "closed",
+    "notes": "Historical Mermaid 11.15 convergence evidence. The task list is complete, and current Flowchart behavior is governed by the pinned Mermaid 11.16 family facts, admission inventory, and parity gates. Do not resume tasks from this archive."
   }
 }

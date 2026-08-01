@@ -1,0 +1,505 @@
+{
+  "schema_version": 1,
+  "source": {
+    "repository": "repo-ref/mermaid",
+    "from_ref": "mermaid@11.15.0",
+    "to_ref": "mermaid@11.16.0",
+    "to_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "selection": "files added between refs with pathspec *.mmd"
+  },
+  "summary": {
+    "source_file_count": 122,
+    "unique_content_count": 121,
+    "managed_file_count": 122
+  },
+  "entries": {
+    "cypress/platform/dev-diagrams/knsv/knsv2-01-sequence.mmd": {
+      "sha256": "0cb64d4ab8a1f174663bbca42c2405802466a9d55a713c409049a6b2a1b6c5f9",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-01-sequence.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-02-treemap.mmd": {
+      "sha256": "b11b10900499305955fe0bd6384ca9de215e53805895d31915ade387d7ba69e3",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-02-treemap.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-03-radar.mmd": {
+      "sha256": "a7fbd7450c573476a1f6c382555cc791b9ed7c1f228982fb71c2453ed0784ea2",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-03-radar.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-04-flowchart-lr-animation.mmd": {
+      "sha256": "653d130ce9c8f4b4c49fbbee945c4d48179e40683daa23720906f1b47715ec2c",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-04-flowchart-lr-animation.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-05-flowchart-lr-animation.mmd": {
+      "sha256": "92fc80a6d1bf2cf4e4594db713a6f5a192664e1e40da9071bafea08e6c9edb29",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-05-flowchart-lr-animation.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-06-flowchart-elk-ogdc-tb-subgraphs.mmd": {
+      "sha256": "79cde88ab72614eea80e11ceceea77c57167d00993c007e69284d62f5acfb791",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-06-flowchart-elk-ogdc-tb-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-07-flowchart-elk-tb-subgraphs.mmd": {
+      "sha256": "71269f1717cb3620491ab35fc2e2f579c3b5fe7f5989fe331768b9b8dd026fbe",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-07-flowchart-elk-tb-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-08-flowchart-elk-tb-subgraphs.mmd": {
+      "sha256": "651bc5e8929eb0808686311aa12148c9ff10721f073d2c795bdee933de94cb68",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-08-flowchart-elk-tb-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-09-flowchart-elk-tb-subgraphs.mmd": {
+      "sha256": "752f4e92006a415277ad7acb9b4f1bbb5a894e11f982fee007386298afa9eea5",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-09-flowchart-elk-tb-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-10-class-elk.mmd": {
+      "sha256": "148dc3c74d0ee154bcde6d2453c7bbaad6a3772238f8a2ddf15063dfe3443ffa",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-10-class-elk.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-11-requirement-elk.mmd": {
+      "sha256": "b3177fb8a246a54867019e0e01da1849111823ca1201fe04da42fe53cbfd3105",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-11-requirement-elk.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-12-flowchart-elk-elk-tb-subgraphs.mmd": {
+      "sha256": "27fd4c56ef86249b5cd2e21ccf2799c7462f23d33086482069c9a76ab2afcf9e",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-12-flowchart-elk-elk-tb-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-13-flowchart-elk-elk-tb-subgraphs.mmd": {
+      "sha256": "79e3ef509a407fcb0fbfc1f9013dd108f62913a2e09003a87618fc920cc8e081",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-13-flowchart-elk-elk-tb-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-14-flowchart-elk-tb.mmd": {
+      "sha256": "358f55641b762c33ac2659e4d918955b7ceb7de180cc22966c50fecfa505b61b",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-14-flowchart-elk-tb.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-15-flowchart-elk-lr-shapes.mmd": {
+      "sha256": "5d45ca81ad19365f37af9fd3061009bc3d61fa4801bf3180381a5737afc9fdb8",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-15-flowchart-elk-lr-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-16-mindmap-tidy-tree.mmd": {
+      "sha256": "7e83c28809319304f6b635b3545dbf1def8f845ca7d0fe678cc120d7921d7f9d",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-16-mindmap-tidy-tree.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-17-flowchart-elk-lr-shapes.mmd": {
+      "sha256": "6454342273730e590ce10ce8e375caf8d88be039f2b75fb8d92b6b465001a2aa",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-17-flowchart-elk-lr-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-18-flowchart-elk-lr-shapes.mmd": {
+      "sha256": "94273528539ef0dfeb7b96c771f198c9a771ecd93c075e27dc14d0ae046f5dd9",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-18-flowchart-elk-lr-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-19-flowchart-elk-lr-shapes.mmd": {
+      "sha256": "73f2a7bbac1eecbf119ac73307a419b8e09b79938e0fd19e24f67f5a5651d8b4",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-19-flowchart-elk-lr-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-20-flowchart-elk-lr-shapes-node-placement.mmd": {
+      "sha256": "6ed96368f310f0cf7fb47c2254076c23237a70e7232fc1a9d100dd54f0d9694e",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-20-flowchart-elk-lr-shapes-node-placement.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-21-flowchart-elk-lr-subgraphs.mmd": {
+      "sha256": "ff279d626530fc5b45c9d66befefc21bf3d09a83f6d2c8b9406d823e28d0fb0e",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-21-flowchart-elk-lr-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-22-flowchart-elk-lr.mmd": {
+      "sha256": "d6d117653ec7a22e48d1667d861272ae3cd00ab2778ad4ac1fcd4b533b747105",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-22-flowchart-elk-lr.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-23-flowchart-elk-lr-subgraphs.mmd": {
+      "sha256": "1ba4fcb2bdc2965424a4aed8636b2ae613c42b05dde068b46ab5adcd91a03720",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-23-flowchart-elk-lr-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-24-flowchart-elk-lr-subgraphs.mmd": {
+      "sha256": "b6de4e17ff663694817fd00acdd2670cf55b29aa620d3ad8296e4e2c75bf7e4d",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-24-flowchart-elk-lr-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-25-flowchart-elk-lr.mmd": {
+      "sha256": "76843edb77394cac2ab036ed33d43992258d71636489b58ac8b1d9bf51bb5e73",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-25-flowchart-elk-lr.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-26-flowchart-elk-lr-shapes-subgraphs.mmd": {
+      "sha256": "238736e6204bf8964fed45d1fe1bb5a0b405c0cef492995bdfa8c593fe0ff10c",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-26-flowchart-elk-lr-shapes-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-27-flowchart-elk-lr-subgraphs.mmd": {
+      "sha256": "aca7a405e313c3e86ac0e73878bd7e616dca61018f8a8605ea4f6d57ff441dde",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-27-flowchart-elk-lr-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-28-flowchart-elk-lr.mmd": {
+      "sha256": "dc547a32c799f5471b6cc4ac17af8c225d8b7620dc248dfadec9a2c8293cfac2",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-28-flowchart-elk-lr.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-29-flowchart-elk-lr-subgraphs.mmd": {
+      "sha256": "d28dbafc93ee5f89455c594af252b17dca869c3ade31669e5d31a95812c84ce4",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-29-flowchart-elk-lr-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-30-flowchart-elk-lr-shapes.mmd": {
+      "sha256": "047008285826e183d4249a77c022b55231a0c1d8e03d7ebefb6fe0695abe288d",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-30-flowchart-elk-lr-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-31-kanban-tickets.mmd": {
+      "sha256": "c93fe812df509bf9a06f87bff8e5bf7d3ca62b24289f0414f1c0cd1a83a18798",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-31-kanban-tickets.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-32-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "fd33bfc9a9c6d78736a59db750de2a1abbe51d296740984d8a00396493591037",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-32-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-33-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "2828f7032e0371f881c0248ba4ebcf2d1fc1c3632b0d34f76ffb86d90623a8fa",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-33-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-34-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "c1b8491b654e7ad8ee938432039cef2bc2b1a2c68f8b0b1cb11fc4e62f861f95",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-34-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-35-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "61a1180051f9252d32e2c64aab4c3d994cfe27bc8518a6cbf5c1fe0c947b926b",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-35-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-36-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "cdcacc35551d27c20a9f7d89bc50ab7c93213df253e4d5b7eb24fd1bb5195e45",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-36-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-37-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "d25777a53ea19ad38f63c64aa54d3d7fcf7133a43bca248d15366ad655b4f061",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-37-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-38-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "f6bc157baa3ee76362885bf4890fcb4712c4f9e54837c665ddd3951f591d3b0c",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-38-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-39-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "0b21c81a446c50d14e9ef5f0e73dc5e99afd2b36240a9b6b24a7f208bc7d2249",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-39-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-40-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "1562741a868cdb5471959a2d3208d53271a1f158128a0bee192a57eff4a981f3",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-40-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-41-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "711045068f3f396cc24f595ee05c478b1d2ec37ca0bd5dbaf7c36e709f6b56c5",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-41-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-42-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "68ed99023330ddb4848a051259d9ce6d18333647c0e3f6cba45879458b388817",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-42-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-43-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "48aa2767bb31f92185f489df87771371fa10da1fc359c16065517a75b4030cbe",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-43-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-44-flowchart-lr-icons-shapes.mmd": {
+      "sha256": "273f299ae9e12f6a1dcba3a1ed3e31e885536252dc711836d76437c0b144fb74",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-44-flowchart-lr-icons-shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-45-kanban-tickets.mmd": {
+      "sha256": "3cfc22739c689ceae1333d92c115ef0af626cdcce1c9535b254a60a4abc02dfd",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-45-kanban-tickets.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/knsv2-46-kanban-tickets.mmd": {
+      "sha256": "645556883d4a677a281a3fdec0a8ac6c61f9deb44eb9213372377d1b62aa2265",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/knsv2-46-kanban-tickets.mmd"
+    },
+    "cypress/platform/dev-diagrams/knsv/test.mmd": {
+      "sha256": "c6800f74dcf0ba8c3fa762f99ce1b7af0e532b9f0f7d53287477c5d2def0ff1f",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/knsv/test.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/Company-simp.mmd": {
+      "sha256": "a90f6e785ac423264ebadcabda4467549dff8d31333c1d6293945711da432107",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/Company-simp.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/Company.mmd": {
+      "sha256": "6a704c68f330308345f700b719181a8123496ad6c1b74cae445fb523ad59c73c",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/Company.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/class-diagram-2.mmd": {
+      "sha256": "bc9958e0be33914091c2e91cd52f75a94b74a70698d28236bee4e79a2ad1e7d7",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/class-diagram-2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/class-diagram-3.mmd": {
+      "sha256": "70096909cb801e308effd3da29dcf43377d88fdc086f2c7f9de6de59998ebc8d",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/class-diagram-3.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/class-diagram.mmd": {
+      "sha256": "ec93b0c07ce70ce8bfeebc953d0fb21f58f99dbc512a327f9598e9b5a2ef3575",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/class-diagram.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/decision-flow.mmd": {
+      "sha256": "f5c735ce35f96fc89164c11bc152facdeb85f298053263e2138a39b908874e12",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/decision-flow.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/decoupled-subgraph.mmd": {
+      "sha256": "19bc5536f54ad3b7ef74bd10762254ce5e90f776f87b639e11df41765596940f",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/decoupled-subgraph.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/deploy-pipeline-simplified.mmd": {
+      "sha256": "00ffb238833e3b2cd7bed3f2617db48165ca5adbc99fe77553a0031477b02943",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/deploy-pipeline-simplified.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/deploy-pipeline.mmd": {
+      "sha256": "95343fb1ab1b25056bdd663b0550d6f5ccaadab75f1e7b2837cfa8e3c2fd442d",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/deploy-pipeline.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/domus1.mmd": {
+      "sha256": "c647db6f0fa83b54e5284d2d1fa650534142de5d5ce9fed58c8ba3039560e129",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/domus1.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/edge-from-subgraph.mmd": {
+      "sha256": "f31152a1ff64dd397960f47e61fb70c072d38458baf365f4bd4eef257c52afb1",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/edge-from-subgraph.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/edge-to-node-in-subgraph.mmd": {
+      "sha256": "f0fa7ed8e5581859ec5d793f77db77e07305a98b5e1856ecabc78da01d0617b4",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/edge-to-node-in-subgraph.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/edge-to-subgraph.mmd": {
+      "sha256": "aa94a13398db5fe569e8dd7a72c058263041b70c0a9401b8ec6ac4306c1e07b9",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/edge-to-subgraph.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/edge-types.mmd": {
+      "sha256": "c24e556ffa7e8ac70465449c7206cf098c6c083a94e722d33e567eee53e7a2c6",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/edge-types.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/identical-edges-in-subgraph.mmd": {
+      "sha256": "31184fe4f1e051a3ff1971eefac477b5a3373e774f66632053042f86fec684fa",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/identical-edges-in-subgraph.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/identical-edges.mmd": {
+      "sha256": "8e8ad6cc7fcb39495eaec47a2b1cb2a6f785effbda50cd3780068c7f7cb2138d",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/identical-edges.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/labels-long.mmd": {
+      "sha256": "3d4b14cfd66d0651947fc9a73b71b51b710226ddccde4c8296d3a6780da2cc64",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/labels-long.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/life-choices.mmd": {
+      "sha256": "9b1e423fb517a0155c912c9cdbc3c312623ee5f4ab64bc5c84fa862cee5fde37",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/life-choices.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/multiple-edges.mmd": {
+      "sha256": "4b44b206207276d47ccc7238931953922b759ea1acc28b3483f9758892a943b3",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/multiple-edges.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-incoming.mmd": {
+      "sha256": "9d1ff0c7d654f74db7ab473f87ff518e264c1dc57da7a405b6cb92a057214cf8",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-incoming.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-outgoing-edges.mmd": {
+      "sha256": "e830b8fcf9d79e02ad62ad0237fec3ecd072a3688f16e06f1b000846b3656655",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-outgoing-edges.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-sb-edges-in-out.mmd": {
+      "sha256": "76720e70afdb15f73ff764c33e13866778a3f9a1bf5bf347743816e11f5d2dc5",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-sb-edges-in-out.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-sg-outgoing-2.mmd": {
+      "sha256": "5dbc933b1335a5e1b0e98637d9013372adae657a349cb5372e63c4cc62fae5cc",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-sg-outgoing-2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-sg-outgoing-3.mmd": {
+      "sha256": "3169c0a8b4a93dcee7992c38ca173abc59fd21606c056e293daa44c22216f316",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-sg-outgoing-3.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-sg-outgoing-4.mmd": {
+      "sha256": "c4ef7a898772a55de82aeac6da3448f603d7a4f0bfcfa24d56774b6d61ef3187",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-sg-outgoing-4.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-sg-outgoing-5.mmd": {
+      "sha256": "b33481eff63c4099a32140121c5f91b2fe65fd9d38242d24686c87ffe8d424e7",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-sg-outgoing-5.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-subgraphs-2.mmd": {
+      "sha256": "c5b641cc77d61d4abe1820d638290857d3c8b8e03d571c8a9fabd229ec6018ca",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-subgraphs-2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-subgraphs-3.mmd": {
+      "sha256": "8fbfaf4bd70c9d7e0c0aace099172d990f92ea45069430bdee947103c5a8e9e1",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-subgraphs-3.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/nested-subgraphs.mmd": {
+      "sha256": "9b82f2a5dbd8e098728386c4675c3c36bfc38d05984694923fc1fc59c38d8ca6",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/nested-subgraphs.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/ortho-mini-2.mmd": {
+      "sha256": "e91e7a30070ac9291894e048c839af3f3ced9f9664ceef87ce1de7ed50c40249",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/ortho-mini-2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/ortho-mini.mmd": {
+      "sha256": "1057549ca6ee4ead74fcbfc52b3882f2e12916be834a61f0d4a6e6f887ccf8f8",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/ortho-mini.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/ortho1.mmd": {
+      "sha256": "d27fd6c0fdb8033b89140d7f70a5c7e4062f05fa0311b507713b90740c3369fa",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/ortho1.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/project-sox2.mmd": {
+      "sha256": "9a25fbd40345c66310902837ea2c19bcf0f7fb71624daee745183e4af94e2efb",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/project-sox2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/self-loop-2.mmd": {
+      "sha256": "39eac89b1f59244a8c4ca6359c003ae2fcf6449ee5bc4dde27c0da85fcf2e285",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/self-loop-2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/self-loop-multi.mmd": {
+      "sha256": "7d62504daed140e286c934369c25d7922ec6f13570bf1e7d6bfc3c2cae6cf9ba",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/self-loop-multi.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/self-loop.mmd": {
+      "sha256": "ab52068df7444ffd823731609f70e3333b7a33ebe37184d581531c28d3242b25",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/self-loop.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/shapes-and-styling.mmd": {
+      "sha256": "e04d8d718ae513b22577961f0188974e3b7010c11d5d4213c68e5994ba48179b",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/shapes-and-styling.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/shapes.mmd": {
+      "sha256": "343a0278711efa69262bc03cdc968b3619e78d288f944ccf64d60d0c4f20037e",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/shapes.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/simple-graph.mmd": {
+      "sha256": "d4550fb772a4a405a180063c5c17754facd0d5927a051b02247201dd117d7194",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/simple-graph.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/state-diagram.mmd": {
+      "sha256": "edaa7cec41be10423b1ce362878aa847fa32461bdb0d8fb313c562a6c539e4af",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/state-diagram.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/subgraph-labels-2.mmd": {
+      "sha256": "5a9f44329d519e8bb3658d9ca2b179b228c20411b3b20213eb85e124a3d81043",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/subgraph-labels-2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/subgraph-labels-3.mmd": {
+      "sha256": "c996b609a9a4995b4589ec6527d614365ac4fa75125ed6d1ece85c33eefd0a72",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/subgraph-labels-3.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/subgraph-labels.mmd": {
+      "sha256": "0c44a647a8719f98449eaef51393c9335ba38f346f2ca1e747c7c51cb8ca7c84",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/subgraph-labels.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/subgraph-variation-2.mmd": {
+      "sha256": "2c034f215d6044c3ad93fae1d5b730532c6d1ba57a0eab9e005e78bce615f4d0",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/subgraph-variation-2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/subgraph-variation.mmd": {
+      "sha256": "cabc90e760875f353b4b090455af788e34ad0aea5ce816dc94fd1dfd236b0106",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/subgraph-variation.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/1-simple.mmd": {
+      "sha256": "b3bbf73ac4f50d74d2216abee4eaf8cf16ac2cf0b40c1afd9270072bb0130624",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/1-simple.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/10-node-placement.mmd": {
+      "sha256": "28141aec516ccf19595ea7150e9bda09711d8286c43cac1901490e9e5950a57b",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/10-node-placement.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/12-disagree-exits-b-c.mmd": {
+      "sha256": "2f356ee26b02799c57c7ca13a1d56824360c5734038952d9815efbb1df1737fb",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/12-disagree-exits-b-c.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/13-disagree-exits-b-c-d.mmd": {
+      "sha256": "8d81773b11c8907c180f985ba2881d1114ca63764b7b0c6abdfb6a57eb3416fa",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/13-disagree-exits-b-c-d.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/14-messy-layout.mmd": {
+      "sha256": "6b57271592c65dd22ef5279dfba5cd62a60e884a0221eb8bd5f349c7d130e654",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/14-messy-layout.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/15-border-hugging-lr.mmd": {
+      "sha256": "02ed2d7a0ab0de85e5f7c8f4b1dbf2df791a6108450abf608dd53ef5970b1e1b",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/15-border-hugging-lr.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/15-border-hugging.mmd": {
+      "sha256": "268f27fee5dc35ad2a0ceb02244bc945cd8d8b99c6085244a2f3c931f0c3f4a2",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/15-border-hugging.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/2-decisions-lr.mmd": {
+      "sha256": "1f8d434214b88742b169fcbf91dd48e399b28a6a79f12f3c0798559d92e7535b",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/2-decisions-lr.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/3-decisions-tb.mmd": {
+      "sha256": "1f8d434214b88742b169fcbf91dd48e399b28a6a79f12f3c0798559d92e7535b",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/3-decisions-tb.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/4-car-fun-sales-tb.mmd": {
+      "sha256": "ea3409d1caf4b9082ae19f6eacd36c099b8fb31ef63296d6b207532a6f55dead",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/4-car-fun-sales-tb.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/5-car-fun-sales-wide-tb.mmd": {
+      "sha256": "33ceffa6ec79bb0004b59fbb094344072ec670195df4fb91790f56a888da4493",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/5-car-fun-sales-wide-tb.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/6-legal-constr-sales.mmd": {
+      "sha256": "1fb52bacc99e19806933bc7cccbd2d70028fad6d98bfa6d52b90fe505da0b836",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/6-legal-constr-sales.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/7-car-sales-constr.mmd": {
+      "sha256": "e09627ba3cdfba2ec7bfabf47128876d29a62f5cf0a9dad02052efd3854d6336",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/7-car-sales-constr.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/8-query-process-2.mmd": {
+      "sha256": "9bc9c74eca6bca18996067bc89ba5ffd5ce092e6ade93020827d9923d8e53e57",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/8-query-process-2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/9-edge-labels.mmd": {
+      "sha256": "54ae9cf95d2dae037d14f3124ffe44d367c0e01586c960e4781e87eb9a3d0663",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/9-edge-labels.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/commant.mmd": {
+      "sha256": "1e455f5516f2383d9f328b39db36392a66ad7c1ffe6a0f66b39ea82d8ad74f20",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/commant.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/intake-review-complete.mmd": {
+      "sha256": "aa3016964e4787fc4f09e0f38d9255cc0906cdd7c32aded850d5bab023f22491",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/intake-review-complete.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-1.mmd": {
+      "sha256": "6c48d0063206cfac5234912c87899368ba6ac322049f04516790f550f191bf85",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-1.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-2.mmd": {
+      "sha256": "a958c46601bd99673e01b684f37dd23a638ef182060fca49ec694f207c8af948",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-2.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-3.mmd": {
+      "sha256": "1f9e023d45b37b419ef39191e5537127a1a3ead970292409564c27a673853358",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-3.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-4.mmd": {
+      "sha256": "dec5891c8b38fb6e3ae57798f8fe9dc1a60a095f127e40fdf9a514f91efbbcf6",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-4.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-5.mmd": {
+      "sha256": "8aac33d59d633f95d8acf6eeb29c3bb3ebebd2736482197a1da68fd763ee3d7f",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-5.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-6.mmd": {
+      "sha256": "ceefac8be651bb14d3d8b8cfb8b77c8dc4c966ce154bd6bde44a7d220c7c53ba",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/issue-7802-6.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/mermaid-work.mmd": {
+      "sha256": "4b6422acfb3b81e1e808b0e63741e8940a424dc1483863c6e6b9758882060340",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/mermaid-work.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/pebr-1-duplicate-process-in-substate-no-render.mmd": {
+      "sha256": "84d5000d82dff5c7df93bc1ecf5d376fe7ac87cfa7ac1ef947937fc496defe43",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/pebr-1-duplicate-process-in-substate-no-render.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/pebr-2-edge-intrudes-lane-label.mmd": {
+      "sha256": "2a7c9a9cd9e12f4f34b04b72feb7e3b34dc1fcecd0d1a4423bd6192291b1221f",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/pebr-2-edge-intrudes-lane-label.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/pebr-3-process-too-wide-in-lane.mmd": {
+      "sha256": "c5e0670f5ee0282f9c324b689073e847e07a8e1b6ba34b841745e89e9b37d47e",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/pebr-3-process-too-wide-in-lane.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/query-process.mmd": {
+      "sha256": "7c679a22697d2cff0229cf82d5ad064870a64473a4c452a4e8fb8114cbb3b6dd",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/query-process.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/sales-process.mmd": {
+      "sha256": "ed763fa9558277a370f0acfde7d7bb3c08ff8d7bd367da7abc349b915dfab6ca",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/sales-process.mmd"
+    },
+    "cypress/platform/dev-diagrams/layout-tests/swimlanes/simple-2.mmd": {
+      "sha256": "ed7c3818d0b785b1f753ef7ee3a2f8d36a76f987f4678e2e92600531cf6f4802",
+      "fixture": "_upstream/mermaid-11.16.0/sources/cypress/platform/dev-diagrams/layout-tests/swimlanes/simple-2.mmd"
+    }
+  }
+}

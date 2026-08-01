@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "operation_id": "semantic-json",
+      "source": "flowchart TD\nA[Hello] --> B[World]",
+      "expected_media_type": "application/json",
+      "payload_invariants": [
+        "nonempty",
+        "utf8",
+        "json-object",
+        "metadata-operation-id"
+      ]
+    },
+    {
+      "operation_id": "svg",
+      "source": "flowchart TD\nA[Hello] --> B[World]",
+      "expected_media_type": "image/svg+xml",
+      "payload_invariants": [
+        "nonempty",
+        "utf8",
+        "svg-root",
+        "metadata-operation-id"
+      ]
+    },
+    {
+      "operation_id": "analysis-json",
+      "source": "flowchart TD\nA[Hello] --> B[World]",
+      "expected_media_type": "application/json",
+      "payload_invariants": [
+        "nonempty",
+        "utf8",
+        "json-object",
+        "metadata-operation-id"
+      ]
+    },
+    {
+      "operation_id": "document-analysis-json",
+      "source": "Intro\n```mermaid\nflowchart TD\nA --> B\n```\n",
+      "uri": "file:///fixtures/semantic-operation.md",
+      "expected_media_type": "application/json",
+      "payload_invariants": [
+        "nonempty",
+        "utf8",
+        "json-object",
+        "metadata-operation-id"
+      ]
+    },
+    {
+      "operation_id": "document-analysis-json",
+      "source": "Intro\n```mermaid\nflowchart TD\nA --> B\n```\n",
+      "expected_error_kind": "generic",
+      "payload_invariants": [
+        "error-message-nonempty"
+      ]
+    },
+    {
+      "operation_id": "semantic-json",
+      "source": "flowchart TD\nA --> B",
+      "options": {
+        "resources": {
+          "limits": {
+            "max_svg_bytes": 1024
+          }
+        }
+      },
+      "expected_error_kind": "generic",
+      "payload_invariants": [
+        "error-message-nonempty"
+      ]
+    }
+  ]
+}

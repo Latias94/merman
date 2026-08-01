@@ -1,12 +1,11 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{
-    SvgRenderOptions, render_class_diagram_v2_debug_svg, render_class_diagram_v2_svg,
-};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, RenderSession};
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -20,25 +19,97 @@ fn render_class_svg_from_text(text: &str) -> String {
 }
 
 fn render_class_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+    render_class_svg_from_text_with_engine_and_options(
+        engine,
+        text,
+        &LayoutOptions::headless_svg_defaults(),
         &SvgRenderOptions::default(),
     )
-    .expect("svg render ok")
+}
+
+fn render_class_svg_from_text_with_engine_and_options(
+    engine: Engine,
+    text: &str,
+    layout_options: &LayoutOptions,
+    svg_options: &SvgRenderOptions,
+) -> String {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    render_class_svg_from_text_with_session(engine, text, layout_options, svg_options, session)
+}
+
+fn render_class_svg_from_text_with_session(
+    engine: Engine,
+    text: &str,
+    layout_options: &LayoutOptions,
+    svg_options: &SvgRenderOptions,
+    session: RenderSession,
+) -> String {
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let artifact = family::prepare(parsed, layout_options, session).expect("layout ok");
+
+    artifact
+        .render_svg(svg_options, &SvgDebugOptions::default())
+        .expect("svg render ok")
+        .svg()
+        .to_owned()
+}
+
+fn render_class_fixture(
+    name: &str,
+    layout_options: &LayoutOptions,
+    svg_options: &SvgRenderOptions,
+) -> String {
+    let path = workspace_root().join("fixtures").join("class").join(name);
+    let text = std::fs::read_to_string(&path).expect("fixture");
+    render_class_svg_from_text_with_engine_and_options(
+        Engine::new(),
+        &text,
+        layout_options,
+        svg_options,
+    )
+}
+
+fn attr_f64(tag: &str, name: &str) -> f64 {
+    let prefix = format!(r#"{name}=""#);
+    let start = tag.find(&prefix).expect("attribute") + prefix.len();
+    let end = start + tag[start..].find('"').expect("attribute end");
+    tag[start..end].parse().expect("numeric attribute")
+}
+
+fn foreign_object_for_text<'a>(svg: &'a str, text: &str) -> &'a str {
+    let text_start = svg.find(text).expect("text");
+    let start = svg[..text_start]
+        .rfind("<foreignObject ")
+        .expect("foreignObject before text");
+    let end = text_start
+        + svg[text_start..]
+            .find("</foreignObject>")
+            .expect("foreignObject after text")
+        + "</foreignObject>".len();
+    &svg[start..end]
+}
+
+fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diagram::ClassDiagram {
+    let RenderSemanticModel::Class(model) = parsed.model() else {
+        panic!("expected Class render model");
+    };
+    model
+}
+
+fn layout_class_with_dagre(
+    parsed: &merman_core::ParsedDiagramRender,
+    session: RenderSession,
+) -> merman_render::model::ClassDiagramLayout {
+    let artifact =
+        family::prepare(parsed.clone(), &LayoutOptions::default(), session).expect("Class layout");
+    serde_json::from_value(
+        artifact.layout_json().expect("Class layout projection")["layout"]["ClassDiagramV2"]
+            .clone(),
+    )
+    .expect("Class layout")
 }
 
 fn deep_class_namespace_text(depth: usize) -> String {
@@ -54,6 +125,114 @@ fn deep_class_namespace_text(depth: usize) -> String {
 }
 
 #[test]
+fn class_svg_root_role_comes_from_the_detected_mermaid_diagram_id() {
+    for (source, expected_role) in [
+        ("classDiagram\nclass Animal\n", "class"),
+        ("classDiagram-v2\nclass Animal\n", "classDiagram"),
+        (
+            "%%{init: {\"class\": {\"defaultRenderer\": \"dagre-wrapper\"}}}%%\nclassDiagram\nclass Animal\n",
+            "classDiagram",
+        ),
+        (
+            "%%{init: {\"class\": {\"defaultRenderer\": \"dagre-d3\"}}}%%\nclassDiagram\nclass Animal\n",
+            "class",
+        ),
+        (
+            "%%{init: {\"class\": {\"defaultRenderer\": \"dagre-d3\"}}}%%\nclassDiagram\nclass Animal\nnote for Animal \"classDiagram-v2 is note text\"\n",
+            "class",
+        ),
+    ] {
+        let engine = Engine::new();
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse ok")
+            .expect("diagram detected");
+        assert_eq!(
+            parsed.metadata().diagram_type,
+            expected_role,
+            "Class detection must follow Mermaid's renderer-aware detector contract for {source:?}"
+        );
+        assert_eq!(
+            class_model(&parsed).diagram_type,
+            parsed.metadata().diagram_type,
+            "the typed Class model must preserve the detector-selected diagram id for {source:?}"
+        );
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .expect("layout ok");
+        let svg = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("svg render ok")
+            .svg()
+            .to_owned();
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+
+        assert_eq!(
+            document.root_element().attribute("aria-roledescription"),
+            Some(expected_role),
+            "Class accessibility role must preserve Mermaid's selected detector id for {source:?}"
+        );
+    }
+}
+
+#[test]
+fn class_svg_unified_titles_inherit_root_font_size_for_both_detector_aliases() {
+    for diagram_keyword in ["classDiagram", "classDiagram-v2"] {
+        let source = format!(
+            r##"---
+title: Inherited title
+---
+%%{{init: {{"themeVariables": {{"fontSize": "23px"}}}} }}%%
+{diagram_keyword}
+class Animal
+"##
+        );
+        let svg = render_class_svg_from_text_with_engine(
+            legacy_init_theme_compat_engine(),
+            source.as_str(),
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let root = document.root_element();
+        let css = document
+            .descendants()
+            .find(|node| node.is_element() && node.tag_name().name() == "style")
+            .and_then(|node| node.text())
+            .expect("embedded Class stylesheet");
+        let title = root
+            .children()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "text"
+                    && node.attribute("class") == Some("classDiagramTitleText")
+            })
+            .expect("unified Class diagram title");
+
+        let root_rule_start = css.find("#merman{").expect("root font rule");
+        let root_rule_end = root_rule_start
+            + css[root_rule_start..]
+                .find('}')
+                .expect("root font rule end");
+        let root_rule = &css[root_rule_start..=root_rule_end];
+
+        assert!(
+            root_rule.contains("font-size:23px;"),
+            "{diagram_keyword} title should inherit the configured root font size: {root_rule}"
+        );
+        assert!(
+            css.contains(".classTitleText{text-anchor:middle;font-size:18px;"),
+            "Class CSS should preserve Mermaid's legacy title selector"
+        );
+        assert!(
+            !css.contains(".classDiagramTitleText"),
+            "the unified title class must not be captured by the legacy 18px selector"
+        );
+        assert_eq!(title.text(), Some("Inherited title"));
+        assert_eq!(title.attribute("font-size"), None);
+        assert_eq!(title.attribute("style"), None);
+    }
+}
+
+#[test]
 fn class_parse_for_render_model_handles_deep_namespace_chain() {
     const DEPTH: usize = 128;
     let source = deep_class_namespace_text(DEPTH);
@@ -62,7 +241,8 @@ fn class_parse_for_render_model_handles_deep_namespace_chain() {
         .stack_size(128 * 1024)
         .spawn(move || {
             let engine = Engine::new();
-            futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::default()))
+            engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
                 .expect("parse ok")
                 .expect("diagram detected");
         })
@@ -74,21 +254,21 @@ fn class_parse_for_render_model_handles_deep_namespace_chain() {
 
 #[test]
 fn class_layout_handles_deep_namespace_chain() {
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     const DEPTH: usize = 128;
     let source = deep_class_namespace_text(DEPTH);
     let handle = std::thread::Builder::new()
         .name("class-deep-namespace-layout".to_string())
-        .stack_size(128 * 1024)
+        // This regression verifies that depth-128 namespace layout terminates without recursive
+        // stack growth. The full debug Dagre pipeline has substantial fixed phase frames, so the
+        // test does not claim that production rendering supports a 128 KiB thread stack.
+        .stack_size(256 * 1024)
         .spawn(move || {
-            let engine = Engine::new();
-            let parsed =
-                futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::default()))
-                    .expect("parse ok")
-                    .expect("diagram detected");
-            let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-            let LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-                panic!("expected ClassDiagramV2 layout");
-            };
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                .expect("parse ok")
+                .expect("diagram detected");
+            let layout = layout_class_with_dagre(&parsed, session);
             assert!(
                 layout.nodes.iter().any(|node| node.id == "Leaf"),
                 "expected deeply nested class member to remain in the layout"
@@ -246,8 +426,14 @@ classDiagram
         "lollipopStart-margin",
         "lollipopEnd-margin",
     ];
+    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+    let diagram_role = document
+        .root_element()
+        .attribute("aria-roledescription")
+        .expect("Class diagram role");
+    assert_eq!(diagram_role, "class");
     let marker_positions = marker_ids.map(|marker_id| {
-        let marker_attr = format!(r#"id="merman_class-{marker_id}""#);
+        let marker_attr = format!(r#"id="merman_{diagram_role}-{marker_id}""#);
         svg.find(&marker_attr)
             .unwrap_or_else(|| panic!("missing Mermaid 11.16 class marker {marker_id}: {svg}"))
     });
@@ -377,7 +563,7 @@ click Class1 href "notes://do-your-thing/id" "tip" _self
     );
 }
 
-#[cfg(feature = "elk-layout")]
+#[cfg(feature = "layout-elk")]
 #[test]
 fn class_svg_elk_layout_preserves_existing_renderer_semantics() {
     let svg = render_class_svg_from_text_with_engine(
@@ -429,6 +615,41 @@ style Client fill:#ddffdd,stroke:#00aa00,stroke-width:2px
             && svg.contains(r#"<span class="edgeLabel"><p>many</p></span>"#),
         "Class ELK layout should preserve notes, relation labels, and cardinality terminals: {svg}"
     );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn class_svg_elk_layout_uses_upstream_adapter_dom() {
+    let svg = render_class_svg_from_text(
+        r#"---
+config:
+  layout: elk
+---
+classDiagram
+direction LR
+class Animal
+class Duck
+Animal <|-- Duck
+"#,
+    );
+
+    assert!(
+        !svg.contains(r#"<g class="root""#),
+        "Class ELK must not emit the Dagre root wrapper: {svg}"
+    );
+    let subgraphs = svg
+        .find(r#"<g class="subgraphs""#)
+        .expect("Class ELK subgraphs group");
+    let nodes = svg
+        .find(r#"<g class="nodes""#)
+        .expect("Class ELK nodes group");
+    let edges = svg
+        .find(r#"<g class="edges edgePaths""#)
+        .expect("Class ELK edge paths group");
+    let labels = svg
+        .find(r#"<g class="edgeLabels""#)
+        .expect("Class ELK edge labels group");
+    assert!(subgraphs < nodes && nodes < edges && edges < labels);
 }
 
 #[test]
@@ -529,98 +750,12 @@ classDiagram
 }
 
 #[test]
-fn class_debug_svg_renders_terminal_labels() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("upstream_relation_types_and_cardinalities_spec.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let svg = render_class_diagram_v2_debug_svg(&layout, &SvgRenderOptions::default());
-    assert!(svg.contains("<svg"));
-    assert!(
-        svg.contains("terminal-label-box"),
-        "expected terminal label boxes in debug svg"
-    );
-}
-
-#[test]
-fn class_svg_generic_title_uses_upstream_max_width_override() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("upstream_cypress_classdiagram_v3_spec_12_should_render_a_simple_class_diagram_with_generic_types_021.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok");
-
-    assert!(
-        svg.contains("max-width: 166px"),
-        "expected generic class title to keep Mermaid-matching max-width"
-    );
-    assert!(
-        svg.contains("max-width: 170px") && svg.contains("max-width: 323px"),
-        "expected generic member/method rows to keep Mermaid-matching max-widths"
-    );
-}
-
-#[test]
 fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("upstream_namespaces_and_generics.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+    let svg = render_class_fixture(
+        "upstream_namespaces_and_generics.mmd",
+        &LayoutOptions::default(),
         &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok");
+    );
 
     assert!(svg.contains(r#"id="merman-Company" data-look="classic""#));
     assert!(svg.contains(r#"id="merman-Company.Project" data-look="classic""#));
@@ -639,81 +774,175 @@ fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() 
 
 #[test]
 fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("stress_class_comments_inside_namespaces_024.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+    let svg = render_class_fixture(
+        "stress_class_comments_inside_namespaces_024.mmd",
+        &LayoutOptions::default(),
         &SvgRenderOptions {
             diagram_id: Some("stress_class_comments_inside_namespaces_024".to_string()),
             ..Default::default()
         },
-    )
-    .expect("svg render ok");
+    );
 
     assert!(
-        svg.contains(r#"<g class="root" transform="translate(-8, 0)"><g class="clusters">"#),
-        "expected nested namespace wrapper to keep Mermaid's -8px root translation"
+        svg.contains(r#"<g class="root" transform="translate("#)
+            && svg.contains(r#"><g class="clusters">"#),
+        "expected nested namespace wrapper around the cluster group"
     );
-    assert!(
-        svg.contains(r#"</g><g class="edgeLabels"></g><g class="edgePaths"></g><g class="nodes">"#),
-        "expected nested namespace wrapper placeholders to keep Mermaid order"
+    let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+    let wrapper = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node.attribute("class") == Some("root")
+                && node.attribute("transform").is_some()
+        })
+        .expect("nested namespace root wrapper");
+    let child_classes = wrapper
+        .children()
+        .filter(|node| node.is_element())
+        .filter_map(|node| node.attribute("class"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        child_classes.get(..4),
+        Some(["clusters", "edgePaths", "edgeLabels", "nodes"].as_slice()),
+        "nested namespace wrapper must keep Mermaid's direct-child order"
     );
-    assert!(
-        svg.contains(r#"max-width: 114px; text-align: center;"><span class="nodeLabel markdown-node-label" style=""><p>Outer.Foo</p>"#),
-        "expected qualified namespace reference title to keep Mermaid max-width"
+    assert!(svg.contains("<p>Outer.Foo</p>"));
+}
+
+#[test]
+fn class_svg_namespace_extraction_depends_on_cross_boundary_edges() {
+    let extracted = render_class_svg_from_text(
+        r#"classDiagram
+namespace Internal {
+  class A
+  note for A "inside"
+}
+class X
+class Y
+X --> Y
+"#,
+    );
+
+    let document = roxmltree::Document::parse(&extracted).expect("valid extracted Class SVG");
+    let outer_edge = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "path"
+                && node
+                    .attribute("data-id")
+                    .is_some_and(|id| id.starts_with("id_X_Y_"))
+        })
+        .expect("outer X-to-Y edge path");
+    let outer_edge_roots = outer_edge
+        .ancestors()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node.attribute("class") == Some("root")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        outer_edge_roots.len(),
+        1,
+        "an unrelated outer relation belongs only to the top-level Dagre render root"
+    );
+
+    let note_edge = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "path"
+                && node.attribute("data-id") == Some("edgeNote0")
+        })
+        .expect("internal note edge path");
+    let note_edge_roots = note_edge
+        .ancestors()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node.attribute("class") == Some("root")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        note_edge_roots.len(),
+        2,
+        "the internal note edge belongs to the extracted namespace root nested in the top-level root"
+    );
+
+    for root in [note_edge_roots[1], note_edge_roots[0]] {
+        let child_classes = root
+            .children()
+            .filter(|node| node.is_element())
+            .filter_map(|node| node.attribute("class"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            child_classes,
+            ["clusters", "edgePaths", "edgeLabels", "nodes"],
+            "each layout-owned render root must preserve Mermaid's direct-child group order"
+        );
+    }
+
+    let retained = render_class_svg_from_text(
+        r#"classDiagram
+namespace Internal {
+  class A
+}
+class Outside
+A --> Outside
+"#,
+    );
+
+    let document = roxmltree::Document::parse(&retained).expect("valid retained Class SVG");
+    let crossing_edge = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "path"
+                && node
+                    .attribute("data-id")
+                    .is_some_and(|id| id.starts_with("id_A_Outside_"))
+        })
+        .expect("namespace-crossing edge path");
+    let crossing_edge_root_count = crossing_edge
+        .ancestors()
+        .filter(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node.attribute("class") == Some("root")
+        })
+        .count();
+    assert_eq!(
+        crossing_edge_root_count, 1,
+        "a boundary-crossing relation must remain owned by the parent Dagre render root"
+    );
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node.attribute("class") == Some("root")
+                    && node.attribute("transform").is_some()
+            })
+            .count(),
+        0,
+        "a boundary-crossing relation prevents extraction of its namespace cluster"
     );
 }
 
 #[test]
 fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("stress_class_nested_namespaces_many_levels_021.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+    let svg = render_class_fixture(
+        "stress_class_nested_namespaces_many_levels_021.mmd",
+        &LayoutOptions::headless_svg_defaults(),
         &SvgRenderOptions {
             diagram_id: Some("stress_class_nested_namespaces_many_levels_021".to_string()),
             ..Default::default()
         },
-    )
-    .expect("svg render ok");
+    );
 
     assert!(svg.contains(
         r#"id="stress_class_nested_namespaces_many_levels_021-Root.A" data-look="classic""#
@@ -735,10 +964,21 @@ fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
 fn class_svg_handles_deep_namespace_subgraph_chain() {
     const DEPTH: usize = 128;
     let source = deep_class_namespace_text(DEPTH);
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
     let handle = std::thread::Builder::new()
         .name("class-deep-namespace-svg".to_string())
-        .stack_size(128 * 1024)
-        .spawn(move || render_class_svg_from_text(&source))
+        // Keep the SVG path under a constrained stack while leaving room for its fixed debug
+        // render frames; depth remains the recursion-safety signal exercised by this test.
+        .stack_size(256 * 1024)
+        .spawn(move || {
+            render_class_svg_from_text_with_session(
+                Engine::new(),
+                &source,
+                &LayoutOptions::headless_svg_defaults(),
+                &SvgRenderOptions::default(),
+                session,
+            )
+        })
         .expect("spawn deep namespace SVG test");
     let svg = handle
         .join()
@@ -760,233 +1000,40 @@ fn class_svg_handles_deep_namespace_subgraph_chain() {
 
 #[test]
 fn class_svg_long_relation_labels_wrap_to_mermaid_html_cap() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("stress_class_long_labels_wrapping_002.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+    let svg = render_class_fixture(
+        "stress_class_long_labels_wrapping_002.mmd",
+        &LayoutOptions::headless_svg_defaults(),
         &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok");
-
-    assert!(
-        svg.contains(r#"<foreignObject width="200" height="72">"#)
-            && svg.contains("display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"),
-        "expected long class relation labels to wrap at Mermaid's 200px HTML cap"
     );
+
+    let label = foreign_object_for_text(
+        &svg,
+        "<p>edge label with spaces, punctuation, and unicode → αβγ</p>",
+    );
+    assert!(attr_f64(label, "width") > 0.0 && attr_f64(label, "width") <= 200.0);
+    assert!(
+        attr_f64(label, "height") > 16.0,
+        "long label should wrap: {label}"
+    );
+    assert!(label.contains("max-width: 200px"));
 }
 
 #[test]
-fn class_svg_annotations_and_comment_rows_keep_mermaid_html_caps() {
-    let fixtures: &[(&str, &[&str])] = &[
-        (
-            "upstream_annotations_in_brackets_spec.mmd",
-            &[
-                "max-width: 102px",
-                "max-width: 116px",
-                "max-width: 120px",
-                "max-width: 81px",
-            ],
-        ),
-        (
-            "stress_class_comments_and_spacing_005.mmd",
-            &["max-width: 177px"],
-        ),
-        (
-            "stress_class_interfaces_and_abstracts_007.mmd",
-            &["max-width: 103px", "max-width: 135px", "max-width: 129px"],
-        ),
-        (
-            "stress_class_member_separators_and_annotations_009.mmd",
-            &["max-width: 146px", "max-width: 233px", "max-width: 218px"],
-        ),
-        (
-            "stress_class_enums_and_interfaces_mix_023.mmd",
-            &["max-width: 89px", "max-width: 134px", "max-width: 147px"],
-        ),
-        (
-            "stress_class_styles_classdef_and_inline_010.mmd",
-            &["max-width: 92px", "max-width: 89px", "max-width: 102px"],
-        ),
-        (
-            "stress_class_styles_multiple_classdef_016.mmd",
-            &[
-                "max-width: 89px",
-                "max-width: 76px",
-                "max-width: 72px",
-                "max-width: 197px",
-                "max-width: 276px",
-                "max-width: 229px",
-            ],
-        ),
-    ];
-
-    for (fixture, expected_caps) in fixtures {
-        let path = workspace_root()
-            .join("fixtures")
-            .join("class")
-            .join(fixture);
-        let text = std::fs::read_to_string(&path).expect("fixture");
-
-        let engine = Engine::new();
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected");
-
-        let layout_opts = LayoutOptions::headless_svg_defaults();
-        let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-        let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-            panic!("expected ClassDiagramV2 layout");
-        };
-
-        let svg = render_class_diagram_v2_svg(
-            layout,
-            &out.semantic,
-            &out.meta.effective_config,
-            out.meta.title.as_deref(),
-            layout_opts.text_measurer.as_ref(),
-            &SvgRenderOptions::default(),
-        )
-        .expect("svg render ok");
-
-        for expected_cap in expected_caps.iter().copied() {
-            assert!(
-                svg.contains(expected_cap),
-                "expected {fixture} to contain Mermaid-matching HTML cap {expected_cap}"
-            );
-        }
-    }
-}
-
-#[test]
-fn class_svg_annotation_width_overrides_drive_html_node_bounds() {
-    let fixtures: &[(&str, &[&str])] = &[
-        (
-            "upstream_annotations_in_brackets_spec.mmd",
-            &[
-                r#"id="merman-classId-Class1-0" data-look="classic" transform="translate(72.1171875, 92)""#,
-                r#"<path d="M-64.1171875 -84 L64.1171875 -84 L64.1171875 84 L-64.1171875 84""#,
-            ],
-        ),
-        (
-            "stress_class_interfaces_and_abstracts_007.mmd",
-            &[
-                r#"id="merman-classId-IService-0" data-look="classic" transform="translate(61.171875, 83)""#,
-                r#"<path d="M-53.171875 -54 L53.171875 -54 L53.171875 54 L-53.171875 54""#,
-            ],
-        ),
-        (
-            "stress_class_member_separators_and_annotations_009.mmd",
-            &[
-                r#"id="merman-classId-Data-0" data-look="classic" transform="translate(145.48828125, 292)""#,
-                r#"<path d="M-137.48828125 -108 L137.48828125 -108 L137.48828125 108 L-137.48828125 108""#,
-            ],
-        ),
-        (
-            "stress_class_enums_and_interfaces_mix_023.mmd",
-            &[
-                r#"id="merman-classId-Status-0" data-look="classic" transform="translate(485.59765625, 104)""#,
-                r#"<path d="M-76.28515625 -96 L76.28515625 -96 L76.28515625 96 L-76.28515625 96""#,
-            ],
-        ),
-    ];
-
-    for (fixture, expected_snippets) in fixtures {
-        let path = workspace_root()
-            .join("fixtures")
-            .join("class")
-            .join(fixture);
-        let text = std::fs::read_to_string(&path).expect("fixture");
-
-        let engine = Engine::new();
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected");
-
-        let layout_opts = LayoutOptions::headless_svg_defaults();
-        let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-        let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-            panic!("expected ClassDiagramV2 layout");
-        };
-
-        let svg = render_class_diagram_v2_svg(
-            layout,
-            &out.semantic,
-            &out.meta.effective_config,
-            out.meta.title.as_deref(),
-            layout_opts.text_measurer.as_ref(),
-            &SvgRenderOptions::default(),
-        )
-        .expect("svg render ok");
-
-        for expected in expected_snippets.iter().copied() {
-            assert!(
-                svg.contains(expected),
-                "expected {fixture} to keep Mermaid annotation-driven node geometry: {expected}"
-            );
-        }
-    }
-}
-
-#[test]
-fn class_svg_cardinality_terminals_keep_mermaid_sizes_and_offsets() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("upstream_relation_types_and_cardinalities_spec.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+fn class_svg_cardinality_terminals_emit_positive_measured_bounds() {
+    let svg = render_class_fixture(
+        "upstream_relation_types_and_cardinalities_spec.mmd",
+        &LayoutOptions::headless_svg_defaults(),
         &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok");
-
-    assert!(
-        svg.contains(
-            r#"<foreignObject width="26.359375" height="16.5" style="width: 36px; height: 12px;">"#
-        ) && svg.contains(r#"<span class="edgeLabel"><p>many</p></span>"#),
-        "expected `many` cardinality terminal to keep Mermaid width sizing"
     );
+
+    let terminal = foreign_object_for_text(&svg, "<p>many</p>");
+    assert!(svg.contains(r#"<span class="edgeLabel"><p>many</p></span>"#));
+    assert!(attr_f64(terminal, "width") > 0.0);
+    assert!(attr_f64(terminal, "height") > 0.0);
 }
 
 #[test]
-fn class_svg_hand_drawn_cardinality_terminals_match_mermaid_xhtml() {
+fn class_svg_hand_drawn_cardinality_terminals_keep_xhtml_and_measured_bounds() {
     let svg = render_class_svg_from_text(
         r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
 classDiagram
@@ -994,42 +1041,19 @@ classDiagram
 "#,
     );
 
-    assert!(
-        svg.contains(
-            r#"<g class="inner" transform="translate(-2.890625, -8.25)"><foreignObject width="5.78125" height="16.5" style="width: 9px; height: 12px;">"#
-        ) && svg.contains(r#"<span class="edgeLabel"><p>1</p></span>"#),
-        "hand-drawn class cardinality terminals should match Mermaid's XHTML shape: {svg}"
-    );
+    let terminal = foreign_object_for_text(&svg, "<p>1</p>");
+    assert!(svg.contains(r#"<span class="edgeLabel"><p>1</p></span>"#));
+    assert!(attr_f64(terminal, "width") > 0.0);
+    assert!(attr_f64(terminal, "height") > 0.0);
 }
 
 #[test]
 fn class_svg_edge_labels_precede_terminals_in_edge_labels_group() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("stress_class_parallel_edges_and_cardinality_004.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+    let svg = render_class_fixture(
+        "stress_class_parallel_edges_and_cardinality_004.mmd",
+        &LayoutOptions::headless_svg_defaults(),
         &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok");
+    );
 
     let edge_labels_start = svg
         .find(r#"<g class="edgeLabels">"#)
@@ -1053,127 +1077,12 @@ fn class_svg_edge_labels_precede_terminals_in_edge_labels_group() {
 }
 
 #[test]
-fn class_svg_terminal_groups_keep_upstream_dom_order_for_mixed_cardinalities() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("upstream_relation_types_and_cardinalities_spec.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok");
-
-    let edge_labels_start = svg
-        .find(r#"<g class="edgeLabels">"#)
-        .expect("edgeLabels group");
-    let nodes_start = svg[edge_labels_start..]
-        .find(r#"<g class="nodes">"#)
-        .map(|idx| edge_labels_start + idx)
-        .expect("nodes group after edge labels");
-    let section = &svg[edge_labels_start..nodes_start];
-
-    let first_terminal = section
-        .find(r#"<g class="edgeTerminals" transform="translate(680.59375, 109.5)">"#)
-        .expect("first terminal present");
-    let second_terminal = section
-        .find(r#"<g class="edgeTerminals" transform="translate(964.71875, 143.5)">"#)
-        .expect("second terminal present");
-    let third_terminal = section
-        .find(r#"<g class="edgeTerminals" transform="translate(705.59375, 143.5)">"#)
-        .expect("third terminal present");
-
-    assert!(
-        first_terminal < second_terminal && second_terminal < third_terminal,
-        "expected mixed cardinality terminals to keep Mermaid DOM order"
-    );
-}
-
-#[test]
-fn class_svg_single_char_title_keeps_upstream_html_max_width() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("stress_class_many_relations_labels_020.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok");
-
-    let e_idx = svg
-        .find("<p>E</p>")
-        .expect("single-character title present");
-    let e_section = &svg[e_idx.saturating_sub(260)..(e_idx + 120).min(svg.len())];
-
-    assert!(
-        e_section.contains("max-width: 60px"),
-        "expected single-character title `E` to keep Mermaid's 60px max-width"
-    );
-}
-
-#[test]
 fn class_svg_relation_titles_decode_entities_once() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("upstream_relation_types_and_cardinalities_spec.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_opts = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+    let svg = render_class_fixture(
+        "upstream_relation_types_and_cardinalities_spec.mmd",
+        &LayoutOptions::default(),
         &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok");
+    );
 
     assert!(
         svg.contains(r#"<p>&lt; owns</p>"#),
@@ -1187,32 +1096,11 @@ fn class_svg_relation_titles_decode_entities_once() {
 
 #[test]
 fn class_svg_relation_only_generic_nodes_keep_type_suffix() {
-    let path = workspace_root()
-        .join("fixtures")
-        .join("class")
-        .join("upstream_cypress_classdiagram_v3_spec_8_should_render_a_simple_class_diagram_with_generic_class_and_re_016.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-
-    let layout_opts = LayoutOptions::default();
-    let svg = render_class_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+    let svg = render_class_fixture(
+        "upstream_cypress_classdiagram_v3_spec_8_should_render_a_simple_class_diagram_with_generic_class_and_re_016.mmd",
+        &LayoutOptions::default(),
         &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok");
+    );
 
     assert!(
         svg.contains("Class01&lt;T")

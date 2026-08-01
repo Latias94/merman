@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted
+Superseded by ADR-0076
+
+The tiny/full registry and host-profile decision below is retained as historical context. The
+canonical capability vocabulary, additive leaves, named presets, target restrictions, and
+migration policy now live in `capabilities/feature-surface-v1.json`. U2 removed the old flags and
+registry split; this document is historical context only.
 
 ## Context
 
@@ -39,8 +44,8 @@ both without forking the codebase.
 
 Feature surfaces and host profile expectations are documented in `docs/FEATURES.md`.
 
-Related: `dugong` also exposes an optional parity-oriented pipeline (`layout_dagreish`) behind the
-`dugong/dagreish` feature (enabled by default).
+`dugong` exposes one source-backed Dagre layout pipeline. Diagram-profile feature flags do not
+select between correct and approximate graph algorithms.
 
 ## Consequences
 

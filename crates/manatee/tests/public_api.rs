@@ -1,5 +1,12 @@
 use manatee::algo::fcose::IndexedFcoseOptions;
-use manatee::{FcoseOptions, FcoseRandomPolicy, FcoseRandomSource};
+use manatee::{Algorithm, FcoseOptions, FcoseRandomPolicy, FcoseRandomSource};
+
+#[test]
+fn cose_bilkent_algorithm_has_no_phantom_options() {
+    let algorithm = Algorithm::CoseBilkent;
+
+    assert!(matches!(algorithm, Algorithm::CoseBilkent));
+}
 
 #[test]
 fn fcose_option_struct_literals_remain_source_compatible() {
@@ -33,5 +40,6 @@ fn fcose_option_struct_literals_remain_source_compatible() {
     let policy = FcoseRandomPolicy::seeded(FcoseRandomSource::Mulberry32, 1)
         .with_seed_offset(0)
         .with_reset_seed_each_run(true);
-    assert_eq!(policy.seed(), Some(1));
+    let seed: u64 = policy.seed();
+    assert_eq!(seed, 1);
 }

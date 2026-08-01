@@ -1,0 +1,54 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH MERMAN-CLI 1 2026-07-29 "Merman 0.8.0-alpha.4" "Merman CLI Manual"
+.SH NAME
+merman\-cli \- Headless Mermaid CLI with parse, analysis, and optional rendering capabilities.
+.SH SYNOPSIS
+\fBmerman\-cli\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Headless Mermaid CLI with parse, analysis, and optional rendering capabilities.
+.PP
+The commands and formats shown below are exactly those compiled into this artifact. Use `capabilities \-\-json` for the machine\-readable capability contract.
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+merman\-cli\-render(1)
+Render one Mermaid diagram with Merman\*(Aqs native interface
+.TP
+merman\-cli\-batch(1)
+Render every Mermaid diagram in one Markdown document
+.TP
+merman\-cli\-lint(1)
+Analyze Mermaid source and print diagnostics JSON or text
+.TP
+merman\-cli\-fix(1)
+Apply non\-conflicting diagnostics fixes to Mermaid or Markdown source
+.TP
+merman\-cli\-lint\-rules(1)
+List lint rule metadata
+.TP
+merman\-cli\-mmdc(1)
+Render through the pinned mmdc\-compatible interface
+.TP
+merman\-cli\-detect(1)
+Detect the Mermaid diagram type
+.TP
+merman\-cli\-parse(1)
+Parse Mermaid source and print the semantic JSON model
+.TP
+merman\-cli\-layout(1)
+Parse and layout Mermaid source, then print layout JSON
+.TP
+merman\-cli\-capabilities(1)
+Print the compiled capabilities from the canonical capability descriptor
+.TP
+merman\-cli\-completion(1)
+Generate shell completion scripts
+.SH VERSION
+v0.8.0\-alpha.4

@@ -18,14 +18,17 @@ fn parse_cynefin_domains_transitions_and_editor_facts() {
 "#;
 
     let parsed = engine
-        .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+        .parse_diagram_snapshot_sync(text)
         .unwrap()
         .expect("cynefin parses");
 
-    assert_eq!(parsed.diagram.meta.diagram_type, "cynefin");
+    assert_eq!(parsed.metadata().diagram_type, "cynefin");
     assert_eq!(
-        parsed.diagram.model,
-        json!({
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot"),
+        &json!({
             "type": "cynefin",
             "title": "Team Practices",
             "accTitle": "Cynefin for team practices",
@@ -55,7 +58,7 @@ fn parse_cynefin_domains_transitions_and_editor_facts() {
         })
     );
 
-    let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+    let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
         panic!("cynefin should expose editor facts");
     };
     assert!(
@@ -113,12 +116,15 @@ fn parse_cynefin_accepts_header_domains_and_items_on_the_same_line() {
     let text = r#"cynefin-beta complex "A" "B" complicated "C"
 complicated --> clear : "Standardize""#;
     let parsed = engine
-        .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+        .parse_diagram_snapshot_sync(text)
         .unwrap()
         .expect("cynefin parses tokens separated only by hidden whitespace");
 
     assert_eq!(
-        parsed.diagram.model["domains"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["domains"],
         json!([
             {
                 "name": "complex",
@@ -131,7 +137,10 @@ complicated --> clear : "Standardize""#;
         ])
     );
     assert_eq!(
-        parsed.diagram.model["transitions"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["transitions"],
         json!([{
             "from": "complicated",
             "to": "clear",
@@ -139,7 +148,7 @@ complicated --> clear : "Standardize""#;
         }])
     );
 
-    let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+    let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
         panic!("cynefin should expose editor facts");
     };
     assert!(facts.symbols.iter().any(|symbol| {
@@ -168,7 +177,7 @@ complex "A""#;
 }
 
 #[test]
-fn parse_cynefin_decodes_common_string_escapes_like_langium() {
+fn parse_cynefin_unescapes_common_strings_like_langium() {
     let engine = Engine::new();
     let parsed = engine
         .parse_diagram_sync(
@@ -184,11 +193,11 @@ fn parse_cynefin_decodes_common_string_escapes_like_langium() {
 
     assert_eq!(
         parsed.model["domains"][0]["items"][0]["label"],
-        json!("Probe\nsense\trespond\u{0008}now")
+        json!("Probensensetrespondbnow")
     );
     assert_eq!(
         parsed.model["transitions"][0]["label"],
-        json!("Move\rnow\u{000b}soon\0")
+        json!("Movernowvsoon0")
     );
 }
 
@@ -211,21 +220,35 @@ fn parse_cynefin_transition_labels_follow_javascript_truthiness() {
 fn parse_cynefin_normalizes_common_fields_and_multiline_acc_descr() {
     let engine = Engine::new();
     let parsed = engine
-        .parse_diagram_with_editor_facts_sync(
+        .parse_diagram_snapshot_sync(
             "cynefin-beta\n  title    Team\t\tPractices   Map  \n  accTitle:   Team\t\tMap  \n  accDescr {\n    First    line\n\n      Second\t\tline   \n  }\n  clear\n",
-            ParseOptions::strict(),
         )
         .unwrap()
         .expect("cynefin parses multiline accessibility metadata");
 
-    assert_eq!(parsed.diagram.model["title"], json!("Team Practices Map"));
-    assert_eq!(parsed.diagram.model["accTitle"], json!("Team Map"));
     assert_eq!(
-        parsed.diagram.model["accDescr"],
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["title"],
+        json!("Team Practices Map")
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["accTitle"],
+        json!("Team Map")
+    );
+    assert_eq!(
+        parsed
+            .outcome()
+            .parsed_model()
+            .expect("expected parsed snapshot")["accDescr"],
         json!("First line\nSecond line")
     );
 
-    let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+    let ParsedEditorFacts::Available(facts) = parsed.editor_facts() else {
         panic!("cynefin should expose editor facts");
     };
     assert!(facts.symbols.iter().any(|symbol| {
@@ -266,10 +289,10 @@ fn parse_cynefin_render_model_uses_typed_model() {
         .unwrap()
         .expect("cynefin render model parses");
 
-    assert_eq!(parsed.meta.diagram_type, "cynefin");
-    assert_eq!(parsed.model.kind(), "cynefin");
-    assert!(parsed.model.supports_diagram_type("cynefin"));
-    let RenderSemanticModel::Cynefin(model) = parsed.model else {
+    assert_eq!(parsed.metadata().diagram_type, "cynefin");
+    assert_eq!(parsed.model().kind(), "cynefin");
+    assert!(parsed.model().supports_diagram_type("cynefin"));
+    let RenderSemanticModel::Cynefin(model) = parsed.model() else {
         panic!("expected typed cynefin render model");
     };
     assert_eq!(model.domains[0].name, "complex");

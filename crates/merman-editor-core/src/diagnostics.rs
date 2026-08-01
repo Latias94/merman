@@ -5,12 +5,29 @@ use merman_analysis::{
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+thread_local! {
+    static DIAGNOSTIC_PROJECTIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub fn analysis_payload_to_diagnostics(payload: &AnalysisPayload) -> Vec<EditorDiagnostic> {
+    #[cfg(test)]
+    DIAGNOSTIC_PROJECTIONS.with(|count| count.set(count.get() + 1));
     payload
         .diagnostics
         .iter()
         .map(analysis_diagnostic_to_editor)
         .collect()
+}
+
+#[cfg(test)]
+pub(crate) fn reset_diagnostic_projection_count() {
+    DIAGNOSTIC_PROJECTIONS.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn diagnostic_projection_count() -> usize {
+    DIAGNOSTIC_PROJECTIONS.with(std::cell::Cell::get)
 }
 
 pub fn analysis_diagnostic_to_editor(diagnostic: &AnalysisDiagnostic) -> EditorDiagnostic {

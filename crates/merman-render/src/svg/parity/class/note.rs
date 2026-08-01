@@ -1,13 +1,17 @@
 use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutNode};
-use crate::text::{MermaidMarkdownWordType, TextMeasurer, TextStyle, WrapMode};
+use crate::text::{
+    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownWordType, TextMeasurer, TextStyle,
+    WrapMode,
+};
 use std::fmt::Write as _;
-use web_time::Duration;
+use std::time::Duration;
 
-use super::super::{escape_attr_display, escape_xml_into, fmt, theme_color};
+use super::super::timing::RenderTiming;
+use super::super::{escape_attr_display, escape_xml_into, fmt, theme_token};
 use super::ClassSvgNote;
 use super::bounds::{include_path_d, include_xywh};
-use super::label::class_note_html_div_style;
+use super::label::{class_math_html_label, class_note_html_div_style};
 use super::node::ClassNodeRenderPosition;
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_rect_stroke_path_and_bounds, class_rough_seed,
@@ -20,9 +24,11 @@ pub(super) struct ClassNoteRenderContext<'a> {
     pub text_style: &'a TextStyle,
     pub line_height: f64,
     pub use_html_labels: bool,
+    pub mermaid_config: Option<&'a merman_core::MermaidConfig>,
+    pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub look: &'a str,
-    pub hand_drawn_seed: u64,
-    pub timing_enabled: bool,
+    pub hand_drawn_seed: roughr::core::RoughRandomness,
+    pub timing: RenderTiming,
 }
 
 pub(super) struct ClassNoteRenderState<'a> {
@@ -99,10 +105,13 @@ pub(super) fn render_class_note_node(
     let label_y = if ctx.use_html_labels {
         -label_h / 2.0
     } else {
-        -label_h / 2.0 - crate::class::class_svg_create_text_bbox_y_offset_px(ctx.text_style)
+        -label_h / 2.0
+            - ctx
+                .measurer
+                .measure_svg_create_text_bbox_y_offset_px(note_text.as_ref(), ctx.text_style)
     };
     let hand_drawn = ctx.look == "handDrawn";
-    let rough_seed = class_rough_seed(ctx.hand_drawn_seed, ctx.diagram_id, &note.id);
+    let rough_seed = class_rough_seed(&ctx.hand_drawn_seed, ctx.diagram_id, &note.id);
     include_xywh(
         content_bounds,
         position.node_bounds_tx + left,
@@ -117,9 +126,9 @@ pub(super) fn render_class_note_node(
         label_w,
         label_h,
     );
-    let path_bounds_start = ctx.timing_enabled.then(web_time::Instant::now);
-    let note_fill = theme_color(ctx.effective_config, "noteBkgColor", "#fff5ad");
-    let note_stroke = theme_color(ctx.effective_config, "noteBorderColor", "#aaaa33");
+    let path_bounds_start = ctx.timing.start();
+    let note_fill = theme_token(ctx.effective_config, "noteBkgColor", "#fff5ad");
+    let note_stroke = theme_token(ctx.effective_config, "noteBorderColor", "#aaaa33");
     let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
     let (note_fill_d, note_stroke_d) = if hand_drawn {
         class_rough_hachure_rect_paths(
@@ -131,15 +140,15 @@ pub(super) fn render_class_note_node(
             &note_stroke,
             1.3,
             "0 0",
-            rough_seed,
+            &rough_seed,
         )
         .unwrap_or_else(|| {
             let (stroke_d, _) =
-                class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+                class_rough_rect_stroke_path_and_bounds(left, top, w, h, &rough_seed);
             (String::new(), stroke_d)
         })
     } else {
-        let (stroke_d, _) = class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
+        let (stroke_d, _) = class_rough_rect_stroke_path_and_bounds(left, top, w, h, &rough_seed);
         (String::new(), stroke_d)
     };
     include_path_d(
@@ -193,10 +202,11 @@ pub(super) fn render_class_note_node(
     }
 
     if ctx.use_html_labels {
-        let note_div_style = class_note_html_div_style(label_w, 200);
+        let note_div_style =
+            class_note_html_div_style(label_w, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
         let _ = write!(
             out,
-            r##"<g class="{}" id="{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}"><p>"##,
+            r##"<g class="{}" id="{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}">"##,
             note_node_class,
             escape_attr_display(&note_node_id),
             note_data_look_attr,
@@ -211,18 +221,22 @@ pub(super) fn render_class_note_node(
             escape_attr_display(&note_div_style),
             note_span_class,
         );
-        let sanitize_start = ctx.timing_enabled.then(web_time::Instant::now);
+        let sanitize_start = ctx.timing.start();
         let note_html_config = class_note_sanitize_config(
             borrowed_sanitize_config,
             sanitize_config,
             ctx.effective_config,
         );
-        let note_html = crate::class::class_note_html_fragment(note_src, note_html_config);
+        let note_html = class_math_html_label(note_src, ctx.mermaid_config, ctx.math_renderer)
+            .unwrap_or_else(|| {
+                let html = crate::class::class_note_html_fragment(note_src, note_html_config);
+                format!("<p>{html}</p>")
+            });
         if let Some(s) = sanitize_start {
             stats.notes_sanitize += s.elapsed();
         }
         out.push_str(&note_html);
-        out.push_str("</p></span></div></foreignObject></g></g>");
+        out.push_str("</span></div></foreignObject></g></g>");
     } else {
         let note_label_style = "text-align:left !important;white-space:nowrap !important";
         let _ = write!(

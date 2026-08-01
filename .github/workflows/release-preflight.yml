@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version without the leading v, for example 0.8.0-alpha.3"
+        description: "Release version without the leading v, for example 0.8.0-alpha.4"
         required: true
         type: string
       source_ref:
-        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to validate"
+        description: "Immutable 40-character commit SHA, protected branch (main), or matching release tag to validate"
         required: true
         default: "main"
         type: string
@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       source_ref: ${{ steps.release.outputs.source_ref }}
+      source_sha: ${{ steps.pin-source.outputs.source_sha }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       version: ${{ steps.release.outputs.version }}
     steps:
@@ -37,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
           tag_re="^v${semver_re#^}"
           fail() {
             echo "::error::$1" >&2
@@ -51,14 +52,16 @@ jobs:
           [[ "$VERSION" =~ $semver_re ]] || fail "version must match X.Y.Z or X.Y.Z-alpha.N/beta.N/rc.N."
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           validated_source_ref="$SOURCE_REF"
-          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+          if [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+          elif [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/${tag_re#^} ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match version."
             validated_source_ref="refs/tags/$source_tag"
           else
-            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
+            fail "source_ref must be an immutable lowercase commit SHA, main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
           fi
 
           {
@@ -67,6 +70,25 @@ jobs:
             printf 'version=%s\n' "$VERSION"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Resolve immutable release source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.source_ref }}
+          persist-credentials: false
+
+      - name: Pin resolved source commit
+        id: pin-source
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REF: ${{ steps.release.outputs.source_ref }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          if [[ "$EXPECTED_SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            test "$source_sha" = "$EXPECTED_SOURCE_REF"
+          fi
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+
   versions-and-packages:
     needs: validate-inputs
     name: versions-and-packages
@@ -74,7 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Install Rust toolchain
@@ -82,6 +104,16 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-about
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.1
+
+      - name: Install CLI asset validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --yes elvish fish mandoc zsh
 
       - name: Verify release versions
         env:
@@ -91,8 +123,23 @@ jobs:
       - name: Verify release crate order docs
         run: python3 scripts/verify-release-crate-order.py
 
-      - name: Verify FFI publish surface
-        run: python3 scripts/verify-ffi-publish-surface.py
+      - name: Verify target-scoped artifact dependency closures
+        run: python3 scripts/verify_artifact_dependency_closures.py
+
+      - name: Verify generated CLI distribution assets
+        run: python3 scripts/generate_cli_assets.py --check
+
+      - name: Validate CLI distribution assets
+        run: python3 scripts/verify_cli_assets.py --require bash,zsh,fish,elvish,mandoc
+
+      - name: Verify CLI installation metadata
+        run: python3 scripts/cli_installation_contract.py
+
+      - name: Verify exact Rust dependency license reports
+        run: python3 scripts/generate-rust-license-report.py --check
+
+      - name: Verify legal material projections
+        run: python3 scripts/sync-release-legal-materials.py --check
 
       - name: Check Rust formatting
         run: cargo fmt --check
@@ -105,6 +152,9 @@ jobs:
           while IFS= read -r crate; do
             cargo package -p "$crate" --list > "target/package-lists/$crate.txt"
           done < target/package-lists/crates.txt
+
+      - name: Verify Cargo package legal materials
+        run: python3 scripts/verify_crate_package_legal_materials.py
 
       - name: Verify registry-independent crate dry-runs
         run: |
@@ -174,7 +224,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Setup Python
@@ -226,8 +276,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
+
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        run: |
+          echo "java=$(python3 platforms/android/build-android.py --print-version java)" >> "$GITHUB_OUTPUT"
+          echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Verify release versions
         env:
@@ -238,15 +294,13 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: ${{ steps.android-toolchain.outputs.java }}
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.4.1"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -260,18 +314,31 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r28
+          ndk-version: ${{ steps.android-toolchain.outputs.ndk }}
 
       - name: Build Android native libraries
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
 
-      - name: Build Android AAR
-        run: gradle -p platforms/android assembleRelease --stacktrace
+      - name: Run Android JVM contract tests
+        run: platforms/android/gradlew -p platforms/android testDebugUnitTest --stacktrace
 
-      - name: Verify Maven publication metadata
-        run: gradle -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
+      - name: Build Android AAR
+        run: platforms/android/gradlew -p platforms/android assembleRelease --stacktrace
+
+      - name: Verify AAR contract
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: python3 scripts/verify-platform-bindings.py --verify-android-aar
+
+      - name: Publish to the local Maven staging repository
+        run: platforms/android/gradlew -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
+
+      - name: Verify Maven publication contract
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: python3 scripts/verify-platform-bindings.py --verify-android-maven
 
   apple-xcframework:
     needs: validate-inputs
@@ -280,7 +347,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Verify release versions
@@ -306,6 +373,7 @@ jobs:
           swift package describe
           swift build
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
+          git diff --exit-code -- platforms/apple/Sources/Merman/Generated
 
   web-npm-dry-run:
     needs: validate-inputs
@@ -314,7 +382,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Verify release versions
@@ -337,10 +405,23 @@ jobs:
           cache: npm
           cache-dependency-path: platforms/web/package-lock.json
 
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@wasm-tools
+
       - name: Install WASM tools
         run: |
           cargo install wasm-bindgen-cli --version 0.2.108 --locked
           cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Verify generated Web contracts
+        run: |
+          cargo run --locked -p xtask -- verify-mermaid-reference
+          cargo run --locked -p xtask -- verify-editor-token-descriptor
+          cargo run --locked -p xtask -- verify-text-measurement-protocol
+          cargo run --locked -p xtask -- verify-web-diagram-catalog
+
+      - name: Check exact Web WASM size budgets
+        run: cargo run --locked -p xtask -- wasm-size-matrix --surface web --budget-file docs/release/WASM_SIZE_BUDGETS.json
 
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
@@ -349,14 +430,34 @@ jobs:
         run: npm run build --prefix platforms/web
 
       - name: Verify web package
-        run: npm run prepack --prefix platforms/web
+        run: npm run verify:packages --prefix platforms/web
 
       - name: Smoke web package
         run: npm run smoke --prefix platforms/web
 
-      - name: Pack npm package dry-run
-        working-directory: platforms/web
-        run: npm pack --dry-run
+      - name: Pack and verify Web package group dry-run
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/merman-web-package-group"
+          mkdir -p "$artifact_dir"
+          source_sha="$(git rev-parse HEAD)"
+          python3 scripts/web_package_group.py pack \
+            --root . \
+            --descriptor platforms/web/web-surface-descriptor.json \
+            --artifact-dir "$artifact_dir" \
+            --version "$VERSION" \
+            --source-sha "$source_sha" \
+            --target-dist-tag staging
+          python3 scripts/web_package_group.py verify-artifact \
+            --manifest "$artifact_dir/web-package-group.json" \
+            --artifact-dir "$artifact_dir" \
+            --version "$VERSION" \
+            --source-sha "$source_sha" \
+            --target-dist-tag staging \
+            --descriptor platforms/web/web-surface-descriptor.json
 
   vscode-extension-dry-run:
     needs: validate-inputs
@@ -384,7 +485,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Setup Python
@@ -417,7 +518,9 @@ jobs:
         run: npm ci
 
       - name: Build release runtime binaries
-        run: cargo build --release --locked -p merman-lsp -p merman-cli
+        run: |
+          python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked
+          python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
 
       - name: Typecheck extension
         working-directory: tools/vscode-extension
@@ -447,23 +550,23 @@ jobs:
           RELEASE_VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
-          manifest_version="$(python scripts/release-version.py vscode --version "$RELEASE_VERSION")"
+          extension_version="$(node -p "require('./tools/vscode-extension/package.json').version")"
           {
-            printf 'release_version=%s\n' "$RELEASE_VERSION"
-            printf 'manifest_version=%s\n' "$manifest_version"
+            printf 'extension_version=%s\n' "$extension_version"
+            printf 'runtime_version=%s\n' "$RELEASE_VERSION"
           } >> "$GITHUB_OUTPUT"
-          echo "VSIX release_version=${RELEASE_VERSION} manifest_version=${manifest_version}"
+          echo "VSIX extension_version=${extension_version} runtime_version=${RELEASE_VERSION}"
 
       - name: Package VSIX
         working-directory: tools/vscode-extension
         env:
-          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+          MERMAN_VSCODE_RELEASE_VERSION: ${{ steps.vsix.outputs.extension_version }}
         run: npm run package -- --target "${{ matrix.target }}" --out "merman-vscode-${{ matrix.target }}.vsix"
 
       - name: Verify VSIX contents
         working-directory: tools/vscode-extension
         env:
-          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+          MERMAN_VSCODE_RELEASE_VERSION: ${{ steps.vsix.outputs.extension_version }}
         run: npm run verify:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix" --platform "${{ matrix.target }}" --target "${{ matrix.target }}"
 
       - name: Smoke packaged VSIX
@@ -490,8 +593,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
+
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        run: echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
 
       - name: Verify release versions
         env:
@@ -520,35 +627,26 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r28
+          ndk-version: ${{ steps.android-toolchain.outputs.ndk }}
 
       - name: Build Android native libraries
         env:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-          CARGO_PROFILE_RELEASE_STRIP: symbols
-        run: python3 platforms/android/build-android.py --targets aarch64-linux-android x86_64-linux-android
+        run: python3 platforms/android/build-android.py --artifact-profile flutter-android-native --targets aarch64-linux-android x86_64-linux-android
 
-      - name: Inject Android libraries into Flutter package
+      - name: Verify Android libraries in Flutter package
         run: |
-          mkdir -p platforms/flutter/android/src/main/jniLibs
-          cp -R platforms/android/src/main/jniLibs/* platforms/flutter/android/src/main/jniLibs/
+          test -f platforms/flutter/android/src/main/jniLibs/arm64-v8a/libmerman_ffi.so
+          test -f platforms/flutter/android/src/main/jniLibs/x86_64/libmerman_ffi.so
 
       - name: Build and inject iOS XCFramework
         env:
           MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: bash platforms/flutter/build-ios.sh
 
       - name: Build desktop native libraries
         env:
           MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
-          CARGO_PROFILE_RELEASE_OPT_LEVEL: z
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
-          CARGO_PROFILE_RELEASE_STRIP: symbols
         run: bash platforms/flutter/build-desktop.sh --all
 
       - name: Setup Dart with pub.dev OIDC credentials

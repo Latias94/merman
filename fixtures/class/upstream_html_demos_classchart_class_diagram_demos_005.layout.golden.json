@@ -1,19 +1,19 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Interface1Impl",
-          "x": 62.961,
+          "x": 60.719,
           "y": 116.0,
-          "width": 125.922,
+          "width": 121.438,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "interface0",
-          "x": 62.961,
+          "x": 60.719,
           "y": 12.0,
           "width": 68.8,
           "height": 24.0,
@@ -29,15 +29,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 62.961,
+              "x": 60.719,
               "y": 24.0
             },
             {
-              "x": 62.961,
+              "x": 60.719,
               "y": 49.0
             },
             {
-              "x": 62.961,
+              "x": 60.719,
               "y": 74.0
             }
           ],
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 125.922,
+        "max_x": 121.438,
         "max_y": 158.0
       }
     }

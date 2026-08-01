@@ -1,0 +1,56 @@
+import { spawnSync } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { statSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  inspectPackageManifests,
+  verifyPackedFileOwnership,
+} from "./package-contract.mjs";
+
+const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+try {
+  const descriptor = JSON.parse(await readFile(path.join(nodeRoot, "package-surfaces.json"), "utf8"));
+  await inspectPackageManifests(nodeRoot, descriptor);
+  const packedRoot = valueAfter(process.argv.slice(2), "--packed-root");
+  if (packedRoot) verifyPackedRoot(path.resolve(packedRoot), descriptor);
+  console.log("[merman-node] candidate package contracts verified");
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
+
+function verifyPackedRoot(root, descriptor) {
+  verifyPackage(path.join(root, "node"), descriptor.root.name, "loader");
+  for (const target of descriptor.targets) {
+    if (!existsForTarget(root, target.target)) continue;
+    verifyPackage(path.join(root, target.target), target.name, "platform");
+  }
+}
+
+function verifyPackage(packageRoot, packageName, role) {
+  const result = spawnSync("npm", ["pack", "--json", "--dry-run"], {
+    cwd: packageRoot,
+    encoding: "utf8",
+  });
+  if (result.error || result.status !== 0) {
+    throw new Error(`npm pack failed for ${packageName}: ${result.error?.message ?? result.stderr}`);
+  }
+  const output = JSON.parse(result.stdout);
+  verifyPackedFileOwnership({ packageName, role, files: output[0]?.files ?? [] });
+}
+
+function existsForTarget(root, target) {
+  try {
+    return statSync(path.join(root, target)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function valueAfter(args, flag) {
+  const index = args.indexOf(flag);
+  return index === -1 ? null : args[index + 1] ?? null;
+}

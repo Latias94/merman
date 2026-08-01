@@ -136,6 +136,15 @@ impl ParseDiagnostic {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
+    ParseCancelled(#[from] crate::ParseCancelled),
+
+    #[error(transparent)]
+    ThemeColor(#[from] crate::theme_color::ColorError),
+
+    #[error(transparent)]
+    RuntimePolicy(#[from] crate::runtime::RuntimePolicyError),
+
+    #[error(transparent)]
     DetectType(#[from] DetectTypeError),
 
     #[error("Unsupported diagram type: {diagram_type}")]
@@ -143,7 +152,7 @@ pub enum Error {
 
     /// Parser failure for a detected diagram.
     ///
-    /// This pre-1.0 API now carries `diagnostic: ParseDiagnostic` instead of a top-level `message`
+    /// This API now carries `diagnostic: ParseDiagnostic` instead of a top-level `message`
     /// field. Call `diagnostic.message()` for the display text and `diagnostic.span()` /
     /// `diagnostic.span_kind()` when projecting editor or CLI diagnostics.
     #[error("Diagram parse error ({diagram_type}): {}", diagnostic.message())]
@@ -165,6 +174,19 @@ pub enum Error {
 }
 
 impl Error {
+    pub(crate) fn with_exact_span_if_missing(self, span: SourceSpan) -> Self {
+        match self {
+            Self::DiagramParse {
+                diagram_type,
+                diagnostic,
+            } if diagnostic.span().is_none() => Self::DiagramParse {
+                diagram_type,
+                diagnostic: diagnostic.with_span(span, ParseDiagnosticSpanKind::Exact),
+            },
+            other => other,
+        }
+    }
+
     pub fn diagram_parse_fallback(
         diagram_type: impl Into<String>,
         message: impl Into<String>,

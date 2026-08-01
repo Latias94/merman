@@ -422,11 +422,13 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     let out_path =
         out_path.unwrap_or_else(|| crate::cmd::target_root().join("audit").join("gaps.md"));
 
-    let engine = merman::Engine::new()
+    let runtime_policy = merman::runtime::RuntimePolicy::deterministic()
+        .try_with_fixed_local_offset_minutes(0)
+        .expect("valid UTC offset")
         .with_fixed_today(Some(
             chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
-        ))
-        .with_fixed_local_offset_minutes(Some(0));
+        ));
+    let engine = merman::Engine::new().with_runtime_policy(runtime_policy);
 
     // 1) Parser-only fixtures (not part of parity gates).
     let mut parser_only_by_diagram: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
@@ -444,10 +446,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         if top == "_deferred" || top == "upstream-svgs" {
             continue;
         }
-        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !(name.contains("_parser_only_") || name.contains("_parser_only_spec")) {
+        if !crate::cmd::is_parser_only_fixture(&p) {
             continue;
         }
         if let Some(ref f) = filter

@@ -52,12 +52,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
         common.node_classes,
         &[],
     );
-    let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
-        ctx.class_defs,
-        common.node_classes,
-        common.node_styles,
-    );
-    let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+    let metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: label.text,
@@ -67,20 +62,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
             wrap_mode: ctx.node_wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
-            preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-            whole_label_font_style: node_font_style.as_deref(),
         },
     );
-    let span_css_height_parity = crate::flowchart::flowchart_node_has_span_css_height_parity(
-        ctx.class_defs,
-        common.node_classes,
-    );
-    if ctx.node_html_labels && ctx.edge_html_labels && span_css_height_parity {
-        crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-            &mut metrics,
-            &node_text_style,
-        );
-    }
     let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
         Some("stadium"),
         metrics,
@@ -115,7 +98,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
 
     if common.look_is_hand_drawn() {
         if let Some((fill_d, stroke_d)) =
-            super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+            super::super::helpers::timed_node_roughjs(common.timing, details, || {
                 roughjs_hachure_paths_for_svg_path(
                     &path_data,
                     common.fill_color,
@@ -149,7 +132,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
             return;
         }
     } else if let Some((fill_d, stroke_d)) =
-        super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
                 common.fill_color,

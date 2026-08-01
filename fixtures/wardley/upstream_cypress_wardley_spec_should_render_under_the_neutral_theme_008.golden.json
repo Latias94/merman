@@ -1,0 +1,90 @@
+{
+  "diagramType": "wardley",
+  "model": {
+    "type": "wardley",
+    "title": "Theme Test - neutral",
+    "accTitle": null,
+    "accDescr": null,
+    "nodes": [
+      {
+        "id": "User",
+        "label": "User",
+        "x": 85.0,
+        "y": 95.0,
+        "className": "anchor"
+      },
+      {
+        "id": "App",
+        "label": "App",
+        "x": 70.0,
+        "y": 75.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "API",
+        "label": "API",
+        "x": 55.00000000000001,
+        "y": 55.00000000000001,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Database",
+        "label": "Database",
+        "x": 60.0,
+        "y": 30.0,
+        "className": "component",
+        "inertia": false
+      },
+      {
+        "id": "Cache",
+        "label": "Cache",
+        "x": 40.0,
+        "y": 50.0,
+        "className": "component",
+        "inertia": false
+      }
+    ],
+    "links": [
+      {
+        "source": "User",
+        "target": "App",
+        "dashed": false
+      },
+      {
+        "source": "App",
+        "target": "API",
+        "dashed": false
+      },
+      {
+        "source": "API",
+        "target": "Database",
+        "dashed": false
+      },
+      {
+        "source": "API",
+        "target": "Cache",
+        "dashed": false
+      }
+    ],
+    "trends": [
+      {
+        "nodeId": "Database",
+        "targetX": 80.0,
+        "targetY": 30.0
+      }
+    ],
+    "pipelines": [],
+    "annotations": [],
+    "notes": [],
+    "accelerators": [],
+    "deaccelerators": [],
+    "annotationsBox": null,
+    "axes": {},
+    "size": {
+      "width": 1100.0,
+      "height": 800.0
+    }
+  }
+}

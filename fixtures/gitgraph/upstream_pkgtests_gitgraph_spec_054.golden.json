@@ -85,7 +85,7 @@
         "customId": false
       },
       {
-        "id": "new feature for v1.1â¦",
+        "id": "new feature for v1.1…",
         "message": "",
         "seq": 8,
         "type": 0,
@@ -148,7 +148,7 @@
         "type": 0,
         "tags": [],
         "parents": [
-          "new feature for v1.1â¦"
+          "new feature for v1.1…"
         ],
         "branch": "main"
       }

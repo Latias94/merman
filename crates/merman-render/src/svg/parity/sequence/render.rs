@@ -15,10 +15,11 @@ use rustc_hash::FxHashMap;
 use super::css::sequence_css;
 use super::model::*;
 
+const PINNED_MERMAID_SEQUENCE_BASE_DEFS: &str = include_str!("sequence_base_defs_11_16_0.svgfrag");
 const MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED: &str = r#"<defs><marker id="solidTopArrowHead" refX="7.9" refY="7.25" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 8 L 0 8 z"/></marker></defs><defs><marker id="solidBottomArrowHead" refX="7.9" refY="0.75" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 0 L 0 8 z"/></marker></defs><defs><marker id="stickTopArrowHead" refX="7.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 7 7" stroke="black" stroke-width="1.5" fill="none"/></marker></defs><defs><marker id="stickBottomArrowHead" refX="7.5" refY="0" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 7 L 7 0" stroke="black" stroke-width="1.5" fill="none"/></marker></defs>"#;
 
 fn scoped_sequence_base_defs(diagram_id: &str) -> String {
-    let mut defs = MERMAID_SEQUENCE_BASE_DEFS_11_12_2.to_string();
+    let mut defs = PINNED_MERMAID_SEQUENCE_BASE_DEFS.to_string();
     defs.push_str(MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED);
     for local_id in [
         "computer",
@@ -43,54 +44,14 @@ fn scoped_sequence_base_defs(diagram_id: &str) -> String {
     defs
 }
 
-pub(super) fn render_sequence_diagram_svg(
-    layout: &SequenceDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
-    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
-    render_sequence_diagram_svg_inner(
-        layout,
-        &model,
-        effective_config,
-        &sanitize_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-pub(super) fn render_sequence_diagram_svg_with_config(
-    layout: &SequenceDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
-    render_sequence_diagram_svg_model_with_config(
-        layout,
-        &model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-pub(super) fn render_sequence_diagram_svg_model_with_config(
+pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     render_sequence_diagram_svg_inner(
         layout,
         model,
@@ -109,8 +70,8 @@ fn render_sequence_diagram_svg_inner(
     sanitize_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     let effective_title =
         crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
 
@@ -118,7 +79,7 @@ fn render_sequence_diagram_svg_inner(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = String::new();
-    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id);
+    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id)?;
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
@@ -147,7 +108,7 @@ fn render_sequence_diagram_svg_inner(
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         sanitize_config,
-        math_renderer: options.math_renderer.as_deref(),
+        math_renderer: options.math_renderer(),
         actor_wrap_width: settings.actor_wrap_width,
         actor_height: settings.actor_height,
         label_box_height: settings.label_box_height,
@@ -184,16 +145,17 @@ fn render_sequence_diagram_svg_inner(
         layout,
         sanitize_config,
         measurer,
-        options.math_renderer.as_deref(),
+        options.math_renderer(),
     );
 
     let interaction_ctx = SequenceInteractionRenderContext {
         model,
         block_widths_by_id: &block_widths_by_id,
+        block_layouts_by_id: &layout.block_layouts_by_id,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         sanitize_config,
-        math_renderer: options.math_renderer.as_deref(),
+        math_renderer: options.math_renderer(),
         settings: &settings,
         measurer,
     };
@@ -204,7 +166,7 @@ fn render_sequence_diagram_svg_inner(
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         sanitize_config,
-        math_renderer: options.math_renderer.as_deref(),
+        math_renderer: options.math_renderer(),
         measurer,
         message_align: settings.message_align.as_str(),
         diagram_id,
@@ -254,5 +216,5 @@ fn render_sequence_diagram_svg_inner(
     }
 
     out.push_str("</svg>\n");
-    Ok(out)
+    root_metrics.document.complete(out)
 }

@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Draft
-Last updated: 2026-06-17
+Last updated: 2026-07-16
 
 This guide explains how native hosts should use Merman's text-measurement callback and where the
 remaining headless-rendering limits are. It complements the exact C ABI contract in
@@ -39,7 +39,7 @@ sequenceDiagram
     Host->>Engine: renderSvg(source)
     Engine->>Adapter: measure request
     alt Host can measure this request
-        Adapter-->>Engine: width, height, lineCount
+        Adapter-->>Engine: tagged operation-specific result
     else Unsupported font or wrapping mode
         Adapter-->>Engine: not handled
         Engine->>Fallback: measure request
@@ -106,16 +106,26 @@ The callback is a seam, not a promise that all output becomes browser-identical.
 the extent that the host measures with the same fonts, line wrapping, white-space behavior, and
 surface that will render the SVG.
 
-## C ABI Contract Summary
+## Text-Measurement Protocol Summary
 
-Install a callback on a reusable engine:
+The operation-aware request and tagged result described here use text-measurement protocol v1
+(`MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION == 1`). The enclosing native ABI owns the callback
+entrypoint and its record layout; it is versioned independently from these operation codes. Install
+a callback when creating an ABI 3 engine:
 
 ```c
-MermanResult merman_engine_set_text_measure_callback(
-    MermanEngine* engine,
-    MermanHostTextMeasureCallback callback,
-    void* user_data
-);
+MermanNativeEngineConfig config = {
+    .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeEngineConfig),
+    .options_json = {
+        .struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeSlice),
+    },
+    .text_measure = measure_text,
+    .text_measure_user_data = context,
+};
+MermanNativeEngineToken engine = 0;
+MermanNativeResult result = MERMAN_NATIVE_RESULT_INIT;
+MermanNativeStatus status = api.engine_new(&config, &engine, &result);
+api.result_free(&result);
 ```
 
 The request includes:
@@ -125,60 +135,168 @@ The request includes:
 - `line_height`, `letter_spacing`, and `word_spacing` in CSS pixels.
 - `wrap_mode`, `direction`, and `white_space` constants.
 - Optional `max_width` when wrapping is requested.
+- `phase`, which identifies the routing stage that requested the measurement:
+  `MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT`, `MERMAN_TEXT_MEASUREMENT_PHASE_WRAP`,
+  `MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX`,
+  or `MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH`.
+- `operation`, which identifies the exact browser/platform primitive and therefore the required
+  result shape.
 
-The callback returns `handled=1` with `width`, `height`, and `line_count`, or `handled=0` to let
-Merman fall back for that single request. Invalid, negative, non-finite, or zero-line results are
-treated as unsupported by higher-level wrappers.
+The stable operation mapping is:
+
+| Code | Operation | Expected result kind |
+| ---: | --- | --- |
+| 0 | `measure` | `metrics` |
+| 1 | `computed-length` | `length` |
+| 2 | `bbox-x` | `horizontal-extents` |
+| 3 | `bbox-x-with-ascii-overhang` | `horizontal-extents` |
+| 4 | `title-bbox-x` | `horizontal-extents` |
+| 5 | `simple-bbox-width` | `length` |
+| 6 | `raw-bbox-width` | `length` |
+| 7 | `tspan-bbox-width` | `length` |
+| 8 | `tspan-bbox-height` | `length` |
+| 9 | `wrap-probe-bbox-width` | `length` |
+| 10 | `simple-bbox-height` | `length` |
+| 11 | `wrapped` | `metrics` |
+| 12 | `wrapped-with-raw-width` | `wrapped-with-raw-width` |
+| 13 | `bounding-client-rect-width` | `length` |
+| 14 | `create-text-bbox-y-offset` | `length` (signed) |
+| 15 | `mermaid-calculate-text-dimensions` | `metrics` |
+| 16 | `canvas-measure-text-width` | `length` |
+| 17 | `create-text-middle-bbox-y-offset` | `length` (signed) |
+| 18 | `raw-bbox-height` | `length` |
+
+The four stable result kinds are `metrics` (`width`, `height`, `line_count`), `length` (`length`),
+`horizontal-extents` (`bbox_left`, `bbox_right`), and `wrapped-with-raw-width` (metrics plus an
+optional `raw_width`). The C ABI carries their numeric codes 0 through 3 in `result_kind`; UniFFI
+uses `MermanTextMeasurementResultKind`; Web uses the `kind` discriminant.
+
+The callback returns `handled=1` with the exact result kind required by `operation`, or `handled=0`
+to let Merman fall back for that single request. Operation 14,
+`create-text-bbox-y-offset`, mirrors an ordinary `createFormattedText(...).getBBox().y`. Operation
+17, `create-text-middle-bbox-y-offset`, mirrors the same formatted text after Architecture's outer
+label group contributes inherited `dominant-baseline="middle"`. The middle baseline changes
+`getBBox().y` according to the resolved font's baseline and x-height, so operation 14 is not a valid
+answer for operation 17. Both operations carry a finite signed `length`; other lengths and all
+metric/extents dimensions must be non-negative. A handled result with the wrong kind, missing
+required fields, an invalid/non-finite value, or zero metric lines is recorded as `Invalid`; a
+callback exception/error is recorded as `Error`; an unsupported result is recorded as `Missing`.
+All three use the configured per-request fallback and do not abort the enclosing render. A raw C
+callback must catch any host-language exception before it crosses the C ABI boundary and normally
+return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`; returning `MERMAN_NATIVE_STATUS_OK` with `handled=0`
+asks Merman to use the source-backed fallback for that request.
+
+A browser adapter should use two isolated formatted-text probes, or explicitly clear inherited
+baseline and anchor state between requests. The ordinary probe has no inherited middle baseline;
+the Architecture probe applies the outer group's `alignment-baseline="middle"`,
+`dominant-baseline="middle"`, and `text-anchor="middle"` before reading the descendant text bbox.
+If a host cannot reproduce that DOM and font state, it should leave operation 17 unhandled rather
+than derive it from operation 14.
+
+Operation 18, `raw-bbox-height`, reads the non-negative `height` from
+`<text>TEXT_CONTENT</text>.getBBox()` with the requested font style. It intentionally uses direct
+text content, not a `<tspan>` and not a Mermaid text-construction helper, so hosts must preserve
+that DOM shape or leave the operation unhandled.
 
 Request string pointers are valid only during the callback. Copy or decode them immediately if the
 host text API needs owned strings.
 
 ## Lifecycle And Threading Rules
 
-- Keep the callback and `user_data` alive until it is cleared or the engine is closed.
-- Clear the callback before destroying host-side measurement state.
-- Do not free a reusable engine while another thread is rendering with it.
+- The callback and `user_data` are fixed at engine creation; ABI 3 has no callback setter or clearer.
+- Keep the callback and `user_data` alive until `engine_try_close` succeeds.
+- `engine_try_close` never waits. It returns `MERMAN_NATIVE_STATUS_BUSY` while an operation is
+  active and leaves the token valid for a later retry. Success permanently closes admission before
+  retiring the token, so host-side callback state may then be destroyed.
 - Treat callbacks as synchronous and latency-sensitive. They run during layout.
 - If the same reusable engine can render on multiple threads, the callback and all shared font
   caches must be thread-safe.
-- Do not call back into the same `MermanReusableEngine` from inside the measurer.
+- Do not execute on or retire the same engine from inside its callback. ABI 3 rejects same-thread
+  and cross-thread callback re-entry with `MERMAN_NATIVE_STATUS_REENTRANT_CALL`.
+- A raw C callback must return normally. It must not unwind, throw, propagate SEH, call `longjmp`,
+  or otherwise perform a non-local exit across the native boundary. Catch host-language failures
+  and return `MERMAN_NATIVE_STATUS_CALLBACK_ERROR`.
 - Return `handled=0` when a request cannot be measured faithfully. A bad "handled" value is worse
   than falling back.
+
+### Direct UniFFI Reusable Engines
+
+The direct UniFFI surface uses the shared reusable-engine admission contract:
+
+- The host callback is immutable after reusable-engine construction. Construct a separate engine
+  to change or remove it; there is no callback mutation or manual close API.
+- Callback-free engines admit concurrent operations. Engines constructed with a callback serialize
+  operation admission and return typed `MermanErrorKind::Busy` to a competing operation.
+- While the callback is active, every new operation on the same engine fails immediately with
+  typed `MermanErrorKind::ReentrantCall`. The rule is the same on the callback thread and on other
+  threads because generated bindings do not propagate a causal token across host dispatch.
+- Other reusable engine instances remain independent. Calls on one engine do not observe another
+  engine's active callback; callbacks that share host state remain the host's synchronization
+  responsibility.
+- UniFFI object reference counting retains the callback for the reusable engine lifetime. UniFFI's
+  generated trampoline can report a returned callback error, but Merman does not catch arbitrary
+  foreign unwinds, exceptions, or longjmps that bypass that generated boundary.
 
 ## Python UniFFI
 
 Use the `MermanTextMeasurer` protocol with a reusable engine:
 
 ```python
-from merman import MermanTextMeasurer, reusable_engine_with_text_measurer
+import merman
 
 
-class PreviewMeasurer(MermanTextMeasurer):
-    def measure_text(self, request):
+class PreviewMeasurer(merman.MermanTextMeasurer):
+    def measure(self, request):
+        # The generated callback method is measure(), not measure_text().
+        # Return None unless this host can answer request.operation faithfully.
         return None
 
 
-engine = reusable_engine_with_text_measurer(PreviewMeasurer())
+engine = merman.MermanEngine()
+reusable = engine.reusable_engine_with_text_measurer(None, PreviewMeasurer())
+svg = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
+assert svg.startswith("<svg")
 ```
 
-For long-lived preview surfaces, call `set_text_measurer()` when the host text stack becomes
-available and `clear_text_measurer()` before destroying the host-side measurement state. Returning
-`None` from `measure_text()` leaves that single request on Merman's vendored fallback metrics.
+For long-lived preview surfaces, construct the reusable engine after its host text stack is
+available and discard that engine before destroying the host-side measurement state. Returning
+`None` from `measure()` leaves that single request on Merman's vendored fallback metrics. Invalid
+metrics and errors or exceptions reported through UniFFI's generated callback trampoline have the
+same per-request behavior: Merman uses the vendored fallback and continues the enclosing layout or
+render operation.
 Use `diagram_family_capabilities()` to decide whether a diagram family can render through the
 current Python binding before installing host-specific measurement logic.
+
+The one-shot engine accepts `options_json` on each operation, for example
+`engine.render_svg(source, options_json)`. A reusable engine receives baseline `options_json` when
+it is created and request-local overrides through `reusable.render_svg(source, options_json)`. The
+repository's
+[`platforms/python/merman/examples/smoke.py`](../../platforms/python/merman/examples/smoke.py) is the
+canonical executable example; the UniFFI bindgen smoke generates a fresh Python binding and native
+library, then runs that file against the generated API.
 
 ## Android JNI
 
 Use `MermanReusableEngine` with `MermanTextMeasurer`:
 
 ```kotlin
-val engine = MermanReusableEngine()
-engine.setTextMeasurer { request ->
-    // Measure with the same text stack used by your preview.
-    // Return null for unsupported requests.
-    null
-}
+val engine = MermanReusableEngine(
+    textMeasurer = { request ->
+        when (request.operation) {
+            MermanTextMeasurementOperation.MEASURE ->
+                MermanTextMeasureResult.metrics(width = 42.0, height = 18.0, lineCount = 1)
+            else -> null
+        }
+    }
+)
 ```
+
+The four named factories require exactly the meaningful shape: `metrics(width, height, lineCount)`,
+`length(length)`, `horizontalExtents(left, right)`, and
+`wrappedWithRawWidth(width, height, lineCount, rawWidth)`. There is no zero-filled generic
+constructor. This makes an omitted required measurement a host compile error instead of a valid
+zero measurement. Each factory also rejects non-finite values, negative dimensions, and zero line
+counts before JNI is entered.
 
 Recommended Android implementation choices:
 
@@ -212,19 +330,23 @@ Relevant platform references:
 
 ## Apple Swift
 
-The Swift wrapper currently exposes the raw C callback:
+The generated UniFFI binding exposes a typed callback protocol. Return `nil` when the host does
+not handle a requested operation; do not manufacture a zero-valued result.
 
 ```swift
-let callback: MermanTextMeasureCallback = { request, userData in
-    return MermanTextMeasureResult(
-        handled: 0,
-        width: 0,
-        height: 0,
-        line_count: 0
-    )
+final class CoreTextMeasurer: MermanTextMeasurer, @unchecked Sendable {
+    func measure(request: MermanTextMeasureRequest) throws -> MermanTextMeasureResult? {
+        // Measure with the host's Core Text/AppKit/UIKit stack, or return nil.
+        nil
+    }
 }
 
-try reusable.setTextMeasureCallback(callback)
+let engine = MermanEngine()
+let measurer = CoreTextMeasurer()
+let reusable = try engine.reusableEngineWithTextMeasurer(
+    optionsJson: nil,
+    measurer: measurer
+)
 ```
 
 Recommended Apple implementation choices:
@@ -242,9 +364,11 @@ Recommended Apple implementation choices:
 - If the final surface is `WKWebView`, the closest measurement is DOM/canvas in that WebView after
   fonts have loaded. Keep the synchronous callback boundary in mind; prefer a prepared measurement
   service or cache over blocking arbitrary render threads on WebKit.
-- Use `userData` for host context. Retain that context for at least as long as the callback is
-  installed, and release it after clearing the callback or closing the engine.
-- Decode UTF-8 request fields inside the callback; do not store request pointers.
+- Keep the measurer alive for at least as long as the reusable engine. UniFFI owns the immutable
+  callback handle for the engine lifetime; Swift code does not pass raw context pointers or retain
+  request buffers.
+- Treat `MermanTextMeasureRequest` as a value. It contains decoded Swift strings and can be
+  inspected without pointer lifetime rules.
 - Use `autoreleasepool` around measurement code that creates Objective-C objects repeatedly.
 
 Relevant platform references:
@@ -256,21 +380,42 @@ Relevant platform references:
 
 ## Flutter / Dart FFI
 
-Use `MermanReusableEngine` with `setTextMeasurer`:
+Create `MermanReusableEngine` with its optional measurer. The callback is part
+of engine construction and cannot be installed or replaced after that point:
 
 ```dart
-final engine = Merman.open().reusableEngine();
-engine.setTextMeasurer((request) {
-  // Measure with the same surface that will display the SVG.
-  // Return null for unsupported requests.
-  return null;
-});
+final merman = Merman.open();
+final engine = merman.reusableEngine(
+  textMeasurer: (request) {
+    if (request.operation == MermanTextMeasurementOperation.measure) {
+      return MermanTextMeasureResult.metrics(
+        width: 42,
+        height: 18,
+        lineCount: 1,
+      );
+    }
+    return null;
+  },
+);
+
+try {
+  // Render with engine here.
+} finally {
+  engine.dispose();
+  merman.dispose();
+}
 ```
+
+The four named factories require exactly the meaningful shape: `metrics`, `length`,
+`horizontalExtents`, and `wrappedWithRawWidth`. There is no zero-filled generic constructor. This
+makes an omitted required measurement a host compile error instead of a valid zero measurement.
+Each factory also rejects non-finite values, negative dimensions, and zero line counts before the
+native callback is marked as handled.
 
 The current Dart wrapper uses `NativeCallable.isolateLocal`, so the native callback must be invoked
 on the same isolate thread that created it. That has practical consequences:
 
-- Create the reusable engine, install the measurer, render, and close the engine on the same Dart
+- Create the reusable engine with the measurer, render, and close the engine on the same Dart
   isolate.
 - Do not pass a measured `MermanReusableEngine` to another isolate.
 - Always call `close()` when finished; closing releases the native engine and the Dart callback.
@@ -286,8 +431,8 @@ Recommended Flutter implementation choices:
   exposes one. Otherwise prefer the vendored fallback plus non-clipping output.
 - If rendering in pure Dart UI, use Flutter paragraph/text layout APIs in the same isolate and with
   the same font registration as the preview.
-- Include the full request shape in cache keys: text, font family, size, weight, style, line
-  height, spacing, wrap mode, white-space mode, direction, and `maxWidth`.
+- Include the full request shape in cache keys: operation, phase, text, font family, size, weight,
+  style, line height, spacing, wrap mode, white-space mode, direction, and `maxWidth`.
 - Do not wait for WebView JavaScript, font loading, platform channels, or another isolate from
   inside the synchronous callback. Pre-measure and cache instead; return `null` when the cache does
   not have a faithful value yet.
@@ -304,13 +449,16 @@ For browser-like hosts, the usual measurement adapter is:
 
 1. Load the same CSS and fonts as the preview surface.
 2. Wait for font readiness where possible.
-3. Build a CSS `font` string from the Merman request.
-4. Use `CanvasRenderingContext2D.measureText()` for single-line width.
-5. Use DOM measurement for wrapped HTML labels when `maxWidth` and `white-space` matter.
-6. Return `handled=0` for CSS features the adapter does not model.
+3. Build the requested direct `<text>`, `<text><tspan>`, or HTML probe shape.
+4. Execute the exact `operation`: Mermaid's aggregate text-dimensions calculation,
+   `CanvasRenderingContext2D.measureText().width`, `getComputedTextLength()`, `getBBox()`,
+   `getBoundingClientRect()`, or wrapped layout as requested.
+5. Return the matching tagged result kind without applying adapter-side quantization.
+6. Return unsupported for primitives or CSS features the adapter does not model.
 
-Canvas is useful for advances, but wrapped HTML labels often need DOM measurement because line
-breaking, white-space, and inline layout are part of the browser's layout engine.
+Canvas is the correct primitive for `canvas-measure-text-width`, but it is not a substitute for an
+operation that explicitly asks for SVG DOM geometry. Wrapped HTML labels need DOM measurement
+because line breaking, white-space, and inline layout are part of the browser's layout engine.
 
 For HTML-like labels, avoid setting `width=maxWidth` up front. Measure natural width first with a
 nowrap inline/table-cell style; only switch to the wrapped `width=maxWidth` table/block style when

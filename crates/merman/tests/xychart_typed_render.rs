@@ -1,20 +1,10 @@
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 #[test]
 fn xychart_render_svg_sync_uses_typed_render_path() {
     let engine = merman_core::Engine::new();
     let parse_options = merman_core::ParseOptions::strict();
-    let layout = merman::render::LayoutOptions {
-        viewport_width: 800.0,
-        viewport_height: 600.0,
-        text_measurer: std::sync::Arc::new(
-            merman::render::VendoredFontMetricsTextMeasurer::default(),
-        ),
-        math_renderer: None,
-        use_manatee_layout: true,
-        flowchart_elk_backend: Default::default(),
-        resource_limits: Default::default(),
-    };
-    let svg_opts = merman::render::SvgRenderOptions {
+    let layout = merman::svg::LayoutOptions::headless_svg_defaults();
+    let svg_opts = merman::svg::SvgRenderOptions {
         diagram_id: Some("typed_xychart".to_string()),
         ..Default::default()
     };
@@ -26,7 +16,7 @@ y-axis 1 --> 3
 bar [1, 2]
 "#;
 
-    let svg = merman::render::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
+    let svg = merman::svg::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
         .expect("render svg")
         .expect("diagram detected");
 
@@ -34,23 +24,13 @@ bar [1, 2]
     assert!(svg.contains("xychart"));
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "svg")]
 #[test]
 fn xychart_render_svg_sync_renders_line_labels_and_axis_rotation() {
     let engine = merman_core::Engine::new();
     let parse_options = merman_core::ParseOptions::strict();
-    let layout = merman::render::LayoutOptions {
-        viewport_width: 800.0,
-        viewport_height: 600.0,
-        text_measurer: std::sync::Arc::new(
-            merman::render::VendoredFontMetricsTextMeasurer::default(),
-        ),
-        math_renderer: None,
-        use_manatee_layout: true,
-        flowchart_elk_backend: Default::default(),
-        resource_limits: Default::default(),
-    };
-    let svg_opts = merman::render::SvgRenderOptions {
+    let layout = merman::svg::LayoutOptions::headless_svg_defaults();
+    let svg_opts = merman::svg::SvgRenderOptions {
         diagram_id: Some("typed_xychart_labels".to_string()),
         ..Default::default()
     };
@@ -61,7 +41,7 @@ y-axis 0 --> 10
 line [2 "low", 8 "high"]
 "#;
 
-    let svg = merman::render::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
+    let svg = merman::svg::render_svg_sync(&engine, input, parse_options, &layout, &svg_opts)
         .expect("render svg")
         .expect("diagram detected");
 

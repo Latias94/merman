@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
+    "direction": "LR",
     "title": "Period labels with colons (as entities)",
     "accTitle": null,
     "accDescr": null,

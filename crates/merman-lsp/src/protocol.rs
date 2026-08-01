@@ -1,15 +1,23 @@
-use crate::document_store::DEFAULT_LSP_MAX_SOURCE_BYTES;
-use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
+use std::str::FromStr;
+
+use crate::session::{DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS, DEFAULT_LSP_MAX_SOURCE_BYTES};
+#[cfg(test)]
+use merman_analysis::analysis_options_from_json_value;
+use merman_analysis::{
+    ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS, AnalysisRuleProfile, DiagnosticSeverity,
+    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
+};
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
+use merman_core::EditorRenamePolicy;
 use merman_editor_core::{
-    DiagnosticCodeActionData, DocumentUri, EditorLocation, Position as CorePosition,
-    Range as CoreRange,
+    DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
+    SEMANTIC_TOKEN_DESCRIPTOR_DIGEST, semantic_token_descriptor,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tower_lsp::lsp_types::{Location, Position, Range, Url};
+use tower_lsp_server::ls_types::{Location, Position, Range, Uri};
 
-pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 2;
+pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
 pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
 pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
 pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
@@ -22,10 +30,10 @@ pub enum WorkspaceEditEncoding {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct VersionedDiagnosticCodeActionData {
-    #[serde(flatten)]
-    pub(crate) inner: DiagnosticCodeActionData,
-    pub(crate) document_version: i32,
+pub(crate) struct DiagnosticIdentityData {
+    pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) document_version: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +85,7 @@ impl ConfigSchemaResponse {
 }
 
 pub fn experimental_capabilities() -> serde_json::Value {
+    let editor_language = semantic_token_descriptor();
     let diagram_families = merman_core::diagram_family_capabilities()
         .iter()
         .map(|family| {
@@ -90,8 +99,14 @@ pub fn experimental_capabilities() -> serde_json::Value {
     json!({
         "merman": {
             "schemaVersion": EXPERIMENTAL_SCHEMA_VERSION,
+            "editorLanguage": {
+                "schemaVersion": editor_language.schema_version,
+                "descriptorDigest": SEMANTIC_TOKEN_DESCRIPTOR_DIGEST,
+                "packedEncoding": editor_language.packed.encoding,
+                "wordsPerToken": editor_language.packed.words_per_token,
+                "renamePolicies": EditorRenamePolicy::IDS,
+            },
             "diagramSupport": {
-                "profile": merman_core::selected_baseline_registry_profile().as_str(),
                 "families": diagram_families,
             },
             "requests": {
@@ -113,11 +128,11 @@ pub fn range_to_lsp(range: CoreRange) -> Range {
     )
 }
 
-pub fn document_uri_to_lsp(uri: &DocumentUri, fallback_uri: &Url) -> Url {
-    Url::parse(uri.as_str()).unwrap_or_else(|_| fallback_uri.clone())
+pub fn document_uri_to_lsp(uri: &DocumentUri, fallback_uri: &Uri) -> Uri {
+    Uri::from_str(uri.as_str()).unwrap_or_else(|_| fallback_uri.clone())
 }
 
-pub fn location_to_lsp(location: EditorLocation, fallback_uri: &Url) -> Location {
+pub fn location_to_lsp(location: EditorLocation, fallback_uri: &Uri) -> Location {
     let uri = document_uri_to_lsp(&location.uri, fallback_uri);
     Location::new(uri, range_to_lsp(location.range))
 }
@@ -188,6 +203,10 @@ fn analysis_options_schema(
     severities: &[String],
     configurable_rule_ids: &[String],
 ) -> Value {
+    let max_document_diagrams = ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
+        .iter()
+        .find(|descriptor| descriptor.stable_id == MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
+        .expect("analysis must describe max_document_diagrams");
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Merman analysis options",
@@ -223,26 +242,27 @@ fn analysis_options_schema(
                         "additionalProperties": true,
                         "description": "Mermaid site configuration forwarded to the shared parser/config layer."
                     },
-                    "parse": {
-                        "type": "object",
-                        "additionalProperties": true,
-                        "properties": {
-                            "suppress_errors": {
-                                "type": "boolean",
-                                "default": false,
-                                "description": "Parse leniently when true."
-                            }
-                        }
-                    },
                     "resources": {
                         "type": "object",
-                        "additionalProperties": true,
+                        "additionalProperties": false,
                         "properties": {
-                            "max_source_bytes": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
-                                "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted. Use 0 or omit the field to use the LSP default."
+                            "limits": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                    "max_source_bytes": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
+                                        "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted."
+                                    },
+                                    "max_document_diagrams": {
+                                        "type": "integer",
+                                        "minimum": max_document_diagrams.minimum_value,
+                                        "default": DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS,
+                                        "description": max_document_diagrams.description
+                                    }
+                                }
                             }
                         }
                     },
@@ -305,6 +325,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn uri_projection_preserves_percent_encoding_and_non_file_schemes() {
+        let fallback = Uri::from_str("file:///tmp/fallback.mmd").unwrap();
+
+        for raw in ["file:///tmp/diagram%20draft.mmd", "untitled:notes%20draft"] {
+            let projected = document_uri_to_lsp(&DocumentUri::from(raw), &fallback);
+
+            assert_eq!(projected.as_str(), raw);
+            assert_eq!(serde_json::to_value(projected).unwrap(), json!(raw));
+        }
+    }
+
+    #[test]
     fn rule_catalog_response_contains_governed_authoring_rule() {
         let catalog = RuleCatalogResponse::current();
 
@@ -362,7 +394,9 @@ mod tests {
     #[test]
     fn experimental_capability_advertises_rule_catalog_request() {
         let capabilities = experimental_capabilities();
+        let descriptor = semantic_token_descriptor();
 
+        assert_eq!(EXPERIMENTAL_SCHEMA_VERSION, 1);
         assert_eq!(
             capabilities["merman"]["requests"]["ruleCatalog"],
             RULE_CATALOG_METHOD
@@ -376,8 +410,14 @@ mod tests {
             EXPERIMENTAL_SCHEMA_VERSION
         );
         assert_eq!(
-            capabilities["merman"]["diagramSupport"]["profile"],
-            merman_core::selected_baseline_registry_profile().as_str()
+            capabilities["merman"]["editorLanguage"],
+            serde_json::json!({
+                "schemaVersion": descriptor.schema_version,
+                "descriptorDigest": descriptor.digest,
+                "packedEncoding": descriptor.packed.encoding,
+                "wordsPerToken": descriptor.packed.words_per_token,
+                "renamePolicies": EditorRenamePolicy::IDS,
+            })
         );
         let families = capabilities["merman"]["diagramSupport"]["families"]
             .as_array()
@@ -387,11 +427,10 @@ mod tests {
                 && family["semanticParser"] == true
                 && family["renderParser"] == true
         }));
-        #[cfg(not(any(feature = "core-full", feature = "core-full-registry")))]
         assert!(
             families
                 .iter()
-                .all(|family| family["diagramType"] != "mindmap")
+                .any(|family| family["diagramType"] == "mindmap")
         );
     }
 
@@ -435,9 +474,40 @@ mod tests {
             json!(["error", "warning", "info", "hint"])
         );
         assert_eq!(
-            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["max_source_bytes"]
-                ["default"],
+            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
+                ["properties"]["max_source_bytes"]["default"],
             json!(DEFAULT_LSP_MAX_SOURCE_BYTES)
+        );
+        assert_eq!(
+            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
+                ["properties"]["max_document_diagrams"]["default"],
+            json!(DEFAULT_LSP_MAX_DOCUMENT_DIAGRAMS)
+        );
+        let descriptor = ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS
+            .iter()
+            .find(|descriptor| descriptor.stable_id == MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
+            .expect("analysis must describe max_document_diagrams");
+        assert_eq!(
+            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["limits"]
+                ["properties"]["max_document_diagrams"]["minimum"],
+            json!(descriptor.minimum_value)
+        );
+        let parsed = analysis_options_from_json_value(&json!({
+            "resources": {
+                "limits": {
+                    MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID: descriptor.minimum_value
+                }
+            }
+        }))
+        .expect("the schema minimum must be accepted by the options parser");
+        assert_eq!(
+            parsed.max_document_diagrams(),
+            Some(descriptor.minimum_value)
+        );
+        assert!(
+            response.schema["$defs"]["analysisOptions"]["properties"]
+                .get("parse")
+                .is_none()
         );
         assert_eq!(
             response.schema["allOf"][0],

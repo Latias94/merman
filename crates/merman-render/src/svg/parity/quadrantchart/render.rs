@@ -1,13 +1,14 @@
 use super::super::*;
+use merman_core::diagrams::quadrant_chart::QuadrantChartRenderModel;
 
 // QuadrantChart diagram SVG renderer implementation (split from parity.rs).
 
 pub(crate) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,
-    _semantic: &serde_json::Value,
+    model: &QuadrantChartRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
     fn dominant_baseline(horizontal_pos: &str) -> &'static str {
         if horizontal_pos == "top" {
             "hanging"
@@ -34,6 +35,19 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("quadrantchart");
+    let diagram_id_esc = escape_xml(diagram_id);
+    let acc_title = model
+        .acc_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let acc_descr = model
+        .acc_descr
+        .as_deref()
+        .map(|description| description.trim_end_matches('\n'))
+        .filter(|description| !description.trim().is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let use_max_width = crate::quadrantchart::QuadrantChartConfigView::new(effective_config)
         .render_settings()
         .use_max_width;
@@ -41,35 +55,41 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     let mut out = String::new();
     let w = layout.width.max(1.0);
     let h = layout.height.max(1.0);
-    let w_attr = fmt(w).to_string();
-    let h_attr = fmt(h).to_string();
-    let viewbox_attr = format!("0 0 {w_attr} {h_attr}");
-    if use_max_width {
-        let style_attr = format!("max-width: {w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "quadrantChart");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom = root_svg::RootDomProfile {
+        style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    let root_document = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::QuadrantChart,
+        diagram_id,
+    )
+    .write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, w, h),
+            use_max_width,
+        ),
+        root_chrome,
+    )?;
+
+    if let Some(title) = acc_title {
+        let _ = write!(
             &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "quadrantChart")
-            },
+            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            escape_xml(title)
         );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
+    }
+    if let Some(description) = acc_descr {
+        let _ = write!(
             &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&w_attr),
-                height_attr: Some(&h_attr),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                tail_attrs: &tail_attrs,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "quadrantChart")
-            },
+            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            escape_xml(description)
         );
     }
 
@@ -190,5 +210,5 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     out.push_str("</g>");
 
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }

@@ -2,39 +2,45 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;
-use merman_render::model::{LayoutDiagram, PieDiagramLayout};
-use merman_render::svg::{SvgRenderOptions, render_pie_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
+use merman_render::family;
+use merman_render::model::PieDiagramLayout;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::PieDiagram(layout) = out.layout else {
-        panic!("expected PieDiagram layout");
-    };
-    *layout
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session()
+        .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let projection = artifact.layout_json().expect("serialize Pie layout");
+    serde_json::from_value(projection["layout"]["PieDiagram"].clone())
+        .expect("Pie layout projection")
 }
 
 fn render_pie_from_text(text: &str) -> String {
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::PieDiagram(layout) = &out.layout else {
-        panic!("expected PieDiagram layout");
-    };
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session()
+        .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
-    render_pie_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("svg render ok")
+        .svg()
+        .to_owned()
 }
 
 fn root_viewbox_width(svg: &str) -> f64 {
@@ -46,6 +52,29 @@ fn root_viewbox_width(svg: &str) -> f64 {
         .expect("viewBox width")
         .parse::<f64>()
         .expect("viewBox width parses")
+}
+
+fn pie_content_translate(svg: &str) -> (f64, f64) {
+    let document = roxmltree::Document::parse(svg).expect("valid Pie SVG");
+    let centered = document
+        .root_element()
+        .children()
+        .find(|node| node.is_element() && node.attribute("transform").is_some())
+        .expect("centered pie group");
+    let transform = centered
+        .children()
+        .find(|node| node.is_element() && node.attribute("transform").is_some())
+        .and_then(|node| node.attribute("transform"))
+        .expect("translated pie content group");
+    let values = transform
+        .strip_prefix("translate(")
+        .and_then(|value| value.strip_suffix(')'))
+        .expect("translate transform")
+        .split(',')
+        .map(|value| value.parse::<f64>().expect("numeric translate component"))
+        .collect::<Vec<_>>();
+    assert_eq!(values.len(), 2, "two-dimensional translate transform");
+    (values[0], values[1])
 }
 
 #[test]
@@ -88,6 +117,46 @@ fn pie_chart_content_is_grouped_before_title_and_legend_like_mermaid_11_16() {
         ),
         "the pie group should close before the sibling title and legend nodes: {svg}"
     );
+}
+
+#[test]
+fn pie_frontmatter_title_renders_unless_the_body_overrides_it() {
+    let frontmatter_svg = render_pie_from_text(
+        r#"---
+title: Frontmatter pie
+---
+pie
+  "A" : 1
+"#,
+    );
+    assert!(
+        frontmatter_svg.contains(r#"class="pieTitleText">Frontmatter pie</text>"#),
+        "frontmatter title should render when the Pie body has none: {frontmatter_svg}"
+    );
+
+    let body_svg = render_pie_from_text(
+        r#"---
+title: Frontmatter pie
+---
+pie title Body pie
+  "A" : 1
+"#,
+    );
+    assert!(body_svg.contains(r#"class="pieTitleText">Body pie</text>"#));
+    assert!(!body_svg.contains(">Frontmatter pie</text>"));
+}
+
+#[test]
+fn pie_frontmatter_title_preserves_common_db_boundary_whitespace() {
+    for title in ["  Frontmatter pie  ", "\u{a0}Frontmatter pie\u{a0}"] {
+        let source = format!("---\ntitle: \"{title}\"\n---\npie\n  \"A\" : 1\n");
+        let svg = render_pie_from_text(&source);
+
+        assert!(
+            svg.contains(&format!(r#"class="pieTitleText">{title}</text>"#)),
+            "frontmatter title should be emitted exactly: {svg}"
+        );
+    }
 }
 
 #[test]
@@ -249,8 +318,9 @@ pie
 "#,
     );
     assert!(top_svg.contains(r#"viewBox="0 0 490 494""#));
+    let top_offset = pie_content_translate(&top_svg);
     assert!(
-        top_svg.contains(r#"<g transform="translate(0,66)">"#),
+        top_offset.0.abs() <= f64::EPSILON && (top_offset.1 - 66.0).abs() <= f64::EPSILON,
         "top legend should move the pie group below the legend: {top_svg}"
     );
 
@@ -261,8 +331,11 @@ pie
   "B" : 1
 "#,
     );
+    let left_offset = pie_content_translate(&left_svg);
+    let expected_left_offset = root_viewbox_width(&left_svg) - 490.0;
     assert!(
-        left_svg.contains(r#"<g transform="translate(32.203125,0)">"#),
+        (left_offset.0 - expected_left_offset).abs() <= 1.0e-9
+            && left_offset.1.abs() <= f64::EPSILON,
         "left legend should move the pie group right by legend width: {left_svg}"
     );
     assert!(left_svg.contains(r#"class="legend" transform="translate(-207,-22)""#));

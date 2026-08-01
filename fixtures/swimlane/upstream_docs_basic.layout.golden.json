@@ -1,0 +1,336 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "direction": "LR",
+      "nodes": [
+        {
+          "id": "request",
+          "label": "Request service",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Customer",
+          "top_lane_id": "Customer",
+          "x": 36.0,
+          "y": 0.0,
+          "width": 161.92,
+          "height": 54.0,
+          "label_width": 101.92,
+          "label_height": 24.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "receive",
+          "label": "Receive update",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Customer",
+          "top_lane_id": "Customer",
+          "x": 1014.911,
+          "y": 0.0,
+          "width": 155.04,
+          "height": 54.0,
+          "label_width": 95.04,
+          "label_height": 24.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "triage",
+          "label": "Triage request",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Support",
+          "top_lane_id": "Support",
+          "x": 36.0,
+          "y": 258.48,
+          "width": 155.04,
+          "height": 54.0,
+          "label_width": 95.04,
+          "label_height": 24.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "answer",
+          "label": "Send answer",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Support",
+          "top_lane_id": "Support",
+          "x": 1014.911,
+          "y": 258.48,
+          "width": 142.4,
+          "height": 54.0,
+          "label_width": 82.4,
+          "label_height": 24.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "investigate",
+          "label": "Investigate issue",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Engineering",
+          "top_lane_id": "Engineering",
+          "x": 530.605,
+          "y": 520.24,
+          "width": 168.48,
+          "height": 54.0,
+          "label_width": 108.48,
+          "label_height": 24.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "fix",
+          "label": "Prepare fix",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "Engineering",
+          "top_lane_id": "Engineering",
+          "x": 1014.911,
+          "y": 520.24,
+          "width": 134.4,
+          "height": 54.0,
+          "label_width": 74.4,
+          "label_height": 24.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "edge-label-triage-answer-L_triage_answer_0",
+          "label": "Known issue",
+          "label_type": "text",
+          "shape": "labelRect",
+          "parent_id": "Support",
+          "top_lane_id": "Support",
+          "x": 528.616,
+          "y": 258.48,
+          "width": 80.0,
+          "height": 24.0,
+          "label_width": 80.0,
+          "label_height": 24.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": true
+        },
+        {
+          "id": "edge-label-triage-investigate-L_triage_investigate_0",
+          "label": "Needs code change",
+          "label_type": "text",
+          "shape": "labelRect",
+          "parent_id": "Engineering",
+          "top_lane_id": "Engineering",
+          "x": 241.183,
+          "y": 520.24,
+          "width": 116.48,
+          "height": 24.0,
+          "label_width": 116.48,
+          "label_height": 24.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": true
+        }
+      ],
+      "lanes": [
+        {
+          "id": "Engineering",
+          "title": "Engineering",
+          "parent_id": null,
+          "x": 505.736,
+          "y": 486.3,
+          "width": 1193.391,
+          "height": 193.88,
+          "padding": 8.0,
+          "title_label_width": 73.6,
+          "title_label_height": 24.0,
+          "content_top": 493.24,
+          "title_rect": {
+            "left": -90.96,
+            "right": -54.96,
+            "top": 389.36,
+            "bottom": 583.24
+          },
+          "requested_dir": "LR"
+        },
+        {
+          "id": "Support",
+          "title": "Support",
+          "parent_id": null,
+          "x": 505.736,
+          "y": 259.3,
+          "width": 1193.391,
+          "height": 260.12,
+          "padding": 8.0,
+          "title_label_width": 50.88,
+          "title_label_height": 24.0,
+          "content_top": 231.48,
+          "title_rect": {
+            "left": -90.96,
+            "right": -54.96,
+            "top": 129.24,
+            "bottom": 389.36
+          },
+          "requested_dir": "LR"
+        },
+        {
+          "id": "Customer",
+          "title": "Customer",
+          "parent_id": null,
+          "x": 505.736,
+          "y": 33.12,
+          "width": 1193.391,
+          "height": 192.24,
+          "padding": 8.0,
+          "title_label_width": 63.36,
+          "title_label_height": 24.0,
+          "content_top": -27.0,
+          "title_rect": {
+            "left": -90.96,
+            "right": -54.96,
+            "top": -63.0,
+            "bottom": 129.24
+          },
+          "requested_dir": "LR"
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_request_triage_0",
+          "from": "request",
+          "to": "triage",
+          "points": [
+            {
+              "x": 36.0,
+              "y": 27.0
+            },
+            {
+              "x": 36.0,
+              "y": 231.48
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_triage_answer_0",
+          "from": "triage",
+          "to": "answer",
+          "points": [
+            {
+              "x": 113.52,
+              "y": 258.48
+            },
+            {
+              "x": 943.711,
+              "y": 258.48
+            }
+          ],
+          "label_node_id": "edge-label-triage-answer-L_triage_answer_0",
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_triage_investigate_0",
+          "from": "triage",
+          "to": "investigate",
+          "points": [
+            {
+              "x": 36.0,
+              "y": 285.48
+            },
+            {
+              "x": 36.0,
+              "y": 285.48
+            },
+            {
+              "x": 36.0,
+              "y": 520.24
+            },
+            {
+              "x": 446.365,
+              "y": 520.24
+            },
+            {
+              "x": 446.365,
+              "y": 520.24
+            }
+          ],
+          "label_node_id": "edge-label-triage-investigate-L_triage_investigate_0",
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_investigate_fix_0",
+          "from": "investigate",
+          "to": "fix",
+          "points": [
+            {
+              "x": 614.845,
+              "y": 520.24
+            },
+            {
+              "x": 947.711,
+              "y": 520.24
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_fix_answer_0",
+          "from": "fix",
+          "to": "answer",
+          "points": [
+            {
+              "x": 1014.911,
+              "y": 493.24
+            },
+            {
+              "x": 1014.911,
+              "y": 285.48
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_answer_receive_0",
+          "from": "answer",
+          "to": "receive",
+          "points": [
+            {
+              "x": 1014.911,
+              "y": 231.48
+            },
+            {
+              "x": 1014.911,
+              "y": 27.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        }
+      ],
+      "bounds": {
+        "min_x": -90.96,
+        "min_y": -63.0,
+        "max_x": 1102.431,
+        "max_y": 583.24
+      }
+    }
+  }
+}

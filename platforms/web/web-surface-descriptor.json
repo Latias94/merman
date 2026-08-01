@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "default_package": "full",
+  "packages": [
+    {
+      "id": "full",
+      "name": "@mermanjs/web",
+      "package_dir": "packages/full",
+      "artifact_profile": "web-full",
+      "runtime_profile": "full",
+      "visibility": "public"
+    },
+    {
+      "id": "analysis",
+      "name": "@mermanjs/web-analysis",
+      "package_dir": "packages/analysis",
+      "artifact_profile": "web-analysis",
+      "runtime_profile": "analysis",
+      "visibility": "public"
+    },
+    {
+      "id": "render",
+      "name": "@mermanjs/web-render",
+      "package_dir": "packages/render",
+      "artifact_profile": "web-render",
+      "runtime_profile": "render",
+      "visibility": "public"
+    },
+    {
+      "id": "editor",
+      "name": "@mermanjs/web-editor",
+      "package_dir": "packages/editor",
+      "artifact_profile": "web-editor",
+      "runtime_profile": "editor",
+      "visibility": "public"
+    },
+    {
+      "id": "ascii",
+      "name": "@mermanjs/web-ascii",
+      "package_dir": "packages/ascii",
+      "artifact_profile": "web-ascii",
+      "runtime_profile": "ascii",
+      "visibility": "public"
+    }
+  ]
+}

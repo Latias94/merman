@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 196.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 196.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -35,7 +35,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -43,7 +43,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -51,7 +51,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -59,7 +59,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -104,7 +104,7 @@
             "id": "a1",
             "x": 75.0,
             "y": 50.0,
-            "width": 614.0,
+            "width": 386.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -115,7 +115,7 @@
             "text": "A task           ",
             "font_size": 11.0,
             "width": 30.47,
-            "x": 382.0,
+            "x": 268.0,
             "y": 63.5,
             "class": "taskText taskText0 width-30.469999999999995"
           }
@@ -133,9 +133,9 @@
           "vert": false,
           "bar": {
             "id": "task2",
-            "x": 360.0,
+            "x": 254.0,
             "y": 98.0,
-            "width": 239.0,
+            "width": 151.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -146,7 +146,7 @@
             "text": "Task in sec      ",
             "font_size": 11.0,
             "width": 51.37,
-            "x": 479.5,
+            "x": 329.5,
             "y": 111.5,
             "class": "taskText taskText1 width-51.37"
           }
@@ -164,9 +164,9 @@
           "vert": false,
           "bar": {
             "id": "task3",
-            "x": 629.0,
+            "x": 424.0,
             "y": 122.0,
-            "width": 480.0,
+            "width": 301.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -177,7 +177,7 @@
             "text": "another task     ",
             "font_size": 11.0,
             "width": 56.98,
-            "x": 869.0,
+            "x": 574.5,
             "y": 135.5,
             "class": "taskText taskText1 width-56.98"
           }
@@ -195,9 +195,9 @@
           "vert": false,
           "bar": {
             "id": "task1",
-            "x": 689.0,
+            "x": 461.0,
             "y": 74.0,
-            "width": 420.0,
+            "width": 264.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -208,7 +208,7 @@
             "text": "Another task     ",
             "font_size": 11.0,
             "width": 58.85,
-            "x": 899.0,
+            "x": 593.0,
             "y": 87.5,
             "class": "taskText taskText0 width-58.849999999999994"
           }
@@ -221,88 +221,88 @@
           "end_ms": 1664755199999.0,
           "x": 75.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 19.0,
           "height": 111.0
         },
         {
           "id": "exclude-2022-10-08",
           "start_ms": 1665187200000.0,
           "end_ms": 1665359999999.0,
-          "x": 180.0,
+          "x": 141.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 19.0,
           "height": 111.0
         },
         {
           "id": "exclude-2022-10-15",
           "start_ms": 1665792000000.0,
           "end_ms": 1665964799999.0,
-          "x": 285.0,
+          "x": 207.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 19.0,
           "height": 111.0
         },
         {
           "id": "exclude-2022-10-22",
           "start_ms": 1666396800000.0,
           "end_ms": 1666569599999.0,
-          "x": 390.0,
+          "x": 273.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 19.0,
           "height": 111.0
         },
         {
           "id": "exclude-2022-10-29",
           "start_ms": 1667001600000.0,
           "end_ms": 1667174399999.0,
-          "x": 495.0,
+          "x": 339.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 19.0,
           "height": 111.0
         },
         {
           "id": "exclude-2022-11-05",
           "start_ms": 1667606400000.0,
           "end_ms": 1667779199999.0,
-          "x": 599.0,
+          "x": 405.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 19.0,
           "height": 111.0
         },
         {
           "id": "exclude-2022-11-12",
           "start_ms": 1668211200000.0,
           "end_ms": 1668383999999.0,
-          "x": 704.0,
+          "x": 471.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 18.0,
           "height": 111.0
         },
         {
           "id": "exclude-2022-11-19",
           "start_ms": 1668816000000.0,
           "end_ms": 1668988799999.0,
-          "x": 809.0,
+          "x": 537.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 18.0,
           "height": 111.0
         },
         {
           "id": "exclude-2022-11-26",
           "start_ms": 1669420800000.0,
           "end_ms": 1669593599999.0,
-          "x": 914.0,
+          "x": 603.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 18.0,
           "height": 111.0
         },
         {
           "id": "exclude-2022-12-03",
           "start_ms": 1670025600000.0,
           "end_ms": 1670198399999.0,
-          "x": 1019.0,
+          "x": 668.0,
           "y": 35.0,
-          "width": 30.0,
+          "width": 19.0,
           "height": 111.0
         }
       ],
@@ -315,18 +315,18 @@
         },
         {
           "time_ms": 1667260800000.0,
-          "x": 540.0,
+          "x": 367.0,
           "label": "  11-01"
         },
         {
           "time_ms": 1669852800000.0,
-          "x": 989.0,
+          "x": 650.0,
           "label": "  12-01"
         }
       ],
       "top_ticks": [],
       "title": "A Gantt Diagram",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

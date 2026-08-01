@@ -2,6 +2,7 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
+      "direction": "LR",
       "bounds": {
         "min_x": 100.0,
         "min_y": 0.0,

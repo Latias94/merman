@@ -1,0 +1,275 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "direction": "TD",
+      "bounds": {
+        "min_x": 101.78,
+        "min_y": -61.0,
+        "max_x": 853.56,
+        "max_y": 528.0
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 603.56,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 590.0,
+            "height": 32.8,
+            "content_width": 580.0,
+            "padding": 5.0,
+            "section_class": "section--1",
+            "label": "17th-20th century",
+            "label_lines": [
+              "17th-20th   century"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 102.8,
+                "width": 210.0,
+                "height": 32.8,
+                "content_width": 200.0,
+                "padding": 5.0,
+                "section_class": "section--1",
+                "label": "Industry 1.0 ",
+                "label_lines": [
+                  "Industry   1.0"
+                ],
+                "kind": "task"
+              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 430.0,
+                  "y1": 128.0,
+                  "x2": 480.0,
+                  "y2": 128.0
+                }
+              ],
+              "events": [
+                {
+                  "x": 480.0,
+                  "y": 102.8,
+                  "width": 310.0,
+                  "height": 50.4,
+                  "content_width": 300.0,
+                  "padding": 5.0,
+                  "section_class": "section--1",
+                  "label": "Machinery, Water power, Steam <br>power",
+                  "label_lines": [
+                    "Machinery,   Water   power,   Steam",
+                    "power"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 200.0,
+                "y": 183.2,
+                "width": 210.0,
+                "height": 32.8,
+                "content_width": 200.0,
+                "padding": 5.0,
+                "section_class": "section--1",
+                "label": "Industry 2.0 ",
+                "label_lines": [
+                  "Industry   2.0"
+                ],
+                "kind": "task"
+              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 430.0,
+                  "y1": 208.4,
+                  "x2": 480.0,
+                  "y2": 208.4
+                }
+              ],
+              "events": [
+                {
+                  "x": 480.0,
+                  "y": 183.2,
+                  "width": 310.0,
+                  "height": 50.4,
+                  "content_width": 300.0,
+                  "padding": 5.0,
+                  "section_class": "section--1",
+                  "label": "Electricity, Internal combustion engine, Mass production",
+                  "label_lines": [
+                    "Electricity,   Internal   combustion   engine,   Mass",
+                    "production"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 200.0,
+                "y": 263.6,
+                "width": 210.0,
+                "height": 32.8,
+                "content_width": 200.0,
+                "padding": 5.0,
+                "section_class": "section--1",
+                "label": "Industry 3.0 ",
+                "label_lines": [
+                  "Industry   3.0"
+                ],
+                "kind": "task"
+              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 430.0,
+                  "y1": 280.0,
+                  "x2": 480.0,
+                  "y2": 280.0
+                }
+              ],
+              "events": [
+                {
+                  "x": 480.0,
+                  "y": 263.6,
+                  "width": 310.0,
+                  "height": 32.8,
+                  "content_width": 300.0,
+                  "padding": 5.0,
+                  "section_class": "section--1",
+                  "label": "Electronics, Computers, Automation",
+                  "label_lines": [
+                    "Electronics,   Computers,   Automation"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 200.0,
+            "y": 284.0,
+            "width": 590.0,
+            "height": 32.8,
+            "content_width": 580.0,
+            "padding": 5.0,
+            "section_class": "section-0",
+            "label": "21st century",
+            "label_lines": [
+              "21st   century"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 336.8,
+                "width": 210.0,
+                "height": 32.8,
+                "content_width": 200.0,
+                "padding": 5.0,
+                "section_class": "section-0",
+                "label": "Industry 4.0 ",
+                "label_lines": [
+                  "Industry   4.0"
+                ],
+                "kind": "task"
+              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 430.0,
+                  "y1": 353.2,
+                  "x2": 480.0,
+                  "y2": 353.2
+                }
+              ],
+              "events": [
+                {
+                  "x": 480.0,
+                  "y": 336.8,
+                  "width": 310.0,
+                  "height": 32.8,
+                  "content_width": 300.0,
+                  "padding": 5.0,
+                  "section_class": "section-0",
+                  "label": "Internet, Robotics, Internet of Things",
+                  "label_lines": [
+                    "Internet,   Robotics,   Internet   of   Things"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 200.0,
+                "y": 417.2,
+                "width": 210.0,
+                "height": 32.8,
+                "content_width": 200.0,
+                "padding": 5.0,
+                "section_class": "section-0",
+                "label": "Industry 5.0 ",
+                "label_lines": [
+                  "Industry   5.0"
+                ],
+                "kind": "task"
+              },
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 430.0,
+                  "y1": 433.6,
+                  "x2": 480.0,
+                  "y2": 433.6
+                }
+              ],
+              "events": [
+                {
+                  "x": 480.0,
+                  "y": 417.2,
+                  "width": 310.0,
+                  "height": 32.8,
+                  "content_width": 300.0,
+                  "padding": 5.0,
+                  "section_class": "section-0",
+                  "label": "Artificial intelligence, Big data,3D printing",
+                  "label_lines": [
+                    "Artificial   intelligence,   Big   data,3D   printing"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 430.0,
+        "y1": 18.0,
+        "x2": 430.0,
+        "y2": 478.0
+      },
+      "title": "Timeline of Industrial Revolution",
+      "title_x": 151.78,
+      "title_y": 20.0,
+      "use_max_width": true
+    }
+  }
+}

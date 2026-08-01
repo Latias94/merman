@@ -21,13 +21,17 @@ mix three contracts:
 
 ## Decision
 
-Model host styling as postprocessors layered on top of the existing pipeline:
+Model host styling as draft postprocessors composed into the existing pipeline:
 
 1. `SvgPipelinePreset` stays responsible for generic output targets: `Parity`, `Readable`, and
    `ResvgSafe`.
 2. Built-in postprocessors provide host-useful but product-neutral blocks, including scoped CSS
    injection, opt-in CSS override behavior, and fallback text style propagation.
 3. Host applications keep product-specific semantics in custom `SvgPostprocessor` implementations.
+4. Custom passes run in insertion order before the preset-owned terminal stage. `ResvgSafe` always
+   sanitizes and validates the completed draft; no host pass can execute after that boundary.
+5. `SvgOutputPolicy` is the canonical assembly model shared by host themes, bindings, and CLI
+   output, avoiding independent pass-order implementations.
 
 `SvgPostprocessContext` will expose read-only metadata so host passes do not need to parse or guess:
 
@@ -43,8 +47,8 @@ caller selects a pipeline or appends postprocessors.
 ## Consequences
 
 - `merman` can support Zed-like integration needs without copying Zed-specific logic or GPL code.
-- Public pass ordering becomes part of the API contract: built-in preset behavior runs first, then
-  appended host postprocessors in insertion order.
+- Public pass ordering becomes part of the API contract: appended host postprocessors transform the
+  draft in insertion order, then the built-in preset finalizes the output.
 - Host styling examples can evolve independently from `resvg_safe` raster compatibility.
 - The string/Cow postprocessor trait remains the stable first layer; structured XML/CSS parsing can
   be added later behind the built-ins if profiling or correctness evidence requires it.

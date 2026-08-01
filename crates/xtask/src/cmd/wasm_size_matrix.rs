@@ -1,22 +1,30 @@
-use crate::{XtaskError, cmd::paths};
+use crate::{
+    XtaskError,
+    cmd::{
+        artifact_profiles::load_wasm_size_artifact_profiles, paths,
+        wasm_build_lock::WorkspaceWasmBuildLock,
+    },
+};
 use flate2::{Compression, write::GzEncoder};
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const WASM_SIZE_BUDGET_SCHEMA_VERSION: u32 = 2;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Surface {
-    Browser,
+    Web,
     Typst,
 }
 
 impl Surface {
     fn parse(raw: &str) -> Result<Self, XtaskError> {
         match raw {
-            "browser" | "web" | "wasm" => Ok(Self::Browser),
+            "web" => Ok(Self::Web),
             "typst" => Ok(Self::Typst),
             _ => Err(XtaskError::Usage),
         }
@@ -24,7 +32,7 @@ impl Surface {
 
     const fn label(self) -> &'static str {
         match self {
-            Self::Browser => "browser",
+            Self::Web => "web",
             Self::Typst => "typst",
         }
     }
@@ -33,19 +41,25 @@ impl Surface {
 #[derive(Debug, Default)]
 struct Options {
     surface: Option<Surface>,
-    preset: Option<String>,
+    artifact_profile: Option<String>,
     no_strip: bool,
     budget_file: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct WasmPreset {
-    name: &'static str,
+#[derive(Debug, Clone)]
+struct WasmArtifact {
+    id: String,
     surface: Surface,
-    package: &'static str,
-    artifact_name: &'static str,
-    no_default_features: bool,
-    features: &'static [&'static str],
+    package: String,
+    manifest_path: PathBuf,
+    artifact_name: String,
+    cargo_profile: String,
+    target_triple: String,
+    default_features: bool,
+    features: Vec<String>,
+    capabilities: Vec<String>,
+    runtime_ids: Vec<String>,
+    outputs: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -73,149 +87,85 @@ impl CompressionSource {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WasmSizeBudgets {
-    presets: BTreeMap<String, WasmPresetBudget>,
+    schema_version: u32,
+    updated: String,
+    compression_source: String,
+    notes: String,
+    artifact_profiles: BTreeMap<String, WasmArtifactBudget>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct WasmPresetBudget {
-    max_raw_bytes: Option<u64>,
-    max_stripped_bytes: Option<u64>,
-    max_gzip_bytes: Option<u64>,
-    max_brotli_bytes: Option<u64>,
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WasmArtifactBudget {
+    max_raw_bytes: u64,
+    max_stripped_bytes: u64,
+    max_gzip_bytes: u64,
+    max_brotli_bytes: u64,
 }
 
-const PRESETS: &[WasmPreset] = &[
-    WasmPreset {
-        name: "browser-bridge",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &[],
-    },
-    WasmPreset {
-        name: "browser-core",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &["analysis"],
-    },
-    WasmPreset {
-        name: "browser-render",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &["render", "analysis"],
-    },
-    WasmPreset {
-        name: "browser-render-only",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &["render"],
-    },
-    WasmPreset {
-        name: "browser-ascii",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &["ascii"],
-    },
-    WasmPreset {
-        name: "browser-full",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: false,
-        features: &[],
-    },
-    WasmPreset {
-        name: "browser-full-no-elk",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: true,
-        features: &[
-            "core-full",
-            "core-host",
-            "render",
-            "analysis",
-            "ascii",
-            "editor-language",
-        ],
-    },
-    WasmPreset {
-        name: "browser-ratex-math",
-        surface: Surface::Browser,
-        package: "merman-wasm",
-        artifact_name: "merman_wasm.wasm",
-        no_default_features: false,
-        features: &["ratex-math"],
-    },
-    WasmPreset {
-        name: "typst-bridge",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: true,
-        features: &[],
-    },
-    WasmPreset {
-        name: "typst-render-only-no-elk",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: true,
-        features: &["render"],
-    },
-    WasmPreset {
-        name: "typst-render-analysis-no-elk",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: true,
-        features: &["render", "analysis"],
-    },
-    WasmPreset {
-        name: "typst-core-full-no-elk",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: true,
-        features: &["render", "analysis", "core-full"],
-    },
-    WasmPreset {
-        name: "typst-full-elk",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: false,
-        features: &[],
-    },
-    WasmPreset {
-        name: "typst-ratex-math",
-        surface: Surface::Typst,
-        package: "merman-typst-plugin",
-        artifact_name: "merman_typst_plugin.wasm",
-        no_default_features: false,
-        features: &["ratex-math"],
-    },
-];
+fn all_artifacts() -> Result<Vec<WasmArtifact>, XtaskError> {
+    let artifacts = load_wasm_size_artifact_profiles()
+        .map_err(|error| {
+            XtaskError::WasmSizeMatrixFailed(format!(
+                "failed to load validated WASM artifact profiles: {error}"
+            ))
+        })?
+        .into_iter()
+        .map(|profile| {
+            let surface = match profile.semantic_target.as_str() {
+                "web" => Surface::Web,
+                "typst" => Surface::Typst,
+                target => {
+                    return Err(XtaskError::WasmSizeMatrixFailed(format!(
+                        "artifact profile `{}` has unsupported WASM semantic target `{target}`",
+                        profile.id
+                    )));
+                }
+            };
+            Ok(WasmArtifact {
+                id: profile.id,
+                surface,
+                package: profile.package,
+                manifest_path: profile.manifest_path,
+                artifact_name: profile.artifact_name,
+                cargo_profile: profile.cargo_profile,
+                target_triple: profile.target_triple,
+                default_features: profile.default_features,
+                features: profile.features,
+                capabilities: profile.capabilities,
+                runtime_ids: profile.runtime_ids,
+                outputs: profile.outputs,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut names = BTreeSet::new();
+    if let Some(duplicate) = artifacts
+        .iter()
+        .map(|artifact| artifact.id.as_str())
+        .find(|name| !names.insert(*name))
+    {
+        return Err(XtaskError::WasmSizeMatrixFailed(format!(
+            "duplicate WASM artifact profile `{duplicate}`"
+        )));
+    }
+
+    Ok(artifacts)
+}
 
 pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
-    let options = parse_options(args)?;
-    let presets = selected_presets(&options)?;
+    let all_artifacts = all_artifacts()?;
+    let options = parse_options(args, &all_artifacts)?;
+    let artifacts = selected_artifacts(&options, &all_artifacts)?;
     let budgets = options
         .budget_file
         .as_deref()
-        .map(load_budget_file)
+        .map(|path| load_budget_file(path, &all_artifacts))
         .transpose()?;
+    let _build_lock = WorkspaceWasmBuildLock::acquire()?;
     let strip_dir = paths::target_root().join("wasm-size-matrix");
     if !options.no_strip {
         fs::create_dir_all(&strip_dir).map_err(|source| XtaskError::WriteFile {
@@ -225,25 +175,31 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     println!(
-        "wasm-size-matrix columns=surface,preset,package,default_features,features,raw_bytes,stripped_bytes,gzip_bytes,brotli_bytes,compressed_source,artifact"
+        "wasm-size-matrix columns=surface,artifact_profile,package,manifest,cargo_profile,target,default_features,features,capabilities,runtime_ids,outputs,raw_bytes,stripped_bytes,gzip_bytes,brotli_bytes,compressed_source,artifact"
     );
 
     let mut budget_failures = Vec::new();
 
-    for preset in presets {
-        let measurement = measure_preset(preset, &strip_dir, options.no_strip)?;
+    for artifact in artifacts {
+        let measurement = measure_artifact(artifact, &strip_dir, options.no_strip)?;
         let display_artifact = measurement
             .artifact_path
             .canonicalize()
             .unwrap_or_else(|_| measurement.artifact_path.clone());
 
         println!(
-            "wasm-size-matrix surface={} preset={} package={} default_features={} features={} raw_bytes={} stripped_bytes={} gzip_bytes={} brotli_bytes={} compressed_source={} artifact={}",
-            preset.surface.label(),
-            preset.name,
-            preset.package,
-            !preset.no_default_features,
-            feature_label(preset.features),
+            "wasm-size-matrix surface={} artifact_profile={} package={} manifest={} cargo_profile={} target={} default_features={} features={} capabilities={} runtime_ids={} outputs={} raw_bytes={} stripped_bytes={} gzip_bytes={} brotli_bytes={} compressed_source={} artifact={}",
+            artifact.surface.label(),
+            artifact.id,
+            artifact.package,
+            artifact.manifest_path.display(),
+            artifact.cargo_profile,
+            artifact.target_triple,
+            artifact.default_features,
+            value_label(&artifact.features),
+            value_label(&artifact.capabilities),
+            value_label(&artifact.runtime_ids),
+            value_label(&artifact.outputs),
             measurement.raw_bytes,
             measurement
                 .stripped_bytes
@@ -256,7 +212,7 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
         );
 
         if let Some(budgets) = budgets.as_ref() {
-            budget_failures.extend(check_budget(preset, &measurement, budgets));
+            budget_failures.extend(check_budget(artifact, &measurement, budgets));
         }
     }
 
@@ -273,12 +229,12 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
     }
 }
 
-fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
+fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Options, XtaskError> {
     if args
         .iter()
         .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
     {
-        print_usage();
+        print_usage(artifacts);
         return Err(XtaskError::Usage);
     }
 
@@ -294,8 +250,8 @@ fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
                     Some(Surface::parse(&raw)?)
                 };
             }
-            "--preset" => {
-                options.preset = Some(iter.next().ok_or(XtaskError::Usage)?);
+            "--artifact-profile" => {
+                options.artifact_profile = Some(iter.next().ok_or(XtaskError::Usage)?);
             }
             "--no-strip" => {
                 options.no_strip = true;
@@ -304,46 +260,58 @@ fn parse_options(args: Vec<String>) -> Result<Options, XtaskError> {
                 options.budget_file = Some(PathBuf::from(iter.next().ok_or(XtaskError::Usage)?));
             }
             _ => {
-                print_usage();
+                print_usage(artifacts);
                 return Err(XtaskError::Usage);
             }
         }
     }
 
+    if options.no_strip && options.budget_file.is_some() {
+        return Err(XtaskError::WasmSizeMatrixFailed(
+            "--no-strip cannot be combined with --budget-file because committed budgets use stripped artifacts"
+                .to_string(),
+        ));
+    }
+
     Ok(options)
 }
 
-fn print_usage() {
+fn print_usage(artifacts: &[WasmArtifact]) {
     println!(
-        "usage: xtask wasm-size-matrix [--surface browser|typst|all] [--preset <name>] [--no-strip] [--budget-file <path>]"
+        "usage: xtask wasm-size-matrix [--surface web|typst|all] [--artifact-profile <id>] [--no-strip] [--budget-file <path>]"
     );
     println!();
-    println!("Presets:");
-    for preset in PRESETS {
+    println!("Artifact profiles:");
+    for artifact in artifacts {
         println!(
-            "  {:<18} surface={} package={} default_features={} features={}",
-            preset.name,
-            preset.surface.label(),
-            preset.package,
-            !preset.no_default_features,
-            feature_label(preset.features)
+            "  {:<18} surface={} package={} manifest={} cargo_profile={} target={} default_features={} features={} capabilities={} outputs={}",
+            artifact.id,
+            artifact.surface.label(),
+            artifact.package,
+            artifact.manifest_path.display(),
+            artifact.cargo_profile,
+            artifact.target_triple,
+            artifact.default_features,
+            value_label(&artifact.features),
+            value_label(&artifact.capabilities),
+            value_label(&artifact.outputs)
         );
     }
 }
 
-fn measure_preset(
-    preset: &WasmPreset,
+fn measure_artifact(
+    artifact: &WasmArtifact,
     strip_dir: &Path,
     no_strip: bool,
 ) -> Result<WasmMeasurement, XtaskError> {
-    build_preset(preset)?;
-    let artifact_path = artifact_path(preset);
+    build_artifact(artifact)?;
+    let artifact_path = artifact_path(artifact);
     let raw_bytes = file_size(&artifact_path)?;
 
     let (compressed_path, stripped_bytes, compressed_source) = if no_strip {
         (artifact_path.clone(), None, CompressionSource::Raw)
     } else {
-        let stripped_path = strip_copy(preset, &artifact_path, strip_dir)?;
+        let stripped_path = strip_copy(artifact, &artifact_path, strip_dir)?;
         let bytes = file_size(&stripped_path)?;
         (stripped_path, Some(bytes), CompressionSource::Stripped)
     };
@@ -361,10 +329,72 @@ fn measure_preset(
     })
 }
 
-fn load_budget_file(path: &Path) -> Result<WasmSizeBudgets, XtaskError> {
+fn load_budget_file(
+    path: &Path,
+    artifacts: &[WasmArtifact],
+) -> Result<WasmSizeBudgets, XtaskError> {
     let path = resolve_repo_path(path);
     let text = crate::util::read_text(&path)?;
-    serde_json::from_str(&text).map_err(XtaskError::Json)
+    let budgets = serde_json::from_str(&text).map_err(XtaskError::Json)?;
+    validate_budget_coverage(&budgets, artifacts)?;
+    Ok(budgets)
+}
+
+fn validate_budget_coverage(
+    budgets: &WasmSizeBudgets,
+    artifacts: &[WasmArtifact],
+) -> Result<(), XtaskError> {
+    if budgets.schema_version != WASM_SIZE_BUDGET_SCHEMA_VERSION {
+        return Err(XtaskError::WasmSizeMatrixFailed(format!(
+            "WASM size budget schema must be {WASM_SIZE_BUDGET_SCHEMA_VERSION}, found {}",
+            budgets.schema_version
+        )));
+    }
+    if budgets.updated.trim().is_empty() || budgets.notes.trim().is_empty() {
+        return Err(XtaskError::WasmSizeMatrixFailed(
+            "WASM size budget metadata must include non-empty updated and notes fields".to_string(),
+        ));
+    }
+    if budgets.compression_source != "stripped" {
+        return Err(XtaskError::WasmSizeMatrixFailed(format!(
+            "WASM size budget compression_source must be `stripped`, found `{}`",
+            budgets.compression_source
+        )));
+    }
+
+    let expected = artifacts
+        .iter()
+        .map(|artifact| artifact.id.clone())
+        .collect::<BTreeSet<_>>();
+    let actual = budgets
+        .artifact_profiles
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if expected != actual {
+        let missing = expected.difference(&actual).cloned().collect::<Vec<_>>();
+        let stale = actual.difference(&expected).cloned().collect::<Vec<_>>();
+        return Err(XtaskError::WasmSizeMatrixFailed(format!(
+            "WASM size budgets must exactly cover artifact profiles; missing=[{}] stale=[{}]",
+            missing.join(","),
+            stale.join(",")
+        )));
+    }
+    for (id, budget) in &budgets.artifact_profiles {
+        if [
+            budget.max_raw_bytes,
+            budget.max_stripped_bytes,
+            budget.max_gzip_bytes,
+            budget.max_brotli_bytes,
+        ]
+        .contains(&0)
+        {
+            return Err(XtaskError::WasmSizeMatrixFailed(format!(
+                "WASM size budget for artifact profile {id} must define positive limits for every metric"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn resolve_repo_path(path: &Path) -> PathBuf {
@@ -377,51 +407,49 @@ fn resolve_repo_path(path: &Path) -> PathBuf {
 }
 
 fn check_budget(
-    preset: &WasmPreset,
+    artifact: &WasmArtifact,
     measurement: &WasmMeasurement,
     budgets: &WasmSizeBudgets,
 ) -> Vec<String> {
-    let Some(budget) = budgets.presets.get(preset.name) else {
+    let Some(budget) = budgets.artifact_profiles.get(&artifact.id) else {
         return vec![format!(
-            "missing wasm size budget for preset {}",
-            preset.name
+            "missing wasm size budget for artifact profile {}",
+            artifact.id
         )];
     };
 
     let mut failures = Vec::new();
     check_metric(
         &mut failures,
-        preset.name,
+        &artifact.id,
         "raw_bytes",
         measurement.raw_bytes,
         budget.max_raw_bytes,
     );
-    if let Some(max) = budget.max_stripped_bytes {
-        if let Some(stripped_bytes) = measurement.stripped_bytes {
-            check_metric(
-                &mut failures,
-                preset.name,
-                "stripped_bytes",
-                stripped_bytes,
-                Some(max),
-            );
-        } else {
-            failures.push(format!(
-                "preset {} skipped stripped_bytes but budget requires max_stripped_bytes={max}",
-                preset.name
-            ));
-        }
+    if let Some(stripped_bytes) = measurement.stripped_bytes {
+        check_metric(
+            &mut failures,
+            &artifact.id,
+            "stripped_bytes",
+            stripped_bytes,
+            budget.max_stripped_bytes,
+        );
+    } else {
+        failures.push(format!(
+            "artifact profile {} skipped stripped_bytes but budget requires max_stripped_bytes={}",
+            artifact.id, budget.max_stripped_bytes
+        ));
     }
     check_metric(
         &mut failures,
-        preset.name,
+        &artifact.id,
         "gzip_bytes",
         measurement.gzip_bytes,
         budget.max_gzip_bytes,
     );
     check_metric(
         &mut failures,
-        preset.name,
+        &artifact.id,
         "brotli_bytes",
         measurement.brotli_bytes,
         budget.max_brotli_bytes,
@@ -432,62 +460,68 @@ fn check_budget(
 
 fn check_metric(
     failures: &mut Vec<String>,
-    preset_name: &str,
+    artifact_profile: &str,
     metric: &str,
     actual: u64,
-    max: Option<u64>,
+    max: u64,
 ) {
-    if let Some(max) = max
-        && actual > max
-    {
+    if actual > max {
         failures.push(format!(
-            "preset {preset_name} exceeds {metric}: actual={actual} max={max}"
+            "artifact profile {artifact_profile} exceeds {metric}: actual={actual} max={max}"
         ));
     }
 }
 
-fn selected_presets(options: &Options) -> Result<Vec<&'static WasmPreset>, XtaskError> {
-    let presets = PRESETS
+fn selected_artifacts<'a>(
+    options: &Options,
+    all_artifacts: &'a [WasmArtifact],
+) -> Result<Vec<&'a WasmArtifact>, XtaskError> {
+    let artifacts = all_artifacts
         .iter()
-        .filter(|preset| {
+        .filter(|artifact| {
             options
                 .surface
-                .is_none_or(|surface| preset.surface == surface)
+                .is_none_or(|surface| artifact.surface == surface)
         })
-        .filter(|preset| {
+        .filter(|artifact| {
             options
-                .preset
+                .artifact_profile
                 .as_deref()
-                .is_none_or(|name| preset.name == name)
+                .is_none_or(|id| artifact.id == id)
         })
         .collect::<Vec<_>>();
 
-    if presets.is_empty() {
+    if artifacts.is_empty() {
         return Err(XtaskError::WasmSizeMatrixFailed(
-            "no wasm size presets matched the requested filters".to_string(),
+            "no WASM artifact profiles matched the requested filters".to_string(),
         ));
     }
 
-    Ok(presets)
+    Ok(artifacts)
 }
 
-fn build_preset(preset: &WasmPreset) -> Result<(), XtaskError> {
+fn build_artifact(artifact: &WasmArtifact) -> Result<(), XtaskError> {
     let mut command = Command::new("cargo");
     command.args([
         "build",
         "-p",
-        preset.package,
+        &artifact.package,
         "--profile",
-        "wasm-size",
+        &artifact.cargo_profile,
         "--target",
-        "wasm32-unknown-unknown",
+        &artifact.target_triple,
     ]);
+    command
+        .arg("--manifest-path")
+        .arg(&artifact.manifest_path)
+        .args(["--locked", "--target-dir"]);
+    command.arg(paths::wasm_build_target_root());
 
-    if preset.no_default_features {
+    if !artifact.default_features {
         command.arg("--no-default-features");
     }
 
-    let features = preset.features.join(",");
+    let features = artifact.features.join(",");
     if !features.is_empty() {
         command.arg("--features").arg(&features);
     }
@@ -502,27 +536,27 @@ fn build_preset(preset: &WasmPreset) -> Result<(), XtaskError> {
 
     if !status.success() {
         return Err(XtaskError::WasmSizeMatrixFailed(format!(
-            "cargo build failed for preset {} with status {status}",
-            preset.name
+            "cargo build failed for artifact profile {} with status {status}",
+            artifact.id
         )));
     }
 
     Ok(())
 }
 
-fn artifact_path(preset: &WasmPreset) -> PathBuf {
-    paths::target_root()
-        .join("wasm32-unknown-unknown")
-        .join("wasm-size")
-        .join(preset.artifact_name)
+fn artifact_path(artifact: &WasmArtifact) -> PathBuf {
+    paths::wasm_build_target_root()
+        .join(&artifact.target_triple)
+        .join(&artifact.cargo_profile)
+        .join(&artifact.artifact_name)
 }
 
 fn strip_copy(
-    preset: &WasmPreset,
+    artifact: &WasmArtifact,
     wasm_path: &Path,
     strip_dir: &Path,
 ) -> Result<PathBuf, XtaskError> {
-    let stripped_path = strip_dir.join(format!("{}.stripped.wasm", preset.name));
+    let stripped_path = strip_dir.join(format!("{}.stripped.wasm", artifact.id));
     let status = Command::new("wasm-tools")
         .args(["strip", "--all"])
         .arg(wasm_path)
@@ -537,8 +571,8 @@ fn strip_copy(
 
     if !status.success() {
         return Err(XtaskError::WasmSizeMatrixFailed(format!(
-            "wasm-tools strip failed for preset {} with status {status}",
-            preset.name
+            "wasm-tools strip failed for artifact profile {} with status {status}",
+            artifact.id
         )));
     }
 
@@ -591,89 +625,203 @@ fn brotli_size(path: &Path) -> Result<u64, XtaskError> {
     Ok(compressed.len() as u64)
 }
 
-fn feature_label(features: &[&str]) -> String {
-    if features.is_empty() {
+fn value_label(values: &[String]) -> String {
+    if values.is_empty() {
         "none".to_string()
     } else {
-        features.join("+")
+        values.join("+")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::OnceLock;
+
+    fn artifacts() -> &'static Vec<WasmArtifact> {
+        static ARTIFACTS: OnceLock<Vec<WasmArtifact>> = OnceLock::new();
+        ARTIFACTS.get_or_init(|| all_artifacts().unwrap())
+    }
 
     #[test]
-    fn default_selection_includes_browser_and_typst_surfaces() {
+    fn default_selection_includes_web_and_typst_artifact_profiles() {
+        let all_artifacts = artifacts();
         let options = Options::default();
-        let presets = selected_presets(&options).unwrap();
+        let selected = selected_artifacts(&options, all_artifacts).unwrap();
 
-        assert!(presets.iter().any(|preset| preset.name == "browser-full"));
-        assert!(presets.iter().any(|preset| preset.name == "typst-full-elk"));
+        assert!(selected.iter().any(|artifact| artifact.id == "web-full"));
+        assert!(selected.iter().any(|artifact| artifact.id == "typst-wasm"));
     }
 
     #[test]
     fn surface_filter_selects_only_that_surface() {
+        let all_artifacts = artifacts();
         let options = Options {
             surface: Some(Surface::Typst),
-            preset: None,
+            artifact_profile: None,
             no_strip: false,
             budget_file: None,
         };
-        let presets = selected_presets(&options).unwrap();
+        let selected = selected_artifacts(&options, all_artifacts).unwrap();
 
-        assert!(!presets.is_empty());
+        assert!(!selected.is_empty());
         assert!(
-            presets
+            selected
                 .iter()
-                .all(|preset| preset.surface == Surface::Typst)
+                .all(|artifact| artifact.surface == Surface::Typst)
         );
     }
 
     #[test]
-    fn preset_filter_selects_one_named_preset() {
+    fn artifact_profile_filter_selects_one_exact_recipe() {
+        let all_artifacts = artifacts();
         let options = Options {
             surface: None,
-            preset: Some("browser-render-only".to_string()),
+            artifact_profile: Some("web-render".to_string()),
             no_strip: false,
             budget_file: None,
         };
-        let presets = selected_presets(&options).unwrap();
+        let selected = selected_artifacts(&options, all_artifacts).unwrap();
 
-        assert_eq!(presets.len(), 1);
-        assert_eq!(presets[0].name, "browser-render-only");
-        assert_eq!(presets[0].features, &["render"]);
-        assert!(presets[0].no_default_features);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].id, "web-render");
+        assert_eq!(
+            selected[0].manifest_path,
+            Path::new("crates/merman-wasm/Cargo.toml")
+        );
+        assert_eq!(
+            string_values(&selected[0].features),
+            vec!["layout-cytoscape", "layout-elk", "math", "svg"]
+        );
+        assert!(!selected[0].default_features);
+    }
+
+    #[test]
+    fn web_editor_recipe_reports_its_full_callable_surface() {
+        let artifact = artifacts()
+            .iter()
+            .find(|artifact| artifact.id == "web-editor")
+            .unwrap();
+
+        assert_eq!(artifact.surface, Surface::Web);
+        assert_eq!(string_values(&artifact.features), vec!["editor"]);
+        assert_eq!(
+            string_values(&artifact.capabilities),
+            vec!["analysis", "editor"]
+        );
+        assert!(artifact.outputs.is_empty());
+        assert!(!artifact.default_features);
+    }
+
+    #[test]
+    fn web_renderer_recipes_match_their_product_boundaries() {
+        let web = artifacts()
+            .iter()
+            .filter(|artifact| artifact.surface == Surface::Web)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            web.iter()
+                .map(|artifact| artifact.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "web-analysis",
+                "web-ascii",
+                "web-editor",
+                "web-full",
+                "web-render"
+            ]
+        );
+
+        let full = web
+            .iter()
+            .find(|artifact| artifact.id == "web-full")
+            .unwrap();
+        assert_eq!(
+            string_values(&full.features),
+            vec![
+                "analysis",
+                "ascii",
+                "editor",
+                "layout-cytoscape",
+                "layout-elk",
+                "math",
+                "svg"
+            ]
+        );
+        assert_eq!(
+            string_values(&full.capabilities),
+            string_values(&full.features)
+        );
+        assert_eq!(
+            string_values(&full.runtime_ids),
+            string_values(&full.features)
+        );
+        assert_eq!(string_values(&full.outputs), vec!["ascii", "svg"]);
+
+        let render = web
+            .iter()
+            .find(|artifact| artifact.id == "web-render")
+            .unwrap();
+        let complete_svg = vec!["layout-cytoscape", "layout-elk", "math", "svg"];
+        assert_eq!(string_values(&render.features), complete_svg);
+        assert_eq!(string_values(&render.capabilities), complete_svg);
+        assert_eq!(string_values(&render.runtime_ids), complete_svg);
+        assert_eq!(string_values(&render.outputs), vec!["svg"]);
+    }
+
+    #[test]
+    fn typst_recipe_matches_the_publishable_math_free_surface() {
+        let artifact = artifacts()
+            .iter()
+            .find(|artifact| artifact.id == "typst-wasm")
+            .unwrap();
+
+        assert_eq!(artifact.surface, Surface::Typst);
+        assert_eq!(
+            string_values(&artifact.features),
+            vec!["analysis", "layout-cytoscape", "layout-elk", "svg"]
+        );
+        assert!(
+            !artifact
+                .capabilities
+                .iter()
+                .any(|capability| capability == "math")
+        );
+        assert!(!artifact.default_features);
     }
 
     #[test]
     fn unmatched_filters_are_errors() {
+        let all_artifacts = artifacts();
         let options = Options {
             surface: Some(Surface::Typst),
-            preset: Some("browser-render".to_string()),
+            artifact_profile: Some("web-render".to_string()),
             no_strip: false,
             budget_file: None,
         };
 
-        assert!(selected_presets(&options).is_err());
+        assert!(selected_artifacts(&options, all_artifacts).is_err());
     }
 
     #[test]
-    fn option_parser_accepts_surface_preset_and_no_strip() {
-        let options = parse_options(vec![
-            "--surface".to_string(),
-            "browser".to_string(),
-            "--preset".to_string(),
-            "browser-core".to_string(),
-            "--no-strip".to_string(),
-            "--budget-file".to_string(),
-            "docs/release/WASM_SIZE_BUDGETS.json".to_string(),
-        ])
+    fn option_parser_accepts_surface_artifact_profile_and_budget() {
+        let all_artifacts = artifacts();
+        let options = parse_options(
+            vec![
+                "--surface".to_string(),
+                "web".to_string(),
+                "--artifact-profile".to_string(),
+                "web-analysis".to_string(),
+                "--budget-file".to_string(),
+                "docs/release/WASM_SIZE_BUDGETS.json".to_string(),
+            ],
+            all_artifacts,
+        )
         .unwrap();
 
-        assert_eq!(options.surface, Some(Surface::Browser));
-        assert_eq!(options.preset.as_deref(), Some("browser-core"));
-        assert!(options.no_strip);
+        assert_eq!(options.surface, Some(Surface::Web));
+        assert_eq!(options.artifact_profile.as_deref(), Some("web-analysis"));
+        assert!(!options.no_strip);
         assert_eq!(
             options.budget_file.as_deref(),
             Some(Path::new("docs/release/WASM_SIZE_BUDGETS.json"))
@@ -681,62 +829,155 @@ mod tests {
     }
 
     #[test]
-    fn budget_check_reports_missing_preset_budget() {
-        let preset = PRESETS
+    fn option_parser_rejects_budget_checks_without_stripping() {
+        let error = parse_options(
+            vec![
+                "--no-strip".to_string(),
+                "--budget-file".to_string(),
+                "docs/release/WASM_SIZE_BUDGETS.json".to_string(),
+            ],
+            artifacts(),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("cannot be combined"), "{error}");
+    }
+
+    #[test]
+    fn option_parser_rejects_retired_surface_aliases() {
+        let all_artifacts = artifacts();
+        for retired in ["browser", "wasm"] {
+            assert!(
+                parse_options(
+                    vec!["--surface".to_string(), retired.to_string()],
+                    all_artifacts
+                )
+                .is_err(),
+                "retired surface alias `{retired}` must not remain accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn budget_check_reports_missing_artifact_profile_budget() {
+        let artifact = artifacts()
             .iter()
-            .find(|preset| preset.name == "browser-core")
+            .find(|artifact| artifact.id == "web-analysis")
             .unwrap();
         let budgets = WasmSizeBudgets {
-            presets: BTreeMap::new(),
+            schema_version: WASM_SIZE_BUDGET_SCHEMA_VERSION,
+            updated: "2026-07-23".to_string(),
+            compression_source: "stripped".to_string(),
+            notes: "test".to_string(),
+            artifact_profiles: BTreeMap::new(),
         };
         let measurement = measurement_for_test();
 
-        let failures = check_budget(preset, &measurement, &budgets);
+        let failures = check_budget(artifact, &measurement, &budgets);
 
         assert_eq!(
             failures,
-            vec!["missing wasm size budget for preset browser-core"]
+            vec!["missing wasm size budget for artifact profile web-analysis"]
         );
     }
 
     #[test]
     fn budget_check_reports_only_exceeded_metrics() {
-        let preset = PRESETS
+        let artifact = artifacts()
             .iter()
-            .find(|preset| preset.name == "browser-core")
+            .find(|artifact| artifact.id == "web-analysis")
             .unwrap();
         let mut budgets = WasmSizeBudgets {
-            presets: BTreeMap::new(),
+            schema_version: WASM_SIZE_BUDGET_SCHEMA_VERSION,
+            updated: "2026-07-23".to_string(),
+            compression_source: "stripped".to_string(),
+            notes: "test".to_string(),
+            artifact_profiles: BTreeMap::new(),
         };
-        budgets.presets.insert(
-            "browser-core".to_string(),
-            WasmPresetBudget {
-                max_raw_bytes: Some(9),
-                max_stripped_bytes: Some(7),
-                max_gzip_bytes: Some(5),
-                max_brotli_bytes: Some(3),
+        budgets.artifact_profiles.insert(
+            "web-analysis".to_string(),
+            WasmArtifactBudget {
+                max_raw_bytes: 9,
+                max_stripped_bytes: 7,
+                max_gzip_bytes: 5,
+                max_brotli_bytes: 3,
             },
         );
         let measurement = measurement_for_test();
 
-        let failures = check_budget(preset, &measurement, &budgets);
+        let failures = check_budget(artifact, &measurement, &budgets);
 
         assert_eq!(
             failures,
             vec![
-                "preset browser-core exceeds raw_bytes: actual=10 max=9",
-                "preset browser-core exceeds brotli_bytes: actual=4 max=3",
+                "artifact profile web-analysis exceeds raw_bytes: actual=10 max=9",
+                "artifact profile web-analysis exceeds brotli_bytes: actual=4 max=3",
             ]
         );
     }
 
     #[test]
-    fn feature_label_uses_none_for_empty_features() {
-        assert_eq!(feature_label(&[]), "none");
-        assert_eq!(
-            feature_label(&["render", "ratex-math"]),
-            "render+ratex-math"
+    fn committed_budget_exactly_covers_every_wasm_artifact_profile() {
+        load_budget_file(
+            Path::new("docs/release/WASM_SIZE_BUDGETS.json"),
+            artifacts(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn budget_coverage_rejects_missing_and_stale_artifact_profiles() {
+        let mut budgets = load_budget_file(
+            Path::new("docs/release/WASM_SIZE_BUDGETS.json"),
+            artifacts(),
+        )
+        .unwrap();
+        budgets.artifact_profiles.remove("web-full");
+        budgets.artifact_profiles.insert(
+            "web-math".to_string(),
+            WasmArtifactBudget {
+                max_raw_bytes: 1,
+                max_stripped_bytes: 1,
+                max_gzip_bytes: 1,
+                max_brotli_bytes: 1,
+            },
         );
+
+        let error = validate_budget_coverage(&budgets, artifacts()).unwrap_err();
+        assert!(error.to_string().contains("missing=[web-full]"), "{error}");
+        assert!(error.to_string().contains("stale=[web-math]"), "{error}");
+    }
+
+    #[test]
+    fn budget_schema_rejects_legacy_preset_keys() {
+        let error = serde_json::from_str::<WasmSizeBudgets>(
+            r#"{
+              "schema_version": 1,
+              "updated": "2026-07-22",
+              "compression_source": "stripped",
+              "notes": "legacy",
+              "presets": {}
+            }"#,
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("unknown field `presets`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn value_label_uses_none_for_empty_values() {
+        assert_eq!(value_label(&Vec::new()), "none");
+        assert_eq!(
+            value_label(&["svg".to_string(), "analysis".to_string()]),
+            "svg+analysis"
+        );
+    }
+
+    fn string_values(values: &[String]) -> Vec<&str> {
+        values.iter().map(String::as_str).collect()
     }
 
     fn measurement_for_test() -> WasmMeasurement {
