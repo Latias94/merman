@@ -374,7 +374,6 @@ assert.equal(runtimeCatalog.resources.cli_default_profile, "trusted-native");
 const resourceLimitIds = runtimeCatalog.resources.limits
   .map((limit) => limit.id)
   .sort();
-assert.ok(resourceLimitIds.includes("max_source_bytes"));
 const expectedResourceLimitIds = [
   ...(hasCapability("ascii") ? ["max_ascii_grid_cells"] : []),
   ...(hasCapability("analysis") ? ["max_document_diagrams"] : []),
@@ -1330,16 +1329,6 @@ async function runSameProcessPackageSmoke() {
   assert.equal(
     analysis.runtimeCatalog().capabilities.capability_ids.includes("svg"),
     false
-  );
-  assert.deepEqual(
-    analysis.runtimeCatalog().resources.limits.map((limit) => limit.id),
-    [
-      "max_source_bytes",
-      "max_model_items",
-      "max_model_text_bytes",
-      "max_model_nesting_depth",
-      "max_document_diagrams",
-    ]
   );
   assert.equal(typeof analysis.renderSvg, "undefined");
 

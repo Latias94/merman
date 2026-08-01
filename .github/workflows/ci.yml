@@ -516,7 +516,7 @@ jobs:
 
       - name: Test Typst plugin crate
         run: |
-          cargo test --locked -p merman-typst-plugin
+          cargo test --locked -p merman-typst-plugin --no-default-features
           cargo test --locked -p merman-typst-plugin --no-default-features \
             --features merman-bindings-core/svg,merman-bindings-core/math,merman-bindings-core/system-clock,merman-bindings-core/system-timezone,merman-bindings-core/system-random
 

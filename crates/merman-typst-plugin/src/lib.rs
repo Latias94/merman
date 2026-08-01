@@ -262,11 +262,6 @@ fn typst_options_json(options_json: &[u8]) -> Result<Vec<u8>, merman_bindings_co
 }
 
 #[cfg(test)]
-fn typst_fixed_resource_options() -> Value {
-    json!({ "profile": "constrained" })
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -344,11 +339,6 @@ mod tests {
 
     #[test]
     fn typst_transport_keeps_a_fixed_constrained_resource_policy() {
-        assert_eq!(
-            typst_fixed_resource_options(),
-            json!({ "profile": "constrained" })
-        );
-
         let options = typst_options_json(b"").expect("default Typst options");
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
         assert_eq!(payload["runtime_policy"], "deterministic");
@@ -406,7 +396,7 @@ mod tests {
 
             assert_eq!(
                 payload[wrapper]["resources"],
-                typst_fixed_resource_options()
+                json!({ "profile": "constrained" })
             );
             assert_eq!(payload["runtime_policy"], "deterministic");
             assert!(payload[wrapper].get("runtime_policy").is_none());
