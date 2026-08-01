@@ -1,4 +1,5 @@
-use self::executor::{AnalysisExecutor, DiagnosticProjectionOrigin};
+use self::executor::AnalysisExecutor;
+use self::request::DiagnosticProjectionOrigin;
 use super::LanguageSession;
 use super::documents::{
     DiagnosticContext, DiagnosticProjectionPreparation, DocumentDiagnosticState,

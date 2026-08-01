@@ -504,6 +504,48 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn panicking_client_effect_does_not_stall_queued_or_later_effects() {
+        let dispatcher = ClientEffectDispatcher::new();
+        let (panic_started_tx, panic_started_rx) = tokio::sync::oneshot::channel();
+        let (release_panic_tx, release_panic_rx) = tokio::sync::oneshot::channel();
+        let (queued_done_tx, queued_done_rx) = tokio::sync::oneshot::channel();
+
+        dispatcher
+            .enqueue_latest(ClientEffectKey::document_for_test("panic"), async move {
+                let _ = panic_started_tx.send(());
+                let _ = release_panic_rx.await;
+                panic!("intentional client-effect panic");
+            })
+            .await;
+        panic_started_rx
+            .await
+            .expect("panicking client effect should start");
+
+        dispatcher
+            .enqueue_latest(ClientEffectKey::document_for_test("queued"), async move {
+                let _ = queued_done_tx.send(());
+            })
+            .await;
+        release_panic_tx
+            .send(())
+            .expect("panicking client effect should still be active");
+        queued_done_rx
+            .await
+            .expect("a queued effect should run after the panic is isolated");
+
+        let (later_done_tx, later_done_rx) = tokio::sync::oneshot::channel();
+        dispatcher
+            .enqueue_latest(ClientEffectKey::document_for_test("later"), async move {
+                let _ = later_done_tx.send(());
+            })
+            .await;
+        later_done_rx
+            .await
+            .expect("a later enqueue should use the surviving dispatcher worker");
+        dispatcher.wait_idle().await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn pending_document_effects_keep_only_the_latest_intent() {
         let dispatcher = ClientEffectDispatcher::new();
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();

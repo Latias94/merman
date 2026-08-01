@@ -232,14 +232,6 @@ impl MermanLanguageServer {
         self.session.structure_snapshot(uri).await
     }
 
-    async fn structure_snapshot_result<T>(
-        &self,
-        uri: &tower_lsp_server::ls_types::Uri,
-        compute: impl FnOnce(&DocumentSnapshot) -> Result<Option<T>>,
-    ) -> Result<Option<T>> {
-        self.session.query_structure(uri, compute).await
-    }
-
     #[cfg(test)]
     fn diagnostics_for_document(document: &StoredDocument, analyzer: &Analyzer) -> Vec<Diagnostic> {
         let profile = ClientProtocolProfile::permissive();
@@ -640,12 +632,13 @@ impl LanguageServer for MermanLanguageServer {
         let position = params.text_document_position.position;
         let profile = self.client_profile();
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(Some(CompletionResponse::List(
-                completion_for_snapshot_with_profile(snapshot, position, profile),
-            )))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(Some(CompletionResponse::List(
+                    completion_for_snapshot_with_profile(snapshot, position, profile),
+                )))
+            })
+            .await
     }
 
     async fn completion_resolve(&self, item: CompletionItem) -> Result<CompletionItem> {
@@ -758,10 +751,11 @@ impl LanguageServer for MermanLanguageServer {
         let position = params.text_document_position_params.position;
         let profile = self.client_profile();
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_hover_with_profile(snapshot, position, profile))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_hover_with_profile(snapshot, position, profile))
+            })
+            .await
     }
 
     async fn selection_range(
@@ -770,19 +764,21 @@ impl LanguageServer for MermanLanguageServer {
     ) -> Result<Option<Vec<SelectionRange>>> {
         let uri = params.text_document.uri;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_selection_ranges(snapshot, &params.positions))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_selection_ranges(snapshot, &params.positions))
+            })
+            .await
     }
 
     async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
         let uri = params.text_document.uri;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(Some(structure_folding_ranges(snapshot)))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(Some(structure_folding_ranges(snapshot)))
+            })
+            .await
     }
 
     async fn document_symbol(
@@ -792,13 +788,14 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document.uri;
         let hierarchical_supported = self.client_profile().hierarchical_document_symbols;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(Some(structure_document_symbols_with_hierarchy_support(
-                snapshot,
-                hierarchical_supported,
-            )))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(Some(structure_document_symbols_with_hierarchy_support(
+                    snapshot,
+                    hierarchical_supported,
+                )))
+            })
+            .await
     }
 
     async fn goto_definition(
@@ -808,10 +805,11 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_goto_definition(snapshot, position))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_goto_definition(snapshot, position))
+            })
+            .await
     }
 
     async fn references(
@@ -821,14 +819,15 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_references(
-                snapshot,
-                position,
-                params.context.include_declaration,
-            ))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_references(
+                    snapshot,
+                    position,
+                    params.context.include_declaration,
+                ))
+            })
+            .await
     }
 
     async fn prepare_rename(
@@ -838,20 +837,26 @@ impl LanguageServer for MermanLanguageServer {
         let uri = params.text_document.uri;
         let position = params.position;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(structure_prepare_rename(snapshot, position))
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                Ok(structure_prepare_rename(snapshot, position))
+            })
+            .await
     }
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri.clone();
         let workspace_edit_encoding = self.client_profile().workspace_edit_encoding;
 
-        self.structure_snapshot_result(&uri, |snapshot| {
-            structure_rename_with_workspace_edit_encoding(snapshot, params, workspace_edit_encoding)
-        })
-        .await
+        self.session
+            .query_structure(&uri, |snapshot| {
+                structure_rename_with_workspace_edit_encoding(
+                    snapshot,
+                    params,
+                    workspace_edit_encoding,
+                )
+            })
+            .await
     }
 }
 

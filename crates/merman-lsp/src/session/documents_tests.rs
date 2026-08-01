@@ -11,10 +11,10 @@ use super::{
     SessionState, SnapshotConfigurationPlan, StoredDocument, TextChangePreparation,
     TextDocumentUpdate, cached_analysis_weight, default_lsp_analysis_options,
 };
-use crate::session::analysis::executor::{
-    DiagnosticProjectionOrigin, DiagnosticReprojectionRequest,
+use crate::session::analysis::request::{
+    AnalysisBuildError, AnalysisBuildRequest, DiagnosticProjectionOrigin,
+    DiagnosticReprojectionRequest,
 };
-use crate::session::analysis::request::{AnalysisBuildError, AnalysisBuildRequest};
 use crate::session::cache::WeightedReplacement;
 use crate::snapshot::{DocumentAnalysisContext, DocumentSnapshot, SnapshotContext};
 use merman_analysis::{

@@ -189,6 +189,10 @@ struct SharedDeadlineResponseSink {
     completed_sends: Arc<AtomicUsize>,
 }
 
+struct FailingResponseSink {
+    send_attempts: Arc<AtomicUsize>,
+}
+
 impl Sink<Response> for SharedDeadlineResponseSink {
     type Error = Infallible;
 
@@ -216,6 +220,27 @@ impl Sink<Response> for SharedDeadlineResponseSink {
         self.completed_sends.fetch_add(1, Ordering::SeqCst);
         self.active_ready = None;
         Ok(())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl Sink<Response> for FailingResponseSink {
+    type Error = io::Error;
+
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_send(self: Pin<&mut Self>, _item: Response) -> Result<(), Self::Error> {
+        self.send_attempts.fetch_add(1, Ordering::SeqCst);
+        Err(io::Error::other("intentional response routing failure"))
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -1148,4 +1173,38 @@ async fn queued_client_responses_share_one_absolute_drain_deadline() {
         .await
         .expect("the shared response routing deadline should report failure");
     assert_eq!(completed_sends.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn client_response_send_error_notifies_waiter_and_stops_routing() {
+    let (_drain_tx, drain_rx) = watch::channel(None);
+    let send_attempts = Arc::new(AtomicUsize::new(0));
+    let sink = FailingResponseSink {
+        send_attempts: Arc::clone(&send_attempts),
+    };
+    let (mut responses_tx, responses_rx) = mpsc::channel(2);
+    responses_tx
+        .try_send(Response::from_ok(Id::Number(1), serde_json::Value::Null))
+        .expect("queue client response that will fail routing");
+    responses_tx
+        .try_send(Response::from_ok(Id::Number(2), serde_json::Value::Null))
+        .expect("queue client response that must not be routed after failure");
+    responses_tx.disconnect();
+    let (routing_failed_tx, routing_failed_rx) = oneshot::channel();
+
+    let routing = tokio::spawn(route_client_responses(
+        responses_rx,
+        sink,
+        routing_failed_tx,
+        drain_rx,
+    ));
+
+    routing_failed_rx
+        .await
+        .expect("response routing failure should notify the transport waiter");
+    timeout(Duration::from_secs(1), routing)
+        .await
+        .expect("response routing task should exit after a sink error")
+        .expect("response routing task should not panic");
+    assert_eq!(send_attempts.load(Ordering::SeqCst), 1);
 }
