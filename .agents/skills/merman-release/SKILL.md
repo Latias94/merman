@@ -38,6 +38,9 @@ If scope is incomplete, report what is ready and stop before the first external 
 Write the changelog for users:
 
 - Keep an in-progress entry as `## [version] - Unreleased`; immediately before immutable preflight, replace `Unreleased` with the intended tag date in `YYYY-MM-DD` form.
+- Treat the root `CHANGELOG.md` as the canonical project-wide release narrative. For every intended publish surface that owns a package-local changelog, update that file as a curated projection of the same release delta: include only changes, migrations, compatibility notes, and verified performance claims that affect that package's users.
+- Keep workspace-coupled package changelog entries at `Unreleased` during preparation, then stamp them with the same intended tag date as the root entry immediately before immutable preflight. Independently versioned surfaces keep their own version and publication date.
+- Review `platforms/flutter/CHANGELOG.md`, `platforms/python/merman/CHANGELOG.md`, `platforms/android/CHANGELOG.md`, and `platforms/apple/CHANGELOG.md` when their surfaces are in scope. Review `tools/vscode-extension/CHANGELOG.md` only for the extension's independent release. Do not create per-crate changelogs or copy the complete root entry into every package.
 - State installation, integration, migration, compatibility, or behavior changes users can act on.
 - Remove duplicate metadata and internal implementation detail.
 - Keep each Markdown paragraph or bullet on one physical line.

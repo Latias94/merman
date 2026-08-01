@@ -113,6 +113,18 @@ The gate discovers workspace members and validates their inherited package versi
 
 Keep the target Changelog entry marked `Unreleased` during ordinary preparation. Immediately before the immutable preflight, replace it with the intended tag date in `YYYY-MM-DD` form and verify that its version matches the workspace release authority. Do not tag an `Unreleased` entry or reuse a date from an abandoned release attempt.
 
+Treat the root `CHANGELOG.md` as the canonical project-wide release narrative and package changelogs as audience-specific projections of the same release delta. Update only the package changelogs for surfaces included in the release; do not copy the complete root entry or create one changelog per Rust crate.
+
+| Surface | Registry or audience behavior | Changelog source |
+| --- | --- | --- |
+| Flutter/Dart | pub.dev renders the package-root changelog as its Changelog tab | `platforms/flutter/CHANGELOG.md` |
+| Python | PyPI project metadata links Python users to the package changelog | `platforms/python/merman/CHANGELOG.md` |
+| Android | The Android package README links consumers to its JNI/AAR-specific history | `platforms/android/CHANGELOG.md` |
+| Apple | The Apple package README links consumers to its Swift/XCFramework-specific history | `platforms/apple/CHANGELOG.md` |
+| VS Code | The unpublished extension has an independent version and release boundary | `tools/vscode-extension/CHANGELOG.md` |
+
+For workspace-coupled packages, keep the target package entry at `Unreleased` during preparation and stamp it with the same intended tag date as the root entry immediately before immutable preflight. Each projection should contain only user-visible behavior, migrations, compatibility notes, and performance claims verified for that surface. Independently versioned surfaces keep their own version and publication date.
+
 README files are ordinary source documentation. Review their installation examples during release preflight, but `release-version.py` never rewrites them and no post-release mode reversal is required. Confirm publication through the owning package registry or artifact workflow before recommending a released install command.
 
 The unpublished VS Code extension, the Typst package wrapper, and `roughr-merman` own independent

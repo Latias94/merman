@@ -27,7 +27,7 @@ The practical upgrade rule is:
 | `@mermanjs/web/<subpath>` or `@mermanjs/web/pkg/**` | Replace the import with one standalone browser package. Subpaths and raw WASM files are no longer public API. |
 | Native C, Flutter, or Android bindings | Rebuild or upgrade the complete host package and migrate from ABI 2 to ABI 3. Reject an ABI mismatch during initialization. |
 | Python or Apple bindings | Upgrade the generated UniFFI wrapper and matching native artifact together; do not mix alpha.3 and alpha.4 components. |
-| Analysis, editor, or LSP APIs | Review the alpha.4 changelog and surface documentation. These contracts gained substantial typed diagnostics, document, snapshot, and capability changes. |
+| Analysis, editor, or LSP APIs | Follow the [Rust and embedding API migration](#rust-and-embedding-api-migration) section for exact type, method, ownership, and capability replacements. |
 | Node.js or SSR | Continue to invoke `merman-cli` as a subprocess. No in-process Node package is admitted for alpha.4. |
 | Typst | Treat it as an independent release track. The published `@preview/merman:0.2.0` package is not an alpha.4 artifact. |
 
@@ -158,6 +158,56 @@ measurement.
 Follow the [ABI 3 migration guide](../bindings/ABI3_MIGRATION.md) and the surface-specific Python,
 Flutter, Android, or Apple documentation. A channel listed in the repository is not proof that the
 alpha.4 artifact has already been published there.
+
+## Rust and embedding API migration
+
+The main changelog groups alpha.4 by user outcome. Source and embedding integrations should also apply the detailed replacements below; no deprecated aliases are retained unless this guide explicitly says otherwise.
+
+### Analysis and editor ownership
+
+- Rename Rust `AnalysisResult` to `AnalysisGeneration`, `Analyzer::analyze_result` to `Analyzer::analyze_generation`, and `analyze_document_result{,_shared}` to `analyze_document_generation{,_shared}`. Use `generation.project(&policy)` instead of direct `payload()` or `diagnostics()` access; `Analyzer::analyze()` remains the diagnostics-only payload path, and `Analyzer::analyze_facts()` owns serialized facts.
+- Match `AnalysisCaptureOutcome::Ready` / `Rejected` from rich Analyzer entry points, and match `DocumentAnalysisOutcome` from editor document builders. `DocumentWorkspace::upsert` now returns `Result<DocumentSnapshot, AnalysisRejection>`; cancellable entry points still wrap the outcome in `Result<_, AnalysisCancelled>`.
+- Obtain sealed `AnalysisGeneration` and `AnalyzedDiagram` values from Analyzer or document-analysis entry points instead of assembling fields, and use their read-only accessors instead of public fields. `DocumentSnapshot` and `FenceSnapshot` are also accessor-based; construct a snapshot with `DocumentSnapshot::try_from_analysis_generation(version, Arc<AnalysisGeneration>)`, whose URI and kind come from the generation's `SourceDescriptor`.
+- Replace public `AnalysisOptions` fields and struct literals with builders and accessors. Remove `parse` / `with_parse_options` because analysis now owns strict parser semantics; use `with_source`, `with_site_config`, `with_fixed_today`, `try_with_fixed_local_offset_minutes`, `with_runtime_policy`, `with_max_source_bytes`, `with_max_document_diagrams`, and `with_rule_config` as applicable. Inspect invalidation state through `snapshot_policy()`, `diagnostic_policy()`, and `resource_limits()`, and replace `snapshot_affecting_eq` with `left.snapshot_policy() == right.snapshot_policy()`.
+- Update custom `DiagramSemanticParser` overlays to accept `&ParseControl` and return `ParseControlResult<Result<Value>>`. Checkpoint cancellable work, return cancellation through the outer result, return Mermaid failures through the inner result, and handle `merman_core::Error::ParseCancelled` in exhaustive matches.
+- Analyzer entry points now honor `SourceDescriptor` kind directly: Markdown and MDX inputs use canonical fence extraction and `max_document_diagrams` admission instead of producing one whole-document Mermaid generation.
+- Existing `DiagnosticFix::new` calls continue to work, but direct struct literals must account for `edits: Arc<[DiagnosticFixEdit]>`. `AnalysisRuleConfig::with_rule_enabled`, `with_rule_disabled`, and `with_rule_severity` now return `Result<Self, AnalysisRuleConfigError>` and reject unknown or non-configurable rule ids.
+- Rename Rust `workspace_symbols` to `search_document_symbols` and one-shot Web/WASM `editorWorkspaceSymbols` to `editorSearchDocumentSymbols`; browser editor sessions expose `searchDocumentSymbols`. Remove uses of `workspace_symbols_for_snapshots`, `DocumentWorkspace::build_snapshot*`, and `DocumentWorkspace::snapshots`; use `upsert`, `DocumentWorkspace::build_analysis_context_with_shared_text`, or explicit per-document search according to the workflow.
+- Replace `Engine::parse_diagram_with_editor_facts_sync` with `parse_diagram_snapshot_sync` or `parse_diagram_snapshot_with_type_sync`. `parse_metadata{,_sync}` no longer accepts `ParseOptions` or returns `Option`; `Engine::parse` and the VS Code `merman.analysis.parse.suppress_errors` setting are removed.
+- Treat parser/editor fact structs as non-exhaustive. Construct `EditorSemanticSymbol`, `EditorSemanticFacts`, `FenceSemanticItem`, and `FenceReferenceGroup` through their constructors, `Default`, and `with_*` methods instead of struct literals.
+- The serialized `AnalysisFactsPayload` remains schema `1` but is parser-only: `fact_source: "text_scan"` is removed, unavailable bodies use `"unavailable"`, every semantic item includes `rename_policy`, and unsupported version discriminators are rejected before decoding the body.
+
+### LSP embedding
+
+- `MermanLanguageServer::service()` now returns `(MermanLspService, MermanClientSocket)` instead of tower-lsp's `(LspService<MermanLanguageServer>, ClientSocket)`. Drive the ordered service through `tower::Service<Request>`, call `MermanClientSocket::split()` once, and concurrently drive the returned `MermanRequestStream` and `MermanResponseSink`.
+- Enable the `stdio` feature explicitly when installing or building the bundled `merman-lsp` executable with `--no-default-features`. `stdio_server()` now returns Merman's bounded `StdioServer`; replace tower-lsp's `.concurrency_level(...)` with `.ordinary_concurrency_level(...)`, or call `serve_stdio(...)` for the complete lifecycle. Replace `LSP_HANDLER_CONCURRENCY` with the ordinary, control, and total concurrency constants; custom compatible services implement synchronous `StdioService::admit`.
+- Send `RULE_CATALOG_METHOD` and `CONFIG_SCHEMA_METHOD` through the ordered service instead of calling removed `MermanLanguageServer::rule_catalog()` or `config_schema()` helpers. Rust-only static consumers can call `RuleCatalogResponse::current()` and `ConfigSchemaResponse::current()`.
+
+### Rendering and option contracts
+
+- Replace public low-level `merman-render` `layout_parsed*`, `render_layouted_svg`, raw semantic/layout SVG helpers, debug wrappers, and per-family pass-through functions with `merman::svg::HeadlessRenderer`, `prepare_render_sync`, `layout_json_sync`, or `render_svg_sync`. Direct low-level integrations can use `merman_render::family::prepare` with one `RenderSession`.
+- Import ELK configuration and guarded pipeline entry points from the `merman-elk-layered` crate root; phase modules are private and require operation-seed resolution.
+- Configure text measurement, math, icons, clock, randomness, and resource policy through `RenderEnvironment`. Binding and Web JSON use `host_theme.theme_variables`, `environment.text_measurement`, and `environment.math_renderer`; `host_theme.themeVariables`, `layout.text_measurer`, and `layout.math_renderer` are rejected.
+- Replace field-based `RenderResourceLimits` with sealed `RenderResourcePolicy`. Select `interactive`, `constrained`, `trusted-native`, or `unbounded-for-trusted-input`, then apply validated overrides by stable limit id.
+- Implement custom wrapped text measurement through `measure_wrapped` using the complete `TextStyle`, including `font_style`. The `measure_wrapped_raw` and heuristic-only `wrap_text_lines_px` APIs are removed; use `wrap_text_lines_measurer` when callers need explicit wrapping.
+- Rename `LayoutOptions.viewport_width` / `viewport_height` and matching binding/Web fields to `container_width` / `container_height`; Typst uses `container-width` / `container-height`. CLI users continue to use `--width` / `--height`.
+- Remove `LayoutOptions::use_manatee_layout`; select the `layout-cytoscape` capability instead. Remove `FlowchartElkBackend`; Flowchart ELK always uses the Mermaid adapter and Eclipse ELK layered implementation.
+- Use documented kebab-case binding values such as `resvg-safe`, `strip-existing-important`, `trusted-native`, and `unbounded-for-trusted-input`; underscore and shorthand aliases are removed.
+
+### Web editor and measurement APIs
+
+- Replace `createBrowserTextMeasurer()` with `createBrowserTextMeasurementSession()`, retain the returned `measure` callback for the session lifetime, and call `dispose()` when the browser realm or session ends.
+- Rename `editorSemanticTokenLegend()` to `editorSemanticTokenDescriptor()` and decode the packed `Uint32Array` returned by `editorSemanticTokens()` against that generated descriptor.
+- Remove `selectedRegistryProfile()`, `bindingCapabilities()`, and any assumption that package identity or exported function names determine callable operations. Query `runtimeCatalog()` from the initialized artifact.
+
+### Smaller Rust renames
+
+| Alpha.3 | Alpha.4 |
+| --- | --- |
+| `merman_analysis::FenceDelimiter::len()` | `marker_len()` |
+| `merman_core::diagrams::flowchart::FlowchartV2Model` | `FlowchartModel` |
+
+The Mermaid `flowchart-v2` diagram id and compatibility layout JSON `FlowchartV2` variant key are unchanged.
 
 ## What the refactor changes for users
 
