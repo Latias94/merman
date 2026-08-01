@@ -1,14 +1,22 @@
-# Alpha.3 to Alpha.4 Refactoring Report
+# Alpha.3 to Alpha.4 Refactoring Evidence Report
+
+> [!IMPORTANT]
+> This is a historical engineering evidence checkpoint, not the rolling alpha.4 upgrade guide.
+> Its primary release-range measurements compare alpha.3 with `d2698d0a3`, while explicitly named
+> later commits are separate focused receipts. See the
+> [Alpha.3 to Alpha.4 upgrade guide](ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md) for audience-specific
+> migration steps. Regenerate release measurements against the final tagged commit.
 
 ## Scope and verdict
 
-This report compares `v0.8.0-alpha.3` (`56227a541011a3929b808bb3555d67372d630aae`)
+This report's primary revision comparison uses `v0.8.0-alpha.3`
+(`56227a541011a3929b808bb3555d67372d630aae`)
 with `d2698d0a365b905bb65a58a7690c74075878a4f9`, the alpha.4 candidate measured for this
 checkpoint.
 It was measured on an Apple M4 Pro with Rust 1.95.0, Cargo 1.95.0, Node 26.5.0, and
 the same local source corpus on 2026-07-27.
 
-The current post-optimization Merman/mmdr evidence is
+The later post-optimization Merman/mmdr evidence is
 [`renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md`](../performance/renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md).
 The alpha.3 comparisons and Mermaid.js measurements below remain fixed to `d2698d0a3`.
 The older mmdr aggregate below predates byte-identical fixture gating and includes different
@@ -24,7 +32,7 @@ It is not a universal size or performance reduction. Complete products now carry
 artifacts are larger. A pre-release benchmark pass also exposed a recursive clone of the full
 effective Mermaid configuration on every default/zero-seed SVG render. Commit `d2698d0a3`
 removed that fixed cost without changing hand-drawn seed semantics. After the repair, the
-minimal same-capability pipeline has a 1.12x median and 1.07x geometric-mean current/alpha.3
+minimal same-capability pipeline has a 1.12x median and 1.07x geometric-mean candidate/alpha.3
 ratio across 32 fixtures: 10 are faster, 22 are slower, and seven are within 5%. That is a
 substantial recovery, but not a universal native performance win. Remaining family-local
 regressions are recorded in
@@ -44,9 +52,9 @@ a claim that every diagram became 27.60% faster.
 | CLI default normal dependency closure | 387 package identities | 377 package identities | Ten fewer resolved normal dependencies despite the broader default capability contract. |
 | CLI lint/analysis binary | 25,477,648 bytes | 8,166,352 bytes | 67.95% smaller for lint/CI workloads. |
 | CLI lint normal dependency closure | 333 package identities | 123 package identities | 210 fewer resolved normal dependencies, or 63.06%. |
-| Browser full WASM | 6,911,512 bytes | 12,339,868 bytes | Not like-for-like: current full adds Cytoscape, math, and the expanded Mermaid 11.16 contract. |
+| Browser full WASM | 6,911,512 bytes | 12,339,868 bytes | Not like-for-like: the measured alpha.4 full product adds Cytoscape, math, and the expanded Mermaid 11.16 contract. |
 | Browser analysis WASM | 1,914,582 bytes | 3,373,026 bytes | 76.18% larger source rebuild; the analysis capability now covers the expanded semantic baseline. |
-| Current complete browser renderer | not comparable | 11,665,436 bytes | `@mermanjs/web-render` removes analysis, editor, and ASCII APIs while retaining SVG, Cytoscape, ELK, and math. |
+| Measured complete browser renderer | not comparable | 11,665,436 bytes | `@mermanjs/web-render` removes analysis, editor, and ASCII APIs while retaining SVG, Cytoscape, ELK, and math. |
 | Minimal native SVG end-to-end | baseline | median 1.12x alpha.3 | The shared configuration-clone regression is fixed; 10 of 32 fixtures are faster and seven are within 5%, with family-local hotspots still visible. |
 | Requirement focused repair | 274.84 us pre-fix | 198.98 us | Operation-scoped label preparation cuts 27.60% from the measured Requirement end-to-end path without changing public layout JSON. |
 
@@ -95,7 +103,7 @@ The public migration is mechanical where an old aggregate has a direct replaceme
 
 The old Cargo names have been removed; there are no compatibility aliases. Browser consumers
 must also replace historical `@mermanjs/web/<subpath>` or raw `pkg/**` imports with a standalone
-public package. There is no subpath or raw-WASM fallback, and the current `@mermanjs/web-render`
+public package. There is no subpath or raw-WASM fallback, and the measured `@mermanjs/web-render`
 is the complete SVG/layout/math product rather than a name-only replacement for an older basic
 render profile.
 
@@ -129,7 +137,7 @@ it must not be described as an upstream SVG parity claim.
 | --- | ---: | ---: | --- |
 | `cargo build --release -p merman-cli` | 32,194,272 | 36,925,360 | Default product grows 4,731,088 bytes while its capability contract also changes; this measurement does not isolate which additions account for those bytes. |
 | Unique normal `cargo tree` identities for default | 387 | 377 | The resolved package count falls by ten even though the linked capability set grows. |
-| Lean lint build | 25,477,648 | 8,166,352 | Alpha.3 `--no-default-features` still carried historical renderer/export/tool dependencies; current `--no-default-features --features analysis` does not. |
+| Lean lint build | 25,477,648 | 8,166,352 | Alpha.3 `--no-default-features` still carried historical renderer/export/tool dependencies; the alpha.4 candidate's `--no-default-features --features analysis` build does not. |
 | Unique normal `cargo tree` identities for lean lint | 333 | 123 | Measured from `cargo tree --locked --edges normal --prefix none --format '{p}' | sort -u`. |
 
 The complete CLI is the right choice for `mmdc`-style conversion, export, icons, and Markdown
@@ -140,7 +148,7 @@ closure was pure cost.
 
 | Artifact | Raw bytes | Gzip bytes | Brotli bytes | Contract |
 | --- | ---: | ---: | ---: | --- |
-| Alpha.3 `browser-full` | 6,911,512 | 2,641,193 | 1,946,384 | Historical full package; lacks the current complete SVG contract. |
+| Alpha.3 `browser-full` | 6,911,512 | 2,641,193 | 1,946,384 | Historical full package; lacks the alpha.4 complete SVG contract. |
 | Alpha.4 `@mermanjs/web` | 12,339,868 | 4,648,558 | 3,359,651 | Analysis, ASCII, editor, SVG, Cytoscape, ELK, and math. |
 | Alpha.3 analysis | 1,914,582 | 718,044 | 546,783 | Historical semantic-analysis profile. |
 | Alpha.4 `@mermanjs/web-analysis` | 3,373,026 | 1,270,087 | 970,361 | Browser diagnostics and semantic analysis only. |
@@ -148,17 +156,17 @@ closure was pure cost.
 | Alpha.4 `@mermanjs/web-editor` | 3,519,126 | 1,327,314 | 1,010,768 | Parser-backed editor intelligence plus analysis. |
 | Alpha.4 `@mermanjs/web-ascii` | 3,518,439 | 1,332,638 | 1,019,437 | ASCII output only. |
 
-The current renderer saves 674,432 raw bytes (5.47%) and 178,792 Brotli bytes (5.32%) against
-current full while retaining the complete SVG contract. This is a useful split for viewer-only
+The measured renderer saves 674,432 raw bytes (5.47%) and 178,792 Brotli bytes (5.32%) against
+the measured full product while retaining the complete SVG contract. This is a useful split for viewer-only
 browser applications, but it is intentionally not presented as a dramatic size win.
 
 The alpha.3-to-alpha.4 full and analysis rows are valuable cost evidence, not a like-for-like
-artifact-size regression gate. Mermaid 11.16 coverage and the current capability contracts changed
+artifact-size regression gate. Mermaid 11.16 coverage and the alpha.4 capability contracts changed
 what those packages promise.
 
 ## Performance evidence
 
-### Current Merman, Mermaid.js, and mermaid-rs-renderer
+### Historical Merman, Mermaid.js, and mermaid-rs-renderer checkpoint
 
 The detailed generated checkpoint is
 [`renderer_comparison_2026-07-27.md`](../performance/renderer_comparison_2026-07-27.md).
@@ -199,10 +207,10 @@ successful execution, but this historical version did not prove aligned fixture 
 or Mermaid-semantic equivalence for `mermaid-rs-renderer`. These timings are not a quality-adjusted
 winner. That distinction matters more than a single geometric mean.
 
-The post-Requirement long run provides the current native reference. It uses 30 samples, a
+The post-Requirement long run provides a later native reference. It uses 30 samples, a
 two-second warm-up, three-second measurement windows, and byte-identical input gating:
 
-| Current native reference | Result |
+| Later native reference | Result |
 | --- | ---: |
 | Byte-identical, jointly measured rows | 30 |
 | Merman faster / slower | 18 / 12 |
@@ -210,7 +218,7 @@ two-second warm-up, three-second measurement windows, and byte-identical input g
 | Geometric-mean ratio | 0.297x |
 | Rows above both 1.10x and 50 us | Requirement and Mindmap |
 
-Requirement's latest full standard row measures 196.96 us versus mmdr's 71.08 us. In the separate
+Requirement's later full standard row measures 196.96 us versus mmdr's 71.08 us. In the separate
 paired A/B lane, the repair reduced Merman from 274.84 us to 198.98 us.
 Mindmap measures 165.26 us versus 74.06 us, but Merman runs COSE-Bilkent while mmdr falls back to
 radial placement. Complex Flowchart cases remain Merman's strongest measured scaling result. None
@@ -221,7 +229,7 @@ of these ratios prove equivalent layouts, DOM, sanitization, or Mermaid release 
 The 34 `standard` fixture files are byte-for-byte unchanged across the range. The comparison used
 two lanes so product-default cost is not confused with an implementation-only delta:
 
-| Revision A/B lane | Shared rows | Median current / alpha.3 | Geometric mean | Current faster / slower |
+| Revision A/B lane | Shared rows | Median candidate / alpha.3 | Geometric mean | Candidate faster / slower |
 | --- | ---: | ---: | ---: | ---: |
 | Revision-complete SVG product | 34 | 1.10x | 1.09x | 13 / 21 |
 | Minimal same-capability SVG | 32 | 1.12x | 1.07x | 10 / 22 |
@@ -250,7 +258,7 @@ regressions are Kanban (4.08x), Requirement (2.25x), Info (1.99x), Packet (1.93x
 An additional focused run used 30 samples, a one-second warm-up, and two-second measurement
 windows to verify the repaired small-diagram path:
 
-| Stage | Info medium: alpha.3 -> current | Packet medium: alpha.3 -> current |
+| Stage | Info medium: alpha.3 -> candidate | Packet medium: alpha.3 -> candidate |
 | --- | ---: | ---: |
 | SVG emit | 1.68 us -> 2.37 us (1.41x) | 2.28 us -> 3.17 us (1.39x) |
 | End-to-end | 2.45 us -> 4.84 us (1.97x) | 3.60 us -> 6.87 us (1.91x) |
@@ -324,7 +332,7 @@ of warm-up, and three-second measurement windows:
 | SVG emission | 137.43 us | 54.17 us | -60.59% |
 | End-to-end | 274.84 us | 198.98 us | -27.60% |
 
-The latest stage comparison at `75c9fd156` against the same `mermaid-rs-renderer` revision measures
+The stage comparison at `75c9fd156` against the same `mermaid-rs-renderer` revision measures
 0.72x parse, 2.81x layout, 3.85x SVG emission, and 2.81x end-to-end. This closes the
 duplicate-measurement cause
 but not the whole family gap: Dugong layout and SVG DOM construction remain separate profiling
@@ -359,7 +367,7 @@ The warm boundary includes the public facade call plus SHA-256 and byte-length e
 cold and concurrent boundaries stop before that projection. These are harness-level product
 operation timings, not isolated renderer CPU measurements. The transport remains unselected because
 the declared target matrix is incomplete; the 426 differences are unattributed report residuals,
-not a semantic/structure failure or a current admission gate.
+not a semantic/structure failure or an alpha.4 admission gate.
 
 A separate synchronous N-API run compared the private Merman candidate directly with published
 `@xingwangzhe/satteri-mermaid@0.7.1`, which wraps mmdr 0.3.1. Across 30 shared source arguments that
@@ -373,7 +381,7 @@ runtime. It does not isolate renderer/layout cost from Merman's facade, marshall
 allocation, build-profile, or output differences. In the direct comparison, all 30 raw, structure,
 and geometry digests differed.
 
-The native size difference remains real. Satteri's macOS arm64 addon is 4,206,544 bytes; the latest
+The native size difference remains real. Satteri's macOS arm64 addon is 4,206,544 bytes; the measured
 source-bound transport artifact is 21,223,312 bytes. A separate `e311f9e6a` size-control experiment
 measured a 21,256,336-byte complete baseline and a 15,771,392-byte SVG-only lane, with Cytoscape,
 ELK, and math adding 413,392, 1,257,136, and 3,863,920 bytes within Merman. In that same experiment,
@@ -419,26 +427,26 @@ as semantic parity evidence.
 | LSP process | `merman-lsp` | Published binary after release, or `--no-default-features --features stdio` | The LSP executable requires the `stdio` leaf; use artifact profile `lsp-stdio-release` for the exact release contract. |
 | Markdown or MDX conversion | `merman-cli` | `--no-default-features --features markdown`; select `parallel-markdown` instead only after throughput measurement | `markdown` already implies SVG; avoid Rayon unless batch conversion needs it. |
 | Terminal preview | `merman` or `merman-cli` | Disable defaults and select `ascii`; query `ascii_capabilities` | No SVG backend is required, but only 14 families are admitted and support is graded Full, Partial, or Summary. SVG admission does not imply ASCII support. |
-| Node SSR or a Node static-site generator | Current CLI subprocess | Do not depend on private `@mermanjs/node` yet | There is no admitted in-process Node package; the candidate still lacks reproducible all-target admission. |
-| Typst | `@preview/merman:0.2.0` | Published Typst package on its independent version track | The current package embeds Merman alpha.3 and its `typst-wasm` profile has no math; it is not an alpha.4 artifact. |
+| Node SSR or a Node static-site generator | CLI subprocess | Do not depend on private `@mermanjs/node` yet | There is no admitted in-process Node package; the candidate still lacks reproducible all-target admission. |
+| Typst | `@preview/merman:0.2.0` | Published Typst package on its independent version track | The published package embeds Merman alpha.3 and its `typst-wasm` profile has no math; it is not an alpha.4 artifact. |
 | Python or Flutter embedding after alpha.4 publishes | `merman` on PyPI or pub.dev | Planned full ABI 3 package; verify the installed version before use | The target contract has no slim prebuilt SKU; a declared channel is not proof that this candidate is already live. |
 | Android or Apple embedding after alpha.4 publishes | GitHub Release AAR or XCFramework | Planned full ABI 3 artifact-only output | Maven Central and a remote SwiftPM binary are not published channels; verify the release asset version. |
 | C ABI embedding after alpha.4 publishes | `merman-ffi` from crates.io | Build the source crate and verify its version | Its artifact profile proves reproducible reference libraries; it is not a downloadable prebuilt SDK. |
 
-## Risks and next work
+## Evidence status and release refresh
 
-1. Profile the remaining family-local gaps: compare Mindmap only under the same layout algorithm,
-   and split residual Requirement layout from SVG construction. Treat the residual Info/Packet
-   parse, layout, and session fixed costs as a separate small-diagram target rather than reopening
-   either repaired path.
-2. Run the official locked Node harness on every declared target. Investigate the 426 geometry
-   digest differences before admission, and retain the trusted-corpus/raw-SVG schema-2 evidence
-   checks.
-3. Treat browser full and analysis growth as an explicit release cost. A future size win requires
-   a same-capability baseline, not comparison with the historical smaller contract.
-4. Keep the three-runner benchmark honest: it compares native Merman and mmdr with browser
-   Mermaid.js. Browser-WASM needs its own same-host, same-browser harness before making Web
-   throughput claims.
+This report freezes named historical checkpoints. The rolling performance owner is
+[`PERF_PLAN.md`](../performance/PERF_PLAN.md), which records completed Requirement, Mindmap, and
+Kanban work as well as rejected hypotheses and the remaining Flowchart and comparison work.
+
+Before the final alpha.4 release report:
+
+1. rerun the complete-product and minimal same-capability alpha.3 A/B lanes against the final
+   release commit, including Class, Sequence, Requirement, and Mindmap attribution;
+2. refresh artifact sizes and dependency closures from the same target revision;
+3. attach the exact host, toolchain, recipe, fixture, and source-commit ledger; and
+4. keep Node and browser-WASM throughput claims explicitly unproven until their own admission
+   evidence exists.
 
 ## Changelog extraction
 

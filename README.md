@@ -186,6 +186,7 @@ See the current [alignment dashboard](https://github.com/Latias94/merman/blob/ma
 
 ## Documentation
 
+- [Upgrade from 0.8.0-alpha.3 to 0.8.0-alpha.4](https://github.com/Latias94/merman/blob/main/docs/release/ALPHA3_TO_ALPHA4_UPGRADE_GUIDE.md)
 - [Choose capabilities and build profiles](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md)
 - [Diagram coverage and parity](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 - [CLI reference](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md)
