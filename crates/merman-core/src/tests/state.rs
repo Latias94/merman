@@ -63,6 +63,19 @@ fn parse_diagram_state_v2_multibyte_ids_do_not_panic() {
 }
 
 #[test]
+fn parse_diagram_state_v2_preserves_colons_in_transition_labels() {
+    let res = block_on(Engine::new().parse_diagram(
+        r#"stateDiagram-v2
+Active --> Deleted: DELETE /users/:id"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(res.model["edges"][0]["label"], json!("DELETE /users/:id"));
+}
+
+#[test]
 fn parse_diagram_state_v2_groups_and_unsafe_ids() {
     let engine = Engine::new();
 
