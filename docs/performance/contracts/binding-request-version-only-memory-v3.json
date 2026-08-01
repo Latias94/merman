@@ -18,11 +18,11 @@
     "inputs": [
       {
         "path": "crates/merman-bindings-core/benches/request_overlay_memory.rs",
-        "sha256": "66532585f1c1f1d3c0ebf6f3674b4d95c1021e780ddeb46a42876e2e0c0b4398"
+        "sha256": "190cc268ae0fd3d57b9996ed399366a750fbb005841efec86ec44a83281d4293"
       },
       {
         "path": "crates/merman-bindings-core/benches/request_overlay_memory/allocator.rs",
-        "sha256": "7246b4ce80e9500c5d3069afe45d50792990153b42d8c426bae074bcdf47f42d"
+        "sha256": "c3bf993e8075f399a4e3b8c7c58d3b3753d20e73fffa191c0708f522a82727fb"
       },
       {
         "path": "crates/merman-bindings-core/benches/fixtures/info_fixed_cost.mmd",
