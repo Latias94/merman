@@ -194,13 +194,13 @@ fn typst_options_json(options_json: &[u8]) -> Result<Vec<u8>, merman_bindings_co
                 Value::String("deterministic".to_string()),
             );
         }
-        Some(_) => {}
-        None => {
+        Some(Value::Null) | None => {
             root.insert(
                 "runtime_policy".to_string(),
                 Value::String("deterministic".to_string()),
             );
         }
+        Some(_) => {}
     }
 
     if typst_capability_surface()
@@ -210,6 +210,9 @@ fn typst_options_json(options_json: &[u8]) -> Result<Vec<u8>, merman_bindings_co
         let environment = root
             .entry("environment".to_string())
             .or_insert_with(|| json!({}));
+        if environment.is_null() {
+            *environment = json!({});
+        }
         let environment = environment.as_object_mut().ok_or_else(|| {
             merman_bindings_core::BindingError::new(
                 merman_bindings_core::BindingStatus::OptionsJsonError,
@@ -354,6 +357,27 @@ mod tests {
             .runtime_capabilities()
             .has_operation("svg")
         {
+            assert_eq!(payload["environment"]["math_renderer"], "none");
+        } else {
+            assert!(payload.get("environment").is_none());
+        }
+    }
+
+    #[test]
+    fn typst_transport_treats_null_target_policy_fields_as_unspecified() {
+        let has_svg = typst_capability_surface()
+            .runtime_capabilities()
+            .has_operation("svg");
+        let input = if has_svg {
+            br#"{"runtime_policy":null,"environment":null}"#.as_slice()
+        } else {
+            br#"{"runtime_policy":null}"#.as_slice()
+        };
+        let options = typst_options_json(input).expect("null transport policy fields");
+        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+
+        assert_eq!(payload["runtime_policy"], "deterministic");
+        if has_svg {
             assert_eq!(payload["environment"]["math_renderer"], "none");
         } else {
             assert!(payload.get("environment").is_none());
