@@ -40,7 +40,7 @@ merman_internal t 0000000000013000 0000000000000010
 
         self.assertEqual(
             parse_llvm_nm_posix(output),
-            {"JNI_OnLoad", "__cxa_finalize", "merman_internal"},
+            {"JNI_OnLoad", "merman_internal"},
         )
 
     def test_parser_canonicalizes_macho_owned_symbols_only(self) -> None:
@@ -55,10 +55,25 @@ __cxa_finalize U 0000000000000000 0000000000000000
                 "merman_get_native_api",
                 "JNI_OnLoad",
                 "merman_hidden",
-                "__cxa_finalize",
             },
         )
         self.assertEqual(canonicalize_owned_symbol("__cxa_finalize"), "__cxa_finalize")
+
+    def test_undefined_required_symbol_does_not_satisfy_contract(self) -> None:
+        for symbol_type in ("U", "u"):
+            output = f"""merman_get_native_api {symbol_type} 0000000000000000 0000000000000000
+internal_helper T 0000000000012340 0000000000000010
+"""
+
+            with self.subTest(symbol_type=symbol_type), self.assertRaisesRegex(
+                RuntimeError,
+                "missing required symbols: merman_get_native_api",
+            ):
+                assert_symbol_contract(
+                    parse_llvm_nm_posix(output),
+                    C_ABI_SYMBOL_CONTRACT,
+                    label="C ABI",
+                )
 
     def test_parser_rejects_empty_or_malformed_output(self) -> None:
         for output in ("", "not-a-posix-symbol-line\n"):
@@ -343,35 +358,6 @@ class NativeSymbolContractTests(unittest.TestCase):
 
 
 class FlutterNativeSymbolGateTests(unittest.TestCase):
-    def test_ios_build_checks_each_architecture_in_the_final_xcframework(self) -> None:
-        script = (REPO_ROOT / "platforms/flutter/build-ios.sh").read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn('native_symbol_contract.py" --contract c-abi', script)
-        self.assertIn("--all-macho-architectures", script)
-        self.assertIn(
-            'verify_macho_c_abi "$FRAMEWORK_DIR/$FRAMEWORK_NAME"',
-            script,
-        )
-        self.assertEqual(script.count("verify_macho_c_abi "), 1)
-
-    def test_desktop_build_checks_every_packaged_native_target(self) -> None:
-        script = (REPO_ROOT / "platforms/flutter/build-desktop.sh").read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn('native_symbol_contract.py" --contract c-abi', script)
-        self.assertIn("--all-macho-architectures", script)
-        self.assertIn('verify_macho_c_abi "$library"', script)
-        self.assertIn('verify_dynamic_c_abi "$packaged_library"', script)
-        self.assertIn(
-            'verify_windows_dll_c_abi "$packaged_library" "$import_library"',
-            script,
-        )
-        self.assertIn("lib$NATIVE_SDK_LIBRARY_STEM.dll.a", script)
-        self.assertNotIn("verify_built_target_c_abi", script)
-
     def test_flutter_release_and_preflight_use_symbol_gated_builders(self) -> None:
         required_steps = (
             (

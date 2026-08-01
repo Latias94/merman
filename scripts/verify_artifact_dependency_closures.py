@@ -44,6 +44,7 @@ CARGO_DEDUPLICATION_SUFFIX = " (*)"
 CARGO_PROC_MACRO_ANNOTATION = " (proc-macro)"
 LINUX_REFERENCE_SCOPE = "linux-reference"
 PROFILE_TARGET_SCOPE = "profile-target"
+RESOLVED_REPO_ROOT = REPO_ROOT.resolve()
 
 
 @dataclass(frozen=True)
@@ -78,11 +79,23 @@ class VerificationCase:
 
 @dataclass(frozen=True)
 class DependencyClosure:
-    packages: frozenset[str]
-    features_by_package: Mapping[str, frozenset[str]]
     features_by_package_identity: Mapping[
         tuple[str, str, str], frozenset[str]
     ]
+
+    @property
+    def packages(self) -> frozenset[str]:
+        return frozenset(name for name, _version, _source in self.features_by_package_identity)
+
+    @property
+    def features_by_package(self) -> Mapping[str, frozenset[str]]:
+        merged: dict[str, set[str]] = {}
+        for (name, _version, _source), package_features in self.features_by_package_identity.items():
+            merged.setdefault(name, set()).update(package_features)
+        return {
+            name: frozenset(package_features)
+            for name, package_features in sorted(merged.items())
+        }
 
 
 @dataclass(frozen=True)
@@ -451,8 +464,6 @@ def cargo_tree_command(case: VerificationCase) -> list[str]:
 
 def parse_cargo_tree(output: str) -> DependencyClosure:
     """Parse the marker-delimited Cargo tree emitted by this verifier."""
-    packages: set[str] = set()
-    features: dict[str, set[str]] = {}
     identity_features: dict[tuple[str, str, str], set[str]] = {}
     malformed: list[str] = []
 
@@ -480,7 +491,6 @@ def parse_cargo_tree(output: str) -> DependencyClosure:
         except ValueError as error:
             malformed.append(f"line {line_number} {error}")
             continue
-        packages.add(package)
         parsed_features = {
             feature.strip()
             for feature in raw_features.removesuffix(
@@ -488,22 +498,16 @@ def parse_cargo_tree(output: str) -> DependencyClosure:
             ).split(",")
             if feature.strip()
         }
-        features.setdefault(package, set()).update(parsed_features)
         identity_features.setdefault((package, version, source), set()).update(
             parsed_features
         )
 
     if malformed:
         raise ClosureVerificationError("; ".join(malformed))
-    if not packages:
+    if not identity_features:
         raise ClosureVerificationError("cargo tree produced no dependency packages")
 
     return DependencyClosure(
-        packages=frozenset(packages),
-        features_by_package={
-            package: frozenset(package_features)
-            for package, package_features in sorted(features.items())
-        },
         features_by_package_identity={
             package_id: frozenset(package_features)
             for package_id, package_features in sorted(identity_features.items())
@@ -534,7 +538,7 @@ def _normalize_cargo_source(annotations: str) -> str:
     if path.is_absolute():
         resolved_path = path.resolve()
         try:
-            relative_path = resolved_path.relative_to(REPO_ROOT.resolve())
+            relative_path = resolved_path.relative_to(RESOLVED_REPO_ROOT)
         except ValueError:
             return f"path+file://{resolved_path.as_posix()}"
         return f"path+workspace://{relative_path.as_posix()}"
@@ -655,6 +659,7 @@ def verify_cases(
         tuple[str, ...],
         subprocess.CompletedProcess[str],
     ] = {}
+    command_closures: dict[tuple[str, ...], DependencyClosure] = {}
 
     for case in cases:
         context = (
@@ -669,14 +674,17 @@ def verify_cases(
             if completed is None:
                 completed = runner(command)
                 command_results[command_key] = completed
-            if completed.returncode != 0:
-                stderr = (completed.stderr or "").strip() or "<empty stderr>"
-                raise ClosureVerificationError(
-                    f"cargo tree exited with {completed.returncode}: {stderr}"
-                )
-            if not isinstance(completed.stdout, str):
-                raise ClosureVerificationError("cargo tree stdout was not text")
-            closure = parse_cargo_tree(completed.stdout)
+            closure = command_closures.get(command_key)
+            if closure is None:
+                if completed.returncode != 0:
+                    stderr = (completed.stderr or "").strip() or "<empty stderr>"
+                    raise ClosureVerificationError(
+                        f"cargo tree exited with {completed.returncode}: {stderr}"
+                    )
+                if not isinstance(completed.stdout, str):
+                    raise ClosureVerificationError("cargo tree stdout was not text")
+                closure = parse_cargo_tree(completed.stdout)
+                command_closures[command_key] = closure
             enforce_case_fingerprint = enforce_fingerprints and (
                 case.recipe.build_target_kind != "host"
                 or running_host_target == case.target

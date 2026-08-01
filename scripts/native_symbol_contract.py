@@ -70,6 +70,8 @@ def parse_llvm_nm_posix(output: str) -> set[str]:
         if len(fields) < 2 or len(fields[1]) != 1:
             malformed.append(line_number)
             continue
+        if fields[1] in {"U", "u"}:
+            continue
         symbols.add(canonicalize_owned_symbol(fields[0]))
     if malformed:
         rendered = ", ".join(str(line) for line in malformed)

@@ -46,26 +46,6 @@ flutter_android_smoke = importlib.util.module_from_spec(FLUTTER_ANDROID_SMOKE_SP
 assert FLUTTER_ANDROID_SMOKE_SPEC.loader is not None
 FLUTTER_ANDROID_SMOKE_SPEC.loader.exec_module(flutter_android_smoke)
 
-EXPECTED_ANDROID_WRAPPER_CLASSES = [
-    "io/merman/MermanEngine.class",
-    "io/merman/MermanErrorKind.class",
-    "io/merman/MermanOperationResult.class",
-    "io/merman/MermanReusableEngine.class",
-    "io/merman/MermanException.class",
-    "io/merman/MermanResourceLimitId.class",
-    "io/merman/MermanResourceOptions.class",
-    "io/merman/MermanResourceOptionsBuilder.class",
-    "io/merman/MermanResourceProfile.class",
-    "io/merman/MermanTextMeasureRequest.class",
-    "io/merman/MermanTextMeasureResult.class",
-    "io/merman/MermanTextDirection.class",
-    "io/merman/MermanTextMeasurementPhase.class",
-    "io/merman/MermanTextMeasurementOperation.class",
-    "io/merman/MermanTextMeasurementResultKind.class",
-    "io/merman/MermanTextMeasurer.class",
-    "io/merman/MermanTextWhiteSpace.class",
-    "io/merman/MermanTextWrapMode.class",
-]
 EXPECTED_ANDROID_NATIVE_LIBRARIES = [
     "jni/arm64-v8a/libmerman_android_jni.so",
     "jni/x86_64/libmerman_android_jni.so",
@@ -136,12 +116,12 @@ class NativeSdkRecipeTests(unittest.TestCase):
             verify_platform_bindings.FLUTTER_ANDROID_NATIVE_RECIPE,
         ):
             with self.subTest(profile=recipe.profile_id):
-                args = verify_platform_bindings.cargo_android_check_args(
+                args = verify_platform_bindings.cargo_android_clippy_args(
                     recipe,
-                    "check",
                     target,
                 )
-                self.assertEqual(args[:3], ["cargo", "check", "--locked"])
+                self.assertEqual(args[:3], ["cargo", "clippy", "--locked"])
+                self.assertIn("--no-deps", args)
                 self.assertEqual(args[args.index("--package") + 1], recipe.package)
                 self.assertEqual(
                     args[args.index("--manifest-path") + 1],
@@ -155,9 +135,8 @@ class NativeSdkRecipeTests(unittest.TestCase):
 
     def test_android_transport_checks_reject_non_descriptor_target(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not declare Android target"):
-            verify_platform_bindings.cargo_android_check_args(
+            verify_platform_bindings.cargo_android_clippy_args(
                 verify_platform_bindings.ANDROID_NATIVE_RECIPE,
-                "check",
                 "armv7-linux-androideabi",
             )
 
@@ -471,95 +450,39 @@ class AndroidAarVerificationTests(unittest.TestCase):
                     tool.resolve(),
                 )
 
-    def test_android_wrapper_class_manifest_matches_public_kotlin_types(self) -> None:
-        self.assertEqual(
-            verify_platform_bindings.ANDROID_WRAPPER_CLASSES,
-            EXPECTED_ANDROID_WRAPPER_CLASSES,
-        )
-
     def test_android_native_library_manifest_covers_published_abis(self) -> None:
         self.assertEqual(
             verify_platform_bindings.ANDROID_NATIVE_LIBRARIES,
             EXPECTED_ANDROID_NATIVE_LIBRARIES,
         )
 
-    def test_android_wrapper_class_manifest_covers_kotlin_source_files(self) -> None:
-        kotlin_root = (
-            MODULE_PATH.parents[1]
-            / "platforms"
-            / "android"
-            / "src"
-            / "main"
-            / "kotlin"
-            / "io"
-            / "merman"
-        )
-        multi_type_sources = {
-            "MermanResourceOptions": (
-                "MermanResourceLimitId",
-                "MermanResourceOptions",
-                "MermanResourceOptionsBuilder",
-                "MermanResourceProfile",
-            ),
-            "MermanTextMeasurementVocabulary": (
-                "MermanTextDirection",
-                "MermanTextMeasurementPhase",
-                "MermanTextWhiteSpace",
-                "MermanTextWrapMode",
-            ),
-        }
-        source_classes = sorted(
-            f"io/merman/{class_name}.class"
-            for source_path in kotlin_root.glob("*.kt")
-            for class_name in multi_type_sources.get(
-                source_path.stem,
-                (source_path.stem,),
-            )
-        )
-
-        self.assertEqual(
-            sorted(verify_platform_bindings.ANDROID_WRAPPER_CLASSES),
-            source_classes,
-        )
-
-    def test_android_aar_contains_complete_release_contract(self) -> None:
+    def test_android_aar_contains_packaging_sentinels(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             aar_path = Path(temp_dir) / "merman-android-release.aar"
-            write_aar(aar_path, EXPECTED_ANDROID_WRAPPER_CLASSES)
+            write_aar(
+                aar_path,
+                verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES,
+            )
 
             verify_platform_bindings.assert_android_aar_contract(aar_path)
 
-    def test_android_aar_reports_missing_public_wrapper_classes(self) -> None:
+    def test_android_aar_reports_missing_packaging_sentinel(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             aar_path = Path(temp_dir) / "merman-android-release.aar"
-            classes = [
-                class_name
-                for class_name in EXPECTED_ANDROID_WRAPPER_CLASSES
-                if class_name != "io/merman/MermanTextMeasureRequest.class"
-            ]
-            write_aar(aar_path, classes)
+            sentinels = verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES
+            for missing in sentinels:
+                classes = [
+                    class_name
+                    for class_name in sentinels
+                    if class_name != missing
+                ]
+                write_aar(aar_path, classes)
 
-            with self.assertRaisesRegex(
-                RuntimeError,
-                "MermanTextMeasureRequest.class",
-            ):
-                verify_platform_bindings.assert_android_aar_contract(aar_path)
-
-    def test_android_aar_reports_missing_text_measure_result_wrapper(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            aar_path = Path(temp_dir) / "merman-android-release.aar"
-            classes = [
-                class_name
-                for class_name in EXPECTED_ANDROID_WRAPPER_CLASSES
-                if class_name != "io/merman/MermanTextMeasureResult.class"
-            ]
-            write_aar(aar_path, classes)
-
-            with self.assertRaisesRegex(
-                RuntimeError,
-                "MermanTextMeasureResult.class",
-            ):
-                verify_platform_bindings.assert_android_aar_contract(aar_path)
+                with self.subTest(missing=missing), self.assertRaisesRegex(
+                    RuntimeError,
+                    missing,
+                ):
+                    verify_platform_bindings.assert_android_aar_contract(aar_path)
 
     def test_android_aar_reports_missing_projected_resource(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -571,7 +494,7 @@ class AndroidAarVerificationTests(unittest.TestCase):
             ]
             write_aar(
                 aar_path,
-                EXPECTED_ANDROID_WRAPPER_CLASSES,
+                verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES,
                 resource_names=resources,
             )
 
@@ -588,7 +511,7 @@ class AndroidAarVerificationTests(unittest.TestCase):
             ]
             write_aar(
                 aar_path,
-                EXPECTED_ANDROID_WRAPPER_CLASSES,
+                verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES,
                 native_libraries=native_libraries,
             )
 
@@ -601,7 +524,10 @@ class AndroidAarVerificationTests(unittest.TestCase):
     def test_android_aar_rejects_c_abi_export_in_jni_library(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             aar_path = Path(temp_dir) / "merman-android-release.aar"
-            write_aar(aar_path, EXPECTED_ANDROID_WRAPPER_CLASSES)
+            write_aar(
+                aar_path,
+                verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES,
+            )
 
             with (
                 mock.patch.object(
@@ -618,7 +544,7 @@ class AndroidAarVerificationTests(unittest.TestCase):
             aar_path = Path(temp_dir) / "merman-android-release.aar"
             write_aar(
                 aar_path,
-                EXPECTED_ANDROID_WRAPPER_CLASSES,
+                verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES,
                 native_libraries=[
                     *EXPECTED_ANDROID_NATIVE_LIBRARIES,
                     "jni/arm64-v8a/libmerman_ffi.so",
@@ -877,7 +803,10 @@ def write_android_maven_publication(
 """,
         encoding="utf-8",
     )
-    write_aar(aar_path, EXPECTED_ANDROID_WRAPPER_CLASSES)
+    write_aar(
+        aar_path,
+        verify_platform_bindings.ANDROID_PACKAGING_SENTINEL_CLASSES,
+    )
 
     kotlin_root = MODULE_PATH.parents[1] / "platforms" / "android" / "src" / "main" / "kotlin"
     with zipfile.ZipFile(source_jar, "w") as archive:

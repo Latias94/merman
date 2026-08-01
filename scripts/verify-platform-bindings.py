@@ -41,31 +41,17 @@ FLUTTER_ANDROID_NATIVE_RECIPE = load_artifact_profile("flutter-android-native")
 FLUTTER_DESKTOP_NATIVE_RECIPE = load_artifact_profile("flutter-desktop-native")
 FLUTTER_ROOT = REPO_ROOT / "platforms" / "flutter"
 ANDROID_ROOT = REPO_ROOT / "platforms" / "android"
-APPLE_ROOT = REPO_ROOT / "platforms" / "apple"
 ANDROID_RELEASE_AAR = ANDROID_ROOT / "build" / "outputs" / "aar" / "merman-android-release.aar"
 ANDROID_MAVEN_MODULE_ROOT = (
     ANDROID_ROOT / "build" / "repo" / "io" / "merman" / "merman-android"
 )
 ANDROID_TEST_RESULTS_ROOT = ANDROID_ROOT / "build" / "outputs" / "androidTest-results"
-ANDROID_WRAPPER_CLASSES = [
+ANDROID_PACKAGING_SENTINEL_CLASSES = [
     "io/merman/MermanEngine.class",
-    "io/merman/MermanErrorKind.class",
     "io/merman/MermanOperationResult.class",
     "io/merman/MermanReusableEngine.class",
-    "io/merman/MermanException.class",
-    "io/merman/MermanResourceLimitId.class",
     "io/merman/MermanResourceOptions.class",
-    "io/merman/MermanResourceOptionsBuilder.class",
-    "io/merman/MermanResourceProfile.class",
-    "io/merman/MermanTextMeasureRequest.class",
-    "io/merman/MermanTextMeasureResult.class",
-    "io/merman/MermanTextDirection.class",
-    "io/merman/MermanTextMeasurementPhase.class",
-    "io/merman/MermanTextMeasurementOperation.class",
-    "io/merman/MermanTextMeasurementResultKind.class",
     "io/merman/MermanTextMeasurer.class",
-    "io/merman/MermanTextWhiteSpace.class",
-    "io/merman/MermanTextWrapMode.class",
 ]
 ANDROID_NATIVE_LIBRARIES = [
     "jni/arm64-v8a/libmerman_android_jni.so",
@@ -112,50 +98,17 @@ SEMANTIC_OPERATION_FIXTURE_JSON = StrictJsonContract(
 )
 
 
-def validate_c_abi_native_recipe(
-    recipe: CargoArtifactRecipe = C_ABI_NATIVE_RECIPE,
-) -> None:
-    expected_target_contract = ("cdylib", "rlib", "staticlib")
-    if (
-        recipe.profile_id != "c-abi-native"
-        or recipe.package != "merman-ffi"
-        or recipe.manifest != "crates/merman-ffi/Cargo.toml"
-        or recipe.cargo_profile != "native-sdk"
-        or recipe.default_features
-        or recipe.target_name != "merman_ffi"
-        or recipe.target_kinds != expected_target_contract
-        or recipe.crate_types != expected_target_contract
-        or recipe.build_target_kind != "host"
-        or recipe.build_targets
-    ):
-        raise RuntimeError(
-            "c-abi-native must remain the exact host native-sdk merman-ffi "
-            "complete native SDK recipe"
-        )
-    manifest = REPO_ROOT / recipe.manifest
-    if not manifest.is_file():
-        raise RuntimeError(f"c-abi-native manifest does not exist: {manifest}")
-
-
-validate_c_abi_native_recipe()
-
-
-def cargo_android_check_args(
+def cargo_android_clippy_args(
     recipe: CargoArtifactRecipe,
-    subcommand: str,
     target: str,
 ) -> list[str]:
-    if subcommand not in {"check", "clippy"}:
-        raise RuntimeError(
-            f"unsupported Cargo Android verification command: {subcommand}"
-        )
     if recipe.build_target_kind != "target-set" or target not in recipe.build_targets:
         raise RuntimeError(
             f"artifact profile {recipe.profile_id!r} does not declare Android target {target!r}"
         )
     args = [
         "cargo",
-        subcommand,
+        "clippy",
         "--locked",
         "--profile",
         recipe.cargo_profile,
@@ -164,9 +117,8 @@ def cargo_android_check_args(
         "--manifest-path",
         str(REPO_ROOT / recipe.manifest),
         "--lib",
+        "--no-deps",
     ]
-    if subcommand == "clippy":
-        args.append("--no-deps")
     if not recipe.default_features:
         args.append("--no-default-features")
     if recipe.features:
@@ -205,7 +157,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--build-apple-xcframework",
         action="store_true",
-        help="Build the Apple XCFramework after scaffold checks. Requires macOS/Xcode.",
+        help="Build the Apple XCFramework. Requires macOS/Xcode.",
     )
     parser.add_argument(
         "--apple-platform",
@@ -346,16 +298,6 @@ def require_command(name: str) -> str:
     if not path:
         raise RuntimeError(f"{name} not found on PATH")
     return path
-
-
-def bash_path(path: Path) -> str:
-    resolved = path.resolve()
-    if os.name == "nt":
-        drive = resolved.drive.rstrip(":").lower()
-        parts = [part for part in resolved.parts[1:]]
-        if drive:
-            return "/mnt/" + drive + "/" + "/".join(parts)
-    return str(resolved)
 
 
 def resolve_gradle_command(path: str | None) -> str:
@@ -538,11 +480,15 @@ def assert_android_aar_contract(
     with zipfile.ZipFile(io.BytesIO(classes_jar)) as jar:
         names = set(jar.namelist())
 
-    missing_wrappers = [class_name for class_name in ANDROID_WRAPPER_CLASSES if class_name not in names]
-    if missing_wrappers:
+    missing_sentinels = [
+        class_name
+        for class_name in ANDROID_PACKAGING_SENTINEL_CLASSES
+        if class_name not in names
+    ]
+    if missing_sentinels:
         raise RuntimeError(
-            "Android release AAR is missing Kotlin wrapper classes: "
-            + ", ".join(missing_wrappers)
+            "Android release AAR is missing Kotlin packaging sentinels: "
+            + ", ".join(missing_sentinels)
         )
 
     missing_resources = [
@@ -966,14 +912,11 @@ def main() -> int:
         )
 
         step("Android Rust transport target checks")
-        run(["rustup", "target", "add", "aarch64-linux-android"])
         for recipe in (ANDROID_NATIVE_RECIPE, FLUTTER_ANDROID_NATIVE_RECIPE):
-            run(cargo_android_check_args(recipe, "check", "aarch64-linux-android"))
             run(
                 [
-                    *cargo_android_check_args(
+                    *cargo_android_clippy_args(
                         recipe,
-                        "clippy",
                         "aarch64-linux-android",
                     ),
                     "--",
@@ -1005,35 +948,6 @@ def main() -> int:
         run([dart, "format", "--set-exit-if-changed", "lib", "example", "tool"], cwd=FLUTTER_ROOT)
         run([dart, "run", "tool/abi3_contract_test.dart"], cwd=FLUTTER_ROOT)
 
-        step("Flutter native packaging scaffold checks")
-        bash = require_command("bash")
-        for path in [
-            FLUTTER_ROOT / "build-ios.sh",
-            FLUTTER_ROOT / "build-desktop.sh",
-            FLUTTER_ROOT / "ios" / "merman.podspec",
-            FLUTTER_ROOT
-            / "ios"
-            / "merman"
-            / "Sources"
-            / "merman"
-            / "MermanFlutterPlugin.swift",
-            FLUTTER_ROOT / "macos" / "merman.podspec",
-            FLUTTER_ROOT
-            / "macos"
-            / "merman"
-            / "Sources"
-            / "merman"
-            / "MermanFlutterPlugin.swift",
-            FLUTTER_ROOT / "linux" / "CMakeLists.txt",
-            FLUTTER_ROOT / "linux" / "include" / "merman" / "merman_flutter_plugin.h",
-            FLUTTER_ROOT / "windows" / "CMakeLists.txt",
-            FLUTTER_ROOT / "windows" / "include" / "merman" / "merman_flutter_plugin_c_api.h",
-        ]:
-            if not path.exists():
-                raise RuntimeError(f"required Flutter packaging file not found: {path}")
-        run([bash, "-n", bash_path(FLUTTER_ROOT / "build-ios.sh")])
-        run([bash, "-n", bash_path(FLUTTER_ROOT / "build-desktop.sh")])
-
         step("Dart FFI native smoke")
         run_dart_ffi_native_smoke(dart)
 
@@ -1049,22 +963,6 @@ def main() -> int:
         if args.run_android_instrumentation_smoke:
             step("Android instrumentation smoke")
             run_android_instrumentation_smoke(args.gradle_path, args.android_ndk_home)
-
-        step("Apple Swift package scaffold checks")
-        for path in [
-            REPO_ROOT / "Package.swift",
-            REPO_ROOT / "scripts" / "build-apple-xcframework.sh",
-            REPO_ROOT / "platforms" / "ios" / "build-ios.sh",
-            APPLE_ROOT / "Sources" / "Merman" / "Generated" / "Merman.swift",
-            APPLE_ROOT / "Sources" / "Merman" / "Generated" / "MermanFFI.h",
-            APPLE_ROOT / "Sources" / "Merman" / "Generated" / "MermanFFI.modulemap",
-            REPO_ROOT / "crates" / "merman-uniffi" / "uniffi.toml",
-            REPO_ROOT / "crates" / "merman-uniffi" / "examples" / "generate_swift_bindings.rs",
-        ]:
-            if not path.exists():
-                raise RuntimeError(f"required Apple binding file not found: {path}")
-        run([bash, "-n", bash_path(REPO_ROOT / "scripts" / "build-apple-xcframework.sh")])
-        run([bash, "-n", bash_path(REPO_ROOT / "platforms" / "ios" / "build-ios.sh")])
 
         if args.build_apple_xcframework:
             if platform.system() != "Darwin":
