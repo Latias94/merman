@@ -42,13 +42,13 @@
     "version": "0.9.1",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "ce6c5678c2038426fc98f107ae712292cd9d72aa911f193fd3184e5f5385513e",
+    "cargo_lock_sha256": "d8a360a8a3ae88d70d576dba0a359208ce9e79ecc99af4fc3111fb7b6336f5b4",
     "configuration_sha256": "4765a9560ee1ed9c96619908ef21fc462eab4fa9d917243106f1a96b534d7007",
     "artifact_profile_sha256": "3c7cfbd2829a4a0a797e87113656e16e58afb2f43f7a1d6d4d26ff0616a2936e"
   },
   "dependency_closure": {
-    "package_count": 169,
-    "packages_sha256": "5d2e05a176c8e60828aac048e22865daf57ba3cafab141dd7da4c0e8ab7d7643"
+    "package_count": 173,
+    "packages_sha256": "7a26d59abb1555dd575a3a3eea87d98b9bbf360232de4bc3914b675ada6b4698"
   },
   "licenses": [
     {
@@ -129,7 +129,7 @@
         },
         {
           "name": "granit-parser",
-          "version": "1.0.0-rc.1",
+          "version": "1.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -181,7 +181,7 @@
         },
         {
           "name": "proc-macro2",
-          "version": "1.0.106",
+          "version": "1.0.107",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -192,7 +192,7 @@
         },
         {
           "name": "quote",
-          "version": "1.0.46",
+          "version": "1.0.47",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -202,7 +202,7 @@
         },
         {
           "name": "rand",
-          "version": "0.8.6",
+          "version": "0.8.7",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -213,7 +213,7 @@
         },
         {
           "name": "rustc-hash",
-          "version": "2.1.2",
+          "version": "2.1.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [
@@ -223,7 +223,7 @@
         },
         {
           "name": "ryu-js",
-          "version": "1.0.2",
+          "version": "1.0.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR BSL-1.0",
           "authors": [
@@ -234,7 +234,7 @@
         },
         {
           "name": "serde",
-          "version": "1.0.228",
+          "version": "1.0.229",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -245,7 +245,7 @@
         },
         {
           "name": "serde-saphyr",
-          "version": "1.0.0-rc.1",
+          "version": "1.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -253,7 +253,7 @@
         },
         {
           "name": "serde_core",
-          "version": "1.0.228",
+          "version": "1.0.229",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -264,7 +264,7 @@
         },
         {
           "name": "serde_derive",
-          "version": "1.0.228",
+          "version": "1.0.229",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -275,7 +275,7 @@
         },
         {
           "name": "serde_json",
-          "version": "1.0.150",
+          "version": "1.0.151",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -296,7 +296,17 @@
         },
         {
           "name": "syn",
-          "version": "2.0.118",
+          "version": "2.0.119",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "David Tolnay <dtolnay@gmail.com>"
+          ],
+          "repository": "https://github.com/dtolnay/syn"
+        },
+        {
+          "name": "syn",
+          "version": "3.0.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -316,7 +326,7 @@
         },
         {
           "name": "thiserror",
-          "version": "2.0.18",
+          "version": "2.0.19",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -336,7 +346,7 @@
         },
         {
           "name": "thiserror-impl",
-          "version": "2.0.18",
+          "version": "2.0.19",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -380,7 +390,7 @@
       "packages": [
         {
           "name": "futures-core",
-          "version": "0.3.32",
+          "version": "0.3.33",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -388,7 +398,7 @@
         },
         {
           "name": "futures-task",
-          "version": "0.3.32",
+          "version": "0.3.33",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -396,7 +406,7 @@
         },
         {
           "name": "futures-util",
-          "version": "0.3.32",
+          "version": "0.3.33",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
@@ -546,8 +556,18 @@
           "repository": "https://github.com/marshallpierce/rust-base64"
         },
         {
+          "name": "base64",
+          "version": "0.23.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "Marshall Pierce <marshall@mpierce.org>"
+          ],
+          "repository": "https://github.com/marshallpierce/rust-base64"
+        },
+        {
           "name": "bitflags",
-          "version": "2.13.0",
+          "version": "2.13.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -597,7 +617,7 @@
         },
         {
           "name": "displaydoc",
-          "version": "0.2.6",
+          "version": "0.2.7",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -625,7 +645,7 @@
         },
         {
           "name": "fastrand",
-          "version": "2.4.1",
+          "version": "2.5.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Apache-2.0 OR MIT",
           "authors": [
@@ -771,7 +791,7 @@
         },
         {
           "name": "regex",
-          "version": "1.12.4",
+          "version": "1.13.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -782,7 +802,7 @@
         },
         {
           "name": "regex-automata",
-          "version": "0.4.14",
+          "version": "0.4.16",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1004,7 +1024,7 @@
       "packages": [
         {
           "name": "block-buffer",
-          "version": "0.10.4",
+          "version": "0.12.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1013,8 +1033,18 @@
           "repository": "https://github.com/RustCrypto/utils"
         },
         {
+          "name": "const-oid",
+          "version": "0.10.2",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "Apache-2.0 OR MIT",
+          "authors": [
+            "RustCrypto Developers"
+          ],
+          "repository": "https://github.com/RustCrypto/formats"
+        },
+        {
           "name": "crypto-common",
-          "version": "0.1.7",
+          "version": "0.2.2",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1024,7 +1054,7 @@
         },
         {
           "name": "digest",
-          "version": "0.10.7",
+          "version": "0.11.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1033,8 +1063,18 @@
           "repository": "https://github.com/RustCrypto/traits"
         },
         {
+          "name": "hybrid-array",
+          "version": "0.4.14",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "RustCrypto Developers"
+          ],
+          "repository": "https://github.com/RustCrypto/hybrid-array"
+        },
+        {
           "name": "sha2",
-          "version": "0.10.9",
+          "version": "0.11.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1134,7 +1174,7 @@
         },
         {
           "name": "tinyvec",
-          "version": "1.11.0",
+          "version": "1.12.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Zlib OR Apache-2.0 OR MIT",
           "authors": [
@@ -1198,7 +1238,7 @@
       "packages": [
         {
           "name": "lol_html",
-          "version": "3.0.0",
+          "version": "3.0.1",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "BSD-3-Clause",
           "authors": [
@@ -1314,7 +1354,7 @@
         },
         {
           "name": "memchr",
-          "version": "2.8.2",
+          "version": "2.8.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "Unlicense OR MIT",
           "authors": [
@@ -1361,7 +1401,7 @@
       "packages": [
         {
           "name": "zmij",
-          "version": "1.0.21",
+          "version": "1.0.23",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -1463,6 +1503,24 @@
     {
       "id": "MIT",
       "name": "MIT License",
+      "text_sha256": "816000f9c28f7005d931c77636eb79fa7020071eb0f6e6a995515dfccd3559cb",
+      "text": "The MIT License (MIT)\r\n\r\nCopyright (c) 2015 Austin Bonander\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.\r\n\r\n",
+      "packages": [
+        {
+          "name": "mime_guess",
+          "version": "2.0.5",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Austin Bonander <austin.bonander@gmail.com>"
+          ],
+          "repository": "https://github.com/abonander/mime_guess"
+        }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
       "text_sha256": "8a35369f3ca263b3c62fbb5032947e53b6bfebc6c8a4d1bb982de1c069f6fba5",
       "text": "The MIT License (MIT)\n\nCopyright (c) 2016 Jelte Fennema\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
       "packages": [
@@ -1545,7 +1603,7 @@
         },
         {
           "name": "ratex-font",
-          "version": "0.1.13",
+          "version": "0.1.14",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1553,7 +1611,7 @@
         },
         {
           "name": "ratex-font-loader",
-          "version": "0.1.13",
+          "version": "0.1.14",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1561,7 +1619,7 @@
         },
         {
           "name": "ratex-katex-fonts",
-          "version": "0.1.13",
+          "version": "0.1.14",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1569,7 +1627,7 @@
         },
         {
           "name": "ratex-layout",
-          "version": "0.1.13",
+          "version": "0.1.14",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1577,7 +1635,7 @@
         },
         {
           "name": "ratex-lexer",
-          "version": "0.1.13",
+          "version": "0.1.14",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1585,7 +1643,7 @@
         },
         {
           "name": "ratex-parser",
-          "version": "0.1.13",
+          "version": "0.1.14",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1593,7 +1651,7 @@
         },
         {
           "name": "ratex-svg",
-          "version": "0.1.13",
+          "version": "0.1.14",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1601,7 +1659,7 @@
         },
         {
           "name": "ratex-types",
-          "version": "0.1.13",
+          "version": "0.1.14",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
@@ -1609,30 +1667,11 @@
         },
         {
           "name": "ratex-unicode-font",
-          "version": "0.1.13",
+          "version": "0.1.14",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [],
           "repository": "https://github.com/erweixin/RaTeX"
-        }
-      ]
-    },
-    {
-      "id": "MIT",
-      "name": "MIT License",
-      "text_sha256": "c09aae9d3c77b531f56351a9947bc7446511d6b025b3255312d3e3442a9a7583",
-      "text": "The MIT License (MIT)\r\n\r\nCopyright (c) 2015 Bart\u0142omiej Kami\u0144ski\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.",
-      "packages": [
-        {
-          "name": "generic-array",
-          "version": "0.14.7",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [
-            "Aaron Trent <novacrazy@gmail.com>",
-            "Bart\u0142omiej Kami\u0144ski <fizyk20@gmail.com>"
-          ],
-          "repository": "https://github.com/fizyk20/generic-array.git"
         }
       ]
     },
@@ -1699,7 +1738,7 @@
       "packages": [
         {
           "name": "rust-embed",
-          "version": "8.11.0",
+          "version": "8.12.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -1709,7 +1748,7 @@
         },
         {
           "name": "rust-embed-impl",
-          "version": "8.11.0",
+          "version": "8.12.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
@@ -1719,7 +1758,7 @@
         },
         {
           "name": "rust-embed-utils",
-          "version": "8.11.0",
+          "version": "8.12.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [

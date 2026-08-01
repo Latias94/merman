@@ -928,6 +928,29 @@ mod tests {
 
     #[cfg(feature = "math")]
     #[test]
+    fn ratex_math_renderer_renders_at_depth_limit_and_declines_deeper_input() {
+        let renderer = RatexMathRenderer;
+        let config = MermaidConfig::default();
+        let nested_label =
+            |depth: usize| format!("$${}x{}$$", "{".repeat(depth), "}".repeat(depth));
+
+        let at_limit = nested_label(32);
+        let html = renderer
+            .render_html_label(&at_limit, &config)
+            .expect("RaTeX should render input at its supported logical depth limit");
+        assert!(html.contains("<svg"), "expected inline SVG: {html}");
+
+        for depth in [33, 300] {
+            let over_limit = nested_label(depth);
+            assert!(
+                renderer.render_html_label(&over_limit, &config).is_none(),
+                "depth {depth} should be declined for plain-text fallback without panicking"
+            );
+        }
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
     fn ratex_math_renderer_renders_multiple_formulas_on_one_line_independently() {
         let renderer = RatexMathRenderer;
         let config = MermaidConfig::default();

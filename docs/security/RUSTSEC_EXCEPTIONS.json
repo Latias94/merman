@@ -28,15 +28,15 @@
         ],
         [
           "merman-render@0.8.0-alpha.4",
-          "ratex-svg@0.1.13",
+          "ratex-svg@0.1.14",
           "ab_glyph@0.2.32",
           "owned_ttf_parser@0.25.1",
           "ttf-parser@0.25.1"
         ],
         [
           "merman-render@0.8.0-alpha.4",
-          "ratex-svg@0.1.13",
-          "ratex-unicode-font@0.1.13",
+          "ratex-svg@0.1.14",
+          "ratex-unicode-font@0.1.14",
           "ttf-parser@0.25.1"
         ]
       ],

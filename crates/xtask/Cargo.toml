@@ -20,6 +20,7 @@ dugong = { path = "../dugong" }
 lalrpop.workspace = true
 merman = { path = "../merman", default-features = false, features = ["svg"] }
 merman-analysis.workspace = true
+merman-bindings-core = { workspace = true, features = ["analysis", "ascii", "jpeg", "pdf", "png", "svg"] }
 merman-core = { path = "../merman-core" }
 merman-editor-core.workspace = true
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }

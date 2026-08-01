@@ -555,7 +555,7 @@ merman-typst-plugin v0.8.0-alpha.3
 ├── json5 v1.3.1
 ├── lol_html v2.7.1
 ├── url v2.5.8
-├── serde-saphyr v1.0.0-rc.1
+├── serde-saphyr v1.0.0
 ├── getrandom v0.4.3
 ├── js-sys v0.3.103
 ├── serde_yaml v0.9.34+deprecated
