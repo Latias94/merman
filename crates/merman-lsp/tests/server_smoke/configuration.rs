@@ -527,7 +527,7 @@ async fn lsp_service_diagnostic_pull_refresh_updates_open_document_report() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() {
+async fn lsp_service_smoke_initialize_accepts_future_lint_fields() {
     let (mut service, socket) = MermanLanguageServer::service();
     let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
@@ -541,10 +541,12 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_initialize() 
             },
             "initializationOptions": {
                 "lint": {
+                    "future_lint_option": { "enabled": true },
                     "rule_severities": [
                         {
                             "rule_id": "merman.parse.no_diagram",
-                            "severity": "hint"
+                            "severity": "hint",
+                            "future_override_option": "accepted"
                         }
                     ]
                 }
@@ -879,7 +881,7 @@ async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration_change() {
+async fn lsp_service_smoke_configuration_change_accepts_future_lint_fields() {
     let (mut service, socket) = MermanLanguageServer::service();
     let (mut socket, _responses) = socket.split();
     let uri = tower_lsp_server::ls_types::Uri::from_str("file:///tmp/example.mmd").unwrap();
@@ -939,10 +941,12 @@ async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration
             serde_json::to_value(DidChangeConfigurationParams {
                 settings: serde_json::json!({
                     "lint": {
+                        "future_lint_option": { "enabled": true },
                         "rule_severities": [
                             {
                                 "rule_id": "merman.parse.no_diagram",
-                                "severity": "hint"
+                                "severity": "hint",
+                                "future_override_option": "accepted"
                             }
                         ]
                     }

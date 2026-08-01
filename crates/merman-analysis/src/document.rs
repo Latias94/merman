@@ -80,6 +80,11 @@ pub struct DocumentSource {
     diagrams: Vec<DocumentDiagram>,
 }
 
+enum DocumentSourceBuildOutcome {
+    Ready(DocumentSource),
+    DiagramLimitExceeded(MarkdownDocumentDiagramLimitExceeded),
+}
+
 impl DocumentSource {
     pub fn new(text: impl Into<Arc<str>>, source: SourceDescriptor) -> Self {
         let text = text.into();
@@ -101,27 +106,80 @@ impl DocumentSource {
         }
     }
 
-    pub(crate) fn new_cancellable(
-        text: impl Into<Arc<str>>,
+    fn new_bounded_cancellable(
+        text: Arc<str>,
         source: SourceDescriptor,
+        max_document_diagrams: Option<usize>,
         cancellation: &crate::AnalysisCancellationToken,
-    ) -> Result<Self, crate::AnalysisCancelled> {
+    ) -> Result<DocumentSourceBuildOutcome, crate::AnalysisCancelled> {
         cancellation.checkpoint()?;
-        let text = text.into();
-        let source_map = SourceMap::new_cancellable(Arc::clone(&text), cancellation)?;
         let diagrams = match source.kind {
             SourceKind::Markdown | SourceKind::Mdx => {
-                extract_markdown_diagrams(&text, &source, cancellation)?
+                match scan_markdown_diagrams_bounded(
+                    text.as_ref(),
+                    max_document_diagrams,
+                    cancellation,
+                )? {
+                    Ok(diagrams) => {
+                        materialize_markdown_diagrams(&text, &source, diagrams, cancellation)?
+                    }
+                    Err(exceeded) => {
+                        return Ok(DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded));
+                    }
+                }
             }
             SourceKind::Diagram => vec![whole_document_diagram(Arc::clone(&text), &source)],
         };
+        Self::finish_cancellable(text, source, diagrams, cancellation)
+    }
+
+    fn new_borrowed_bounded_cancellable(
+        text: &str,
+        source: SourceDescriptor,
+        max_document_diagrams: Option<usize>,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<DocumentSourceBuildOutcome, crate::AnalysisCancelled> {
         cancellation.checkpoint()?;
-        Ok(Self {
+        // Keep the caller's allocation borrowed until the document has passed admission. The
+        // scan retains offsets only, so an early excess fence never copies a potentially large
+        // rejected tail into a new Arc.
+        let scanned_diagrams = match source.kind {
+            SourceKind::Markdown | SourceKind::Mdx => {
+                match scan_markdown_diagrams_bounded(text, max_document_diagrams, cancellation)? {
+                    Ok(diagrams) => Some(diagrams),
+                    Err(exceeded) => {
+                        return Ok(DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded));
+                    }
+                }
+            }
+            SourceKind::Diagram => None,
+        };
+        cancellation.checkpoint()?;
+
+        let text: Arc<str> = Arc::from(text);
+        let diagrams = match scanned_diagrams {
+            Some(diagrams) => {
+                materialize_markdown_diagrams(&text, &source, diagrams, cancellation)?
+            }
+            None => vec![whole_document_diagram(Arc::clone(&text), &source)],
+        };
+        Self::finish_cancellable(text, source, diagrams, cancellation)
+    }
+
+    fn finish_cancellable(
+        text: Arc<str>,
+        source: SourceDescriptor,
+        diagrams: Vec<DocumentDiagram>,
+        cancellation: &crate::AnalysisCancellationToken,
+    ) -> Result<DocumentSourceBuildOutcome, crate::AnalysisCancelled> {
+        let source_map = SourceMap::new_cancellable(Arc::clone(&text), cancellation)?;
+        cancellation.checkpoint()?;
+        Ok(DocumentSourceBuildOutcome::Ready(Self {
             source,
             text,
             source_map,
             diagrams,
-        })
+        }))
     }
 
     pub fn source(&self) -> &SourceDescriptor {
@@ -345,11 +403,12 @@ pub fn analyze_document(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisPayload {
-    if let Some(rejection) = analyzer
-        .options()
-        .resource_limits()
-        .preflight_document(text, &source)
-    {
+    let resource_limits = analyzer.options().resource_limits();
+    if let Some(rejection) = crate::source_limits::source_limit_rejection(
+        text,
+        source.clone(),
+        resource_limits.max_source_bytes(),
+    ) {
         return rejection.into_payload();
     }
 
@@ -358,7 +417,30 @@ pub fn analyze_document(
             AnalysisPayload::new(source, analyzer.analyze_source_diagnostics(text))
         }
         SourceKind::Markdown | SourceKind::Mdx => {
-            let document = DocumentSource::new(text, source.clone());
+            let cancellation = crate::AnalysisCancellationToken::new();
+            let document = match DocumentSource::new_borrowed_bounded_cancellable(
+                text,
+                source.clone(),
+                resource_limits.max_document_diagrams(),
+                &cancellation,
+            )
+            .expect("a private analysis cancellation token cannot be cancelled")
+            {
+                DocumentSourceBuildOutcome::Ready(document) => document,
+                DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded) => {
+                    return crate::document_limits::document_diagram_limit_rejection_from_exceeded_cancellable(
+                        text,
+                        &source,
+                        resource_limits
+                            .max_document_diagrams()
+                            .expect("a diagram limit must exist when extraction exceeds it"),
+                        exceeded,
+                        &cancellation,
+                    )
+                    .expect("a private analysis cancellation token cannot be cancelled")
+                    .into_payload();
+                }
+            };
             AnalysisPayload::new(source, analyze_document_diagnostics(&document, analyzer))
         }
     }
@@ -459,15 +541,29 @@ fn analyze_document_generation_shared_inner(
 ) -> Result<AnalysisCaptureOutcome, crate::AnalysisCancelled> {
     let cancellation = control.cancellation();
     cancellation.checkpoint()?;
-    if let Some(rejection) = analyzer
-        .options()
-        .resource_limits()
-        .preflight_document_cancellable(text.as_ref(), &source, cancellation)?
-    {
+    let resource_limits = analyzer.options().resource_limits();
+    if let Some(rejection) = crate::source_limits::source_limit_rejection_cancellable(
+        text.as_ref(),
+        &source,
+        resource_limits.max_source_bytes(),
+        cancellation,
+    )? {
         return Ok(AnalysisCaptureOutcome::Rejected(rejection));
     }
 
-    analyze_document_generation_preflighted(text, analyzer, source, control)
+    let document = DocumentSource::new_bounded_cancellable(
+        Arc::clone(&text),
+        source.clone(),
+        resource_limits.max_document_diagrams(),
+        cancellation,
+    )?;
+    analyze_document_generation_after_document_scan(
+        text.as_ref(),
+        document,
+        analyzer,
+        source,
+        control,
+    )
 }
 
 fn analyze_document_generation_borrowed_inner(
@@ -478,26 +574,51 @@ fn analyze_document_generation_borrowed_inner(
 ) -> Result<AnalysisCaptureOutcome, crate::AnalysisCancelled> {
     let cancellation = control.cancellation();
     cancellation.checkpoint()?;
-    if let Some(rejection) = analyzer
-        .options()
-        .resource_limits()
-        .preflight_document_cancellable(text, &source, cancellation)?
-    {
+    let resource_limits = analyzer.options().resource_limits();
+    if let Some(rejection) = crate::source_limits::source_limit_rejection_cancellable(
+        text,
+        &source,
+        resource_limits.max_source_bytes(),
+        cancellation,
+    )? {
         return Ok(AnalysisCaptureOutcome::Rejected(rejection));
     }
 
-    analyze_document_generation_preflighted(Arc::from(text), analyzer, source, control)
+    let document = DocumentSource::new_borrowed_bounded_cancellable(
+        text,
+        source.clone(),
+        resource_limits.max_document_diagrams(),
+        cancellation,
+    )?;
+    analyze_document_generation_after_document_scan(text, document, analyzer, source, control)
 }
 
-fn analyze_document_generation_preflighted(
-    text: Arc<str>,
+fn analyze_document_generation_after_document_scan(
+    text: &str,
+    document: DocumentSourceBuildOutcome,
     analyzer: &Analyzer,
     source: SourceDescriptor,
     control: DocumentCaptureControl<'_>,
 ) -> Result<AnalysisCaptureOutcome, crate::AnalysisCancelled> {
     let cancellation = control.cancellation();
 
-    let document = DocumentSource::new_cancellable(text, source.clone(), cancellation)?;
+    let resource_limits = analyzer.options().resource_limits();
+    let document = match document {
+        DocumentSourceBuildOutcome::Ready(document) => document,
+        DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded) => {
+            let rejection =
+                crate::document_limits::document_diagram_limit_rejection_from_exceeded_cancellable(
+                    text,
+                    &source,
+                    resource_limits
+                        .max_document_diagrams()
+                        .expect("a diagram limit must exist when extraction exceeds it"),
+                    exceeded,
+                    cancellation,
+                )?;
+            return Ok(AnalysisCaptureOutcome::Rejected(rejection));
+        }
+    };
     let request_analyzer = analyzer.with_capture_source(source);
     cancellation.checkpoint()?;
 
@@ -642,18 +763,69 @@ fn extract_markdown_diagrams(
     source: &SourceDescriptor,
     cancellation: &crate::AnalysisCancellationToken,
 ) -> Result<Vec<DocumentDiagram>, crate::AnalysisCancelled> {
+    match scan_markdown_diagrams_bounded(text.as_ref(), None, cancellation)? {
+        Ok(diagrams) => materialize_markdown_diagrams(text, source, diagrams, cancellation),
+        Err(_) => unreachable!("an unlimited extraction cannot exceed a diagram limit"),
+    }
+}
+
+fn scan_markdown_diagrams_bounded(
+    text: &str,
+    max_document_diagrams: Option<usize>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<
+    Result<Vec<ScannedMarkdownDiagram>, MarkdownDocumentDiagramLimitExceeded>,
+    crate::AnalysisCancelled,
+> {
     let mut diagrams = Vec::new();
+    let mut observed_document_diagrams = 0usize;
     let result = visit_markdown_diagrams(
-        text.as_ref(),
+        text,
         cancellation,
-        |_| ControlFlow::<()>::Continue(()),
+        |opening_marker| {
+            observed_document_diagrams = observed_document_diagrams.saturating_add(1);
+            if max_document_diagrams.is_some_and(|limit| observed_document_diagrams > limit) {
+                ControlFlow::Break(MarkdownDocumentDiagramLimitExceeded {
+                    observed_document_diagrams,
+                    opening_marker,
+                })
+            } else {
+                ControlFlow::Continue(())
+            }
+        },
         |bounds, delimiter| {
-            push_markdown_diagram(&mut diagrams, Arc::clone(text), source, bounds, delimiter);
+            diagrams.push(ScannedMarkdownDiagram { bounds, delimiter });
         },
     )?;
-    debug_assert!(matches!(result, ControlFlow::Continue(())));
     cancellation.checkpoint()?;
-    Ok(diagrams)
+    Ok(match result {
+        ControlFlow::Continue(()) => Ok(diagrams),
+        ControlFlow::Break(exceeded) => Err(exceeded),
+    })
+}
+
+fn materialize_markdown_diagrams(
+    text: &Arc<str>,
+    source: &SourceDescriptor,
+    diagrams: Vec<ScannedMarkdownDiagram>,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<Vec<DocumentDiagram>, crate::AnalysisCancelled> {
+    cancellation.checkpoint()?;
+    let mut materialized = Vec::with_capacity(diagrams.len());
+    for (index, diagram) in diagrams.into_iter().enumerate() {
+        if index.is_multiple_of(128) {
+            cancellation.checkpoint()?;
+        }
+        push_markdown_diagram(
+            &mut materialized,
+            Arc::clone(text),
+            source,
+            diagram.bounds,
+            diagram.delimiter,
+        );
+    }
+    cancellation.checkpoint()?;
+    Ok(materialized)
 }
 
 pub(crate) struct MarkdownDocumentDiagramLimitExceeded {
@@ -778,6 +950,11 @@ struct MarkdownFenceBounds {
     body: std::ops::Range<usize>,
     opening_marker: std::ops::Range<usize>,
     closing_marker: Option<std::ops::Range<usize>>,
+}
+
+struct ScannedMarkdownDiagram {
+    bounds: MarkdownFenceBounds,
+    delimiter: FenceDelimiter,
 }
 
 fn push_markdown_diagram(
@@ -1090,6 +1267,64 @@ mod tests {
         assert_eq!(exceeded.observed_document_diagrams, 2);
         assert_eq!(&source[exceeded.opening_marker], "```");
         assert!(!cancellation.is_cancelled());
+    }
+
+    #[test]
+    fn borrowed_document_build_rejects_before_scanning_or_promoting_the_excess_body() {
+        let source = format!(
+            "```mermaid\nflowchart TD\nA-->B\n```\n```mermaid\n{}",
+            "x".repeat(128 * 1024)
+        );
+        let descriptor = source_descriptor_for_markdown_path(Some("fixture.md"));
+        let cancellation = crate::AnalysisCancellationToken::new();
+        cancellation.cancel_after_checkpoints(64);
+
+        let outcome = DocumentSource::new_borrowed_bounded_cancellable(
+            &source,
+            descriptor,
+            Some(1),
+            &cancellation,
+        )
+        .expect("the borrowed builder must stop at the excess opener");
+        let exceeded = match outcome {
+            DocumentSourceBuildOutcome::DiagramLimitExceeded(exceeded) => exceeded,
+            DocumentSourceBuildOutcome::Ready(_) => panic!("the second opener must be rejected"),
+        };
+
+        assert_eq!(exceeded.observed_document_diagrams, 2);
+        assert_eq!(&source[exceeded.opening_marker], "```");
+        assert!(!cancellation.is_cancelled());
+    }
+
+    #[test]
+    fn markdown_diagram_materialization_observes_cancellation_after_scanning() {
+        let source = (0..256)
+            .map(|index| format!("```mermaid\nflowchart TD\nA{index}-->B{index}\n```\n"))
+            .collect::<String>();
+        let descriptor = source_descriptor_for_markdown_path(Some("fixture.md"));
+        let scan_cancellation = crate::AnalysisCancellationToken::new();
+        let scanned = match scan_markdown_diagrams_bounded(&source, None, &scan_cancellation)
+            .expect("the fence scan must complete")
+        {
+            Ok(scanned) => scanned,
+            Err(_) => panic!("an unlimited scan cannot exceed a diagram limit"),
+        };
+        assert_eq!(scanned.len(), 256);
+
+        let source: Arc<str> = Arc::from(source);
+        let materialization_cancellation = crate::AnalysisCancellationToken::new();
+        materialization_cancellation.cancel_after_checkpoints(1);
+
+        assert!(matches!(
+            materialize_markdown_diagrams(
+                &source,
+                &descriptor,
+                scanned,
+                &materialization_cancellation,
+            ),
+            Err(crate::AnalysisCancelled)
+        ));
+        assert!(materialization_cancellation.is_cancelled());
     }
 
     #[test]

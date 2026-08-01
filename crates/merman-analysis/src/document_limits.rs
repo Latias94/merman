@@ -27,7 +27,23 @@ pub(crate) fn document_diagram_limit_rejection_cancellable(
     else {
         return Ok(None);
     };
+    document_diagram_limit_rejection_from_exceeded_cancellable(
+        source,
+        descriptor,
+        limit,
+        exceeded,
+        cancellation,
+    )
+    .map(Some)
+}
 
+pub(crate) fn document_diagram_limit_rejection_from_exceeded_cancellable(
+    source: &str,
+    descriptor: &SourceDescriptor,
+    limit: usize,
+    exceeded: crate::document::MarkdownDocumentDiagramLimitExceeded,
+    cancellation: &AnalysisCancellationToken,
+) -> Result<AnalysisRejection, AnalysisCancelled> {
     let span = crate::source_map::byte_range_span_without_source_copy_cancellable(
         source,
         exceeded.opening_marker,
@@ -35,12 +51,12 @@ pub(crate) fn document_diagram_limit_rejection_cancellable(
     )?;
     let diagnostic =
         document_diagram_limit_diagnostic(exceeded.observed_document_diagrams, limit, span);
-    Ok(Some(AnalysisRejection::document_diagram_limit(
+    Ok(AnalysisRejection::document_diagram_limit(
         descriptor.clone(),
         vec![diagnostic],
         exceeded.observed_document_diagrams,
         limit,
-    )))
+    ))
 }
 
 fn document_diagram_limit_diagnostic(

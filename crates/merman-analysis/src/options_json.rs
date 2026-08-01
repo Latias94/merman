@@ -1,14 +1,14 @@
 use crate::{AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, DiagnosticSeverity};
 use chrono::NaiveDate;
 use merman_core::MermaidConfig;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Map;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct AnalysisOptionsJson {
     pub fixed_today: Option<String>,
     pub fixed_local_offset_minutes: Option<i32>,
@@ -41,6 +41,79 @@ pub struct LintOptionsJson {
 pub struct LintRuleSeverityOverrideJson {
     pub rule_id: String,
     pub severity: String,
+}
+
+// The shared root format is forward-compatible, while direct consumers of the public nested
+// schema types retain their strict unknown-field validation.
+#[derive(Deserialize)]
+struct PermissiveAnalysisOptionsJson {
+    fixed_today: Option<String>,
+    fixed_local_offset_minutes: Option<i32>,
+    site_config: Option<Value>,
+    resources: Option<ResourceOptionsJson>,
+    lint: Option<PermissiveLintOptionsJson>,
+}
+
+#[derive(Deserialize)]
+struct PermissiveLintOptionsJson {
+    profile: Option<String>,
+    #[serde(default)]
+    enable_rules: Vec<String>,
+    #[serde(default)]
+    disable_rules: Vec<String>,
+    #[serde(default)]
+    rule_severities: Vec<PermissiveLintRuleSeverityOverrideJson>,
+}
+
+#[derive(Deserialize)]
+struct PermissiveLintRuleSeverityOverrideJson {
+    rule_id: String,
+    severity: String,
+}
+
+impl<'de> Deserialize<'de> for AnalysisOptionsJson {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(PermissiveAnalysisOptionsJson::deserialize(deserializer)?.into())
+    }
+}
+
+impl From<PermissiveAnalysisOptionsJson> for AnalysisOptionsJson {
+    fn from(options: PermissiveAnalysisOptionsJson) -> Self {
+        Self {
+            fixed_today: options.fixed_today,
+            fixed_local_offset_minutes: options.fixed_local_offset_minutes,
+            site_config: options.site_config,
+            resources: options.resources,
+            lint: options.lint.map(Into::into),
+        }
+    }
+}
+
+impl From<PermissiveLintOptionsJson> for LintOptionsJson {
+    fn from(options: PermissiveLintOptionsJson) -> Self {
+        Self {
+            profile: options.profile,
+            enable_rules: options.enable_rules,
+            disable_rules: options.disable_rules,
+            rule_severities: options
+                .rule_severities
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+impl From<PermissiveLintRuleSeverityOverrideJson> for LintRuleSeverityOverrideJson {
+    fn from(override_: PermissiveLintRuleSeverityOverrideJson) -> Self {
+        Self {
+            rule_id: override_.rule_id,
+            severity: override_.severity,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -413,6 +486,81 @@ mod tests {
         assert_eq!(
             analysis.rule_config().severity_for(*prefer_init),
             DiagnosticSeverity::Hint
+        );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_ignores_future_lint_fields() {
+        let options = serde_json::json!({
+            "lint": {
+                "profile": "recommended",
+                "future_lint_option": { "enabled": true },
+                "rule_severities": [
+                    {
+                        "rule_id": "merman.parse.no_diagram",
+                        "severity": "hint",
+                        "future_override_option": "accepted"
+                    }
+                ]
+            }
+        });
+
+        let analysis = analysis_options_from_json_value(&options).unwrap();
+        let no_diagram = rule_descriptors()
+            .iter()
+            .find(|descriptor| descriptor.id == "merman.parse.no_diagram")
+            .unwrap();
+
+        assert_eq!(
+            analysis.rule_config().profile(),
+            AnalysisRuleProfile::Recommended
+        );
+        assert_eq!(
+            analysis.rule_config().severity_for(*no_diagram),
+            DiagnosticSeverity::Hint
+        );
+    }
+
+    #[test]
+    fn public_lint_json_types_reject_unknown_fields() {
+        let lint_error = serde_json::from_value::<LintOptionsJson>(serde_json::json!({
+            "profile": "core",
+            "future_lint_option": true
+        }))
+        .expect_err("the public lint schema must reject unknown fields");
+        assert!(
+            lint_error
+                .to_string()
+                .contains("unknown field `future_lint_option`")
+        );
+        let override_error =
+            serde_json::from_value::<LintRuleSeverityOverrideJson>(serde_json::json!({
+                "rule_id": "merman.parse.no_diagram",
+                "severity": "hint",
+                "future_override_option": true
+            }))
+            .expect_err("the public severity override schema must reject unknown fields");
+        assert!(
+            override_error
+                .to_string()
+                .contains("unknown field `future_override_option`")
+        );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_keeps_resource_schema_strict() {
+        let error = analysis_options_json_from_json_value(&serde_json::json!({
+            "resources": {
+                "limits": {},
+                "future_resource_option": true
+            }
+        }))
+        .expect_err("resource options remain a versioned strict schema");
+
+        assert!(
+            error
+                .to_string()
+                .contains("unknown field `future_resource_option`")
         );
     }
 
