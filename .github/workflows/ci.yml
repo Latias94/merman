@@ -625,6 +625,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Read Android toolchain versions
+        id: android-toolchain
+        run: echo "ndk=$(python3 platforms/android/build-android.py --print-version ndk)" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
@@ -653,6 +657,18 @@ jobs:
 
       - name: Precache Flutter Android artifacts
         run: flutter precache --android
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        shell: bash
+        env:
+          ANDROID_NDK_VERSION: ${{ steps.android-toolchain.outputs.ndk }}
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Verify platform bindings
         run: python3 scripts/verify-platform-bindings.py
